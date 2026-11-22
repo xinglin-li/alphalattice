@@ -35,7 +35,7 @@ import argparse
 import difflib
 import functools
 import json
-import os
+import re
 import sys
 import textwrap
 import time
@@ -45,15 +45,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Final, Literal
 
-import yaml  # type: ignore[import-untyped]
-from pydantic import ValidationError
-
-from alphalattice.foundation.factor_research.experiments.authoring import (
-    FACTOR_EXPERIMENT_KIND,
-    FactorSection,
-)
-from alphalattice.interface.local_application import client
-from alphalattice.interface.local_application.answers import ANSWERS, outline
+from alphalattice.interface.local_application import call_span, cli_invocation, client
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE,
     BOUND_WORKSPACE,
@@ -83,20 +75,15 @@ from alphalattice.interface.local_application.cli_contract import (
     shell,
     worded,
 )
+from alphalattice.interface.local_application.cli_invocation import cli_print as print
+from alphalattice.interface.local_application.cli_invocation import command_prefix
 from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
     safe_failure_code,
 )
 from alphalattice.interface.local_application.host_lookup import serving_workspace_notice
-from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument,
-    decision_hash,
-)
-from alphalattice.interface.local_application.questions import relayed_question
 from alphalattice.interface.local_application.read_views import summary_display
-from alphalattice.investment.portfolio_strategy_lab.application.availability import NOT_AVAILABLE
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     (
@@ -133,6 +120,9 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     "prospective child observation are checked separately.",
     ("session", "unbind"): "Remove this project's binding: the bound session's own, or the "
     "person's from their own shell, outside any agent session. The research is unchanged.",
+    ("session", "exporters"): "Print native agent exporter settings for the served Host; "
+    "only on the person's yes, write Claude Code's project settings. "
+    "Codex's user config is printed.",
 }
 """The client's own commands, answered by the client itself, as `serve` and `request` are; every
 other command is an operation of the registry (OP1)."""
@@ -158,10 +148,11 @@ model's files are the checkout's, and a session can detach its project's binding
 
 def _commands() -> dict[tuple[str, str], tuple[str, ...]]:
     table: dict[str, list[str]] = command_table()["commands"]
-    return {
+    commands = {
         (name.split(" ")[0], name.split(" ")[1]): tuple(operations)
         for name, operations in table.items()
     }
+    return commands | {alias: commands[named] for alias, named in VERB_ALIASES.items()}
 
 
 def _fields(operation: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -232,17 +223,20 @@ class _Parser(argparse.ArgumentParser):
         finally:
             _PARSER_LINE.reset(token)
 
+    def _print_message(self, message: str, file: Any = None) -> None:
+        super()._print_message(message, cli_invocation.stream(file, error=True))
+
     def error(self, message: str) -> Any:
         if (line := _PARSER_LINE.get()) is not None and line[2]:
             raise ValueError(message)
         self.print_usage(sys.stderr)  # noqa: TID251  # argparse usage
-        print(f"{self.prog}: error: {message}", file=sys.stderr)  # noqa: T201, TID251  # CLI stderr
+        print(f"{self.prog}: error: {message}", file=sys.stderr)  # noqa: TID251  # CLI stderr
         code = "local_client.usage_invalid"
         refusal = client_refusal(code)
         repair = _repair(self, message)
         # What the parser found, its usage and the help that answers it, in the envelope where
         # an agent reads (the review's F5); stderr keeps argparse's own lines.
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=None,
@@ -316,7 +310,11 @@ def _repair(parser: argparse.ArgumentParser, message: str) -> dict[str, Any]:
             else:
                 request = _line_document(repaired, args)()
 
-            PortfolioResearchRequestDocument.model_validate(request)
+            from .portfolio_research import (  # lazy: validate the repaired declaration
+                validate_request_document,
+            )
+
+            validate_request_document(request)
             return {
                 "repair": worded(
                     f"Replace {wrong} with {nearest[0]} and send the corrected request."
@@ -518,7 +516,7 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             dest="committee_seen",
             type=int,
             default=0,
-            help="The last floor message seen, by number: the answer's `seen` (M7 is 7).",
+            help="The last floor message seen, as the floor names it or its number (M7 or 7).",
         )
     elif (noun, verb) == ("first-use", "prepare"):
         _first_use_options(child)
@@ -589,7 +587,14 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
             "--usage",
             choices=("read", "off"),
             default="read",
-            help="off: do not discover or read native Session files for model and token usage.",
+            help="off: neither receive nor read native telemetry for this Session's usage.",
+        )
+    elif (noun, verb) == ("session", "exporters"):
+        child.add_argument(
+            "--configure-claude",
+            action="store_true",
+            help="Only on the person's yes: merge the exporter environment into the project's "
+            ".claude/settings.local.json. Without this flag, print both agents' settings only.",
         )
     elif (noun, verb) == ("backup", "restore"):
         child.add_argument(
@@ -746,7 +751,7 @@ def command_parser(named: frozenset[str] | None = None) -> _Parser:
                 ),
             )
         for name in others:
-            child.add_argument(flag(name), dest=name, help=_field_help(name, required))
+            child.add_argument(*_flags(noun, name), dest=name, help=_field_help(name, required))
         if "person_confirmation" in others:
             _person_confirmation_options(child)
         child.add_argument(
@@ -936,10 +941,15 @@ def schema(operation: str) -> dict[str, Any]:
     It is read from the registry and the request document's own schema, and nothing here is a
     second copy of either.
     """
+    from alphalattice.interface.local_application.answers import ANSWERS  # lazy: schema read
+    from alphalattice.interface.local_application.portfolio_research import (  # lazy: schema read
+        full_request_document,
+    )
+
     required, allowed = _fields(operation)
     noun, verb = next(name for name, ops in _commands().items() if operation in ops)
     request = operation_schema(
-        PortfolioResearchRequestDocument.model_json_schema(),
+        full_request_document().model_json_schema(),
         ["operation", *sorted(allowed)],
         operation=operation,
         required=required,
@@ -997,12 +1007,16 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
     """
     if operation != "EXPERIMENT_READBACK":
         return None
+    from alphalattice.foundation.factor_research.experiments.authoring import (  # lazy: readback
+        FACTOR_EXPERIMENT_KIND,
+    )
     from alphalattice.foundation.factor_research.experiments.development_evidence import (
         FactorDevelopmentReceipt,
     )
     from alphalattice.foundation.factor_research.programs.program import (
         FactorResearchDeterministicEvidence,
     )
+    from alphalattice.interface.local_application.answers import outline  # lazy: readback schema
 
     return {
         FACTOR_EXPERIMENT_KIND: {
@@ -1014,11 +1028,17 @@ def _answer_parts(operation: str) -> dict[str, Any] | None:
 
 def _declaration_sections() -> dict[str, Any]:
     """Each Desk's section of an experiment declaration, by its contract (SC3)."""
+    from alphalattice.foundation.factor_research.experiments.authoring import (  # lazy: schema read
+        FactorSection,
+    )
     from alphalattice.investment.alpha_research.experiments.authoring import (
         AlphaDevelopmentSection,
     )
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         AlphaLifecycleSection,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: schema
+        availability,
     )
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
         PortfolioExperimentSpec,
@@ -1033,7 +1053,7 @@ def _declaration_sections() -> dict[str, Any]:
         # yet, with why.
         "portfolio": {
             **PortfolioExperimentSpec.model_json_schema(),
-            "not_available": list(NOT_AVAILABLE),
+            "not_available": list(availability.NOT_AVAILABLE),
         },
         "risk": RiskSection.model_json_schema(),
     }
@@ -1096,7 +1116,7 @@ def _restore(
             code = public_failure(error, "workspace_backup.restore_failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="WORKSPACE_RESTORE",
@@ -1115,7 +1135,7 @@ def _restore(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="WORKSPACE_RESTORE",
@@ -1175,7 +1195,7 @@ def _sandbox(
             code = public_failure(error, "model_sandbox.failed")
     elapsed = time.perf_counter() - started
     if answer is not None:
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="MODEL_SANDBOX",
@@ -1194,7 +1214,7 @@ def _sandbox(
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="MODEL_SANDBOX",
@@ -1221,7 +1241,7 @@ def _model_refused(args: argparse.Namespace, operation: str, started: float, cod
         "detail": refusal.detail,
         "next_action": refusal.next_action,
     }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=operation,
@@ -1265,7 +1285,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
             "declaration_file": str(written.resolve()),
             "next": f'model scaffold --file "{written}"',
         }
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=operation,
@@ -1292,7 +1312,7 @@ def _model(args: argparse.Namespace, started: float) -> int:
     found = client_refusal(failed) if failed else None
     outcome: Outcome = found.outcome if found else "OK"
     extra: dict[str, Any] = {"next_action": found.next_action} if found else {}
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=operation,
@@ -1316,6 +1336,9 @@ def _declaration_fields(path: Path) -> str:
     keeps its bytes.
     """
 
+    import yaml  # type: ignore[import-untyped]  # lazy: only model declarations read this YAML
+    from pydantic import ValidationError  # lazy: only model declarations raise it here
+
     from alphalattice.capabilities.alpha_modeling.declaration import AlphaModelDeclaration
 
     try:
@@ -1337,7 +1360,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     if args.operation_name not in known:
         # The registry's nearest names, where argparse answered only READ_HELP.
         refusal = client_refusal("local_client.operation_unknown")
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation="SCHEMA",
@@ -1370,7 +1393,7 @@ def _offline(args: argparse.Namespace, started: float) -> int:
                 "detail": refusal.detail,
                 "next_action": refusal.next_action,
             }
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SCHEMA",
@@ -1390,6 +1413,28 @@ def main(
     serve: Callable[[list[str]], int],
     restore: Callable[..., dict[str, Any]] | None = None,
     sandbox: Callable[..., dict[str, Any]] | None = None,
+) -> int:
+    """Run one command line and print its envelope; the invocation is one span, ended at the
+    Host its requests reached with its exit code (`_command_line` runs the line)."""
+    scope = call_span.CALL.set(None)
+    code = 1  # what Python exits with when the line raises
+    try:
+        code = _command_line(argv, serve=serve, restore=restore, sandbox=sandbox)
+        return code
+    except SystemExit as stopped:  # a refusal raised as the process's exit carries its code
+        code = stopped.code if isinstance(stopped.code, int) else code
+        raise
+    finally:
+        call_span.end(cli_invocation.environment(), code, reached=code != EXIT_CODES["NO_HOST"])
+        call_span.CALL.reset(scope)
+
+
+def _command_line(
+    argv: list[str] | None,
+    *,
+    serve: Callable[[list[str]], int],
+    restore: Callable[..., dict[str, Any]] | None,
+    sandbox: Callable[..., dict[str, Any]] | None,
 ) -> int:
     """Run one command line and print its envelope.
 
@@ -1414,12 +1459,15 @@ def main(
     surface_token = SURFACE_USE.set(())
     try:
         parser = command_parser(_named(arguments))
-        args = parser.parse_args(arguments)
+        args = parser.parse_args(floor_numbers(arguments))
         args.command_line = tuple(arguments)
-        READ_VIEW.set((args.view or "compact", _summary_source(parser, args), summary_display))
+        source = _summary_source(parser, args)  # may settle the view a summary reads as
+        READ_VIEW.set((args.view or "compact", source, summary_display))
         form = " ".join(filter(None, (args.noun, getattr(args, "verb", ""))))
         tags = tuple(f"option:{form}/{a.split('=')[0]}" for a in arguments if a.startswith("-"))
         SURFACE_USE.set((f"command:{form}", *tags))
+        if args.noun != "serve":  # the Host itself is no call of its own
+            call_span.begin(cli_invocation.environment(), form)
         if getattr(args, "client_command", None) == ("answer", "show"):
             return _saved_answer(args, started)
         if getattr(args, "client_command", None) in OFFLINE_COMMANDS | {("session", "bind")}:
@@ -1433,10 +1481,14 @@ def main(
         try:
             directory = _routing_bundle(parser, args)
             args.workspace, bound, chosen_by = _workspace(
-                getattr(args, "workspace", None), directory, args.request_timeout
+                cli_invocation.workspace(getattr(args, "workspace", None)),
+                directory,
+                args.request_timeout,
             )
         except client.LocalResearchClientError as error:
             return _refused(error, started, line=arguments)
+        if args.workspace is not None:
+            call_span.at(Path(args.workspace))  # where the call's span ends
         bound_token = BOUND_WORKSPACE.set(bound)
         args.bound_workspace = bound
         chosen_token = WORKSPACE_FROM.set(chosen_by)
@@ -1547,7 +1599,7 @@ def _workspace(
         LocalResearchClientError: ``local_client.workspace_unbound`` or
             ``local_client.workspace_bound_to_another_session`` for a workspace left out.
     """
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     found = None
     bound: Path | None = None
     if session is not None:
@@ -1558,7 +1610,7 @@ def _workspace(
         )
 
         with suppress(NativeBridgeError, OSError):
-            found = NativeResearchBinding.find(Path.cwd(), session=session)
+            found = NativeResearchBinding.find(cli_invocation.cwd(), session=session)
         if found is not None and found[1].serves(session):
             bound = found[1].workspace.resolve()
     intended = bundle_workspace(directory)
@@ -1682,7 +1734,7 @@ def _saved_answer(args: argparse.Namespace, started: float) -> int:
             **diagnostics,
         )
         exit_code = EXIT_CODES[refusal.outcome]
-    print(answer_json(result, default=client._json_value))  # noqa: T201  # serializer
+    print(answer_json(result, default=client._json_value))
     return exit_code
 
 
@@ -1704,7 +1756,7 @@ def _refused(
     if workspace is not None and refusal.outcome == "NO_HOST":
         detail = host_checked(detail, workspace)
         if code == "local_client.service_not_running":
-            detail += serving_workspace_notice(Path.cwd(), client.LocalResearchClient)
+            detail += serving_workspace_notice(cli_invocation.cwd(), client.LocalResearchClient)
     if line and code == "local_client.workspace_unbound":
         again = join([*command_prefix(), "--workspace", "<dir>", *line], shell())
         detail += " " + str(worded("This line with its workspace named: {subject}.")).replace(
@@ -1717,7 +1769,7 @@ def _refused(
         detail = detail.replace("{subject}", context["selected_workspace"], 1).replace(
             "{subject}", context["requested_workspace"], 1
         )
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation=None,
@@ -1740,9 +1792,59 @@ def _refused(
     return EXIT_CODES[refusal.outcome]
 
 
+def delivery_lost(arguments: list[str], error: ValueError) -> int:
+    """Report an uncertain Host outcome without executing the command again."""
+    language = ANSWER_LANGUAGE.set(_line_context(arguments))
+    try:
+        return _refused(str(error), time.perf_counter())
+    finally:
+        ANSWER_LANGUAGE.reset(language)
+
+
 WORKSPACE_FREE: Final = frozenset({("session", "unbind")})
 """The client's commands that work in no workspace: a binding is removed from its project, and the
 person's own shell, which names none, may remove it."""
+
+
+def _exporters(args: argparse.Namespace, started: float) -> int:
+    """Print both native exporters; the explicit person-consent flag writes Claude's only."""
+    from alphalattice.interface.local_application.native_bridge import (  # lazy: exporters only
+        NativeBridgeError,
+        session_project,
+    )
+    from alphalattice.interface.local_application.native_setup import (  # lazy: exporters only
+        agent_exporters,
+    )
+
+    try:
+        connection = client.LocalResearchConnection.read(args.workspace)
+        project = (
+            session_project(args.workspace, "claude-code")
+            if args.configure_claude
+            else args.workspace
+        )
+        answer = agent_exporters(project, connection, configure_claude=args.configure_claude)
+    except client.LocalResearchClientError as error:
+        return _refused(error, started)
+    except (NativeBridgeError, OSError, ValueError) as error:
+        code = (
+            str(error)
+            if isinstance(error, NativeBridgeError)
+            else "native_bridge.configuration_path_invalid"
+        )
+        return _refused(code, started)
+    print(
+        answer_json(
+            envelope(
+                operation="AGENT_EXPORTERS",
+                outcome="OK",
+                body=answer,
+                elapsed_seconds=time.perf_counter() - started,
+                **_saved(args, answer),
+            )
+        )
+    )
+    return 0
 
 
 def _unbind(args: argparse.Namespace, started: float) -> int:
@@ -1755,13 +1857,13 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     )
     from alphalattice.interface.local_application.native_setup import unbind_session
 
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     host, session_id = (None, None) if session is None else session
     named = getattr(args, "workspace", None)
     try:
         try:
             answer = unbind_session(
-                session_project(Path.cwd(), host), session_id=session_id, host=host
+                session_project(cli_invocation.cwd(), host), session_id=session_id, host=host
             )
         except NativeBridgeError:
             if named is None or session is None:
@@ -1775,7 +1877,7 @@ def _unbind(args: argparse.Namespace, started: float) -> int:
     except OSError as error:
         code = f"native_bridge.files_unavailable:{type(error).__name__}"
         return _refused(f"local_client.session_unbind_refused:{code}", started)
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SESSION_UNBIND",
@@ -1797,13 +1899,13 @@ def _problem(args: argparse.Namespace, started: float) -> int:
     try:
         body = problem_report(
             args.workspace,
-            project=Path.cwd(),
+            project=cli_invocation.cwd(),
             sentence=args.sentence,
             expected_route=args.expected_route,
         )
     except NativeBridgeError as error:
         return _refused(str(error), started)
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="PROBLEM_REPORT",
@@ -1833,19 +1935,21 @@ def _bind(args: argparse.Namespace, started: float) -> int:
         transport = client.LocalResearchClient(Path(args.workspace), timeout=args.request_timeout)
     except client.LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     if session is None:
         return _refused("local_client.session_unnamed", started)
     host, _session_id = session
     try:
-        project = session_project(Path.cwd(), host)
+        project = session_project(cli_invocation.cwd(), host)
         bound = transport.bind_native_session(project, usage=args.usage)
     except NativeBridgeError as error:
         return _refused(f"local_client.session_bind_refused:{error}", started)
     except client.LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
     except OSError as error:
-        bound = files_unavailable(error, project=Path.cwd(), workspace=Path(args.workspace))
+        bound = files_unavailable(
+            error, project=cli_invocation.cwd(), workspace=Path(args.workspace)
+        )
     outcome: Outcome = "REFUSED" if bound.get("status") == "REFUSED" else "OK"
     if outcome == "REFUSED":
         code = str(bound.get("failure_code", "native_bridge.binding_invalid"))
@@ -1873,7 +1977,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
             or client_refusal("local_client.session_bind_refused:" + code).detail,
         }
     answer = bound
-    print(  # noqa: T201  # serializer
+    print(
         answer_json(
             envelope(
                 operation="SESSION_BIND",
@@ -1909,6 +2013,35 @@ def _line_context(arguments: Sequence[str]) -> Literal["en", "zh"]:
     return "zh" if known.lang == "zh" else "en"
 
 
+VERB_ALIASES: Final[dict[tuple[str, str], tuple[str, str]]] = {
+    ("committee", "verdict"): ("committee", "submit")
+}
+"""Commands agents name for another's operations: the PM's verdict is a committee submit."""
+_FLOOR_NAME: Final = re.compile(r"[Mm]\d+")
+"""A committee floor message's name: M and its number."""
+FLAG_ALIASES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
+    ("research-update", "task_id"): ("--update",)
+}
+"""Flags agents name for a field: a research update's Task is the update, as the committee's
+verbs call it."""
+
+
+def _flags(noun: str, name: str) -> tuple[str, ...]:
+    """A field's flag and the names agents give it on this object's commands."""
+    return (flag(name), *FLAG_ALIASES.get((noun, name), ()))
+
+
+def floor_numbers(arguments: Sequence[str]) -> list[str]:
+    """`--seen M7`, a floor message as the floor names it, read as its number (`--seen 7`)."""
+    out = list(arguments)
+    for at, word in enumerate(out):
+        if word == "--seen" and at + 1 < len(out) and _FLOOR_NAME.fullmatch(out[at + 1]):
+            out[at + 1] = out[at + 1][1:]
+        elif word.startswith("--seen=") and _FLOOR_NAME.fullmatch(word[7:]):
+            out[at] = "--seen=" + word[8:]
+    return out
+
+
 def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...]:
     if args.view != "summary" or args.noun == "serve":
         return ()
@@ -1917,10 +2050,20 @@ def _summary_source(parser: _Parser, args: argparse.Namespace) -> tuple[str, ...
     forms = agent_surface_manifest()["read_views"]["summary"]["local_reads"]
     pure = local in forms or (bool(operations) and set(operations) <= set(command_table()["reads"]))
     stdin = any(
-        getattr(args, field, None) == Path("-")
-        for field in ("file", "saved_answer", "from_answer", "from_response", "choices")
+        str(getattr(args, field, None)) == "-"
+        for field in (
+            "file",
+            "primary_file",
+            "saved_answer",
+            "from_answer",
+            "from_response",
+            "choices",
+        )
     )
-    if getattr(args, "output", None) is None and (stdin or not pure):
+    if getattr(args, "output", None) is None and not pure and not stdin:
+        args.view = None  # a change's summary is its answer: nothing larger is saved to point to
+        return ()
+    if getattr(args, "output", None) is None and stdin:
         READ_VIEW.set(("summary", (), summary_display))
         parser.error(str(worded("read.summary")).format(pointer="--output PATH"))
     return (*command_prefix(), *args.command_line) if pure and not stdin else ()
@@ -1964,6 +2107,8 @@ def _command(
         return _sandbox(args, started, sandbox)
     if getattr(args, "client_command", None) == ("session", "bind"):
         return _bind(args, started)
+    if getattr(args, "client_command", None) == ("session", "exporters"):
+        return _exporters(args, started)
     if getattr(args, "client_command", None) == ("problem", "report"):
         return _problem(args, started)
     if getattr(args, "client_command", None) in {("model", "scaffold"), ("model", "check")}:
@@ -2128,6 +2273,9 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         )
         if said is None:
             return line
+        from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
+            decision_hash,
+        )
 
         return {
             **line,
@@ -2158,6 +2306,10 @@ def _relayed_asked(
         parser.error("--person-said needs its question: --question-code, or --asked as asked")
     if said is None or question_code is None:
         return asked
+    from alphalattice.interface.local_application.questions import (  # lazy: relay question codes
+        relayed_question,
+    )
+
     try:
         return relayed_question(operation, question_code, asked)[0]
     except ValueError as error:  # relayed_question raises only its owner's codes
@@ -2298,7 +2450,7 @@ def _read_lead(
         if named_goal is None and operation == "GOAL_SUBMIT":
             named_goal = document.get("goal_id")
         receipts = client.lead_readings(
-            Path.cwd(), os.environ, workspace=workspace, goal=named_goal
+            cli_invocation.cwd(), cli_invocation.environment(), workspace=workspace, goal=named_goal
         )
     except Exception as error:
         receipts = [
@@ -2313,7 +2465,7 @@ def _read_lead(
 
         reason = safe_failure_code(receipt.get("reason")) or "native_bridge.lead_usage_read_failed"
         words = refusal_words(reason) or refusal_words("native_bridge.lead_usage_read_failed")
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "native_observation": {

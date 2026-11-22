@@ -23,6 +23,7 @@ claims and limits. AlphaLattice executes no trades and promises no future return
 | [Formula factors](formula-factors.md) | Formulas, recipes, trial, review |
 | [Data and care](data-and-care.md) | Updates, issues, backup, storage |
 | [Privacy](privacy.md) | Usage reader and controls |
+| [Telemetry conventions](telemetry.md) | Span, event, and attribute names |
 | [Third-party data](third-party-and-data.md) | Models, sources, terms |
 | [Temporal statements](temporal-statements.md) | Dates, membership, Sector, prices |
 | [Architecture](architecture.md) | Owners and boundaries |

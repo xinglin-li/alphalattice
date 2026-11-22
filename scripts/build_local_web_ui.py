@@ -24,7 +24,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -34,6 +33,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
 from alphalattice.interface.local_application.message_catalog import catalog_words  # noqa: E402
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 from alphalattice.kernel.shared_kernel.persistence import replace_with_retry  # noqa: E402
 
 ASSETS = ROOT / "src/alphalattice/interface/local_application/assets"
@@ -326,7 +326,7 @@ def check():
     the parameter source (scripts/check_ui_parameters.py)."""
     import sys
 
-    subprocess.run([sys.executable, str(ROOT / "scripts/check_ui_parameters.py")], check=True)
+    spawn.run([sys.executable, str(ROOT / "scripts/check_ui_parameters.py")], check=True)
     engines = concat(ENGINE_FILES, "engine")
     app = (
         '(()=>{"use strict";\n'
@@ -341,7 +341,7 @@ def check():
         for label, code in [("engines", engines), ("app", app), ("prelude", prelude), ("zh", zh)]:
             probe = Path(directory) / f"{label}.js"
             probe.write_text(code, encoding="utf-8")
-            subprocess.run(["node", "--check", str(probe)], check=True)
+            spawn.run(["node", "--check", str(probe)], check=True)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,0 +1,286 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "2e0419896db862c8f7ff92fd2d8cbce2fb8cbf7eed8e1d19492da23848e452c8",
+   "successor": "e8b8ab10a3f39342e5e803e24e361a717333bb5ce4d8b6b3a91b2491f43ba050",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "71145274b2273fdfbbba41a23d3b609db855ca80f63a0defe47d2b4ce2c27d35",
+   "successor": "3caaf92d4f2c11dd738fcf5dea194fd0917fffc3c2f03a0f23c9be92c6f1e98f",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "c4b8e9974cc4d58df567b6fdf5965ffaef57cde9dc6601d5185e888513a4d512",
+   "successor": "07475f80c71eb0e1e168145b266b6d3c5c38afc05ccbd3b2c4ad6f924ca9c531",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "01133406e6c5153e9c7513cdfae0e08865e18c54c09009de3be5bc44a6cff175",
+   "successor": "ab48f6ef5fdef80e6ca7f657de23b8a83a918b86f5fb8c79413adb29c381bd1b",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "d45da4341121f8471513b7167f045b135410f125d7de0b5e65e900b79fa52af1",
+   "successor": "2b507f4377df3e1123044ee1715cfe8a3c2a78e198d301d63948724916443c34",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "85155f01262b5a811f96853a185db0df003211c218013892ef5881302745ee46",
+   "successor": "91b393a000c8d1e28f983c65952abb0a60f0244367e6d31a7f512da6e705bf87",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "290a1052385c0ae3d013853cd101a6811d3ef95579fe886a48209fc89185de54",
+   "successor": "c6feee06fd64afe8f862c3c850fc2cf0bfb0a82d0c15bdd3bb145b8250a084cd",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "a7dc823689a8285df306facc16a6c1733dfe280e84b81e5596898a7b863a6969",
+   "successor": "4a05fa4aeb16927a1ec68c05bf1719ff67ebc2ed30b57935da9c77490489d005",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "a8e9c849f2f49e619e54adee1c5099cb0732d51df1e46fe0346cda319443fd2d",
+   "successor": "b1235b33882782e128472ae359b0c93de43bb7c397a8036f997c304653be4157",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "9a250352934bf80577948af37594ce4f9b0020472ccedd6ddf15746c5b56a78f",
+   "successor": "e00e21a4f010660fbdf095165e7f0ddf8322b1638bdef8f5d1ca671de0e34443",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "8de4511a1d558dd6920313513fb952b432b56c8b50890a15b5c29bc729ecb218",
+   "successor": "4015d93230e13ecdb36b24a3d13796862af2382fd297e76f8bde16e1ad6fe988",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "40cc70d49b5d20afe610bfab1ff90fb141c06d9036606526a6872be7d8888ad3",
+   "successor": "44a665039d7a7691c0c2053e349a11a9ce7eed8594e2de687e8fcca7ca5f9170",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "8909ff25c55eb83d5eb69a3927a19e6b1840bd0c5e98da6dfbfc632c6f7d60a2",
+   "successor": "b609fc80b291575e82fad7a7cdec2ffc55f333b517e2c0ef019bf23edec945c6",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "04c52705a7306e7f93f85d434049479587001532f5cc338e67745181c4015fd4",
+   "successor": "7b25fcc9911c53cae8b6e44ef8e38abd7db26fe20aad511c06e90499cda3df2e",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "03bf27844c9a25da0e101896b016fd4d7834f6505c6c489ee002b050ebf06c86",
+   "successor": "f925909e56547ab0742dce52b378ebc9c98934d73e7316b6012748192f2774ce",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "89e66003293131fcf2220aa06950b2d8441cdf21cf06f4f4e462a70b302aa126",
+   "successor": "23bb2e3064777f6913e6bf7d8173f74d90daa6291a9050657a3879679fb96272",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "cf768399eef63aa634ddc00478d4e7dca410169cbae2e2e90dfd78ec3f0ca28d",
+   "successor": "fb9f26cda4cb7b20e4daff3b6116fba8995789a433ee1428eb9652f9aa3ca4b9",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "adf027ee0a26a9e27edeaab9bf29947e9e6e357a79b1d61ce93d7d1792b3c6de",
+   "successor": "f4513ed63a0d5101b739964971ecbc2b5b7c8208a5a61f0a4729cd1e029bac1d",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "244a9e9708aa72b93307088a9989564d6c3660e6ec0a76f689184ec04353645c",
+   "successor": "c056e29b8994c9c7bb8617de7a04e2727c1082a65a2396a58aa9fe4494063b22",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "5c357a3e3361817d6475a51d40ab5c6fbf5dc3b8315c3db0778e66e9edb86d73",
+   "successor": "91e1db8a5185c86eabe5957a19f19768f5846f97a4e9757a7675c08a6f2d103c",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "77eba81cfb51ff96d11f15092f85dd7ead7d31e674342826e6003041c77aa617",
+   "successor": "f60315bbcdf7076fcb102fc57fd1f0b267d9fa0d6c283910a30cb776ed479f1a",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "67bfb46ffbb1de7aa2a32a052d581c2cd4d0050327911451305b94522a89ce7a",
+   "successor": "b7eef3e34cccc7a2c85fea517e913b4c4b8cbd10ca3d3878138105af77b1248a",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "091afebaf500239ef956d915adff3a4173d3d138ebe72ef701983d10faae06af",
+   "successor": "e72f63da943eb59a3a7bc636ab1b379c0508cab30dec5bd3b27ecdb6ac8e22af",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "65c1e01bb19777f2324bc5c5d306cb3fb3ad1187f96e07a5c6416d3780a5f576",
+   "successor": "fe3dd82970b6948d5150768e407ee03824d1cbb440fc72c8275f112e320d8ef1",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "534a6e51cf1c4f1132b37cc9cc94eba36bff834940220feab0021188ca6e9a4a",
+   "successor": "1a50c93c04876c7db71f45fb16850a7800a1e8cca75af32372df7d8f669375b3",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "e2bae8eb22e141123e36ee0559a5a792ae18ad4295fd6123bf36ca4d5c4da371",
+   "successor": "8abf7cd32a2ad8fa14e0607937c8173468fe2a612fa75c00ca47ea470e2cf7a3",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "9b49ab03f0c24fdae6e640d2bc3d3261d6c2c30580baf63bd4212e258e11e0af",
+   "successor": "241df9d29f25e89f1c47a9c01abc9c6bba3335c5a44d319be6f3e2465f9017bf",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "62facbed36b071f5cd9084017c3d6d7916a9251140d99f58a40d6041fb245a14",
+   "successor": "c07131160b89f42d0f7852ea5fa8c5e7eefacc8afb0c5aaeef6c5b2ce5c274b1",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a54bbd3650101bae1531dbfe2089d9f087e884c2e4a2470e4fa2ef1cbc714c9c",
+   "successor": "fc2685475827de6f4fc6f5817df063e5d281b3bdc7aa4a5c3ff38d773c929040",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "e4690a7f295d4819833638c39428722211ab6a709474a6f22e360559f6eb9280",
+   "successor": "02b3501cdeb75ed5eb50f3bd2aff14dad5b6dfe6b154b13f04068a4b6012448c",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "1d412528fd9a95641f3e7a13037056ab7a95d7f7ce9915dd93b37b3397ec6e39",
+   "successor": "25b44cbbabb038970502dee64f9d5fed6dea5703c49e3493af14054ba3f5e5bf",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "2212cfbd5a24c39a484dfad1b3e1d007e2a2ce07129ef76adc96ff984a328bc4",
+   "successor": "791cdf573479556e3782118d4fc6bf1d031599f9e2a5dfc5ddc0bf91689ad408",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "da9f205b02d9e6728f89217521ce2e7f10ff8043243809dceb2c82cfb4f7c54a",
+   "successor": "778f62e74d52ace372daa2841895a1f7f8a4b3635f6c1ae7d781294e5344876b",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "316727694cdee434b8be88a75a46c3aa4cb3acc13c8508a2e0e313a65fd97e51",
+   "successor": "77e6ac73fe50129f1735fe397c75ca06fb5b6a7d4b90fea518972f919740864e",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "09287595d6bca0dbaac434413c8d40508adc92b94b02d669b4c9c5a3bc78e344",
+   "successor": "1527364890a1e6bbba7741b5eb30b6dfde47597b7bca1c85af612b169c6cd187",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "09287595d6bca0dbaac434413c8d40508adc92b94b02d669b4c9c5a3bc78e344",
+   "successor": "1527364890a1e6bbba7741b5eb30b6dfde47597b7bca1c85af612b169c6cd187",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "e6410ac99d3e7ad1efca98d1d302bbc274dc59b205d63987c8f4bc4604b6cc52",
+   "successor": "fcd474f96c5776ad950cfd32686b1ad074abd62c9f4aa774908a230b0724d184",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "13ac32c34365e61c722a2d1a809a6c3e02eabab390b3be9547597b3a68c64f10",
+   "successor": "c98d32a91e057492d659b7a353b0612f8592e5619d43ba667228bc7293e2c600",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "a85621b7be67fa63cbb8bc89a4cf5416635172a6d1d143273d24aaac70f4bb44",
+   "successor": "0c66e70bf9ab1bf73837e5ba3847a775c63d1d8619b4560e01ceef4a389189d6",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "20e162bdad9422ec2c54019d842da9cde5b2a40ee6eb0b5965dc5e5d33857eda",
+   "successor": "9841e5855fa30c9fec9f51a1aa1dd6c0d592e976eeb6e0a584a2bf8529168f31",
+   "change": "The Host starts faster: heavy libraries load where they run",
+   "reason": "The same forty roles, now one successor chain per role continuing from the values already on the target; the repairs since change durability, read shape and a type fix, with equal values and unchanged controls"
+  }
+ ]
+}

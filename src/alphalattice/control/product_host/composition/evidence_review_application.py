@@ -65,6 +65,9 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
+from alphalattice.control.product_host.composition.task_kinds import (
+    EVIDENCE_REVIEW_RUNTIME_FILE,
+)
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -164,7 +167,6 @@ from alphalattice.interface.local_application.evidence_cro import (
     book_projection,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.interface.local_application.labels import title
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
 )
@@ -935,6 +937,10 @@ class EvidenceReviewApplication:
 
     def book_context(self, book: SealedBook) -> EvidenceTaskContext:
         """Name the already verified book without opening it again on a progress read."""
+        from alphalattice.interface.local_application.labels import (  # lazy: installed names
+            title,
+        )
+
         package_id: str | None
         shown: str | None
         if book.update_subject is not None:
@@ -1016,6 +1022,10 @@ class EvidenceReviewApplication:
                 )
                 context["evidence_as_of"] = dossier.evidence_as_of.isoformat()
                 if dossier.update_subject is not None:
+                    from alphalattice.interface.local_application.labels import (  # lazy: title
+                        title,
+                    )
+
                     package_id = dossier.update_subject.strategy_package_id
                     context.update(
                         name=title(package_id),
@@ -4719,7 +4729,7 @@ class EvidenceReviewApplication:
         """
         if self.runtime_path is not None:
             return self.runtime_path
-        return self.workspace / "runtime" / "evidence-review-checkpoints.sqlite"
+        return self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE
 
 
 __all__ = [

@@ -9,8 +9,11 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
+from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
@@ -25,6 +28,7 @@ from alphalattice.control.workspace_runtime.database import (
     retain_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
@@ -37,11 +41,130 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     platform_identity,
     process_priority,
 )
+from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.backup import verify_data_root
+from alphalattice.kernel.data_layer.history import open_history
+from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
+from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
+
+
+def verify_upgrade_backups(
+    root: Path,
+    workspaces: tuple[Path, ...],
+    recorded: dict[str, Any] | None = None,
+    *,
+    machine_generation: Path,
+    workspace_backups: tuple[WorkspaceBackups, ...],
+) -> dict[str, Any]:
+    """The production seam verifies the exact pre-upgrade roots without publishing backups.
+
+    The Host binds generation/repositories with functools.partial. Missing, mismatched or
+    damaged backups refuse through their existing owners before any family step begins.
+    """
+    machine = recorded["machine"] if recorded is not None else None
+    if machine is not None and machine["generation"] != str(machine_generation.resolve()):
+        raise DataError(
+            "The machine generation differs from the recorded pre-upgrade backup; "
+            "supply that generation before resuming.",
+            code="upgrade.refused",
+        )
+    manifest = verify_data_root(
+        machine_generation,
+        source=root,
+        pre_upgrade_head=machine["head"] if machine is not None else None,
+    )
+    backups = {value.workspace: value for value in workspace_backups}
+    if set(backups) != {path.resolve() for path in workspaces}:
+        raise DataError(
+            "A verified backup for every upgrade workspace is required; include each workspace.",
+            code="upgrade.refused",
+        )
+    saved = (
+        {row["workspace"]: row for row in recorded["workspaces"]} if recorded is not None else {}
+    )
+    generations = []
+    for path, value in sorted(backups.items()):
+        prior = saved.get(str(path)) if recorded is not None else None
+        if recorded is not None and (
+            prior is None
+            or prior["root"] != str(value.root)
+            or prior["workspace_id"] != value.workspace_id
+        ):
+            raise DataError(
+                "The workspace backup authority differs from its recorded pre-upgrade "
+                "generation; use that backup repository before resuming.",
+                code="upgrade.refused",
+            )
+        chosen = (
+            value.verify(generation_hash=prior["generation"])
+            if prior is not None
+            else value.verify(current=True)
+        )
+        generations.append(
+            dict(
+                workspace=str(path),
+                workspace_id=value.workspace_id,
+                root=str(value.root),
+                generation=chosen.generation_hash,
+            )
+        )
+    return dict(
+        machine=dict(generation=str(machine_generation.resolve()), head=manifest["head"]),
+        workspaces=generations,
+    )
+
+
+def carried_result_checks() -> dict[str, CarriedCheck]:
+    """Each result type a copy carries, with its owner's proof that a carried body is the one its
+    digest names; a Host's history runs it before admitting the body (`open_history`)."""
+
+    def execution_outcome(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+
+        # Only a carried outcome needs its numerical artifact reader.
+        from ....foundation.causal_outcomes.execution.artifacts import (  # lazy: on use
+            carried_chunk_check,
+        )
+
+        carried_chunk_check(workspace, digest, profile, table)
+
+    def portfolio_benchmark(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+
+        # Only a copied benchmark needs the portfolio-input reader.
+        from ....capabilities.portfolio_inputs.benchmark import (  # lazy: on use
+            carried_benchmark_check,
+        )
+
+        carried_benchmark_check(workspace, digest, profile, table)
+
+    def portfolio_execution_series(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+
+        from ....investment.portfolio_strategy_lab.publication import (  # lazy: copied row
+            portfolio_ledger,
+        )
+
+        portfolio_ledger.carried_series_check(workspace, digest, profile, table)
+
+    def portfolio_report_holding(workspace: Path, digest: str, profile: Any, table: Any) -> None:
+
+        from ....investment.portfolio_strategy_lab.publication import (  # lazy: copied row
+            portfolio_ledger,
+        )
+
+        portfolio_ledger.carried_holding_check(workspace, digest, profile, table)
+
+    return {
+        "execution_outcome": execution_outcome,
+        "portfolio_benchmark": portfolio_benchmark,
+        "portfolio_execution_series": portfolio_execution_series,
+        "portfolio_report_holding": portfolio_report_holding,
+    }
 
 
 @dataclass
@@ -54,6 +177,17 @@ class WorkspaceApplicationSession:
     task_control_registry: DuckDbTaskControlRegistry
     runtime_path: Path
     processor: str
+
+    @staticmethod
+    def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
+        """Open Host history with the workspace's network control at the export boundary."""
+        open_history(
+            workspace_id,
+            workspace.name,
+            workspace,
+            can_export=lambda: network_access(workspace, now=clock()).allowed,
+            carried_checks=carried_result_checks(),
+        )
 
     def execute_admitted(
         self,
@@ -144,11 +278,16 @@ class WorkspaceApplicationSession:
         return str(canonical_hash({"implementation": implementation_hash}))
 
     @classmethod
-    def acquire(cls, workspace: Path) -> WorkspaceApplicationSession:
+    def acquire(
+        cls, workspace: Path, upgrade: UpgradeRunner | None = None
+    ) -> WorkspaceApplicationSession:
         """Acquire one writer lease and reconcile/rebuild durable task state under that authority.
 
         Args:
             workspace: Caller-owned workspace root.
+            upgrade: The first 0.2.8 start's machine-log runner, before any task or serving
+                application is constructed. Its caller holds the machine writer for the Host's
+                lifetime. No real family is registered by this mechanism card.
 
         Returns:
             Session with retained writer lease, mutation gate, task registry and public runtime
@@ -167,18 +306,34 @@ class WorkspaceApplicationSession:
         runtime = root / "runtime"
         lease = WorkspaceWriterLease.acquire(root)
         try:
+            if upgrade is not None:
+                if root not in {path.resolve() for path in upgrade.workspaces}:
+                    raise DataError(
+                        "This workspace is outside the upgrade's backed-up workspace set; "
+                        "include its verified backup before starting the Host.",
+                        code="upgrade.refused",
+                    )
+                upgrade.run()
+            workspace_id = named_workspace_id(root)
+            if workspace_id is not None:  # a Host's open publishes its market data and documents
+                # before it answers: what a stage wrote and committed before a crash, or what was
+                # written outside a Host since its last publish (world.publish_pending)
+                world.publish_pending(root / "market-data.duckdb", workspace_id)
+                world.admit_sectors(root / "market-data.duckdb", workspace_id)
+                evidence_world.admit(
+                    runtime / "artifacts", runtime / "evidence-knowledge", workspace_id
+                )
             gate = WorkspaceMutationGate()
             registry = DuckDbTaskControlRegistry(
                 resolve_task_control_database(root),
                 gate=gate,
                 submitted_by=_submitting_agent,
+                workspace_id=workspace_id,
             )
             # This process just acquired the exclusive workspace lease: an old
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
             registry.reconcile_after_writer_acquisition(observed_at=datetime.now(UTC))
-            # A Task whose row the store lost reads again from its frozen request.
-            registry.rebuild_from_requests(observed_at=datetime.now(UTC))
             return cls(
                 workspace=root,
                 writer_lease=lease,

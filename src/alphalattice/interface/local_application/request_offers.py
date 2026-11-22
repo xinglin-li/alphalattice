@@ -8,6 +8,8 @@ import shlex
 from collections import Counter
 from typing import Any
 
+from alphalattice.interface.local_application.cli_invocation import environment
+
 _ITEM_IDENTIFIERS = (
     "entry_id",
     "task_id",
@@ -117,9 +119,9 @@ def shell() -> str:
     Returns:
         ``powershell`` or ``posix``.
     """
-    chosen = os.environ.get("ALPHALATTICE_SHELL", "").strip().lower()
+    chosen = environment().get("ALPHALATTICE_SHELL", "").strip().lower()
     if chosen in {"powershell", "posix"}:
         return chosen
-    if os.name == "nt" and "MSYSTEM" not in os.environ:
+    if os.name == "nt" and "MSYSTEM" not in environment():
         return "powershell"
     return "posix"

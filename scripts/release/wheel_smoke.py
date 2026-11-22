@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.cookiejar
 import json
 import os
@@ -12,9 +13,12 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from alphalattice.kernel.shared_kernel import spawn
 
 
 def shell_command(command: list[str], shell: str | None) -> list[str]:
@@ -50,32 +54,57 @@ def git_bash() -> str:
     return bash
 
 
+def read_launch(lines: queue.Queue[str], *, timeout: float = 60) -> str:
+    """Read the launch announcement within one overall wall-time bound."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            line = lines.get(timeout=max(0.001, deadline - time.monotonic()))
+        except queue.Empty:
+            break
+        if line.startswith("Portfolio Research workspace: "):
+            launch = line.removeprefix("Portfolio Research workspace: ").strip()
+            if launch:
+                return launch
+    raise ValueError(
+        f"wheel_smoke.launch_timeout: Host did not announce a launch URL within {timeout:g} seconds"
+    )
+
+
 def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> dict[str, object]:
     """Exercise help, a fresh-workspace refusal, Host session and served workspace read."""
     environment = {**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1", "PYTHONPATH": ""}
     environment.pop("VIRTUAL_ENV", None)
     environment.pop("CONDA_PREFIX", None)
-    with tempfile.TemporaryDirectory(prefix="alphalattice-wheel-smoke-") as temporary:
+    with (
+        tempfile.TemporaryDirectory(prefix="alphalattice-wheel-smoke-") as temporary,
+        spawn.InteractiveSession(timeout=300, stop_scope="tree") as session,
+    ):
         workspace = Path(temporary) / "workspace"
-        help_run = subprocess.run(
+        environment["ALPHALATTICE_DATA_ROOT"] = str(Path(temporary) / "data-root")
+        help_run = spawn.run(
             shell_command([*command, "--help"], fresh_shell),
             cwd=cwd,
             env=environment,
             text=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             timeout=30,
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         assert "workspace" in help_run.stdout and "serve" in help_run.stdout
         prefix = [*command, "--workspace", str(workspace)]
-        before = subprocess.run(
+        before = spawn.run(
             shell_command([*prefix, "workspace", "show"], fresh_shell),
             cwd=cwd,
             env=environment,
             text=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             timeout=30,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         response = json.loads(before.stdout)
         # A read never creates a Host: this named refusal is the same on both legs.
@@ -84,14 +113,14 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
             and response["failure_code"] == "local_client.service_not_running"
         )
         assert response["detail"] and response["next_action"]
-        process = subprocess.Popen(
+        process = session.start(
             [*prefix, "serve", "--no-browser", "--stop-on-stdin"],
             cwd=cwd,
             env=environment,
             text=True,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         lines: queue.Queue[str] = queue.Queue()
 
@@ -103,11 +132,7 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
         reader = threading.Thread(target=collect, daemon=True)
         reader.start()
         try:
-            launch = ""
-            while not launch:
-                line = lines.get(timeout=60)
-                if line.startswith("Portfolio Research workspace: "):
-                    launch = line.removeprefix("Portfolio Research workspace: ").strip()
+            launch = read_launch(lines)
             cookies = http.cookiejar.CookieJar()
             opener = urllib.request.build_opener(
                 urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(cookies)
@@ -116,31 +141,32 @@ def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> d
                 assert opened.status == 200
             address = urllib.parse.urlsplit(launch)
             base = f"{address.scheme}://{address.netloc}"
-            with opener.open(base + "/api/session", timeout=20) as session:
-                assert session.status == 200
-                payload = json.loads(session.read())
+            with opener.open(base + "/api/session", timeout=20) as session_response:
+                assert session_response.status == 200
+                payload = json.loads(session_response.read())
                 assert isinstance(payload, dict) and payload
-            shown = subprocess.run(
+            shown = spawn.run(
                 shell_command([*prefix, "workspace", "show"], fresh_shell),
                 cwd=cwd,
                 env=environment,
                 text=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 timeout=30,
                 check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             answer = json.loads(shown.stdout)
             assert answer["outcome"] == "OK"
         finally:
             assert process.stdin is not None
-            process.stdin.write("stop\n")
-            process.stdin.flush()
-            process.stdin.close()
+            with contextlib.suppress(BrokenPipeError):
+                session.send("stop\n")
+                session.close_input()
             try:
                 exit_code = process.wait(timeout=60)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+                session.stop()
                 raise
             reader.join(timeout=10)
         assert exit_code == 0

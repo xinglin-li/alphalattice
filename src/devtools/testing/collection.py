@@ -19,7 +19,8 @@ from typing import Any, TextIO
 import pytest
 
 from devtools.testing import audit, requirements, sizes
-from devtools.testing.contracts import Backends, LayerContract
+from devtools.testing.contracts import LayerContract
+from devtools.testing.layout import Backends
 from devtools.testing.sizes import (
     _rule,
     admission_limit,
@@ -29,6 +30,7 @@ from devtools.testing.sizes import (
     load_policy,
     moved,
     scoped,
+    speed_budget,
     stage_files,
     tmp_entry_footprint,
     tmp_footprint,
@@ -596,7 +598,8 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
     seconds = sum(phases.values())
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
-    limit = dict(item.user_properties)["test_timeout_seconds"]
+    held = dict(item.user_properties)  # a unit test's own phases keep to its size's speed budget,
+    limit = held.get("speed_budget_seconds") or held["test_timeout_seconds"]  # not its hang guard
     if seconds <= limit:
         return
     report.outcome, report.longrepr = (
@@ -652,18 +655,13 @@ def _properties(
     row: dict[str, Any],
     declared: list[str],
     classified: tuple[str, str, str, float],
-    *,
-    size_hang_guard: float | None = None,
 ) -> None:
-    """Attach each owner's existing size, real bound and requirement metadata once."""
+    """Attach each owner's existing size, hang guard and requirement metadata once. The guard
+    (sizes.hang_guard) kills a test only as hung; its speed is judged at admission, solo."""
     size, owner, declaration, seconds = classified
     if not declared:
         item.add_marker(size)
     previous = item.get_closest_marker("timeout")
-    if size_hang_guard is not None and previous is None:
-        seconds = max(
-            seconds, size_hang_guard
-        )  # admission measures completed phases; this is only a hang guard
     if previous:
         limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
         if isinstance(limit, (int, float)) and limit > 0:
@@ -943,14 +941,9 @@ def _size_attributes(
             "test_size.large_contract: register a Large rule with "
             f"size_contract=nightly_only: {item.nodeid}"
         )
-    _properties(
-        item,
-        ids,
-        row,
-        declared,
-        classified,
-        size_hang_guard=policy["limits"]["medium"] if selected and size == "small" else None,
-    )
+    _properties(item, ids, row, declared, classified)
+    if (budget := speed_budget(policy, size)) is not None:
+        item.user_properties.append(("speed_budget_seconds", budget))
     return contract
 
 
@@ -1003,8 +996,8 @@ def _record_moved(
     floor: bool = False,
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
-    leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
-    so a post-merge red among them is a red the stage no longer catches (the week's signal)."""
+    leaves to the nightly, and whether this run ran them (an unscoped run always does), so a
+    nightly red among them is a red the stage no longer catches (the week's signal)."""
     xml = getattr(config.option, "xmlpath", None)
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
@@ -1026,7 +1019,7 @@ def _write_moved(config: Any, record: dict[str, Any]) -> None:
     if reporter is not None:
         reporter.write_line(
             f"STRUCTURAL-MOVED {len(record['moved'])} guards leave the commit stage "
-            f"for post-merge; this {record['tier']} run ran {len(record['ran'])} of them"
+            f"for the nightly; this {record['tier']} run ran {len(record['ran'])} of them"
         )
 
 
@@ -1053,9 +1046,24 @@ def pytest_collection(session: Any) -> Any:
         raise
 
 
+PAID_AGENT, PAID_RUN = "paid_agent", "ALPHALATTICE_PAID_AGENT_RUN"
+
+
+def deselect_paid(config: Any, items: list[Any]) -> None:
+    """No stage, queue, nightly or full run selects a paid agent run: it spends money on a model
+    turn, so only an explicit command that sets ALPHALATTICE_PAID_AGENT_RUN=1 runs it."""
+    if os.environ.get(PAID_RUN) == "1":
+        return
+    paid = [item for item in items if item.get_closest_marker(PAID_AGENT) is not None]
+    if paid:
+        config.hook.pytest_deselected(items=paid)
+        items[:] = [item for item in items if item.get_closest_marker(PAID_AGENT) is None]
+
+
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
+    deselect_paid(config, items)
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
     floor = sizes.floor_mode(lane)
     changed = changed_paths(floor=floor) if lane in {"merge", "fast"} else None

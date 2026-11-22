@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.investment.alpha_research.experiments.development_artifacts:alpha_array_upgrade_family",
+ "mode": "workspace"
+}

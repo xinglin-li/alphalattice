@@ -24,7 +24,7 @@ import os
 import secrets
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
@@ -63,7 +63,7 @@ _EPOCHS: dict[Path, tuple[str, bool]] = {}
 instance opened read only (`seal_epoch`)."""
 
 
-def _fingerprint(path: Path) -> list[list[int] | None]:
+def store_fingerprint(path: Path) -> list[list[int] | None]:
     """The store file's and its WAL's size and mtime, as any program writing them leaves them."""
     stamps: list[list[int] | None] = []
     for item in (path, Path(f"{path}.wal")):
@@ -119,7 +119,7 @@ def _fresh_connection(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnecti
     and clears the record until this instance's close records it again.
     """
 
-    before = _fingerprint(path)
+    before = store_fingerprint(path)
     with span("read", "duckdb_instance_open"):
         raw = _connect(path, read_only=read_only)
     try:
@@ -186,6 +186,7 @@ class WorkspaceConnection:
         "_path",
         "_pinned",
         "_raw",
+        "_root",
         "_top",
     )
 
@@ -215,6 +216,7 @@ class WorkspaceConnection:
         self._owner = threading.get_ident()
         self._pinned = False
         self._closed = False
+        self._root: duckdb.DuckDBPyConnection | None = None  # the instance's, closed after this
         if guarded:
             self._raw.execute("BEGIN TRANSACTION READ ONLY")
 
@@ -224,6 +226,7 @@ class WorkspaceConnection:
         # COMMIT ends a read-only transaction whether it is live or aborted,
         # keeps the session's registered views and temporary tables, and is
         # refused only when no transaction is open.
+        self._raw.complete()
         with suppress(duckdb.TransactionException):
             self._raw.execute("COMMIT")
 
@@ -241,8 +244,6 @@ class WorkspaceConnection:
         here before anything reaches the transaction.
         """
 
-        if not self._guarded:
-            return
         if isinstance(query, str):
             statements = self._raw.extract_statements(query)
         elif isinstance(query, duckdb.Statement):
@@ -250,7 +251,13 @@ class WorkspaceConnection:
         else:
             return
         for statement in statements:
-            if statement.type in _UNGUARDABLE_STATEMENTS:
+            if not self._guarded and statement.type == duckdb.StatementType.LOAD:
+                raise RuntimeError(
+                    "workspace_database.runtime_extension_refused: "
+                    "use the product's installed data dependencies; runtime extension installation "
+                    "and loading through a workspace connection are unavailable"
+                )
+            if self._guarded and statement.type in _UNGUARDABLE_STATEMENTS:
                 raise RuntimeError(
                     f"workspace_database.read_only_handle_refuses_statement:{statement.type.name}"
                 )
@@ -283,14 +290,24 @@ class WorkspaceConnection:
         """Run one of the engine's methods on this handle under the guard."""
 
         attribute = getattr(self._raw, name)
+        if not self._guarded and name in {"install_extension", "load_extension"}:
+            raise RuntimeError(
+                "workspace_database.runtime_extension_refused: "
+                "use the product's installed data dependencies; runtime extension installation "
+                "and loading through a workspace connection are unavailable"
+            )
+        # DuckDB 2.0 keeps execute()'s result until exhaustion, complete() or abort().
+        # Complete before new work: abort() can fail a transaction whose statement writes.
+        if name not in _RESULT_METHODS:
+            self._raw.complete()
+        if name in _SQL_DOORS:
+            self._refuse_unguardable(args[0] if args else kwargs.get("query"))
         if self._guarded:
             refused = _REFUSED_METHODS.get(name)
             if refused is not None:
                 raise RuntimeError(
                     f"workspace_database.read_only_handle_refuses_statement:{refused}"
                 )
-            if name in _SQL_DOORS:
-                self._refuse_unguardable(args[0] if args else kwargs.get("query"))
             if name in _SQL_DOORS or name in _STATEMENT_DOORS:
                 self._arm()
         try:
@@ -411,7 +428,10 @@ class WorkspaceConnection:
             return
         self._closed = True
         if not self._top:
-            self._raw.close()
+            try:
+                self._raw.complete()
+            finally:
+                self._raw.close()
             return
         # Untracked first: the engine closes the instance with its last
         # connection (a checkpoint, then the file), and an opener that
@@ -423,13 +443,25 @@ class WorkspaceConnection:
         # "untracked, and nothing closing" between the two; the engine's
         # close itself runs outside the lock, and the count comes down --
         # and the waiters are woken -- whether it returns or raises.
-        counted = _release_top_level(self)
+        counted, kept = _release_top_level(self)
         try:
             with span("write", "duckdb_instance_close"):
-                self._raw.close()
+                try:
+                    if kept is not None and kept.root is None:
+                        # opened while this handle still holds the instance, which it then keeps
+                        kept.root = _attached_connection(self._path, read_only=kept.read_only)
+                finally:
+                    try:
+                        self._raw.complete()
+                    finally:
+                        try:
+                            self._raw.close()
+                        finally:
+                            if self._root is not None:
+                                self._root.close()
         finally:
             if counted:
-                _closed(self._path)
+                _closed(self._path, kept)
 
     def __enter__(self) -> WorkspaceConnection:
         """Enter the connection context.
@@ -478,6 +510,31 @@ class WorkspaceConnection:
 _SQL_DOORS = frozenset({"execute", "executemany", "sql", "query", "from_query"})
 """The engine's methods that take SQL: text or a statement object, positionally or as ``query=``."""
 
+_RESULT_METHODS = frozenset(
+    {
+        "fetchone",
+        "fetchmany",
+        "fetchall",
+        "fetchdf",
+        "fetch_df",
+        "df",
+        "fetchnumpy",
+        "fetch_arrow_table",
+        "fetch_record_batch",
+        "fetch_df_chunk",
+        "fetch_arrow_reader",
+        "to_arrow_table",
+        "to_arrow_reader",
+        "arrow",
+        "pl",
+        "torch",
+        "tf",
+        "complete",
+        "abort",
+    }
+)
+"""Result readers retain the pending execute() result; every other call starts new work."""
+
 _STATEMENT_DOORS = frozenset(
     {
         "append",
@@ -524,10 +581,12 @@ _UNGUARDABLE_STATEMENTS = frozenset(
 
 @dataclass
 class _Instance:
-    """The connections alive on the process's instance of one file."""
+    """The connections alive on the process's instance of one file, and the owner's own root
+    connection while the file is held (`hold_workspace_database`)."""
 
     read_only: bool
     handles: set[WorkspaceConnection] = field(default_factory=set)
+    root: duckdb.DuckDBPyConnection | None = None
 
     def held_by(self, thread: int) -> bool:
         return any(handle._owner == thread for handle in self.handles)
@@ -587,6 +646,14 @@ def _lock_refusal(error: duckdb.IOException, path: Path) -> str | None:
 
 _WRITERS_WAITING: dict[Path, int] = {}
 _RETENTIONS: dict[tuple[Path, int], _Retention] = {}
+_HOLDS: dict[Path, int] = {}
+"""Per file, the scopes holding its instance open between its connections
+(`hold_workspace_database`)."""
+_HANDOFFS: list[int] = [0]
+"""Calls running in another process (`hand_off`): while any runs, no instance is kept idle."""
+_IDLE: dict[Path, _Instance] = {}
+"""Per held file with no connection open, the instance kept for the next: its root connection
+alone holds it, its writes checkpointed into the file."""
 _CLOSING: dict[Path, int] = {}
 """Per file, the engine closes of this owner's top-level connections in flight right now:
 counted in the same critical section that untracks the handle, counted down when the
@@ -596,38 +663,86 @@ handles closing at once may do so in either order -- the first to leave the book
 the last to let go of the file, after the other's mark would have been lifted."""
 
 
-def _release_top_level(handle: WorkspaceConnection) -> bool:
+def _release_top_level(handle: WorkspaceConnection) -> tuple[bool, _Instance | None]:
     """Take the handle off the books and count its engine close as in flight, in one
     critical section; when it was the instance's last, the instance leaves the books too.
     True says the caller owes `_closed` when the engine's close returns; False, that the
-    handle was not on the books and nothing is owed."""
+    handle was not on the books and nothing is owed. The instance comes back when the file is
+    held: the close keeps it for the next opener (`_closed`), through a root connection of the
+    owner's own, so the handle's close neither checkpoints nor releases the file."""
     with _STATE:
         instance = _INSTANCES.get(handle._path)
         if instance is None or handle not in instance.handles:
-            return False
+            return False, None
         instance.handles.discard(handle)
+        kept = None
         if not instance.handles:
             del _INSTANCES[handle._path]
+            if _HOLDS.get(handle._path) and not _HANDOFFS[0]:
+                kept = instance
+            else:  # the root closes after this handle, whose cursor it may be
+                handle._root, instance.root = instance.root, None
         _CLOSING[handle._path] = _CLOSING.get(handle._path, 0) + 1
         _STATE.notify_all()
-        return True
+        return True, kept
 
 
-def _closed(path: Path) -> None:
-    """The engine's close of one connection returned (or raised): counted down, and the
-    openers waiting on the file are woken when no close is in flight any more."""
+def _let_go(path: Path) -> None:
+    """Close the file's idle instance, if one is kept: the engine checkpoints and releases the
+    file, and the close is counted as any other (`_closed`). A close of the file still in flight
+    is waited for first, since it may yet keep its instance idle."""
+    with _STATE:
+        _STATE.wait_for(lambda: not _CLOSING.get(path))
+        idle = _IDLE.pop(path, None)
+        if idle is None or idle.root is None:
+            return
+        _CLOSING[path] = _CLOSING.get(path, 0) + 1
+    try:
+        with span("write", "duckdb_instance_close"):
+            idle.root.close()
+    finally:
+        _closed(path)
+
+
+def _closed(path: Path, kept: _Instance | None = None) -> None:
+    """The engine's close of one connection returned (or raised): the instance it `kept` is idle
+    for the next opener while the file is still held, no call runs in another process and no
+    opener took the file meanwhile, else its root closes now, as this close's last step. Then the
+    close is counted down, and the openers waiting on the file are woken when no close is in
+    flight any more."""
+    root = None if kept is None else kept.root
+    with _STATE:
+        idle = (
+            root is not None
+            and bool(_HOLDS.get(path))
+            and not _HANDOFFS[0]
+            and path not in _INSTANCES
+            and path not in _IDLE
+        )
+        if idle:
+            _IDLE[path] = cast(_Instance, kept)
+    try:
+        if root is not None and not idle:
+            root.close()
+    finally:
+        _counted_down(path)
+
+
+def _counted_down(path: Path) -> None:
+    """One engine close fewer in flight; the last seals the file as its last writable close
+    leaves it, unless an instance of it is still open or kept, and wakes its waiting openers."""
     with _STATE:
         _CLOSING[path] -= 1
         if not _CLOSING[path]:
             del _CLOSING[path]
-            if path not in _INSTANCES:
+            if path not in _INSTANCES and path not in _IDLE:
                 # The file as this owner's last writable close leaves it (`seal_epoch`).
                 epoch, read_only = _EPOCHS.pop(path, ("", True))
                 if not read_only:
                     # The open cleared the record, so a close that can't write it reads as a crash
                     # (`seal_epoch`): seals are re-derived, and the Task that closed goes on.
                     with suppress(WorkspaceConflictError):
-                        _write_seal_record(path, epoch=epoch, fingerprint=_fingerprint(path))
+                        _write_seal_record(path, epoch=epoch, fingerprint=store_fingerprint(path))
         _STATE.notify_all()
 
 
@@ -661,6 +776,15 @@ def _acquire(path: Path, *, read_only: bool, wait_seconds: float) -> WorkspaceCo
         try:
             while True:
                 instance = _INSTANCES.get(path)
+                idle = _IDLE.get(path)
+                if instance is None and idle is not None:
+                    if idle.read_only and not read_only:  # a writer: the file reopens writable
+                        _let_go(path)
+                        continue
+                    del _IDLE[path]
+                    _INSTANCES[path] = idle
+                    raw = cast(duckdb.DuckDBPyConnection, idle.root).cursor()
+                    return _register(idle, raw, path, guarded=read_only and not idle.read_only)
                 if instance is None:
                     if read_only and _WRITERS_WAITING.get(path, 0):
                         wait(_HELD)
@@ -817,6 +941,63 @@ def retain_workspace_database(
             retention.root.close()
 
 
+@contextmanager
+def hold_workspace_database(path: Path) -> Iterator[None]:
+    """Keep the file's instance open between its connections for a unit of work, so a unit that
+    opens and closes the file call by call opens the instance once (a metadata read) and
+    checkpoints it once, at the end. Each opener still receives a connection of its own, a
+    cursor of the owner's root connection on the instance (the engine's per-thread connection),
+    with its own transactions; the access-mode rules are unchanged. The kept instance is closed,
+    and the file released, when the last scope holding it ends; before another DuckDB instance of
+    this process attaches the file (`release_workspace_database`); while a call runs in another
+    process (`hand_off`); and when a writer meets a kept read-only instance."""
+    resolved = path.resolve()
+    with _STATE:
+        _HOLDS[resolved] = _HOLDS.get(resolved, 0) + 1
+    try:
+        yield
+    finally:
+        with _STATE:
+            _HOLDS[resolved] -= 1
+            last = not _HOLDS[resolved]
+            if last:
+                del _HOLDS[resolved]
+        if last:
+            _let_go(resolved)
+
+
+def release_workspace_database(path: Path) -> None:
+    """Close the file's kept instance (`hold_workspace_database`), as another DuckDB instance of
+    this process must before it attaches the file; the next opener opens it again."""
+    _let_go(path.resolve())
+
+
+def hand_off() -> Callable[[], None]:
+    """A call another process runs, which may open the files this process holds: every kept
+    instance is closed now, and none is kept until the returned end is called (once; a later
+    call does nothing). A close in flight is waited for first: it keeps no instance once the call
+    is counted, and closes its own."""
+    with _STATE:
+        _HANDOFFS[0] += 1
+        _STATE.wait_for(lambda: not _CLOSING)
+        idle = list(_IDLE)
+    ended = threading.Event()
+
+    def end() -> None:
+        with _STATE:
+            if not ended.is_set():
+                ended.set()
+                _HANDOFFS[0] -= 1
+
+    try:
+        for path in idle:
+            _let_go(path)
+    except BaseException:
+        end()
+        raise
+    return end
+
+
 def retained_workspace_database(path: Path) -> bool:
     """Whether the calling thread currently retains this file (for tests and probes)."""
     with _STATE:
@@ -895,6 +1076,11 @@ class WorkspaceDatabase:
         """Retain this database for a bounded unit of work on the calling thread."""
         with retain_workspace_database(self.path, read_only=read_only, wait_seconds=wait_seconds):
             yield
+
+    def hold(self) -> AbstractContextManager[None]:
+        """Keep this database's instance open between its connections
+        (`hold_workspace_database`)."""
+        return hold_workspace_database(self.path)
 
     def seal_epoch(self) -> str:
         """The epoch whose seals this store's contents vouch for (`seal_epoch`)."""
@@ -975,8 +1161,11 @@ __all__ = [
     "WorkspaceDatabase",
     "WorkspaceRepository",
     "checkpoint_workspace_database",
+    "hand_off",
+    "hold_workspace_database",
     "live_workspace_connections",
     "open_workspace_database",
+    "release_workspace_database",
     "retain_workspace_database",
     "retained_workspace_database",
 ]

@@ -662,7 +662,10 @@ def in_invocation(path: Path, *, shared: Path | None = None) -> bool:
 
 def read_in_place(relative: str, size: int) -> bool:
     """The payload classes no test writes (measured on the explorer goldens, 11-03): research
-    inputs, and content-addressed files of 1 MB or more; everything else stays a private copy."""
+    inputs, and content-addressed files of 1 MB or more. Carried Evidence originals stay private
+    because the receiving Host consumes them when it opens the copy."""
+    if relative.startswith("runtime/evidence-knowledge/.system/carried-source-objects/"):
+        return False
     stem = relative.rsplit("/", 1)[-1].split(".", 1)[0]
     return relative.startswith("research-inputs/") or (
         size >= 1 << 20 and re.fullmatch(r"[0-9a-f]{64}", stem) is not None

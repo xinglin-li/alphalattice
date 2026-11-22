@@ -1,17 +1,7 @@
-"""The workspace a Risk experiment resolves against is written by the product.
+"""Read product-written workspace artifacts through their production readers.
 
-Authority resolution is only worth proving against artifacts the product wrote
-itself, so this case asserts the properties that make the fixture workspace a
-real one: a closure ledger opened at genesis, a Panel manifest and a return
-surface resolved through the same resolver and reader production uses. The
-Gateway's admission and the ledger's sector map are held by the Feature tests,
-which kill every mutant the cases that asserted them here killed.
-
-Workspace-writing cases drive onboarding, ten years of materialization and
-maintenance fresh; those assertions share a module build. Other cases exercise
-cache/lease metadata without a build. These are synthetic-provider tests, not
-the separately selected real-evidence lane. Daily development selects the needed
-cases explicitly rather than repeating this whole suite.
+These synthetic-provider cases cover closure genesis, Panel and return reads,
+and golden workspace identity and isolation.
 """
 
 from __future__ import annotations
@@ -34,12 +24,16 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     FeatureClosureLedger,
 )
-from alphalattice.foundation.feature_engine.storage.repositories import (
-    PanelStateRepository,
+from tests.feature_engine.panel_workspace import (
+    NOW,
+    SESSIONS,
+    build_and_publish,
+    development_panel_inputs,
+    panel_workspace,
 )
-from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
+    DEVELOPMENT_SYMBOLS,
     MARKET_PROFILE_ID,
     SYMBOLS,
     GoldenWorkspaceError,
@@ -57,7 +51,9 @@ from tests.researcher_methodology_surface.real_workspace import (
 def fresh_workspace(tmp_path_factory: pytest.TempPathFactory, tmp_path: Path) -> RealRiskWorkspace:
     """A private copy of the product-written, session-fresh build."""
 
-    return copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-real-workspace")
+    return copy_fresh_workspace(
+        tmp_path_factory, tmp_path / "fresh-real-workspace", DEVELOPMENT_SYMBOLS
+    )
 
 
 def test_closure_opened_at_genesis_and_never_claimed_admission(
@@ -96,24 +92,25 @@ def test_return_surface_reads_back_through_the_production_reader(
     assert float(returns.std()) > 0.0
 
 
-def test_panel_manifest_resolves_through_the_same_resolver_production_uses(
-    fresh_workspace: RealRiskWorkspace,
-) -> None:
-    """No handle here is synthetic; the reference is a real content-addressed URI."""
+def test_panel_manifest_resolves_through_the_same_resolver_production_uses(tmp_path: Path) -> None:
+    """Resolve the content-addressed URI written by the Panel publisher."""
 
-    resolver = ArtifactResolver(fresh_workspace.artifact_root)
-    payload = resolver.load_feature_panel_manifest(fresh_workspace.panel_manifest_ref)
-
-    assert payload["snapshot_hash"] == fresh_workspace.panel_snapshot_hash
-    assert payload["as_of_session"] == AS_OF.isoformat()
-    assert payload["active_listing_count"] == len(SYMBOLS)
-    assert payload["chunks"]
-
-    store = MarketDataRepository(fresh_workspace.workspace)
-    panel_state = PanelStateRepository(store.database, market_data=store)
-    active = panel_state.active_feature_panel(MARKET_PROFILE_ID)
+    manifest, provider = development_panel_inputs()
+    as_of, spy = SESSIONS[275], "a" * 64
+    workspace = panel_workspace(tmp_path, manifest, end=as_of, spy=spy, provider=provider)
+    build_and_publish(
+        workspace, manifest, spy=spy, as_of=as_of, observed_at=NOW, refresh_sector=True
+    )
+    active = workspace.panel_state.feature_panel_snapshot_for_active(
+        manifest.profile.market_profile_id
+    )
     assert active is not None
-    assert str(active["manifest_revision"]) == fresh_workspace.manifest.revision_sha256
+    payload = workspace.resolver.load_feature_panel_manifest(str(active["manifest_uri"]))
+    assert payload["snapshot_hash"] == active["snapshot_hash"]
+    assert payload["as_of_session"] == as_of.isoformat()
+    assert payload["active_listing_count"] == len(manifest.listings)
+    assert payload["chunks"]
+    assert str(active["manifest_revision"]) == manifest.revision_sha256
     assert str(active["panel_content_hash"]) == payload["panel_content_hash"]
 
 
@@ -231,7 +228,7 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
 ) -> None:
     """A second consumer restores the golden workspace with the same identities."""
 
-    again = build_real_risk_workspace(tmp_path / "again")
+    again = build_real_risk_workspace(tmp_path / "again", symbols=DEVELOPMENT_SYMBOLS)
     assert again.workspace != fresh_workspace.workspace
     assert again.manifest.revision_sha256 == fresh_workspace.manifest.revision_sha256
     assert again.panel_snapshot_hash == fresh_workspace.panel_snapshot_hash
@@ -241,13 +238,13 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
     assert again.return_reader.available_sessions(again.return_surface) == (
         fresh_workspace.return_reader.available_sessions(fresh_workspace.return_surface)
     )
-    key = _golden_key(again.feature_catalog, again.feature_kernels, SYMBOLS)
+    key = _golden_key(again.feature_catalog, again.feature_kernels, DEVELOPMENT_SYMBOLS)
     golden = _golden_root() / key
     assert (golden / "golden.json").is_file()
     assert not golden.with_name(golden.name + ".building").exists()
     assert not golden.with_name(golden.name + ".lock").exists()
     assert _golden_key(again.feature_catalog, again.feature_kernels, ("QA000", "QA001")) != key
-    sibling = build_real_risk_workspace(tmp_path / "sibling")
+    sibling = build_real_risk_workspace(tmp_path / "sibling", symbols=DEVELOPMENT_SYMBOLS)
 
     def digest(path):
         with path.open("rb") as stream:
@@ -259,10 +256,12 @@ def test_a_second_consumer_restores_the_golden_workspace_with_the_same_identitie
         stream.write(b"private consumer mutation")
     assert digest(seed) == original
     assert digest(sibling.workspace / "market-data.duckdb") == original
-    session_seed, _ = session_fresh_seed(tmp_path_factory)
+    session_seed, _ = session_fresh_seed(tmp_path_factory, DEVELOPMENT_SYMBOLS)
     session_db = session_seed / "workspace/market-data.duckdb"
     session_original = digest(session_db)
-    fresh_sibling = copy_fresh_workspace(tmp_path_factory, tmp_path / "fresh-sibling")
+    fresh_sibling = copy_fresh_workspace(
+        tmp_path_factory, tmp_path / "fresh-sibling", DEVELOPMENT_SYMBOLS
+    )
     with (fresh_workspace.workspace / "market-data.duckdb").open("ab") as stream:
         stream.write(b"fresh consumer mutation")
     assert digest(session_db) == session_original
@@ -277,8 +276,10 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
 ) -> None:
     """A foreign scientific sidecar identity is refused."""
 
-    key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
-    build_real_risk_workspace(tmp_path / "published")  # publishes the golden when absent
+    key = _golden_key(
+        fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, DEVELOPMENT_SYMBOLS
+    )
+    build_real_risk_workspace(tmp_path / "published", symbols=DEVELOPMENT_SYMBOLS)
     private_root = tmp_path / "goldens"
     golden = private_root / key
     shutil.copytree(_golden_root() / key, golden)
@@ -290,12 +291,12 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     forged = dict(sidecar, manifest_revision="0" * 64)
     sidecar_path.write_text(json.dumps(forged), encoding="utf-8")
     with pytest.raises(GoldenWorkspaceError, match="manifest revision"):
-        build_real_risk_workspace(tmp_path / "revision")
+        build_real_risk_workspace(tmp_path / "revision", symbols=DEVELOPMENT_SYMBOLS)
 
     forged = dict(sidecar, panel_snapshot_hash="1" * 64)
     sidecar_path.write_text(json.dumps(forged), encoding="utf-8")
     with pytest.raises(GoldenWorkspaceError, match="panel"):
-        build_real_risk_workspace(tmp_path / "panel")
+        build_real_risk_workspace(tmp_path / "panel", symbols=DEVELOPMENT_SYMBOLS)
 
     sector_by_listing_id = dict(sidecar["sector_by_listing_id"])
     listing_id = next(iter(sector_by_listing_id))
@@ -303,37 +304,34 @@ def test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired(
     forged = dict(sidecar, sector_by_listing_id=sector_by_listing_id)
     sidecar_path.write_text(json.dumps(forged), encoding="utf-8")
     with pytest.raises(GoldenWorkspaceError, match="sector map"):
-        build_real_risk_workspace(tmp_path / "sector")
+        build_real_risk_workspace(tmp_path / "sector", symbols=DEVELOPMENT_SYMBOLS)
 
     for field in ("source_tree", "environment"):
         forged = dict(sidecar, **{field: "foreign"})
         sidecar_path.write_text(json.dumps(forged), encoding="utf-8")
         with pytest.raises(GoldenWorkspaceError, match=field):
-            build_real_risk_workspace(tmp_path / field)
+            build_real_risk_workspace(tmp_path / field, symbols=DEVELOPMENT_SYMBOLS)
 
     # Payload seal mismatches and incomplete generations are covered by the small seal case below.
 
 
 def test_the_golden_key_binds_the_interpreter_and_the_installed_distributions(
-    fresh_workspace: RealRiskWorkspace, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """requirement: the same source tree under another interpreter or numpy is another key."""
-
-    key = _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
-    assert (
-        _golden_key(
-            fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS, sector_size=6
-        )
-        != key
+    from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+    from alphalattice.foundation.feature_engine.producers.factors.catalog import (
+        default_extension_kernel_registry,
     )
+
+    catalog, kernels = FeatureCatalog.load(), default_extension_kernel_registry()
+    key = _golden_key(catalog, kernels, SYMBOLS)
+    assert _golden_key(catalog, kernels, SYMBOLS, sector_size=6) != key
     monkeypatch.setattr(
         "tests.researcher_methodology_surface.real_workspace._environment_digest",
         lambda: "another interpreter",
     )
-    assert (
-        _golden_key(fresh_workspace.feature_catalog, fresh_workspace.feature_kernels, SYMBOLS)
-        != key
-    )
+    assert _golden_key(catalog, kernels, SYMBOLS) != key
 
 
 def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
@@ -780,8 +778,8 @@ def test_cache_environment_tracks_thread_settings_in_the_current_process(
     first = cache._environment_digest()
     if case == "session-seed":
 
-        def build(root, *, fresh):
-            assert fresh
+        def build(root, *, fresh, symbols):
+            assert fresh and symbols == cache.SYMBOLS
             root.mkdir()
             return SimpleNamespace(
                 workspace=root,

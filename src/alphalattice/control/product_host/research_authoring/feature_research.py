@@ -33,6 +33,7 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
+from alphalattice.kernel.data.errors import DataError
 
 CATEGORY = "research-feature-plans"
 
@@ -73,8 +74,13 @@ class ResearchFeatureDefinitions:
     ) -> tuple[FeatureCatalog, FeatureCatalogRevision, dict[str, Any]]:
         # Definition planning reads sealed metadata, not every numerical file.
         # A build must independently admit and verify its actual inputs.
-        bundle = read_factor_bundle(self.workspace, input_binding_hash, verify=False)
-        _source, artifacts = factor_input_paths(self.workspace, input_binding_hash)
+        try:
+            bundle = read_factor_bundle(self.workspace, input_binding_hash, verify=False)
+            _source, artifacts = factor_input_paths(self.workspace, input_binding_hash)
+        except DataError as error:
+            if error.failure.code != "data_layer.input_missing":
+                raise
+            raise FileNotFoundError(input_binding_hash) from error
         resolver = ArtifactResolver(artifacts)
         panel = resolver.load_feature_panel_manifest(
             resolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)

@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.oversight.model_validation.protected_gate:validation_upgrade_family",
+ "mode": "workspace"
+}

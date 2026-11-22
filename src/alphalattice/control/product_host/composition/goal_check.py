@@ -28,7 +28,7 @@ from alphalattice.interface.local_application.goals import (
 )
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
 
 # Task Control's lifecycle: a moving Task must end before a goal completes; one waiting on
@@ -331,7 +331,7 @@ def resubmit(
 def reference_request(document: dict[str, Any]) -> PortfolioResearchOperationRequest:
     """A reference's read as its request, a refusal located under the reference's `request`."""
     try:
-        read = PortfolioResearchRequestDocument.model_validate(document)
+        read = validate_request_document(document)
         request: PortfolioResearchOperationRequest = read.to_operation_request()
     except ValidationError as error:
         raise within(error, "request") from error
@@ -369,7 +369,7 @@ def goal_refusal(
         offers = {"show": {"operation": "GOAL_SHOW", **named}, **offered}
         if attributed_goal_id is not None:
             _required, allowed = request.field_contract(request.operation)
-            retry = PortfolioResearchRequestDocument.model_validate(
+            retry = validate_request_document(
                 {
                     "operation": request.operation,
                     **{name: getattr(request, name) for name in allowed},

@@ -32,6 +32,9 @@ from alphalattice.control.product_host.composition.strategy_calibration import (
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
     workspace_score_source_identity,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    PORTFOLIO_UPDATE_TASK_KIND,
+)
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -83,12 +86,12 @@ PLAN_FIELDS = ("decision_updates", "score_inputs")
 checkpoint's models bind. A plan binds them, never the whole manifest, so a publication of fields it
 does not read leaves it applicable (OW10)."""
 
-TASK_KIND = "portfolio_decision_update"
+TASK_KIND = PORTFOLIO_UPDATE_TASK_KIND
 STAGES = ("verify_update", "seal_market_observations", "publish_decision_settlement")
 
 
 IMPLEMENTATION_ROLE = "product_host.portfolio_updates"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

@@ -247,7 +247,7 @@ const LiveWorkspace = (() => {
   function offer(title, preview, steps, page=here(), kind='') {
     S.pending={title,preview,steps,page,revision:S.revision,kind};
     const preparing=steps.some(([p])=>p==='/api/workspace/preparation/confirm');
-    const summary=preparing ? preparationSummary(preview) : kind==='update' ? updateSummary(preview) : kind==='capture' ? captureSummary(preview) : kind==='issue' || kind==='delegate' ? issueSummary(preview,kind==='delegate') : kind==='cleanup' ? cleanupSummary(preview) : kind==='pin' ? pinSummary(preview) : kind==='backup' ? backupSummary(preview) : kind==='continue' || kind==='continue-update' || kind==='continue-preparation' ? continueSummary(preview) : [['Status',preview.status],['Task',preview.task_id]];
+    const summary=preparing ? preparationSummary(preview) : kind==='update' ? updateSummary(preview) : kind==='capture' ? captureSummary(preview) : kind==='issue' || kind==='delegate' ? issueSummary(preview,kind==='delegate') : kind==='cleanup' ? cleanupSummary(preview) : kind==='backup' ? backupSummary(preview) : kind==='continue' || kind==='continue-update' || kind==='continue-preparation' ? continueSummary(preview) : [['Status',preview.status],['Task',preview.task_id]];
     if(kind==='delegate') summary.push(['Task',preview.preparation_task_id]);
     if(kind==='revoke-delegation') summary.splice(0,summary.length,
       ['Grant',short(preview.grant_hash,SHORT.hash)],['Task',preview.preparation_task_id],
@@ -323,14 +323,10 @@ const LiveWorkspace = (() => {
   }
   function cleanupSummary(p) {
     const targets=Object.keys(p.targets || {});
-    return [['Files selected for cleanup',targets.length],['Reclaimable',bytesText(p.reclaimable_bytes)],['Retained',bytesText(p.retained_bytes)],['Unrooted versions',(p.bindings || []).length ? html`${p.bindings.map(h=>html`${mono(h,SHORT.hash)}<br>`)}` : t('none')],['Exact targets',targets.length ? html`${targets.slice(0,12).map(v=>html`<span class="mono">${v}</span><br>`)}${targets.length>12 ? t('… and {n} more, all listed in the exact plan below',{n:targets.length-12}) : ''}` : t('none: nothing is eligible')],['Kept by policy',html`${(p.limitations || []).map(v=>html`${t(LIMITATION_TEXT[v] || v)}<br>`)}`],
+    return [['Files selected for cleanup',targets.length],['Reclaimable',bytesText(p.reclaimable_bytes)],['Retained',bytesText(p.retained_bytes)],['Exact targets',targets.length ? html`${targets.slice(0,12).map(v=>html`<span class="mono">${v}</span><br>`)}${targets.length>12 ? t('… and {n} more, all listed in the exact plan below',{n:targets.length-12}) : ''}` : t('none: nothing is eligible')],['Kept by policy',html`${(p.limitations || []).map(v=>html`${t(LIMITATION_TEXT[v] || v)}<br>`)}`],
       ...(relinks(p).length ? [['Linked to the model store',html`${t('The retrieval model\'s copy becomes links to this machine\'s model store; nothing is lost.')}<br>${relinks(p).map(([path,bytes])=>html`<span class="mono">${path}</span> · ${bytesText(bytes)}<br>`)}`]] : [])];
   }
   const relinks=(p)=>Object.entries(p?.relinks || {}); // {path: bytes} of a retained model copy the plan links to the store
-  function pinSummary(v) {
-    const pinned=(v.roots || []).includes('USER_PINNED');
-    return [['Version',mono(v.binding_hash,SHORT.hash)],['Change',t(pinned ? 'Remove your pin: the version keeps every other root it has; without a root it becomes eligible for cleanup.' : 'Pin this version: it is retained by you and never selected for cleanup while the pin stands.')],['Referenced bytes',bytesText(v.logical_bytes)]];
-  }
   async function preview(kind, value='') {
     if(S.busy)return;
     invalidate();const page=here(),ticket=S.revision;S.busy=true;render();
@@ -417,18 +413,6 @@ const LiveWorkspace = (() => {
           body=c;title='Continue the approved data task';
           steps=[requestStep(get('issues').next_requests?.[`continue:${c.task_id}`],c.operation)];
         }
-      } else if(kind==='pin') {
-        const input=get('storage')?.inputs?.find(v=>v.binding_hash===value);
-        if(!input?.available||get('storage').status==='RECOVERY_REQUIRED')throw Error('Input retention is not currently available.');
-        body=input;title='Confirm input retention change';steps=[['/api/workspace/storage/pin',{input_binding_hash:value,input_pinned:!input.roots.includes('USER_PINNED')}]];
-      } else if(kind==='pin-index') { // an evidence index pinned or unpinned by its row, as the Host offers it (U4): the owner's pin route takes the index id
-        const [id,act]=JSON.parse(value), ix=(get('storage')?.evidence?.indexes || []).find(v=>v.index_id===id);
-        if(!ix || !(ix.available_actions || []).includes(act))throw Error('Index retention is not currently available.');
-        body={...ix,claim:'EVIDENCE_INDEX_RETENTION'};title=act==='UNPIN' ? 'Unpin this evidence index' : 'Pin this evidence index';steps=[['/api/workspace/storage/pin',{input_binding_hash:id,input_pinned:act==='PIN'}]];
-      } else if(kind==='rebuild-index') { // an evicted index rebuilt from its committed vectors, synchronously, by its row
-        const ix=(get('storage')?.evidence?.indexes || []).find(v=>v.index_id===value);
-        if(!ix)throw Error('Evidence index not found.');
-        body={...ix,claim:'EVICTED_EVIDENCE_INDEX_REBUILDS_FROM_ITS_COMMITTED_VECTORS'};title='Rebuild this evidence index';steps=[['/api/workspace/storage/evidence-rebuild',{evidence_index_id:value}]];
       } else if(kind==='backup') { // a generation made now, on the person's confirmation
         const bk=get('backups');
         if(!bk || states.get('backups').error)throw Error('The backups are not read; nothing was sent.');
@@ -1145,7 +1129,6 @@ const LiveWorkspace = (() => {
   }
 
   /* ---- the inputs page: immutable versions, publication and explicit selection ---- */
-  const ROOT_TEXT={CURRENT_ACTIVE:'configured default',CURRENT_RESEARCH_VERSION:'latest published version',PREVIOUS_ROLLBACK:'previous version (rollback)',USER_PINNED:'pinned by you',RESEARCH_FOUNDATION:'used by Foundation research',PORTFOLIO_RESEARCH:'used by Portfolio research',IN_FLIGHT_RECOVERY:'held by a Task in flight',MODEL_TRAINING_SOURCE:'retained for model training',UNCLASSIFIED_LEGACY:'legacy, unclassified'};
   // why a version cannot be used for a draft, as the English source a held control carries (CT7)
   const heldInput=(v)=>v.unreadable ? 'This version cannot be read in this workspace' : !v.available ? 'Source files unavailable' : v.lifecycle!=='REGISTERED' && v.lifecycle!=='SUCCEEDED' ? 'Publication not complete' : '';
   const inputLifecycle=(lifecycle)=>lifecycle==='REGISTERED' ? t('registered at preparation') : lifecycle==='SUCCEEDED' ? t('published') : lifecycle ? coded(lifecycle) : '';
@@ -1169,17 +1152,14 @@ const LiveWorkspace = (() => {
   function versionPage(b, hash) {
     const group=(b.inputs || []).find(g=>(g.versions || []).some(v=>v.binding_hash===hash)), v=group?.versions.find(x=>x.binding_hash===hash);
     if(!v) return null;
-    const store=states.get('storage'); if(!store) void refresh('storage','',true); // why it is kept is the storage owner's, read quietly
-    const kept=store?.body?.inputs?.find(x=>x.binding_hash===hash);
     const latestEnd=group.versions.map(x=>x.end).filter(Boolean).sort().at(-1), key=JSON.stringify([group.input_id,v.binding_hash]);
     const draft=typeof LiveResearch!=='undefined' && LiveResearch.context ? LiveResearch.context() : null, isChosen=draft?.input_binding_hash===v.binding_hash;
     const roles=[v.configured_default ? t('configured default') : '',inputLifecycle(v.lifecycle),v.end && v.end===latestEnd ? t('latest cutoff') : ''].filter(Boolean);
     const use=isChosen ? '' : typedBtn(t('Use for a new Factor draft'),'workspace-input',key,'button primary',heldInput(v));
-    const why=kept ? (kept.roots.length ? kept.roots.map(r=>t(ROOT_TEXT[r] || r)).join(' · ') : t('no root: eligible for cleanup')) : store?.body ? t('Not in the storage inventory') : t('Reading the storage inventory');
     // One section of the version's own facts in the lane's columns -- its interval is the
     // title, its family the path, its binding the head's id and its publication in the exact record
-    const main=v.unreadable ? panel(t('This version'),'',html`${kv([[t('Source files'),coded(v.unreadable)],[t('Why'),html`<span class="owner-text">${v.detail || ''}</span>`],[t('Kept because'),html`${why} · ${link(t('Storage & retention'),'storage','inline-link')}`]],'kv-columns')}${detail(v)}`)
-      : panel(t('This version'),'',html`${kv([[t('Roles'),html`${roles.map((w,i)=>html`${i ? ' · ' : ''}<span class="nowrap">${w}</span>`)}`],[t('Lifecycle'),inputLifecycle(v.lifecycle)],[t('Source files'),t(v.available ? 'present' : 'unavailable: source files missing')],[t('Kept because'),html`${why} · ${link(t('Storage & retention'),'storage','inline-link')}`]],'kv-columns')}${detail(v)}`);
+    const main=v.unreadable ? panel(t('This version'),'',html`${kv([[t('Source files'),coded(v.unreadable)],[t('Why'),html`<span class="owner-text">${v.detail || ''}</span>`]],'kv-columns')}${detail(v)}`)
+      : panel(t('This version'),'',html`${kv([[t('Roles'),html`${roles.map((w,i)=>html`${i ? ' · ' : ''}<span class="nowrap">${w}</span>`)}`],[t('Lifecycle'),inputLifecycle(v.lifecycle)],[t('Source files'),t(v.available ? 'present' : 'unavailable: source files missing')]],'kv-columns')}${detail(v)}`);
     return html`${objectHead(v.unreadable ? html`${t('Input version')} ${mono(v.binding_hash,SHORT.hash)}` : dateRange(v.start,v.end),'',use,isChosen ? stateLine('planned',{word:t('Selected in the draft'),next:''}) : '',[],{object:true,id:v.binding_hash})}<template class="page-directory">${group.input_id}</template>${main}`;
   }
   function inputs(b) {
@@ -1207,25 +1187,18 @@ const LiveWorkspace = (() => {
   const bytesRead=(text)=>{const m=String(text || '').match(/^(.+?)\s+(B|KiB|MiB|GiB|TiB)$/);return m ? html`${m[1]} ${unit(m[2])}` : text || '';};
   const bytesText=(n)=>{ if(n==null || !Number.isFinite(Number(n))) return ''; const v=Number(n); const units=['B','KiB','MiB','GiB','TiB']; let i=0, x=v; while(x>=1024 && i<units.length-1){x/=1024;i++;} return html`${i ? x.toFixed(x>=100 ? 0 : 2) : String(v)} ${unit(units[i])}`; };
   const ROOT_LABEL={WORKING_DATABASE:['Working database','the DuckDB store the update owner maintains in place; not research input'],IMMUTABLE_INPUTS:['Immutable input versions','sealed source files and Parquet objects; shared objects stored once'],ARTIFACTS:['Feature and outcome artifacts','Panel partitions and outcome snapshots; the current Panel is protected'],RESEARCH_EXPERIMENTS:['Saved experiments','research results and Feature trials; never released by cleanup'],PROVIDER_CACHE:['Provider cache','the raw source cache and the source probe cache'],STAGING:['Staging','files being prepared'],EVIDENCE_KNOWLEDGE:['Evidence knowledge','the evidence data layer: sources, texts, vectors and indexes, detailed under Evidence'],ALTERNATIVE_EVIDENCE:['Alternative evidence','the Alternative Evidence desk\'s sealed records'],PORTFOLIO_LEDGER:['Portfolio ledger','the Portfolio research ledger\'s records'],PREPARATION:['Preparation records','a preparation\'s stage records and evidence; never released by cleanup'],HOST_RECORDS:['Host records','data update plans, change executions, valuation receipts and the Host\'s records; never released by cleanup'],AUTHORITY:['Installed authority','the Evidence and CRO packages and the retained strategies\' authority; never released by cleanup'],RETRIEVAL_MODEL:['Retrieval model','the retained retrieval recipe\'s model copy; a cleanup may link it to the machine\'s model store']};
-  const LIMITATION_TEXT={EVIDENCE_INDEX_PAYLOADS_ONLY_VECTORS_BLOBS_AND_ARTIFACTS_RETAINED:'Cleanup may release an evidence index payload only; its vectors, source texts and sealed records stay.',EVICTED_EVIDENCE_INDEX_REBUILDS_FROM_ITS_COMMITTED_VECTORS:'An evicted evidence index rebuilds from its committed vectors, without the model.',CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY:'Only classified input files and Panel/outcome snapshots without a root are eligible.',RAW_HISTORY_BASE_FEATURES_AND_RECOVERY_PATCHES_RETAINED:'Raw history, base Features and recovery patches are always kept.',PANEL_GENERATIONS_PAST_THE_PREVIOUS_AND_UNPUBLISHED_CHUNKS_RELEASED:'A Panel generation no input captured is released once it is past the previous one, and the chunks no generation published with it.',A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES:'A retained retrieval model\'s copy becomes links to the machine\'s model store it matches; nothing is lost.',REPORTS_AND_DECISIONS_RETAINED:'Reports and decisions are kept.',REPLAY_REQUIRES_RETAINED_INPUTS:'Replaying a result needs its input version retained.'};
+  const LIMITATION_TEXT={CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY:'Only classified input files and Panel/outcome snapshots without a root are eligible.',RAW_HISTORY_BASE_FEATURES_AND_RECOVERY_PATCHES_RETAINED:'Raw history, base Features and recovery patches are always kept.',PANEL_GENERATIONS_PAST_THE_PREVIOUS_AND_UNPUBLISHED_CHUNKS_RELEASED:'A Panel generation no input captured is released once it is past the previous one, and the chunks no generation published with it.',A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES:'A retained retrieval model\'s copy becomes links to the machine\'s model store it matches; nothing is lost.',REPORTS_AND_DECISIONS_RETAINED:'Reports and decisions are kept.',REPLAY_REQUIRES_RETAINED_INPUTS:'Replaying a result needs its input version retained.'};
   const CAPACITY_TEXT={WITHIN_BUDGET:['neutral','Within the managed budget'],CLEANUP_RECOMMENDED:['warning','Near the managed budget: a cleanup preview shows what may be released'],CAP_EXCEEDED:[TONE.attention,'Over the workspace cap: raise it in Settings or plan a cleanup'],BUDGET_AFTER_INPUT_DISCOVERY:['neutral','Budget known after an input is published']};
   /* The Evidence category (plan 4.6): what the evidence data layer keeps, physical bytes
-   * each object once; the indexes with their availability and protection, pinned or rebuilt by
-   * the row; the unreferenced objects; nothing here adds a book's logical bytes into a disk figure. */
-  const INDEX_ACTIONS={PIN:['Pin','workspace-pin-index'],UNPIN:['Unpin','workspace-pin-index'],REBUILD:['Rebuild','workspace-rebuild-index']}; // U4: the Host's `available_actions`, in its order
+   * each object once, and the unreferenced source objects; nothing here adds a book's logical
+   * bytes into a disk figure, and none of it is a cleanup target. */
   function evidencePanel(e) {
     if(!e || typeof e!=='object') return ''; // law 81: a category the owner does not report is not shown
     const sum=e.summary && typeof e.summary==='object' ? e.summary : e;
     const rows=[[t('Originals'),sum.source_object_bytes],[t('Canonical texts'),sum.source_blob_bytes],[t('Vectors'),sum.vector_payload_bytes,sum.vector_object_count!=null ? countText(sum.vector_object_count,'{n} object','{n} objects') : ''],[t('Indexes'),sum.index_payload_bytes],[t('Sealed records'),sum.sealed_artifact_bytes],[t('Staging'),sum.staging_bytes],[t('Task state'),sum.task_state_bytes]].filter(([,v])=>v!=null);
     const railMarkup=rail(html`${rows.map(([label,v,note])=>stat(label,bytesText(v),note || t('physical bytes · each object once')))}`);
-    // none while an approved cleanup awaits recovery: the page's banner says why, once (ST6)
-    const indexRows=(e.indexes || []).map((ix,i)=>{ const key=String(ix.availability || '').toLowerCase();
-      // an index that cannot be rebuilt says why, in the owner's words, where its Rebuild would stand
-      const actions=html`<span class="flow">${(ix.available_actions || []).filter(a=>INDEX_ACTIONS[a]).map(a=>btnAttrs(t(INDEX_ACTIONS[a][0]),INDEX_ACTIONS[a][1],a==='REBUILD' ? ix.index_id : JSON.stringify([ix.index_id,a]),'text-btn'))}${ix.rebuild_limit ? hint(t('Cannot be rebuilt'),t(ix.rebuild_limit)) : ''}</span>`;
-      return tr([count(i+1),html`<span class="mono">${short(ix.index_id,SHORT.hash)}</span>${ix.corpus_hash ? html` <span class="sub-cell mono">${short(ix.corpus_hash,SHORT.hash)}</span>` : ''}`,ix.generation_format || '',count(ix.record_count),bytesText(ix.database_bytes),html`${bytesText(ix.payload_bytes)} <span class="sub-cell">${ix.payload_proof==='PROVED' ? t('proved') : ix.payload_available===false ? t('absent') : codeWords(ix.payload_proof || '')}</span>`,stateLine(key,{next:''}),(ix.protected_by || []).length ? ix.protected_by.map(codeWords).join(' · ') : (ix.eligible ? t('eligible for cleanup') : ''),actions]); });
-    const indexes=indexRows.length ? table([{label:'#',type:'num',index:true},{label:t('Index'),type:'text',cls:'col-tight'},{label:t('Format'),type:'text',cls:'col-tight'},{label:t('Records'),type:'num'},{label:t('Database'),type:'num'},{label:t('Payload'),type:'num'},{label:t('Availability'),type:'status',cls:'col-tight'},{label:t('Protected by'),type:'text',absorb:true},{label:'',type:'link'}],indexRows,'',{report:true,countLine:false,classes:'compact evidence-indexes'}) : emptyState(t('No evidence index is kept in this workspace.'));
     const un=e.unreferenced && typeof e.unreferenced==='object' ? Object.entries(e.unreferenced).filter(([,v])=>typeof v==='number' && v>0).map(([k,v])=>`${codeWords(String(k).toUpperCase())} ${count(v)}`) : [];
-    return panel(t('Evidence'),t('What the evidence data layer keeps, physical bytes each object once; an index is evicted or rebuilt, never its vectors.'),html`${railMarkup}<h3>${t('Evidence indexes')} <span class="num">${count((e.indexes || []).length)}</span></h3>${indexes}${un.length ? html`<p class="caption">${t('Unreferenced')} · ${un.join(' · ')}</p>` : ''}`,'','data-storage="evidence" data-box="table"');
+    return panel(t('Evidence'),t('storage.evidence_kept'),html`${railMarkup}${un.length ? html`<p class="caption">${t('Unreferenced')} · ${un.join(' · ')}</p>` : ''}`,'','data-storage="evidence" data-box="table"');
   }
   /* the held state's backups -- the root, each kept generation (newest first), the last
    * automatic attempt after a data update; a person backs up now; a restore is the client's own
@@ -1277,17 +1250,13 @@ const LiveWorkspace = (() => {
     const summary=html`${summaryRail}${capacity}`;
     const rootKeys=[...Object.keys(ROOT_LABEL).filter(k=>k in roots),...Object.keys(roots).filter(k=>!(k in ROOT_LABEL))], fileTotal=rootKeys.reduce((sum,root)=>sum+(Number(roots[root]?.files)||0),0);
     const breakdown=panel(t('What is kept where'),t('The managed roots of this workspace, from the storage owner\'s inventory; shared objects are counted once, under the first root that names them.'),table([{label:t('Root'),type:'text',absorb:true},{label:t('On disk'),type:'num',cls:'col-tight'},{label:t('Referenced'),type:'num',cls:'col-tight'},{label:t('Files'),type:'num',cls:'col-tight'}],rootKeys.map(root=>{const v=roots[root];return tr([html`${t(ROOT_LABEL[root]?.[0] || root)}${ROOT_LABEL[root]?.[1] ? infoMark(t(ROOT_LABEL[root][1])) : ''}`,bytesText(v.physical_bytes),bytesText(v.logical_bytes),count(v.files)]);}),'',{report:true,countLine:false,foot:[t('Total'),bytesText(b.managed_bytes),bytesText(b.logical_bytes),count(fileTotal)]}),'','data-box="table"'); // words first, figures last; what a root holds is its (i), so the first screen keeps few words (R4)
-    // rows: the version as the title, why it is kept and its bytes as props, the
-    // retention action at the row's end
-    const versionName=(hash)=>{const x=Data.inputVersion(hash);return x?.cutoff ? dateRange(x.start,x.cutoff) : html`${t('Input version')} ${mono(hash,SHORT.hash)}`;}; // S (law 96): a version the inputs do not list is named by its words, its hash after
-    const versions=panel(t('Retained input versions'),t('Every version and why it is kept. Pinning retains a version by your choice; unpinning leaves its other roots as they are.'),html`<div class="card-list lines slotted version-rows">${(b.inputs || []).map(v=>objectRow({lead: 'file', name: versionName(v.binding_hash), to: Data.inputVersion(v.binding_hash) ? {action: 'workspace-version-open', value: v.binding_hash} : null, cls: 'version-row'}, {key:v.binding_hash,columns:['roots','size','availability'],props:[factsRef(t('Kept because'),html`<p>${v.roots.length ? v.roots.map(r=>t(ROOT_TEXT[r] || r)).join(' · ') : t('no root: eligible for cleanup')}</p>`),bytesText(v.logical_bytes),v.available ? '' : t('unavailable')],actions:action(v.roots.includes('USER_PINNED')?'Remove pin':'Retain input','pin',v.binding_hash,!v.available||b.status==='RECOVERY_REQUIRED'?t('Retention change unavailable'): '','menu-row')}))}</div>`);
     const plan=get('cleanup');
     const planFacts=plan ? cleanupSummary(plan).filter(([k])=>!['Reclaimable','Retained','Kept by policy'].includes(k)) : [];
     const planLedger=plan ? kv([[t('Reclaimable'),bytesText(plan.reclaimable_bytes)],[t('Retained'),bytesText(plan.retained_bytes)],[html`<strong>${t('Managed total')}</strong>`,html`<strong>${bytesText(Number(plan.reclaimable_bytes||0)+Number(plan.retained_bytes||0))}</strong>`]],'num') : '';
     const resume=(b.pending_cleanup || []).map(hash=>banner(t('An approved cleanup did not finish'),t('Resume it before anything else changes here; it removes only the targets it was approved for.'),'warning',action('Resume approved cleanup','resume-cleanup',hash,'','button primary')));
     const cleanup=plan ? panel(t('Cleanup preview'),t('The exact files an approved cleanup would remove and what stays; nothing is deleted without your confirmation.'),html`${planLedger}${kv(planFacts.map(([k,v])=>[t(k),v]))}`) : '';
     // what cleanup never removes is the page's (i) (`storageInfo`)
-    return html`${resume}${summary}${cleanup}${breakdown}${versions}${evidencePanel(b.evidence)}${backupsPanel()}${detail(b,'Exact inventory and references')}`;
+    return html`${resume}${summary}${cleanup}${breakdown}${evidencePanel(b.evidence)}${backupsPanel()}${detail(b,'Exact inventory and references')}`;
   }
   function page() {
     const name=here(),state=sceneState(name);

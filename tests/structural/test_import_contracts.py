@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import import_contracts
 from devtools.architecture.structural import PackageArchitectureRegistry
 
@@ -44,7 +45,7 @@ def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
     if "untracked" not in module:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+    spawn.run(["git", "add", "-A"], cwd=tree, check=True)
     if "untracked" in module:  # written after the index, so Git does not track it
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding="utf-8")
@@ -73,7 +74,7 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
     for name in names:
         (tree / name).write_text("", encoding="utf-8")
     (tree / names[-1]).write_text("import alphalattice.kernel.low.gone\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+    spawn.run(["git", "add", "-A"], cwd=tree, check=True)
     violations = import_contracts.check(tree, tmp_path / "long", _registry())
     assert (
         len(violations) == 1 and "TID251" in violations[0] and Path(names[-1]).name in violations[0]
@@ -87,7 +88,7 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
     for name in names:
         (wide / name).write_text("", encoding="utf-8")
     (wide / names[-1]).write_text("import alphalattice.kernel.low.gone\n", encoding="utf-8")
-    subprocess.run(["git", "-c", "core.longpaths=true", "add", "-A"], cwd=wide, check=True)
+    spawn.run(["git", "-c", "core.longpaths=true", "add", "-A"], cwd=wide, check=True)
     violations = import_contracts.check(wide, tmp_path / "wide-evidence", _registry())
     assert len(violations) == 1 and "TID251" in violations[0], violations
     wide_batches = import_contracts.launch_batches(["ruff"], names)[0]
@@ -149,5 +150,5 @@ def _tree(tmp_path):
         (tree / "src" / package).mkdir(parents=True, exist_ok=True)
         (tree / "src" / package / "__init__.py").write_text("", encoding="utf-8")
     (tree / "src/alphalattice/kernel/low/keep.py").write_text("", encoding="utf-8")
-    subprocess.run(["git", "init", "-q"], cwd=tree, check=True)
+    spawn.run(["git", "init", "-q"], cwd=tree, check=True)
     return tree

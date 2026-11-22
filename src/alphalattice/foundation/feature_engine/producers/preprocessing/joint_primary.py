@@ -7,12 +7,10 @@ from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
 from hashlib import sha256
-from typing import Final, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
-from scipy.special import ndtri  # type: ignore[import-untyped]
 
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
@@ -38,6 +36,12 @@ from .robust_cross_section import (
     PanelFactorClipObservation,
     PanelMaterialization,
 )
+
+if TYPE_CHECKING:
+    pass
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z_IMPLEMENTATION = (
     "feature_engine.producers.preprocessing.joint_primary.JointPrimaryCrossSectionKernel"
@@ -85,6 +89,8 @@ def _array_digest(values: np.ndarray) -> str:
 def _rank_gauss_rows(
     values: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    from scipy.special import ndtri  # lazy: not at the Host's start
+
     result: npt.NDArray[np.float64] = np.full(values.shape, np.nan, dtype=np.float64)
     for row_index, row in enumerate(values):
         finite = np.isfinite(row)
@@ -236,6 +242,8 @@ class JointPrimaryCrossSectionKernel:
                 are invalid.
             PanelPreprocessingError: Declared membership differs from the full calculation axis.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         require_uniform_membership(members_by_session, active_listing_ids)
         if (isinstance(feature_rows, pd.DataFrame) and feature_rows.empty) or not len(feature_rows):
             raise ValueError("sector panel requires feature rows")
@@ -615,6 +623,8 @@ class JointPrimaryStateInteractionBlockAdapter:
                 required factor or state child is absent.
             PanelPreprocessingError: Membership differs from the full calculation axis.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         frame = (
             feature_rows.copy()
             if isinstance(feature_rows, pd.DataFrame)

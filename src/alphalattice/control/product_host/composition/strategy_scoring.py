@@ -32,6 +32,9 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
     workspace_observation_history_columns,
     workspace_score_source_identity,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    STRATEGY_SCORE_TASK_KIND,
+)
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
     read_workspace_inputs,
@@ -99,12 +102,12 @@ PLAN_FIELDS = ("score_inputs",)
 never the whole manifest, so a publication of fields it does not read leaves it applicable (
 OW10)."""
 
-TASK_KIND = "strategy_score_preparation"
+TASK_KIND = STRATEGY_SCORE_TASK_KIND
 STAGES = ("verify_frozen_inputs", "materialize_features", "score_models", "publish_score_receipt")
 
 
 IMPLEMENTATION_ROLE = "product_host.strategy_scoring"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

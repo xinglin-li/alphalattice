@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
 from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 ABSOLUTE_STATE_METHOD_FAMILY: Final = "ABSOLUTE_STATE"
 ABSOLUTE_STATE_REQUIRED_OHLC: Final = (
@@ -113,6 +115,8 @@ def _ordered(source: pd.DataFrame) -> pd.DataFrame:
 
 
 def _restore(source: pd.DataFrame, ordered: pd.DataFrame, values: np.ndarray) -> pd.Series:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered["_value"] = values
     return pd.Series(
         ordered.sort_values("_position", kind="mergesort")["_value"].to_numpy(dtype=float),
@@ -136,6 +140,8 @@ def _per_listing_arrays(
     conversions per Factor.  These methods only consume fixed trailing windows,
     so the prefix carried no additional authority or mathematical information.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered = _ordered(source)
     output: np.ndarray = np.full(len(ordered), np.nan, dtype=float)
     for _listing, positions in ordered.groupby("listing_id", sort=False).indices.items():

@@ -16,14 +16,21 @@ import numpy as np
 from numpy.typing import NDArray
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
+from alphalattice.foundation.market_data_ops.storage.world import world_listing
 from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceBuildCheckpoint,
     HistoricalCovarianceChunk,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import history, risk_history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://risk-research/"
+
+
+def _packed_digest(content: bytes | memoryview) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 class RiskArtifactError(ValueError):
@@ -168,6 +175,7 @@ class RiskArtifactStore:
         formation_sessions: tuple[date, ...],
         matrices: Sequence[FloatArray],
         matrix_hashes: tuple[str, ...],
+        ordered_listing_ids: tuple[str, ...] | None = None,
     ) -> HistoricalCovarianceChunk:
         """Pack finite square covariance lower triangles and publish immutable chunk bytes.
 
@@ -179,6 +187,7 @@ class RiskArtifactStore:
             formation_sessions: One formation date per matrix in declared order.
             matrices: Finite square covariance matrices on a shared asset axis.
             matrix_hashes: Exact declared lowercase hexadecimal matrix identities.
+            ordered_listing_ids: The market listing axis for catalog admission.
 
         Returns:
             Typed chunk metadata selecting the packed lower triangles.
@@ -207,7 +216,7 @@ class RiskArtifactStore:
                 raise RiskArtifactError("risk_research.covariance_chunk_matrix_invalid")
             packed[index] = values[lower]
         content = packed.tobytes(order="C")
-        packed_bytes_sha256 = hashlib.sha256(content).hexdigest()
+        packed_bytes_sha256 = _packed_digest(content)
         content_hash = canonical_hash(
             {
                 "dtype": "little-endian-float64",
@@ -217,12 +226,7 @@ class RiskArtifactStore:
                 "packed_bytes_sha256": packed_bytes_sha256,
             }
         )
-        target = self._path("covariance/chunks", content_hash, "bin")
-        if target.exists() and target.read_bytes() != content:
-            raise RiskArtifactError("risk_research.covariance_chunk_identity_reused")
-        if not target.exists():
-            self._atomic_write(target, content)
-        return HistoricalCovarianceChunk(
+        chunk = HistoricalCovarianceChunk(
             formation_sessions=formation_sessions,
             matrix_count=len(matrices),
             asset_count=asset_count,
@@ -231,6 +235,122 @@ class RiskArtifactStore:
             packed_bytes_sha256=packed_bytes_sha256,
             content_hash=content_hash,
             uri=self.uri("covariance/chunks", content_hash),
+        )
+        if history.recording():
+            self.admit_covariance(chunk, ordered_listing_ids, packed)
+        else:  # a writer outside the Host keeps the packed file, admitted when it resumes there
+            target = self._path("covariance/chunks", content_hash, "bin")
+            if target.exists() and target.read_bytes() != content:
+                raise RiskArtifactError("risk_research.covariance_chunk_identity_reused")
+            if not target.exists():
+                self._atomic_write(target, content)
+        return chunk
+
+    @staticmethod
+    def coordinate_axis(
+        chunk: HistoricalCovarianceChunk, listing_ids: tuple[str, ...] | None
+    ) -> tuple[str, ...]:
+        """Resolve the sealed Risk axis into its registered world listing identities."""
+        if (
+            listing_ids is None
+            or len(listing_ids) != chunk.asset_count
+            or len(set(listing_ids)) != chunk.asset_count
+            or len(set(chunk.formation_sessions)) != chunk.matrix_count
+        ):
+            raise RiskArtifactError("risk_research.covariance_chunk_axis_invalid")
+        return tuple(world_listing(item) for item in listing_ids)
+
+    @staticmethod
+    def coordinate_key(listings: tuple[str, ...]) -> str:
+        """Name the exact ordered listing axis used to resolve covariance profiles."""
+        return canonical_hash(listings)
+
+    def admit_covariance(
+        self,
+        chunk: HistoricalCovarianceChunk,
+        ordered_listing_ids: tuple[str, ...] | None,
+        packed: FloatArray,
+        *,
+        workspace_id: str | None = None,
+    ) -> None:
+        """Admit verified packed values with the original formation and listing axes."""
+        listings = self.coordinate_axis(chunk, ordered_listing_ids)
+        try:
+            risk_history.write_risk_covariance(
+                chunk.content_hash,
+                self.coordinate_key(listings),
+                tuple(day.isoformat() for day in chunk.formation_sessions),
+                chunk.matrix_hashes,
+                listings,
+                packed,
+                workspace_id=workspace_id,
+            )
+        except DataError as error:
+            raise RiskArtifactError(str(error.failure.code)) from error
+
+    def continue_covariance(
+        self, lease: CovarianceChunkLease, ordered_listing_ids: tuple[str, ...]
+    ) -> None:
+        """Move a validated legacy checkpoint chunk when its writer resumes on the Host."""
+        if isinstance(lease._mapping, np.memmap) and history.recording():
+            self.admit_covariance(lease.chunk, ordered_listing_ids, lease._mapping)
+
+    def catalog_covariance(
+        self,
+        chunk: HistoricalCovarianceChunk,
+        ordered_listing_ids: tuple[str, ...] | None,
+        *,
+        root: Path | None = None,
+        retry_unadmitted: bool = False,
+    ) -> FloatArray | None:
+        """Read the catalog coordinates and prove the original sealed packed bytes."""
+        if chunk.uri != self.uri("covariance/chunks", chunk.content_hash):
+            raise RiskArtifactError("risk_research.covariance_chunk_uri_invalid")
+        listings = self.coordinate_axis(chunk, ordered_listing_ids)
+        try:
+            packed = risk_history.read_risk_covariance(
+                chunk.content_hash,
+                self.coordinate_key(listings),
+                tuple(day.isoformat() for day in chunk.formation_sessions),
+                chunk.matrix_hashes,
+                listings,
+                root=root,
+                retry_unadmitted=retry_unadmitted,
+            )
+        except DataError as error:
+            raise RiskArtifactError(str(error.failure.code)) from error
+        if packed is None:
+            return None
+        if (
+            _packed_digest(memoryview(packed.astype("<f8", copy=False)))
+            != chunk.packed_bytes_sha256
+        ):
+            raise RiskArtifactError("risk_research.covariance_chunk_tampered")
+        return cast(FloatArray, packed)
+
+    def packed_covariance(
+        self,
+        chunk: HistoricalCovarianceChunk,
+        ordered_listing_ids: tuple[str, ...] | None,
+        *,
+        resume: bool = False,
+    ) -> FloatArray:
+        """Read the sealed floats from the catalog, or from the packed file a writer outside the
+        Host kept, or a restored workspace keeps until its listings arrive, before admission."""
+        if ordered_listing_ids is not None:
+            packed = self.catalog_covariance(chunk, ordered_listing_ids, retry_unadmitted=resume)
+            if packed is not None:
+                return packed
+        return self.legacy_covariance(chunk)
+
+    def legacy_covariance(self, chunk: HistoricalCovarianceChunk) -> FloatArray:
+        """Map the packed file of a chunk not yet admitted: the upgrade's input, and the read
+        before admission."""
+        return np.memmap(
+            self.chunk_path(chunk),
+            dtype="<f8",
+            mode="r",
+            shape=(chunk.matrix_count, chunk.packed_value_count // chunk.matrix_count),
         )
 
     def chunk_path(self, chunk: HistoricalCovarianceChunk) -> Path:
@@ -251,17 +371,18 @@ class RiskArtifactStore:
         expected_bytes = chunk.packed_value_count * 8
         if not target.is_file() or target.stat().st_size != expected_bytes:
             raise RiskArtifactError("risk_research.covariance_chunk_incomplete")
-        if hashlib.sha256(target.read_bytes()).hexdigest() != chunk.packed_bytes_sha256:
+        if _packed_digest(target.read_bytes()) != chunk.packed_bytes_sha256:
             raise RiskArtifactError("risk_research.covariance_chunk_tampered")
         return target
 
     def load_build_checkpoint(
-        self, program_hash: str
+        self, program_hash: str, *, ordered_listing_ids: tuple[str, ...] | None = None
     ) -> HistoricalCovarianceBuildCheckpoint | None:
         """Read a typed build checkpoint and verify every retained covariance chunk.
 
         Args:
             program_hash: Exact lowercase hexadecimal program identity selecting the checkpoint.
+            ordered_listing_ids: Listing axis shared by the checkpoint's chunks.
 
         Returns:
             Verified checkpoint, or None when the checkpoint file is absent.
@@ -281,7 +402,10 @@ class RiskArtifactStore:
             if checkpoint.program_hash != program_hash:
                 raise RiskArtifactError("risk_research.covariance_checkpoint_invalid")
             for chunk in checkpoint.chunks:
-                self.chunk_path(chunk)
+                with HistoricalCovarianceReader(self.root.parent).lease(
+                    chunk, ordered_listing_ids=ordered_listing_ids
+                ):
+                    pass
             return cast(HistoricalCovarianceBuildCheckpoint, checkpoint)
         except RiskArtifactError:
             raise
@@ -290,23 +414,17 @@ class RiskArtifactStore:
 
 
 class CovarianceChunkLease:
-    """Own one memmap and return independent read-only matrices."""
+    """Own one verified packed projection and return independent read-only matrices."""
 
-    def __init__(self, *, path: Path, chunk: HistoricalCovarianceChunk) -> None:
+    def __init__(self, *, packed: FloatArray, chunk: HistoricalCovarianceChunk) -> None:
         """Open one read-only packed covariance mapping with a reusable reconstruction buffer.
 
         Args:
-            path: Verified packed-file path supplied by the reader.
+            packed: Verified packed entries supplied by the reader.
             chunk: Declared matrix count, asset axis and formation dates.
         """
         self.chunk = chunk
-        packed_width = chunk.asset_count * (chunk.asset_count + 1) // 2
-        self._mapping: FloatArray = np.memmap(
-            path,
-            dtype="<f8",
-            mode="r",
-            shape=(chunk.matrix_count, packed_width),
-        )
+        self._mapping = packed
         self._buffer: FloatArray = np.empty(
             (chunk.asset_count, chunk.asset_count), dtype=np.float64
         )
@@ -362,11 +480,19 @@ class HistoricalCovarianceReader:
         self._active = False
 
     @contextmanager
-    def lease(self, chunk: HistoricalCovarianceChunk) -> Iterator[CovarianceChunkLease]:
+    def lease(
+        self,
+        chunk: HistoricalCovarianceChunk,
+        *,
+        ordered_listing_ids: tuple[str, ...] | None = None,
+        resume: bool = False,
+    ) -> Iterator[CovarianceChunkLease]:
         """Yield one verified covariance chunk lease and close it on scope exit.
 
         Args:
-            chunk: Exact chunk declaration whose URI/length/digest is verified before mapping.
+            chunk: Exact chunk declaration whose URI, length and digest are verified on opening.
+            ordered_listing_ids: The owning surface's listing axis.
+            resume: Allow a verified packed file to complete a profile-only checkpoint.
 
         Returns:
             Context manager yielding the active covariance lease.
@@ -376,8 +502,9 @@ class HistoricalCovarianceReader:
         """
         if self._active:
             raise RiskArtifactError("risk_research.covariance_lease_already_active")
+        packed = self.store.packed_covariance(chunk, ordered_listing_ids, resume=resume)
+        lease = CovarianceChunkLease(packed=packed, chunk=chunk)
         self._active = True
-        lease = CovarianceChunkLease(path=self.store.chunk_path(chunk), chunk=chunk)
         try:
             yield lease
         finally:

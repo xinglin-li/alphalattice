@@ -430,7 +430,7 @@ class PortfolioReviewTaskAdapter:
             framework_identity_hash=self.resources.actor.process_binding_hash,
         )
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def execute_stage(
         self,
         *,
@@ -458,7 +458,7 @@ class PortfolioReviewTaskAdapter:
             )
         return StageExecutionResult(disposition=StageDisposition.READY, evidence=(evidence,))
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def verify_stage(
         self,
         *,

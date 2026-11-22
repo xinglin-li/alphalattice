@@ -5,32 +5,40 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
 from alphalattice.interface.local_application.activity import ExternalActivityEventDocument
 from alphalattice.interface.local_application.cli_contract import RequestProvenance
 from alphalattice.interface.local_application.failure_codes import located_failure
+from alphalattice.interface.local_application.goals import (
+    Goal,
+    GoalDeclaration,
+    GoalSession,
+    declaration_hash,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests._support.lease_age import age_lease_file
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
     NOW,
@@ -88,14 +96,13 @@ def test_goal_attribution_retains_exact_decision_selectors(
         ),
     }[selector]
     app.attribute(first, request, body, SESSION)
-    second = app.operate(
-        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=DECLARATION),
-        "HUMAN",
-    )
-    app.store.attribute(UUID(int=2), {"operation": request.operation, "task_id": None})
+    another = {**DECLARATION, "title": "Another study"}
+    second = app.operate(Request(operation="GOAL_OPEN", goal_declaration=another), "HUMAN")
+    second_id = UUID(str(second["goal_id"]))
+    app.store.attribute(second_id, {"operation": request.operation, "task_id": None})
     assert app.decision_attribution()[exact] == {str(first.goal_id)}
     app.attribute(app.store.load(second["goal_hash"]), request, body, SESSION)
-    legacy = app.store.attributed(UUID(int=2))[0]
+    legacy = app.store.attributed(second_id)[0]
     assert all(key not in legacy for key in ("plan_hash", "review_publication_hash", "case_token"))
     before = {
         path: path.read_bytes() for path in (app.store.content.root / "attribution").rglob("*.json")
@@ -147,11 +154,9 @@ def test_an_achieved_first_use_without_a_declared_slot_still_delivers(goal_app):
         "kind": "FIRST_USE",
         "criteria": [{"criterion_id": "folds", "text": "The result stands for the person"}],
     }
-    opened = app.operate(
-        Request(operation="GOAL_OPEN", goal_id=UUID(int=2), goal_declaration=declaration), "HUMAN"
-    )
+    opened = app.operate(Request(operation="GOAL_OPEN", goal_declaration=declaration), "HUMAN")
     _attach(app, opened)
-    goal = app.store.head(UUID(int=2))
+    goal = app.store.head(UUID(str(opened["goal_id"])))
     assert 'deliverable_id: "result"' in completion_template(goal)
     bare = GoalSubmission.model_validate(
         _submission(
@@ -441,7 +446,7 @@ def test_goal_revision_reopen_narrative_no_work_and_tamper(goal_app):
         app.store.load(new.goal_hash)
 
 
-def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_app):
+def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_app, monkeypatch):
     app, opened, _calls, _body, _tasks = goal_app
     with pytest.raises(ValueError, match="exact_review_required"):
         app.operate(
@@ -520,6 +525,64 @@ def test_goal_reference_cannot_execute_or_mislabel_and_a_note_rereads_it(goal_ap
             ),
             "EXTERNAL_AUTOMATION",
         )
+
+    # The saved Goal survives a lost history acknowledgement, with one issued hypothesis.
+    from alphalattice.interface.local_application import goal_history
+
+    monkeypatch.setattr(goal_history.history, "recording", lambda: True)
+    issued: dict[tuple[str, str], str] = {}
+    interrupt = {"when": "before"}
+
+    def record_once(goal_id, name, text, attribution):
+        key = (goal_id, name)
+        if interrupt["when"] == "before":
+            interrupt["when"] = "done"
+            raise OSError("lost history reply")
+        if key not in issued:
+            issued[key] = str(goal_history.uuid7())
+            if interrupt["when"] == "after":
+                interrupt["when"] = "done"
+                raise OSError("lost history reply")
+        return issued[key]
+
+    def old_record(exists, args, event_type, subject, attrs, **more):
+        if event_type == "hypothesis.stated":
+            record_once(attrs["goal_id"], attrs["statement_id"], more["text"], more["actor"][1])
+        return 1
+
+    monkeypatch.setattr(goal_history.history, "record_new", old_record)
+    monkeypatch.setattr(goal_history.history, "record_hypothesis", record_once, raising=False)
+    for when in ("before", "after"):
+        declared = {**DECLARATION, "title": f"{DECLARATION['title']} ({when})"}
+        opened_retry = app.operate(
+            Request(operation="GOAL_OPEN", goal_declaration=declared), "HUMAN"
+        )
+        number = UUID(str(opened_retry["goal_id"]))
+        interrupt["when"] = when
+        document = {
+            "kind": "HYPOTHESIS",
+            "attribution": "researcher",
+            "text": "Does it work?",
+            "disposition": "OPEN",
+        }
+        if when == "after":
+            document["statement_id"] = "named-claim"
+        selector = (
+            {"goal_hash": opened_retry["goal_hash"]} if when == "before" else {"goal_id": number}
+        )
+        request = Request(
+            operation="GOAL_NOTE",
+            change_reason="state the question",
+            goal_statement=document,
+            **selector,
+        )
+        with pytest.raises(OSError, match="lost history reply"):
+            app.operate(request, "HUMAN")
+        answer = app.operate(request, "HUMAN")
+        repeated = app.operate(request, "HUMAN")
+        assert answer["hypothesis_id"] == repeated["hypothesis_id"]
+        assert len(app.store.head(number).statements) == 1
+        assert sum(goal == str(number) for goal, _name in issued) == 1
 
 
 def _team_event(sequence: int, text: str = "A message.", **subject: str) -> Any:
@@ -956,11 +1019,17 @@ def test_goal_show_reuses_identical_owner_read_but_verifies_every_reference(goal
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")]
 
 
-@pytest.mark.parametrize("operation", ["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"])
-def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamper(
-    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+@pytest.mark.proves("composition.goal_export_proves_its_sources")
+@pytest.mark.parametrize(
+    "operation",
+    ["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"],
+    ids=["GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"],
+)
+def test_composed_goal_reads_answer_from_kept_sources_and_an_export_refuses_tamper(
+    live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, kept_here: bool
 ):
-    """The Host enables EV2 leases without retaining an owner's current answer or gaps."""
+    """tamper: a Goal read answers from its sealed source kept since the attach, and a Goal export
+    proves it in full and refuses a change by name."""
     from alphalattice.control.workspace_runtime.content_store import (
         ContentAddressedStore,
         verified_model_read_scope,
@@ -994,7 +1063,7 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
         assert request.operation == "EXPERIMENT_READBACK"
         assert request.task_id == task.task_id
         # A nested numerical owner's opt-in joins the Host's outer policy.
-        with verified_model_read_scope(reuse_verified=True):
+        with verified_model_read_scope():
             result = store.load_model(
                 category="results",
                 content_hash=value.content_hash,
@@ -1014,7 +1083,6 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
     opened = live.operations.execute(
         Request(
             operation="GOAL_OPEN",
-            goal_id=uuid4(),
             goal_declaration=DECLARATION,
             change_reason="Register before execution",
         )
@@ -1028,7 +1096,6 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
         )
     )
     assert attached.get("failure_code") is None, attached
-    age_lease_file(path)
     calls.clear()
     source_reads = []
     original_open = Path.open
@@ -1048,11 +1115,14 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
     def reference(answer):
         return answer["reference"] if operation == "GOAL_REFERENCE" else answer["references"][0]
 
+    exported = operation == "GOAL_EXPORT"
     first = live.operations.execute(request)
     first_reads = len(source_reads)
     second = live.operations.execute(request)
-    assert first_reads == 1
-    assert len(source_reads) == (first_reads if os.name == "nt" else first_reads + 1)
+    # A read answers from the value kept since the attach; an export, or a file system that keeps
+    # nothing, reads the bytes each time.
+    assert first_reads == (1 if exported or not kept_here else 0)
+    assert len(source_reads) == 2 * first_reads
     assert calls == [("EXPERIMENT_READBACK", "HUMAN")] * 2
     assert first == second
     assert reference(second)["state"] == "VERIFIED_READBACK"
@@ -1081,6 +1151,10 @@ def test_composed_goal_reads_reuse_only_proved_immutable_sources_and_refuse_tamp
     assert (path.stat().st_size, path.stat().st_mtime_ns) == (stat.st_size, stat.st_mtime_ns)
     tampered = live.operations.execute(request)
     assert len(calls) == 4
+    # Where nothing is kept, a read takes the changed bytes at their name and refuses them by name.
+    if not exported and kept_here:
+        assert reference(tampered)["state"] == "VERIFIED_TASK_STATE"
+        return
     assert reference(tampered)["state"] == "UNAVAILABLE"
     assert reference(tampered)["failure_code"] == "content_store.artifact_tampered"
     assert "summary" not in reference(tampered)
@@ -1527,16 +1601,15 @@ def test_goal_task_fact_uses_the_live_registry_record_update_time(live):
     ).record
     canonical = registry.task(task.task_id)
     app = live.operations.goals
-    goal_id = uuid4()
     opened = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             goal_declaration=DECLARATION,
             change_reason="Register before execution",
         ),
         "HUMAN",
     )
+    goal_id = UUID(str(opened["goal_id"]))
     goal = app.store.load(opened["goal_hash"])
     app.attribute(
         goal,
@@ -1629,7 +1702,7 @@ def test_an_unmet_objective_completes_but_an_answer_that_contradicts_it_does_not
 
 
 def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -1641,6 +1714,7 @@ def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
     )
     return result.returncode, json.loads(result.stdout)
@@ -1728,7 +1802,7 @@ def test_only_a_sealing_answer_offers_experience_with_sendable_owner_reads(
 ):
     """A served sealing answer offers experience recording once with exact owner reads."""
     from alphalattice.interface.local_application.client import LocalResearchClient, compact_display
-    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
+    from tests.portfolio_strategy_lab.node_runner import read_in_chinese
     from tests.workspace_task_runner.task_control_support import task_contract
 
     client = LocalResearchClient(live.workspace)
@@ -1815,7 +1889,7 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
     """The research case page continues to work over goals."""
 
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from tests.portfolio_strategy_lab.local_web_support import _json, _request
+    from tests.portfolio_strategy_lab.host_requests import _json, _request
 
     tasks = tuple(live.operations.workspace_session.task_control_registry.tasks())
     document = {
@@ -1828,13 +1902,13 @@ def test_the_case_page_routes_answer_from_goals_and_never_admit_a_task(live):
         "required_stages": ["ALPHA", "RISK"],
         "budget": {"maximum_tasks": 2, "maximum_numerical_calls": 10, "maximum_model_calls": 2},
     }
-    body = {"case_id": str(UUID(int=7)), "case_document": document, "change_reason": "Question"}
+    body = {"case_document": document, "change_reason": "Question"}  # a new case's id is the Host's
     denied, _, _ = _request(
         live, "/api/research/case/save", method="POST", payload=body, token=None
     )
     assert denied == 403
     saved = _json(live, "/api/research/case/save", method="POST", payload=body)
-    assert saved["status"] == "CASE_SAVED" and saved["case_id"] == str(UUID(int=7))
+    assert saved["status"] == "CASE_SAVED" and UUID(saved["case_id"]).version == 7
     read = _json(live, "/api/research/case?case_hash=" + saved["case_hash"])
     assert read["status"] == "CASE_READBACK"
     assert read["case"]["document"] == {**document, "constraints": []}
@@ -1919,10 +1993,9 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     with pytest.raises(ValueError, match="revision_conflict"):
         app.operate(written(template), "EXTERNAL_AUTOMATION")
     # A session holding another goal, with criteria of the same ids, completes this one.
-    app.operate(
+    another = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=5),
             goal_declaration=DECLARATION,
             change_reason="Another goal, held by the session",
         ),
@@ -1932,7 +2005,7 @@ def test_an_open_goal_offers_its_completion_to_fill(goal_app, tmp_path):
     current = yaml.safe_load(app.operate(show, "HUMAN")["yaml"])
     sealed = app.operate(written(current), "EXTERNAL_AUTOMATION", SESSION)
     assert sealed["goal_id"] == str(UUID(int=1)), sealed
-    assert app.store.head(UUID(int=5)).state == "OPEN"
+    assert app.store.head(UUID(str(another["goal_id"]))).state == "OPEN"
     # regression (a fresh-folder first use): the saved completion, sent by the offered
     # `goal submit`, reads as the request it is; a line naming another revision is refused.
     (saved := tmp_path / "completion.yaml").write_text(yaml.safe_dump(current), "utf-8")
@@ -1969,7 +2042,10 @@ def test_a_closed_goal_refuses_with_its_standing_and_the_follow_up_start() -> No
 
 def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
     """CONTRACT: a kept head's lost revision offers recovery, not an invalid-pointer claim."""
-    from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
+    from alphalattice.control.workspace_runtime.content_store import (
+        ContentAddressedStoreError,
+        full_content_proof,
+    )
     from alphalattice.interface.local_application.cli_contract import refusal_words
 
     app, opened, calls, _body, _tasks = goal_app
@@ -1978,12 +2054,16 @@ def test_a_goals_head_keeps_a_missing_or_corrupt_revisions_refusal(goal_app):
     original = revision.read_bytes()
     revision.unlink()
     request = Request(operation="GOAL_SHOW", goal_id=UUID(int=1))
-    with pytest.raises(ContentAddressedStoreError) as missing:
+    # A sealed revision is proved under full proof (an export, the scrub; EV2).
+    with full_content_proof(), pytest.raises(ContentAddressedStoreError) as missing:
         app.operate(request, "HUMAN")
     assert str(missing.value) == f"content_store.artifact_missing:{identity}"
     assert "restore a backup" in refusal_words(str(missing.value))["detail"]
     revision.write_bytes(b"{}")
-    with pytest.raises(ContentAddressedStoreError, match=r"^content_store\.artifact_tampered$"):
+    with (
+        full_content_proof(),
+        pytest.raises(ContentAddressedStoreError, match=r"^content_store\.artifact_tampered$"),
+    ):
         app.operate(request, "HUMAN")
     revision.write_bytes(original)
     assert app.operate(request, "HUMAN")["goal_hash"] == identity
@@ -2002,7 +2082,6 @@ def test_home_question_uses_the_dated_binding_and_excludes_session_work(goal_app
     authored = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=10),
             goal_declaration={**DECLARATION, "objective": "Another question?"},
         ),
         "HUMAN",
@@ -2011,7 +2090,6 @@ def test_home_question_uses_the_dated_binding_and_excludes_session_work(goal_app
     automatic = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=UUID(int=11),
             goal_declaration=session_work_declaration("COMMITTEE_SUBMIT", "codex"),
         ),
         "EXTERNAL_AUTOMATION",
@@ -2079,11 +2157,12 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
     )
 
     def open_goal(goal_id: UUID, provenance: RequestProvenance) -> dict[str, Any]:
+        """Open a goal the Host mints as `goal_id` (the fixture mints in order)."""
+        declared = {**DECLARATION, "title": f"A study {goal_id.int}", "target_date": "2026-08-12"}
         result = app.operate(
             Request(
                 operation="GOAL_OPEN",
-                goal_id=goal_id,
-                goal_declaration={**DECLARATION, "target_date": "2026-08-12"},
+                goal_declaration=declared,
                 change_reason="Register before execution",
             ),
             "HUMAN",
@@ -2095,6 +2174,7 @@ def test_goal_list_keeps_readable_rows_and_scopes_only_provable_head_refusals(go
             {"status": "AVAILABLE"},
             provenance,
         )
+        assert result["goal_id"] == str(goal_id)
         return result
 
     damaged_id, unreadable_attribution_id, other_id = UUID(int=2), UUID(int=3), UUID(int=4)
@@ -2275,3 +2355,112 @@ def test_one_bound_offer_selects_the_inline_refs_and_reuses_recovery_reads(goal_
     answer = send(request)
     assert answer["status"] == "COMPLETE" and answer["outcome"] == "NOT_ACHIEVED"
     assert len(calls) == 2 and app.store.head(UUID(int=1)).state == "COMPLETE"
+
+
+# A new goal's id is a Host UUIDv7; a goal opened before the declaration index is found again.
+
+
+class _Contended:
+    """The store's lock, telling the first open when the second waits for it."""
+
+    def __init__(self, lock: Any, waiting: Event) -> None:
+        self.lock, self.waiting = lock, waiting
+
+    def __enter__(self) -> None:
+        if not self.lock.acquire(blocking=False):
+            self.waiting.set()
+            self.lock.acquire()
+
+    def __exit__(self, *_: object) -> None:
+        self.lock.release()
+
+
+def _goals(root: Path) -> GoalApplication:
+    store = GoalStore(root, "workspace")
+    return GoalApplication(
+        store, lambda: NOW, lambda *_: {}, lambda _: NOW, lambda _: None, workspace=root
+    )
+
+
+def _opened_before(store: GoalStore, goal_id: UUID, declaration: GoalDeclaration) -> Goal:
+    """A goal as one opened before the declaration index left it: its head, no index entry."""
+    values = {"workspace_id": "workspace", "revision": 1, "recorded_at": NOW}
+    values |= {"intent_registered_at": NOW, "submitted_by": "HUMAN", "change_reason": "Opened."}
+    return store.publish(Goal.seal(goal_id=goal_id, declaration=declaration, **values), None)
+
+
+@pytest.mark.proves("product_host.a_reopened_goal_is_found_by_its_declaration")
+@pytest.mark.parametrize(
+    "case", ["new", "opened-before-the-index", "supplied-unknown-id", "two-at-once"]
+)
+def test_a_goal_id_is_the_hosts_and_a_reopened_goal_is_found_by_it(tmp_path, monkeypatch, case):
+    """A new goal takes a Host UUIDv7 and its reopening answers it, even when two threads open it
+    at once; one opened under its uuid5 before the index is answered the same way; an open naming
+    an id no goal holds is refused by name."""
+    declaration = GoalDeclaration.model_validate(DECLARATION)
+    opened_id = composition._opened_id(declaration, "HUMAN")
+    request = Request(operation="GOAL_OPEN", goal_declaration=DECLARATION)
+    if case == "supplied-unknown-id":
+        named = Request(operation="GOAL_OPEN", goal_id=opened_id, goal_declaration=DECLARATION)
+        with pytest.raises(ValueError, match=r"^goal\.id_is_the_hosts$"):
+            _goals(tmp_path).operate(named, "HUMAN")
+        return
+    if case == "two-at-once":  # the first waits at the index until the second reaches it too
+        goals, inside, second = _goals(tmp_path), Event(), Event()
+        declared = goals.store.declared
+
+        def meeting(key: str) -> UUID | None:
+            found = declared(key)
+            if inside.is_set():
+                second.set()  # the second open read the index too: no lock parted them
+            else:
+                inside.set()
+                second.wait()
+            return found
+
+        monkeypatch.setattr(goals.store, "declared", meeting)
+        monkeypatch.setattr(goals.store, "lock", _Contended(goals.store.lock, second))
+        with ThreadPoolExecutor(2) as pool:
+            first = pool.submit(goals.operate, request, "HUMAN")
+            inside.wait()
+            again = pool.submit(goals.operate, request, "HUMAN")
+            opened = [first.result(), again.result()]
+        assert sorted(o["status"] for o in opened) == ["GOAL_SAVED", "REUSED_EXACT"]
+        assert len({o["goal_id"] for o in opened}) == len(goals.store.goal_ids()) == 1
+        return
+    if case == "new":
+        first = UUID(str(_goals(tmp_path).operate(request, "HUMAN")["goal_id"]))
+    else:
+        first = _opened_before(GoalStore(tmp_path, "workspace"), opened_id, declaration).goal_id
+    again = _goals(tmp_path).operate(request, "HUMAN")
+    assert (first == opened_id, first.version) == ((False, 7) if case == "new" else (True, 5))
+    assert (again["status"], again["goal_id"]) == ("REUSED_EXACT", str(first))
+
+
+@pytest.mark.proves("product_host.a_reopened_goal_is_found_by_its_declaration")
+@pytest.mark.parametrize(
+    ("opener", "bound", "indexed"),
+    [
+        pytest.param({"session_id": "s1", "vendor": "codex"}, True, True, id="bound-session"),
+        pytest.param({"session_id": "s1", "vendor": "codex"}, False, False, id="unknown-opener"),
+    ],
+)
+def test_the_upgrade_step_indexes_a_goal_under_the_opener_that_made_its_id(
+    tmp_path: Path, opener, bound, indexed
+) -> None:
+    """The upgrade step indexes an older goal under the candidate opener whose old id is its id,
+    once per store, and leaves one no candidate made; the first goal declared keeps its hash."""
+    store = GoalStore(tmp_path, "workspace")
+    declaration = GoalDeclaration.model_validate(DECLARATION)
+
+    def opened_id(declared: GoalDeclaration, who: object) -> UUID:
+        return uuid5(UUID(int=1), json.dumps([declared.title, who], sort_keys=True))
+
+    goal = _opened_before(store, opened_id(declaration, opener), declaration)
+    if bound:
+        store.bind(GoalSession.model_validate(opener), goal.goal_id)
+    assert store.declare_opened(opened_id) == int(indexed)
+    key = declaration_hash(declaration, opener)
+    assert store.declared(key) == (goal.goal_id if indexed else None)
+    assert store.declare_opened(opened_id) == 0  # its mark: the step runs once
+    assert store.declare(key, opener, uuid4()) == store.declared(key)

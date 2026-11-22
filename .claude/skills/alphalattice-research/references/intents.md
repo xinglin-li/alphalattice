@@ -42,6 +42,7 @@ For a person-only request that needs a decision now, complete its reads, prepare
 | Show disk use, limit it or clean it up. | `alphalattice storage cap --help`; `alphalattice storage confirm --help`; `alphalattice storage pin --help`; `alphalattice storage plan --help`; `alphalattice storage rebuild --help`; `alphalattice storage set --help`; `alphalattice storage show --help` | Plans sizes and retained objects before deletion; cleanup and pinning are a person's decisions. Rebuild only an offered supported index. |
 | Back up this workspace, or restore it elsewhere. | `alphalattice backup list --help`; `alphalattice backup restore --help`; `alphalattice backup run --help` | Keeps or restores a generation; restore writes a new destination rather than replacing the source workspace. |
 | Convene the committee on every daily update, or stop. | `alphalattice committee daily --help` | A person's setting, relayed; off, the PM gives its view and the committee is offered. |
+| Read a review's Analyst bundles by subagents or in this session. | `alphalattice analyst-reads set --help`; `alphalattice analyst-reads show --help` | A person's setting, relayed with `--question-code review.analyst_reads`; it covers reviews of up to the bundle count answered, and a review with more asks again. |
 | Turn native session usage reading off. | `alphalattice usage-reading set --help`; `alphalattice usage-reading show --help` | A person's Settings decision; affects usage reading, not research. |
 
 ## Studies and extensions

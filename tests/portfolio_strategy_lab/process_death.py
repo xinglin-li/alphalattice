@@ -18,10 +18,16 @@ import sys
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from threading import Thread
+from typing import Any
+
+import psutil
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     _process_tree_ids,
 )
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.shared_kernel import spawn
+from tests.pytest_environment import released, serve_apart, with_its_tasks
 
 
 def _creation_filtered_tree(root: int, parents: dict[int, int], birth) -> tuple[int, ...]:
@@ -166,6 +172,19 @@ def child_import_paths(module_dir: Path | None = None) -> list[str]:
     return paths
 
 
+def crash(process: subprocess.Popen[Any]) -> None:
+    """End a Host as a crash ends it, with every worker it started, and return once the data root
+    it held can be opened again."""
+    workers = psutil.Process(process.pid).children(recursive=True)
+    process.kill()
+    process.communicate(timeout=15)
+    for worker in workers:
+        with suppress(psutil.NoSuchProcess):
+            worker.kill()
+    psutil.wait_procs(workers, timeout=30)
+    released(history.data_root())
+
+
 @contextmanager
 def forced_process(
     workspace: Path,
@@ -199,62 +218,79 @@ def forced_process(
     )
     env = dict(os.environ, ALPHALATTICE_NETWORK_DISABLED="1")
     env.pop("PYTHONPATH", None)
-    child = subprocess.Popen(
-        [sys.executable, "-u", "-c", command, str(workspace), phase],
-        cwd=workspace.parent,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        start_new_session=os.name != "nt",
-    )
-    messages = queue.Queue()
-    child_output = []
+    # A Host a wider fixture serves may hold this process's data root: the child then holds one
+    # of its own, and the Tasks it recorded come back with the workspace once it is dead.
+    apart = history.holding() is not None
+    if apart:
+        env[history.DATA_ROOT_ENV] = str(serve_apart(workspace))
+    with spawn.InteractiveSession(
+        timeout=boundary_timeout_seconds + 120, stop_scope="tree"
+    ) as session:
+        child = session.start(
+            [sys.executable, "-u", "-c", command, str(workspace), phase],
+            cwd=workspace.parent,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=os.name != "nt",
+        )
+        messages = queue.Queue()
+        child_output = []
 
-    def read():  # type: ignore[no-untyped-def]
-        assert child.stdout is not None
-        for line in child.stdout:
-            child_output.append(line)
-            if len(child_output) > 40:
-                child_output.pop(0)
-            if line.startswith("CRASH_BOUNDARY:"):
-                messages.put(json.loads(line.removeprefix("CRASH_BOUNDARY:")))
-        messages.put(None)
+        def read():  # type: ignore[no-untyped-def]
+            assert child.stdout is not None
+            for line in child.stdout:
+                child_output.append(line)
+                if len(child_output) > 40:
+                    child_output.pop(0)
+                if line.startswith("CRASH_BOUNDARY:"):
+                    messages.put(json.loads(line.removeprefix("CRASH_BOUNDARY:")))
+            messages.put(None)
 
-    reader = Thread(target=read, daemon=True)
-    reader.start()
-    try:
-        observed = messages.get(timeout=boundary_timeout_seconds)
-        if observed is None:
-            # Keep the POSIX leader unreaped until its group has been stopped:
-            # its reserved PID prevents an unrelated group reusing that identity.
-            if os.name != "nt":
+        reader = Thread(target=read, daemon=True)
+        reader.start()
+        try:
+            observed = messages.get(timeout=boundary_timeout_seconds)
+            if observed is None:
+                # Keep the POSIX leader unreaped until its group has been stopped:
+                # its reserved PID prevents an unrelated group reusing that identity.
+                if os.name != "nt":
+                    with suppress(ProcessLookupError):
+                        os.killpg(child.pid, signal.SIGKILL)
+                # stdout EOF can precede the Windows venv launcher's exit by a few
+                # milliseconds. Reap the owned handle before trying to kill its PID.
+                with suppress(subprocess.TimeoutExpired):
+                    child.wait(timeout=5)
+            assert observed is not None, (
+                f"child exited before boundary: {child.poll()} {''.join(child_output)}"
+            )
+            descendants, limitation = _process_tree_ids(child.pid)
+            assert observed["pid"] in descendants and (
+                limitation is None or (os.name != "nt" and observed["pid"] == child.pid)
+            )
+            yield observed
+        finally:
+            # Its workers, to wait for once the tree is ended: one still exiting holds the log.
+            family: list[psutil.Process] = []
+            with suppress(psutil.NoSuchProcess):
+                family = psutil.Process(child.pid).children(recursive=True)
+            if os.name == "nt":
+                if child.poll() is None:
+                    _terminate_windows_owned_tree(child)
+            elif child.returncode is None:  # the unreaped leader still reserves its group ID
                 with suppress(ProcessLookupError):
                     os.killpg(child.pid, signal.SIGKILL)
-            # stdout EOF can precede the Windows venv launcher's exit by a few
-            # milliseconds. Reap the owned handle before trying to kill its PID.
-            with suppress(subprocess.TimeoutExpired):
-                child.wait(timeout=5)
-        assert observed is not None, (
-            f"child exited before boundary: {child.poll()} {''.join(child_output)}"
-        )
-        descendants, limitation = _process_tree_ids(child.pid)
-        assert observed["pid"] in descendants and (
-            limitation is None or (os.name != "nt" and observed["pid"] == child.pid)
-        )
-        yield observed
-    finally:
-        if os.name == "nt":
-            if child.poll() is None:
-                _terminate_windows_owned_tree(child)
-        elif child.returncode is None:  # the unreaped leader still reserves its group ID
-            with suppress(ProcessLookupError):
-                os.killpg(child.pid, signal.SIGKILL)
-        child.wait(timeout=30)
-        reader.join(timeout=5)
-        assert not reader.is_alive()
-        assert child.stdout is not None
-        child.stdout.close()
+            child.wait(timeout=30)
+            reader.join(timeout=5)
+            assert not reader.is_alive()
+            assert child.stdout is not None
+            child.stdout.close()
+            psutil.wait_procs(family, timeout=30)
+            released(Path(env[history.DATA_ROOT_ENV]))
+            if apart:
+                with_its_tasks(workspace)
 
 
-__all__ = ["child_import_paths", "forced_process"]
+__all__ = ["child_import_paths", "crash", "forced_process"]

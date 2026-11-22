@@ -28,3 +28,5 @@ Apache License, Version 2.0), and these model packs, each at the revision the pr
 - Qwen/Qwen3-Reranker-0.6B (Apache License, Version 2.0)
 - Xenova/ms-marco-MiniLM-L-6-v2, ONNX weights converted from
   cross-encoder/ms-marco-MiniLM-L-6-v2 (Apache License, Version 2.0)
+- hotchpotch/bekko-static-embedding-v1 (MIT License)
+- cross-encoder/ettin-reranker-17m-v1 (Apache License, Version 2.0)

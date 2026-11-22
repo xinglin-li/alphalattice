@@ -429,6 +429,7 @@ def prepare_portfolio_handoff(
         lambda output: prepare_portfolio_market_inputs(
             source=source,
             source_workspace=source_workspace,
+            cutoff_us=envelope.sessions.as_of.selection_cutoff_us,
             artifact_root=artifact_root,
             output=market_root,
             scores=scores,
@@ -675,6 +676,7 @@ def prepare_portfolio_market_inputs(
     *,
     source: PortfolioExperimentSource | PortfolioMarketContext,
     source_workspace: Path,
+    cutoff_us: int | None = None,
     artifact_root: Path,
     output: Path,
     scores: DevelopmentScoreMatrix,
@@ -710,7 +712,7 @@ def prepare_portfolio_market_inputs(
         PortfolioExperimentCancelled: Tradability preparation cancels at an immutable chunk
             boundary.
     """
-    market = MarketDataRepository(source_workspace)
+    market = MarketDataRepository(source_workspace, cutoff_us=cutoff_us)
     manifest = market.load_universe_manifest_revision(source.universe_revision)
     sessions, listings = source.formation_sessions, source.ordered_listing_ids
     reader = CausalExecutionOutcomeDevelopmentReader(artifact_root)

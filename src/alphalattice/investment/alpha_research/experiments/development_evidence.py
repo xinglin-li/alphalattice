@@ -251,15 +251,30 @@ class AlphaDevelopmentReceiptReader:
 
         materialization = receipt.target_materialization_binding
         records = {value.fold_commitment_hash: value for value in materialization.fold_records}
-        batch, surfaces, fold_surfaces, validation_tables = self._assert_child_set_complete(receipt)
+        catalog_folds = catalog_numerical = None
+        if self._store.catalog_development_reads():
+            try:
+                catalog_folds, catalog_numerical, _ = self._store.read_development_folds(
+                    receipt.fold_surface_hashes,
+                    tuple(entry.numerical_result_hash for entry in receipt.child_lineage),
+                )
+            except (FileNotFoundError, ValueError) as error:
+                raise AuthoringError(
+                    "alpha_research.development_receipt_child_unavailable"
+                ) from error
+        batch, surfaces, fold_surfaces, validation_tables = self._assert_child_set_complete(
+            receipt, catalog_folds=catalog_folds
+        )
         folds = []
         score_tables: dict[str, pa.Table] = {}
         results_by_candidate: dict[str, list[AlphaCandidateNumericalFoldResult]] = {}
         entries_by_candidate: dict[str, list[AlphaDevelopmentChildLineage]] = {}
         for entry in receipt.child_lineage:
             try:
-                result, scores = self._store.read_candidate_numerical_fold_result(
-                    entry.numerical_result_hash
+                result, scores = (
+                    self._store.read_candidate_numerical_fold_result(entry.numerical_result_hash)
+                    if catalog_numerical is None
+                    else catalog_numerical[entry.numerical_result_hash]
                 )
                 state = self._store.load_development_estimator_state(entry.estimator_state_hash)
                 evidence = self._store.load_development_fit_evidence(entry.fit_evidence_hash)
@@ -469,7 +484,10 @@ class AlphaDevelopmentReceiptReader:
         return report, inference
 
     def _assert_child_set_complete(
-        self, receipt: AlphaDevelopmentExecutionReceipt
+        self,
+        receipt: AlphaDevelopmentExecutionReceipt,
+        *,
+        catalog_folds: Mapping[str, tuple[AlphaDevelopmentFoldSurface, pa.Table]] | None,
     ) -> tuple[
         AlphaExperimentBatchResult,
         dict[str, AlphaDevelopmentSurfaceManifest],
@@ -571,13 +589,19 @@ class AlphaDevelopmentReceiptReader:
                 # artifact neither of them can reseal.
                 if len(candidate.numerical_result_hashes) != len(records):
                     raise AuthoringError("alpha_research.development_receipt_child_set_incomplete")
-                if len(fold_surface_hashes) != len(records):
+                if len(fold_surface_hashes) != len(records) or (
+                    catalog_folds is not None
+                    and any(key not in catalog_folds for key in fold_surface_hashes)
+                ):
                     raise AuthoringError("alpha_research.development_receipt_fold_surface_mismatch")
                 try:
                     # Read with their validation rows: the surface is proved once
                     # here and the rows it proved travel on the graph.
                     read = tuple(
-                        self._store.read_fold_surface(value) for value in fold_surface_hashes
+                        self._store.read_fold_surface(value)
+                        if catalog_folds is None
+                        else catalog_folds[value]
+                        for value in fold_surface_hashes
                     )
                 except (
                     FileNotFoundError,

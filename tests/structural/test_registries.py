@@ -7,7 +7,9 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -46,11 +48,11 @@ def refusal_registry(code, owner):
 
 
 def test_person_questions_require_bilingual_words_reason_scope_and_way_on(tmp_path: Path) -> None:
-    """The catalog refuses a person question with an incomplete language form."""
+    """The catalog refuses a person question, or a choice, with an incomplete language form."""
     path = tmp_path / "config/registries/messages.json"
     path.parent.mkdir(parents=True)
     shutil.copy(ROOT / "config/package-architecture.json", tmp_path / "config")
-    for missing in ("words", "reason", "scope", "way_on"):
+    for missing in ("words", "reason", "scope", "way_on", "choices.NO"):
         entry = {
             name: {"en": "English", "zh-CN": "中文"}
             for name in ("words", "reason", "scope", "way_on")
@@ -59,8 +61,15 @@ def test_person_questions_require_bilingual_words_reason_scope_and_way_on(tmp_pa
             owner="alphalattice.interface.local_application",
             operations=["NETWORK_ACCESS_SET"],
             kind="PERSON_QUESTION",
+            choices={
+                "YES": {"en": "English", "zh-CN": "中文"},
+                "NO": {"en": "English", "zh-CN": "中文"},
+            },
         )
-        entry[missing] = {"en": "English"}
+        if missing.startswith("choices."):
+            entry["choices"]["NO"] = {"en": "English"}  # a choice in one language only
+        else:
+            entry[missing] = {"en": "English"}
         path.write_text(
             json.dumps({"entries": {"network.workspace_access": entry}}), encoding="utf-8"
         )
@@ -218,8 +227,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
 
     def check(expected, *extra, covered=False):
         with monkeypatch.context() as scope:
-            run = Mock(wraps=subprocess.run)
-            scope.setattr(subprocess, "run", run)
+            from devtools.architecture import git_inputs
+
+            run = Mock(wraps=git_inputs.spawn.run)
+            scope.setattr(git_inputs.spawn, "run", run)
             try:
                 code = registry_main(["--root", str(tmp_path), "--staged", *extra])
             except SystemExit as error:
@@ -249,6 +260,8 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     architecture = {
         "packages": [{"package_id": "local_application", "physical_namespace_target": namespace}]
     }
+    if scenario == "growth":
+        architecture["packages"][0]["product_area"] = "interface"
     owners = {
         "nouns": {
             namespace: {
@@ -278,7 +291,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
     request = client + "/portfolio_research.py"
     sources = {
         module: "class CensusNoun: pass\ndef refuse(): raise ValueError('census.unregistered')\n",
-        request: "type PortfolioResearchOperation = Literal['CENSUS_OPERATION']\n",
+        request: (
+            "CensusOperation = Literal['CENSUS_OPERATION']\n"
+            "type PortfolioResearchOperation = Literal[CensusOperation]\n"
+        ),
     }
     fresh_owner = {
         "owner": fresh,
@@ -347,13 +363,23 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         legacy_lazy_imports={import_key: 1} if scenario == "import-debt" else {},
     )
     write(baseline, initial)
+    if scenario == "growth":
+        write("config/registries/test-sizes.json", {"post_merge_only": []})
     commit("Seed independently reviewed " + scenario + " history")
     from devtools.architecture import registries as owner  # one pairing read per check
 
     if scenario == "import-debt":
         retained({import_key: 1}, covered=True)
+        # The live census above captures the Git snapshot once; invalid values vary only
+        # the hygiene declaration consumed by the census.
+        snapshot = owner.census_inputs(tmp_path, baseline)
         for invalid in (True, 0, -1, "1", None):
-            assert "import-hygiene" in retained({import_key: invalid}, 1, "--update")
+            snapshot.blobs[snapshot.stage + hygiene_path] = json.dumps(
+                {**hygiene, "legacy_lazy_imports": {import_key: invalid}}
+            )
+            assert "import-hygiene" in " ".join(
+                owner.census_check(tmp_path, baseline=baseline, update=True, inputs=snapshot)
+            )
         invented = client + "/invented.py::invented::import json"
         assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
         retained({import_key: 1})
@@ -366,6 +392,36 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         retained({})
         check(0, "--baseline", baseline)
     elif scenario == "growth":
+        import check_playpen as gate
+
+        monkeypatch.setattr(gate, "ROOT", tmp_path)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "check_playpen.py",
+                "--staged",
+                "--registry-baseline",
+                baseline,
+                "--registry-update",
+                "--only",
+                "registries",
+            ],
+        )
+        before = (tmp_path / baseline).read_bytes()
+        for description, result in (({}, 1), ({"description": "Cache fixture values."}, 0)):
+            cache_rows["entries"]["new"] = description
+            if not result:
+                cache_rows["entries"]["legacy"] = {"description": "Retain the fixture lookup."}
+            stage(caches, cache_rows)
+            try:
+                actual = gate.main(ensure_environment=lambda: None)
+            except SystemExit as error:
+                actual = error.code
+            assert actual == result
+            assert ((tmp_path / baseline).read_bytes() == before) is bool(result)
+        (tmp_path / baseline).write_bytes(before)
+        cache_rows["entries"]["legacy"] = {}
         cache_rows["entries"]["new"] = {}
         stage(caches, cache_rows)
         assert "description" in check(1)
@@ -373,10 +429,23 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         current["undescribed_registry_entries"].append(caches + "::entries:new")
         stage(baseline, current)
         assert "description" in check(1, "--update")
+        # The preceding census is the Git journey. Sentence variants exercise the same
+        # owner with an in-memory census snapshot, without rebuilding that journey per value.
+        inputs = SimpleNamespace(
+            root=tmp_path,
+            stage=":",
+            blobs={},
+            registries=(caches,),
+            pending=None,
+            parents=(),
+            view=lambda _specs: {},
+        )
         for invalid in (None, "", "   ", "Two sentences. More text.", "Two\nlines."):
             cache_rows["entries"]["new"]["description"] = invalid
-            stage(caches, cache_rows)
-            assert "description" in check(1)
+            errors, _ = owner._description_census(
+                inputs, {caches: cache_rows}, {"undescribed_registry_entries": [debt]}, {}
+            )
+            assert "description" in " ".join(errors)
         cache_rows["entries"]["new"]["description"] = (
             "Cache fixture values until the input changes."
         )
@@ -414,8 +483,10 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         check(0, "--baseline", baseline, "--update")
         saved = (tmp_path / baseline).read_bytes()
         with monkeypatch.context() as scoped:
+            from devtools.architecture import git_inputs
+
             scoped.setattr(
-                subprocess, "run", Mock(side_effect=subprocess.CalledProcessError(128, "git"))
+                git_inputs.spawn, "run", Mock(side_effect=subprocess.CalledProcessError(128, "git"))
             )
             with pytest.raises(subprocess.CalledProcessError):
                 owner.census_check(tmp_path, baseline=str(tmp_path / baseline), update=True)
@@ -509,12 +580,22 @@ def test_staged_registry_census_refuses_new_unregistered_items(
             word_stage(keys=selectors)  # the words case checks this same reviewed state
         git("-c", "core.longpaths=true", "commit", "-qm", "Reviewed word declarations")
     if part == "words":
+        reviewed_refusals = json.dumps(declared_refusals)
+
+        def word_decision(document=declared_refusals, keys=()):
+            # The committed declaration and staged word keys are the decision's data.
+            blobs = {
+                "HEAD:" + refusals: reviewed_refusals,
+                ":" + words: json.dumps({key: {} for key in ["census.legacy_word", *keys]}),
+            }
+            return "\n".join(owner._refusal_word_problems(":", document, blobs))
+
         for key in ("local_client.problem_report_ready", "alternative_evidence.unit_failed"):
             promoted = json.loads(json.dumps(declared_refusals))
             promoted["classification"]["word_selectors"].pop(key)
             promoted["entries"][key] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
-            assert key in word_check(1, promoted, selectors)
-        assert "census.new_word" in word_check(1, keys=["census.new_word"])
+            assert key in word_decision(promoted, selectors)
+        assert "census.new_word" in word_decision(keys=["census.new_word"])
         for target, key in (
             (declared_refusals, "legacy_unregistered_words"),
             (declared_refusals["classification"], "word_selectors"),
@@ -524,9 +605,9 @@ def test_staged_registry_census_refuses_new_unregistered_items(
                 target[key] = [*before, "census.new_word"]
             else:
                 target[key] = {**before, "census.new_word": selectors["census.selector"]}
-            assert "census.new_word" in word_check(1, keys=["census.new_word"])
+            assert "census.new_word" in word_decision(keys=["census.new_word"])
             target.pop(key)
-            assert "declaration" in word_check(1)
+            assert "declaration" in word_decision()
             target[key] = before
         registered = json.loads(json.dumps(declared_refusals))
         registered["entries"]["census.new_word"] = {"owner": fresh, "category": "INVALID_ARGUMENT"}
@@ -538,22 +619,32 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         word_check(0)
     elif part == "entries":
         word_stage()  # the state the words case ends on, staged over the same commit
+        snapshot = owner.census_inputs(tmp_path, baseline)
+
+        def decide(relative, value):
+            write(relative, value)
+            snapshot.blobs[snapshot.stage + relative] = (
+                value if isinstance(value, str) else json.dumps(value)
+            )
+            snapshot.paths.add(relative)
+            if relative.startswith("src/") and relative.endswith(".py"):
+                snapshot.sources.add(relative)
+            return "\n".join(
+                owner.census_check(tmp_path, baseline=baseline, inputs=snapshot, moves={})
+            )
+
         for value in ({}, {"category": "UNDECLARED_CATEGORY"}):
             invalid = json.loads(json.dumps(registrations[refusals]))
             invalid["entries"]["census.unregistered"] = {"owner": fresh, **value}
-            stage(refusals, invalid)
-            assert "refusals:" in check(1)
-        stage(refusals, registrations[refusals])
+            assert "refusals:" in decide(refusals, invalid)
+        decide(refusals, registrations[refusals])
         owners["nouns"].pop("census_registered_alias")
-        stage("config/registries/owners-map.json", owners)
-        assert "census_registered_alias" in check(1)
-        stage(refusals, {"entries": {}})
-        assert "census.unregistered" in check(1)
-        write(refusals, registrations[refusals])
-        stage(legacy, "raise ValueError('census.swap')\n")
-        assert "census.swap" in check(1)
-        stage(legacy, "")
-        assert baseline in check(1)
+        assert "census_registered_alias" in decide("config/registries/owners-map.json", owners)
+        assert "census.unregistered" in decide(refusals, {"entries": {}})
+        decide(refusals, registrations[refusals])
+        assert "census.swap" in decide(legacy, "raise ValueError('census.swap')\n")
+        assert baseline in decide(legacy, "")
+        stage()
         check(0, "--update")
         stage()
         check(0)
@@ -764,7 +855,7 @@ def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path:
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     }
-    assert job_owners == {"src/alphalattice/control/product_host/composition/process_job.py"}
+    assert job_owners == {"src/alphalattice/kernel/shared_kernel/spawn.py"}
 
 
 def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(

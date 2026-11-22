@@ -48,7 +48,8 @@ uv run python -m pytest tests/integration/product_host/test_local_web_service.py
 The optional Git pre-commit hook also scans staged changes with gitleaks. Install
 the official gitleaks 8.30.1 release for your platform and put `gitleaks` on PATH
 before using that hook. The hook verifies the executable against the release;
-the same exact-value allowances are used by the public CI secret scan.
+the same exact-value allowances are used by the public CI secret scan. The hook
+also checks declared dependencies with deptry and refuses dependency findings.
 
 Full and real-evidence gates require the maintainer's private checkout and
 refuse when its inputs are absent.

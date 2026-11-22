@@ -62,6 +62,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
+    market_update,
 )
 from alphalattice.foundation.market_data_ops.storage.rebase import (
     RawBarRebase,
@@ -282,6 +283,7 @@ class CurrentUniverseMaintenance:
             )
         self._admitted = True
 
+    @market_update(lambda runner: runner.store)
     def run(
         self,
         *,
@@ -615,6 +617,7 @@ class CurrentUniverseMaintenance:
                 )
             except ProviderFetchError as exc:
                 if exc.retryable and attempt < self.retry_budget:
+                    exc.backed_off(attempt, self.retry_budget)
                     continue
                 raise
         raise AssertionError("bounded maintenance fetch did not return")

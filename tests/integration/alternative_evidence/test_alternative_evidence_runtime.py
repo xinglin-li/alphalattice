@@ -564,7 +564,17 @@ def test_auto_reads_the_load_on_the_processors_it_may_use(monkeypatch: pytest.Mo
     assert cores == 3 and reason.startswith("auto: 3 of 4")
 
 
-@pytest.mark.parametrize("system", ["darwin", "linux", "win32"])
+@pytest.mark.parametrize(
+    "system",
+    [
+        "darwin",
+        "linux",
+        pytest.param(
+            "win32",
+            marks=pytest.mark.skipif(sys.platform != "win32", reason="Reads Windows memory status"),
+        ),
+    ],
+)
 def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> None:
     """requirement: macOS (no SC_AVPHYS_PAGES, no affinity) and Linux read total and available
     memory, page cache counted free; Windows keeps its own status whatever psutil says."""
@@ -574,8 +584,6 @@ def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> No
     memory = SimpleNamespace(total=16 * gib + 1, available=9 * gib)
     monkeypatch.setattr(process_metrics.psutil, "virtual_memory", lambda: memory)
     if system == "win32":
-        if sys.platform != "win32":
-            pytest.skip("Windows reads its own memory status")
         assert process_metrics.runtime_machine_capacity().total_memory_bytes != memory.total
         return
     pages = {"SC_PAGE_SIZE": 4096, "SC_PHYS_PAGES": memory.total // 4096}

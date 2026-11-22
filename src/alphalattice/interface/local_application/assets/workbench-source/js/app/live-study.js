@@ -255,8 +255,8 @@ const LiveStudy = (() => {
     return reading;
   }
   const foundationName=(hash)=>{const reading=S.foundationLabel?.hash===hash && S.foundationLabel.revision===S.revision ? S.foundationLabel : readFoundationLabel(hash);return reading.ids ? foundationFactorsTitle(reading.ids) : html`<span class="mono">${LiveViews.shortRef(hash)}</span>`;};
-  // how this read was proved -- in full, or the files' identity unchanged since the full check (the owner's words on hover)
-  const verificationWords=(basis)=>basis==='FULL' ? t('in full: every sealed file read') : String(basis).startsWith('FILES_UNCHANGED') ? hint(t('files unchanged since the full check'),String(basis).replace(/^FILES_UNCHANGED\s*/,'')) : codeWords(basis);
+  // how this read was proved -- in full, or sealed since the full check (its time on hover; LAWS.md EV2)
+  const verificationWords=(basis)=>basis==='FULL' ? t('in full: every sealed file read') : String(basis).startsWith('SEALED') ? hint(t('workbench.study_sealed_since_check'),String(basis).replace(/^SEALED\s*/,'')) : codeWords(basis);
   function propertiesSection(lead=[]) {
     const b=S.body,a=b.alpha_source || {};
     const rows=[...lead];

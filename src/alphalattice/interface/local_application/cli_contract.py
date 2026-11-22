@@ -29,9 +29,10 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
-from alphalattice.interface.local_application.labels import titles_in
+from alphalattice.interface.local_application import cli_invocation
+from alphalattice.interface.local_application.cli_invocation import command_prefix
+from alphalattice.interface.local_application.cli_refused import refused as refused
 from alphalattice.interface.local_application.message_catalog import catalog_words
-from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.request_offers import (
     _powershell,
 )
@@ -44,9 +45,24 @@ from alphalattice.interface.local_application.request_offers import (
 from alphalattice.interface.local_application.request_offers import (
     shell as shell,
 )
+from alphalattice.interface.local_application.thin_cli import (
+    AGENT_SESSION_VARIABLES as AGENT_SESSION_VARIABLES,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    CLIENT_HEADER as CLIENT_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    INSTANCE_HEADER as INSTANCE_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    MAXIMUM_REQUEST_BODY_BYTES as MAXIMUM_REQUEST_BODY_BYTES,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    WORKSPACE_HEADER as WORKSPACE_HEADER,
+)
+from alphalattice.interface.local_application.thin_cli import agent_session_values
 from alphalattice.kernel.shared_kernel.project_layout import (
     REFUSAL_WORDS_RESOURCE,
-    command_prefix,
     resolve_playpen_root,
     runtime_json,
 )
@@ -181,11 +197,10 @@ def deprecation_notices(
     }
 
 
-CLIENT_HEADER: Final = "X-Alphalattice-Client"
-WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
-INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
 """The client's wire to the Host: the connection's token, the workspace's key and the Host
 instance, one header each, checked by the Host's boundary (`web.py`)."""
+
+SECTOR_DEVELOPMENT_PUBLISH_PATH: Final = "/api/client/sector-development/publish"
 
 AGENT_VENDOR_HEADER: Final = "X-Alphalattice-Agent-Vendor"
 AGENT_SESSION_HEADER: Final = "X-Alphalattice-Agent-Session"
@@ -196,12 +211,7 @@ declares, never authority and never identity (LAWS ID6, OP13); a session bound t
 not. The Host records them beside what the request did, so a result outlives its session
 and a goal holds what was done for it."""
 
-AGENT_SESSION_VARIABLES: Final = (
-    ("claude-code", "CLAUDE_CODE_SESSION_ID"),
-    ("codex", "CODEX_THREAD_ID"),
-)
-"""Where each vendor names its session in the command environment (read on 2026-09-28; not a
-documented promise, so a missing one only leaves a request without an agent session)."""
+TRACE_VARIABLES: Final = {"TRACEPARENT": "traceparent", "BAGGAGE": "baggage"}  # W3C, as text
 
 AGENT_HOST_WAITS: Final = {
     "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
@@ -229,7 +239,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
     Returns:
         The vendor and the session's id; None for no session, two, or an id not a plain token.
     """
-    found = [(vendor, environ.get(name, "").strip()) for vendor, name in AGENT_SESSION_VARIABLES]
+    found = [(vendor, value.strip()) for vendor, value in agent_session_values(environ).items()]
     sessions = [(vendor, value) for vendor, value in found if value]
     if len(sessions) == 1 and _SESSION_ID.match(sessions[0][1]):
         return sessions[0]
@@ -237,7 +247,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
 
 
 def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None) -> dict[str, str]:
-    """The headers naming the agent session a command runs in, and the goal it names.
+    """The headers naming the agent session a command runs in, the goal it names and its trace.
 
     The session is `agent_session`'s; with none named, `--goal` still attributes the request.
     """
@@ -247,6 +257,9 @@ def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None
         headers = {AGENT_VENDOR_HEADER: session[0], AGENT_SESSION_HEADER: session[1]}
     if goal is not None:
         headers[GOAL_HEADER] = goal
+    for variable, header in TRACE_VARIABLES.items():
+        if (value := environ.get(variable, "")).isascii() and value.isprintable() and value:
+            headers[header] = value
     return headers
 
 
@@ -362,7 +375,7 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     Returns:
         The session's launches so far, this one included; None without an agent session.
     """
-    named = agent_session(os.environ if environment is None else environment)
+    named = agent_session(cli_invocation.environment() if environment is None else environment)
     if named is None:
         return None
 
@@ -389,7 +402,6 @@ _ZH_ENTRY: Final = re.compile(rf"^\s*({_ZH_STRING})\s*:\s*({_ZH_STRING}),?\s*$",
 
 BUNDLE_WORKSPACE: Final = "workspace.json"
 
-MAXIMUM_REQUEST_BODY_BYTES: Final[int] = 128 * 1024
 """The largest request body this service will read, named rather than implied.
 
 Most writes this product takes are one small JSON document -- a spec, a result
@@ -450,27 +462,6 @@ def task_state(body: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value in _PENDING_STATES | _REFUSED_STATES:
             return value
     return None
-
-
-def refused(body: dict[str, Any]) -> bool:
-    """Check whether an owner's answer carries a refusal.
-
-    Args:
-        body: The full owner answer.
-
-    Returns:
-        Whether a failure code, refusal, or refused disposition is present. A `refused`
-        field is a refusal only as a code: the controls answer lists the controls a book
-        refuses under it, and that catalog is an answer.
-    """
-    code = body.get("refused")
-    return bool(
-        body.get("failure_code")
-        or (isinstance(code, str) and code)
-        or any(
-            str(body.get(field, "")).startswith("REFUSED") for field in ("status", "disposition")
-        )
-    )
 
 
 # Each refusal code's words and way on, now from the shared resource cache (OP4).
@@ -546,6 +537,10 @@ def refusal_words(
                 next_action=decision["next_action"],
             )
         elif workspace is not None:
+            from alphalattice.interface.local_application.questions import (  # lazy: consent
+                person_question,
+            )
+
             words["person_questions"] = [person_question("network.workspace_access")]
         if workspace is not None or access.decided_by != "DEFAULT":
             words["network_access"] = decision
@@ -900,7 +895,11 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     ),
     (
         "activity.observation_id_invalid",
-        ClientRefusal("INVALID_INPUT", **refusal_words("activity.observation_id_invalid")),
+        ClientRefusal(
+            "INVALID_INPUT",
+            "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID",
+            "activity.observation_id_invalid",
+        ),
     ),
     (
         "activity.query_selection_conflict",
@@ -1746,6 +1745,10 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "PORTFOLIO_READBACK",
         "REPORT",
         "RESEARCH_HISTORY",
+        "EXPERIENCE_READ",
+        "EXPERIENCE_BRIEF",
+        "EXPERIENCE_CLASS",
+        "EXPERIENCE_RECALL",
         "RESEARCH_INPUTS",
         "RESEARCH_INPUT_READBACK",
         "MODEL_TRAINING_INPUT_READBACK",
@@ -1765,6 +1768,7 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "NETWORK_ACCESS",
         "EVIDENCE_CONSENT",
         "USAGE_READING",
+        "ANALYST_READS",
         "PENDING_DECISIONS",
         "WORKSPACE_PREPARE_READBACK",
         "ACTIVITY_REFUSALS",
@@ -1946,6 +1950,10 @@ def envelope(
     refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
+        from alphalattice.interface.local_application.labels import (  # lazy: installed names
+            titles_in,
+        )
+
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
     return {
@@ -2039,8 +2047,7 @@ def _chinese(detail: str) -> str:
     table = _zh()
     if detail in table:
         return table[detail]
-    # A filled sentence reads through its template's key, `{subject}` and all, as the page
-    # reads it: the door's table words ten sentences around a code's subject.
+    # A filled sentence reads through its template, as the page does.
     for template, words in _zh_templates():
         found = template.fullmatch(detail)
         if found is not None:
@@ -2054,11 +2061,12 @@ def _chinese(detail: str) -> str:
 
 @functools.cache
 def _zh_templates() -> tuple[tuple[re.Pattern[str], str], ...]:
-    """The Chinese table's `{subject}` sentences, each as the pattern of its filled English,
-    every slot a group of its own."""
+    """Registered and legacy subject templates, one group per slot."""
     return tuple(
         (re.compile(re.escape(key).replace(re.escape("{subject}"), "(.+?)")), value)
-        for key, value in _zh().items()
+        for key, value in (
+            dict(_zh()) | {k: v["zh-CN"] for k, v in catalog_words().items()}
+        ).items()
         if "{subject}" in key
     )
 

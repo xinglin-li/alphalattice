@@ -201,11 +201,13 @@ def number_deciding_closure(
         )
 
     found: dict[str, str] = {}
+    visited = set(excluded)
     pending = list(entries)
     while pending:
         module = pending.pop()
-        if module in found or module in excluded:
+        if module in visited:
             continue
+        visited.add(module)
         path = file_of(module)
         if path is None:
             if module in entries:
@@ -217,7 +219,7 @@ def number_deciding_closure(
             parts = name.split(".")
             for end in range(3, len(parts) + 1):  # each package an import passes through
                 prefix = ".".join(parts[:end])
-                if deciding(prefix) and prefix not in found:
+                if prefix not in visited and deciding(prefix):
                     pending.append(prefix)
     return dict(sorted(found.items()))
 

@@ -560,3 +560,42 @@ rules:
           - pattern: $X.join()
           - pattern: $X.result(...)
           - pattern: urllib.request.urlopen(...)
+  - id: fetchall-rows-into-python
+    message: >-
+      fetchall() rows iterated or built into Python objects cost microseconds a row; a bulk read
+      leaves DuckDB as Arrow (to_arrow_table) or NumPy (fetchnumpy), and a lookup of a few
+      values is fetchone() or a SQL aggregate.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - "/src/alphalattice/kernel/data_layer/"
+        - "/src/alphalattice/**/storage/"
+    pattern-either:
+      - pattern: |
+          for $ROW in $Q.fetchall():
+              ...
+      - pattern: "[$E for $ROW in $Q.fetchall()]"
+      - pattern: "[$E for $ROW in $Q.fetchall() if $C]"
+      - pattern: "{$E for $ROW in $Q.fetchall()}"
+      - pattern: "{$E for $ROW in $Q.fetchall() if $C}"
+      - pattern: "{$K: $V for $ROW in $Q.fetchall()}"
+      - pattern: "{$K: $V for $ROW in $Q.fetchall() if $C}"
+      - pattern: "($E for $ROW in $Q.fetchall())"
+      - pattern: "dict($Q.fetchall())"
+      - patterns:
+          - pattern-inside: |
+              $ROWS = $Q.fetchall()
+              ...
+          - pattern-either:
+              - pattern: |
+                  for $ROW in $ROWS:
+                      ...
+              - pattern: "[$E for $ROW in $ROWS]"
+              - pattern: "[$E for $ROW in $ROWS if $C]"
+              - pattern: "{$E for $ROW in $ROWS}"
+              - pattern: "{$E for $ROW in $ROWS if $C}"
+              - pattern: "{$K: $V for $ROW in $ROWS}"
+              - pattern: "{$K: $V for $ROW in $ROWS if $C}"
+              - pattern: "($E for $ROW in $ROWS)"
+              - pattern: "dict($ROWS)"

@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.investment.risk_research.experiments.development_artifacts:risk_covariance_upgrade_family",
+ "mode": "workspace"
+}

@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "3abe92420031522c31f119ae8d7c2572786d565e54e5305e5b9173a9906ac30a",
+   "successor": "5d5068af79aef892b1a24f75c4a79c566d119cdf39ad9ecd8004eaa3af0797cc",
+   "change": "A first use reads the market reference data it has just written",
+   "reason": "A lawful change: reference rows become known at the start of the date their workspace observed them, under one rule for every writer, and the old listing alias is read as an identity, so the decision, feature-source, calibration and scoring implementations move; a store rebuilt under the new rule reads equal apart from those knowledge times, and bars and corporate actions keep their close."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "82b6f34bcd1c4ffdc885ccfe763c156ffbeea3ffedcc6a15f3e82290e2d37d34",
+   "successor": "d79cf43b23583763e0f53952126d93e2fb6599bbacd9aad61e8e3d4140168390",
+   "change": "A first use reads the market reference data it has just written",
+   "reason": "A lawful change: reference rows become known at the start of the date their workspace observed them, under one rule for every writer, and the old listing alias is read as an identity, so the decision, feature-source, calibration and scoring implementations move; a store rebuilt under the new rule reads equal apart from those knowledge times, and bars and corporate actions keep their close."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "554e9713530b73f74d0c61ef3608b4033847057db15521a2fba87d28dbfe2f1f",
+   "successor": "347bd5178cb227c8613ffe3efe02c750ca5b2de75d9f145c17f9dcc7c2eafa75",
+   "change": "A first use reads the market reference data it has just written",
+   "reason": "A lawful change: reference rows become known at the start of the date their workspace observed them, under one rule for every writer, and the old listing alias is read as an identity, so the decision, feature-source, calibration and scoring implementations move; a store rebuilt under the new rule reads equal apart from those knowledge times, and bars and corporate actions keep their close."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "279568f1ad5127e28ea3f311d6a348132c7439565b6b1f00d3f7fe259180cdc4",
+   "successor": "edeb9379f7c7b1695aea72b015460e79a92cd9394f1fa6487b40ba5a9482832c",
+   "change": "A first use reads the market reference data it has just written",
+   "reason": "A lawful change: reference rows become known at the start of the date their workspace observed them, under one rule for every writer, and the old listing alias is read as an identity, so the decision, feature-source, calibration and scoring implementations move; a store rebuilt under the new rule reads equal apart from those knowledge times, and bars and corporate actions keep their close."
+  }
+ ]
+}

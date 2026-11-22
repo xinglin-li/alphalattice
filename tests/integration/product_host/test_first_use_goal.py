@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
+import sqlite3
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,9 +21,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import alphalattice.interface.local_application.portfolio_research as research_requests
-from alphalattice.control.product_host.composition import (
-    portfolio_research_operations as operations,
-)
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     short_source_action,
     source_ways,
@@ -52,7 +51,11 @@ from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     target_sessions,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, run_node
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.shared_kernel import spawn
+from tests._support.history_fixtures import native_first_use
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.researcher_methodology_surface.real_workspace import _source_loader_for
 from tests.workspace_maintenance.local_data_provider import recording_provider
 
@@ -62,6 +65,11 @@ PortfolioResearchRequestDocument = research_requests.PortfolioResearchRequestDoc
 decision_hash = research_requests.decision_hash
 SESSION = "00000000-0000-4000-8000-0000000000f1"
 OTHER_SESSION = "00000000-0000-4000-8000-0000000000f2"
+ELSEWHERE = ("1" * 32, "2" * 16)  # a call the same session made in another workspace
+PLANTED = ("3" * 32, "4" * 16)  # its next call there, after the planted gap
+PLANTED_GAP_US = 5_000_000
+PASSED = ("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331")
+"""A caller's own trace and span, passed as its TRACEPARENT."""
 RELAY = ("--person-said", "Yes, go ahead.", "--asked", "May I widen the SEC budget?")
 INSTALL = "--setup=--acquire-sec --entities AAPL --network-consent --install"
 FIRST_USE = {
@@ -72,9 +80,12 @@ FIRST_USE = {
 }
 
 
-def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[str, Any]]:
-    """One agent session's command, as its CLI sends it."""
-    result = subprocess.run(
+def _cli(
+    live: Any, *arguments: str, session: str = SESSION, traced: bool = False
+) -> tuple[int, dict[str, Any]]:
+    """One agent session's command, as its CLI sends it; `traced`, under the caller's PASSED."""
+    passed = {"TRACEPARENT": f"00-{PASSED[0]}-{PASSED[1]}-01"} if traced else {}
+    result = spawn.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -86,8 +97,9 @@ def _cli(live: Any, *arguments: str, session: str = SESSION) -> tuple[int, dict[
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
-        env={**os.environ, "CLAUDE_CODE_SESSION_ID": session},
+        env={**os.environ, "CLAUDE_CODE_SESSION_ID": session, **passed},
     )
     return result.returncode, json.loads(result.stdout)["data"]
 
@@ -148,11 +160,17 @@ def test_a_reopened_first_use_only_asks_while_the_daily_answer_is_missing(tmp_pa
     assert all("delegation" not in text for text in notices)
 
 
+@pytest.mark.proves("local_application.each_command_is_one_call_span")
 def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them(
     live: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A first use goal lets its agent take the first steps and ends with them."""
+    """A first use goal lets its agent take the first steps and ends with them; each command is
+    one call span, the root of its own trace, live before it ends, over its Host steps, acting
+    for its session and linked to that session's call before it; a call naming none is marked."""
     command = _session_commands(live, monkeypatch, capsys)  # each agent command in process
+    log = history.data_root() / "machine" / "log.sqlite"
+    with closing(sqlite3.connect(log)) as con:
+        (before,) = con.execute("SELECT coalesce(max(seq), 0) FROM event").fetchone()
 
     cursor = _json(live, "/api/activity")["cursor"]
     plan = "a" * 64
@@ -204,7 +222,9 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
     again.write_text(json.dumps({**FIRST_USE, "objective": "Another sentence."}), encoding="utf-8")
     code, second = command("goal", "open", "--file", str(again))
     assert code == 2 and second["failure_code"] == "goal.first_use_already_opened"
-    code, reused = _cli(live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION)
+    code, reused = _cli(
+        live, "goal", "open", "--file", str(declaration), session=OTHER_SESSION, traced=True
+    )
     assert reused["goal_id"] == opened["goal_id"], reused  # the same sentence, another session
     code, ended = command("goal", "abandon", opened["goal_id"], "--reason", "Stopped")
     assert code == 0 and ended["state"] == "ABANDONED"
@@ -248,6 +268,106 @@ def test_a_first_use_goal_lets_its_agent_take_the_first_steps_and_ends_with_them
         for q in (row["payload"] or {}).get("subject", {}).get("person_questions", []):
             assert set(q) == {"code", "catalog_hash", "state", "references"}
             assert q["references"]["operation_ref"] == row["payload"]["operation_ref"]
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    from alphalattice.interface.local_application import cli
+
+    assert cli.main(["--workspace", str(live.workspace), "network", "show"], serve=print) == 0
+    capsys.readouterr()
+    elsewhere = history.workspace_on_log(tmp_path / "elsewhere", "elsewhere")
+    with monkeypatch.context() as scoped:  # the same session, at work in another workspace
+        scoped.setitem(history._open, "workspace", elsewhere)
+        now = time.time_ns() // 1000
+        history.call(
+            (ELSEWHERE[0], ELSEWHERE[1], None),
+            now,
+            {"command": "goal list", "gen_ai.conversation.id": SESSION},
+            caller=("agent", SESSION),
+            conversation=SESSION,
+            ended=(now + 1, 0),
+        )
+        # The gap the split is proved on is the test's own: the session's next call there five
+        # seconds on, so a fast machine's microsecond gaps between real calls decide nothing.
+        resumed = now + 1 + PLANTED_GAP_US
+        history.call(
+            (PLANTED[0], PLANTED[1], None),
+            resumed,
+            {"command": "goal show", "gen_ai.conversation.id": SESSION},
+            caller=("agent", SESSION),
+            conversation=SESSION,
+            ended=(resumed + 1, 0),
+        )
+    goal = history.goal_trace(opened["goal_id"], [SESSION])  # the session that worked for it
+    assert not {ELSEWHERE[1], PLANTED[1]} & {call["span_id"] for call in goal["calls"]}
+    native = native_first_use(SESSION, now + 1, resumed)  # the spike's records over that gap
+    split = history.goal_trace(opened["goal_id"], [SESSION], native, workspace=elsewhere)
+    _assert_each_command_is_one_call(log, before, goal)
+    first = split["agent"][0]
+    assert (first["started_us"], first["ended_us"]) == (now + 1, resumed)
+    shares = {
+        kind: first[f"{kind}_seconds"] / first["seconds"]
+        for kind in ("person", "tool", "model", "unattributed")
+    }
+    planted = {"person": 0.18, "tool": 0.14, "model": 0.46, "unattributed": 0.22}
+    assert shares == pytest.approx(planted, abs=1e-3)
+    assert split["breakdown"]["agent_split"] == "NATIVE_EVENTS"
+    breakdown = goal["breakdown"]  # the Host's own calls
+    # The share is wall time, so its size moves with the machine's load (the bound itself is proved
+    # on a planted gap); the run reads it as the untraced part of its calls, each over the bound
+    # flagged on its own.
+    calls = goal["calls"]
+    walls = [c["ended_us"] - c["started_us"] for c in calls]
+    assert breakdown["untraced_share"] == pytest.approx(
+        breakdown["untraced_seconds"] / breakdown["call_seconds"], abs=1e-5
+    )
+    flagged = [
+        c
+        for c, wall in zip(calls, walls, strict=True)
+        if c["untraced_seconds"] * 1e6 > breakdown["untraced_bound"] * wall
+    ]
+    assert breakdown["untraced_flagged_calls"] == len(flagged)
+    assert all(c.get("untraced_flagged") for c in flagged)
+
+
+def _assert_each_command_is_one_call(log: Path, before: int, goal: Any) -> None:
+    """Each CLI call the log holds after `before`: live then ended, its own trace's root unless its
+    caller passed a TRACEPARENT, over its Host steps, acting for its session, linked to its
+    previous call and in its goal's trace."""
+    here = history.opened_log()[1]  # this Host's workspace; the log is the machine's
+    history.close_history()  # commits the Host's batch
+    with closing(sqlite3.connect(log)) as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM event WHERE seq > ? AND type IN ('cli.call', 'host.request')"
+            " AND workspace_id = ? ORDER BY seq",
+            (before, here),
+        ).fetchall()
+    calls = [row for row in rows if row["type"] == "cli.call"]
+    ended = {row["span_id"]: row for row in calls if row["phase"] == "completed"}
+    assert [row["span_id"] for row in calls if row["phase"] == "started"] == list(ended)
+    passed = [row for row in ended.values() if row["parent_span_id"] is not None]
+    assert [(row["trace_id"], row["parent_span_id"]) for row in passed] == [PASSED]
+    assert json.loads(passed[0]["attrs"])["gen_ai.conversation.id"] == OTHER_SESSION
+    assert len({row["trace_id"] for row in ended.values()}) == len(ended)
+    steps = [row for row in rows if row["type"] == "host.request"]
+    assert steps and all(
+        ended[step["parent_span_id"]]["trace_id"] == step["trace_id"] for step in steps
+    )
+    assert all(step["actor_id"] == ended[step["parent_span_id"]]["actor_id"] for step in steps)
+    attrs = {span: json.loads(row["attrs"]) for span, row in ended.items()}
+    sessions = [attrs[span].get("gen_ai.conversation.id") for span in ended]
+    assert set(sessions) == {SESSION, OTHER_SESSION, None} and sessions[-1] is None
+    mine = [span for span in ended if attrs[span].get("gen_ai.conversation.id") == SESSION]
+    links = [[f"{ended[span]['trace_id']}-{span}"] for span in mine[:-1]]
+    assert [attrs[span].get("links") for span in mine] == [None, *links]
+    assert {ended[span]["actor_id"] for span in mine} == {SESSION}
+    assert attrs[mine[0]]["gen_ai.provider.name"] == "anthropic"
+    traced = {call["span_id"] for call in goal["calls"]}
+    assert set(mine) <= traced and not traced & (set(ended) - set(mine))
+    assert goal["breakdown"]["agent_seconds"] > 0 and goal["agent"][0]["inferred"]
+    assert (ended[list(ended)[-1]]["actor_kind"], attrs[list(ended)[-1]]["unattributed"]) == (
+        "host",
+        True,
+    )
 
 
 def test_the_first_use_deadline_names_the_hosts_local_moment(live, monkeypatch, host_local_clock):
@@ -509,7 +629,6 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
     monkeypatch.setattr(app, "task_facts", {}.get)
     opening = Request(
         operation="GOAL_OPEN",
-        goal_id=UUID(int=7),
         goal_declaration={**FIRST_USE, "target_date": "2026-10-02"},
         change_reason="The person's sentence",
     )
@@ -521,8 +640,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         refused = app.operate(replace(opening, goal_declaration=declaration), caller)
         assert refused["failure_code"] == code and refused["target_date"] == named
         assert refused["nearest_date"] == nearest and app.first_use() is None
-    app.operate(opening, caller)
-    goal = app.store.head(UUID(int=7))
+    goal = app.store.head(UUID(str(app.operate(opening, caller)["goal_id"])))
     assert goal is not None and app.first_use() == goal
     delegated = app.delegation(goal, "NETWORK_ACCESS_SET", caller)
     assert delegated == f"first-use-goal:{goal.goal_id}"
@@ -535,6 +653,7 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
         revised = replace(
             opening,
             operation="GOAL_REVISE",
+            goal_id=goal.goal_id,
             goal_declaration={**FIRST_USE, "objective": "A longer window."},
             change_reason="Widened",
         )
@@ -673,7 +792,10 @@ def test_a_delegated_activation_runs_forward_without_the_history_review(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
     )
     update = {"update": {"run": {"task_id": "u"}}}
-    monkeypatch.setattr(operations, "first_update", lambda _host, _activated, _given: update)
+    monkeypatch.setattr(
+        "alphalattice.control.product_host.composition.research_update_automation.first_update",
+        lambda _host, _activated, _given: update,
+    )
     request = Request(operation="STRATEGY_ACTIVATE", task_id=UUID(int=3))
     scope = REQUEST_PROVENANCE.set(
         RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
@@ -758,8 +880,11 @@ def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_pa
         }
     )
     early.goals.store.attribute = lambda _goal, entry: kept_entries.append(entry)
-    plan = first_update(early, activated, None)["update"]["plan"]  # type: ignore[arg-type]
+    held = first_update(early, activated, None)["update"]  # type: ignore[arg-type]
+    plan = held["plan"]
     ((due, callback),) = holds
+    assert "run" not in held  # nothing runs before the hold's time
+    assert plan["failure_code"] == "research_update.target_not_completed"
     assert due == datetime(2026, 10, 9, 22, tzinfo=UTC) and "18:00 ET" in plan["reading"]
     assert plan["held_until"] == due.isoformat() and kept_entries[0]["held_update"]
     # A reader outside New York also gets their own time, with its date where the day differs.
@@ -819,15 +944,16 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputExecutionStatus
     from alphalattice.foundation.market_data_ops.runtime.remediation import canonical_hash
     from alphalattice.protocols.actor_execution import ActorKind
-    from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT, _source_loader_for
-    from tests.workspace_readiness.unexplained_move import unexplained_move
+    from tests._support import development_universe as universe
+    from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
-    provider, symbols = unexplained_move(listings=3)
+    # The development universe, three of whose members move with no event that explains them.
+    provider = universe.development_provider(moved=universe.MOVED)
     live = LocalPortfolioWebSession.from_workspace(
         tmp_path / "first-use", clock=lambda: OBSERVED_AT
     )
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols)
+    live.data_source_loader = universe.source_loader
 
     def send(document: dict[str, Any], session: str = SESSION) -> tuple[int, dict[str, Any]]:
         path = tmp_path / f"request-{len(list(tmp_path.glob('request-*')))}.json"
@@ -928,7 +1054,7 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             case = issue["case"]
             assert case["case_token"] in material and case["evidence_hash"] in material
             assert all(option["option_id"] in material for option in case["options"])
-        # Three names of 120 move at once, past the rule's 2%: the rule leaves each to the agent.
+        # Three of seventeen names move at once, past the rule's 2%: each is left to the agent.
         assert issues["escalated_by_rule"]["listing_count"] == 3, issues
         escalated = [
             e
@@ -1096,9 +1222,26 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         assert last["continued"]["lifecycle"] == "QUEUED"
         assert last["continued"]["task_id"] == str(stopped.task_id), last
         assert last["next_requests"]["status"]["task_id"] == str(stopped.task_id)
+        from alphalattice.control.product_host.data_preparation import application as preparing
+        from alphalattice.control.product_host.research_authoring import factor_inputs
+
+        answered = []  # a request the Host answers right after each of the publication's writes
+        for owner in (preparing, factor_inputs):
+
+            def written(
+                *args: Any, write: Any = owner.update_research_workspace_manifest, **kw: Any
+            ):
+                result = write(*args, **kw)
+                answered.append(_request(live, "/api/experiments/controls")[2])
+                return result
+
+            monkeypatch.setattr(owner, "update_research_workspace_manifest", written)
         live.dispatcher.drain_for_tests(timeout=900)
         continued = registry.task(stopped.task_id)
+        # The development standard's Factor floor (ten listings) lets the first use run through.
         assert continued.lifecycle.value == "SUCCEEDED", continued.failure_code
+        assert len(answered) == 2  # the experiment input's write, then the data update's
+        assert not [body for body in answered if b"configuration_changed_restart" in body]
         assert [t.task_kind for t in registry.tasks()].count("workspace_preparation") == 1
         applied = panel.feature_input_resolution(decided["case_token"])
         assert applied["receipt"] == resolution["receipt"]
@@ -1133,8 +1276,8 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         DataDecisionRule,
     )
 
-    now, task, goal_id = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8), UUID(int=7)
-    update, first_use = UUID(int=10), UUID(int=11)
+    now, task = datetime(2026, 10, 2, tzinfo=UTC), UUID(int=8)
+    update = UUID(int=10)
     app = GoalApplication(
         GoalStore(tmp_path, "workspace"),
         lambda: now,
@@ -1146,15 +1289,15 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
         }.get,
         workspace=tmp_path,
     )
-    app.operate(
+    opened = app.operate(
         Request(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             goal_declaration={**FIRST_USE, "kind": "RESEARCH"},
             change_reason="Daily use",
         ),
         "EXTERNAL_AUTOMATION",
     )
+    goal_id = UUID(str(opened["goal_id"]))
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("daily"))
     assert app.data_rule(task) is None
     app.store.attribute(goal_id, {"task_id": str(task), "operation": "STATUS"})
@@ -1200,10 +1343,10 @@ def test_workspace_rule_requires_its_open_owned_dated_task_and_enabled_policy(tm
     ]
     # Inside an open first use its delegation comes first, even for a data update's run, and its
     # step names the audit's listings; a record that fails admits nothing.
-    app.operate(
-        Request(operation="GOAL_OPEN", goal_id=first_use, goal_declaration=FIRST_USE),
-        "EXTERNAL_AUTOMATION",
+    opened = app.operate(
+        Request(operation="GOAL_OPEN", goal_declaration=FIRST_USE), "EXTERNAL_AUTOMATION"
     )
+    first_use = UUID(str(opened["goal_id"]))
     app.store.attribute(first_use, {"task_id": str(update), "operation": "DATA_UPDATE_RUN"})
     first = app.data_rule(update)
     attribute = app.store.attribute

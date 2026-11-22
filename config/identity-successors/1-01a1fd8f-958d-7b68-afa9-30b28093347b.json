@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "cc33d7ce0e274c75f4ac9450cabb90c606f2039c5a68eb13f4779ea9d0230aec",
+   "successor": "ce11982a3f56036bb4c52a565c11e6b1751bf3a0e033586bc0e954148a738335",
+   "change": "Update the retrieval index from what changed, not before every search",
+   "reason": "The retrieval index now updates from what changed instead of being rebuilt before each query, so the retrieval binding's code moved while every hit and every score is unchanged on the scale fixtures and on both casebooks."
+  }
+ ]
+}

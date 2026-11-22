@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.kernel.quant.factor_contracts import FactorSpec, finite_factor_value
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 ANNUALIZATION: Final = math.sqrt(252.0)
 REASON_INSUFFICIENT_HISTORY: Final = "insufficient_history"
@@ -88,6 +90,8 @@ def _aligned_returns(
     window: int,
     lag: int,
 ) -> pd.DataFrame | None:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     asset_close = asset.set_index("session_date")["close_total_return_adjusted"].astype(float)
     market_close = market.set_index("session_date")["close_total_return_adjusted"].astype(float)
     if asset_close.index.has_duplicates or market_close.index.has_duplicates:
@@ -161,6 +165,8 @@ def _sample_excess_kurtosis(values: np.ndarray) -> float | None:
 
 
 def _monthly_returns(frame: pd.DataFrame) -> tuple[tuple[tuple[int, int], float], ...]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     closes: dict[tuple[int, int], float] = {}
     for session_date, close in zip(
         frame["session_date"].to_list(),
@@ -217,6 +223,8 @@ def _wilder_rsi(close: pd.Series, window: int) -> pd.Series:
 
 
 def _wilder_average(values: pd.Series, window: int) -> pd.Series:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     source = values.astype(float).to_numpy()
     result = np.full(len(source), np.nan, dtype=np.float64)
     valid_indices = np.flatnonzero(np.isfinite(source))
@@ -255,6 +263,8 @@ def compute_factor(
     market_frame: pd.DataFrame,
 ) -> FormulaResult:
     """Compute one registry-selected scalar without changing either input frame."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     asset = _clean_frame(asset_frame)
     market = _clean_frame(market_frame)
     if len(asset) < spec.minimum_observations:

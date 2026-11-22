@@ -3,57 +3,102 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.decision_advancement import (
-    SCHEMA as UPDATE_SCHEMA,
-)
-from alphalattice.control.product_host.composition.decision_advancement import (
-    STAGES as UPDATE_STAGES,
-)
-from alphalattice.control.product_host.composition.decision_advancement import (
-    DecisionAdvancementApplication,
-)
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    EvidenceReviewApplication,
-)
-from alphalattice.control.product_host.composition.evidence_review_projection import (
-    EvidenceCroProjector,
-)
 from alphalattice.control.product_host.composition.plain_refusals import task_record_refusal
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    PortfolioUpdateApplication,
+from alphalattice.control.product_host.composition.task_kinds import (
+    DECISION_ADVANCEMENT_SCHEMA as UPDATE_SCHEMA,
 )
-from alphalattice.control.product_host.composition.research_experiments import (
-    TASK_KIND as EXPERIMENT_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    ResearchExperimentApplication,
-    review_requests,
+from alphalattice.control.product_host.composition.task_kinds import (
+    RESEARCH_EXPERIMENT_TASK_KIND as EXPERIMENT_TASK_KIND,
 )
 from alphalattice.control.product_host.publication.portfolio_research import (
     PortfolioResearchPipelineStore,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
-    PortfolioUpdatePublication,
-)
 from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
-from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-    PortfolioReviewPublication,
-)
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        DecisionAdvancementApplication,
+    )
+    from alphalattice.control.product_host.composition.portfolio_updates import (
+        PortfolioUpdateApplication,
+    )
+    from alphalattice.control.product_host.composition.research_experiments import (
+        ResearchExperimentApplication,
+    )
+    from alphalattice.evidence.alternative_evidence.publication.artifacts import (
+        AlternativeEvidenceArtifactStore,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
+        PortfolioUpdatePublication,
+    )
+    from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
+        PortfolioReviewPublication,
+    )
+
+
+def _review_metadata(
+    store: AlternativeEvidenceArtifactStore,
+) -> tuple[tuple[PortfolioReviewPublication, ...], tuple[tuple[str, str], ...]]:
+    """Discover verified review metadata, retaining failures beside readable peers.
+
+    Args:
+        store: The Evidence owner's sealed publication store.
+
+    Returns:
+        Strictly loaded publication metadata and named record or location refusals.
+        Full selected readback still verifies every descendant at its owner.
+    """
+    directory = store.root / "cro-review-publications"
+    paths = []
+    refused: list[tuple[str, str]] = []
+    try:
+        for path in directory.iterdir():
+            if path.name.endswith(".json"):
+                paths.append(path)
+    except FileNotFoundError:
+        if not paths:
+            return (), ()
+        refused.append(("cro-review-publications", "research_history.entry_unreadable"))
+    except OSError as error:
+        refused.append(
+            (
+                "cro-review-publications",
+                public_failure(error, "research_history.entry_unreadable"),
+            )
+        )
+    if not paths:
+        return (), tuple(refused)
+
+    # An existing review needs its exact publication model.
+    from ....oversight.chief_risk_officer.decision.portfolio_review import (  # lazy: on use
+        PortfolioReviewPublication,
+    )
+
+    readable: list[PortfolioReviewPublication] = []
+    for path in sorted(paths):
+        try:
+            readable.append(
+                store.load("cro-review-publications", path.stem, PortfolioReviewPublication)
+            )
+        except (ValueError, OSError) as error:
+            refused.append((path.stem, public_failure(error, "research_history.entry_unreadable")))
+    return tuple(readable), tuple(refused)
 
 
 @dataclass(frozen=True)
@@ -83,6 +128,11 @@ class HistoryEntry:
         value: dict[str, Any] = json.loads(json.dumps(asdict(self), default=str))
         value["recorded_at"] = self.recorded_at.isoformat()
         if value["book"] is not None:
+            # Only a history row with a book needs the review selector projection.
+            from .evidence_review_projection import (  # lazy: on use
+                EvidenceCroProjector,
+            )
+
             value["book"] = {k: v for k, v in value["book"].items() if v is not None}
             assert self.book is not None
             value["book_summary"] = EvidenceCroProjector.book_summary(self.book)
@@ -102,6 +152,11 @@ class HistoryEntry:
         if self.task_id is not None:
             offered["task"] = {"operation": "STATUS", "task_id": str(self.task_id)}
         if self.book is not None:
+            # A history row naming a book can offer its review routes.
+            from .research_experiment_plan import (  # lazy: on use
+                review_requests,
+            )
+
             fields = self.book.request_fields()
             offered.update(review_requests(fields))
             if self.review_publication_hash is not None:
@@ -128,10 +183,21 @@ class ResearchHistory:
             Its recorded date/claim and exact Evidence request, or a named metadata refusal.
             Opening the update or Evidence still verifies the whole branch.
         """
+
+        # The final publication exists only at this update owner's stage.
+        from ....investment.portfolio_strategy_lab.application import (  # lazy: stored update
+            decision_updates,
+        )
+        from .decision_advancement import (  # lazy: on use
+            STAGES,
+        )
+
         try:
             plan = owner._plan_of(task, current=False)
-            identities = owner._need(plan, UPDATE_STAGES[5]).products
-            value = owner._load("decision-candidates", identities[-1], PortfolioUpdatePublication)
+            identities = owner._need(plan, STAGES[5]).products
+            value = owner._load(
+                "decision-candidates", identities[-1], decision_updates.PortfolioUpdatePublication
+            )
             entry = ResearchHistory._update_entry(task.task_id, plan.package_id, value)
             positions = value.pending_proposal or value.book
             assert entry.book is not None
@@ -158,11 +224,11 @@ class ResearchHistory:
     def __init__(
         self,
         session: WorkspaceApplicationSession,
-        experiments: ResearchExperimentApplication,
+        experiments: Callable[[], ResearchExperimentApplication],
         pipeline: PortfolioResearchPipelineStore | None,
-        updates: PortfolioUpdateApplication | None,
-        research_updates: DecisionAdvancementApplication | None,
-        review: EvidenceReviewApplication | None,
+        updates: Callable[[], PortfolioUpdateApplication | None],
+        research_updates: Callable[[], DecisionAdvancementApplication | None],
+        review_artifacts: AlternativeEvidenceArtifactStore | None,
     ) -> None:
         """Compose retained task, experiment, pipeline, update and review history readers.
 
@@ -172,10 +238,11 @@ class ResearchHistory:
             pipeline: Optional portfolio pipeline store.
             updates: Optional direct decision update owner.
             research_updates: Optional continuous research update owner.
-            review: Optional historical CRO review reader.
+            review_artifacts: Optional sealed CRO publication store.
         """
         self.session, self.experiments, self.pipeline = session, experiments, pipeline
-        self.updates, self.research_updates, self.review = updates, research_updates, review
+        self.updates, self.research_updates = updates, research_updates
+        self.review_artifacts = review_artifacts
 
     def listing(
         self,
@@ -256,10 +323,11 @@ class ResearchHistory:
             try:
                 produced: list[HistoryEntry] = []
                 if task.task_kind == EXPERIMENT_TASK_KIND:
-                    plan, _actor = self.experiments._of(task)
+                    experiments = self.experiments()
+                    plan, _actor = experiments._of(task)
                     book = None
                     if task.lifecycle is TaskLifecycle.SUCCEEDED and plan.portfolio_source:
-                        evidence = self.experiments._stored_evidence(plan)
+                        evidence = experiments._stored_evidence(plan)
                         book = BookSelector(
                             experiment_task_id=task.task_id,
                             experiment_receipt_hash=evidence.artifact_uris[0]
@@ -302,14 +370,28 @@ class ResearchHistory:
                             failure_code=task.failure_code,
                         )
                     )
-                elif task.input.input_schema_id == UPDATE_SCHEMA and self.research_updates:
-                    owner = self.research_updates
+                elif (
+                    task.input.input_schema_id == UPDATE_SCHEMA
+                    and (owner := self.research_updates()) is not None
+                ):
                     advance_plan = owner._plan_of(task, current=False)
                     if task.lifecycle is TaskLifecycle.SUCCEEDED:
-                        products = owner._need(advance_plan, UPDATE_STAGES[5]).products
+                        # A successful update opens its selected publication model.
+                        from ....investment.portfolio_strategy_lab.application import (  # lazy:row
+                            decision_updates,
+                        )
+                        from . import (  # lazy: on use
+                            decision_advancement,
+                        )
+
+                        products = owner._need(
+                            advance_plan, decision_advancement.STAGES[5]
+                        ).products
                         for identity in products:
                             publication = owner._load(
-                                "decision-candidates", identity, PortfolioUpdatePublication
+                                "decision-candidates",
+                                identity,
+                                decision_updates.PortfolioUpdatePublication,
                             )
                             produced.append(
                                 self._update_entry(
@@ -331,10 +413,13 @@ class ResearchHistory:
                                 failure_code=task.failure_code,
                             )
                         )
-                elif task.input.input_schema_id == "portfolio-decision-update" and self.updates:
-                    update_plan = self.updates._plan_of(task, current=False)
+                elif (
+                    task.input.input_schema_id == "portfolio-decision-update"
+                    and (updates := self.updates()) is not None
+                ):
+                    update_plan = updates._plan_of(task, current=False)
                     single_publication = (
-                        self.updates._publication(update_plan)
+                        updates._publication(update_plan)
                         if task.lifecycle is TaskLifecycle.SUCCEEDED
                         else None
                     )
@@ -399,8 +484,8 @@ class ResearchHistory:
                         "next_requests": {"task": {"operation": "STATUS", "task_id": task_id_text}},
                     }
                 )
-        if self.review is not None:
-            publications, unreadable_reviews = EvidenceCroProjector.review_metadata(self.review)
+        if self.review_artifacts is not None:
+            publications, unreadable_reviews = _review_metadata(self.review_artifacts)
             failures.extend(
                 {
                     "entry_id": f"review:{identity}",

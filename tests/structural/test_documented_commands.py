@@ -463,7 +463,7 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
     held.close()
     # a whole tree's facts survive a small run and a patched scan's other version; only the
     # byte cap rewrites the store
-    shape = lambda value: value == [1]  # noqa: E731
+    shape = lambda value: value == [1]
     stale = structural.FileFacts(tmp_path, "tree", "v0")  # an earlier code version's row
     stale.of("p", b"old", lambda data: [1], shape)
     assert "persistent" in stale.close(returned=True)
@@ -514,7 +514,7 @@ def test_kept_facts_follow_the_bytes_read_and_serve_only_sealed_rows(
 
     def kept(module: types.ModuleType) -> list[str]:
         with structural.kept_facts("covered", owner):
-            compute = lambda data: calls.append(data) or owner.fact(data)  # noqa: E731
+            compute = lambda data: calls.append(data) or owner.fact(data)
             return structural.kept_fact(
                 module, "p", b"x", compute, lambda value: isinstance(value, list)
             )

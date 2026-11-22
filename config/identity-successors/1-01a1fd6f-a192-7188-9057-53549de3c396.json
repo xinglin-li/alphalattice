@@ -1,0 +1,125 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "38bb4262ae0db5ee169a9c28daa9f1d5b8e46914d7fb081d60075acf583e06e3",
+   "successor": "a1de91dedaeef1fe3541e5f47012275e268aec247e710a84f866944da3a4459f",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "3de76d054b565d7554226a93fb5a4bebbd89c9f7a99b4daa3d1babd81faebfe4",
+   "successor": "867e92696d39bbcd48dc2d2ab0a775dac56f4c8c2c15cb668b9008433091d671",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "8e149d782711b5d21ef61cdf919f980d5cf3a75aac2414fed988525703e1cb5d",
+   "successor": "65c7af44e19b15377b0b3c2f36773c6ecccfc46d8c3944841fd469ced1aa01e3",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "0673f56962d2517ab82c42b0bc39f4c51596d92ed9e700eb285f8f5c433fce69",
+   "successor": "ff066e626d0f8559279244e898f4dd2d6a28f712fea0147ed204dfab15bd323f",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "6606fc67c1ed3c0a294350f0f769c5a2148c0f1685018d4fcc62664163471ff3",
+   "successor": "0c6e57d8ffa1ad1bec0336df76f62c4a147d4a994a6ebee905cecc61be9fb00f",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "f37088a95d44c07569e1a5d31b2400ba83eaf6f567716fa28773601a99a628da",
+   "successor": "5bcb86f1da2bd12391ffdc750b6d14889aabe6527117cdb480c0ca5e9eb80053",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "6ca7b06298e4045631013d0f401059ea64d0be94ab697ffb5dfffac5b336c6bb",
+   "successor": "b7890906838600960bc3d699de786f71283049ea57853f9167e6f1d3a65c3757",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "27c5a1100adb4a7aa0e98626485a0a813bd4fbc52d345e84b5b98df9a1ca4129",
+   "successor": "62e2f10ce60719b6d92860bb2dd0aa69f4a9f4d7f4c688ed74a66daf6b2d9114",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "ad8a9ef0c9d4d26dedfdc3286bce74642aa46c312e66b0bcf67507b59e4d47be",
+   "successor": "8afb9f9cccb0f1855b41e6ab0ef515d667294e9055727a23d0b30a8deda0d630",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "6b6b481e16255bb69dbd5fb4534939c5e5d8671089693ed69d998228a2b0b683",
+   "successor": "1f5161c92133ca2c3d958aead06625b33d5866a3822e4311659ec31607d96158",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "23bb2e3064777f6913e6bf7d8173f74d90daa6291a9050657a3879679fb96272",
+   "successor": "89e66003293131fcf2220aa06950b2d8441cdf21cf06f4f4e462a70b302aa126",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "fb9f26cda4cb7b20e4daff3b6116fba8995789a433ee1428eb9652f9aa3ca4b9",
+   "successor": "cf768399eef63aa634ddc00478d4e7dca410169cbae2e2e90dfd78ec3f0ca28d",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "f4513ed63a0d5101b739964971ecbc2b5b7c8208a5a61f0a4729cd1e029bac1d",
+   "successor": "adf027ee0a26a9e27edeaab9bf29947e9e6e357a79b1d61ce93d7d1792b3c6de",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "c056e29b8994c9c7bb8617de7a04e2727c1082a65a2396a58aa9fe4494063b22",
+   "successor": "244a9e9708aa72b93307088a9989564d6c3660e6ec0a76f689184ec04353645c",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "91e1db8a5185c86eabe5957a19f19768f5846f97a4e9757a7675c08a6f2d103c",
+   "successor": "5c357a3e3361817d6475a51d40ab5c6fbf5dc3b8315c3db0778e66e9edb86d73",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "f60315bbcdf7076fcb102fc57fd1f0b267d9fa0d6c283910a30cb776ed479f1a",
+   "successor": "77eba81cfb51ff96d11f15092f85dd7ead7d31e674342826e6003041c77aa617",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "b7eef3e34cccc7a2c85fea517e913b4c4b8cbd10ca3d3878138105af77b1248a",
+   "successor": "67bfb46ffbb1de7aa2a32a052d581c2cd4d0050327911451305b94522a89ce7a",
+   "change": "Preserve sealed Feature and Panel identities after upgrade",
+   "reason": "Restores the Feature and Panel identities a workspace sealed before the last speed change: that change only moved imports inside the factor and preprocessing code, so every factor value is unchanged, and the switch rows map the new code back to the identities sealed before; sealed Panels reopen and the development replay reads back all equal."
+  }
+ ]
+}

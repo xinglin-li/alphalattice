@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from hashlib import sha256
+from os.path import lexists
 from pathlib import Path
 from typing import Any, ClassVar, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -102,6 +103,7 @@ from alphalattice.control.workspace_runtime.content_store import ContentAddresse
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.factor_research.publication.artifacts import (
     FactorResearchArtifactStore,
@@ -119,6 +121,7 @@ from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboardingStatus,
 )
+from alphalattice.foundation.market_data_ops.sources.local_file import LocalFileMarketDataProvider
 from alphalattice.foundation.market_data_ops.sources.manifest import read_market_profile
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
@@ -227,10 +230,10 @@ def read_workspace_inputs(
     with market.database.retain(read_only=True):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
-            with market.database.connect(read_only=True) as connection:
+            with market.market_reads() as (connection, tables):
                 physical = connection.execute(
-                    "SELECT max(d) FROM (SELECT session_date d FROM raw_daily_bar_current "
-                    "UNION ALL SELECT session_date FROM provider_adjusted_close_current)"
+                    f"SELECT max(d) FROM (SELECT session_date d FROM {tables['bars']} "
+                    f"UNION ALL SELECT session_date FROM {tables['adjusted']})"
                 ).fetchone()
             if not physical or physical[0] is None:
                 raise ValueError("workspace_preparation.qualified_local_inputs_required")
@@ -674,6 +677,10 @@ class WorkspaceDataUpdateApplication:
         self.session, self.clock = session, clock
         self._manifests = held(manifest)
         source = read_market_profile(PROFILE).provider if provider is None else ""
+        capture = session.workspace / "market-bars"
+        if provider is None and lexists(capture):
+            folder = resolve_confined(session.workspace, capture.name)
+            provider = LocalFileMarketDataProvider(folder, name=source)
         self.provider = market_provider(session.workspace, source, provider)
         self.source_loader = source_loader
         self.last_plan: WorkspaceDataUpdatePlan | None = None
@@ -2008,7 +2015,14 @@ class WorkspaceDataUpdateApplication:
             if stage == _STAGES[0]
             else WorkspaceDatabase(self.session.workspace).retain(read_only=False)
         )
-        with scope:
+        # one market data update per writing step: its reads take the workspace, its buffer, and
+        # the Host publishes what it wrote once, through the step's retained instance, at its end
+        update = (
+            nullcontext()
+            if stage == _STAGES[0]
+            else MarketDataRepository(self.session.workspace).writing()
+        )
+        with scope, update:
             rule_task = decision_task or (bound_to[0].task_id if bound_to else None)
             diagnose = (
                 self.data_rule(rule_task)

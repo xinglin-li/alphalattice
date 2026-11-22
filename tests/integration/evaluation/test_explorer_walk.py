@@ -135,6 +135,12 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(
         else:
             assert result["passed"] and not added and message is None
 
+    saved = []
+    capture(saved, host, {"detail": "Restart the Host"}, log)
+    assert render(
+        {"reasons": [{"reason": "forbidden act restart_host offered at task show"}]}, saved
+    )
+
 
 @pytest.mark.parametrize(
     "ending",
@@ -179,7 +185,9 @@ def test_a_positive_walk_keeps_endings_and_cancelled_replans_optional(tmp_path, 
         assert trace.events[-1].attributes["alphalattice.path"].endswith(" > " + key)
 
 
-def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
+def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(
+    tmp_path: Path, monkeypatch
+) -> None:
     """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
     wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}
     answers = [{"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}]
@@ -187,6 +195,21 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: 
     route = Scenario("w", "w", "2026-10-15T16:00:00+00:00", (), (("SUCCEEDED",),), "agent", ())
     grade, trace = Explorer(lambda _: answers.pop(), lambda _: {}, route, tmp_path, 1).explore([[]])
     assert grade["passed"] and len(trace.events) == 3, grade
+    from types import SimpleNamespace
+
+    import devtools.evaluation.explorer as owner
+
+    ticks = iter((0.0, 0.0, 3601.0, 3601.0))
+    monkeypatch.setattr(owner, "time", SimpleNamespace(perf_counter=lambda: next(ticks)))
+    calls = []
+
+    def stalled(argv):
+        calls.append(argv)
+        assert len(calls) < 3, "walk exceeded its wall deadline"
+        return {"outcome": "PENDING", "data": wait}
+
+    with pytest.raises(ValueError, match=r"explorer\.wall_deadline"):
+        Explorer(stalled, lambda _: {}, route, tmp_path, 1).explore([[]])
 
 
 @pytest.mark.parametrize(
@@ -468,13 +491,17 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         assert len(sent) <= 3
     if recovery == "filled":
         sampled, preceding = [], [*explorer.mutation_checks, {"mutation": "earlier"}]
-        for number, checks in enumerate(([], preceding, preceding[::-1])):
+        for number, checks in enumerate(([], preceding, preceding[::-1], *[[]] * 9)):
             explorer.mutation_checks = checks
             before = len(sent)
-            state = f"committee/00000000-0000-0000-0000-{number:012d}"
+            # A per-build id and content ref, as a served state names them.
+            state = f"committee/00000000-0000-0000-0000-{number:012d}/{number + 7:064x}"
             explorer.inject(request, state)
             sampled.append((explorer.mutation_checks[-1]["mutation"], sent[before]))
-        assert sampled[0] == sampled[1] == sampled[2] and sampled[0][1] != request
+        # One choice whatever the ids, refs and earlier checks; it probes a mistake, in the
+        # flag or in the document, whichever the state's key picks.
+        assert all(choice == sampled[0] for choice in sampled)
+        assert sampled[0][0] == "misspell-flag" or sampled[0][1] != request
 
 
 @pytest.mark.parametrize(

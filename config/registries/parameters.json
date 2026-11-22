@@ -1,5 +1,70 @@
 {
 "entries": {
+"src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::alpha_array_files::64": {
+"class": "METHOD",
+"count": 1,
+"description": "An Alpha part filename contains the 64 hexadecimal characters of its unchanged SHA-256 identity."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::complete_onboarding_audit::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "The staged raw-bar row ends with ingestion_id and original observed_at, after the RawDailyBar fields."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::ingestion_id::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "Read the staged payload's preserved ingestion_id immediately before its observed_at metadata."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_cutoff::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the UTC timestamp from seconds to the microsecond cutoff used by the world reader."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::epoch::1970": {
+"class": "METHOD",
+"count": 3,
+"description": "The UTC Unix epoch for exact microsecond conversion of universe event clocks."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::selected_at::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The UTC Unix epoch for exact conversion of the selection cutoff to a decision time."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::cutoff::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The Unix epoch's fixed UTC year; cutoff converts the reader's instant to the log's integer microseconds without floating-point rounding."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::binding::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A research-input binding's folder name is its binding hash, 64 lowercase hex digits, so only a database in such a folder's source is a copy read through its selection."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::LATEST::253402300799999999": {
+"class": "LIMIT",
+"count": 1,
+"description": "A read's own moment as a cutoff: the end of year 9999, past every knowledge time, so a read without a selection's cutoff sees all that is known."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::ADMISSION_ROWS::21": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most bars one admission stages, in whole years, bounding its Arrow batch."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::days::10": {
+"class": "METHOD",
+"count": 1,
+"description": "How far past the last valid date sessions are read, so a date after the last session finds its next one."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::hours::6": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's length in hours, with its minutes; a shorter session is a half day."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::minutes::30": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's minutes past its hours; a shorter session is a half day."
+},
 "src/alphalattice/control/data_platform/delegation.py::DataDecisionRule.max_cases::10": {
 "class": "METHOD",
 "count": 1
@@ -1214,7 +1279,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::26": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::32": {
 "class": "LIMIT",
@@ -1464,19 +1529,12 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANKER_DEPTH_PER_DOCUMENT::12": {
+"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANK_SHORTLIST_DEPTH::3": {
 "class": "METHOD",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::2": {
-"class": "LIMIT",
-"count": 1
+"count": 1,
+"description": "Cap each Evidence search at three fused candidates for cross-encoder scoring."
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::20": {
-"class": "LIMIT",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::24": {
 "class": "LIMIT",
 "count": 1
 },
@@ -1922,7 +1980,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::200": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::240": {
 "class": "LIMIT",
@@ -2056,6 +2114,16 @@
 "class": "LIMIT",
 "count": 2
 },
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_SESSION_THREADS::16": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most threads one preparation unit is planned (S2 measured 1 to 16, identical)."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::safe_intra_op_threads::4": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The desktop-safe threads of one unit when no CPU budget says otherwise."
+},
 "src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_CPU_BUDGET::1024": {
 "class": "LIMIT",
 "count": 1
@@ -2091,10 +2159,6 @@
 "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::__post_init__::64": {
 "class": "METHOD",
 "count": 2
-},
-"src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_after_the_first_unit::0.5": {
-"class": "METHOD",
-"count": 1
 },
 "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_parameter::64": {
 "class": "METHOD",
@@ -2740,9 +2804,10 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_path::64": {
+"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_name::64": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "A ledger pointer is named by its 64-character lowercase hexadecimal SHA-256 identity."
 },
 "src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::provisional::64": {
 "class": "METHOD",
@@ -4374,7 +4439,7 @@
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::days::45": {
 "class": "METHOD",
-"count": 1
+"count": 2
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::hydration_chunk_size::25": {
 "class": "LIMIT",
@@ -11107,6 +11172,91 @@
 "src/alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.panel_floor::1e-12": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_POLL_SECONDS::0.5": {
+"class": "EXECUTION",
+"count": 1,
+"description": "How often a later unit reads whether its book's first unit is prepared."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_WAIT_SECONDS::1800.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest a later unit waits for its book's first unit before it takes its share of the cores."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_CAP_SECONDS::30.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest wait between two attempts of a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_SECONDS::2.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first wait before retrying a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::backed_off::2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The factor by which each later wait before a rate-limited retry grows."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SESSIONS_PER_YEAR_AT_LEAST::245": {
+"class": "METHOD",
+"count": 1,
+"description": "A calendar year's US sessions counted low, so Factor folds sized from a standard's history years fit every window of that span."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's Factor listing floor, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::10": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's history years, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::minimum_formal_periods::3": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest formal periods a scaled Factor redundancy pair needs; the walk's scale shrinks the default twenty no further."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::train_sessions::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest training sessions a scaled Factor walk-forward fold keeps."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::bootstrap_from_candidate_manifest_document::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest listings a candidate set's Factor floor may name: a cross-section needs a pair."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::minimum_factor_listings::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped research standard's Factor listing floor, read by the Factor experiment's evidence and redundancy policies."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::_cutoff_us::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the evidence cutoff from seconds to the microseconds the Host's retrieval store reads."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::common::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A query stem most of a chunk's lines state (more than half of them) locates no line, so it does not count."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::stems::3": {
+"class": "METHOD",
+"count": 1,
+"description": "A query word counts from four letters, so short function words locate nothing."
+},
+"src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::300": {
+"class": "LIMIT",
+"count": 1,
+"description": "A retrieval supersession record's reason is one sentence of at most 300 characters."
+},
+"src/alphalattice/evidence/alternative_evidence/documents/library.py::known_us::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert a document's availability time from seconds to the store's microsecond known time."
 }
 },
 "note": "Six registries name what the product is made of. Three are already held where they live: the packages (``config/package-architecture.json``, the structural guards), the operations (``operations.py``, ``operation_registry``) and the identity roles (``config/identity-roles.json``, the source-identity guards). The other three are held here, each against a baseline in ``config/registries/`` that may only shrink:",

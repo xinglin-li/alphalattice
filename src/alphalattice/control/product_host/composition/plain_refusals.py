@@ -28,9 +28,9 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.interface.local_application.failure_codes import located_failure
 from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
-from alphalattice.interface.local_application.questions import person_question
+from alphalattice.interface.local_application.questions import network_question, person_question
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ def invalid_plan_document(
                 ),
             }
             try:
-                PortfolioResearchRequestDocument.model_validate(controls)
+                validate_request_document(controls)
             except ValidationError:
                 pass
             else:
@@ -425,6 +425,17 @@ _READBACK_WAY = frozenset(
 """Refusals whose way on is the data update's readback, which names the binding they refuse."""
 
 
+def network_stop(code: str, workspace: Path | None, now: datetime | None) -> dict[str, Any]:
+    """A network refusal's words, the network read as its way on, and the person's coded
+    question when their yes can open it."""
+    asked = network_question(workspace, now)
+    return {
+        **refusal_words(code, workspace=workspace, now=now),
+        "next_requests": {"network": {"operation": "NETWORK_ACCESS"}},
+        **({"person_questions": asked} if asked else {}),
+    }
+
+
 def explain(
     code: str,
     *,
@@ -454,6 +465,11 @@ def explain(
     """
     task = {"task_id": task_id} if task_id else {}
     base, _sep, subject = code.partition(":")
+    if base.startswith(("evidence_review.", "model_store.")):
+        from .retrieval_pack_setup import setup_guidance  # lazy: retrieval refusal
+
+        if guidance := setup_guidance(code):
+            return {**refusal_words(code, workspace=workspace, now=now), **guidance}
     if base in _READBACK_WAY:
         return {
             **refusal_words(code, workspace=workspace, now=now),
@@ -487,10 +503,7 @@ def explain(
             needs = "; ".join(NETWORK_WORK_WORDS[name].format(session=target) for name in names)
             code = f"{base}:{needs}"  # worded below, with every network refusal
     if base in NETWORK_ACCESS_REFUSALS:
-        return {
-            **refusal_words(code, workspace=workspace, now=now),
-            "next_requests": {"network": {"operation": "NETWORK_ACCESS"}},
-        }
+        return network_stop(code, workspace, now)
     if base in _PROVIDER_WAIT:
         return {
             "detail": (

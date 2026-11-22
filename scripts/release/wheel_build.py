@@ -5,18 +5,22 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import subprocess
+import sys
+import tomllib
 from pathlib import Path
 
 from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+
 MANIFEST = ROOT / "config/release/runtime-resources.json"
 
 
 def runtime_requirements(root: Path = ROOT) -> str:
     """Export the accepted runtime lock for installing either command leg."""
-    result = subprocess.run(
+    result = spawn.run(
         [
             "uv",
             "export",
@@ -35,6 +39,12 @@ def runtime_requirements(root: Path = ROOT) -> str:
         check=True,
     )
     return result.stdout
+
+
+def runtime_overrides(root: Path = ROOT) -> str:
+    """Carry the project's resolver overrides into the tool install."""
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    return "".join(override + "\n" for override in project["tool"]["uv"]["override-dependencies"])
 
 
 def resource_files(root: Path = ROOT) -> tuple[str, ...]:
@@ -81,4 +91,7 @@ class BuildPy(build_py):
         )
         (target / "config/release/runtime-requirements.txt").write_text(
             runtime_requirements(), encoding="utf-8", newline="\n"
+        )
+        (target / "config/release/runtime-overrides.txt").write_text(
+            runtime_overrides(), encoding="utf-8", newline="\n"
         )

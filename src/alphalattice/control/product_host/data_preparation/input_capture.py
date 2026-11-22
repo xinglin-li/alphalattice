@@ -70,7 +70,7 @@ PLAN_FIELDS = ("data_update", "experiment_inputs")
 """The manifest fields a capture plan reads and writes: the data it captures and the
 inputs it adds a version to. A publication of other fields (a model's training inputs,
 a strategy installation) leaves the plan applicable."""
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

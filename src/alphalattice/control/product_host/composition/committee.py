@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
 from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
@@ -86,10 +86,8 @@ from alphalattice.interface.local_application.cli_contract import (
     schema_request,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.interface.local_application.labels import label as installed_label
 from alphalattice.interface.local_application.native_bridge import SUBJECT_VALUE_CHARACTERS
 from alphalattice.interface.local_application.portfolio_research import (
-    CommitteeMessage,
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.questions import person_question
@@ -98,6 +96,12 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
+
+if TYPE_CHECKING:
+    from alphalattice.interface.local_application.portfolio_request_fields.goals import (
+        CommitteeMessage,
+    )
+
 
 ROLES: Final = ("PM", "ALPHA", "RISK", "CRO")
 CARDS: Final = {r: f"alphalattice_{r.lower()}" for r in ROLES[1:]} | {"PM": "research_lead"}
@@ -643,6 +647,10 @@ def open_floor(
     The floor is built before the store keeps its seed, so a floor that cannot be built leaves
     nothing behind.
     """
+    from alphalattice.interface.local_application.labels import (  # lazy: installed names
+        label as installed_label,
+    )
+
     task, held = str(readback["task_id"]), holdings(readback)
     label = installed_label(str(readback.get("strategy_package_id") or ""))
     proposal = readback["publication"].get("pending_proposal") or {}

@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 from io import BytesIO
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
@@ -31,6 +29,7 @@ from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..experiments.contracts import AlphaCandidateRole, AlphaCandidateStatus
@@ -118,10 +117,10 @@ class _Earlier:
 
 
 def _close(
-    path: Path, payload: Mapping[str, npt.NDArray[Any]], agreement: tuple[float, float]
+    content: bytes, payload: Mapping[str, npt.NDArray[Any]], agreement: tuple[float, float]
 ) -> bool:
     """Whether a stored block holds these columns, its floats within the rule's agreement."""
-    with np.load(path, allow_pickle=False) as stored:
+    with np.load(BytesIO(content), allow_pickle=False) as stored:
         if set(stored.files) != set(payload):
             return False
         for name, values in payload.items():
@@ -368,17 +367,17 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         values differ from it only by rounding, else these values' own."""
         packed = _packed_block(payload)
         category = "current/frozen-observation-arrays"
-        if (
-            earlier is not None
-            and not self._path(category, sha256(packed).hexdigest(), "bin").exists()
-        ):
+        digest = sha256(packed).hexdigest()
+        if earlier is not None and history.alpha_part_body_digest(digest, category) is None:
             block = earlier.block(index)
-            if block is not None and _close(
-                self._path(category, block, "bin"), payload, earlier.source.rebase_agreement
-            ):
-                earlier.kept.append(index)
-                return block
-        return self._publish_packed_bytes(category=category, payload=packed)
+            if block is not None:
+                content = self._frozen_payload("frozen-observation-arrays", block)
+                if _close(content, payload, earlier.source.rebase_agreement):
+                    earlier.kept.append(index)
+                    return self._publish_packed_bytes(
+                        category=category, payload=content, durable=False
+                    )
+        return self._publish_packed_bytes(category=category, payload=packed, durable=False)
 
     def load_frozen_observation_snapshot(self, content_hash: str) -> FrozenScoreObservationSnapshot:
         """Load and validate a frozen observation snapshot by its declared identity.
@@ -445,7 +444,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             (
                 self._path("current/frozen-observation-snapshots", content_hash, "json"),
                 *(
-                    self._path("current/frozen-observation-arrays", block, "bin")
+                    self._packed_source_path("frozen-observation-arrays", block)
                     for block in snapshot.array_files
                 ),
             ),
@@ -674,7 +673,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             ("alpha-current-feature-surfaces", str(self.root), content_hash),
             (
                 self._path("current/frozen-feature-preparations", content_hash, "json"),
-                self._path("current/frozen-feature-arrays", result.array_content_hash, "bin"),
+                self._packed_source_path("frozen-feature-arrays", result.array_content_hash),
             ),
             build_surfaces,
             nbytes=lambda values: sum(surface.features.nbytes for surface in values),
@@ -865,18 +864,14 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             **provisional.model_dump(mode="python", exclude={"metadata_hash"}),
             metadata_hash=metadata_hash,
         )
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        target.parent.mkdir(parents=True, exist_ok=True)
         metadata = {
             b"alphalattice.snapshot_kind": b"AlphaCurrentCandidateScoreChunk",
             b"alphalattice.content_hash": content_hash.encode(),
             b"alphalattice.metadata_hash": metadata_hash.encode(),
         }
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-        if not target.exists():
-            pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, target)
-        staged.unlink(missing_ok=True)
+        output = pa.BufferOutputStream()
+        pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
+        history.keep_alpha_part(content_hash, "current/" + category, output.getvalue().to_pybytes())
         self.resolve_current_candidate_score_chunk(reference)
         return reference
 
@@ -901,8 +896,12 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri(f"current/{category}", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("Alpha current candidate score URI changed")
-        target = self._path(f"current/{category}", value.content_hash, "parquet")
-        parquet = pq.ParquetFile(target)
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/" + category, "Alpha current candidate score"
+            )
+        )
+        parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}
         if (
             metadata.get(b"alphalattice.snapshot_kind") != b"AlphaCurrentCandidateScoreChunk"
@@ -912,7 +911,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             raise AlphaCurrentArtifactReadbackError(
                 "Alpha current candidate score metadata changed"
             )
-        table = pq.read_table(target).replace_schema_metadata(None)
+        table = parquet.read().replace_schema_metadata(None)
         identity = {
             "request_hash": value.request_hash,
             "foundation_hash": value.foundation_hash,
@@ -991,15 +990,19 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri("current/current-score-chunks", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("current Alpha score URI is invalid")
-        target = self._path("current/current-score-chunks", value.content_hash, "parquet")
-        parquet = pq.ParquetFile(target)
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/current-score-chunks", "current Alpha score"
+            )
+        )
+        parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}
         if (
             metadata.get(b"alphalattice.content_hash") != value.content_hash.encode()
             or metadata.get(b"alphalattice.metadata_hash") != value.metadata_hash.encode()
         ):
             raise AlphaCurrentArtifactReadbackError("current Alpha score metadata changed")
-        table = pq.read_table(target).replace_schema_metadata(None)
+        table = parquet.read().replace_schema_metadata(None)
         if (
             tuple(table.schema.names) != self._CURRENT_SCORE_COLUMNS
             or table.num_rows != value.row_count
@@ -1190,11 +1193,43 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 parent/child/decision/score lineage fails readback.
         """
         marker = self.load_marker(marker_hash)
-        fold_surfaces = tuple(
-            self.load_fold_surface(value) for value in marker.development_fold_surface_hashes
-        )
         candidate_reports = tuple(
             self.load_candidate_report(value) for value in marker.candidate_report_hashes
+        )
+        catalog_folds = catalog_numerical = None
+        named_evidence = {}
+        catalog_scores: dict[str, pa.Table] = {}
+        if self.catalog_development_reads():
+            named_evidence = {
+                key: self.load_candidate_fold_evidence(key, verify_score=False)
+                for key in dict.fromkeys(
+                    key for report in candidate_reports for key in report.fold_evidence_hashes
+                )
+            }
+            catalog_folds, catalog_numerical, catalog_scores = self.read_development_folds(
+                marker.development_fold_surface_hashes,
+                tuple(
+                    fold.numerical_result_hash
+                    for fold in named_evidence.values()
+                    if fold.numerical_result_hash is not None
+                ),
+                legacy_scores=tuple(
+                    fold.score_chunk
+                    for fold in named_evidence.values()
+                    if isinstance(fold, LegacyAlphaCandidateFoldEvidence)
+                    and fold.score_chunk is not None
+                ),
+            )
+            catalog_scores.update(
+                {
+                    result.score_chunk.content_hash: scores
+                    for result, scores in catalog_numerical.values()
+                    if result.score_chunk is not None and scores is not None
+                }
+            )
+        fold_surfaces = tuple(
+            self.load_fold_surface(value) if catalog_folds is None else catalog_folds[value][0]
+            for value in marker.development_fold_surface_hashes
         )
         candidate_inference_evidence = tuple(
             self.load_candidate_inference_evidence(value)
@@ -1317,7 +1352,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 "current Alpha candidate report binding changed",
             )
             folds = tuple(
-                self.load_candidate_fold_evidence(value) for value in report.fold_evidence_hashes
+                self.load_candidate_fold_evidence(value)
+                if catalog_folds is None
+                else named_evidence[value]
+                for value in report.fold_evidence_hashes
             )
             score_hashes: list[str] = []
             estimator_hashes: list[str] = []
@@ -1339,8 +1377,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     "current Alpha fold evidence binding changed",
                 )
                 if isinstance(fold, AlphaCandidateFoldEvidence):
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1357,8 +1397,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                         AlphaCandidateNumericalFoldResult | LegacyAlphaCandidateFoldEvidence
                     ) = numerical
                 elif fold.numerical_result_hash is not None:
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1405,7 +1447,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha numerical score/validation surface rows changed",
                         )
-                        score_table = self.resolve_numerical_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_numerical_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     else:
                         self._require_binding(
                             authority.score_chunk.request_hash == marker.request_hash
@@ -1421,7 +1467,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha score/validation surface rows changed",
                         )
-                        score_table = self.resolve_candidate_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_candidate_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     scored_row_count += sum(
                         str(value) == "SCORED" for value in score_table["availability"].to_pylist()
                     )

@@ -2,16 +2,7 @@
   "schema": "alphalattice.test-sizes.v1",
   "owner": "devtools.testing",
   "selection_readers": {
-    "tests/integration/knowledge/test_retrieval_recipes.py::test_the_retained_recipe_keeps_its_hashes": {
-      "inputs": [
-        "uv.lock",
-        "pyproject.toml",
-        "config/requirements-retrieval.lock",
-        "config/requirements-gpu.lock",
-        "src/alphalattice/kernel/knowledge/hybrid_contracts.py"
-      ]
-    },
-    "tests/integration/workspace_runtime/test_verified_source_leases.py::test_a_change_to_the_file_ends_its_fact": {
+    "tests/integration/workspace_runtime/test_content_store.py::test_a_change_to_the_file_ends_its_fact": {
       "inputs": [
         "src/alphalattice/control/workspace_runtime/verified_facts.py"
       ]
@@ -80,6 +71,189 @@
       "facet": "class_declarations",
       "within": [
         "src/alphalattice/*.py"
+      ]
+    },
+    "tests/structural/test_book_declarations.py::test_no_owner_exports_a_declaration_as_a_whole_request": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "safe_dump"
+      ]
+    },
+    "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair": {
+      "inputs": [
+        "src/devtools/architecture/moved_names.py",
+        "src/alphalattice/kernel/shared_kernel/project_layout.py"
+      ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_every_fit_plan_call_site_states_its_protocol": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "build_alpha_model_fit_plan"
+      ]
+    },
+    "tests/structural/test_owner_source_shape.py::test_only_the_owner_writes_the_manifest": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "publish_research_workspace_manifest"
+      ]
+    },
+    "tests/structural/test_pipeline_stage.py::test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies": {
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/pipeline/definition.py",
+        "src/devtools/pipeline/facets.py",
+        "src/devtools/pipeline/receipt.py",
+        "src/devtools/pipeline/stage.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "config/registries/test-sizes.json",
+        "config/pipeline.toml"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_an_answer_and_its_run_read_their_own_plan_never_the_owners_last": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "last_plan"
+      ]
+    },
+    "tests/structural/test_plan_retention.py::test_no_owner_keeps_a_preview_in_one_slot": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "preview"
+      ]
+    },
+    "tests/structural/test_product_scripts_answer_their_writes.py::test_every_product_script_that_writes_a_location_it_chooses_answers_in_words": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py",
+        "scripts/run_alphalattice.py"
+      ],
+      "words": [
+        "scripts/",
+        "alphalattice.control.product_host.composition.evidence_authority_setup",
+        "alphalattice.control.product_host.composition.retrieval_pack_setup",
+        "alphalattice.control.product_host.composition.web_launcher",
+        "alphalattice.interface.local_application.retrieval_environment"
+      ],
+      "inputs": [
+        "AGENTS.md",
+        "README.md",
+        "docs/public-source/*.md",
+        ".agents/skills/*",
+        "tests/integration/local_application/test_product_script_refusals.py",
+        "scripts/build_local_web_ui.py",
+        "scripts/create_gpu_environment.py",
+        "scripts/create_retrieval_environment.py",
+        "scripts/install_retrieval_pack.py",
+        "scripts/materialize_claude_host.py",
+        "scripts/materialize_evidence_cro_authority.py",
+        "scripts/native_research.py",
+        "scripts/run_alphalattice.py",
+        "scripts/run_local_portfolio_web.py",
+        "src/alphalattice/interface/local_application/native_setup.py",
+        "src/alphalattice/interface/local_application/retrieval_environment.py",
+        "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py",
+        "src/alphalattice/control/product_host/composition/evidence_authority_setup.py",
+        "src/alphalattice/investment/alpha_research/verification/impact.py"
+      ]
+    },
+    "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "LocalResearchClientError",
+        "failure_code"
+      ],
+      "inputs": [
+        "config/registries/refusals.json",
+        "src/alphalattice/interface/local_application/cli_contract.py",
+        "src/alphalattice/interface/local_application/refusal_words.json",
+        "src/alphalattice/control/guanyin/data/workspace_maintenance.py",
+        "src/alphalattice/control/product_host/composition/plain_refusals.py",
+        "tests/structural/refusal_support.py"
+      ]
+    },
+    "tests/structural/test_registries.py::test_a_new_host_module_is_refused_unless_registered_as_composition": {
+      "facet": "mentions",
+      "within": [
+        "src/*.py"
+      ],
+      "words": [
+        "CreateJobObjectW"
+      ],
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/architecture/nouns.py",
+        "src/devtools/architecture/registries.py",
+        "src/devtools/architecture/structural.py",
+        "src/devtools/architecture/where.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "config/registries/host-modules.json"
+      ]
+    },
+    "tests/structural/test_registries.py::test_staged_registry_census_refuses_new_unregistered_items": {
+      "inputs": [
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/architecture/nouns.py",
+        "src/devtools/architecture/registries.py",
+        "src/devtools/architecture/structural.py",
+        "src/devtools/architecture/where.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py"
+      ]
+    },
+    "tests/structural/test_scoped_resumes.py::test_every_owner_resume_names_the_task_its_request_chose": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "resume"
+      ]
+    },
+    "tests/structural/test_task_child_start.py::test_every_process_pool_owner_is_in_the_child_start_class": {
+      "facet": "mentions",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "words": [
+        "ProcessPoolExecutor"
+      ]
+    },
+    "tests/structural/test_test_shape.py::test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps": {
+      "inputs": [
+        "scripts/check_test_shape.py",
+        "src/devtools/architecture/git_inputs.py",
+        "src/devtools/testing/__init__.py",
+        "src/devtools/testing/audit.py",
+        "src/devtools/testing/contracts.py",
+        "src/devtools/testing/layout.py",
+        "src/devtools/testing/os_marks.py",
+        "src/devtools/testing/requirements.py",
+        "src/devtools/testing/sizes.py",
+        "scripts/antipattern_rules.yml",
+        "scripts/test_antipattern_rules.yml"
       ]
     }
   },
@@ -335,11 +509,6 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/alternative_evidence/test_evidence_index_storage.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
       "pattern": "tests/integration/alternative_evidence/test_evidence_need_compatibility.py*",
       "owner": "tests.alternative_evidence_desk",
       "size": "medium"
@@ -361,21 +530,6 @@
     },
     {
       "pattern": "tests/integration/alternative_evidence/test_finding_evidence_package.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_grounded_recall_and_issuer_batches.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_hybrid_generation_reuse.py*",
-      "owner": "tests.alternative_evidence_desk",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_hybrid_index_lifecycle.py*",
       "owner": "tests.alternative_evidence_desk",
       "size": "medium"
     },
@@ -1316,9 +1470,10 @@
       "size": "medium"
     },
     {
-      "pattern": "tests/integration/observation_runtime/test_unified_observation.py*",
+      "pattern": "tests/integration/observation_runtime/test_log_reads.py*",
       "owner": "tests.unified_observation",
-      "size": "medium"
+      "size": "medium",
+      "reason": "The reads open the Host's history, its log file and its DuckDB reading views, in setup: 2.74 seconds for the first case on Windows."
     },
     {
       "pattern": "tests/integration/market_data_ops/test_adjusted_precision.py*",
@@ -1422,26 +1577,6 @@
     },
     {
       "pattern": "tests/integration/product_host/test_research_input_storage.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_retrieval_recipes.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_shared_session_recovery.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/knowledge/test_verified_pack_registry.py*",
-      "owner": "tests.workspace_maintenance",
-      "size": "medium"
-    },
-    {
-      "pattern": "tests/integration/workspace_runtime/test_verified_source_leases.py*",
       "owner": "tests.workspace_maintenance",
       "size": "medium"
     },
@@ -1610,579 +1745,501 @@
   ],
   "large": [
     {
+      "pattern": "tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
+      "owner": "tests",
+      "reason": "Builds and embeds a store of 100,000 chunks with the real CPU models to read the retrieval store's speed target.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-18: the 100k build took 88 s and its index 12 s on the main PC; the goal reads the speed target from the nightly."
+    },
+    {
       "pattern": "tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
       "owner": "tests.structural",
       "reason": "Runs Semgrep's real rule cases and the whole tracked source; its one-file pass alone uses most of the commit budget.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 120,
       "admitted": "2026-11-14: the whole-tree scan took 25.906 s here; the goal places the slower tool in the nightly."
-    },
-    {
-      "pattern": "tests/integration/product_host/test_membership_change_recovery.py::test_a_cancelled_tasks_orphaned_candidate_list_returns_to_its_panels_own[[]AMBIGUOUS[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the stopped membership change before checking the ambiguous recovery case.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 60,
-      "admitted": "2026-11-04: AMBIGUOUS took 38.627 s, including a 35.688 s stopped-change seed build; until the seed is reusable across sessions."
     },
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
       "owner": "tests.workspace_readiness",
-      "reason": "Cold setup builds the prepared workspace and input revision journey before checking recovery.",
-      "admitted": "2026-11-02: the cold setup exceeded the 60-second Medium bound; retain this classification until the shared seed is measured within it."
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
+      "admitted": "2026-11-02: the cold setup exceeded the 60-second Medium bound; retain this classification until the shared seed is measured within it.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Most cases here build cold seeded workspaces that take over 60 s, so the file runs as one Large group until the build-once fixture lands; a few fixture-free cases ride along.",
-      "admitted": "2026-10-23: the shared session seed timed out in setup at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture."
+      "reason": "The remaining real Factor-publication journeys share the installed cross-sectional redundancy and walk-forward floors; moved readers and declaration checks use the smaller set.",
+      "admitted": "2026-10-23: the shared session seed timed out in setup at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_missing_quality_scope_refuses_publication_and_child_evidence_still_refuses*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Its cold seed setup takes over 60 s until the build-once fixture lands.",
-      "admitted": "2026-10-23: setup timed out at the 60 s Medium limit in a merge-lane gate; returns to Medium with the build-once fixture."
+      "reason": "Uses 60 registered sufficient-set members so the resumed approved quarantine clears the 98% floor and reaches the later missing-scope refusal.",
+      "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_membership_change_recovery.py::test_a_change_stopped_before_the_cycle_record_is_adopted_through_its_admission*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Its cold seed setup takes 45 to 54 s, so the whole test sits at the 60 s Medium limit until the build-once fixture lands.",
+      "pattern": "tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan*",
+      "owner": "tests",
+      "reason": "Upgrades three copies of the recorded QA root alpha_development_outcomes (alpha-base, alpha-after-1, alpha-before-1), real workspaces the development sets do not give, so it runs only in the nightly (the person, 11-19); its held case keeps the plan's proof at merge.",
+      "admitted": "2026-11-19: the merge stage reads no QA copy (the person, 11-19); this was the one real-evidence node the commit tier still collected, skipped as an absent root on every settle leg without the QA store.",
       "size_contract": "nightly_only",
-      "admitted": "2026-10-23: timed out at the 60 s Medium limit in a merge-lane gate after taking 51.9 s and 59.3 s in the two gates before; returns to Medium with the build-once fixture."
+      "original_data": "upgrade replay"
     },
     {
       "pattern": "tests/integration/product_host/test_strategy_activation.py::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs a deferred daily, its in-place recovery and the following exchange session.",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the real scientific workspace and refuses foreign sidecar identities.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the real scientific workspace and restores its second consumer with exact identities.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 5400
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_the_golden_key_binds_the_interpreter_and_the_installed_distributions*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the scientific golden and checks interpreter and installed-distribution key changes.",
-      "timeout_seconds": 5400
+      "reason": "Daily automation resumes an installed strategy with an activated book over 521 formations while its published update becomes the next session's parent.",
+      "timeout_seconds": 5400,
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_input_revisions.py::test_unregistered_or_tampered_versions_refuse_before_work*",
       "owner": "tests.workspace_readiness",
-      "reason": "Setup builds cold input-revision history until the dedicated input-revision seed is admitted.",
-      "timeout_seconds": 1200
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
+      "timeout_seconds": 1200,
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_lagging_provider_resumes_its_data_stage_before_any_feature_work*",
       "owner": "tests.workspace_readiness",
-      "reason": "Runs the real 100-listing preparation through provider lag, data recovery and Feature publication.",
-      "timeout_seconds": 900
+      "reason": "Runs the real 100-listing preparation through provider lag, data recovery and Feature publication; it reads the eight-year Factor-scale first use (real_workspace.FACTOR_SCALE, over 100 listings), more data than the development sets give, so it runs only in the nightly (the person, 11-19).",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop*",
       "owner": "tests.workspace_readiness",
-      "reason": "Runs Data preparation through a delegated decision, storage failure and same-Task recovery.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs Data preparation through a delegated decision, storage failure and same-Task recovery.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_completed_alpha_hands_off_to_portfolio_without_refitting*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the Alpha prerequisite and executes its Portfolio handoff with refitting forbidden.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_shared_research_context.py::test_shared_plan_is_navigable_and_visible_as_activity_without_execution*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Setup builds cold shared-preview input until the dedicated shared-preview seed is admitted.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: builds the Alpha prerequisite and executes its Portfolio handoff with refitting forbidden.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Builds the sixty-name sector seed and runs a dated update through governed price-move audits.",
-      "timeout_seconds": 900
+      "reason": "Uses 60 registered sufficient-set members so one audited listing fits the shipped 2% bound and two exceed it.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on*",
       "owner": "tests.portfolio_strategy_lab",
-      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation.",
-      "timeout_seconds": 900
+      "reason": "Runs the complete first-use Data decision route and resumes the same stopped preparation."
     },
     {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_initialization_creates_real_factor_inputs_and_reopens_without_strategies*",
       "owner": "tests.workspace_readiness",
-      "reason": "Cold-builds the 120-listing preparation with publication interruption and verifies its reopened inputs.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
-      "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use Data and Feature admission through changed source-volume eligibility.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_executor_creation_and_process_start_refusals_publish_nothing*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds real Risk inputs and injects executor and child-process start failures during publication.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
-      "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use preparation through recoverable sector exclusion and Feature readback.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_an_activation_computes_its_column_and_the_update_carries_every_other_value*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the qualified seed, activates a formula and runs the daily carrying all other columns.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs three real daily updates across year-end and checks partition reuse and corrected values.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
-      "owner": "tests.feature_engine",
-      "reason": "Builds and appends real Panel partitions, then exercises closure recovery and retention.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs Feature activation, daily materialization and deactivation through the layered catalog.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold-builds the 120-listing preparation with publication interruption and verifies its reopened inputs.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_promotion_next_step.py::test_portfolio_promotion_keeps_its_upstream_stop_and_exact_recovery*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Publishes a real Portfolio study, promotes its Alpha and verifies blocked upstream recovery.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: publishes a real Portfolio study, promotes its Alpha and verifies blocked upstream recovery.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_formula_factor_is_reviewed_and_a_person_activates_it*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs the real formula trial, review and recorded activation over the completed Alpha input.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs the real formula trial, review and recorded activation over the completed Alpha input.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_study_runs_a_catalog_policy_on_a_linked_risk_studys_covariance*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds the Alpha and Risk prerequisites and publishes a linked covariance Portfolio study.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: builds the Alpha and Risk prerequisites and publishes a linked covariance Portfolio study.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_foundation_seal_consumption_readback_and_refusals*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs the real Alpha foundation publication and exercises sealed consumption and tamper refusals.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs the real Alpha foundation publication and exercises sealed consumption and tamper refusals.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_formula_reading_the_sector_leaf_is_built_and_tried_but_not_activated*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds and trials the sector-return formula through the real Feature owner and refuses activation.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: builds and trials the sector-return formula through the real Feature owner and refuses activation.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_study_weighs_by_a_linked_risk_studys_volatility*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Builds linked Alpha and Risk studies and publishes Portfolio weights from their volatility.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: builds linked Alpha and Risk studies and publishes Portfolio weights from their volatility.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs the real Feature trial, cancellation and exact reopen path over completed Alpha results.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs the real Feature trial, cancellation and exact reopen path over completed Alpha results.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planned_again*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs Alpha to a completed-fold stop and verifies refusal and replanning under the current schema.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
-      "owner": "tests.feature_engine",
-      "reason": "Builds real Panel rows across membership joins and leaves and rematerializes their closures.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_a_missing_deterministic_child_fails_replay*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Runs the external Factor workflow, removes its deterministic child and exercises sealed replay refusal.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the sector seed and runs source-member qualification through the real daily Feature gate.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs Alpha to a completed-fold stop and verifies refusal and replanning under the current schema.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_otherwise*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Runs the first governed quarantine and the next daily recheck over the real market and Panel stores.",
-      "timeout_seconds": 900
+      "reason": "Exercises continuation and clearance on 60 registered sufficient-set members, where 59 remaining after one quarantine meet the 98% Panel floor.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_alpha_declared_model_runs_reopens_and_reuses_existing_owners*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs the declared numerical Alpha model and verifies its sealed reopen and owner reuse.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: runs the declared numerical Alpha model and verifies its sealed reopen and owner reuse.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_shared_research_context.py::test_competing_previews_expiry_and_restart_keep_every_plan_addressable*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs retained-preview admission through a real Factor publication, Host restart and exact reuse.",
-      "timeout_seconds": 900
+      "reason": "This journey publishes a real Factor study to prove preview recovery and reuse; its accepted source must meet the installed redundancy and fold support.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_alpha_process_recovery_keeps_task_and_reuses_sealed_work*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Executes Alpha through a stopped scientific boundary and recovers using its sealed completed work.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_an_external_method_reaches_a_published_panel_with_a_measured_identity*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Executes the authored external Factor batch over published outcomes and verifies its measured identity.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/product_host/test_membership_change_recovery.py::test_a_stopped_membership_change_resumes_through_the_membership_its_cycle_made*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Builds the stopped membership-change cycle and resumes its same Task across a Host restart.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_parallel_derivation_publishes_the_identical_snapshot_and_bytes*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Runs serial and process-pool causal derivation and compares their published snapshots and bytes.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: executes Alpha through a stopped scientific boundary and recovers using its sealed completed work.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_missing_daily_market_observation_keeps_the_other_members_usable*",
       "owner": "tests.feature_engine",
-      "reason": "Builds the sixty-member Panel and rematerializes its closure around a missing daily observation.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_feature_extension_materialization.py::test_the_extension_factor_materializes_through_the_real_service*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Builds the external Feature workspace through its real materialization service and verifies published factors.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs entrant-source requalification through the real daily data governance and Feature boundary.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_due_raw_and_feature_rechecks_are_both_planned_and_executed*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Setup cold-builds the qualified Data and Feature seed before rechecks until the shared qualified seed is admitted.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
+      "reason": "Builds and rematerializes a Panel with one observation missing across 50 registered sufficient-set members, so the other 49 meet the 98% coverage floor.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_alpha_cancel_keeps_complete_children_and_explicit_retry_reuses_them*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Setup cold-builds research input and Alpha prerequisites before cancellation until the shared Alpha seed is admitted.",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: setup cold-builds research input and Alpha prerequisites before cancellation until the shared Alpha seed is admitted.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_hard_process_death_recovers_the_same_task_without_reexecuting_complete_evidence*",
       "owner": "tests.researcher_methodology_surface",
-      "reason": "Cold setup builds real Factor inputs before process-death recovery; retain this bound until the shared Factor input seed is available.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "Runs the complete daily Data and Feature update with candidate exclusion and persisted membership and audit readback.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: cold setup builds real Factor inputs before process-death recovery; retain this bound until the shared Factor input seed is available.",
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_explicit_qualified_data_binding_creates_its_manifest_without_manual_json*",
       "owner": "tests.workspace_readiness",
       "reason": "The qualified binding and publication-retry control embeds a cold workspace build; retain this bound until its seed and control speed work lands.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900
+      "size_contract": "nightly_only"
     },
     {
       "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_task*",
       "owner": "tests.workspace_maintenance",
-      "reason": "Cold setup builds the ten-sector maintenance workspace before the quarantine decision and same-task publication recovery.",
-      "timeout_seconds": 900
+      "reason": "Uses 60 registered sufficient-set members so masking one still meets the 98% Panel floor without changing nominal membership.",
+      "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_daily_input_history.py::test_a_split_reaches_the_kept_history_the_frozen_read_and_the_next_day_as_stored*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "The split-history composition control performs three real acquisitions and frozen readback; retain this bound until that control fits the Medium limit.",
-      "timeout_seconds": 900
+      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "Uses the development set but needs a cold golden and the refusal replays, measured at 100.54 s in the solo admission.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 5400,
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
-      "pattern": "tests/integration/product_host/test_input_revisions.py::test_a_saved_capture_continues_on_its_published_revision*",
+      "pattern": "tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "Uses the development set but builds a cold golden and verifies the copies, measured at 97.28 s in the solo admission.",
+      "size_contract": "nightly_only",
+      "timeout_seconds": 5400,
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
       "owner": "tests.workspace_readiness",
-      "reason": "Cold setup publishes the input-revision research journey for a saved-capture continuation control.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_a_curation_decision_the_host_never_admitted_cannot_be_persisted*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Cold setup runs external Factor research before a curation authority refusal control; retain this bound until a completed consumer seed is available.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_host_derives_every_identity_and_the_verifier_walks_to_the_seal*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "Cold setup publishes two real sector experiments before retained evidence verification; retain this bound until a publication consumer seed is available.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_feature_extension_materialization.py::test_installing_the_method_disturbs_no_shipped_identity*",
-      "owner": "tests.researcher_methodology_extension",
-      "reason": "Cold setup builds shipped and extension Feature workspaces before the unchanged identity comparison control.",
-      "timeout_seconds": 900
-    },
-    {
-      "pattern": "tests/integration/alternative_evidence/test_portfolio_coverage_run.py::test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on*",
-      "owner": "tests.alternative_evidence_desk",
-      "reason": "Real multi-unit preparation and partial-failure recovery: historical 74.255 s; focused node 44.308 s on 2026-11-04, above the 30 s Medium bound.",
-      "timeout_seconds": 900,
+      "reason": "Replays development first use after source correction, with observed times of 109.25 s on Windows and 32.59 s on macOS.",
       "size_contract": "nightly_only",
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
-      "pattern": "tests/integration/local_application/test_review_completion_and_dispositions.py::test_a_quiet_issuer_is_checked_and_a_sourceless_issuer_is_not_counted_as_reviewed*",
-      "owner": "tests.alternative_evidence_desk",
-      "reason": "historical maximum 60.995 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+      "pattern": "tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
+      "owner": "tests.workspace_readiness",
+      "reason": "Replays development first use after sector exclusion, with observed times of 89.77 s on Windows and 31.29 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
-      "pattern": "tests/integration/feature_engine/test_feature_observation_clock.py::test_every_installed_formula_consumes_exactly_what_its_clock_declares*",
+      "pattern": "tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
+      "owner": "tests.workspace_maintenance",
+      "reason": "Materializes and corrects three development sessions across year-end, with observed times of 161.68 s on Windows and 72.92 s on macOS.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
+    },
+    {
+      "pattern": "tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
       "owner": "tests.feature_engine",
-      "reason": "historical maximum 84.117 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_daily_input_history.py::test_an_old_value_correction_rebuilds_what_it_touched_even_without_a_revision*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "Rebuilds a corrected sector's kept history across the real daily input owner; its other six cases were deleted on coverage and mutation evidence.",
+      "reason": "Builds development Panels to compare closed-year reuse, recovery and retention, with observed times of 151.51 s on Windows and 89.74 s on macOS.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-11-03: 50.6 s and 220 MB at teardown in a commit stage, over the 30 s Medium limit."
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
-      "pattern": "tests/integration/product_host/test_daily_input_history.py::test_three_consecutive_days_write_only_their_last_frozen_block*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 77.784 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "pattern": "tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
+      "owner": "tests.feature_engine",
+      "reason": "Rebuilds the development Panel through entry and exit, with observed times of 74.11 s on Windows and 41.48 s on macOS.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
-      "pattern": "tests/integration/causal_outcomes/test_held_friday_update.py::test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 973.939 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 1500,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_input_prefix.py::test_prepared_history_keeps_every_cutoff_array_and_observation_hash[[]True[]]",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 75.248 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_input_prefix.py::test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 66.524 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 1391.879 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 2100,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_reviewed_research_book_runs_forward_when_a_person_activates_it*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 455.885 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 154.710 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 152.265 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_installed_book_controls_saves_the_flat_declaration_its_preview_reads*",
-      "owner": "tests.portfolio_strategy_lab",
-      "reason": "historical maximum 73.370 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputing_metrics*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 92.746 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_the_candidate_evidence_a_batch_names_is_verified_on_readback*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 108.197 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 73.423 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/causal_outcomes/test_causal_outcome_publication.py::test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "A real market-maintenance and risk journey measured 30.001 s before and 30.230 s after in the same paired run.",
-      "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-11-03: measured at the Medium boundary; restore Medium when this journey is reduced"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_experiment_authoring.py::test_the_same_document_and_authority_produce_the_same_program_identity*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 77.885 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 310.792 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 356.599 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_small_input_reports_the_production_requirement_before_any_task*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 68.426 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 148.380 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_the_installed_cli_publishes_and_inspects*",
-      "owner": "tests.researcher_methodology_surface",
-      "reason": "historical maximum 87.550 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/product_host/test_held_input_coverage.py::test_a_feature_retry_names_missing_parent_data_even_when_the_qualified_child_covers*",
+      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
       "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 64.038 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 95.902 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "reason": "Runs all development entrant qualification cases, with the slowest observed calls taking 95.89 s on Windows and 44.11 s on macOS.",
       "size_contract": "nightly_only",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update.py::test_the_data_stage_opens_the_market_store_once*",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 86.770 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_real_update_plan_run_reuse_and_foundation_readback[[]False[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 2534.133 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 3840,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
-    },
-    {
-      "pattern": "tests/integration/feature_engine/test_local_data_update_runs.py::test_real_update_plan_run_reuse_and_foundation_readback[[]True[]]",
-      "owner": "tests.workspace_maintenance",
-      "reason": "historical maximum 85.865 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
-      "timeout_seconds": 900,
-      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s"
+      "admitted": "2026-11-20: Keep the existing nightly classification pending Medium admission."
     },
     {
       "pattern": "tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
       "owner": "tests.workspace_readiness",
-      "reason": "Runs first-use preparation with an incomplete qualified baseline and checks its offered next step.",
-      "admitted": "2026-10-30: measured 18.278 s on Windows; size registration pilot admits the Large classification."
+      "reason": "Runs first use on the development set to measure the shortage reason, taking 55.12 s in the solo admission run.",
+      "admitted": "2026-10-30: measured 18.278 s on Windows; size registration pilot admits the Large classification.",
+      "size_contract": "nightly_only"
     },
     {
-      "pattern": "tests/integration/product_host/test_workspace_preparation.py::test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary",
+      "pattern": "tests/integration/product_host/test_input_revisions.py::test_a_saved_capture_continues_on_its_published_revision*",
       "owner": "tests.workspace_readiness",
-      "reason": "Builds and hydrates a workspace before checking cancellation and recovery at the chunk boundary.",
-      "admitted": "2026-10-30: measured 11.163 s on Windows; size registration pilot admits the Large classification."
+      "reason": "The published Factor anchor and its successor require cross-sectional redundancy and full installed walk-forward support before comparing ownership and readback.",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/causal_outcomes/test_held_friday_update.py::test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The ordinary activation path requires an installed whole book past 521 formations from the full lifecycle before it can advance held Friday and refuse missing Monday data.",
+      "timeout_seconds": 1500,
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Cancellation and Data continuation act on the installed book's accepted research update; activation needs an admitted book over 521 formations and its installed lifecycle.",
+      "timeout_seconds": 2100,
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_a_reviewed_research_book_runs_forward_when_a_person_activates_it*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Ordinary activation requires the installed whole book past 521 formations, fitted on the installed 1,260-session lifecycle and tied to its review.",
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_strategy_activation.py::test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due*",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The owning update starts from the admitted checkpoint of an installed whole book with over 521 formations and resumes on its own working membership.",
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 310.792 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/integration/product_host/research_authoring/test_factor_inputs.py::test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them*",
+      "owner": "tests",
+      "reason": "Upgrades a copy of the recorded QA root alpha_development_outcomes' alpha-base research inputs (1.4 GB, 0.2.7's real binding and pools), real data the development sets do not give, so it runs only in the nightly; the held test keeps the upgrade's and the batch's proof at merge.",
+      "admitted": "2026-11-19: the QA copy's replay and rollback, proved on real 0.2.7 research inputs",
+      "size_contract": "nightly_only",
+      "original_data": "upgrade replay"
+    },
+    {
+      "pattern": "tests/integration/product_host/test_local_web_factor_experiments.py::test_the_portfolio_draft_offers_the_weight_rules_risk_studies_and_policies*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "At Factor scale (real_workspace.FACTOR_SCALE), whose walk-forward policy needs about seven years of a 120-listing universe for 756 training, three 252-session folds and a holdout: historical maximum 148.380 s, over the 60 s Medium limit; returns to Medium when a candidate or nightly measurement shows it under 60 s.",
+      "admitted": "2026-10-22: historical maximum over the Medium limit; returns to Medium when measured under 60 s",
+      "size_contract": "nightly_only"
+    },
+    {
+      "pattern": "tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
+      "owner": "tests.structural",
+      "reason": "Went past its 60 s Medium bound under a loaded reached leg on 11-16; a test that times out under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-16: 16 passes at most 48.3 s and 1 red at 60 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Could not open its DuckDB store from a second connection under a loaded reached leg on 11-16; a test that goes red under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-16: 11 passes at most 9.4 s and 1 red at 3 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/local_application/test_local_web_client.py::test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "Lost its served child process (psutil NoSuchProcess) under a loaded reached leg on 11-16; a test that goes red under load runs only in the nightly (the person, 11-16).",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-16: 11 passes at most 10.6 s and 1 red at 6 s in the day's reached legs (reds-today.tsv, run 092110-build-509fa844); it keeps its Medium bound of 60 s (no timeout changes)"
+    },
+    {
+      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "The installed LightGBM proof needs 1,769 sessions for the 756-session training window, three 252-session validations and 252-session sealed holdout at the two-session maturity lag.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-19: 77.4 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
+    },
+    {
+      "pattern": "tests/integration/alpha_research/test_alpha_development_execution.py::test_an_authored_alpha_document_reaches_the_real_model_runtime*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "The installed Ridge split needs 1,769 sessions for the 756-session training window, three 252-session validations and 252-session sealed holdout at the two-session maturity lag.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-19: 12.3 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
+    },
+    {
+      "pattern": "tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_authored_batch_reaches_real_evidence_and_replays_without_computing*",
+      "owner": "tests.researcher_methodology_extension",
+      "reason": "The full external Factor panel needs about three years of lookback before its seal, beyond the development set's 250 pre-holdout sessions.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-19: 77.1 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
+    },
+    {
+      "pattern": "tests/integration/factor_research/test_factor_development_execution.py::test_an_authored_factor_document_reaches_real_deterministic_evidence*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "The complete installed 53-factor axis needs 274 pre-holdout observations for its longest method before the 252-session sealed holdout.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-19: 9.1 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
+    },
+    {
+      "pattern": "tests/integration/sector_research/test_sector_research_development.py::test_the_campaign_compares_calibrates_decides_and_replays*",
+      "owner": "tests.researcher_methodology_surface",
+      "reason": "The installed Sector campaign needs at least 252 development sessions and a 252-session sealed holdout, beyond the development set's 502 sessions.",
+      "size_contract": "nightly_only",
+      "admitted": "2026-11-19: 1.3 s in the merge gate's 02:15 reach; heavy data leaves the merge queue for the nightly."
     }
   ],
-  "note": "Pytest-timeout enforces setup, call and teardown together; Large declarations form a shrink-only list. Resource confinement is a separate boundary.",
+  "budget_admissions": [
+    {
+      "budget": "large:tests/integration/feature_engine/test_real_workspace.py::test_a_golden_that_disagrees_with_its_sidecar_is_refused_not_repaired*",
+      "value": 5400,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_real_workspace.py::test_a_second_consumer_restores_the_golden_workspace_with_the_same_identities*",
+      "value": 5400,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_u0_judgement.py::test_first_use_judges_u0_from_rows_the_current_source_still_explains*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_recoverable_exclusion.py::test_first_use_continues_after_recoverable_sector_exclusion*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update_year_end.py::test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_feature_engine.py::test_daily_append_reuses_closed_years_and_keeps_provenance_recovery_and_retention*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_panel_membership_journey.py::test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reused*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_local_data_update.py::test_new_source_member_is_feature_qualified_before_entry_and_its_history_stays_out*",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/feature_engine/test_first_use_u0_judgement.py::test_a_baseline_short_of_qualified_names_says_how_many_why_and_the_way_on",
+      "value": 900,
+      "admitted": "2026-11-20: Retain the existing nightly timeout pending Medium admission."
+    },
+    {
+      "budget": "large:tests/integration/product_host/research_authoring/test_factor_inputs.py::test_qa_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them*",
+      "value": 900,
+      "admitted": "2026-11-19: the QA copy's 1.4 GB upgrade, rollback, batch and restore ran 15.9 s here; a Large test is killed only as hung, at the large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/data_layer/test_knowledge.py::test_recall_answers_within_a_second_at_100k_chunks",
+      "value": 900,
+      "admitted": "2026-11-18: The 100,000-chunk build and its 62 timed queries ran 73 s on mac1 and about 100 s on the main PC; a Large test is killed only as hung, at the large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/product_host/test_input_revisions.py::test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged",
+      "value": 900,
+      "admitted": "2026-11-14: Cold input-revision setup ran 317-408 s in six nightly runs on 11-13 and 11-14; three times the slowest exceeds 900 s, so 900 s holds and no lower step fits"
+    },
+    {
+      "budget": "large:tests/integration/product_host/composition/test_first_start.py::test_the_first_start_upgrades_every_old_qa_workspace_on_one_plan*",
+      "value": 900,
+      "admitted": "2026-11-19: A Large test is killed only as hung, at the large timeout of 900 s; its three QA-root upgrades run in the nightly"
+    },
+    {
+      "budget": "large:tests/structural/test_test_shape.py::test_nightly_antipattern_rules_hold_the_product_tree",
+      "value": 900,
+      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
+    },
+    {
+      "budget": "limits.small",
+      "value": 60,
+      "admitted": "2026-11-16: A test is killed only as hung, by Bazel's size timeouts (small 60 s, medium 300 s, large 900 s); its speed is held at admission (admission_limits, solo) and reported, never by a kill under load. 7 of 7 timeouts on 11-15 and 11-16 were medium tests whose green runs take 25 to 43 s at the median and up to 63 s, against a 60 s kill"
+    },
+    {
+      "budget": "limits.medium",
+      "value": 300,
+      "admitted": "2026-11-16: A test is killed only as hung, by Bazel's size timeouts (small 60 s, medium 300 s, large 900 s); its speed is held at admission (admission_limits, solo) and reported, never by a kill under load. 7 of 7 timeouts on 11-15 and 11-16 were medium tests whose green runs take 25 to 43 s at the median and up to 63 s, against a 60 s kill"
+    },
+    {
+      "budget": "large:tests/structural/test_registries.py::test_the_tree_adds_nothing_to_a_registry_without_registering_it",
+      "value": 900,
+      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
+    },
+    {
+      "budget": "large:tests/integration/testing/test_workbench_badge.py::test_real_task_records_drive_home_badges_and_grouped_history",
+      "value": 900,
+      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
+    },
+    {
+      "budget": "large:tests/integration/local_application/test_local_web_client.py::test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced",
+      "value": 900,
+      "admitted": "2026-11-16: A Large test is killed only as hung, at Bazel's large timeout of 900 s; a per-pattern timeout shorter than that guard limited its speed under load and is dropped"
+    },
+    {
+      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_a_lightgbm_declaration_fits_the_installed_dynamic_panel_adapter*",
+      "value": 900,
+      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/alpha_research/test_alpha_development_execution.py::test_an_authored_alpha_document_reaches_the_real_model_runtime*",
+      "value": 900,
+      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/factor_research/test_external_factor_platform_acceptance.py::test_the_authored_batch_reaches_real_evidence_and_replays_without_computing*",
+      "value": 900,
+      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/factor_research/test_factor_development_execution.py::test_an_authored_factor_document_reaches_real_deterministic_evidence*",
+      "value": 900,
+      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
+    },
+    {
+      "budget": "large:tests/integration/sector_research/test_sector_research_development.py::test_the_campaign_compares_calibrates_decides_and_replays*",
+      "value": 900,
+      "admitted": "2026-11-19: a heavy-data test moved to the nightly (the person, 11-19); as a Large test it is killed only as hung, at Bazel's large timeout of 900 s"
+    }
+  ],
+  "note": "Pytest-timeout enforces setup, call and teardown together at a size's hang guard (limits: Bazel's small 60, medium 300 and large 900 s), which kills a test only as hung; a size's speed is its admission limit, judged solo and reported, never a kill under load. Large declarations form a shrink-only list. Every test budget (a size limit, an admission limit, the growth floor, a Large timeout) only falls; a raised or added one carries a budget_admissions row with its value and a dated decision. Resource confinement is a separate boundary.",
   "sizes": [
     "small",
     "medium",
@@ -2491,7 +2548,8 @@
       "inputs": [
         "scripts/build_local_web_ui.py",
         "scripts/check_ui_parameters.py",
-        "src/*",
+        "src/alphalattice/interface/local_application/assets/*",
+        "src/alphalattice/interface/local_application/labels.json",
         "config/registries/agent-surface.json",
         "config/registries/messages.json",
         "config/registries/refusals.json",
@@ -2530,6 +2588,16 @@
       "reason": "It parses every command line the guides, skills, agent cards and public documents show through the CLI grammar, about a second; it runs when one of those or the grammar changed, which a skill copy edited alone reached develop past (11-05).",
       "escape_class": "a documented command line the CLI no longer parses, or a skill copy out of step",
       "review_date": "2026-12-07"
+    },
+    {
+      "pattern": "tests/structural/test_schema_contract.py::*",
+      "owner": "tests.structural",
+      "inputs": [
+        "src/alphalattice/kernel/data_layer/schema/*"
+      ],
+      "reason": "It judges only the DDL and its contract registry beside it, so a change elsewhere cannot move its verdict; the nightly runs it whole.",
+      "escape_class": "a schema change that breaks a declared data-model rule",
+      "review_date": "2026-12-17"
     }
   ],
   "structural_fence": [
@@ -2698,14 +2766,24 @@
       ]
     },
     {
-      "node": "tests/structural/test_refusal_contracts.py::test_every_refusal_the_client_raises_has_its_own_words",
+      "node": "tests/structural/test_test_shape.py::test_exact_copy_guard_names_original_and_counts_only_added_executable_runs",
       "owner": "tests.structural",
-      "until": "2026-11-12",
-      "reason": "Confirmed post-merge regression; expires with its owned repair."
+      "reason": "Where the locked clone-detection tool is not installed the guard cannot run; held until every test host installs it.",
+      "until": "2026-11-18",
+      "class": "unstable",
+      "since": "2026-11-16"
     }
   ],
   "mandatory": [
-    "tests/structural/*",
+    "tests/structural/test_import_contract.py*",
+    "tests/structural/test_public_closure.py*",
+    "tests/structural/test_moved_names.py*",
+    "tests/structural/test_retired_spellings.py*",
+    "tests/structural/test_documented_commands.py*",
+    "tests/structural/test_wait_caps.py*",
+    "tests/structural/test_repository_root.py*",
+    "tests/structural/test_data_families.py*",
+    "tests/structural/test_task_replans.py*",
     "tests/integration/local_application/test_cli_contract.py*"
   ],
   "growth": {
@@ -2722,8 +2800,8 @@
     }
   },
   "limits": {
-    "small": 1,
-    "medium": 60,
+    "small": 60,
+    "medium": 300,
     "large": 900
   },
   "shrink_only_set": [
@@ -2731,7 +2809,7 @@
   ],
   "shrink_only_list": "large",
   "whole_tree_guards": {
-    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration; a slower one stays in post-merge. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
+    "reason": "A whole-tree guard under about a second runs at commit when the tree it reads changed: an import cycle reached develop past a 0.25 s guard. These read the source, scripts and configuration. A slower one stays out of that broad match: the commit stage runs it when its own selection_readers row says the change touches what it reads (a module-proof guard went red on develop unseen when nothing ran it before the nightly, 11-15), and the nightly runs every one whole. Measured on a full run, 240 of 279 guards, 16.6 test-seconds.",
     "reads": [
       "src/*",
       "scripts/*",

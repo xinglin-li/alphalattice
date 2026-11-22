@@ -3,12 +3,15 @@ from __future__ import annotations
 import ast
 import importlib
 import json
-from collections import Counter
 from enum import StrEnum
 from pathlib import Path
 
 import pytest
 
+from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+    VALUE_ROLE_PREFIXES,
+    recipe_hashes_match,
+)
 from alphalattice.kernel.shared_kernel.identity_successors import (
     IdentitySuccessorError,
     is_current,
@@ -42,10 +45,16 @@ _A, _B, _C, _D = ("a" * 64, "b" * 64, "c" * 64, "d" * 64)
 
 
 def _successors(root: Path, moves: list[dict[str, str]], *, version: int = 1) -> Path:
-    path = root / "config" / "identity-successors.json"
-    path.parent.mkdir(parents=True)
-    document = {"schema": "identity-successors", "version": version, "moves": moves}
-    path.write_text(json.dumps(document), encoding="utf-8")
+    directory = root / "config" / "identity-successors"
+    directory.mkdir(parents=True)
+    header = {"schema": "identity-successors", "version": version}
+    directory.with_suffix(".json").write_text(
+        json.dumps(dict(header, moves=moves[:1])), encoding="utf-8"
+    )
+    for index, move in reversed(list(enumerate(moves[1:]))):
+        (directory / f"{index:02d}.json").write_text(
+            json.dumps(dict(header, moves=[move])), encoding="utf-8"
+        )
     return root
 
 
@@ -100,6 +109,10 @@ def test_a_bound_value_is_held_at_the_origin_its_recorded_moves_lead_from(
     assert recorded_origin("other", _D, root=root) == _C, "each role follows its own moves"
     assert recorded_origin("loop", _A, root=root) in {_A, _B}, "a recorded cycle ends"
 
+    tied = _successors(root.parent / "tied", [_move("role", _A, _C), _move("role", _B, _C)])
+    assert recorded_origin("role", _C, root=tied) == _A
+    assert predecessors("role", _C, root=tied) == (_C, _A, _B)
+
 
 def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Path) -> None:
     """requirement (LAWS.md ID1, W9a): a store keyed by a recorded value finds the entries
@@ -119,14 +132,92 @@ def test_a_keyed_store_finds_what_was_sealed_before_a_recorded_move(tmp_path: Pa
         is_current("role", value, _C, root=root) for value in predecessors("role", _C, root=root)
     )
 
+    # A value moved back to one held before (A to B, B to C, C back to B) moves again (B to D): the
+    # later move from the revisited B supersedes the earlier one, and A, B and C all lead to D.
+    revisited = _successors(
+        tmp_path / "revisited",
+        [
+            _move("role", _A, _B),
+            _move("role", _B, _C),
+            _move("role", _C, _B),
+            _move("role", _B, _D),
+        ],
+    )
+    for value in (_A, _B, _C):
+        assert latest("role", value, root=revisited) == _D, value
+        assert is_current("role", value, _D, root=revisited), value
+        assert value in predecessors("role", _D, root=revisited), value
+    for value in (_A, _B, _C, _D):  # backward and forward agree: the superseded B to C is not read
+        assert all(
+            is_current("role", earlier, value, root=revisited)
+            for earlier in predecessors("role", value, root=revisited)
+        ), value
+    assert predecessors("role", _C, root=revisited) == (_C,)
+    assert recorded_origin("role", _D, root=revisited) == _A
+    returned = _successors(
+        tmp_path / "returned",
+        [_move("role", _A, _B), _move("role", _B, _A), _move("role", _A, _D)],
+    )
+    assert recorded_origin("role", _D, root=returned) == _A, "an origin bound before a revisit"
+    recipe = f"{VALUE_ROLE_PREFIXES[-1]}book"  # a recipe hash moved back and on matches from each
+    recipes = _successors(
+        tmp_path / "recipes",
+        [
+            _move(recipe, _A, _B),
+            _move(recipe, _B, _C),
+            _move(recipe, _C, _B),
+            _move(recipe, _B, _D),
+        ],
+    )
+    assert all(recipe_hashes_match(value, _D, root=recipes) for value in (_A, _B, _C))
+    assert not recipe_hashes_match(_A, _D, root=revisited), "only a value role's moves join"
+
 
 @pytest.mark.parametrize(
     ("moves", "version", "code"),
     [
-        ([_move("role", _A, _B)], 2, "shared_kernel.identity_successors_from_another_build"),
-        ([_move("role", _A, _A)], 1, "shared_kernel.identity_successor_invalid"),
-        ([_move("role", _A, "not-a-hash")], 1, "shared_kernel.identity_successor_invalid"),
-        ([{"role": "role", "predecessor": _A}], 1, "shared_kernel.identity_successor_invalid"),
+        pytest.param(
+            [_move("role", _A, _B)],
+            2,
+            "shared_kernel.identity_successors_from_another_build",
+            id="foreign-version",
+        ),
+        pytest.param(
+            [_move("role", _A, _A)],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="self-successor",
+        ),
+        pytest.param(
+            [_move("role", _A, "not-a-hash")],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="invalid-hash",
+        ),
+        pytest.param(
+            [{"role": "role", "predecessor": _A}],
+            1,
+            "shared_kernel.identity_successor_invalid",
+            id="incomplete-move",
+        ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _A, _B)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _A,
+            id="duplicate-predecessor",
+        ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _A, _C)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _A,
+            id="conflicting-successor",
+        ),
+        pytest.param(
+            [_move("role", _A, _B), _move("role", _B, _C), _move("role", _B, _D)],
+            1,
+            "shared_kernel.identity_successor_invalid: duplicate role " + _B,
+            id="repeated-without-a-cycle",
+        ),
     ],
 )
 def test_moves_this_build_cannot_read_are_refused_not_ignored(
@@ -138,12 +229,33 @@ def test_moves_this_build_cannot_read_are_refused_not_ignored(
         is_current("role", _A, _B, root=root)
 
 
-def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role() -> None:
+def test_the_committed_moves_read_and_each_predecessor_moves_once_per_role(
+    tmp_path: Path,
+) -> None:
+    # Once per link: a landing's next move from the value a role's last move reached, a value
+    # it moved back to included, reads and leads that chain to the new value.
     moves = recorded_moves(ROOT)
+    reached = {move.role: move.successor for move in moves}
+    composed = tmp_path / "composed" / "config" / "identity-successors"
+    composed.mkdir(parents=True)
+    ledger = ROOT / "config" / "identity-successors"
+    composed.with_suffix(".json").write_bytes(ledger.with_suffix(".json").read_bytes())
+    for path in ledger.glob("*.json"):
+        (composed / path.name).write_bytes(path.read_bytes())
+    (composed / "9-landing.json").write_text(
+        json.dumps(
+            {
+                "schema": "identity-successors",
+                "version": 1,
+                "moves": [_move(role, value, _D) for role, value in reached.items()],
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    assert moves
-    twice = [key for key, n in Counter((m.role, m.predecessor) for m in moves).items() if n > 1]
-    assert not twice, f"a predecessor recorded with two successors: {twice}"
+    for move in moves:
+        if latest(move.role, move.predecessor, root=ROOT) == reached[move.role]:
+            assert latest(move.role, move.predecessor, root=composed.parents[1]) == _D, move.role
 
 
 def test_study_identities_track_no_platform_or_build_file() -> None:
@@ -432,9 +544,6 @@ _ENVIRONMENT_READERS = {
     # The one helper (LAWS.md ID6).
     "src/alphalattice/kernel/shared_kernel/environment.py": "the helper",
     # Rebuild keys of caches whose content the environment decides, and packs it gates.
-    "src/alphalattice/kernel/knowledge/_embeddings.py": ("an embedding index's rebuild key"),
-    "src/alphalattice/kernel/knowledge/_reranking.py": "a reranker pack's rebuild key",
-    "src/alphalattice/kernel/knowledge/_torch.py": "a torch pack's rebuild key",
     "src/alphalattice/kernel/knowledge/model_store.py": "a stored model's rebuild key",
     "src/alphalattice/kernel/knowledge/catalog.py": "a knowledge pack's installed distributions",
     "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py": (
@@ -575,7 +684,7 @@ _SCHEMA_DISPLAYS = frozenset(
         ),
         (
             "src/alphalattice/control/product_host/composition/portfolio_research_operations.py",
-            "PortfolioResearchRequestDocument",
+            "full_request_document",
         ),
         (
             "src/alphalattice/control/product_host/data_preparation/research_strategy.py",
@@ -591,13 +700,14 @@ _SCHEMA_DISPLAYS = frozenset(
         ("src/alphalattice/interface/local_application/cli.py", "AlphaLifecycleSection"),
         ("src/alphalattice/interface/local_application/cli.py", "FactorSection"),
         ("src/alphalattice/interface/local_application/cli.py", "PortfolioExperimentSpec"),
-        ("src/alphalattice/interface/local_application/cli.py", "PortfolioResearchRequestDocument"),
+        ("src/alphalattice/interface/local_application/cli.py", "full_request_document"),
         ("src/alphalattice/interface/local_application/cli.py", "RiskSection"),
         ("src/alphalattice/interface/local_application/cli.py", "answer"),
         (
             "src/alphalattice/interface/local_application/operations.py",
-            "PortfolioResearchRequestDocument",
+            "full_request_document",
         ),
+        ("src/alphalattice/interface/local_application/portfolio_research.py", "_request_document"),
         ("src/alphalattice/kernel/shared_kernel/identity.py", "cast"),
         ("src/alphalattice/kernel/shared_kernel/identity.py", "schema"),
         (

@@ -31,9 +31,17 @@ from alphalattice.foundation.research_foundation.contracts import (
     PreResearchDeskSafeProjection,
     ResearchFoundationBinding,
 )
+from alphalattice.kernel.data_layer.history import carry_arrays
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests.portfolio_strategy_lab.local_web_support import _json, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import (
+    _resolved,
+    _Resolver,
+    admit_market_fixture,
+)
+from tests.pytest_environment import closure_on_log
 from tests.researcher_methodology_surface.real_workspace import AS_OF, OBSERVED_AT, SYMBOLS
+from tests.researcher_methodology_surface.session_workspace import on_seed_machine
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -120,8 +128,21 @@ def _active_panel_manifest(workspace: Path) -> dict:
     )
 
 
-def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Path:  # type: ignore[no-untyped-def]
+def one_sector_seed(
+    tmp_path_factory: pytest.TempPathFactory, name: str, members: tuple[str, ...]
+) -> Path:
     """A qualified workspace of ``members`` in one Sector: real history, catalog and Panel."""
+    return prepared_update_seed(tmp_path_factory, name, members, sector_size=len(members))
+
+
+def prepared_update_seed(
+    tmp_path_factory: pytest.TempPathFactory,
+    name: str,
+    members: tuple[str, ...],
+    *,
+    sector_size: int = 5,
+) -> Path:
+    """One product-built update seed for the fixture's fixed membership."""
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
@@ -134,7 +155,7 @@ def one_sector_seed(tmp_path_factory, name: str, members: tuple[str, ...]) -> Pa
 
     def build(root):  # type: ignore[no-untyped-def]
         built = build_real_risk_workspace(
-            tmp_path_factory.mktemp(f"{name}-base"), symbols=members, sector_size=len(members)
+            tmp_path_factory.mktemp(f"{name}-base"), symbols=members, sector_size=sector_size
         )
         publish_research_workspace_manifest(built.workspace, _manifest(f"data-update-{name}"))
         _seed_foundation(built.workspace, built.panel_snapshot_hash)
@@ -210,8 +231,24 @@ def _activate(workspace: Path, *specs) -> None:
     ).write(workspace)
 
 
+def run_update_to_status(
+    live: LocalPortfolioWebSession,
+    request: dict[str, object],
+    *,
+    timeout: int = 300,
+    task_id: str | None = None,
+) -> tuple[dict, dict]:
+    admitted = _json(live, "/api/data-update/run", method="POST", payload=request)
+    if task_id is not None:
+        assert admitted["task_id"] == task_id, admitted
+    live.dispatcher.drain_for_tests(timeout=timeout)
+    return admitted, _json(live, "/api/status?task_id=" + admitted["task_id"])
+
+
 def _run_data_update(workspace: Path) -> None:
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
+    closure_on_log(workspace)  # the closure written outside a Host, as its first start moves it
     service = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=manifest,
@@ -240,13 +277,17 @@ def _run_data_update(workspace: Path) -> None:
 
 
 @pytest.fixture(scope="module")
-def activated_seed(qualified, tmp_path_factory):
+def activated_seed(qualified, qualified_seed, tmp_path_factory):
     """One real first activation; every subsequent transition owns a private copy."""
 
     workspace = tmp_path_factory.mktemp("first-activation") / "workspace"
     shutil.copytree(qualified, workspace)
-    _activate(workspace, _formula("formula_reversal_5", "close / lag(close, 5) - 1"))
-    _run_data_update(workspace)
+    # A rebuilt fixture keeps the workspace identity, so it needs its own Task log.
+    with on_seed_machine(qualified_seed):
+        _activate(workspace, _formula("formula_reversal_5", "close / lag(close, 5) - 1"))
+        _run_data_update(workspace)
+        # Its copies outlive this Host's log and carry what the update kept there.
+        carry_arrays(workspace, workspace)
     return workspace
 
 

@@ -1,0 +1,69 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e72f63da943eb59a3a7bc636ab1b379c0508cab30dec5bd3b27ecdb6ac8e22af",
+   "successor": "5eba64ca939f81781158cfea2eb54d19d6684d7535ee9962017a8632549399eb",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "902fa3dbfe9bba5589f31e381a846e2de2921c8a0fff308b2ef9dab572ebc665",
+   "successor": "9294286de37cd3d505a50eb446e3d7f399968c6522152c5b00b283a82dcdcd2e",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "1a50c93c04876c7db71f45fb16850a7800a1e8cca75af32372df7d8f669375b3",
+   "successor": "54ac28c8e62da9c6337cfce29b929158c57122d9998afca900a145ed3b78ee3f",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1c1f9a6911d4452d8464c6b5d6ac1d45b3f58ad02d45733773ea55a045587d01",
+   "successor": "5062f0c7463e0b519a1452250429b3b432accff96a3704a552fd758259c45b1c",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "25b44cbbabb038970502dee64f9d5fed6dea5703c49e3493af14054ba3f5e5bf",
+   "successor": "259ed24fa659740a7e5bfac6022a688f77ee4167a2da8833d243b52f4f0e18e6",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8ac9ecd87ad1e686e2ba712b1513de472b0573463eb2aa5896aa5257d32519e0",
+   "successor": "b67f5c358ed4a517e595ab32803cb66ab02d95f9c35887a409ec1e4fab91c6a2",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "075216305aca259801253620834bb9688c7387d70ed65037528a165af71801e5",
+   "successor": "eced425919c1dc0874638262bb0d2c157f6ddfe03cc97acae01784519e369131",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "0c66e70bf9ab1bf73837e5ba3847a775c63d1d8619b4560e01ceef4a389189d6",
+   "successor": "3280fd42becdf07356bbd3c14a11651f3bc844655a4b65045bc4a428ab5bb7cc",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "9841e5855fa30c9fec9f51a1aa1dd6c0d592e976eeb6e0a584a2bf8529168f31",
+   "successor": "158aca2a43bb6ef1f4ee052f5b5215f0627a0eb75f15db9ca834877cfc345497",
+   "change": "Reuse listing evidence and batch action-audit reads during First Use",
+   "reason": "Implementation roles move because each listing's evidence digest is computed once per stage and shared by the Market and Feature readers; every digest is unchanged: the replay is ALL EQUAL in eight runs and all 192 paired reader slots return identical digest sets"
+  }
+ ]
+}

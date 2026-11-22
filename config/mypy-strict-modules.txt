@@ -2,6 +2,15 @@
 src/alphalattice/control/product_host/data_preparation/input_capture.py
 src/alphalattice/control/product_host/research_authoring/input_revisions.py
 src/alphalattice/control/product_host/composition/portfolio_research_operations.py
+src/alphalattice/control/product_host/composition/data_operations.py
+src/alphalattice/control/product_host/composition/feature_operations.py
+src/alphalattice/control/product_host/composition/host_answer_submission.py
+src/alphalattice/control/product_host/composition/portfolio_operations.py
+src/alphalattice/control/product_host/composition/research_operations.py
+src/alphalattice/control/product_host/composition/research_read_scopes.py
+src/alphalattice/control/product_host/composition/review_operations.py
+src/alphalattice/control/product_host/composition/task_kinds.py
+src/alphalattice/control/product_host/composition/task_operations.py
 src/alphalattice/investment/alpha_research/scores/model_renewal.py
 src/alphalattice/investment/alpha_research/experiments/lifecycle_authoring.py
 src/alphalattice/investment/alpha_research/experiments/family_qualification.py
@@ -32,6 +41,7 @@ scripts/run_playpen_precommit.py
 src/alphalattice/foundation/feature_engine/producers/cross_section.py
 src/alphalattice/foundation/feature_engine/producers/preprocessing/robust_cross_section.py
 src/alphalattice/foundation/feature_engine/panels/closure_artifacts.py
+src/alphalattice/foundation/feature_engine/panels/closure_files.py
 src/alphalattice/foundation/feature_engine/panels/closure_contracts.py
 src/alphalattice/foundation/feature_engine/panels/closure.py
 src/alphalattice/foundation/feature_engine/panels/rematerialization.py
@@ -165,6 +175,9 @@ src/alphalattice/control/product_host/research_authoring/factor_handoff.py
 src/alphalattice/control/product_host/storage/input_references.py
 src/alphalattice/control/product_host/data_preparation/application.py
 src/alphalattice/control/product_host/composition/research_experiments.py
+src/alphalattice/control/product_host/composition/experience_read.py
+src/alphalattice/control/product_host/composition/research_experiment_blocks.py
+src/alphalattice/control/product_host/composition/research_review_outcome.py
 src/alphalattice/control/product_host/composition/research_experiment_plan.py
 src/alphalattice/control/product_host/composition/research_history.py
 src/alphalattice/control/product_host/composition/upgrade_overview.py
@@ -199,7 +212,6 @@ src/alphalattice/foundation/market_data_ops/sources/membership.py
 src/alphalattice/foundation/market_data_ops/sources/sector_forward.py
 src/alphalattice/kernel/shared_kernel/arrow_identity.py
 src/alphalattice/investment/alpha_research/experiments/development_evidence.py
-src/alphalattice/control/product_host/storage/evidence_references.py
 src/alphalattice/foundation/feature_engine/panels/development_overlay.py
 src/alphalattice/control/product_host/research_authoring/model_training.py
 src/alphalattice/control/product_host/research_authoring/lifecycle_handoff.py

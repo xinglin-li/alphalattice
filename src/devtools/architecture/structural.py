@@ -11,7 +11,7 @@ import re
 import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from enum import StrEnum
 from functools import partial
 from importlib.util import resolve_name
@@ -31,14 +31,13 @@ class GenerationModel(StrEnum):
     BY_CATALOG = "BY_CATALOG"
     BY_REVISION = "BY_REVISION"
     OPERATIONAL_PROJECTION = "OPERATIONAL_PROJECTION"
-    LEGACY_MIGRATION_ONLY = "LEGACY_MIGRATION_ONLY"
 
 
 class StorageAuthorityGroup(_Contract):
     tables: tuple[str, ...] = Field(min_length=1)
     database: str = Field(min_length=1)
-    """The file the tables live in: `workspace` (the market-data DuckDB), `task-control`,
-    `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
+    """The file the tables live in: `workspace` (the market-data DuckDB), `log` (the data root's
+    log.sqlite), `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
     semantic_role: str = Field(min_length=1)
     generation_model: GenerationModel
     authority_owner: str = Field(min_length=1)
@@ -525,6 +524,21 @@ def _table_writes_of(data: bytes, module: str) -> list[list[str]]:
         for node in texts
         for match in _TEMPORARY_TABLE.finditer(str(node.value))
     }
+    classes, functions = _writer_spans(tree)
+    for node in texts:
+        writer = _enclosing_writer(node.lineno, classes, functions)
+        found.update(
+            (table, kind, f"{module}:{writer}", package)
+            for kind, table in _statement_writes(str(node.value))
+            if table.upper() not in _SQL_WORDS and table.lower() not in temporary
+        )
+    return sorted(map(list, found))
+
+
+def _writer_spans(
+    tree: ast.Module,
+) -> tuple[list[tuple[int, int, str]], list[tuple[int, int, str]]]:
+    """Each class's and each top-level function's lines and name, for ``_enclosing_writer``."""
     classes = [
         (node.lineno, node.end_lineno or node.lineno, node.name)
         for node in ast.walk(tree)
@@ -535,14 +549,7 @@ def _table_writes_of(data: bytes, module: str) -> list[list[str]]:
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     ]
-    for node in texts:
-        writer = _enclosing_writer(node.lineno, classes, functions)
-        found.update(
-            (table, kind, f"{module}:{writer}", package)
-            for kind, table in _statement_writes(str(node.value))
-            if table.upper() not in _SQL_WORDS and table.lower() not in temporary
-        )
-    return sorted(map(list, found))
+    return classes, functions
 
 
 def _statement_texts(tree: ast.Module) -> list[ast.Constant]:
@@ -656,6 +663,176 @@ def table_writer_violations(
             f"registered table {table} is created nowhere"
             for table in sorted(set(owners) - created)
         )
+    return tuple(sorted(set(violations)))
+
+
+_PERSISTING_CALLS = frozenset(
+    {
+        "write_text",
+        "write_bytes",
+        "write_table",
+        "write_dataset",
+        "to_parquet",
+        "write_new",
+        "replace_with_retry",
+        "publish_json",
+        "publish_bytes",
+        "publish_model",
+        "publish_research_workspace_manifest",
+    }
+)
+"""A call by this name, on any receiver or bare, persists bytes (the shared write helpers and the
+content store's publishers included)."""
+_PERSISTING_MODULE_CALLS = {
+    "os": frozenset({"replace", "rename"}),
+    "json": frozenset({"dump"}),
+    "np": frozenset({"save", "savez", "savez_compressed"}),
+    "numpy": frozenset({"save", "savez", "savez_compressed"}),
+    "shutil": frozenset({"copy", "copy2", "copyfile", "copytree", "move"}),
+    "sqlite3": frozenset({"connect"}),
+    "duckdb": frozenset({"connect"}),
+}
+
+
+def discover_persistence_sites(
+    sources: tuple[Path, ...], *, source_root: Path
+) -> dict[str, list[str]]:
+    """Each writer in ``sources`` that persists outside SQL text, with the calls it makes: a file
+    opened for writing, a file written, replaced or copied, a JSON, Parquet or NumPy write, an
+    SQLite or DuckDB connect, a shared write helper or a content-store publish. The writer is the
+    module and its innermost class or top-level function, as a table write names it."""
+
+    found: dict[str, set[str]] = {}
+    this = sys.modules[__name__]
+    with kept_facts("persistence-sites", this):  # each file's sites, kept by its bytes
+        for path in sources:
+            module = _logical_module_for_path(path, source_root=source_root)
+            rows = kept_fact(
+                this,
+                "persistence-sites " + module,
+                path.read_bytes(),
+                partial(_persistence_sites_of, module=module),
+                _string_rows,
+            )
+            for writer, call in rows:
+                found.setdefault(writer, set()).add(call)
+    return {writer: sorted(calls) for writer, calls in sorted(found.items())}
+
+
+def _persistence_sites_of(data: bytes, module: str) -> list[list[str]]:
+    """One module's persisting calls from its bytes, as [writer, call]."""
+    tree = ast.parse(file_text(data))
+    classes, functions = _writer_spans(tree)
+    return sorted(
+        map(
+            list,
+            {
+                (f"{module}:{_enclosing_writer(node.lineno, classes, functions)}", call)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and (call := _persisting_call(node))
+            },
+        )
+    )
+
+
+def _persisting_call(node: ast.Call) -> str:
+    """The persisting call ``node`` makes, or an empty string."""
+    function = node.func
+    name = function.attr if isinstance(function, ast.Attribute) else getattr(function, "id", "")
+    if name in _PERSISTING_CALLS:
+        return name
+    owner = function.value if isinstance(function, ast.Attribute) else None
+    if isinstance(owner, ast.Name) and name in _PERSISTING_MODULE_CALLS.get(owner.id, ()):
+        target = node.args[0] if node.args else None
+        if isinstance(target, ast.Constant) and target.value == ":memory:":
+            return ""  # an in-memory database persists nothing
+        return f"{owner.id}.{name}"
+    if name == "open" and isinstance(owner, ast.Name) and owner.id == "os":
+        flags = node.args[1] if len(node.args) > 1 else None
+        return "" if flags is not None and _read_only_flags(flags) else "os.open"
+    return "open" if name == "open" and _opens_to_write(node, builtin=owner is None) else ""
+
+
+def _opens_to_write(node: ast.Call, *, builtin: bool) -> bool:
+    """Whether ``open(path, mode)`` or ``path.open(mode)`` writes, appends, creates or updates.
+
+    A mode not written as one string counts by every string it names, and as a write when it
+    names none: a mode chosen at run time cannot be read here, nor can a receiver's type, so an
+    ``open`` that is not a file's (a store's key, a URL) is listed with its reason instead.
+    """
+    position = 1 if builtin else 0
+    for value in (
+        *node.args[position : position + 1],
+        *(keyword.value for keyword in node.keywords if keyword.arg == "mode"),
+    ):
+        modes = [
+            part.value
+            for part in ast.walk(value)
+            if isinstance(part, ast.Constant) and isinstance(part.value, str)
+        ]
+        if not modes or any(set(mode) & set("wax+") for mode in modes):
+            return True
+    return False
+
+
+_READ_FLAGS = frozenset({"O_RDONLY", "O_BINARY", "O_NOINHERIT", "O_CLOEXEC", "O_NOFOLLOW"})
+"""``os.open`` flags that open a file only to read it."""
+
+
+def _read_only_flags(flags: ast.expr) -> bool:
+    """Whether ``flags`` is ``os`` flag names joined by ``|``, each one that only reads."""
+    if isinstance(flags, ast.BinOp) and isinstance(flags.op, ast.BitOr):
+        return _read_only_flags(flags.left) and _read_only_flags(flags.right)
+    name = flags.attr if isinstance(flags, ast.Attribute) else getattr(flags, "id", "")
+    return name in _READ_FLAGS
+
+
+def authority_groups(storage: StorageAuthorityRegistry, artifacts: Any) -> tuple[str, ...]:
+    """Each storage and artifact authority group by its key: its first table or first path."""
+    return (
+        *(f"table:{group.tables[0]}" for group in storage.groups),
+        *(f"artifacts:{group.path_prefixes[0]}" for group in artifacts.groups),
+    )
+
+
+def data_family_violations(
+    sites: Mapping[str, Sequence[str]],
+    registry: Mapping[str, Any],
+    *,
+    groups: Iterable[str] = (),
+    whole_tree: bool = True,
+) -> tuple[str, ...]:
+    """What persists outside every data family (config/registries/data-families.json).
+
+    Each persisting writer is a family's writer, a write helper or a writer that persists
+    nothing (with its reason). Read over the whole tree, each listed writer still persists and
+    each storage and artifact authority group is covered by exactly one family.
+    """
+
+    families = registry.get("families", {})
+    listed = {writer for family in families.values() for writer in family.get("writers", ())}
+    listed |= set(registry.get("helpers", {})) | set(registry.get("not_persisting", {}))
+    violations = [
+        f"{writer} persists ({', '.join(calls)}) outside every data family; list it under its "
+        "family in config/registries/data-families.json"
+        for writer, calls in sites.items()
+        if writer not in listed
+    ]
+    if whole_tree:
+        covered: dict[str, list[str]] = {}
+        for name, family in families.items():
+            for group in family.get("covers", ()):
+                covered.setdefault(group, []).append(name)
+        violations += [
+            f"data families list {writer}, which persists nothing"
+            for writer in sorted(listed - set(sites))
+        ]
+        violations += [
+            f"authority group {group} is covered by {len(covered.get(group, ()))} data families, "
+            "not one (config/registries/data-families.json)"
+            for group in sorted(set(groups) | set(covered))
+            if group not in groups or len(covered.get(group, ())) != 1
+        ]
     return tuple(sorted(set(violations)))
 
 

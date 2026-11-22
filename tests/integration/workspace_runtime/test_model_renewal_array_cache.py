@@ -18,7 +18,7 @@ from alphalattice.investment.alpha_research.experiments.development_artifacts im
     AlphaDevelopmentArtifactStore,
 )
 from alphalattice.investment.alpha_research.scores import model_renewal
-from tests._support.lease_age import age_lease_file
+from alphalattice.kernel.data_layer import arrays, history
 
 
 def _store_with_arrays(root, payload: bytes) -> tuple[AlphaDevelopmentArtifactStore, str]:
@@ -37,7 +37,12 @@ def _payload() -> bytes:
     return stream.getvalue()
 
 
-def test_arrays_are_shared_only_inside_nested_lifecycle_read_scope(tmp_path, monkeypatch):
+@pytest.mark.proves("alpha_research.lifecycle_arrays_kept_per_process")
+def test_arrays_are_shared_inside_nested_lifecycle_read_scope_and_kept_after(
+    tmp_path, monkeypatch, kept_here
+):
+    """requirement: lifecycle arrays are shared read-only inside nested admission scopes and stay
+    kept in the process after them."""
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)
     load = np.load
@@ -59,33 +64,42 @@ def test_arrays_are_shared_only_inside_nested_lifecycle_read_scope(tmp_path, mon
         assert load_calls == 1
         for values in first.values():
             assert not values.flags.writeable
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="WRITEABLE"):
                 values.setflags(write=True)
         first["targets"] = np.zeros(1)
         third = model_renewal._arrays(store, identity)
         assert third["targets"] is second["targets"]
 
     model_renewal._arrays(store, identity)
-    assert load_calls == 2  # scope exit releases every decoded array
+    # The process keeps sealed arrays past the scope (EV2); where nothing is kept, decode again.
+    assert load_calls == (1 if kept_here else 2)
 
 
-def test_every_load_rehashes_bytes_even_when_mtime_is_restored(tmp_path):
+@pytest.mark.proves("alpha_research.lifecycle_arrays_full_proof_refuses_tamper")
+def test_full_proof_rehashes_bytes_even_when_mtime_is_restored(tmp_path):
+    """tamper: sealed arrays changed after a read, their time restored, are refused by name under
+    full proof; the restored bytes read again."""
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
+    original_body = path.read_bytes()
     original_stat = path.stat()
     with model_renewal.verified_lifecycle_admissions():
         model_renewal._arrays(store, identity)
         damaged = bytearray(payload)
         damaged[len(damaged) // 2] ^= 0x01
-        path.write_bytes(damaged)
+        path.write_bytes(arrays._packed_body(bytes(damaged)))
         os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
-        with pytest.raises(AlphaDevelopmentArtifactReadbackError, match="content_invalid"):
+        with (
+            content_store.full_content_proof(),
+            pytest.raises(AlphaDevelopmentArtifactReadbackError, match="content_invalid"),
+        ):
             model_renewal._arrays(store, identity)
 
-        path.write_bytes(payload)
+        path.write_bytes(original_body)
         os.utime(path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
-        restored = model_renewal._arrays(store, identity)
+        with content_store.full_content_proof():
+            restored = model_renewal._arrays(store, identity)
         assert np.array_equal(restored["features"], np.arange(24).reshape(6, 4))
 
 
@@ -98,8 +112,8 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
     calls = 0
     reads = Counter()
     tracked = {
-        (first_store.root / "current/lifecycle-arrays" / f"{first_hash}.bin").resolve(),
-        (second_store.root / "current/lifecycle-arrays" / f"{second_hash}.bin").resolve(),
+        first_store._packed_source_path("lifecycle-arrays", first_hash).resolve(),
+        second_store._packed_source_path("lifecycle-arrays", second_hash).resolve(),
     }
     open_file = Path.open
 
@@ -116,23 +130,25 @@ def test_identical_content_at_another_store_root_has_a_distinct_cache_key(tmp_pa
 
     monkeypatch.setattr(model_renewal.np, "load", counted_load)
     monkeypatch.setattr(Path, "open", counted_open)
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         first = model_renewal._arrays(first_store, first_hash)
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         second = model_renewal._arrays(second_store, second_hash)
     assert calls == 2
-    assert all(reads[path] == 1 for path in tracked)
+    assert len(tracked) == 1 and sum(reads.values()) == 2
     assert first["features"] is not second["features"]
 
 
-def test_verified_arrays_reuse_across_opted_in_scopes_with_unbroken_os_lease(tmp_path, monkeypatch):
+@pytest.mark.proves("alpha_research.lifecycle_arrays_kept_per_process")
+def test_verified_arrays_are_read_and_decoded_once_across_scopes(tmp_path, monkeypatch, kept_here):
+    """requirement: sealed lifecycle arrays are read and decoded once across scopes; full proof
+    reads and decodes them again."""
     payload = _payload()
     store, identity = _store_with_arrays(tmp_path / "one", payload)
     load = np.load
     load_calls = 0
     reads = 0
-    payload_path = (store.root / "current/lifecycle-arrays" / f"{identity}.bin").resolve()
-    age_lease_file(payload_path)
+    payload_path = store._packed_source_path("lifecycle-arrays", identity).resolve()
     open_file = Path.open
 
     def counted_load(*args, **kwargs):
@@ -148,21 +164,42 @@ def test_verified_arrays_reuse_across_opted_in_scopes_with_unbroken_os_lease(tmp
 
     monkeypatch.setattr(model_renewal.np, "load", counted_load)
     monkeypatch.setattr(Path, "open", counted_open)
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         first = model_renewal._arrays(store, identity)
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         second = model_renewal._arrays(store, identity)
 
-    assert reads == (1 if os.name == "nt" else 2)  # unsupported leases always hash again
-    assert load_calls == 1  # decode is retained only behind explicit opt-in
-    assert first["features"] is second["features"]
-    with content_store.verified_array_read_scope():
+    # Sealed bytes are read once per process where kept; where nothing is kept, each scope reads.
+    assert reads == (1 if kept_here else 2)  # sealed bytes are read once per process (EV2)
+    assert load_calls == (1 if kept_here else 2)
+    if kept_here:
+        assert first["features"] is second["features"]
+    else:
+        assert np.array_equal(first["features"], second["features"])
+    with content_store.full_content_proof(), content_store.verified_array_read_scope():
         third = model_renewal._arrays(store, identity)
-    assert load_calls == 2  # default scope does not consult the process LRU
+    assert reads == load_calls == (2 if kept_here else 3)  # full proof reads and decodes again
     assert third["features"] is not second["features"]
 
 
-def test_process_cache_keeps_unverified_mutable_values_out():
+@pytest.mark.parametrize(
+    "case",
+    [
+        "mutable-in-one-scope",
+        pytest.param(
+            "mutable-in-each-scope",
+            marks=pytest.mark.proves("workspace_runtime.an_unvouched_mutable_value_is_never_kept"),
+        ),
+        pytest.param(
+            "failed-build",
+            marks=pytest.mark.proves("workspace_runtime.a_failed_build_is_never_kept"),
+        ),
+    ],
+)
+def test_generic_request_cache_never_retains_mutable_shells(case):
+    """The process-wide request cache keeps no value it cannot vouch for: a mutable value no caller
+    vouches for is built again at each read, in one read scope or across scopes, and a builder
+    that fails is built again at the next read, which keeps what it accepts."""
     builds = 0
 
     def build_mutable():
@@ -170,59 +207,43 @@ def test_process_cache_keeps_unverified_mutable_values_out():
         builds += 1
         return {"values": []}
 
-    for _ in range(2):
-        with content_store.verified_array_read_scope(reuse_verified=True):
-            content_store.verified_request_value(
-                ("mutable-process", "source"), build_mutable, nbytes=8
-            )
-    assert builds == 2
-
-
-def test_failed_semantic_builder_is_never_retained():
-    builds = 0
-
-    def build():
+    def build_once_refused():
         nonlocal builds
         builds += 1
         if builds == 1:
             raise ValueError("fixture validation failed")
         return (np.frombuffer(b"safe", dtype=np.uint8),)
 
-    with (
-        pytest.raises(ValueError, match="fixture validation failed"),
-        content_store.verified_array_read_scope(reuse_verified=True),
-    ):
-        content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-    with content_store.verified_array_read_scope(reuse_verified=True):
-        accepted = content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-    with content_store.verified_array_read_scope(reuse_verified=True):
-        reused = content_store.verified_request_value(("semantic", "exact"), build, nbytes=4)
-
-    assert builds == 2, (
-        f"COUNT STOP op=rejected_builder observed={builds} budget=2 "
-        "fixture=one-refusal wayon=reduce-work"
-    )
-    assert accepted is reused
-
-
-def test_generic_request_cache_never_retains_mutable_shells():
-    builds = 0
-
-    def build_mutable():
-        nonlocal builds
-        builds += 1
-        return {"values": []}
-
-    with content_store.verified_array_read_scope():
-        first = content_store.verified_request_value(
-            ("mutable-fixture", "exact-source"), build_mutable, nbytes=8
+    def read(build):
+        return content_store.verified_request_value(
+            (case, "exact-source"), build, nbytes=8 if build is build_mutable else 4
         )
-        first["values"].append("caller mutation")
-        second = content_store.verified_request_value(
-            ("mutable-fixture", "exact-source"), build_mutable, nbytes=8
+
+    if case == "failed-build":
+        with (
+            pytest.raises(ValueError, match="fixture validation failed"),
+            content_store.verified_array_read_scope(),
+        ):
+            read(build_once_refused)
+        with content_store.verified_array_read_scope():
+            accepted = read(build_once_refused)
+        with content_store.verified_array_read_scope():
+            reused = read(build_once_refused)
+        assert builds == 2, (
+            f"COUNT STOP op=rejected_builder observed={builds} budget=2 "
+            "fixture=one-refusal wayon=reduce-work"
         )
-    assert builds == 2
-    assert second == {"values": []}
+        assert accepted is reused
+        return
+    scopes = 2 if case == "mutable-in-each-scope" else 1
+    fresh = []
+    for _ in range(scopes):
+        with content_store.verified_array_read_scope():
+            for _ in range(2 // scopes):
+                value = read(build_mutable)
+                fresh.append(value == {"values": []})
+                value["values"].append("caller mutation")
+    assert (builds, fresh) == (2, [True, True])
 
 
 def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_copy():
@@ -234,7 +255,7 @@ def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_co
         return {"values": ["verified"]}
 
     key = ("mutable-copied", "exact-source")
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         first = content_store.verified_request_value(
             key, build_mutable, nbytes=8, copy_mutable=True
         )
@@ -242,7 +263,7 @@ def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_co
         second = content_store.verified_request_value(
             key, build_mutable, nbytes=8, copy_mutable=True
         )
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         third = content_store.verified_request_value(
             key, build_mutable, nbytes=8, copy_mutable=True
         )
@@ -254,8 +275,7 @@ def test_an_opted_in_mutable_value_is_built_once_and_each_caller_gets_its_own_co
     assert second is not third and second["values"] is not third["values"]
 
 
-@pytest.mark.parametrize("reuse_verified", (False, True))
-def test_byte_bounds_rebuild_rejected_and_evicted_values(reuse_verified):
+def test_byte_bounds_rebuild_rejected_and_evicted_values():
     """A rejected size is never cached and an evicted value builds once on its next use."""
     builds: Counter[str] = Counter()
     limit = 512 * 1024 * 1024
@@ -265,16 +285,14 @@ def test_byte_bounds_rebuild_rejected_and_evicted_values(reuse_verified):
             builds[name] += 1
             return (name,)
 
-        return content_store.verified_request_value(
-            ("byte-bound", reuse_verified, name), build, nbytes=size
-        )
+        return content_store.verified_request_value(("byte-bound", name), build, nbytes=size)
 
-    with content_store.verified_array_read_scope(reuse_verified=reuse_verified):
+    with content_store.verified_array_read_scope():
         for _ in range(2):
             assert read("rejected", limit + 1) == ("rejected",)
         assert read("evicted", limit) == read("evicted", limit) == ("evicted",)
         assert read("replacement", limit) == ("replacement",)
-    with content_store.verified_array_read_scope(reuse_verified=reuse_verified):
+    with content_store.verified_array_read_scope():
         assert read("evicted", limit) == read("evicted", limit) == ("evicted",)
     assert builds == {"rejected": 2, "evicted": 2, "replacement": 1}, (
         f"COUNT STOP op=bounded_builder observed={dict(builds)} budget=2/2/1 "
@@ -296,18 +314,19 @@ def test_discard_only_npz_proof_rehashes_and_binds_each_store(tmp_path, monkeypa
         return load(*args, **kwargs)
 
     monkeypatch.setattr(model_renewal.np, "load", counted_load)
-    with content_store.verified_array_read_scope(reuse_verified=True):
+    with content_store.verified_array_read_scope():
         model_renewal._verify_arrays(store, identity)
         model_renewal._verify_arrays(other, same_hash)
     assert calls == 2
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
     before = path.stat()
     damaged = bytearray(payload)
     damaged[len(damaged) // 2] ^= 1
-    path.write_bytes(damaged)
+    path.write_bytes(arrays._packed_body(bytes(damaged)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with (
-        content_store.verified_array_read_scope(reuse_verified=True),
+        content_store.full_content_proof(),
+        content_store.verified_array_read_scope(),
         pytest.raises(AlphaDevelopmentArtifactReadbackError, match="content_invalid"),
     ):
         model_renewal._verify_arrays(store, identity)
@@ -329,7 +348,7 @@ def test_discard_only_npz_proof_cannot_cache_failed_member_decode(tmp_path, monk
     monkeypatch.setattr(model_renewal.np, "load", counted_load)
     for _ in range(2):
         with (
-            content_store.verified_array_read_scope(reuse_verified=True),
+            content_store.verified_array_read_scope(),
             pytest.raises(ValueError, match="Object arrays cannot be loaded"),
         ):
             model_renewal._verify_arrays(store, identity)
@@ -340,7 +359,6 @@ def test_prepared_readback_proof_keeps_training_binding_check_and_current_rehash
     tmp_path, monkeypatch
 ):
     store, identity = _store_with_arrays(tmp_path / "one", _payload())
-    age_lease_file(store._path("current/lifecycle-arrays", identity, "bin"))
     binding = "a" * 64
     prepared = SimpleNamespace(
         content_hash="b" * 64,
@@ -367,25 +385,26 @@ def test_prepared_readback_proof_keeps_training_binding_check_and_current_rehash
 
     monkeypatch.setattr(model_renewal, "canonical_hash", training_hash)
     for _ in range(2):
-        with content_store.verified_array_read_scope(reuse_verified=True):
+        with content_store.verified_array_read_scope():
             model_renewal._verify_prepared_values(store, prepared)
     assert checks == 1
     # A caller retaining the declared hash cannot reuse a proof for changed semantics.
     prepared.row_count = 7
     with (
-        content_store.verified_array_read_scope(reuse_verified=True),
+        content_store.verified_array_read_scope(),
         pytest.raises(model_renewal.AlphaLifecycleError, match="prepared_values_invalid"),
     ):
         model_renewal._verify_prepared_values(store, prepared)
     assert checks == 2
-    path = store._path("current/lifecycle-arrays", identity, "bin")
+    path = store._packed_source_path("lifecycle-arrays", identity)
     before = path.stat()
-    payload = bytearray(path.read_bytes())
+    payload = bytearray(history.read_alpha_part(identity, "current/lifecycle-arrays"))
     payload[len(payload) // 2] ^= 1
-    path.write_bytes(payload)
+    path.write_bytes(arrays._packed_body(bytes(payload)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with (
-        content_store.verified_array_read_scope(reuse_verified=True),
+        content_store.full_content_proof(),
+        content_store.verified_array_read_scope(),
         pytest.raises(AlphaDevelopmentArtifactReadbackError, match="content_invalid"),
     ):
         model_renewal._verify_prepared_values(store, prepared)

@@ -45,9 +45,9 @@ from alphalattice.control.task_control.runner import (
     TaskControlRunner,
     TaskHeartbeatReader,
     TaskHeartbeatReadout,
-    _SqliteHeartbeatStore,
     heartbeat_store_path,
 )
+from alphalattice.control.task_control.upgrade import write_heartbeat
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -60,12 +60,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
     EligiblePoolShort,
 )
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
     _InterruptsOnce,
-    _json,
     _manifest,
-    _request,
     _resolved,
     _Resolver,
 )
@@ -144,6 +143,8 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert code == expected_exit and not captured.err
         assert body["task_record_hash"] == expected["task_record_hash"]
         assert body["status"]["lifecycle"] == body["lifecycle"] == expected["lifecycle"]
+        if expected["stop"] is not None:
+            assert body["stop"]["cause"] == expected["stop"]["cause"]
 
     try:
         admitted = _json(live, "/api/run", method="POST", payload={})
@@ -166,6 +167,11 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert stopped["cancellation"] == "NOT_REQUESTED"
         # What stopped: Task Control's own code, explained, marked resumable by Task Control.
         assert stopped["stop"]["code"] == "TASK_EXECUTION_INTERRUPTED"
+        cause = stopped["stop"]["cause"]
+        assert cause["exception_type"] == "RuntimeError"
+        file, _, line = cause["step"].rpartition(":")
+        assert file == "local_web_support.py" and line.isdecimal()
+        assert cause["detail"] == ""
         status = _json(live, f"/api/status?task_id={task_id}")
         assert status["lifecycle"] == "RECOVERY_REQUIRED"
         assert status["attention"]["unresolved"] is True
@@ -732,7 +738,7 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         assert execution is not None and snapshot.projection.lifecycle is TaskLifecycle.RUNNING
         now = base + timedelta(seconds=60)
         controlled = tmp_path / "controlled-checkpoints.sqlite"  # a sidecar the test writes
-        store = _SqliteHeartbeatStore(heartbeat_store_path(controlled))
+        store_path = heartbeat_store_path(controlled)
         reader = TaskHeartbeatReader(controlled)
         kinds = frozenset({"portfolio_public_development_replay"})
 
@@ -765,26 +771,28 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         assert durable_only.health.status == "LIVENESS_STALE"
         # A fresh signal of a previous execution of this Task is never this execution's.
         previous = uuid4()
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=previous,
                 worker_instance_id=execution.worker_instance_id,
                 sequence=9,
                 observed_at=now,
-            )
+            ),
         )
         assert reader.read(execution.execution_id) == readout(), "keyed by execution, not Task"
         assert build(reader.read(execution.execution_id)).liveness.telemetry == "DURABLE_ONLY"
         # A signal for this execution from another worker is unbound and not counted.
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=execution.execution_id,
                 worker_instance_id=uuid4(),
                 sequence=3,
                 observed_at=now,
-            )
+            ),
         )
         foreign = _only(reader.read(execution.execution_id))
         assert foreign is not None and foreign.worker_instance_id != execution.worker_instance_id
@@ -798,14 +806,15 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         hidden = build(readout(foreign, unreadable=1))
         assert hidden.liveness.telemetry == "UNREADABLE" and hidden.liveness.status == "NOT_RECENT"
         # Only the signal bound to this Task, execution and worker establishes liveness.
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=execution.execution_id,
                 worker_instance_id=execution.worker_instance_id,
                 sequence=4,
                 observed_at=now - timedelta(seconds=3),
-            )
+            ),
         )
         bound_signal = _only(reader.read(execution.execution_id))
         assert bound_signal is not None and bound_signal.sequence == 4

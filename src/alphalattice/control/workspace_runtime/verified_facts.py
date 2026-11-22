@@ -9,9 +9,15 @@
   complete canonical key; a hit compares that key. Under a workspace whose writer lease this
   process holds it is kept across processes in `runtime/verified-files.jsonl`; elsewhere it
   lives for the process. Legacy stamp-only rows are misses. A digest is reused while file identity,
-  size, modification time and kernel change time hold; a reader waits for a recent stamp to settle.
-  A writer's own digest can be kept immediately. Deliberately restoring timestamps is outside the
-  accidental-change model.
+  size, modification time and kernel change time hold. A reader hashes a recent stamp on
+  every read. A writer can record its own digest immediately. Deliberately restoring
+  timestamps is outside the accidental-change model.
+
+- A **sealed file** is checked once, at write, in git's index form: its writer records the
+  SHA-256 of the bytes it wrote with the file's identity stat (size, modification time, file
+  id), and a read takes that digest while the stat holds, hashing the file again only once the
+  stat changed. Inside ``full_content_proof()`` (an entry, an export, the scrub: LAWS.md EV2)
+  every sealed file is proved from its bytes.
 
 A missing fact only costs the full computation: both records are rebuildable caches, and a
 store that predates the year-fact table holds none until its first writer creates it.
@@ -26,7 +32,9 @@ import os
 import time
 import weakref
 from _thread import LockType
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from ctypes import wintypes
 from pathlib import Path
 from threading import Lock
@@ -43,6 +51,12 @@ if os.name == "nt":
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 _CONTENT_KIND = "\x00content-v1:"
 _STAMP_KIND = "\x00file-stamp-v1:"
+_SEALED = "sealed-sha256"
+"""A sealed file's fact: this path holds the bytes of this SHA-256 while its stat holds."""
+_FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+    "content_store_full_proof", default=None
+)
+"""Open inside ``full_content_proof()``: what a proof has shown, shared by its reads."""
 RACY_SECONDS = 2.0
 """How old the newest modification or change time must be before a digest is kept."""
 
@@ -120,9 +134,12 @@ def record_year_facts(
     if values:
         if not _year_facts_held(connection):
             ensure_year_fact_schema(connection)
-        connection.executemany(
-            "INSERT OR REPLACE INTO verified_year_fact VALUES (?, ?, ?, ?, ?, ?)",
-            [[kind, scope, int(year), basis, epoch, value] for year, value in values.items()],
+        # One statement for every year: a row-by-row executemany costs a statement per year.
+        years = {int(year): value for year, value in values.items()}
+        connection.execute(
+            "INSERT OR REPLACE INTO verified_year_fact"
+            " SELECT ?, ?, unnest(?::INTEGER[]), ?, ?, unnest(?::VARCHAR[])",
+            [kind, scope, list(years), basis, epoch, list(years.values())],
         )
 
 
@@ -267,7 +284,8 @@ def _held_digest(path: Path) -> str | None:
     return held[1] if held is not None and _settled(stamp) else None
 
 
-def _verified_digest(path: Path, *, settle: bool = False) -> str:
+def _verified_digest(path: Path) -> tuple[str, bool]:
+    """Return the digest and whether an unchanged, settled stamp lets a reader keep it."""
     absolute = str(Path(os.path.abspath(path)))
     with _LOCK:
         gate = _DIGEST_LOCKS.get(absolute)
@@ -275,47 +293,96 @@ def _verified_digest(path: Path, *, settle: bool = False) -> str:
             gate = Lock()
             _DIGEST_LOCKS[absolute] = gate
     with gate:
-        return _read_digest(path, settle=settle)
+        return _read_digest(path)
 
 
-def _read_digest(path: Path, *, settle: bool = False) -> str:
+def _read_digest(path: Path) -> tuple[str, bool]:
     try:
         before = _stamp(path)
     except OSError:
         with span("hash", "file_stamp_unavailable"):
-            return _content_sha256(path)
+            return _content_sha256(path), False
+    settled = _settled(before)
     with _LOCK:
         held = _PROCESS.get(_stamp_key(path, before))
-    if held is not None and _settled(before):
-        return held[1]
-    age = time.time_ns() - max(before[-2:])
-    window = int(RACY_SECONDS * 10**9)
-    if settle and 0 <= age <= window:
-        # Wait without the shared cache lock, then read the stamp again before hashing.
-        with span("wait", "file_stamp_settle"):
-            time.sleep((window - age + 1_000_000) / 10**9)
-        try:
-            before = _stamp(path)
-        except OSError:
-            with span("hash", "file_stamp_unavailable"):
-                return _content_sha256(path)
+    if held is not None and settled:
+        return held[1], True
     digest = _content_sha256(path)
     try:
         after = _stamp(path)
     except OSError:
         with span("verify", "file_stamp_unavailable"):
             pass
-        return digest
-    if before == after and _settled(after):
+        return digest, False
+    if before == after and settled:
         with _LOCK:
             _PROCESS[_stamp_key(path, after)] = ((after[2], after[3], after[1]), digest)
-    elif before != after:
+        return digest, True
+    if before != after:
         with span("verify", "file_stamp_changed"):
             pass
     else:
         with span("verify", "file_stamp_unsettled"):
             pass
-    return digest
+    return digest, False
+
+
+@contextmanager
+def full_content_proof() -> Iterator[None]:
+    """Prove every sealed file read inside from its bytes, answering nothing kept before.
+
+    The edges open it (LAWS.md EV2): an export, a publication, a stage's check of what it just
+    wrote, and the scrub. What it proves is shared inside it, so each sealed value is proved once
+    per proof; a nested proof joins the outer one. Kept values stay kept for ordinary reads.
+    """
+    if _FULL_PROOF.get() is not None:
+        yield
+        return
+    token = _FULL_PROOF.set({})
+    try:
+        yield
+    finally:
+        _FULL_PROOF.reset(token)
+
+
+def full_proof() -> bool:
+    """Whether a read proves its sealed bytes now: inside ``full_content_proof()``."""
+    return _FULL_PROOF.get() is not None
+
+
+def sealed_file_holds(path: Path, sha256: str) -> bool:
+    """Whether `path` holds the bytes whose SHA-256 is `sha256`, checked once (git's index).
+
+    An ordinary read takes the digest its writer recorded, or an earlier read proved, while the
+    file's identity stat holds, and hashes the file only when there is none or the stat changed;
+    inside ``full_content_proof()`` the bytes are always hashed. As git does with a racily clean
+    entry, a stat whose modification time is not yet settled is hashed: a rewrite of the same
+    size within one clock tick would leave it unchanged. False for a missing, unreadable or
+    different file.
+    """
+    if not full_proof():
+        entries, key = _place(path, _content_kind(_SEALED, sha256))
+        with _LOCK:
+            held = entries.get(key)
+        settled = held is not None and time.time_ns() - held[0][1] > RACY_SECONDS * 10**9
+        if settled and held is not None and _holds(path, held):
+            return True
+    try:
+        before = os.stat(path)
+        with span("hash", "sealed_file"):
+            digest = _content_sha256(path)
+    except OSError:
+        return False
+    if digest != sha256:
+        return False
+    record_file_fact(path, _SEALED, sha256, stat=before, _content=sha256)
+    return True
+
+
+def record_sealed_file(path: Path, sha256: str) -> None:
+    """Record, as its writer, that `path` now holds the bytes it wrote, whose SHA-256 is `sha256`,
+    so no read hashes them again while the file's stat holds."""
+    record_file_fact(path, _SEALED, sha256, written=True, _content=sha256)
 
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:
@@ -324,7 +391,7 @@ def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | No
         digest = (
             _content
             if _content is not None
-            else (_held_digest(path) if kind == "sha256" else _verified_digest(path))
+            else (_held_digest(path) if kind == "sha256" else _verified_digest(path)[0])
         )
     except OSError:
         return None
@@ -337,7 +404,7 @@ def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | No
         if not kept:
             return None
         try:
-            digest = _verified_digest(path)
+            digest, _ = _verified_digest(path)
         except OSError:
             return None
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
@@ -359,7 +426,7 @@ def record_file_fact(
     stat = stat if stat is not None else os.stat(path)
     if not written and time.time() - stat.st_mtime <= RACY_SECONDS:
         return
-    digest = _content if _content is not None else _verified_digest(path)
+    digest = _content if _content is not None else _verified_digest(path)[0]
     if kind == "sha256" and value != digest:
         return
     entry = ((stat.st_size, stat.st_mtime_ns, stat.st_ino), value)
@@ -380,12 +447,16 @@ def record_file_fact(
                 pass  # kept for this process; the next one digests the file again
 
 
-def file_sha256(path: Path) -> str:
-    """Reuse a settled file's digest while its complete stamp holds."""
+def file_sha256(path: Path, *, written: bool = False) -> str:
+    """Hash now, recording the result for a settled file or for its own writer."""
     before = os.stat(path)
-    digest = _verified_digest(path, settle=True)
-    if _holds(path, ((before.st_size, before.st_mtime_ns, before.st_ino), digest)):
-        record_file_fact(path, "sha256", digest, stat=before, _content=digest)
+    if written:
+        digest = _content_sha256(path)
+    else:
+        digest, settled = _verified_digest(path)
+        if not settled:
+            return digest
+    record_file_fact(path, "sha256", digest, written=written, stat=before, _content=digest)
     return digest
 
 

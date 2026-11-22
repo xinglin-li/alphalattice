@@ -15,29 +15,27 @@ from alphalattice.control.product_host.composition.research_workspace import (
     publish_research_workspace_manifest,
 )
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
+from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from tests._support import development_universe
+from tests.feature_engine.panel_workspace import capture_panel_closure, clipping_evidence
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _manifest,
     _resolved,
     _Resolver,
 )
-from tests.researcher_methodology_surface.real_workspace import (
-    SYMBOLS,
-    build_real_risk_workspace,
-)
+from tests.pytest_environment import closure_on_log
+from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
 from tests.workspace_maintenance.data_update_support import (
     _active_panel_manifest,
     _seed_foundation,
+    run_update_to_status,
     set_parallel_test_budget,
-)
-from tests.workspace_maintenance.local_data_provider import (
-    recording_provider,
-    unchanged_membership_source,
 )
 
 # --------------------------------------------------------------------------
@@ -51,14 +49,7 @@ YEAR_END_AS_OF = date(2026, 1, 5)
 YEAR_END_OBSERVED_AT = datetime(2026, 1, 6, tzinfo=UTC)
 
 
-YEAR_END_HISTORY_START = date(2016, 1, 5)
-"""The ten-calendar-year anniversary of the backdated as-of, a trading day.
-
-The seeded walk must answer the whole ten-year window, and the onboarding
-fetch must start at the walk's first session: the recording provider the
-updates use stamps volumes by session ordinal, which agrees with the
-onboarding's window-relative stamp only when the two starts coincide.
-"""
+YEAR_END_HISTORY_START = date(2024, 1, 5)
 
 
 DAY_ONE = datetime(2026, 1, 6, 23, tzinfo=UTC)
@@ -69,26 +60,32 @@ DAY_TWO = datetime(2026, 1, 7, 23, tzinfo=UTC)
 
 CORRECTED_SESSION = date(2025, 12, 30)
 """Inside the 45-day refresh overlap of the day-two fetch and in the previous year."""
+SYMBOLS = tuple(item.symbol for item in development_universe.MAINTENANCE_LISTINGS)
+
+
+def _year_end_provider(now: datetime) -> development_universe.DevelopmentProvider:
+    return development_universe.DevelopmentProvider(
+        clock=lambda: now,
+        sessions=development_universe.calendar_sessions(
+            start=YEAR_END_HISTORY_START, end=DAY_TWO.date()
+        ),
+        listings=development_universe.MAINTENANCE_LISTINGS,
+    )
 
 
 @pytest.fixture(scope="module")
 def year_end(tmp_path_factory):
-    """The ten-name workspace with its Panel closing on 2026-01-05.
-
-    Built fresh through the product's own onboarding gate and maintenance
-    coordinator: the golden cache keys on the source tree and the universe,
-    not on the as-of, so a backdated baseline must bypass it. A deterministic
-    seeded-walk Provider, explicitly not live data.
-    """
+    """Build the development cohort at the test's year-end clock outside the golden cache."""
 
     from tests.researcher_methodology_surface import real_workspace as owner
 
+    sessions = _year_end_provider(YEAR_END_OBSERVED_AT).sessions
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(owner, "AS_OF", YEAR_END_AS_OF)
         patch.setattr(owner, "OBSERVED_AT", YEAR_END_OBSERVED_AT)
-        patch.setattr(owner, "HISTORY_START", YEAR_END_HISTORY_START)
+        patch.setattr(development_universe, "calendar_sessions", lambda: sessions)
         built = build_real_risk_workspace(
-            tmp_path_factory.mktemp("data-update-year-end"), fresh=True
+            tmp_path_factory.mktemp("data-update-year-end"), fresh=True, symbols=SYMBOLS
         )
         publish_research_workspace_manifest(built.workspace, _manifest("data-update-qa"))
         _seed_foundation(built.workspace, built.panel_snapshot_hash)
@@ -136,25 +133,6 @@ def _lifecycles(workspace: Path) -> dict[str, tuple[str, str | None]]:
     return result
 
 
-def _capture_panel_closure(workspace: Path):
-    from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-    from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
-    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-        PanelClosureArtifactStore,
-    )
-    from alphalattice.foundation.feature_engine.panels.closure_source import (
-        PanelClosureSourceRepository,
-    )
-
-    resolver = ArtifactResolver(workspace / "artifacts")
-    store = PanelClosureArtifactStore(resolver)
-    source = PanelClosureSourceRepository(
-        database_path=workspace / "market-data.duckdb", resolver=resolver
-    )
-    publisher = PanelClosurePublisher(resolver=resolver, source=source, store=store)
-    return publisher.publish(), store, resolver
-
-
 def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_boundary(
     year_end, tmp_path, monkeypatch
 ):
@@ -165,12 +143,6 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     )
     from alphalattice.foundation.feature_engine.panels.rematerialization import (
         ArtifactOnlyPanelRematerializer,
-    )
-    from alphalattice.foundation.feature_engine.producers.preprocessing.contracts import (
-        PanelClippingEvidence,
-    )
-    from alphalattice.foundation.feature_engine.publication.snapshots import (
-        resolve_panel_preprocessing_lineage,
     )
 
     workspace = tmp_path / "workspace"
@@ -195,12 +167,15 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     }
 
     def boot(now, provider):
+        closure_on_log(workspace)  # the closure written outside a Host, as its first start moves it
         return LocalPortfolioWebSession(
             workspace=workspace,
             workspace_manifest=manifest,
             resolver=_Resolver(_resolved()),
             data_provider=provider,
-            data_source_loader=unchanged_membership_source(SYMBOLS),
+            data_source_loader=lambda **kwargs: development_universe.source_loader(
+                listings=development_universe.MAINTENANCE_LISTINGS, **kwargs
+            ),
             clock=lambda: now,
         )
 
@@ -208,15 +183,13 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
         return len(_lifecycles(workspace))
 
     # Day one: an ordinary new session, same membership, sector, catalog and policy.
-    provider_one = recording_provider(now=DAY_ONE, start=YEAR_END_HISTORY_START)
+    provider_one = _year_end_provider(DAY_ONE)
     with boot(DAY_ONE, provider_one) as live:
         plan_one = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert plan_one["status"] == "PLANNED", plan_one
         request_one = {"update_plan_hash": plan_one["plan_hash"]}
-        admitted = _json(live, "/api/data-update/run", method="POST", payload=request_one)
+        admitted, status = run_update_to_status(live, request_one, timeout=600)
         assert admitted["status"] == "ADMITTED", admitted
-        live.dispatcher.drain_for_tests(timeout=600)
-        status = _json(live, f"/api/status?task_id={admitted['task_id']}")
         assert status["lifecycle"] == "SUCCEEDED", (status, _json(live, "/api/data-update"))
         readback = _json(live, "/api/data-update")
         assert readback["status"] == "PUBLISHED"
@@ -258,7 +231,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
 
     # Restart: the published result is what the page reads back; nothing is
     # fetched or rebuilt, and the same plan is an exact reuse.
-    provider_restart = recording_provider(now=DAY_ONE, start=YEAR_END_HISTORY_START)
+    provider_restart = _year_end_provider(DAY_ONE)
     with boot(DAY_ONE, provider_restart) as live:
         assert not live.resumed_task_ids
         reopened = _json(live, "/api/data-update")
@@ -277,7 +250,8 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     assert snapshot_count() == snapshots_after_day_one
 
     # The closure captured now freezes day one's derivation before any cell moves.
-    captured_one, store, resolver = _capture_panel_closure(workspace)
+    resolver = ArtifactResolver(workspace / "artifacts")
+    captured_one, store = capture_panel_closure(market.path, resolver)
     assert {str(baseline["snapshot_hash"]), str(day_one["snapshot_hash"])} <= set(
         captured_one.recipes
     )
@@ -286,29 +260,26 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     # Day two: the Provider restates one close in the previous year, inside
     # the refresh overlap, for one listing. Small enough to be no raw-move
     # case: what it triggers is the full-history audit approval.
-    provider_two = recording_provider(now=DAY_TWO, start=YEAR_END_HISTORY_START)
-    closes = provider_two._closes
-    original_close = closes(SYMBOLS[0], DAY_TWO.date())[CORRECTED_SESSION]
+    provider_two = _year_end_provider(DAY_TWO)
+    bars = provider_two.bars_for
+    original_close = next(bar.close for bar in bars(SYMBOLS[0]) if bar.session == CORRECTED_SESSION)
 
-    def with_restated_close(symbol, end):
-        values = closes(symbol, end)
-        if symbol == SYMBOLS[0] and CORRECTED_SESSION in values:
-            values[CORRECTED_SESSION] *= 1.003
-        return values
+    def with_restated_close(symbol):
+        return [
+            row.rescaled(1.003)
+            if symbol == SYMBOLS[0] and row.session == CORRECTED_SESSION
+            else row
+            for row in bars(symbol)
+        ]
 
-    monkeypatch.setattr(provider_two, "_closes", with_restated_close)
+    monkeypatch.setattr(provider_two, "bars_for", with_restated_close)
     revisions_before = market.revision_count(corrected_listing)
     with boot(DAY_TWO, provider_two) as live:
         plan_two = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert plan_two["status"] == "PLANNED", plan_two
-        blocked = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": plan_two["plan_hash"]},
+        _, status = run_update_to_status(
+            live, {"update_plan_hash": plan_two["plan_hash"]}, timeout=600
         )
-        live.dispatcher.drain_for_tests(timeout=600)
-        status = _json(live, f"/api/status?task_id={blocked['task_id']}")
         assert status["lifecycle"] == "BLOCKED", status
         assert status["latest_failure_code"] == "data.full_history_audit_approval_required", status
         # Refused whole: the restated row is not applied, nothing is published.
@@ -337,15 +308,12 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
         assert (approved["status"], approved["lifecycle"]) == ("APPROVED", "QUEUED"), approved
         # The confirmation admits the Task; the page's run dispatches that
         # same Task, never a second one.
-        dispatched = _json(
+        _, status = run_update_to_status(
             live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": proposal["plan_hash"]},
+            {"update_plan_hash": proposal["plan_hash"]},
+            timeout=900,
+            task_id=approved["task_id"],
         )
-        assert dispatched["task_id"] == approved["task_id"], dispatched
-        live.dispatcher.drain_for_tests(timeout=900)
-        status = _json(live, f"/api/status?task_id={approved['task_id']}")
         assert status["lifecycle"] == "SUCCEEDED", status
         published = _json(live, "/api/data-update")
         assert published["status"] == "PUBLISHED"
@@ -409,14 +377,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     assert lifecycles[str(day_two["snapshot_hash"])] == ("ACTIVE", None)
     assert lifecycles[str(day_one["snapshot_hash"])] == ("SUPERSEDED", "not_current_active_panel")
     assert lifecycles[str(baseline["snapshot_hash"])] == ("SUPERSEDED", "not_current_active_panel")
-    lineage = resolve_panel_preprocessing_lineage(
-        resolver, panel_content_hash=str(day_two["panel_content_hash"])
-    )
-    evidence = PanelClippingEvidence.model_validate(
-        resolver.load_panel_clipping_evidence(
-            resolver.panel_clipping_evidence_uri(str(lineage["clipping_evidence_hash"]))
-        )
-    )
+    evidence = clipping_evidence(resolver, day_two)
     calendar_length = sum(int(chunk["row_count"]) for chunk in day_two["chunks"]) // len(SYMBOLS)
     assert all(
         len(item.per_session_clipped_counts) == calendar_length for item in evidence.factor_records
@@ -425,7 +386,7 @@ def test_three_day_journey_reuses_partitions_and_corrects_across_the_year_bounda
     # Old and new snapshots stay verifiable: day one's recipe (captured before
     # the correction) and day two's (mixed origins, after it) both reproduce
     # their bytes from the closure alone.
-    captured_two, store, resolver = _capture_panel_closure(workspace)
+    captured_two, store = capture_panel_closure(market.path, resolver)
     recipe_two = captured_two.recipes[str(day_two["snapshot_hash"])]
     # Day one's cells from the corrected session on were restamped by day
     # two's build, so the live availability no longer describes day one (nor

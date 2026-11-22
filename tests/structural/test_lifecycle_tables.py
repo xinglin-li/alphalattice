@@ -147,8 +147,8 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "a busy queue puts the verification sweep and the held-state backup off, a deferral "
     "holding the running place too, which they would only queue behind",
     (
-        "control/product_host/composition/portfolio_research_operations.py",
-        "PortfolioResearchOperations._recover",
+        "control/product_host/composition/task_operations.py",
+        "_recover",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (
@@ -330,11 +330,6 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ): "a data update that has not ended answers its own plan, a deferred one too, whose run "
     "resumes it once due; a cancelling one is not waiting",
     (
-        "control/product_host/storage/evidence_references.py",
-        "_IN_FLIGHT",
-        "CANCEL_REQUESTED,DEFERRED,QUEUED,RECOVERY_REQUIRED,REVIEW_PENDING,RUNNING",
-    ): "every unended state keeps the evidence it references",
-    (
         "control/product_host/storage/input_references.py",
         "ResearchInputStorage._references",
         "CANCELLED,SUCCEEDED",
@@ -377,6 +372,9 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ("control/task_control/runner.py", "TaskControlRunner._step", "CANCEL_REQUESTED,RUNNING"): (
         "the runner steps on while executing"
     ),
+    ("control/task_control/upgrade.py", "_heartbeat_step", "CANCEL_REQUESTED,RUNNING"): (
+        "a running or cancelling worker may still write the old lease; refuse its live import"
+    ),
     (
         "control/task_control/timing.py",
         "_ENDED",
@@ -387,6 +385,12 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "SectorRefreshStager._load",
         "BLOCKED,DEFERRED,RUNNING",
     ): "the sector staging file's own statuses, not a Task's",
+    (
+        "kernel/data_layer/project.py",
+        "_wait_resolved",
+        "BLOCKED,CANCEL_REQUESTED,RECOVERY_REQUIRED,REVIEW_PENDING",
+    ): "an ordinary wait resolution retains review, cancellation and explicit recovery; "
+    "another waiting Task resumes when its last ordinary wait resolves",
     (
         "interface/local_application/cli_contract.py",
         "_PENDING_STATES",

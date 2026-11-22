@@ -45,13 +45,11 @@ def _imported_modules(root: Path) -> tuple[tuple[str, str], ...]:
     return tuple(found)
 
 
-@pytest.mark.parametrize("desk", _DESKS)
+@pytest.mark.parametrize("desk", _DESKS, ids=_DESKS)
 def test_no_desk_experiments_package_can_reach_its_publication_owner(desk: str) -> None:
     """No desk experiments package can reach its publication owner."""
 
     experiments = SOURCE_ROOT / desk / "experiments"
-    if not experiments.is_dir():
-        pytest.skip(f"{desk} has no experiments package")
     owner = desk.rsplit("/", maxsplit=1)[-1]
     offenders = [
         f"{where} -> {module}"

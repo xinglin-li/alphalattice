@@ -25,6 +25,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceSourceReferenceSet,
     parse_source_set,
 )
+from alphalattice.evidence.alternative_evidence.storage import world_reads
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _counted_runtime,
     _registry,
@@ -39,7 +40,12 @@ def _objects(tmp_path: Path) -> list[Path]:
     return sorted(root.iterdir()) if root.is_dir() else []
 
 
-def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Path) -> None:
+def test_source_bytes_are_kept_once_and_referenced_by_every_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The workspace's source objects are the authority here: world serves no body, as it
+    # serves none to a Host whose world holds no evidence.
+    monkeypatch.setattr(world_reads, "serving", lambda: None)
     runtime, _passes = _counted_runtime(tmp_path)
     documents = (
         _recorded_document(),
@@ -78,9 +84,11 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
     # is the reference form, verified by identity.
     loaded = runtime.artifacts.load_source_set(second.source_set_hash)
     assert loaded == second
-    document_set = runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+    document_set = runtime.canonicalize(
+        source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+    )
     assert len(document_set.documents) == 2
-    resolved = runtime.resolve_source_documents(loaded)
+    resolved = runtime.resolve_source_documents(loaded, as_of=None)
     assert [value.source_content_hash for value in resolved] == [
         value.source_content_hash for value in second.documents
     ]
@@ -91,14 +99,21 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
     genuine = target.read_bytes()
     target.write_bytes(genuine[:-1] + bytes([genuine[-1] ^ 0x01]))
     with pytest.raises(ValueError, match="source_object_tampered"):
-        runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+        runtime.canonicalize(
+            source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+        )
     target.unlink()
     with pytest.raises(ValueError, match="source_object_missing"):
-        runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+        runtime.canonicalize(
+            source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+        )
     assert runtime.artifacts.load_source_set(second.source_set_hash) == second
     target.write_bytes(genuine)
     assert (
-        runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of) == document_set
+        runtime.canonicalize(
+            source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+        )
+        == document_set
     )
     # An address that holds other bytes refuses a new publication rather than
     # adopting them.
@@ -115,7 +130,9 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
     # keeps them as they are; a damaged stream is tampered.
     target.write_bytes(SOURCE_OBJECT_ZLIB + zlib.compress(genuine, 6))
     try:
-        expanded = runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+        expanded = runtime.canonicalize(
+            source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+        )
     except ValueError as error:
         pytest.fail(f"the zlib form was refused: {error}")
     assert expanded == document_set
@@ -128,11 +145,13 @@ def test_source_bytes_are_kept_once_and_referenced_by_every_request(tmp_path: Pa
     assert target.read_bytes().startswith(SOURCE_OBJECT_ZLIB)
     target.write_bytes(SOURCE_OBJECT_ZLIB + zlib.compress(genuine, 6)[:-4])
     with pytest.raises(ValueError, match="source_object_tampered"):
-        runtime.canonicalize(source_set=loaded, published_at=later.evidence_as_of)
+        runtime.canonicalize(
+            source_set=loaded, published_at=later.evidence_as_of, as_of=later.evidence_as_of
+        )
     runtime.close()
 
 
-@pytest.mark.parametrize("now", (_NOW, _NOW - timedelta(days=7)))
+@pytest.mark.parametrize("now", (_NOW, _NOW - timedelta(days=7)), ids=("now", "a week ago"))
 def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path, now: datetime) -> None:
     runtime, _passes = _counted_runtime(tmp_path)
     request = _request_at(now)
@@ -156,8 +175,8 @@ def test_the_retained_inline_source_set_still_canonicalizes(tmp_path: Path, now:
     loaded = runtime.artifacts.load_source_set(inline.source_set_hash)
     assert isinstance(loaded, AcquiredEvidenceDocumentSet)
     assert loaded == inline
-    assert runtime.resolve_source_documents(loaded) == acquired
-    document_set = runtime.canonicalize(source_set=loaded, published_at=now)
+    assert runtime.resolve_source_documents(loaded, as_of=None) == acquired
+    document_set = runtime.canonicalize(source_set=loaded, published_at=now, as_of=now)
     assert len(document_set.documents) == 1
     assert _objects(tmp_path) == [], "reading an inline set publishes no object"
     payload = json.loads(

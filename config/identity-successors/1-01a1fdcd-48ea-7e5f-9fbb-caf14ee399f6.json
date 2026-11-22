@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "c7dfc78c2d484e5def7c7ecb48c7e68bf8e68b812e5218627d9cb506d31781d8",
+   "successor": "81c87d34ee5085c1c85c82f21d6c87db1c401780e8d4e3a6d6639c63b09811fc",
+   "change": "Speed up recorded Evidence acquisition and keep each original once",
+   "reason": "Acquisition writes each original once and builds typed columns directly; the exact-head replay is ALL EQUAL over originals, canonical documents, chunks, queries and spans, canonical bytes and vectors included; only the canonicalization binding moves, by its recorded successor, and the other Evidence bindings compare equal; no Feature, Factor or Panel closure is touched"
+  }
+ ]
+}

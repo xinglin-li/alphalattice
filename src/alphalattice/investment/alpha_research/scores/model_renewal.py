@@ -194,7 +194,7 @@ def _verify_arrays(store: AlphaDevelopmentArtifactStore, identity: str) -> None:
 
     verified_source_value(
         ("lifecycle-npz-proof", str(store.root), identity),
-        (store._path("current/lifecycle-arrays", identity, "bin"),),
+        (store._packed_source_path("lifecycle-arrays", identity),),
         check,
         nbytes=0,
     )
@@ -815,7 +815,7 @@ def _check_prepared_values(prepared: AlphaPreparedRefit, values: dict[str, Float
 def _verify_prepared_values(
     store: AlphaDevelopmentArtifactStore, prepared: AlphaPreparedRefit
 ) -> None:
-    """Retain a complete training-binding proof while every source lease remains valid."""
+    """Keep a complete training-binding proof of the sealed sources it read (LAWS.md EV2)."""
     semantic_identity = (
         prepared.content_hash,
         prepared.array_file_hash,
@@ -849,7 +849,7 @@ def _verify_prepared_values(
 
     verified_source_value(
         ("lifecycle-prepared-values-proof", str(store.root), *semantic_identity),
-        (store._path("current/lifecycle-arrays", prepared.array_file_hash, "bin"),),
+        (store._packed_source_path("lifecycle-arrays", prepared.array_file_hash),),
         check,
         nbytes=0,
     )

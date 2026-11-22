@@ -10,8 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
+from devtools.testing import sizes
 from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,16 +47,77 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
     "a plugin with no PROVIDES": ("workshop", ["X = 1"], "plugin_unloadable"),
     "two plugins of one name": ("workshop", [SHOP + "\nNAME = 'x'"] * 2, "plugin_unloadable"),
 }
+DECISION_CASES = (
+    "a workshop row with no plugin",
+    "two plugins for a row",
+    "a plugin for no row",
+    "a plugin with no PROVIDES",
+    "two plugins of one name",
+)
+
+
+def _assert_provider_refusal(tmp_path, case):
+    """Provider decisions reject each invalid declaration before a journey starts."""
+    host, bodies, wanted = CASES[case]
+    rows = {
+        "ok": stage.Row("ok", "command", "devtools.pipeline", "r", ("workshop", "public")),
+        "red": stage.Row("red", "command", "devtools.pipeline", "r", ("workshop", "public")),
+        "local": stage.Row("local", "workshop", "devtools.pipeline", "r", ("workshop",)),
+        "job": stage.Row("job", "ci-job", "devtools.pipeline", "r", ("public",), job="w"),
+    }
+    pipeline_stage = stage.Stage("commit", 1, "r", "line", "card", 1, tuple(rows))
+    definition = stage.Definition("0" * 64, {"commit": pipeline_stage}, rows)
+    paths = [tmp_path / f"shop{i}.py" for i in range(len(bodies))]
+    for path, body in zip(paths, bodies, strict=True):
+        path.write_text(body, encoding="utf-8")
+    with pytest.raises(DefinitionError) as refused:
+        stage.resolve(definition, pipeline_stage, host, stage.plugins(paths))
+    assert refused.value.code == "pipeline." + wanted
 
 
 @pytest.mark.proves("pipeline.stage_runs_each_row_by_one_provider")
 @pytest.mark.proves("pipeline.stage_target_is_separate_from_stop")
 @pytest.mark.proves("pipeline.cost_receipt_contains_required_nodes")
-@pytest.mark.parametrize("case", CASES)
+@pytest.mark.proves("pipeline.slow_guards_run_when_the_change_touches_what_they_read")
+@pytest.mark.parametrize("case", CASES, ids=str)
 def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
-    tmp_path, case, monkeypatch
+    tmp_path, request, case, monkeypatch
 ):
+    if case in DECISION_CASES:
+        _assert_provider_refusal(tmp_path, case)
+        return
+    request.getfixturevalue("synthetic_history")
     host, bodies, wanted = CASES[case]
+    if case == "public":
+        with monkeypatch.context() as patch:
+
+            def stalled_git(*args, **kwargs):
+                assert kwargs["stdin"] == subprocess.DEVNULL and kwargs["timeout"] > 0
+                raise subprocess.TimeoutExpired("git", kwargs["timeout"])
+
+            patch.setattr(stage.spawn, "run", stalled_git)
+            with pytest.raises(DefinitionError, match=r"pipeline\.workspace_unreadable"):
+                stage._workspace(tmp_path, "develop")
+        with monkeypatch.context() as patch:
+            patch.setenv("ALPHALATTICE_DATA_ROOT", "person-root")
+            environments = []
+
+            def still_running(*args, **kwargs):
+                environments.append(kwargs["env"])
+                raise stage.spawn.TreeNotStopped("spawn.tree_not_stopped: child")
+
+            patch.setattr(stage.spawn, "run", still_running)
+            context = SimpleNamespace(
+                root=tmp_path, stage="commit", deadline=stage.time.monotonic() + 1
+            )
+            result = stage._call(["fake"], tmp_path / "timed.log", context, {})
+            assert result["status"] == "ERROR" and result["stopped"] == "reap"
+            assert "pipeline.child_reap_timeout" in (tmp_path / "timed.log").read_text()
+            stage._call(
+                ["fake"], tmp_path / "timed.log", context, {"ALPHALATTICE_DATA_ROOT": "test"}
+            )
+            assert "ALPHALATTICE_DATA_ROOT" not in environments[0]
+            assert environments[1]["ALPHALATTICE_DATA_ROOT"] == "test"
     if case == "size-required":
         assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
         census_path = "scripts/fake_census.py"
@@ -176,8 +239,16 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
         facet_rows = stage.selection_readers(policy)
 
-        def facets(path, before, after):
-            return stage.facet_holders([pair(path)], {old: before, new: after}, facet_rows)
+        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
+            "test_every_lifecycle_set_is_registered_with_its_reason"
+        )
+        typed = "tests/integration/product_host/test_local_web_service.py::" + (
+            "test_every_web_handler_preserves_every_typed_owner_exception"
+        )
+        census = {n: r for n, r in facet_rows.items() if n in {host_holder, lifecycle, typed}}
+
+        def facets(path, before, after, rows=census):
+            return stage.facet_holders([pair(path)], {old: before, new: after}, rows)
 
         owner = "src/alphalattice/control/product_host/composition/answer_turns.py"
         assert facets(owner, "def f(deadline): pass", "def f(): pass") == (host_holder,)
@@ -188,12 +259,6 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         client_path = "src/alphalattice/interface/local_application/client.py"
         assert stage.derived_holders([pair(client_path)]) == (client,)
         # 11-04..07: a census meets the change it reads in the card's own stage, by its facet.
-        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
-            "test_every_lifecycle_set_is_registered_with_its_reason"
-        )
-        typed = "tests/integration/product_host/test_local_web_service.py::" + (
-            "test_every_web_handler_preserves_every_typed_owner_exception"
-        )
         anywhere = "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py"
         assert facets(anywhere, "", "X = {'QUEUED', 'RUNNING'}") == (lifecycle,)
         assert facets("tests/x.py", "", "X = {'QUEUED', 'RUNNING'}") == ()
@@ -207,12 +272,71 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             "from .one import Base\nclass E(Base): pass",
             "from .two import Base\nclass E(Base): pass",
         ) == (typed,)
+        # 11-15: a slow whole-tree guard meets the change it reads by its own row, never the broad
+        # match (a module-proof red reached develop when only the nightly ran it).
+        guard = "tests/x.py::"
+        slow_rows = stage.selection_readers(
+            {
+                "selection_readers": {
+                    guard + "modules": {"facet": "module_presence", "within": ["src/*.py"]},
+                    guard + "contracts": {"facet": "class_declarations", "within": ["src/*.py"]},
+                    guard + "calls": {
+                        "facet": "mentions",
+                        "within": ["src/*.py"],
+                        "words": ["plan"],
+                    },
+                    guard + "holders": {"facet": "defined_tests", "within": ["tests/*.py"]},
+                    guard + "tree": {"inputs": ["src/web/*"]},
+                }
+            }
+        )
+        told, untold = "plan(x,\n  protocol=1)", "plan(x)"
+        zero = "0" * 40
+
+        def slow_facets(path, before, after):  # None is an absent side: a zero object, mode 0
+            meta = [
+                ":" + ("000000" if before is None else "100644"),
+                "000000" if after is None else "100644",
+                zero if before is None else old,
+                zero if after is None else new,
+                "A" if before is None else "D" if after is None else "M",
+            ]
+            found = stage.facet_holders([(meta, path)], {old: before, new: after}, slow_rows)
+            return tuple(n.removeprefix(guard) for n in found)
+
+        model = "class M(Base):\n model_config = C(frozen={})"
+        for path, before, after, selected in (
+            (anywhere, "def g(): return 1", "def g(): return 2", ()),  # touches no guard's read
+            (anywhere, "x = 1", None, ("modules",)),  # a module deleted
+            (anywhere, None, "", ("modules",)),  # an empty module added
+            (anywhere, "x = 1", "", ()),  # a module emptied, still there
+            (anywhere, model.format(True), model.format(False), ("contracts",)),
+            (anywhere, "def g():\n f(x,\n  protocol=1)", "def g():\n f(x)", ()),
+            (anywhere, "def g():\n " + told, "def g():\n " + untold, ("calls",)),
+            ("tests/unit/test_a.py", "def test_a(): pass", "def test_b(): pass", ("holders",)),
+            ("tests/unit/test_a.py", "def test_a(): pass", "def test_a(): return", ()),
+        ):
+            assert slow_facets(path, before, after) == selected, after
+        assert stage.registered_holders({"src/web/js/x.js"}, {}, slow_rows) == (guard + "tree",)
+        assert stage.registered_holders({"src/webs.js"}, {}, slow_rows) == ()
+        rule = policy["whole_tree_guards"]
+        orphans = [
+            pattern
+            for pattern in rule["slow"]
+            if pattern.rstrip("*") not in facet_rows
+            and sizes.classify(pattern.rstrip("*"), [], policy)[0] != "large"
+        ]
+        assert orphans == [], "give each slow whole-tree guard its selection_readers row"
         with pytest.raises(ValueError):
             stage.facet_holders([pair(anywhere)], {}, facet_rows)
-        with pytest.raises(ValueError):
-            stage.selection_readers(
-                {"selection_readers": {lifecycle: {"facet": "x", "within": []}}}
-            )
+        for bad in (
+            {"facet": "x", "within": []},
+            {"facet": "mentions", "within": ["src/*.py"]},  # a word facet names its words
+            {"facet": "lifecycle_sets", "within": ["src/*.py"], "words": ["x"]},
+            {"facet": "mentions", "within": ["src/*.py"], "words": [" "]},
+        ):
+            with pytest.raises(ValueError):
+                stage.selection_readers({"selection_readers": {lifecycle: bad}})
         monkeypatch.setattr(
             stage,
             "changed_families",
@@ -270,19 +394,19 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             encoding="utf-8",
         )
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
-    for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
-        subprocess.run([*git, *words], check=True)
+    for words in (["add", "-A"], ["commit", "-qm", "c"]):
+        spawn.run([*git, *words], check=True)
     if case == "size-required":
-        before = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        before = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         skill = tmp_path / ".agents/skills/example/references/handoff.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("owner", encoding="utf-8")
         deadline = tmp_path / "src/alphalattice/control/product_host/new_owner.py"
         deadline.parent.mkdir(parents=True)
         deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-        subprocess.run([*git, "add", "-A"], check=True)
-        subprocess.run([*git, "commit", "-qm", "derived owners"], check=True)
-        after = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        spawn.run([*git, "add", "-A"], check=True)
+        spawn.run([*git, "commit", "-qm", "derived owners"], check=True)
+        after = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         original_test = test.read_text(encoding="utf-8")
         test.write_text("def test_host(): pass\n", encoding="utf-8")
         selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
@@ -316,30 +440,30 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
                 reader_node,
             }
             deadline.unlink()
-            subprocess.run([*git, "add", "-u"], check=True)
+            spawn.run([*git, "add", "-u"], check=True)
             assert set(impact_runner._declared_holders((changed[1],), base=None, staged=True)) == {
                 host_holder,
                 reader_node,
             }
             deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-            subprocess.run([*git, "add", changed[1]], check=True)
+            spawn.run([*git, "add", changed[1]], check=True)
             outside = tmp_path / "docs/moved-handoff.md"
             outside.parent.mkdir(exist_ok=True)
-            subprocess.run(
+            spawn.run(
                 [*git, "mv", changed[0], outside.relative_to(tmp_path).as_posix()], check=True
             )
             assert impact_runner._declared_holders(
                 (outside.relative_to(tmp_path).as_posix(),), base=None, staged=True
             ) == (materializer,)
-            subprocess.run(
+            spawn.run(
                 [*git, "mv", outside.relative_to(tmp_path).as_posix(), changed[0]], check=True
             )
         unrelated = tmp_path / "docs/unrelated.md"
         unrelated.parent.mkdir(exist_ok=True)
         unrelated.write_text("not an owner", encoding="utf-8")
-        subprocess.run([*git, "add", "-A"], check=True)
-        subprocess.run([*git, "commit", "-qm", "unrelated"], check=True)
-        next_head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        spawn.run([*git, "add", "-A"], check=True)
+        spawn.run([*git, "commit", "-qm", "unrelated"], check=True)
+        next_head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         selected, _ = stage._size_selection(
             "commit", {"base": after, "head": next_head}, (), tmp_path
         )
@@ -452,20 +576,9 @@ def test_control():
             PYTHONPATH=str(ROOT / "src"),
             PYTEST_ADDOPTS="--deselect=" + family,
         )
-        ordinary = tmp_path / "ordinary"
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
         )
-        done = subprocess.run(
-            [*argv, "--out", str(ordinary)],
-            env=env,
-            capture_output=True,
-            timeout=30,
-            creationflags=flags,
-        )
-        assert done.returncode == 0, done.stderr
-        with pytest.raises(receipt.ReceiptError, match="missing required tests"):
-            receipt.verify(ordinary / "receipt.jsonl", required_tests=[family], within_limits=True)
         cache = source.parent / "__pycache__"
         cache.mkdir(exist_ok=True)
         (cache / "fixture.pyc").write_bytes(b"bytecode is not source")
@@ -473,11 +586,11 @@ def test_control():
             ["add", "config/pipeline.toml", "scripts/pipeline.py", relative, "pytest.ini"],
             ["commit", "-qm", "cost fixture", "-m", "Change-Kind: cost"],
         ):
-            subprocess.run([*git, *words], check=True)
-        tracked = subprocess.check_output([*git, "ls-files", "-z"]).split(b"\0")
+            spawn.run([*git, *words], check=True)
+        tracked = spawn.check_output([*git, "ls-files", "-z"]).split(b"\0")
         assert not any(name.endswith(b".pyc") for name in tracked)
         cost = tmp_path / "cost"
-        done = subprocess.run(
+        done = spawn.run(
             [*argv, "--out", str(cost), "--required-tests", family],
             env=env,
             capture_output=True,
@@ -485,7 +598,7 @@ def test_control():
             creationflags=flags,
         )
         assert done.returncode == 0, done.stderr
-        head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         assert (
             receipt.verify(
                 cost / "receipt.jsonl",
@@ -496,7 +609,7 @@ def test_control():
             )["result"]
             == "PASS"
         )
-        slow = subprocess.run(
+        slow = spawn.run(
             [
                 *argv,
                 "--out",
@@ -510,20 +623,20 @@ def test_control():
             creationflags=flags,
         )
         assert slow.returncode != 0 and b"missing required tests" in slow.stderr
-        for label, selected in (
-            ("missing", family + "[missing]"),
-            ("outside", "../test_x.py::test_x"),
-        ):
-            bad = subprocess.run(
-                [*argv, "--out", str(tmp_path / label), "--required-tests", selected],
-                env=env,
-                capture_output=True,
-                timeout=30,
-                creationflags=flags,
+        for ran, absent in ((tmp_path / "slow", family), (cost, family + "[missing]")):
+            with pytest.raises(receipt.ReceiptError, match="missing required tests"):
+                receipt.verify(ran / "receipt.jsonl", required_tests=[absent], within_limits=True)
+        with pytest.raises(DefinitionError) as outside:
+            stage.run(
+                tmp_path,
+                "commit",
+                out=tmp_path / "outside",
+                required_tests=["../test_x.py::test_x"],
+                **asked,
             )
-            assert bad.returncode != 0
-        subprocess.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
-        refused = subprocess.run(
+        assert outside.value.code == "pipeline.stage_invalid"
+        spawn.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
+        refused = spawn.run(
             [*argv, "--out", str(tmp_path / "not-cost"), "--required-tests", family],
             env=env,
             capture_output=True,

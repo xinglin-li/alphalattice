@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import struct
 from collections import Counter
 from collections.abc import Mapping
@@ -79,7 +78,7 @@ class PanelLogicalArtifactStore:
     def __init__(self, closure_store: PanelClosureArtifactStore) -> None:
         """Place logical artifacts beside the immutable Panel closure store."""
         self._store = closure_store
-        self._operational = closure_store.root / "logical" / "operational"
+        self._operational = "logical/operational"
 
     @property
     def closure_store(self) -> PanelClosureArtifactStore:
@@ -105,10 +104,9 @@ class PanelLogicalArtifactStore:
 
     def marker_for_snapshot(self, snapshot_hash: str) -> PanelPublicationMarker | None:
         """Resolve a legacy snapshot to its sealed logical publication marker."""
-        pointer = self._mapping_path(snapshot_hash)
-        if not pointer.exists():
+        payload = self._pointer(self._mapping_name(snapshot_hash))
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         marker = self.load_model(
             "publication-markers",
             str(payload["marker_hash"]),
@@ -120,9 +118,9 @@ class PanelLogicalArtifactStore:
 
     def publish_snapshot_mapping(self, marker: PanelPublicationMarker) -> None:
         """Publish an immutable snapshot-to-marker mapping pointer."""
-        pointer = self._mapping_path(marker.legacy_snapshot_hash)
-        if pointer.exists():
-            current = self._read_pointer(pointer)
+        pointer = self._mapping_name(marker.legacy_snapshot_hash)
+        current = self._pointer(pointer)
+        if current is not None:
             if current.get("marker_hash") != marker.marker_hash:
                 raise ValueError("feature_panel.logical_content_mismatch")
             return
@@ -130,18 +128,15 @@ class PanelLogicalArtifactStore:
 
     def latest_marker(self) -> PanelPublicationMarker | None:
         """The marker published last, by its mapping pointer's write: the next one's predecessor."""
-        pointers = sorted(
-            (self._operational / "snapshot-mappings").glob("*.json"),
-            key=lambda path: path.stat().st_mtime_ns,
-        )
-        return self.marker_for_snapshot(pointers[-1].stem) if pointers else None
+        written = self._store.files.written(f"{self._operational}/snapshot-mappings")
+        pointers = [name.removesuffix(".json") for name in written if name.endswith(".json")]
+        return self.marker_for_snapshot(pointers[-1]) if pointers else None
 
     def current_marker(self) -> PanelPublicationMarker | None:
         """Read the current operational logical publication marker."""
-        pointer = self._operational / "current.json"
-        if not pointer.exists():
+        payload = self._pointer(f"{self._operational}/current.json")
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         return self.load_model(
             "publication-markers", str(payload["marker_hash"]), PanelPublicationMarker
         )
@@ -150,8 +145,9 @@ class PanelLogicalArtifactStore:
         self, *, expected_marker_hash: str | None, next_marker: PanelPublicationMarker
     ) -> None:
         """Advance the current marker only from the expected identity."""
-        pointer = self._operational / "current.json"
-        current = self._read_pointer(pointer).get("marker_hash") if pointer.exists() else None
+        pointer = f"{self._operational}/current.json"
+        held = self._pointer(pointer)
+        current = None if held is None else held.get("marker_hash")
         if current != expected_marker_hash:
             if current == next_marker.marker_hash:
                 return
@@ -165,36 +161,36 @@ class PanelLogicalArtifactStore:
         replacement_marker_hash: str | None,
     ) -> None:
         """Restore the captured operational pointer after a failed HEAD cutover."""
-        pointer = self._operational / "current.json"
-        current = self._read_pointer(pointer).get("marker_hash") if pointer.exists() else None
+        pointer = f"{self._operational}/current.json"
+        held = self._pointer(pointer)
+        current = None if held is None else held.get("marker_hash")
         if current != expected_marker_hash:
             raise ValueError("feature_panel.identity_migration_cas_failed")
         if replacement_marker_hash is None:
-            pointer.unlink(missing_ok=True)
+            self._store.files.remove(pointer)
             return
         marker = self.load_model(
             "publication-markers", replacement_marker_hash, PanelPublicationMarker
         )
         self._write_pointer(pointer, {"marker_hash": marker.marker_hash})
 
-    def _mapping_path(self, snapshot_hash: str) -> Path:
+    def _mapping_name(self, snapshot_hash: str) -> str:
         _validate_hash(snapshot_hash)
-        return self._operational / "snapshot-mappings" / f"{snapshot_hash}.json"
+        return f"{self._operational}/snapshot-mappings/{snapshot_hash}.json"
 
-    @staticmethod
-    def _read_pointer(path: Path) -> dict[str, object]:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+    def _pointer(self, name: str) -> dict[str, object] | None:
+        """The pointer's payload, or None when there is none."""
+        data = self._store.files.read(name)
+        if data is None:
+            return None
+        payload = json.loads(data.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("feature Panel logical identity pointer is invalid")
         return payload
 
-    @staticmethod
-    def _write_pointer(path: Path, payload: Mapping[str, object]) -> None:
+    def _write_pointer(self, name: str, payload: Mapping[str, object]) -> None:
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        staged.write_bytes(serialized)
-        os.replace(staged, path)
+        self._store.files.write(name, serialized)
 
 
 class PanelLogicalIdentityPublisher:
@@ -507,11 +503,12 @@ class PanelLogicalIdentityPublisher:
         )
 
     def _recipe_for_snapshot(self, snapshot_hash: str) -> PanelDerivationRecipe | None:
-        assessments = self._store.closure_store.root / "retention-assessments"
+        files = self._store.closure_store.files
         matches: set[str] = set()
-        if assessments.is_dir():
-            for path in assessments.glob("*.json"):
-                payload = json.loads(path.read_text(encoding="utf-8"))
+        for name in files.names("retention-assessments"):
+            data = files.read(f"retention-assessments/{name}")
+            if name.endswith(".json") and data is not None:
+                payload = json.loads(data.decode("utf-8"))
                 if payload.get("snapshot_hash") != snapshot_hash:
                     continue
                 assessment = PanelRetentionAssessment.model_validate(payload)

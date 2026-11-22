@@ -27,6 +27,7 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStoreError,
+    full_content_proof,
 )
 from alphalattice.interface.local_application.portfolio_research import (
     LocalPortfolioResearchService,
@@ -91,6 +92,7 @@ product could never compile.
 """
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_default_path_runs_under_task_control_and_reuses_exact_result(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -121,6 +123,7 @@ def test_default_path_runs_under_task_control_and_reuses_exact_result(tmp_path: 
         )
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_a_results_identity_binds_its_request_never_a_commands_words(tmp_path: Path) -> None:
     """A result's identity binds its request independently of the command's wording."""
 
@@ -166,6 +169,7 @@ def test_only_one_application_session_can_own_a_workspace(tmp_path: Path) -> Non
             WorkspaceApplicationSession.acquire(workspace)
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_interrupted_verification_recovers_the_exact_published_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1181,6 +1185,7 @@ def test_recovery_refuses_a_task_admitted_under_different_authorities(
             harness.application.recover(task_id=task.task_id)
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_numerical_resolution_must_match_the_admitted_authorities(tmp_path: Path) -> None:
     """Two reads are not permission to publish two different authorities."""
 
@@ -1251,6 +1256,7 @@ def test_task_contract_refuses_a_program_from_different_authorities(tmp_path: Pa
             )
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_admitted_common_watermark_cannot_be_rewritten_to_a_shorter_ledger(
     tmp_path: Path,
 ) -> None:
@@ -1871,7 +1877,7 @@ def test_one_comparison_opens_each_artifact_once(tmp_path: Path) -> None:
 
 
 def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path: Path) -> None:
-    """A later operation re reads rather than trusting earlier bytes."""
+    """A later operation in full proof re-reads rather than trusting earlier bytes (EV2)."""
 
     with _harness(tmp_path) as harness:
         result = _run(harness, PortfolioResearchSpec.default())
@@ -1881,11 +1887,15 @@ def test_a_later_operation_re_reads_rather_than_trusting_earlier_bytes(tmp_path:
         assert first.distinct_names_held >= 0
         assert dict(ledger.reads) == {"results": 1, "reports": 1, "economics": 1}
 
-        report_file = harness.application.ledger.root / "reports" / f"{result.report_hash}.json"
+        ledger_root = harness.application.ledger.root  # the report's bytes on disk: its descriptor
+        report_file = ledger_root / "report-holdings-descriptors" / f"{result.report_hash}.json"
         assert report_file.is_file()
         report_file.write_bytes(b"{}")
 
-        with pytest.raises(ContentAddressedStoreError, match="artifact_tampered"):
+        with (
+            full_content_proof(),
+            pytest.raises(ContentAddressedStoreError, match="artifact_tampered"),
+        ):
             service.readouts(result.result_hash)
         assert ledger.reads["reports"] == 2
 
@@ -1991,7 +2001,9 @@ def test_the_shared_axis_says_what_is_missing(
     # One surface and one sector map, read through the owners' stores.
     epoch = SimpleNamespace(ordered_listing_ids=("R1", "R2"), universe_manifest_revision="u")
     sectors = SimpleNamespace(
-        manifest_revision="u", entries=tuple(SimpleNamespace(listing_id=v) for v in ("R1", "R2"))
+        manifest_revision="u",
+        map_hash="e" * 64,
+        entries=tuple(SimpleNamespace(listing_id=v) for v in ("R1", "R2")),
     )
     (tmp_path / "surface" / "manifests").mkdir(parents=True)
     (tmp_path / "surface" / "manifests" / f"{'c' * 64}.json").write_text("{}", encoding="utf-8")

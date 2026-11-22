@@ -34,6 +34,7 @@ NAMED_MODULES = {
 """Installed spellings of the same setup and launcher entries, counted with their checkout shims."""
 
 _ENVIRONMENTS = "test_the_retrieval_environment_setup_answers_its_failure_in_words"
+_SETUP_WORDS = "test_setup_validation_and_asset_check_failures_have_words"
 WRITERS = {
     "build_local_web_ui.py": "test_the_local_web_build_answers_an_asset_it_cannot_write",
     "create_gpu_environment.py": _ENVIRONMENTS,
@@ -43,6 +44,7 @@ WRITERS = {
     "native_research.py": "test_the_native_bridge_answers_files_it_cannot_reach_in_words",
     # The backup a request makes writes the backup root, the application data by default.
     "run_alphalattice.py": "test_a_backup_refuses_an_unwritable_root_by_name_and_words_it",
+    "run_sector_research_development.py": _SETUP_WORDS,
 }
 """Each product script that writes a location it chooses, and the test of its refusal."""
 
@@ -68,6 +70,8 @@ LAUNCHERS = {
     "its backup writer remains covered by the writer pin above. It is not a setup script.",
     "run_local_portfolio_web.py": "A development server launcher, not an installer; its source "
     "admission and session operations belong to the maintained product entries.",
+    "run_sector_research_development.py": "A Sector research command whose publish path sends "
+    "writes through the owning workspace Host; its writer refusal is covered above.",
 }
 """The deliberate non-setup entries among the product's named scripts."""
 

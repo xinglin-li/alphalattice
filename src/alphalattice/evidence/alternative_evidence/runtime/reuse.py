@@ -38,10 +38,11 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from threading import local
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from pydantic import BaseModel
 
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.identity_successors import is_current, latest
 
@@ -59,6 +60,7 @@ from ..contracts import (
     AlternativeEvidenceSnapshot,
 )
 from ..documents.contracts import AlternativeEvidenceDocumentSet
+from ..documents.library import EvidenceDocumentUnverifiable
 from ..publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
@@ -399,7 +401,11 @@ class SealedCanonicals:
             return None
         try:
             _revision, content = self._publisher.library.read_revision(*located)
-        except KnowledgeRetrievalError:
+        except (EvidenceDocumentUnverifiable, DataError) as error:
+            if isinstance(error, DataError) and error.failure.code != (
+                "data_layer.knowledge_revision_missing"
+            ):
+                raise
             self.damaged += 1
             return None
         self.reused += 1
@@ -452,9 +458,9 @@ class SealedSelections:
             }
         )
         return (
-            generation.corpus_hash,
-            generation.index_manifest_hash,
-            generation.vector_payload_sha256,
+            generation.index_id,
+            generation.chunk_set_hash,
+            generation.vector_set_hash,
             generation.index_spec_hash,
             latest(RETRIEVAL_BINDING_ROLE, generation.retrieval_binding_hash),
             generation.reading_depth.value,
@@ -747,8 +753,8 @@ class SealedReadings:
     The filing is the unit of reuse.
 
     A filing is read when a publication under the current binding tuple holds
-    it in its document set, its issuer's checks executed and its source is
-    declared immutable: a document its source may replace under the same
+    it in a document set whose workspace snapshot reads, its issuer's checks executed,
+    and its source is declared immutable: a document its source may replace under the same
     revision is read again (the review of a36e210c4). Such a filing is
     not read again while it stays in the window: the selection passes over it
     and its findings carry with the publication that read it. A publication
@@ -766,12 +772,14 @@ class SealedReadings:
     def __init__(
         self,
         artifacts: AlternativeEvidenceArtifactStore,
+        publisher: AlternativeEvidenceDocumentPublisher,
         *,
         expected_bindings: tuple[str, ...],
         days: RecordDays,
     ) -> None:
         """Read publications under the expected bindings and dated index."""
         self._artifacts = artifacts
+        self._publisher = publisher
         self._expected = expected_bindings
         self._days = days
         self._by_entity: dict[str, list[_Reading]] | None = None
@@ -801,11 +809,16 @@ class SealedReadings:
                         publication.document_set_hash,
                         AlternativeEvidenceDocumentSet,
                     )
+                    self._publisher.library.read_snapshot(UUID(documents.workspace_snapshot_id))
                     brief = self._artifacts.load(
                         "analyst-briefs",
                         publication.analyst_brief_hash,
                         AlternativeEvidenceAnalystBrief,
                     )
+                except DataError as error:
+                    if error.failure.code != "data_layer.knowledge_snapshot_missing":
+                        raise
+                    continue
                 except (ValueError, FileNotFoundError):
                     # A publication that does not read back whole proves no
                     # reading; its readers refuse it by name.

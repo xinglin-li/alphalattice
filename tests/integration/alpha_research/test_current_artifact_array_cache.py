@@ -9,9 +9,13 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
-from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.control.workspace_runtime.content_store import (
+    full_content_proof,
+    verified_model_read_scope,
+)
 from alphalattice.investment.alpha_research.experiments import development_artifacts
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
@@ -28,7 +32,6 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests._support.lease_age import age_lease_file
 
 
 def _source() -> FrozenPriceVolumeInputs:
@@ -78,7 +81,7 @@ def current_artifacts(tmp_path):
 
 
 def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells(
-    current_artifacts, monkeypatch
+    current_artifacts, monkeypatch, kept_here
 ):
     """Control: Frozen arrays share scoped payloads while isolating mutable shells."""
     store, observation, preparation = current_artifacts
@@ -118,7 +121,7 @@ def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells
             surfaces_a[0].features,
         ):
             assert not values.flags.writeable
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="WRITEABLE"):
                 values.setflags(write=True)
 
         assert preparation_a == preparation_b == preparation
@@ -130,22 +133,32 @@ def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells
 
     store.load_frozen_observations(observation.snapshot_hash)
     _, surfaces_after_scope = store.load_frozen_feature_preparation(preparation.preparation_hash)
-    assert load_calls == 4  # the outer verified model scope releases all cached arrays/surfaces
-    assert surfaces_after_scope is not surfaces_a
+    # The request memo goes with its scope; the process keeps sealed values past it (EV2).
+    # Not kept: the second scope inflates both archives again.
+    assert load_calls == (2 if kept_here else 4)
+    if kept_here:
+        assert surfaces_after_scope is surfaces_a
+    else:
+        assert tuple(item.feature_values_hash for item in surfaces_after_scope) == tuple(
+            item.feature_values_hash for item in surfaces_a
+        )
 
 
-def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_leases(
-    current_artifacts, monkeypatch
+@pytest.mark.proves("alpha_research.current_artifacts_read_once_per_process")
+def test_immutable_artifacts_are_read_once_across_request_scopes(
+    current_artifacts, monkeypatch, kept_here
 ):
+    """requirement: sealed observation and feature artifacts are read and decoded once per process
+    across request scopes."""
     store, observation, preparation = current_artifacts
     load = np.load
     load_calls = 0
     watched_paths = {
-        (
-            store.root / "current/frozen-observation-arrays" / f"{observation.array_files[-1]}.bin"
+        store._packed_source_path(
+            "frozen-observation-arrays", observation.array_files[-1]
         ).resolve(): "arrays",
-        (
-            store.root / "current/frozen-feature-arrays" / f"{preparation.array_content_hash}.bin"
+        store._packed_source_path(
+            "frozen-feature-arrays", preparation.array_content_hash
         ).resolve(): "arrays",
         (
             store.root
@@ -158,8 +171,6 @@ def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_lease
             / f"{preparation.preparation_hash}.json"
         ).resolve(): "json",
     }
-    for path in watched_paths:
-        age_lease_file(path)
     read_counts = Counter()
     open_file = Path.open
 
@@ -176,50 +187,193 @@ def test_immutable_artifacts_reuse_across_opted_in_scopes_with_unbroken_os_lease
 
     monkeypatch.setattr(np, "load", counted_load)
     monkeypatch.setattr(Path, "open", counted_open)
-    with verified_model_read_scope(reuse_verified=True), verified_lifecycle_admissions():
+    with verified_model_read_scope(), verified_lifecycle_admissions():
         observations_a = store.load_frozen_observations(observation.snapshot_hash)
         _, surfaces_a = store.load_frozen_feature_preparation(preparation.preparation_hash)
-    with verified_model_read_scope(reuse_verified=True), verified_lifecycle_admissions():
+    with verified_model_read_scope(), verified_lifecycle_admissions():
         observations_b = store.load_frozen_observations(observation.snapshot_hash)
         _, surfaces_b = store.load_frozen_feature_preparation(preparation.preparation_hash)
 
-    expected_reads = 2 if os.name == "nt" else 4
-    # The complete feature result also verifies JSON after acquiring both source leases.
-    assert read_counts["json"] == (3 if os.name == "nt" else 6)
-    assert read_counts["arrays"] == expected_reads
-    assert load_calls == 2  # one decode per payload survives into the opted-in next scope
+    # Sealed bytes are read once per process on every OS; the next scope answers from memory.
+    # Not kept: each scope reads and inflates its sealed bytes again.
+    assert read_counts["json"] == (3 if kept_here else 6)
+    assert read_counts["arrays"] == (2 if kept_here else 4)
+    assert load_calls == (2 if kept_here else 4)
     assert observations_a is not observations_b
-    assert observations_a.open is observations_b.open
-    assert surfaces_a is surfaces_b
+    if kept_here:
+        assert observations_a.open is observations_b.open
+        assert surfaces_a is surfaces_b
+    else:
+        assert np.array_equal(observations_a.open, observations_b.open)
+        assert tuple(item.feature_values_hash for item in surfaces_a) == tuple(
+            item.feature_values_hash for item in surfaces_b
+        )
     observations_a.sector_by_listing_id["QA-A"] = "changed shell"
     assert observations_b.sector_by_listing_id["QA-A"] == "Technology"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="WRITEABLE"):
         observations_b.open.setflags(write=True)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="WRITEABLE"):
         surfaces_b[0].features.setflags(write=True)
 
 
-def test_publishing_the_same_immutable_artifact_succeeds_after_an_opted_in_read(current_artifacts):
+@pytest.mark.proves("alpha_research.current_artifacts_read_once_per_process")
+def test_publishing_the_same_immutable_artifact_succeeds_after_a_read(current_artifacts, tmp_path):
+    """requirement: publishing an artifact already kept in memory names the same content and reads
+    back."""
     store, observation, preparation = current_artifacts
-    with verified_model_read_scope(reuse_verified=True):
+    from alphalattice.kernel.data_layer import history
+
+    history.held()  # this test's machine, independent of a running Host
+    parts = [(digest, "current/frozen-observation-arrays") for digest in observation.array_files]
+    parts.append((preparation.array_content_hash, "current/frozen-feature-arrays"))
+    for digest, layout in parts:
+        body_digest = history.alpha_part_body_digest(digest, layout)
+        profile = history.array_profile(body_digest)
+        assert profile is not None and profile["kind"] == "packed"
+    with verified_model_read_scope():
         store.load_frozen_observations(observation.snapshot_hash)
         store.load_frozen_feature_preparation(preparation.preparation_hash)
     repeated = store.publish_frozen_observations(_source(), disposition="SYNTHETIC_INPUT_QA")
     assert repeated == observation
-    with verified_model_read_scope(reuse_verified=True):
+    with verified_model_read_scope():
         assert store.load_frozen_observations(repeated.snapshot_hash).source_binding_hash == (
             observation.snapshot_hash
         )
+    _check_frozen_bytes(tmp_path / "frozen")
+    _check_candidate_score(tmp_path / "score")
+    _check_array_doors(tmp_path / "upgrade")
 
 
-@pytest.mark.parametrize("reuse_verified", (False, True))
-def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_lease(
-    current_artifacts, monkeypatch, reuse_verified
+def _check_frozen_bytes(tmp_path):
+    """A frozen input read back from the door is the bytes that were published."""
+    store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
+    payload = b"frozen input"
+    category = "frozen-feature-arrays"
+    digest = store._publish_packed_bytes(category="current/" + category, payload=payload)
+    assert store._frozen_payload(category, digest) == payload
+    assert store._publish_packed_bytes(category="current/" + category, payload=payload) == digest
+    assert store._frozen_payload(category, digest) == payload
+
+
+def _check_candidate_score(tmp_path):
+    """A nullable score and its listing identity read back from the door and the typed relation."""
+    from hashlib import sha256
+
+    from alphalattice.kernel.data_layer import history
+
+    store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
+    session = date(2026, 1, 2)
+    table = pa.table(
+        {
+            "formation_session": pa.array([session, session], type=pa.date32()),
+            "listing_id": ["QA-A", "QA-B"],
+            "score": pa.array([1.0, None], type=pa.float64()),
+            "availability": ["SCORED", "FEATURE_INCOMPLETE"],
+        }
+    )
+    args = dict(
+        request_hash="a" * 64,
+        foundation_hash="b" * 64,
+        logical_panel_hash="c" * 64,
+        candidate_id="candidate",
+        estimator_state_hash="d" * 64,
+        stability_assessment_hash="e" * 64,
+        formation_session=session,
+        ordered_listing_ids=("QA-A", "QA-B"),
+    )
+    new = store.publish_current_candidate_score_chunk(table, **args)
+    assert store.resolve_current_candidate_score_chunk(new).equals(table)
+    packed = history.read_alpha_part(new.content_hash, "current/current-candidate-score-chunks")
+    digest = sha256(packed).hexdigest()
+    assert digest != new.content_hash
+    assert history.array_profile(digest)["kind"] == "packed"
+    assert store.publish_current_candidate_score_chunk(table, **args) == new
+
+
+def _check_array_doors(tmp_path):
+    """The door holds the Alpha arrays a workspace writes; the upgrade family moves a workspace's
+    0.2.7 files into it and then holds none of them."""
+    from types import SimpleNamespace
+
+    import pyarrow.parquet as pq
+
+    from alphalattice.investment.alpha_research.experiments.development_artifacts import (
+        alpha_array_files,
+        alpha_array_upgrade_family,
+    )
+    from alphalattice.kernel.data_layer import history
+
+    family = alpha_array_upgrade_family(lambda _workspace: None)
+    assert not family.holds(tmp_path / "new-workspace")
+    workspace = tmp_path / "upgrade-workspace"
+    folder = workspace / "alpha-research" / "current" / "current-candidate-score-chunks"
+    folder.mkdir(parents=True)
+    old = folder / f"{'f' * 64}.parquet"
+    pq.write_table(pa.table({"row_id": ["2026-01-02|QA-A"], "value": [1.5]}), old)
+    assert [path for path, _ in alpha_array_files(workspace)] == [old]
+    assert family.holds(workspace)
+    runner = SimpleNamespace(root=history.data_root(), log=history.held(), workspaces=(workspace,))
+    family.step(runner)
+    assert family.verify(runner)
+    assert not family.holds(workspace)
+    store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
+    observation = store.publish_frozen_observations(_source(), disposition="SYNTHETIC_INPUT_QA")
+    history_values = {"open": np.arange(4, dtype=np.float64).reshape(2, 2)}
+    history_head = store.publish_workspace_observation_history(
+        scope_hash=canonical_hash("slot"),
+        selection_hash=canonical_hash("selection"),
+        dependency_prefix_hash=canonical_hash("dependency"),
+        formation_sessions=(date(2026, 1, 2), date(2026, 1, 5)),
+        ordered_listing_ids=("QA-A", "QA-B"),
+        stable_session_count=1,
+        columns=history_values,
+        capacity=lambda _size: None,
+    )
+    session = date(2026, 1, 2)
+    table = pa.table(
+        {
+            "formation_session": pa.array([session], type=pa.date32()),
+            "listing_id": ["QA-A"],
+            "score": pa.array([None], type=pa.float64()),
+            "availability": ["FEATURE_INCOMPLETE"],
+        }
+    )
+    score = store.publish_current_candidate_score_chunk(
+        table,
+        request_hash="a" * 64,
+        foundation_hash="b" * 64,
+        logical_panel_hash="c" * 64,
+        candidate_id="candidate",
+        estimator_state_hash="d" * 64,
+        stability_assessment_hash="e" * 64,
+        formation_session=session,
+        ordered_listing_ids=("QA-A",),
+    )
+    assert store.resolve_current_candidate_score_chunk(score).equals(table)
+    assert (
+        store.load_frozen_observations(observation.snapshot_hash).source_binding_hash
+        == observation.snapshot_hash
+    )
+    loaded_head, loaded = store.load_workspace_observation_history(canonical_hash("slot"))
+    assert loaded_head == history_head
+    np.testing.assert_array_equal(loaded["open"], history_values["open"])
+    assert store.resolve_current_candidate_score_chunk(score).equals(table)
+    assert (
+        store.load_frozen_observations(observation.snapshot_hash).source_binding_hash
+        == observation.snapshot_hash
+    )
+    loaded_head, loaded = store.load_workspace_observation_history(canonical_hash("slot"))
+    assert loaded_head == history_head
+    np.testing.assert_array_equal(loaded["open"], history_values["open"])
+
+
+@pytest.mark.proves("alpha_research.current_artifacts_read_once_per_process")
+def test_complete_immutable_alpha_models_are_validated_once_per_process(
+    current_artifacts, monkeypatch, kept_here
 ):
+    """requirement: a complete immutable Alpha model is validated once per process; a later request
+    answers from the kept value."""
     store, _, preparation = current_artifacts
-    for item in store.root.rglob("*"):
-        if item.is_file():
-            age_lease_file(item)
     validate = FrozenFeaturePreparation.model_validate
     validations = []
 
@@ -228,19 +382,26 @@ def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_
         return validate(value, *args, **kwargs)
 
     monkeypatch.setattr(FrozenFeaturePreparation, "model_validate", classmethod(counted_validate))
-    with verified_model_read_scope(reuse_verified=reuse_verified):
+    with verified_model_read_scope():
         first, first_surfaces = store.load_frozen_feature_preparation(preparation.preparation_hash)
     first_count = len(validations)
     assert first_count == 1  # both owners prove exact current bytes; the model is validated once
-    with verified_model_read_scope(reuse_verified=reuse_verified):
+    with verified_model_read_scope():
         second, second_surfaces = store.load_frozen_feature_preparation(
             preparation.preparation_hash
         )
     assert first == second == preparation
-    # Reuse follows the opt-in alone, on every OS: each reuse is keyed by the exact bytes read and
-    # hashed this time. An OS read lease, which only Windows grants, only spares that re-read.
-    assert len(validations) == first_count + (not reuse_verified)
-    assert (first is second) == (first_surfaces is second_surfaces) == reuse_verified
+    # A sealed model's bytes never change under its name (EV2): a later request answers from
+    # the process's kept value, on every OS.
+    assert len(validations) == first_count
+    assert first is second
+    if kept_here:
+        assert first_surfaces is second_surfaces
+    else:
+        assert all(
+            np.array_equal(a.features, b.features)
+            for a, b in zip(first_surfaces, second_surfaces, strict=True)
+        )
     assert tuple(surface.feature_values_hash for surface in first_surfaces) == tuple(
         surface.feature_values_hash for surface in second_surfaces
     )
@@ -248,7 +409,7 @@ def test_complete_immutable_alpha_models_reuse_validation_only_with_an_opted_in_
 
 def test_an_alpha_model_with_nested_mutable_fields_is_always_a_fresh_shell(current_artifacts):
     store, observation, _ = current_artifacts
-    with verified_model_read_scope(reuse_verified=True):
+    with verified_model_read_scope():
         first = store.load_frozen_observation_snapshot(observation.snapshot_hash)
         first.sector_by_listing_id["QA-A"] = "changed by this caller"
         second = store.load_frozen_observation_snapshot(observation.snapshot_hash)
@@ -271,7 +432,7 @@ def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_
         encoding="utf-8",
         newline="\n",
     )
-    with verified_model_read_scope(reuse_verified=True):
+    with verified_model_read_scope():
         for _ in range(2):
             with pytest.raises(ValueError, match="frozen_feature_preparation_invalid"):
                 store.load_frozen_feature_preparation(identity)
@@ -279,7 +440,10 @@ def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_
     from alphalattice.interface.local_application.failure_codes import public_failure
 
     path.write_text(json.dumps({**payload, "preparation_hash": "0" * 64}), encoding="utf-8")
-    with pytest.raises(development_artifacts.AlphaDevelopmentArtifactReadbackError) as rejected:
+    with (
+        full_content_proof(),
+        pytest.raises(development_artifacts.AlphaDevelopmentArtifactReadbackError) as rejected,
+    ):
         store.load_frozen_feature_preparation(identity)
     code = public_failure(rejected.value, "research_update.refused")
     assert code == "alpha_research.development_artifact_identity_invalid"
@@ -301,56 +465,23 @@ def test_a_valid_content_seal_cannot_replace_the_alpha_models_structure(current_
     assert "verified workspace backup" in words["detail"]
 
 
-def test_observation_admission_proof_refuses_current_bytes_tampered_after_verification(
-    current_artifacts,
-    monkeypatch,
-):
+@pytest.mark.proves("alpha_research.current_artifacts_full_proof_refuses_tamper")
+def test_full_proof_refuses_observation_bytes_tampered_after_verification(current_artifacts):
+    """tamper: a sealed observation array changed after its proof, size and time restored, is
+    refused by name under full proof (an export, the scrub; EV2)."""
     store, observation, _ = current_artifacts
-    for path in (
-        store._path("current/frozen-observation-snapshots", observation.snapshot_hash, "json"),
-        *(
-            store._path("current/frozen-observation-arrays", item, "bin")
-            for item in observation.array_files
-        ),
-    ):
-        age_lease_file(path)
-    if os.name == "nt":
-        from alphalattice.control.workspace_runtime import content_store
-
-        lease = content_store._WindowsReadLease(path)
-        changed = lease.identity[-1]
-        lease.close()
-        with monkeypatch.context() as clock:
-            for age in (-1, 0, 999_999):  # future, now and just under 100 ms
-                clock.setattr(
-                    content_store,
-                    "time_ns",
-                    lambda age=age: (changed - 116444736000000000 + age) * 100,
-                )
-                with pytest.raises(OSError, match="ChangeTime is too recent"):
-                    content_store._WindowsReadLease(path)
-    with verified_model_read_scope(reuse_verified=True):
+    with verified_model_read_scope():
         store.verify_frozen_observations(observation.snapshot_hash)
 
-    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
-    if os.name == "nt":
-        from alphalattice.control.workspace_runtime import content_store
-
-        lease = next(
-            lease
-            for held in content_store._VERIFIED_SOURCE_LEASES.values()
-            for lease in held
-            if lease.path == path
-        )
-        # Model the observed delayed OS event: file identity must refuse independently.
-        monkeypatch.setattr(lease.kernel, "WaitForSingleObject", lambda *_args: 258)
+    path = store._packed_source_path("frozen-observation-arrays", observation.array_files[-1])
     before = path.stat()
     damaged = bytearray(path.read_bytes())
     damaged[len(damaged) // 2] ^= 1
     path.write_bytes(damaged)
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     with (
-        verified_model_read_scope(reuse_verified=True),
+        full_content_proof(),
+        verified_model_read_scope(),
         pytest.raises(
             development_artifacts.AlphaDevelopmentArtifactReadbackError, match="content_invalid"
         ),
@@ -359,20 +490,11 @@ def test_observation_admission_proof_refuses_current_bytes_tampered_after_verifi
 
 
 def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope(
-    current_artifacts, monkeypatch
+    current_artifacts, monkeypatch, kept_here
 ):
-    """Control: Unchanged packed observation bytes reuse verification across independent
-    scopes."""
+    """Control: sealed packed observation bytes are read once across independent scopes."""
     store, observation, _ = current_artifacts
-    for path in (
-        store._path("current/frozen-observation-snapshots", observation.snapshot_hash, "json"),
-        *(
-            store._path("current/frozen-observation-arrays", item, "bin")
-            for item in observation.array_files
-        ),
-    ):
-        age_lease_file(path)
-    path = store._path("current/frozen-observation-arrays", observation.array_files[-1], "bin")
+    path = store._packed_source_path("frozen-observation-arrays", observation.array_files[-1])
     open_file = Path.open
     reads = 0
 
@@ -384,26 +506,40 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
 
     monkeypatch.setattr(Path, "open", counted_open)
     for _ in range(2):
-        with verified_model_read_scope(reuse_verified=True):
+        with verified_model_read_scope():
             store.verify_frozen_observations(observation.snapshot_hash)
-    assert reads == (1 if os.name == "nt" else 2)
+    # Not kept: each new scope takes the packed bytes from disk again.
+    assert reads == (1 if kept_here else 2)
 
 
-@pytest.mark.parametrize("kind", ("observation", "feature"))
-def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, current_artifacts):
+@pytest.mark.proves("alpha_research.current_artifacts_full_proof_refuses_tamper")
+@pytest.mark.parametrize("kind", ("observation", "feature"), ids=["observation", "feature"])
+def test_full_proof_refuses_a_kept_payload_tampered_with_restored_mtime(kind, current_artifacts):
+    """tamper: a sealed array changed after a read, its time restored, is refused by name under
+    full proof, as is a missing one; the restored bytes read again."""
     store, observation, preparation = current_artifacts
-    for item in store.root.rglob("*"):
-        if item.is_file():
-            age_lease_file(item)
     category, identity = (
         ("current/frozen-observation-arrays", observation.array_files[-1])
         if kind == "observation"
         else ("current/frozen-feature-arrays", preparation.array_content_hash)
     )
-    path = store._path(category, identity, "bin")
+    path = store._packed_source_path(category.removeprefix("current/"), identity)
     original = path.read_bytes()
     stat = path.stat()
-    with verified_model_read_scope(reuse_verified=True), verified_lifecycle_admissions():
+    from alphalattice.kernel.data_layer import arrays, history
+
+    packed = bytearray(history.read_array(identity, packed=True))
+    # Change the packed array, not Parquet bookkeeping that is outside its identity.
+    damaged = None
+    for offset in range(len(packed)):
+        packed[offset] ^= 0x01
+        candidate = arrays._packed_body(bytes(packed))
+        packed[offset] ^= 0x01
+        if len(candidate) == len(original):
+            damaged = candidate
+            break
+    assert damaged is not None and damaged != original
+    with verified_model_read_scope(), verified_lifecycle_admissions():
         if kind == "observation":
             store.load_frozen_observations(observation.snapshot_hash)
 
@@ -415,31 +551,32 @@ def test_cached_payload_read_still_refuses_tampering_with_restored_mtime(kind, c
             def read():
                 return store.load_frozen_feature_preparation(preparation.preparation_hash)
 
-        damaged = bytearray(original)
-        damaged[len(damaged) // 2] ^= 0x01
         path.write_bytes(damaged)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        with pytest.raises(AlphaCurrentArtifactReadbackError, match="content_invalid"):
+        with (
+            full_content_proof(),
+            pytest.raises(AlphaCurrentArtifactReadbackError, match="content_invalid"),
+        ):
             read()
 
         path.write_bytes(original)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        read()
+        with full_content_proof():
+            read()
 
     path.unlink()
-    with verified_model_read_scope(reuse_verified=True), pytest.raises(FileNotFoundError):
-        if kind == "observation":
-            store.load_frozen_observations(observation.snapshot_hash)
-        else:
-            store.load_frozen_feature_preparation(preparation.preparation_hash)
+    with full_content_proof(), verified_model_read_scope(), pytest.raises(FileNotFoundError):
+        read()
 
 
-@pytest.mark.parametrize("kind", ("observation", "feature"))
-def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, current_artifacts):
+@pytest.mark.proves("alpha_research.current_artifacts_full_proof_refuses_tamper")
+@pytest.mark.parametrize("kind", ("observation", "feature"), ids=["observation", "feature"])
+def test_full_proof_rechecks_the_json_commitment_after_a_kept_reconstruction(
+    kind, current_artifacts
+):
+    """tamper: a sealed JSON payload changed after a kept reconstruction is refused by its
+    commitment under full proof."""
     store, observation, preparation = current_artifacts
-    for item in store.root.rglob("*"):
-        if item.is_file():
-            age_lease_file(item)
     assert not hasattr(store, "publish_current_score_chunk")
     if kind == "observation":
         path = store._path(
@@ -464,15 +601,16 @@ def test_json_commitment_is_rechecked_after_a_cached_reconstruction(kind, curren
     refusal = "Alpha JSON payload hash is invalid"
     assert damaged != original
     stat = path.stat()
-    with verified_model_read_scope(reuse_verified=True), verified_lifecycle_admissions():
+    with verified_model_read_scope(), verified_lifecycle_admissions():
         read()
         path.write_bytes(damaged)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        with pytest.raises(ValueError, match=refusal):
+        with full_content_proof(), pytest.raises(ValueError, match=refusal):
             read()
         path.write_bytes(original)
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        read()
+        with full_content_proof():
+            read()
 
 
 def test_a_split_day_keeps_earlier_frozen_blocks_and_reads_the_rebase(tmp_path, monkeypatch):

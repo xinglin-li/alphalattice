@@ -16,11 +16,10 @@ from datetime import date
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
@@ -175,6 +174,9 @@ from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -717,10 +719,14 @@ def _corrected_panel_recipe(
             raise AuthoringError("alpha_research.panel_derivation_recipe_not_this_snapshot")
         return value, store
     matches: list[PanelDerivationRecipe] = []
-    for path in sorted((store.root / "recipes").glob("*.json")):
+    for name in store.files.names("recipes"):
+        if not name.endswith(".json"):
+            continue
         try:
             value = store.load_model(
-                category="recipes", content_hash=path.stem, model=PanelDerivationRecipe
+                category="recipes",
+                content_hash=name.removesuffix(".json"),
+                model=PanelDerivationRecipe,
             )
         except (FileNotFoundError, ValueError) as error:
             raise AuthoringError(
@@ -752,6 +758,8 @@ def _corrected_sector_map(
 def _formation_available_market_interaction_states(
     *, workspace: Path, sessions: tuple[date, ...]
 ) -> tuple[FloatArray, str]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     feature_store = FeatureStateRepository(workspace)
     reference = feature_store.market_reference("SPY")
     if reference is None:
@@ -1744,6 +1752,8 @@ def _development_overlay_raw_values(
     base_rows: pd.DataFrame,
     development_overlay_method_id: str | None,
 ) -> tuple[pd.DataFrame, str | None]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     manifest = _resolved_development_overlay_manifest(
         roots=roots,
         authority=authority,

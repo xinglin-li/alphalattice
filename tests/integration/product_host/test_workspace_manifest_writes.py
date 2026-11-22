@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from argparse import Namespace
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -215,6 +216,8 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rebind: bool
 ) -> None:
     """both setup entries change the current manifest under the session's gate."""
+    # The install's environment stage loads a checkout's retrieval environment onto sys.path.
+    monkeypatch.setattr(sys, "path", list(sys.path))
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
         PanelClosureArtifactStore,
     )
@@ -253,9 +256,10 @@ def test_evidence_setup_waits_for_the_manifest_owner_and_keeps_another_binding(
             entries=(SimpleNamespace(provider_symbol="ACME", listing_id="US-ACME"),),
         ),
     )
+    monkeypatch.setattr(evidence_authority_setup, "load", lambda: True)
     monkeypatch.setattr(
         evidence_authority_setup,
-        "probe_hybrid_retrieval_capabilities",
+        "store_capability",
         lambda *_: SimpleNamespace(status="READY", logical_hash="c" * 64),
     )
     entered, parent_thread = Event(), get_ident()

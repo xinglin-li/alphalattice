@@ -1,0 +1,104 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "29e8ce0c2105d5cea9d6ac411a5f6a11a5d15fa1101dcad133702d73e83b5aa9",
+   "successor": "249b24485b42a92590b1dcc50f3b61904d9def8893a524ca27545187e7a8f3c4",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "3c551a7a61623d756e48821ca03ce1ffb1a143bbbeb786440cd9af62a9e0b167",
+   "successor": "18515f7bb07a29a32bf29625ecc51e52ea3c1a5a252ad571f8987de729ad2b8f",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "07f318fe70ecaee3224e67476ff4e958f89b4d6c8775e60e1fad10e1f7adc614",
+   "successor": "097ef5b8d19c5f2b23a94b81b6caece6d60ff310d60a669a131e29c33e8e5754",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "aa379e606bfe2d534ddf93f7b3a2bd0ccf6ae59f17c61387b27a4674ef2db831",
+   "successor": "66d0b0b09f9fad33a94b961c9d999840294e7023360ad3dd02a74a4247c939d5",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "68c96376481efde86ea1ba0451cd9aa2facb85ba9083143a4133119a07c8cd50",
+   "successor": "ab4d41a48dc2db6e22da66d42c9ec38218a4423f3d9c413d8f26c1a79aeaa786",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "3629ce955ee58dde576c9a48fd34db9c5c536a905dfa3c3a7abbfc44036653d7",
+   "successor": "88a52b401618de869fa32a05da67a43f4a5d8d5877d7928211ac7f99d0bb4ee8",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "f9cd87425f07f98dee679baa400a8b8806cf1c051f3cbd1b851baf8e61da4a94",
+   "successor": "36399b84680704992f017309e8b652fc05f5aa0b67c4b78f0de07183b0dc5724",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "30eedc8e4c7a52aeef5eb220a55907343d4542104c0d09d737af3f8b8a558c78",
+   "successor": "0e2bbb0fae439e098b7f1801ccac715944d7a51dfec155901521d34d6512b441",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b9eb8d154dd65c6ef408fa3356112aeb71503c3269cded854a8abb9b43c21e22",
+   "successor": "b5ba9a4bdb615069935d0e679c8868a7e53aa0461353052447cb30fda204aa23",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f4f043ed09f8509d6628b553174d0e66c80f23de87e378d03e14bc40e859d9a6",
+   "successor": "c69fbfc16f148dd1ce1362ea3391e914c52344d25b4f71560e2db1f7b52febaa",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c6715b54697f3c5f93691e346a6dde131cbe34878de4ac81225ae5238c2400b2",
+   "successor": "2981b19dec5080c40b8784e17e149a48a93757303ced9f3c6c9a694d60b4249e",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c6715b54697f3c5f93691e346a6dde131cbe34878de4ac81225ae5238c2400b2",
+   "successor": "2981b19dec5080c40b8784e17e149a48a93757303ced9f3c6c9a694d60b4249e",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "19d1a3c08dc5079b22f31c430607ebd22ca2bfe9f96c583ee68a7e64ceb2d62c",
+   "successor": "c5afd84479f6cebe37c0d485025807db96a0ed55b1c084759707a1780e2bcbfe",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "4314eec8d9619a8df4b4805b07077f56c82c1aaf44f5ffdd5e2cfdc9768df04a",
+   "successor": "05e91d5c5b40a6c92ce1c1d5a4a85c1d3aac8ab0950c8149edb88499885af65c",
+   "change": "Share Alpha array storage while preserving scores and model results",
+   "reason": "re-signed at the merge's composition: the same Alpha change (readers read workspace-owned Alpha parts through the array door; base write against head read ALL EQUAL); the roles' predecessors moved because cards landed first on develop, so the merge records its own net moves in place of the branch's set"
+  }
+ ]
+}

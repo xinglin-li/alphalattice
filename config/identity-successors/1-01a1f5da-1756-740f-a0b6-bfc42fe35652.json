@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "47b5eb545f775ba3ddf32e320056b52096d090c1df214134875e13b4e78d243e",
+   "successor": "a436028221b0dff03559ad13cf0272d60f39f2ba2522a357a61cb0ba28c514cc",
+   "change": "Open newly created workspaces without an upgrade prompt",
+   "reason": "Equal value: the market storage writer now creates market_profile with the same columns inside one transaction and records a provenance comment that only the legacy market upgrade family reads; the four roles' computation and inputs are unchanged, and their identity moved with the shared source closure. Controls unchanged: the first-start backup and restart holder and the legacy market holder's ALL EQUAL passed on the head."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "4beec2613729928d2bc24ec268c7326e2391d3c02cda2f506d88ccca2b413542",
+   "successor": "746b2e9b632717e3628ab772dc3bc772ccaf2ab0c68d5536725e02a5d2d8e050",
+   "change": "Open newly created workspaces without an upgrade prompt",
+   "reason": "Equal value: the market storage writer now creates market_profile with the same columns inside one transaction and records a provenance comment that only the legacy market upgrade family reads; the four roles' computation and inputs are unchanged, and their identity moved with the shared source closure. Controls unchanged: the first-start backup and restart holder and the legacy market holder's ALL EQUAL passed on the head."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "d265a1e112ecd85a3a53211b6dd1d490cecf53bc18becbb662f91c6f5dff9830",
+   "successor": "23d3155a904e229bb6b26dbb3cd489b00031a75703c3f56715f97b87a8affd9e",
+   "change": "Open newly created workspaces without an upgrade prompt",
+   "reason": "Equal value: the market storage writer now creates market_profile with the same columns inside one transaction and records a provenance comment that only the legacy market upgrade family reads; the four roles' computation and inputs are unchanged, and their identity moved with the shared source closure. Controls unchanged: the first-start backup and restart holder and the legacy market holder's ALL EQUAL passed on the head."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "bf66fd169da4724e7bd9e636f595f88fea3097e8210524ab318e285b96d2e970",
+   "successor": "16e0a352aeab8eccb261cd40cea7c85992777021f0265ecf290eb42a624b3638",
+   "change": "Open newly created workspaces without an upgrade prompt",
+   "reason": "Equal value: the market storage writer now creates market_profile with the same columns inside one transaction and records a provenance comment that only the legacy market upgrade family reads; the four roles' computation and inputs are unchanged, and their identity moved with the shared source closure. Controls unchanged: the first-start backup and restart holder and the legacy market holder's ALL EQUAL passed on the head."
+  }
+ ]
+}

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
+
 ROOT = Path(__file__).resolve().parents[3]
 SOLVERS = ("cvxpy", "osqp", "optuna")
 OPTIMIZER = "alphalattice.investment.portfolio_strategy_lab.optimizer.service"
@@ -43,7 +45,7 @@ EXCLUDED_PACKAGES = (
 
 
 def _probe(body: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return spawn.run(
         [sys.executable, "-c", body],
         cwd=ROOT,
         env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "ALPHALATTICE_NETWORK_DISABLED": "1"},
@@ -165,6 +167,19 @@ def test_the_public_risk_surface_reaches_no_excluded_research_lane() -> None:
             "import runpy; "
             "runpy.run_path('scripts/run_public_portfolio_research.py', run_name='probe')",
             False,
+        ),
+        pytest.param(
+            "import runpy, sys\n"
+            "sys.argv = ['alphalattice', '--help']\n"
+            "try:\n"
+            "    runpy.run_path('scripts/run_alphalattice.py', run_name='__main__')\n"
+            "except SystemExit as exit:\n"
+            "    assert exit.code == 0\n"
+            "heavy = {'duckdb', 'numpy', 'pandas', 'pyarrow', 'pydantic'}\n"
+            "loaded = sorted(heavy & set(sys.modules))\n"
+            "assert not loaded, loaded",
+            True,
+            id="cli-help",
         ),
     ],
 )

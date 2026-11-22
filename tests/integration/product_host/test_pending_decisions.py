@@ -192,12 +192,16 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         "criteria": [{"criterion_id": "read", "text": "Read the retained work"}],
     }
 
+    opened_titles = iter(range(1, 100))
+
     def open_goal(kind="DATA"):
+        """A goal of the same question; its title tells it from the others, the declaration
+        being what finds a goal again."""
+        title = f"{declaration['title']} {next(opened_titles)}"
         opened = goals.operate(
             Request(
                 operation="GOAL_OPEN",
-                goal_id=uuid4(),
-                goal_declaration={**declaration, "kind": kind},
+                goal_declaration={**declaration, "kind": kind, "title": title},
             ),
             "HUMAN",
         )
@@ -288,6 +292,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             operations,
             "experiments",
             SimpleNamespace(
+                installed_implementation=operations.experiments.installed_implementation,
                 awaiting=lambda _: {
                     "curation": [str(study.task_id)],
                     "promotion": [str(study.task_id)],
@@ -299,9 +304,9 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             ),
         )
         readers.setattr(
-            operations,
+            PortfolioResearchOperations,
             "data_issues",
-            SimpleNamespace(readback=lambda **_: {"next_requests": offers}),
+            property(lambda _: SimpleNamespace(readback=lambda **_: {"next_requests": offers})),
         )
         readers.setattr(
             PortfolioResearchOperations,
@@ -335,7 +340,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         # The public overview reader supplies metadata here; its composition wrapper and
         # canonical Task-kind check remain real, including the negative non-CRO binding.
         readers.setattr(
-            "alphalattice.control.product_host.composition.portfolio_research_operations.upgrade_overview",
+            "alphalattice.control.product_host.composition.upgrade_overview.upgrade_overview",
             lambda **_: overview,
         )
         answer = operations.pending_decisions()

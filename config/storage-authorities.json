@@ -3,6 +3,31 @@
   "groups": [
     {
       "tables": [
+        "onboarding_raw_stage",
+        "onboarding_action_stage"
+      ],
+      "database": "workspace",
+      "semantic_role": "durable onboarding provider payload pending action audit, excluded from canonical and world admission",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "task_control; removed by successful atomic audit completion",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
+        "market_delta"
+      ],
+      "database": "workspace",
+      "semantic_role": "journal of committed market writes world has not published, written in each write's own transaction",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "market_data_ops; emptied through each publish once world has committed it",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "OPERATIONAL_PROJECTION"
+    },
+    {
+      "tables": [
         "market_profile",
         "listing",
         "provider_symbol_mapping",
@@ -345,69 +370,34 @@
     },
     {
       "tables": [
-        "unified_observation",
-        "observation_projection_checkpoint"
-      ],
-      "database": "observation",
-      "semantic_role": "bounded public-safe operational assertions and replay checkpoints in runtime/observations.sqlite; same-named DuckDB tables are legacy-migration-only",
-      "generation_model": "BY_REVISION",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationRetentionPolicy",
-      "rebuildability": "ASSERTIONS_REPLAYABLE_WHILE_AVAILABLE_SOURCE_AUTHORITIES_REMAIN_SEPARATE",
-      "artifact_relationship": "PUBLIC_OBSERVATION_AND_HOT_PROJECTION_INDEX"
-    },
-    {
-      "tables": [
-        "refusal_count"
-      ],
-      "database": "observation",
-      "semantic_role": "durable counts of refused requests by day, operation, failure code, caller kind and agent vendor; no session, request or text (AC, OP14)",
-      "generation_model": "SINGLE_CURRENT",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationLedger",
-      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
-      "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "observation_store_metadata"
-      ],
-      "database": "observation",
-      "semantic_role": "active SQLite UOL schema and verified legacy-migration marker",
-      "generation_model": "SINGLE_CURRENT",
-      "authority_owner": "observation_runtime.ObservationLedger",
-      "retention_owner": "observation_runtime.ObservationStoreMigrator",
-      "rebuildability": "MIGRATION_RECEIPT_AND_SCHEMA_READBACK_REQUIRED",
-      "artifact_relationship": "STORAGE_PROVENANCE_ONLY"
-    },
-    {
-      "tables": [
         "workspace_task",
         "workspace_task_command",
         "workspace_task_event",
         "workspace_task_execution",
-        "workspace_task_projection",
         "workspace_task_stage_receipt",
         "workspace_task_work_item"
       ],
-      "database": "task-control",
-      "semantic_role": "Task Control's research Tasks: their records, work items, executions, events, commands, stage receipts and the projection a read lists",
+      "database": "log",
+      "semantic_role": "Task Control's research Tasks as the log projects them from Task Control's events: records, work items, executions, events, commands and stage receipts; Task Control writes the same tables as a 0.2.7 store for a restore to move onto the log",
       "generation_model": "OPERATIONAL_PROJECTION",
-      "authority_owner": "task_control.registry.DuckDbTaskControlRegistry",
+      "authority_owner": "data_layer.project",
+      "schema_writers": [
+        "task_control"
+      ],
       "retention_owner": "task_control",
-      "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
+      "rebuildability": "REPLAYED_FROM_THE_LOG",
       "artifact_relationship": "NONE"
     },
     {
       "tables": [
-        "workspace_task_heartbeat"
+        "workspace_task_projection"
       ],
-      "database": "task-heartbeats",
-      "semantic_role": "a running Task's heartbeats, beside its checkpoint",
+      "database": "log",
+      "semantic_role": "the projection a read lists for each Task, recomputed from its record at each save",
       "generation_model": "OPERATIONAL_PROJECTION",
-      "authority_owner": "task_control.runner._SqliteHeartbeatStore",
+      "authority_owner": "task_control.registry.DuckDbTaskControlRegistry",
       "retention_owner": "task_control",
-      "rebuildability": "DISPOSABLE_WHEN_NO_TASK_RUNS",
+      "rebuildability": "RECOMPUTABLE_FROM_BASE_AND_POLICY",
       "artifact_relationship": "NONE"
     },
     {
@@ -424,38 +414,6 @@
       "authority_owner": "data_platform.maintenance.registry.DuckDbWorkspaceMaintenanceRegistry",
       "retention_owner": "data_platform",
       "rebuildability": "PHYSICAL_RETENTION_REQUIRED",
-      "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "cjk_fts",
-        "content",
-        "dense_nodes",
-        "metadata",
-        "term_fts",
-        "trigram_fts",
-        "vec_chunks"
-      ],
-      "database": "knowledge-hybrid-index",
-      "semantic_role": "a hybrid knowledge index: its passages, full-text postings and dense vectors",
-      "generation_model": "BY_REVISION",
-      "authority_owner": "knowledge.hybrid.WorkspaceHybridKnowledgeIndex",
-      "retention_owner": "knowledge",
-      "rebuildability": "REBUILDABLE_FROM_THE_CORPUS",
-      "artifact_relationship": "NONE"
-    },
-    {
-      "tables": [
-        "feature_ineligibility",
-        "feature_ineligibility_legacy",
-        "feature_year_seal"
-      ],
-      "database": "workspace",
-      "semantic_role": "retired Feature tables (eligibility, year seals), altered and dropped by the migrations that replaced them",
-      "generation_model": "LEGACY_MIGRATION_ONLY",
-      "authority_owner": "feature_engine.storage.FeatureStateRepository",
-      "retention_owner": "feature_engine",
-      "rebuildability": "NONE_RETIRED",
       "artifact_relationship": "NONE"
     }
   ]

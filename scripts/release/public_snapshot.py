@@ -15,16 +15,21 @@ import argparse
 import hashlib
 import json
 import re
-import subprocess
 import sys
 import types
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from alphalattice.kernel.shared_kernel import spawn
+
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 PROVENANCE_SCHEMA = "alphalattice.release.snapshot-provenance"
 PROJECTION_LOADERS = {
+    "config/registries/agent-surface.json": (
+        "from alphalattice.interface.local_application.cli_contract import agent_surface_manifest\n"
+        "agent_surface_manifest()"
+    ),
     "config/registries/antipattern-baseline.json": (
         "sys.path.insert(0, str(root / 'scripts'))\n"
         "from check_test_shape import load_antipattern_baseline\nload_antipattern_baseline(root)"
@@ -58,8 +63,12 @@ class SnapshotRefused(ValueError):
 
 
 def _git(repository: Path, *arguments: str, stdin: bytes | None = None) -> bytes:
-    completed = subprocess.run(
-        ["git", "-C", str(repository), *arguments], input=stdin, capture_output=True, check=False
+    completed = spawn.run(
+        ["git", "-C", str(repository), *arguments],
+        input=stdin,
+        capture_output=True,
+        check=False,
+        timeout=300,
     )
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip().splitlines()
@@ -281,11 +290,11 @@ def _load_projected(out: Path, path: str) -> None:
     loader = PROJECTION_LOADERS.get(path)
     if loader is None:
         raise SnapshotRefused(f"release.projection_unloaded:{path}; declare its owner's loader")
-    done = subprocess.run(
+    done = spawn.run(
         [sys.executable, "-I", "-c", _LOAD, str(out), loader],
         capture_output=True,
         text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        timeout=300,
     )
     if done.returncode:
         tail = (done.stderr or done.stdout).strip().splitlines()[-1:] or ["no output"]

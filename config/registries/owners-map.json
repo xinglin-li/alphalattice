@@ -75,7 +75,8 @@
       "owner": "alphalattice.foundation.market_data_ops",
       "defined_by": [
         "alphalattice.foundation.market_data_ops.sources.contracts",
-        "alphalattice.foundation.market_data_ops.sources.providers"
+        "alphalattice.foundation.market_data_ops.sources.providers",
+        "alphalattice.foundation.market_data_ops.sources.local_file"
       ],
       "folds_in": [],
       "note": "Raw bar canonical hashing and its typed spelling-memo budget live with the existing publication projection hashes; storage imports the same functions.",
@@ -87,7 +88,7 @@
         "src/alphalattice/control/data_platform/readiness.py::build_workspace_readiness"
       ],
       "provider_composition_root": "alphalattice.foundation.market_data_ops.sources.providers.market_provider",
-      "provider_injection": "A non-None override is retained, including a falsey provider; defaults resolve once per Host owner from the admitted source profile."
+      "provider_injection": "A non-None override is retained, including a falsey provider. The Host data owner selects the workspace file capture when market-bars exists and otherwise uses the admitted source's default adapter. Workspace preparation shares the resulting provider."
     },
     "raw bar rebase": {
       "description": "A raw bar rebase records one split's price and volume factors so stored history and later reads apply the same adjustment.",
@@ -637,19 +638,13 @@
       "description": "Check architecture contracts and retain reviewed registry gaps so unexplained source and registry additions are refused."
     },
     "knowledge retrieval": {
-      "description": "Knowledge retrieval searches committed local indexes and returns ranked cited passages with their source and recipe trace so evidence readers can find the material they need.",
-      "covers": "local retrieval contracts, verified model-pack proofs and leased model sessions",
+      "description": "Knowledge retrieval contracts name the retrieval recipes and model packs a workspace's retrieval store loads, and choose the recipe its setup installs.",
+      "covers": "local retrieval recipe and model-pack constants and the setup recipe choice",
       "owner": "alphalattice.kernel.knowledge",
       "defined_by": [
-        "alphalattice.kernel.knowledge.hybrid_contracts",
-        "alphalattice.kernel.knowledge._embeddings",
-        "alphalattice.kernel.knowledge.runtime"
+        "alphalattice.kernel.knowledge.hybrid_contracts"
       ],
-      "input_contracts": [
-        "PairScoreAdmission"
-      ],
-      "folds_in": [],
-      "note": "VerifiedPackRegistry owns typed machine-derived capacity, capability-report LRU and lease-aware idle model-pool retirement; active leases remain valid. PairScoreAdmission carries the workspace caller's committed block names and storage-admission callback into Knowledge; constructing this input does not seal or publish a Knowledge decision."
+      "folds_in": []
     },
     "source identity": {
       "description": "Source identity names source components and hashes their executable syntax and declared import closure so records can bind to code independently of checkout layout.",
@@ -784,7 +779,6 @@
           "src/alphalattice/control/guanyin/tasks/supervision.py:27",
           "src/alphalattice/control/observation_runtime/contracts.py:11",
           "src/alphalattice/control/observation_runtime/guardian.py:11",
-          "src/alphalattice/control/observation_runtime/ledger.py:17",
           "src/alphalattice/control/observation_runtime/policy.py:10",
           "src/alphalattice/control/observation_runtime/telemetry/process_metrics.py:30",
           "src/alphalattice/control/observation_runtime/telemetry/progress.py:15",
@@ -1264,26 +1258,14 @@
           "src/alphalattice/kernel/data/errors.py:5",
           "src/alphalattice/kernel/data/universe.py:15",
           "src/alphalattice/kernel/data/universe.py:16",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:32",
-          "src/alphalattice/kernel/knowledge/_reranking.py:69",
-          "src/alphalattice/kernel/knowledge/_torch.py:49",
           "src/alphalattice/kernel/knowledge/catalog.py:39",
           "src/alphalattice/kernel/knowledge/catalog.py:40",
           "src/alphalattice/kernel/knowledge/contracts.py:17",
           "src/alphalattice/kernel/knowledge/contracts.py:18",
           "src/alphalattice/kernel/knowledge/contracts.py:19",
           "src/alphalattice/kernel/knowledge/errors.py:7",
-          "src/alphalattice/kernel/knowledge/hybrid.py:87",
-          "src/alphalattice/kernel/knowledge/hybrid.py:91",
-          "src/alphalattice/kernel/knowledge/hybrid.py:96",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:24",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:32",
-          "src/alphalattice/kernel/knowledge/retrieval.py:36",
-          "src/alphalattice/kernel/knowledge/retrieval.py:39",
-          "src/alphalattice/kernel/knowledge/retrieval.py:45",
-          "src/alphalattice/kernel/knowledge/retrieval_contracts.py:12",
-          "src/alphalattice/kernel/knowledge/retrieval_contracts.py:20",
-          "src/alphalattice/kernel/knowledge/retrieval_errors.py:5",
           "src/alphalattice/kernel/live_evidence/errors.py:7",
           "src/alphalattice/kernel/quant/errors.py:7",
           "src/alphalattice/kernel/quant/factor_contracts.py:11",
@@ -1348,8 +1330,6 @@
           "tests/integration/alternative_evidence/test_analysis_sealing_and_task_recovery.py:62",
           "tests/integration/alternative_evidence/test_campaign_ledger.py:32",
           "tests/integration/alternative_evidence/test_document_spans_and_sections.py:30",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:1128",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:875",
           "tests/integration/alternative_evidence/test_evidence_review_http_route.py:56",
           "tests/integration/knowledge/test_hybrid_generation_reuse.py:325",
           "tests/integration/knowledge/test_hybrid_generation_reuse.py:361",
@@ -1359,7 +1339,6 @@
           "tests/integration/knowledge/test_hybrid_generation_reuse.py:668",
           "tests/integration/knowledge/test_hybrid_generation_reuse.py:909",
           "tests/integration/knowledge/test_hybrid_generation_reuse.py:985",
-          "tests/integration/knowledge/test_hybrid_index_lifecycle.py:66",
           "tests/integration/alternative_evidence/test_official_source_composition.py:1474",
           "tests/integration/chief_risk_officer/test_portfolio_review_decision.py:33",
           "tests/integration/alternative_evidence/test_team_scene_evidence_correction.py:38",
@@ -1464,7 +1443,6 @@
           "tests/structural/test_source_identity.py:361",
           "tests/structural/test_source_identity.py:362",
           "tests/structural/test_source_identity.py:529",
-          "tests/integration/observation_runtime/test_unified_observation.py:31",
           "tests/workspace_maintenance/data_update_support.py:17",
           "tests/integration/product_host/test_current_state_storage.py:21",
           "tests/integration/feature_engine/test_local_data_update.py:1375",
@@ -1472,7 +1450,6 @@
           "tests/integration/research_foundation/test_pre_research_delta_engine.py:37",
           "tests/integration/causal_outcomes/test_preparation_retention.py:47",
           "tests/integration/product_host/test_research_input_storage.py:37",
-          "tests/integration/knowledge/test_retrieval_recipes.py:45",
           "tests/integration/market_data_ops/test_workspace_maintenance.py:99",
           "tests/integration/workspace_runtime/test_workspace_path_confinement.py:22",
           "tests/integration/product_host/test_workspace_manifest_writes.py:46",
@@ -2883,8 +2860,6 @@
           "src/alphalattice/control/product_host/research_authoring/timing.py:10",
           "src/alphalattice/control/product_host/research_authoring/timing.py:11",
           "src/alphalattice/control/product_host/storage/backup.py:38",
-          "src/alphalattice/control/product_host/storage/evidence_references.py:17",
-          "src/alphalattice/control/product_host/storage/evidence_references.py:18",
           "src/alphalattice/control/product_host/storage/input_references.py:18",
           "src/alphalattice/control/product_host/storage/input_references.py:21",
           "src/alphalattice/control/product_host/storage/input_references.py:24",
@@ -2911,11 +2886,6 @@
           "tests/alternative_evidence_desk/review_package.py:20",
           "tests/integration/alternative_evidence/test_bounded_delivery.py:28",
           "tests/integration/alternative_evidence/test_document_cap_default.py:17",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:27",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:30",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:33",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:34",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:695",
           "tests/integration/alternative_evidence/test_evidence_review_http_route.py:1578",
           "tests/integration/alternative_evidence/test_evidence_review_http_route.py:1595",
           "tests/integration/alternative_evidence/test_evidence_review_http_route.py:1634",
@@ -4399,67 +4369,6 @@
         "string": []
       }
     },
-    "verified model packs": {
-      "description": "Verified model packs pair content-checked local model files with reusable reports and leased sessions so retrieval can avoid repeated loading while keeping active sessions valid.",
-      "owner": "alphalattice.kernel.knowledge",
-      "covers": "VerifiedPackRegistry, verified model-pack proof/report entries and lease-aware model-session pools",
-      "defined_by": [
-        "alphalattice.kernel.knowledge._embeddings"
-      ],
-      "folds_in": [],
-      "consumers": {
-        "import": [
-          "src/alphalattice/evidence/alternative_evidence/retrieval/service.py:264",
-          "src/alphalattice/evidence/alternative_evidence/runtime/execution.py:44",
-          "src/alphalattice/evidence/alternative_evidence/runtime/service.py:21",
-          "src/alphalattice/evidence/alternative_evidence/runtime/service.py:1113",
-          "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py:52",
-          "src/alphalattice/kernel/knowledge/_reranking.py:46",
-          "src/alphalattice/kernel/knowledge/_torch.py:34",
-          "src/alphalattice/kernel/knowledge/_torch.py:147",
-          "src/alphalattice/kernel/knowledge/_torch.py:206",
-          "src/alphalattice/kernel/knowledge/_torch.py:335",
-          "tests/integration/knowledge/test_hybrid_generation_reuse.py:36",
-          "tests/integration/knowledge/test_hybrid_index_lifecycle.py:44",
-          "tests/integration/alternative_evidence/test_integrated_topic_routing.py:89"
-        ],
-        "path": [
-          "config/registries/owners-map.json:1260",
-          "tests/structural/test_source_identity.py:438"
-        ],
-        "string": [
-          "src/alphalattice/evidence/alternative_evidence/runtime/execution.py:401",
-          "src/alphalattice/evidence/alternative_evidence/runtime/execution.py:416",
-          "src/alphalattice/evidence/alternative_evidence/runtime/execution.py:446",
-          "src/alphalattice/evidence/alternative_evidence/runtime/execution.py:450",
-          "src/alphalattice/evidence/alternative_evidence/runtime/service.py:749",
-          "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py:53",
-          "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py:716",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:366",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:444",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:695",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:768",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:828",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:1035",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:1081",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:1087",
-          "src/alphalattice/kernel/knowledge/_reranking.py:48",
-          "src/alphalattice/kernel/knowledge/_reranking.py:217",
-          "src/alphalattice/kernel/knowledge/_reranking.py:225",
-          "src/alphalattice/kernel/knowledge/hybrid.py:170",
-          "tests/integration/knowledge/test_shared_session_recovery.py:118",
-          "tests/integration/knowledge/test_verified_pack_registry.py:46",
-          "tests/integration/knowledge/test_verified_pack_registry.py:118",
-          "tests/integration/knowledge/test_verified_pack_registry.py:119",
-          "tests/integration/knowledge/test_verified_pack_registry.py:163",
-          "tests/integration/knowledge/test_verified_pack_registry.py:181",
-          "tests/integration/knowledge/test_verified_pack_registry.py:238",
-          "tests/integration/knowledge/test_verified_pack_registry.py:254",
-          "tests/integration/knowledge/test_verified_pack_registry.py:286",
-          "tests/integration/knowledge/test_verified_pack_registry.py:287"
-        ]
-      }
-    },
     "source AST memo": {
       "description": "The source AST memo reuses a module's syntax digest and import list by source-byte hash and package context so source identity avoids parsing unchanged input again.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -4912,6 +4821,23 @@
       ],
       "folds_in": [],
       "note": "Consumer: devtools.testing.contracts applies test layer resources through a scoped subscription."
+    },
+    "data layer": {
+      "description": "The data layer holds the 0.2.8 data root: its event log, definition registry, catalog schema and search index, so every later reader shares one store.",
+      "covers": "the data root's folders, the DDL of log.sqlite with the knowledge store's tables, the DuckLake catalog, the seed registry, the schema version a data root is refused by, and the Host's one write path into the log: its admission checks, hash chain, lock and span exporter, and StorePort: the catalog's one writer and write order, the staging layout, the repair of owed events, start-up collection, the deletion queue and the free-space floor",
+      "owner": "alphalattice.kernel.data_layer",
+      "defined_by": [
+        "alphalattice.kernel.data_layer.admit",
+        "alphalattice.kernel.data_layer.chain",
+        "alphalattice.kernel.data_layer.log",
+        "alphalattice.kernel.data_layer.root",
+        "alphalattice.kernel.data_layer.spans",
+        "alphalattice.kernel.data_layer.store",
+        "alphalattice.kernel.data_layer.telemetry",
+        "alphalattice.kernel.data_layer.upgrade"
+      ],
+      "folds_in": [],
+      "note": "The Host's pre-serve application session calls the ordered family upgrade through the data layer's existing log writer. Family moves supply their own steps, comparisons and reader switches; the mechanism itself registers no real family."
     }
   }
 }

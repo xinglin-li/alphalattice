@@ -85,6 +85,14 @@ class CausalRiskReturnChunk(RiskContract):
     uri: str = Field(min_length=1)
 
 
+class RiskReturnOmissions(RiskContract):
+    """The consecutive-session return pairs omitted for one listing."""
+
+    listing_id: str = Field(min_length=1)
+    count: int = Field(ge=1)
+    pairs: tuple[tuple[date, date], ...] = Field(min_length=1)
+
+
 class CausalRiskReturnSurface(RiskContract):
     """Seal causal one-session open-to-open log returns for a declared universe epoch.
 
@@ -106,6 +114,9 @@ class CausalRiskReturnSurface(RiskContract):
     source_watermark_hash: Hash = Field(pattern=_HASH_PATTERN)
     chunks: tuple[CausalRiskReturnChunk, ...] = Field(min_length=1)
     limitations: tuple[str, ...]
+    omissions: tuple[RiskReturnOmissions, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     surface_hash: Hash = Field(pattern=_HASH_PATTERN)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
@@ -121,9 +132,29 @@ class CausalRiskReturnSurface(RiskContract):
         """
         if self.first_formation_session > self.last_formation_session:
             raise ValueError("risk_research.return_surface_range_invalid")
-        if sum(chunk.row_count for chunk in self.chunks) != (
-            self.formation_count * len(self.epoch.ordered_listing_ids)
+        omissions = self.omissions or ()
+        ids = tuple(item.listing_id for item in omissions)
+        if (
+            self.omissions == ()
+            or len(ids) != len(set(ids))
+            or tuple(item for item in self.epoch.ordered_listing_ids if item in ids) != ids
+            or any(
+                item.count != len(item.pairs)
+                or item.pairs != tuple(sorted(set(item.pairs), key=lambda pair: pair[1]))
+                or len({end for _, end in item.pairs}) != len(item.pairs)
+                or any(start >= end for start, end in item.pairs)
+                for item in omissions
+            )
+            or any(
+                not self.first_formation_session <= formation <= self.last_formation_session
+                for item in omissions
+                for _start, formation in item.pairs
+            )
         ):
+            raise ValueError("risk_research.return_omission_invalid")
+        if sum(chunk.row_count for chunk in self.chunks) + sum(
+            item.count for item in omissions
+        ) != self.formation_count * len(self.epoch.ordered_listing_ids):
             raise ValueError("risk_research.return_surface_row_count_invalid")
         expected = canonical_hash(self.model_dump(mode="json", exclude={"surface_hash"}))
         if self.surface_hash != expected:
@@ -344,6 +375,15 @@ class RiskFormationEvaluation(RiskContract):
     trace_ratio: float | None = None
     frobenius_delta_ratio: float | None = Field(default=None, ge=0.0)
     leading_eigenvalue_delta_ratio: float | None = None
+    realized_excluded_listing_ids: tuple[str, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    comparison_dropped_previous: tuple[str, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    comparison_dropped_current: tuple[str, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_compatible_diagnostics(self) -> Self:

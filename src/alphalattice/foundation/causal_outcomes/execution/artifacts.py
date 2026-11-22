@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .compile import _SCHEMA_ID, _schema
@@ -51,6 +52,56 @@ DEVELOPMENT_ONLY_MANIFEST_CATEGORY = "development-only-manifests"
 DEVELOPMENT_ONLY_MARKER_CATEGORY = "development-only-markers"
 
 LOCAL_QA_PREPARATION_CATEGORY = "local-qa-preparation"
+
+
+def chunk_identity(ordered: pa.Table) -> str:
+    """A chunk's identity: the canonical JSON of (listing, formation, row hash) per row, its rows
+    ordered by formation session and listing. A formation session is encoded as ``str(value)`` by
+    the canonical encoder, so the columns are read once each and the session is given as that
+    string: the same bytes, without a dict per row."""
+    identity: str = canonical_hash(
+        {
+            "schema": _SCHEMA_ID,
+            "rows": tuple(
+                zip(
+                    ordered.column("listing_id").to_pylist(),
+                    (str(value) for value in ordered.column("formation_session").to_pylist()),
+                    ordered.column("row_hash").to_pylist(),
+                    strict=True,
+                )
+            ),
+        }
+    )
+    return identity
+
+
+def rows_intact(rows: list[dict[str, object]]) -> bool:
+    """Whether each row's hash is the canonical hash of its other values, as the compiler hashes
+    it (compile.derive_causal_execution_row)."""
+    return all(
+        row["row_hash"]
+        == canonical_hash({key: value for key, value in row.items() if key != "row_hash"})
+        for row in rows
+    )
+
+
+def carried_chunk_check(
+    _workspace: Path, content_hash: str, profile: object, table: pa.Table
+) -> None:
+    """Refuse a carried outcome chunk that carries a profile, as none is written for one, or whose
+    rows are not the ones `content_hash` names: each row's hash over its values, and the chunk's
+    over its rows' (listing, formation, row hash)."""
+    ordered = (
+        table.cast(_schema())
+        .combine_chunks()
+        .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
+    )
+    if (
+        profile is not None
+        or not rows_intact(ordered.to_pylist())
+        or chunk_identity(ordered) != content_hash
+    ):
+        raise ValueError("causal_outcomes.chunk_identity_invalid")
 
 
 def _local_qa_validity_buffer(array: pa.Array) -> pa.Buffer | None:
@@ -394,45 +445,15 @@ class _ExecutionOutcomeArtifactStore:
         ordered = table.combine_chunks().sort_by(
             [("formation_session", "ascending"), ("listing_id", "ascending")]
         )
-        # The identity is the canonical JSON of (listing, formation, row hash)
-        # per row; a formation session is encoded as ``str(value)`` by the
-        # canonical encoder, so the columns are read once each and the
-        # session is given as that string -- the same bytes, without a dict
-        # per row.
-        content_hash = canonical_hash(
-            {
-                "schema": _SCHEMA_ID,
-                "rows": tuple(
-                    zip(
-                        ordered.column("listing_id").to_pylist(),
-                        (str(value) for value in ordered.column("formation_session").to_pylist()),
-                        ordered.column("row_hash").to_pylist(),
-                        strict=True,
-                    )
-                ),
-            }
-        )
-        path = self._parquet_path(split, content_hash)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        content_hash = chunk_identity(ordered)
+        history.write_execution_outcome(content_hash, ordered)
         metadata = {
-            b"alphalattice.snapshot_kind": b"CausalExecutionOutcomeChunk",
-            b"alphalattice.chunk_hash": content_hash.encode(),
-            b"alphalattice.split": split.encode(),
+            "alphalattice.snapshot_kind": "CausalExecutionOutcomeChunk",
+            "alphalattice.chunk_hash": content_hash,
+            "alphalattice.split": split,
         }
-        if not path.exists():
-            staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-            pq.write_table(ordered.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, path)
-        parquet = pq.ParquetFile(path)
-        actual_metadata = parquet.schema_arrow.metadata or {}
-        if actual_metadata.get(b"alphalattice.chunk_hash") != content_hash.encode():
-            raise ValueError("causal execution chunk metadata is invalid")
         metadata_hash = hashlib.sha256(
-            json.dumps(
-                {key.decode(): value.decode() for key, value in sorted(actual_metadata.items())},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
         dates = ordered.column("formation_session").to_pylist()
         year = dates[0].year
@@ -453,6 +474,16 @@ class _ExecutionOutcomeArtifactStore:
         if metadata.get(b"alphalattice.chunk_hash") != chunk.content_hash.encode():
             raise ValueError("causal execution chunk readback is invalid")
         return path
+
+    def read_chunk(
+        self, chunk: CausalExecutionOutcomeChunk, *, columns: list[str] | None = None
+    ) -> pa.Table:
+        """Read a chunk's body from the data root's catalog."""
+        table = history.read_execution_outcome(chunk.content_hash, columns)
+        if table.num_rows != chunk.row_count:
+            raise ValueError("causal execution outcome catalog row count is invalid")
+        schema = _schema() if columns is None else pa.schema([_schema().field(c) for c in columns])
+        return table.cast(schema)
 
     def manifests(self) -> tuple[CausalExecutionOutcomeManifest, ...]:
         root = self.root / "manifests"

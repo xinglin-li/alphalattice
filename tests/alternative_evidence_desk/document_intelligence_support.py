@@ -34,19 +34,11 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
-from alphalattice.kernel.knowledge.hybrid import (
-    WorkspaceHybridKnowledgeIndex,
-    WorkspaceHybridKnowledgeRetriever,
-)
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    HybridIndexSpec,
-)
+from alphalattice.kernel.data_layer import encoders, recall
 from tests.alternative_evidence_desk.planted_corpus import (
     _NOW,
     CIKS,
-    _EmbeddingAdapter,
-    _FakeReranker,
-    _ready,
+    _PlantedEncoder,
     _recorded_document,
     _runtime,
 )
@@ -163,37 +155,9 @@ def _open_recorded(
         documents=documents if documents is not None else (_recorded_document(),),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return runtime, request, registry, snapshot, document_set, generation
-
-
-class _CountingAdapter(_EmbeddingAdapter):
-    """Records the size of every passage embedding call, and every query call.
-
-    Wall time measures the machine. The number of passages put through the
-    model measures the design. Only a build or a cold open embeds passages now:
-    a query embeds its query and verifies its hits against the vectors that
-    open already proved. `_corpus_passes` counts the full-corpus calls, and
-    `queries` counts what a query legitimately costs.
-    """
-
-    def __init__(self, passes: list[int], queries: list[str] | None = None) -> None:
-        self._passes = passes
-        self._queries = [] if queries is None else queries
-
-    def embed_passages(
-        self,
-        texts: tuple[str, ...],
-        *,
-        cancelled: Any | None = None,
-    ) -> tuple[tuple[float, ...], ...]:
-        self._passes.append(len(texts))
-        return super().embed_passages(texts, cancelled=cancelled)
-
-    def embed_query(self, text: str) -> tuple[float, ...]:
-        self._queries.append(text)
-        return super().embed_query(text)
 
 
 def _counted_runtime(
@@ -201,35 +165,30 @@ def _counted_runtime(
     *,
     queries: list[str] | None = None,
 ) -> tuple[AlternativeEvidenceDocumentIntelligenceRuntime, list[int]]:
+    """A runtime on the store whose encoder records the size of every passage batch, and
+    every query when `queries` is given.
+
+    Wall time measures the machine. The number of passages put through the model measures
+    the design: the store encodes a chunk once, so only a first build of new passages
+    encodes any, and a query encodes its query alone. The counting encoder replaces the
+    planted one under `review_store`, which restores it.
+    """
     passes: list[int] = []
 
-    def index_factory(workspace: Any, model_root: Path) -> WorkspaceHybridKnowledgeIndex:
-        return WorkspaceHybridKnowledgeIndex(
-            workspace,
-            model_root=model_root,
-            capability_probe=_ready,
-            adapter_factory=lambda _root, _spec: _CountingAdapter(passes, queries),
-            reranker_factory=lambda _root, _spec: _FakeReranker(),
-        )
+    class Counting(_PlantedEncoder):
+        def embed_passages(self, texts: list[str]) -> Any:
+            passes.append(len(texts))
+            return super().embed_passages(texts)
 
-    def retriever_factory(
-        workspace: Any, model_root: Path, spec: HybridIndexSpec
-    ) -> WorkspaceHybridKnowledgeRetriever:
-        return WorkspaceHybridKnowledgeRetriever(
-            workspace,
-            model_root=model_root,
-            index_spec=spec,
-            capability_probe=_ready,
-            adapter_factory=lambda _root, _spec: _CountingAdapter(passes, queries),
-            reranker_factory=lambda _root, _spec: _FakeReranker(),
-        )
+        def embed_query(self, text: str) -> Any:
+            if queries is not None:
+                queries.append(text)
+            return super().embed_query(text)
 
+    setattr(encoders, "StaticEncoder", Counting)  # noqa: B010 -- restored by review_store
+    recall.close()
     runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
-        artifact_root=tmp_path / "artifacts",
-        workspace_root=tmp_path / "workspace",
-        model_root=tmp_path / "models",
-        index_factory=index_factory,
-        retriever_factory=retriever_factory,
+        artifact_root=tmp_path / "artifacts", workspace_root=tmp_path / "workspace"
     )
     return runtime, passes
 
@@ -261,7 +220,7 @@ def _built(
         documents=documents if documents is not None else (_recorded_document(),),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return request, document_set, generation
 

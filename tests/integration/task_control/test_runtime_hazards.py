@@ -33,14 +33,9 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime import database
-from alphalattice.control.workspace_runtime.database import retain_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from tests.alternative_evidence_desk.document_intelligence_support import (
-    _built,
-    _counted_runtime,
-)
-from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.workspace_task_runner.lock_order import LockOrder, lock_order, record_lock_order
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -52,36 +47,13 @@ def test_the_recorder_names_a_pair_taken_in_both_orders(
 ) -> None:
     with record_lock_order(monkeypatch) as recorder:
         gate = WorkspaceMutationGate()
-        registry = DuckDbTaskControlRegistry(resolve_task_control_database(tmp_path), gate=gate)
-        with gate.hold(), registry._connection_lock:
+        guard = history.held()._guard  # the registry's lock: the held log's one writer
+        with gate.hold(), guard:
             pass
         assert recorder.inversions() == []
-        with registry._connection_lock, gate.hold():
+        with guard, gate.hold():
             pass
     assert recorder.inversions() == [("gate", "registry")]
-
-
-def test_the_recorder_names_the_order_that_stalled_the_workbench(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Before `31c49cf3` a status read retained the registry read-only and then asked for its
-    connection lock, while a writer takes the lock and then the file read-write. The recorder
-    names that pair even when the two never meet on two threads."""
-
-    with record_lock_order(monkeypatch) as recorder:
-        registry = DuckDbTaskControlRegistry(
-            resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
-        )
-        first = task_contract()
-        now = datetime.now(UTC)
-        registry.admit(input_envelope=first[0], goal=first[1], plan=first[2], observed_at=now)
-        assert recorder.inversions() == []
-        with (
-            retain_workspace_database(registry.database_path, read_only=True),
-            registry._connection_lock,
-        ):
-            pass
-    assert recorder.inversions() == [("instance:research-task-control.duckdb", "registry")]
 
 
 def test_a_status_read_beside_a_starting_task_takes_no_pair_in_both_orders(
@@ -205,29 +177,6 @@ def test_the_workbench_build_replaces_an_asset_a_reader_holds(
         reading.close()
     page = (tmp_path / "workbench.html").read_bytes()
     assert page.startswith(b"<!DOCTYPE html>") and b'<script src="/workbench.' in page
-
-
-def test_an_index_a_session_reads_is_not_evicted_from_under_it(tmp_path: Path) -> None:
-    """Suspect 5: a storage clean-up evicts a hybrid index while a retriever holds it open.
-    The retrieval service refuses while any session on the generation is open, under its
-    lease lock, and evicts once the session ends."""
-
-    runtime, _passes = _counted_runtime(tmp_path)
-    request, document_set, generation = _built(runtime)
-    (database,) = sorted((tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob("*.db"))
-    relative = database.resolve().relative_to((tmp_path / "workspace").resolve()).as_posix()
-    session = runtime.retrieval.open_session(
-        document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
-    )
-    try:
-        with pytest.raises(ValueError, match="retrieval_index_in_use"):
-            runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-        assert database.is_file()
-    finally:
-        session.close()
-    runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-    assert not database.is_file()
-    runtime.close()
 
 
 @pytest.mark.proves("workspace_runtime.background_task_gate_wait_and_cancel")

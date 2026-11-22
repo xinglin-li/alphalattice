@@ -13,9 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
-from typing import Final
-
-import pandas as pd
+from typing import TYPE_CHECKING, Final
 
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
@@ -29,6 +27,9 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelCrossSectionKernel,
     PanelMaterialization,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 ROBUST_UNIVERSE_Z_IMPLEMENTATION: Final = "robust_universe_z.v1"
 UNIVERSE_GROUP: Final = "UNIVERSE"

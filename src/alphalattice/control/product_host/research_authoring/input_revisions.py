@@ -23,6 +23,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.maintenance.data_update import read_workspace_inputs
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
+    factor_input_paths,
+    input_absent,
     read_factor_bundle,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
@@ -35,6 +37,7 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
@@ -608,12 +611,13 @@ class ResearchInputRevisions:
                 if revision
                 else "REGISTERED"
             )
-        except (OSError, ValueError, KeyError) as error:
+        except (OSError, ValueError, KeyError, DataError) as error:
+            gone = input_absent(error)
             return {
                 **head,
                 "available": False,
                 "unreadable": "research_input.manifest_missing"
-                if isinstance(error, FileNotFoundError)
+                if gone
                 else "research_input.bundle_unreadable",
                 "detail": (
                     "This version's prepared input cannot be read in this workspace (its "
@@ -622,7 +626,7 @@ class ResearchInputRevisions:
                 ),
                 "next_requests": {"storage": {"operation": "STORAGE_READBACK"}},
             }
-        source = self.workspace / "research-inputs" / binding / "source"
+        source = factor_input_paths(self.workspace, binding)[0]
         return {
             **head,
             "start": str(bundle.sessions[0]),

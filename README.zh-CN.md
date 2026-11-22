@@ -17,20 +17,13 @@
 
 研究计算遵循每项结果声明的信息截止时间。市场名单使用当前上市公司，报告会说明由此带来的幸存者偏差，以及历史行业和价格记录的局限。验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
 
-## 0.2.7：现已提供
+## 0.2.8：现已提供
 
-- 所有等待都有上限：`--max-wait` 最长一小时，worker 随 Host 一起结束。
-- Codex 第一次使用时，会说明项目的信任设置，以及设置它所需的一步操作。
-- 被拒绝的问题转发会说明要修正什么（中英文均可）；因任务停止而中止的重跑会说明原因，以及如何恢复。
-- Evidence 搜索索引改为按需重建，不再保存在磁盘上；按旧锁文件构建的检索环境会被拒绝，并给出重建它的命令。
+- 同一数据根目录下的工作区共用一份事件日志和一个数据目录，每次更新只把行情变化发布一次。
+- 0.2.7 的工作区在 0.2.8 第一次启动时完成升级；升级前先做一份经过校验的备份，它也是回退的途径。
+- 同一台机器上，Daily、Evidence 和查询都更快了；具体秒数见发行说明。
 
-[0.2.7 发行说明（英文）](docs/public-source/release-notes.md#027)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
-
-使用 Claude Code 或 Codex 作为主导代理。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会显示每位成员使用的模型和 token 数量，并标明缺口。
-
-把本仓库的链接和一句研究意图交给代理：
-
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
+[0.2.8 发行说明（英文）](docs/public-source/release-notes.md#028)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
 
 <a id="two-ways-to-use-alphalattice"></a>
 
@@ -38,7 +31,7 @@
 
 1. **首次使用：在新文件夹中开始。** 把上面的研究意图，或 `Positions for <date>, reviewed.`，发给 Claude Code 或 Codex 代理。代理准备数据和策略，生成指定日期的研究仓位，再完成审阅、委员会讨论和报告。
 
-   **这里会暂停，等待你的回答。** 代理会问一次：是否允许 AlphaLattice 为每日更新持续开启这个工作区的网络，用于获取市场数据和默认预算内的 SEC 文件（每家发行主体 3 份、总计 600 份、总体积 3 GB）。**工作会等到你回答同意或不同意后再继续。** 同意后，许可持续有效，直到你要求停止；每次联网都会披露并记入活动记录，自动更新也不例外。
+   代理会问一次：是否允许 AlphaLattice 为每日更新持续开启这个工作区的网络，用于获取市场数据和默认预算内的 SEC 文件（每家发行主体 3 份、总计 600 份、总体积 3 GB）。首次使用无需等待你的回答即可继续。同意后，许可持续有效，直到你要求停止；联网时会作出披露，自动更新也不例外。活动记录可用时会记录联网情况，观测缺口也会注明。
 
    在首次使用的报告阶段，代理还会问：每日更新是否需要召集投资委员会。你可以当时或以后在对话中决定，也可以用同样的方式更改，例如说 "Stop convening the committee on daily updates." 在你同意之前，后续更新会给出组合经理对已审阅仓位的看法，并提供召集委员会的选项。**首次使用不会等待这个问题的答案。**
 
@@ -54,9 +47,9 @@
 
 *示例运行（example run）使用合成数据：已保存的风险研究显示其输入区间与诊断结果。*
 
-![英文工作台中一次示例运行的活动时间线。](docs/assets/readme/activity-1280.png)
+![英文工作台中示例研究工作区的历史视图。](docs/assets/readme/activity-1280.png)
 
-*示例运行（example run）使用合成数据：活动记录保留了结果背后的工作过程。*
+*示例运行（example run）使用合成数据：历史视图列出已记录的任务与更新。*
 
 <details>
 <summary>在较窄窗口中查看同一次示例运行</summary>
@@ -86,9 +79,9 @@
 ## 升级
 
 从 0.2.0 升级到后续 0.2.x 补丁，请按[升级指南（英文）](docs/public-source/upgrading.md)操作。
-先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等运行中的任务结束。
+先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等它释放工作区。
 源代码安装先更新代码，再同步锁定依赖、运行 doctor，并按其回答修复设置或重新配置代理项目；wheel 安装使用新包自带的运行依赖和约束。
-升级后仍在原代理项目和工作区中继续每日更新。第一次更新可能需要一次重建；此前封存的目标和报告仍可验证。
+升级后仍在原代理项目和工作区中继续每日更新，保留此前封存的目标和报告。
 如果命令拒绝且按提示仍无法解决，先用 `alphalattice problem report --output "<out>/report.json"` 生成报告，检查后再提交 GitHub issue。代理发送前会先征得你的同意。
 
 <a id="why-alphalattice"></a>
@@ -172,18 +165,18 @@
 | [代理](docs/public-source/agents.md) | 目标、会话与专家工作。 |
 | [扩展](docs/public-source/extending.md) | 开发并检查因子和模型。 |
 | [数据与维护](docs/public-source/data-and-care.md) | 更新、检查、备份与恢复工作区。 |
-| [隐私](docs/public-source/privacy.md) | 用量记录的内容，以及如何关闭读取。 |
+| [隐私](docs/public-source/privacy.md) | 用量记录的内容、如何关闭读取，以及如何配置可选的追踪导出。 |
 | [下载与数据条款](docs/public-source/third-party-and-data.md) | 模型和数据来源的条款。 |
 
 [指南索引](docs/public-source/README.md)链接了其他参考页面。
 
-通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
+通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。每个数据根只运行一个 Host；第二个会按名称被拒绝，[存储（英文）](docs/public-source/data-and-care.md#storage)说明接下来怎么做。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
 
 <a id="this-release-and-where-it-is-going"></a>
 
 ## 本次发布与后续方向
 
-**当前版本为 0.2.7。** 它为所有等待设定上限，引导 Codex 在第一次使用时完成对项目的信任设置，并修复了若干 Evidence、Host 和检索问题。[发行说明](docs/public-source/release-notes.md#027)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
+**当前版本为 0.2.8。** 它重建了 AlphaLattice 保存数据的方式，一次启动即可升级 0.2.7 的工作区，并让 Daily、Evidence 和查询更快。[发行说明](docs/public-source/release-notes.md#028)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
 
 每个次版本提前规划范围；发行说明列出已运行的检查、已测工作负载和仍未证明的限制，期间的补丁让当前版本更顺畅。各版本借鉴已在其他地方得到验证的方法，并按 AlphaLattice 自身的规则调整：按日期限定的输入、封存的结果，以及你的决定权。
 
@@ -236,7 +229,7 @@
 
 ## 关于
 
-Last checked: 2026-11-14 against 0.2.7
+Last checked: 2026-11-21 against 0.2.8
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 

@@ -33,6 +33,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from alphalattice.interface.local_application.failure_codes import setup_failure
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
@@ -187,7 +188,7 @@ def _run_uv(
         )
         log.flush()
         try:
-            result = subprocess.run(
+            result = spawn.run(
                 command,
                 check=True,
                 stdout=subprocess.PIPE,
@@ -467,13 +468,13 @@ def main() -> int:
     )
     arguments = parser.parse_args()
     if not arguments.offline:
-        print(LOCKED_SETUP_DISCLOSURE, file=sys.stderr)  # noqa: T201, TID251  # CLI stderr
+        print(LOCKED_SETUP_DISCLOSURE, file=sys.stderr)  # noqa: TID251  # CLI stderr
     try:
         interpreter = create(offline=arguments.offline)
     except Exception as error:
-        print(json.dumps(refusal(error, offline=arguments.offline), indent=1))  # noqa: T201  # setup command
+        print(json.dumps(refusal(error, offline=arguments.offline), indent=1))
         return 2
-    print(interpreter)  # noqa: T201  # setup command
+    print(interpreter)
     return 0
 
 

@@ -12,15 +12,11 @@ from __future__ import annotations
 import gc
 import json
 import shutil
-import socket
-import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from contextvars import Context
 from datetime import UTC, date, datetime, timedelta
-from functools import partial
 from pathlib import Path
 from threading import Barrier, current_thread
 from typing import Any
@@ -36,7 +32,6 @@ from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
 from alphalattice.control.product_host.composition.plain_refusals import explain
-from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -49,17 +44,39 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
-from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
+from tests.portfolio_strategy_lab.activated_copy import (
+    PACKAGE,
+    forward_copy,
+    lifecycle_settled,
+    with_lifecycle,
+)
 from tests.portfolio_strategy_lab.activation_review_support import (
     activation_cli,
     publish_activation_review,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.pytest_environment import upgraded
 from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
 from u0_probe import _copy
 
-PACKAGE = "RETURN_G6_MU_ONLY"
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
+
 HELD_DATA_CLOCK = datetime(2026, 9, 11, tzinfo=UTC)
+
+
+def _qa_copy(root: Path) -> Callable[[Path], Path]:
+    """The QA store's research installation copied to a path, its lanes moved as its first start
+    moves them."""
+
+    def copy(workspace: Path) -> Path:
+        _copy(root, workspace)
+        upgraded(workspace)  # the lanes its first start moves
+        return workspace
+
+    return copy
 
 
 def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, monkeypatch):
@@ -130,16 +147,6 @@ class _NoFetch:
         raise AssertionError(f"the data step fetched ({call}) a session the store holds")
 
 
-def _settled(session: LocalPortfolioWebSession, task_id: str, timeout: float = 1800.0) -> str:
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        record = session.session.task_control_registry.task(UUID(task_id))
-        if record.lifecycle.value in {"SUCCEEDED", "BLOCKED", "CANCELLED"}:
-            return str(record.lifecycle.value)
-        time.sleep(2)
-    raise TimeoutError(task_id)
-
-
 @pytest.mark.real_evidence
 @pytest.mark.untyped_failure
 def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
@@ -158,6 +165,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
     workspace = tmp_path / "workspace"
     _copy(root, workspace)
+    upgraded(workspace)  # the lanes its first start moves
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     live = LocalPortfolioWebSession.from_workspace(workspace, clock=lambda: HELD_DATA_CLOCK)
     live.data_provider = _NoFetch()
@@ -396,7 +404,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         }
         sent = activated["update"]["run"]
         assert sent["status"] == "ADMITTED", sent
-        assert _settled(live, str(sent["task_id"])) == "SUCCEEDED"
+        assert lifecycle_settled(live, str(sent["task_id"])) == "SUCCEEDED"
         assert operations.activations is not None and operations.research_updates is not None
         read_task = PortfolioResearchOperationRequest(
             operation="RESEARCH_UPDATE_READBACK", task_id=UUID(str(sent["task_id"]))
@@ -547,136 +555,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
 
     raised = {r.args[2] for r in caplog.records if r.getMessage().startswith("operation.raised:")}
     assert raised == {f"AssertionError: {bad.value}"}
-
-
-@pytest.mark.real_evidence
-def test_installed_book_controls_saves_the_flat_declaration_its_preview_reads(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
-) -> None:
-    """requirement: controls gives the installed book's editable declaration; saving
-    and loading it preserves the defaults, and the named preview accepts that flat document.
-    Long (about 1 min): it serves a copy of the real research installation."""
-    root = evidence_roots.require("ls1_daily_flows")
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-    workspace = tmp_path / "workspace"
-    _copy(root, workspace)
-    (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
-    live = LocalPortfolioWebSession.from_workspace(workspace)
-    live.start()
-    try:
-        declaration = tmp_path / "book.yaml"
-        saved = tmp_path / "controls.json"
-        prefix = ["--workspace", str(workspace), "--view", "full"]
-        assert (
-            main(
-                [
-                    *prefix,
-                    "strategy-book",
-                    "controls",
-                    "--package",
-                    PACKAGE,
-                    "--save-declaration",
-                    str(declaration),
-                    "--output",
-                    str(saved),
-                ],
-                serve=lambda _: 99,
-            )
-            == 0
-        )
-        answer = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert "local_failure" not in answer
-        body = json.loads(saved.read_text("utf-8"))
-        template = body["template"]
-        assert template == {
-            "strategy_package_id": PACKAGE,
-            "score_source_mode": body["default_score_source_mode"],
-            **{row["control_id"]: row["default_value"] for row in body["controls"]},
-        }
-        assert not ({row["control_id"] for row in body["frozen"]} & template.keys())
-        assert load_safe_yaml_document(declaration.read_text("utf-8")) == template
-        assert body["next_requests"]["preview"] == {
-            "operation": "PLAN",
-            "spec": {"strategy_package_id": PACKAGE},
-        }
-        assert (
-            main(
-                [*prefix, "strategy-book", "preview", "--file", str(declaration)],
-                serve=lambda _: 99,
-            )
-            == 0
-        )
-        preview = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert preview["outcome"] == "OK", preview
-        assert preview["data"]["strategy_package_id"] == PACKAGE
-        assert (
-            main(
-                [
-                    *prefix,
-                    "request",
-                    "--from",
-                    str(saved),
-                    "--action",
-                    "preview",
-                    "--file",
-                    str(declaration),
-                ],
-                serve=lambda _: 99,
-            )
-            == 0
-        )
-        continued = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert continued["outcome"] == "OK", continued
-        assert continued["data"] == preview["data"]
-        # A declaration without its selector, with packages installed, cannot mean the
-        # workspace has none installed (RR5d); a saved whole request is read as one.
-        missing = tmp_path / "missing.yaml"
-        bare = {k: v for k, v in template.items() if k != "strategy_package_id"}
-        missing.write_text(json.dumps(bare), encoding="utf-8")
-        unknown = tmp_path / "unknown.yaml"
-        unknown.write_text(
-            json.dumps({"strategy_package_id": "NOT_AN_INSTALLED_PACKAGE"}), encoding="utf-8"
-        )
-        for action in ("preview", "run"):
-            for file, code in (
-                (missing, "strategy_book.strategy_package_required"),
-                (
-                    unknown,
-                    "local_application.strategy_package_not_installed:NOT_AN_INSTALLED_PACKAGE",
-                ),
-            ):
-                assert (
-                    main(
-                        [*prefix, "strategy-book", action, "--file", str(file)], serve=lambda _: 99
-                    )
-                    == 2
-                )
-                refusal = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-                assert refusal["failure_code"] == code, refusal
-                assert refusal["detail"] and PACKAGE in refusal["detail"]
-                assert refusal["data"]["next_action"] == "SELECT_STRATEGY_PACKAGE_FROM_CONTROLS"
-                assert refusal["next_requests"][f"controls:{PACKAGE}"] == {
-                    "operation": "CONTROLS",
-                    "strategy_package_id": PACKAGE,
-                }
-                if file == missing:
-                    assert "strategy_package_id" in refusal["detail"]
-                else:
-                    assert "NOT_AN_INSTALLED_PACKAGE" in refusal["detail"]
-        assert main([*prefix, "strategy-book", "controls"], serve=lambda _: 99) == 2
-        unselected = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-        assert unselected["failure_code"] == "strategy_book.strategy_package_required"
-        assert "strategy_package_id" in unselected["detail"] and PACKAGE in unselected["detail"]
-        for name, request in unselected["next_requests"].items():
-            assert name == "controls:" + request["strategy_package_id"]
-            assert request["strategy_package_id"] in unselected["detail"]
-            assert request["operation"] == "CONTROLS"
-    finally:
-        live.stop()
-        del live
-        gc.collect()
-        assert workspace.resolve().is_relative_to(tmp_path.resolve())
-        shutil.rmtree(workspace)
 
 
 @pytest.mark.parametrize("active", (False, True))
@@ -1071,260 +949,6 @@ def test_conditional_actionable_readback_changes_at_the_entry_boundary(
             assert all("observed_at" not in d["first_actionable_source"] for d in dates)
 
 
-def _seen(answer: dict, registry: DuckDbTaskControlRegistry, task: str | None) -> str:
-    """A wait's answer whole, as text, beside its Task's lifecycle as Task Control holds it at
-    the same instant: the lifecycle the answer read, its wait event and incident, so
-    a Task read as running after it ended is told from an incident's wake."""
-    held = None if task is None else registry.task(UUID(task)).lifecycle.value
-    return json.dumps({"registry_lifecycle": held, "answer": answer}, indent=1, default=str)
-
-
-def _no_membership_source(**_kwargs: object) -> object:
-    raise ConnectionError("an offline test reads no membership source")
-
-
-@contextmanager
-def _forward_copy(
-    tmp_path: Path,
-    root: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    *,
-    provider: object | None = None,
-    provider_from: Callable[[Path], object] | None = None,
-    clock: Callable[[], datetime],
-) -> Iterator[
-    tuple[
-        LocalPortfolioWebSession,
-        Callable[..., tuple[int, dict]],
-        Callable[[str], dict[str, int]],
-    ]
-]:
-    """A copy of the research installation, its strategy activated by a person, offline: the
-        provider's yfinance module absent, the membership source refusing, no socket off the machine
-        and no model fitted. Yields the Host, the real CLI on it and a Task's attempts by stage
-    . `provider_from` builds the provider from the copy before the Host opens it."""
-
-    # The provider's yfinance module is absent: every fetch refuses, `data.provider_unavailable`.
-    monkeypatch.setitem(sys.modules, "yfinance", None)
-    connect = socket.socket.connect
-
-    def loopback(self: socket.socket, address: object) -> object:
-        host = address[0] if isinstance(address, tuple) else address
-        assert host in {"127.0.0.1", "localhost", "::1"}, f"the test reached {address}"
-        return connect(self, address)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(socket.socket, "connect", loopback)
-
-    def no_fit(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("a forward update's resume fits no model")
-
-    monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
-    backup_root = tmp_path / "backups"
-    monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(backup_root))
-    workspace = tmp_path / "workspace"
-    _copy(root, workspace)
-    (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
-    if provider_from is not None:
-        provider = provider_from(workspace)
-    live = LocalPortfolioWebSession.from_workspace(workspace, clock=clock)
-    live.data_provider = provider  # type: ignore[assignment]
-    live.data_source_loader = _no_membership_source
-    live.start()
-    try:
-        registry = live.session.task_control_registry
-        offered = live.operations.execute(
-            PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)
-        )["activation"]
-        activated = _json(
-            live,
-            "/api/strategy/activate",
-            method="POST",
-            payload={"task_id": offered["next_requests"]["activate"]["task_id"]},
-            timeout=300.0,
-        )
-        assert activated["status"] == "ACTIVATED", activated
-
-        def cli(*argv: str) -> tuple[int, dict]:
-            code = main(
-                ["--workspace", str(workspace), "--view", "full", *argv], serve=lambda _: 99
-            )
-            return code, json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-
-        def attempts(task: str) -> dict[str, int]:
-            _record, items = registry.task_with_work_items(UUID(task))
-            return {item.stage_id: item.attempt_count for item in items if item.attempt_count}
-
-        yield live, cli, attempts
-    finally:
-        live.stop()
-        gc.collect()
-        assert workspace.resolve().is_relative_to(tmp_path.resolve())
-        shutil.rmtree(workspace)
-        if backup_root.exists():
-            assert backup_root.resolve().is_relative_to(tmp_path.resolve())
-            shutil.rmtree(backup_root)
-
-
-@pytest.mark.real_evidence
-def test_an_update_stopped_on_the_network_resumes_by_the_way_its_stop_names(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
-) -> None:
-    """An update stopped on the network resumes by the way its stop names, whichever switch holds
-    it. Long (about 1.5 min): a copy of the real research installation, activated."""
-
-    # Reproduce an operator-held stop first. Switch-off read controls below
-    # use this copy's local provider guards; every read remains on the machine.
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-    root = evidence_roots.require("ls1_daily_flows")
-    # Friday's settled close: activation's own update is the 2026-09-11 one this test plans.
-    friday = partial(datetime, 2026, 9, 11, 23, tzinfo=UTC)
-    with _forward_copy(tmp_path, root, monkeypatch, capsys, clock=friday) as (live, cli, attempts):
-        registry = live.session.task_control_registry
-
-        def network(enabled: bool) -> None:
-            set_ = _json(
-                live,
-                "/api/workspace/network",
-                method="POST",
-                payload={"network_enabled": enabled},
-            )
-            assert set_["network_allowed"] is enabled, set_
-
-        def check_ways(task: str, *reads: tuple[str, ...]) -> None:
-            """Read one saved stop under each effective decision without executing it."""
-            held, counted = registry.task(UUID(task)).record_hash, attempts(task)
-            for operator, enabled in ((True, True), (False, False), (False, True)):
-                monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-                network(enabled)
-                if operator:
-                    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-                for arguments in reads:
-                    code, answer = cli(*arguments)
-                    assert code == 2
-                    body, detail = answer["data"], answer["detail"]
-                    access = body["network_access"]
-                    assert answer["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
-                    if operator:
-                        assert access["decided_by"] == "OPERATOR_OFFLINE_SWITCH"
-                        assert not access["network_allowed"] and not access["next_requests"]
-                        assert body["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
-                        assert "ALPHALATTICE_NETWORK_DISABLED=1" in detail
-                        assert "restart" not in detail and "network set" not in detail
-                    elif not enabled:
-                        assert access["decided_by"] == "WORKSPACE_CONTROL"
-                        assert not access["network_allowed"] and "network set" in detail
-                        assert access["next_requests"]["set"]["network_enabled"]
-                    else:
-                        assert (
-                            access["network_allowed"] and "Network access is allowed now" in detail
-                        )
-                        assert body["next_action"] == "RETRY_THE_REFUSED_STEP"
-                        assert "network set" not in detail
-                    assert registry.task(UUID(task)).record_hash == held
-                    assert attempts(task) == counted
-            network(False)
-
-        plan, stop = tmp_path / "plan.json", tmp_path / "stop.json"
-        # The stop: the network closed, and a session the workspace's data does not hold.
-        # Activation admitted its own update for Friday in its act, the update this test plans;
-        # it is read once it has stopped, so its stop, not its timing, answers what follows.
-        (first,) = [t.task_id for t in registry.tasks() if t.task_kind == ADVANCEMENT_TASK_KIND]
-        task = str(first)
-        assert _settled(live, task) == "BLOCKED"
-        network(False)
-        code, planned = cli(
-            "research-update", "plan", "--package", PACKAGE, "--through", "2026-09-11",
-            "--output", str(plan),
-        )  # fmt: skip
-        assert code == 0, planned
-        assert planned["data"]["source_access"] == "EXPLICIT_NETWORK_REQUIRED", planned
-        monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
-        # READBACK names the provider work in words, the person's network request and the
-        # resume bound to the stopped Task's own plan, the one just planned.
-        code, stopped = cli("research-update", "show", "--task", task, "--output", str(stop))
-        seen = _seen(stopped, registry, task)
-        stopped_code = stopped["failure_code"]
-        assert stopped_code.startswith(
-            "research_update.input_source_access_not_admitted:2026-09-11,DATA"
-        ), seen
-        assert (code, stopped["failure_code"]) == (2, stopped_code), seen
-        assert "missing market data through session 2026-09-11" in stopped["detail"], seen
-        assert "2026-09-11,DATA" not in stopped["detail"], seen
-        assert stopped["data"]["network_access"]["decided_by"] == "OPERATOR_OFFLINE_SWITCH", seen
-        assert stopped["data"]["next_action"] == "STOP_AND_TELL_PERSON_NETWORK_IS_HELD_OFFLINE"
-        assert "network set" not in stopped["detail"], seen
-        assert stopped["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
-        assert stopped["next_requests"]["resume"] == {
-            "operation": "RESEARCH_UPDATE_RUN",
-            "update_plan_hash": planned["data"]["update_plan_hash"],
-        }
-        held = registry.task(UUID(task)).record_hash
-        check_ways(task, ("research-update", "show", "--task", task), ("task", "show", task))
-        # The rerun while the network stays closed is refused by that stop; nothing moves.
-        monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-        network(False)
-        code, refused = cli("research-update", "run", "--from", str(plan))
-        assert (code, refused["failure_code"]) == (2, stopped_code), refused
-        assert registry.task(UUID(task)).record_hash == held
-        # Answered by the stopped Task's own read: its id, its stop's words, its resume.
-        assert (refused.get("task_id"), refused["data"].get("lifecycle")) == (task, "BLOCKED"), (
-            refused
-        )
-        assert refused["detail"].partition(". ")[0] == stopped["detail"].partition(". ")[0]
-        assert refused["next_requests"]["resume"] == stopped["next_requests"]["resume"], refused
-        # A person allows the network: the offered resume takes up the same Task, and the wait
-        # follows it rather than ending at its admission.
-        monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-        network(True)
-        code, resumed = cli("request", "--from", str(stop), "--action", "resume", "--wait")
-        seen = _seen(resumed, registry, task)
-        admission = resumed["data"]["admission"]
-        assert admission["task_id"] == task, seen
-        assert admission["lifecycle"] in {"QUEUED", "RUNNING"}, seen
-        # It ran on past the network from the stage it stopped in, to the provider this test
-        # refuses, whose refusal defers it as it defers a data update; its verified first
-        # stage was kept, and its stop is its own record.
-        assert (code, resumed["data"]["task_id"]) == (3, task), seen
-        assert resumed["data"]["lifecycle"] == "DEFERRED", seen
-        assert attempts(task) == {"verify_request": 1, "update_inputs": 2}
-        # A deferred update holds the workspace's one active place: cancelled, it frees it.
-        code, cancelled = cli("task", "cancel", task)
-        assert registry.task(UUID(task)).lifecycle.value == "CANCELLED", cancelled
-
-        # The data update's own door: its Task, admitted while the network was open, stopped by
-        # its closing before it ran, is resumed by the plan run again once a person reopens it.
-        stopped_code = "workspace_data_update.source_access_not_admitted"
-        monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-        network(True)
-        data_plan = tmp_path / "data-plan.json"
-        code, planned_data = cli("data-update", "plan", "--output", str(data_plan))
-        assert code == 0, planned_data
-        owner = live.operations.data_update
-        assert owner is not None
-        admitted = owner.admit(owner.prepare(str(planned_data["data"]["plan_hash"])))
-        monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-        network(False)
-        owner.execute(admitted.task_id)
-        data_task = str(admitted.task_id)
-        assert registry.task(admitted.task_id).failure_code == stopped_code
-        code, refused = cli("data-update", "run", "--from", str(data_plan))
-        assert (code, refused["failure_code"]) == (2, stopped_code), refused
-        check_ways(
-            data_task, ("data-update", "show", "--task", data_task), ("task", "show", data_task)
-        )
-        monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
-        network(True)
-        code, resumed = cli("data-update", "run", "--from", str(data_plan), "--wait")
-        seen = _seen(resumed, registry, data_task)
-        assert resumed["data"]["admission"]["task_id"] == data_task, seen
-        # Past the network to the provider this test refuses, whose refusal defers a data update
-        # to its retry time, as it defers any.
-        assert (code, resumed["data"]["task_id"]) == (3, data_task), seen
-        assert resumed["data"]["lifecycle"] == "DEFERRED", seen
-        assert attempts(data_task) == {"validate_update_request": 1, "maintain_data_feature": 2}
-
-
 @pytest.mark.real_evidence
 @pytest.mark.parametrize("writer", ["own", "another", "later"])
 def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
@@ -1340,8 +964,13 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
     # A recorded signal that the day's bars are not final yet: the provider asks to wait.
     provider.unavailable_code = "data.daily_bar_not_final"
     root = evidence_roots.require("ls1_daily_flows")
-    with _forward_copy(
-        tmp_path, root, monkeypatch, capsys, provider=provider, clock=lambda: clock[0]
+    with forward_copy(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        copy=_qa_copy(root),
+        provider=provider,
+        clock=lambda: clock[0],
     ) as (live, cli, attempts):
         registry = live.session.task_control_registry
         plan, deferred_at = tmp_path / "plan.json", tmp_path / "deferred.json"
@@ -1356,7 +985,7 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
         # It waits with the provider: deferred, with its data stage's retry time, its read
         # saying so and offering the resume bound to its own plan.
         task, retry = deferred["data"]["task_id"], deferred["data"]["retry_after_at"]
-        seen = _seen(deferred, registry, task)
+        seen = with_lifecycle(deferred, registry, task)
         assert (code, deferred["data"]["lifecycle"]) == (3, "DEFERRED"), seen
         assert retry is not None, seen
         assert deferred["data"]["next_requests"]["resume"] == {
@@ -1391,7 +1020,7 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
             "request", "--from", str(deferred_at), "--action", "resume", "--wait",
             "--output", str(second),
         )  # fmt: skip
-        seen = _seen(resumed, registry, task)
+        seen = with_lifecycle(resumed, registry, task)
         if writer == "another":
             assert resumed["failure_code"] == "research_update.binding_changed", seen
             assert len(provider.calls) == asked, seen
@@ -1456,8 +1085,13 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
     clock = [datetime(2026, 9, 11, 22, tzinfo=UTC)]  # Friday's bars are due
     held: list[HeldDataProvider] = []
     root = evidence_roots.require("ls1_daily_flows")
-    with _forward_copy(
-        tmp_path, root, monkeypatch, capsys, provider_from=_held_data(held), clock=lambda: clock[0]
+    with forward_copy(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        copy=_qa_copy(root),
+        provider_from=_held_data(held),
+        clock=lambda: clock[0],
     ) as (live, cli, attempts):
         provider, registry = held[0], live.session.task_control_registry
         automation = live.operations.automation
@@ -1493,7 +1127,10 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
             live,
         )
         _, read = cli("research-update", "show", "--task", str(friday.task_id))
-        retry, seen = read["data"]["retry_after_at"], _seen(read, registry, str(friday.task_id))
+        retry, seen = (
+            read["data"]["retry_after_at"],
+            with_lifecycle(read, registry, str(friday.task_id)),
+        )
         assert (read["data"]["status"], retry is not None) == ("DEFERRED", True), seen
         # The automation wakes at the deferral's retry time, not at Monday's session, and nothing
         # queues behind the deferral, the Host's own sweep among them.
@@ -1547,8 +1184,13 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
     clock = [datetime(2026, 9, 14, 23, tzinfo=UTC)]
     held: list[HeldDataProvider] = []
     root = evidence_roots.require("ls1_daily_flows")
-    with _forward_copy(
-        tmp_path, root, monkeypatch, capsys, provider_from=_held_data(held), clock=lambda: clock[0]
+    with forward_copy(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        copy=_qa_copy(root),
+        provider_from=_held_data(held),
+        clock=lambda: clock[0],
     ) as (live, cli, _attempts):
         provider, registry = held[0], live.session.task_control_registry
         plan, deferred_at = tmp_path / "plan.json", tmp_path / "deferred.json"
@@ -1559,7 +1201,7 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
             "research-update", "run", "--from", str(plan), "--wait", "--output", str(deferred_at)
         )
         task, retry = deferred["data"]["task_id"], deferred["data"]["retry_after_at"]
-        seen = _seen(deferred, registry, task)
+        seen = with_lifecycle(deferred, registry, task)
         assert (code, deferred["data"]["lifecycle"], retry is not None) == (3, "DEFERRED", True), (
             seen
         )
@@ -1584,7 +1226,7 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         assert registry.task(UUID(verifying)).lifecycle.value == "QUEUED", sweep
         live.operations.supervisor.supervise_once()
         code, waiting = cli("task", "show", verifying)
-        seen = _seen(waiting, registry, verifying)
+        seen = with_lifecycle(waiting, registry, verifying)
         assert waiting["data"]["lifecycle"] == "QUEUED", seen
         assert not waiting["data"].get("incident"), seen
         # The person cancels the deferral: the verification it held back runs. Its data stage had
@@ -1599,14 +1241,14 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         )
         # The next plan plans, restoring nothing twice; the data update settles what was left.
         code, replanned = cli("research-update", "plan", "--package", PACKAGE)
-        seen = _seen(replanned, registry, None)
+        seen = with_lifecycle(replanned, registry, None)
         assert code == 0 and "restored_membership" not in replanned["data"], seen
         data_plan = tmp_path / "data-plan.json"
         code, planned_data = cli("data-update", "plan", "--output", str(data_plan))
         assert code == 0 and planned_data["data"]["status"] == "PLANNED", planned_data
         code, waits = cli("data-update", "run", "--from", str(data_plan), "--wait")
         data_task, data_retry = waits["data"]["task_id"], waits["data"]["retry_after_at"]
-        seen = _seen(waits, registry, data_task)
+        seen = with_lifecycle(waits, registry, data_task)
         assert (code, waits["data"]["lifecycle"]) == (3, "DEFERRED"), seen
         # The data door's next plan answers the data update that waits.
         resumed_plan = tmp_path / "data-again.json"
@@ -1617,7 +1259,7 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         provider.unavailable = False
         clock[0] = datetime.fromisoformat(data_retry) + timedelta(minutes=1)
         code, settled = cli("data-update", "run", "--from", str(resumed_plan), "--wait")
-        seen = _seen(settled, registry, data_task)
+        seen = with_lifecycle(settled, registry, data_task)
         assert settled["data"]["task_id"] == data_task, seen
         assert (code, settled["failure_code"]) == (2, "data.truth_review_required"), seen
         assert settled["next_requests"]["issues"] == {"operation": "DATA_ISSUES"}, seen

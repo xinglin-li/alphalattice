@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fe3dd82970b6948d5150768e407ee03824d1cbb440fc72c8275f112e320d8ef1",
+   "successor": "902fa3dbfe9bba5589f31e381a846e2de2921c8a0fff308b2ef9dab572ebc665",
+   "change": "Keep daily updates running across an earlier trading halt",
+   "reason": "Lawful change: a listing whose new sessions all follow its last session, with every prior session and value retained, is disclosed by the writer as a tail append and accepted by reconciliation instead of refused; every other session-set change is refused as before"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "fc2685475827de6f4fc6f5817df063e5d281b3bdc7aa4a5c3ff38d773c929040",
+   "successor": "f5db4fa24593ec8c5df85fd465aaa849336b8b8cea83e5ced5e5daea812226c6",
+   "change": "Keep daily updates running across an earlier trading halt",
+   "reason": "Lawful change: a listing whose new sessions all follow its last session, with every prior session and value retained, is disclosed by the writer as a tail append and accepted by reconciliation instead of refused; every other session-set change is refused as before"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "791cdf573479556e3782118d4fc6bf1d031599f9e2a5dfc5ddc0bf91689ad408",
+   "successor": "8ac9ecd87ad1e686e2ba712b1513de472b0573463eb2aa5896aa5257d32519e0",
+   "change": "Keep daily updates running across an earlier trading halt",
+   "reason": "Lawful change: a listing whose new sessions all follow its last session, with every prior session and value retained, is disclosed by the writer as a tail append and accepted by reconciliation instead of refused; every other session-set change is refused as before"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "778f62e74d52ace372daa2841895a1f7f8a4b3635f6c1ae7d781294e5344876b",
+   "successor": "075216305aca259801253620834bb9688c7387d70ed65037528a165af71801e5",
+   "change": "Keep daily updates running across an earlier trading halt",
+   "reason": "Lawful change: a listing whose new sessions all follow its last session, with every prior session and value retained, is disclosed by the writer as a tail append and accepted by reconciliation instead of refused; every other session-set change is refused as before"
+  }
+ ]
+}

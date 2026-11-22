@@ -523,6 +523,8 @@ RULES = [
             "scripts/test-shape-tools/package-lock.json",
             "scripts/antipattern_rules.yml",
             "scripts/antipattern_examples.py.txt",
+            "scripts/test_antipattern_rules.yml",
+            "scripts/test_antipattern_examples.py.txt",
             "scripts/tests_registry.py",
             "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",
@@ -903,13 +905,17 @@ class _GitObjects:
 
     ROUND = 32
 
-    def __init__(self, repo: Path):
-        self.process = subprocess.Popen(
-            ["git", "cat-file", "--batch-command", "--buffer", "-z"],
+    def __init__(self, repo: Path, *, safe_directory: bool = False):
+        from alphalattice.kernel.shared_kernel import spawn
+
+        self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
+        git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
+        self.process = self.session.start(
+            [*git, "cat-file", "--batch-command", "--buffer", "-z"],
             cwd=repo,
             creationflags=_NO_WINDOW,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            stderr=None,
         )
         self.resolved: dict[str, str | None] = {}
         self.contents: dict[str, bytes] = {}
@@ -918,27 +924,31 @@ class _GitObjects:
         return self
 
     def __exit__(self, failure, *_) -> None:
-        with self.process:  # both pipes closed and the process waited for, on every exit
+        try:
             if failure is not None:
-                self.process.kill()
+                self.session.stop()
                 return
-            self.process.stdin.close()
+            self.session.close_input()
             trailing = self.process.stdout.read()
-        if self.process.returncode:
-            raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
-        if trailing:
-            raise ValueError("unexpected trailing git object response; restore Git objects")
+            self.session.check()
+            self.process.wait(timeout=5)
+            if self.process.returncode:
+                raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
+            if trailing:
+                raise ValueError("unexpected trailing git object response; restore Git objects")
+        finally:
+            self.process.stdout.close()
+            self.session.__exit__(failure, None, None)
 
     def _rounds(self, verb: str, items: list[str]):
         for start in range(0, len(items), self.ROUND):
             chunk = items[start : start + self.ROUND]
             try:
-                self.process.stdin.write(
+                self.session.send(
                     b"".join(f"{verb} {item}\0".encode() for item in chunk) + b"flush\0"
                 )
-                self.process.stdin.flush()
             except OSError:
-                pass  # Git stopped reading: its missing reply refuses below.
+                self.session.check()  # A timeout is named; an ordinary missing reply refuses below.
             yield from chunk
 
     def acquire(self, specs: set[str]) -> None:
@@ -946,8 +956,10 @@ class _GitObjects:
         for spec in self._rounds("info", sorted(specs - self.resolved.keys())):
             missing = (spec + " missing\n").encode()
             line = out.readline()
+            self.session.check()
             if missing.startswith(line):  # a path may hold a newline: its reply spans lines
                 line += out.read(len(missing) - len(line))
+                self.session.check()
             if line == missing:
                 self.resolved[spec] = None
                 continue
@@ -964,9 +976,11 @@ class _GitObjects:
         wanted = {oid for oid in self.resolved.values() if oid} - self.contents.keys()
         for oid in self._rounds("contents", sorted(wanted)):
             header = out.readline().split()
+            self.session.check()
             if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
                 raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
             body = out.read(int(header[2]) + 1)
+            self.session.check()
             if len(body) != int(header[2]) + 1 or body[-1:] != b"\n":
                 raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
             self.contents[oid] = body[:-1]
@@ -985,7 +999,9 @@ def validate_internal_id_history(
 def _validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
 ) -> None:
-    found = subprocess.run(  # one start: the history's depth, then the source's commit
+    from alphalattice.kernel.shared_kernel import spawn
+
+    found = spawn.run(  # one start: the history's depth, then the source's commit
         ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1003,7 +1019,7 @@ def _validate_internal_id_history(
     source = resolved_source.strip()
     later = ""
     if admissions_from is not None:
-        later = subprocess.run(
+        later = spawn.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
             cwd=repo,
             creationflags=_NO_WINDOW,
@@ -1012,7 +1028,7 @@ def _validate_internal_id_history(
             check=False,
         ).stdout.strip()
     graph = {}
-    for row in subprocess.check_output(
+    for row in spawn.check_output(
         ["git", "rev-list", "--parents", source],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1029,7 +1045,7 @@ def _validate_internal_id_history(
         parent not in graph for parents in graph.values() for parent in parents
     ):
         raise ValueError("incomplete internal-label history graph; restore Git history")
-    commits = subprocess.check_output(
+    commits = spawn.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
         creationflags=_NO_WINDOW,
@@ -1111,7 +1127,7 @@ def _validate_internal_id_history(
             return True
         # Git remains authoritative at shallow boundaries or for unrelated anchors.
         return (
-            subprocess.run(
+            spawn.run(
                 ["git", "merge-base", "--is-ancestor", anchor, commit],
                 cwd=repo,
                 creationflags=_NO_WINDOW,
@@ -1236,10 +1252,12 @@ def validate_path(path: str) -> None:
 
 def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     """Read each immutable blob once and refuse truncated or mismatched batch output."""
+    from alphalattice.kernel.shared_kernel import spawn
+
     if not objects:
         return {}
     ordered = sorted(objects)
-    raw = subprocess.check_output(
+    raw = spawn.check_output(
         ["git", "cat-file", "--batch"],
         cwd=repo,
         input="".join(oid + "\n" for oid in ordered).encode(),
@@ -1263,12 +1281,14 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
+    from alphalattice.kernel.shared_kernel import spawn
+
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")
-    sha = subprocess.check_output(
+    sha = spawn.check_output(
         ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"], cwd=repo, text=True
     ).strip()
-    listing = subprocess.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
+    listing = spawn.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
     objects = []
     modes = {}
     for record in listing.split(b"\0"):
@@ -1387,6 +1407,7 @@ PRIVATE_SCHEMAS = frozenset(
         "alphalattice.tests-unregistered.v1",
         "alphalattice.test-layout.v1",
         "alphalattice.agent-eval.host-facts",
+        "alphalattice.source-ratchet.v1",
     }
 )
 """Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE
@@ -1630,7 +1651,8 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
     """A PUBLIC registry as it is published: each row holding a private reference dropped.
 
     A row is an element of a top-level list or an entry of a top-level object; it is dropped when
-    any string in it, key or value, earns a private reference by the scan's own rule. Any other
+    any string in it, key or value, earns a private reference by the scan's own rule; a test-size
+    row loses only the private items of the path lists it reads (`size_row`). Any other
     file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
     registry is never changed. Returns the bytes and each dropped row's place, such as
     `reach[3]` or `entries/<key>`."""
@@ -1680,6 +1702,32 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
 
     projected: object
     dropped: list[str] = []
+
+    def size_row(place: str, row: dict, node: object) -> dict | None:
+        """One test-size row as published, None when it goes. Its path lists (`inputs`, a reader's
+        `within`) are what it reads, not who it is: only their private items go, so a public
+        node keeps its row (a slow guard keeps its reader); an emptied `within` reads nothing."""
+        rest = {name: item for name, item in row.items() if name not in ("inputs", "within")}
+        if flagged(rest) or any(private_selector(n) for n in (node, row.get("pattern"))):
+            dropped.append(place)
+            return None
+        for field in ("inputs", "within"):
+            items = row.get(field)
+            if not isinstance(items, list):
+                if flagged(items) or private_selector(items):
+                    dropped.append(place)
+                    return None
+                continue
+            gone = [j for j, item in enumerate(items) if flagged(item) or private_selector(item)]
+            dropped.extend(f"{place}.{field}[{j}]" for j in gone)
+            public = [item for j, item in enumerate(items) if j not in gone]
+            if field == "within" and items and not public:
+                dropped.append(place)
+                return None
+            if len(public) != len(items):
+                row = {**row, field: public}
+        return row
+
     if isinstance(data, list):
         dropped = [f"[{i}]" for i, row in enumerate(data) if flagged(row)]
         projected = [row for row in data if not flagged(row)]
@@ -1691,29 +1739,9 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                 for i, row in enumerate(value):
                     place = f"{key}[{i}]"
                     if sizes and isinstance(row, dict):
-                        rest = {name: item for name, item in row.items() if name != "inputs"}
-                        if (
-                            flagged(rest)
-                            or private_selector(row.get("pattern"))
-                            or private_selector(row.get("node"))
-                        ):
-                            dropped.append(place)
+                        row = size_row(place, row, row.get("node"))
+                        if row is None:
                             continue
-                        inputs = row.get("inputs")
-                        if not isinstance(inputs, list) and (
-                            flagged(inputs) or private_selector(inputs)
-                        ):
-                            dropped.append(place)
-                            continue
-                        if isinstance(inputs, list):
-                            kept_inputs = []
-                            for j, item in enumerate(inputs):
-                                if flagged(item) or private_selector(item):
-                                    dropped.append(f"{place}.inputs[{j}]")
-                                else:
-                                    kept_inputs.append(item)
-                            if len(kept_inputs) != len(inputs):
-                                row = {**row, "inputs": kept_inputs}
                     elif flagged(row) or (sizes and private_selector(row)):
                         dropped.append(place)
                         continue
@@ -1726,6 +1754,9 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                         # The policy's shape is public and its loader needs it: only nodes go.
                         members[name] = [n for n in row if not (flagged(n) or private_selector(n))]
                         dropped += [f"{key}/{name}/{n}" for n in row if n not in members[name]]
+                    elif sizes and isinstance(row, dict):
+                        if (published := size_row(f"{key}/{name}", row, name)) is not None:
+                            members[name] = published
                     elif flagged(name, row):
                         dropped.append(f"{key}/{name}")
                     else:
@@ -1828,11 +1859,14 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         for path in blobs:
             if path.startswith("config/") and (path in text or path.rsplit("/", 1)[-1] in text):
                 config_dependencies.add(path)
-    # These files are named by environment setup and by the maintained gate.
+    # These files are named by environment setup and by the maintained gate; the identity
+    # successor sets are read as one directory by scripts/identity_readout.py, as the ledger is.
     config_dependencies.update(
         p
         for p in blobs
-        if p.startswith("config/requirements-") or p.startswith("config/registries/")
+        if p.startswith("config/requirements-")
+        or p.startswith("config/registries/")
+        or p.startswith("config/identity-successors/")
     )
     initial = [
         dict(path=p, kind=classify(p, runtime, tests, config_dependencies, declared=declared)[0])

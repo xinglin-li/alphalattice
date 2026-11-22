@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -19,7 +20,7 @@ def holders(**counts: int) -> list[SimpleNamespace]:
 
 
 @pytest.mark.proves("testing.tests_grow_no_faster_than_source")
-def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch):
+def test_a_change_whose_tests_outgrow_its_source_is_named_as_a_signal(monkeypatch):
     monkeypatch.setattr(requirements, "validate_policy", lambda value: value)
     policy = '{"growth": {"floor_lines": 30}}'
     assert requirements.growth(policy, 100, 130) == []  # within source plus the floor
@@ -27,16 +28,23 @@ def test_a_change_whose_tests_outgrow_its_source_is_refused_by_name(monkeypatch)
     assert requirements.growth(policy, -138, -79) == []  # a fold that deletes tests grows none
     assert requirements.growth(policy, -50, 30)  # +30 exceeds -50 + 30
     (refused,) = requirements.growth(policy, 0, 47)  # a fixture card: 47 test lines, no source
-    assert refused.startswith("TEST-GROWTH refused: net tests +47 outgrow net source +0 by more")
+    assert refused.startswith("TEST-GROWTH signal: net tests +47 outgrow net source +0 by more")
     new = [SimpleNamespace(ids=("r.decided",)), SimpleNamespace(ids=("r.open", "r.decided"))]
     decided = {"kinds": ["growth"], "why": "a ledger proof", "decided": "2026-11-12: kept"}
     rows = {"r.decided": {"exception": decided}, "r.open": {}}
     assert requirements.growth(policy, 0, 47, new, rows) == []  # each new test's decision covers it
     assert requirements.growth(policy, 0, 47, [*new, SimpleNamespace(ids=("r.open",))], rows)
     assert requirements.growth(policy, 0, 47, [], rows)  # grown tests have no new row to decide
+    # a rewrite adding no test function: its decision sits on each changed test's requirement
+    rewrite = [new[0], SimpleNamespace(ids=())]  # a changed test proving nothing has no row
+    assert requirements.growth(policy, 0, 47, [], rows, rewrite) == []
+    undecided = SimpleNamespace(ids=("r.open",))
+    assert requirements.growth(policy, 0, 47, [], rows, [*rewrite, undecided])
+    assert requirements.growth(policy, 0, 47, [], rows, rewrite[1:])  # no row decides it
+    assert requirements.growth(policy, 0, 47, [undecided], rows, rewrite)  # new tests decide
     for unread in (None, "{", "{}"):  # absent from the snapshot, unreadable, or no floor
         (said,) = requirements.growth(unread, 10, -5)
-        assert said.startswith("TEST-GROWTH unmeasured, refused")
+        assert said.startswith("TEST-GROWTH unmeasured:")
 
 
 @pytest.mark.proves("testing.integration_share_only_falls")
@@ -47,6 +55,14 @@ def test_an_areas_integration_share_may_only_fall():
     assert refused.startswith("Test pyramid risk for risk:") and "3/4 to 4/5" in refused
     assert pyramid(holders(integration__risk=4, unit__risk=2, integration__feature=3), before) == []
     assert pyramid(holders(integration__risk=3, unit__risk=1, integration__new=5), before) == []
+    # An area whose own package the unit layer bars whole is not held to a share it cannot lower;
+    # an unbarred area with the same counts, or one barred only in part, still is.
+    barred = holders(integration__host=4, e2e__host=1)
+    backends = [{"kind": "module", "name": "alphalattice.control.host"}]
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1), unit_backends=backends) == []
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1))
+    part = [{"kind": "module", "name": "alphalattice.control.other.host"}]
+    assert pyramid(barred, holders(integration__host=3, e2e__host=1), unit_backends=part)
     retired = holders(integration__retired=3, unit__retired=2)
     remaining = holders(integration__retired=3, unit__retired=1)
     removed_test = "tests/unit/retired/test_x.py"
@@ -148,3 +164,11 @@ def test_a_new_row_above_unit_says_why_a_lower_layer_cannot_prove_it(tmp_path, m
     existing["lower_layer"] = why
     admitted = json.dumps(document)
     assert r.guard(tmp_path, fresh, admitted, admitted, tests=old + fresh, before_tests=old) == []
+    config = tmp_path / "config"
+    for folder in ("regular", "junction"):
+        (config / folder).mkdir(parents=True)
+        (config / folder / "schema.json").write_text(
+            '{"schema": "example.schema"}', encoding="utf-8"
+        )
+    monkeypatch.setattr(Path, "is_junction", lambda path: path == config / "junction")
+    assert r.schema_path(tmp_path, "example.schema") == config / "regular" / "schema.json"

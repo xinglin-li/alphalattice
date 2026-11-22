@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "2127bd273ca8c54db454f4e7ab2f047ef86a8f3d5643b9cdb25e2156a908ada1",
+   "successor": "a3a33e06c8250f9d9f5b2af1a6ed991616a6479b56d4523088c31ec2e39f96af",
+   "change": "A workspace's first use prepares faster",
+   "reason": "Workspace preparation's implementation moves because a market-writing stage runs as one market data update and admits once at its end, and a stage refused before its market database exists keeps its refusal; the replay is ALL EQUAL"
+  }
+ ]
+}

@@ -7,6 +7,7 @@ development run and the shared Factor and Alpha web fixtures here.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     bind_factor_inputs,
+    factor_input_paths,
     read_factor_bundle,
 )
 from alphalattice.investment.risk_research.experiments.execution import (
@@ -33,19 +35,26 @@ from alphalattice.protocols.research_authoring.contracts import (
     SealedResearchProgram,
 )
 from devtools.architecture.evidence_roots import PLAYPEN_ROOT
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest
+from tests._support import development_universe
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
     _publish_factor,
     _session,
 )
 from tests.researcher_methodology_surface.real_workspace import (
+    DEVELOPMENT_SYMBOLS,
+    FACTOR_SCALE,
+    SUFFICIENT_SYMBOLS,
     RealRiskWorkspace,
     build_real_risk_workspace,
     publish_causal_outcomes,
 )
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
+    restore_seed,
+    retire_children,
     session_workspace,
 )
 
@@ -159,13 +168,20 @@ def risk_development_run(
 
 
 @pytest.fixture(scope="module")
-def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest) -> Path:
     """The exact original real input build, once per run, including its bind/reuse assertions."""
 
+    variant = getattr(request, "param", None)
+    development = variant == "development"
+    symbols = DEVELOPMENT_SYMBOLS if development else SUFFICIENT_SYMBOLS
+    if variant == "f120":
+        symbols = tuple(f"F{index:03d}" for index in range(120))
+
     def build(root: Path) -> dict:
-        real_risk_workspace = build_real_risk_workspace(
+        data = build_real_risk_workspace(
             tmp_path_factory.mktemp("factor-input-source"),
-            symbols=tuple(f"F{i:03d}" for i in range(120)),
+            symbols=symbols,
+            standard=development_universe.STANDARD if development else FACTOR_SCALE,
         )
         # The Portfolio artifact is deliberately not consumed by this Factor-only
         # composition harness; its typed reference must nevertheless survive bind.
@@ -180,26 +196,76 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory) -> Path:
             strategy_artifacts=(artifact,),
         )
         publish_research_workspace_manifest(root, manifest)
-        outcome, _ref = publish_causal_outcomes(
-            real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
-        )
-        first = bind_factor_inputs(
-            workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-        )
-        before = (root / "research-workspace.json").read_bytes()
-        assert (
-            bind_factor_inputs(
-                workspace=root, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
+        from alphalattice.foundation.market_data_ops.storage import world
+        from alphalattice.kernel.data_layer import history
+
+        history.open_history("factor-seed", "factor seed", root)
+        try:
+            opened = history.opened_log()
+            assert opened is not None
+            # The input lives in a separate source, outside the Host's workspace-open admission.
+            world.admit_universe(data.workspace / "market-data.duckdb", opened[1])
+            outcome, _ref = publish_causal_outcomes(data, at=datetime(2026, 8, 2, tzinfo=UTC))
+            first = bind_factor_inputs(
+                workspace=root,
+                source=data.workspace,
+                outcome_snapshot_hash=outcome,
             )
-            == first
-        )
-        assert (root / "research-workspace.json").read_bytes() == before
-        assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
-        assert not tuple((root / "research-inputs").rglob("sealed-holdout"))
+            before = (root / "research-workspace.json").read_bytes()
+            assert (
+                bind_factor_inputs(
+                    workspace=root,
+                    source=data.workspace,
+                    outcome_snapshot_hash=outcome,
+                )
+                == first
+            )
+            assert (root / "research-workspace.json").read_bytes() == before
+            assert read_research_workspace_manifest(root).strategy_artifacts == (artifact,)
+            kept = factor_input_paths(root, first.binding_hash)[0].parent
+            assert not tuple(kept.rglob("sealed-holdout"))
+        finally:
+            history.close_history()
         return {}
 
-    source, _metadata = session_workspace(tmp_path_factory, "factor_input", build)
-    return source
+    name = "development_factor_input" if development else "factor_input"
+    return session_workspace(tmp_path_factory, name, build, inputs=symbols)[0]
+
+
+SEEDS = (  # most derived first
+    "risk_seed",
+    "completed_alpha_seed",
+    "sampled_alpha_seed",
+    "alpha_seed",
+    "factor_seed",
+    "input_seed",
+)
+
+
+@pytest.fixture(autouse=True)
+def factor_history(request: pytest.FixtureRequest) -> Iterator[None]:
+    """A test using the factor seeds starts on the machine of the most derived one it uses, with
+    the fixture's Host history open there for that test alone; a
+    module-long recording refused each later seed build (own_root). A wider fixture's Host keeps
+    the root it records in."""
+    from alphalattice.kernel.data_layer import history
+    from alphalattice.kernel.data_layer.root import data_root
+
+    name = next((name for name in SEEDS if name in request.fixturenames), None)
+    if name is None or history.recording():
+        yield
+        return
+    seed = request.getfixturevalue(name)
+    while not isinstance(seed, Path):
+        seed = seed[0]
+    restore_seed(seed)
+    root = data_root()
+    assert history.open_history("factor-fixture", "factor fixture", root) is None
+    try:
+        yield
+    finally:
+        history.close_history()
+        retire_children()  # the test's root goes with it
 
 
 @pytest.fixture
@@ -217,18 +283,27 @@ def alpha_seed(factor_seed, tmp_path_factory):
     """The same bound input and curated Factor study, published once across workers."""
 
     def build(root: Path) -> dict:
+        from alphalattice.kernel.data_layer import history
+
+        restore_seed(factor_seed[0])
         copy_workspace(factor_seed[0], root)
         factor_task, report, _export = factor_seed[1:]
-        source = root / report["document"]["experiment"]["baseline_workspace"]
-        original = read_factor_bundle(root, source.parent.name)
-        enhanced = bind_factor_inputs(
-            workspace=root,
-            source=source,
-            input_id="alpha-development",
-            panel_snapshot_hash=original.panel_snapshot_hash,
-            outcome_snapshot_hash=original.outcome_snapshot_hash,
-            include_alpha_handoff=True,
-        )
+        baseline = Path(report["document"]["experiment"]["baseline_workspace"])
+        original = read_factor_bundle(root, baseline.parent.name)
+        source, _ = factor_input_paths(root, original.binding_hash)
+        manifest = read_research_workspace_manifest(root)
+        history.open_history(manifest.workspace_id, manifest.workspace_id, root)
+        try:
+            enhanced = bind_factor_inputs(
+                workspace=root,
+                source=source,
+                input_id="alpha-development",
+                panel_snapshot_hash=original.panel_snapshot_hash,
+                outcome_snapshot_hash=original.outcome_snapshot_hash,
+                include_alpha_handoff=True,
+            )
+        finally:
+            history.release_history()
         with _session(root) as live:
             choices = _json(live, f"/api/experiments/curation?task_id={factor_task}")
             choice = next(v for v in choices["choices"] if v["roles"])
@@ -272,7 +347,9 @@ def alpha_seed(factor_seed, tmp_path_factory):
             "draft": draft["document"],
         }
 
-    root, metadata = session_workspace(tmp_path_factory, "alpha_seed", build)
+    root, metadata = session_workspace(
+        tmp_path_factory, "alpha_seed", build, inputs=factor_seed[0].parent.name
+    )
     enhanced = next(
         value
         for value in read_research_workspace_manifest(root).experiment_inputs
@@ -293,11 +370,14 @@ def factor_seed(input_seed: Path, tmp_path_factory):
     """One actual Factor execution and its original publication/reuse assertions."""
 
     def build(root: Path) -> dict:
+        restore_seed(input_seed)
         copy_workspace(input_seed, root)
         task_id, report, exported = _publish_factor(root)
         return {"task_id": task_id, "report": report, "exported": exported}
 
-    root, metadata = session_workspace(tmp_path_factory, "factor_publication", build)
+    root, metadata = session_workspace(
+        tmp_path_factory, "factor_publication", build, inputs=input_seed.parent.name
+    )
     return root, metadata["task_id"], metadata["report"], metadata["exported"]
 
 
@@ -311,13 +391,14 @@ def sampled_alpha_seed(alpha_seed, tmp_path_factory):
     """A real completed sample study, shared by promotion and Task-authority controls."""
 
     def build(root: Path) -> dict:
+        restore_seed(alpha_seed[0])
         copy_workspace(alpha_seed[0], root)
         case = (root, *alpha_seed[1:])
         with _session(root) as live:
             sampled = _alpha_payload(case)
             document = sampled["experiment_document"]
             universe = document["experiment"]["universe_handle"]
-            document["experiment"]["universe_handle"] = f"{universe}.sample-110"
+            document["experiment"]["universe_handle"] = f"{universe}.sample-102"
             plan = _json(live, "/api/experiments/plan", method="POST", payload=sampled)
             assert plan["status"] == "PLANNED", plan
             sent = _json(

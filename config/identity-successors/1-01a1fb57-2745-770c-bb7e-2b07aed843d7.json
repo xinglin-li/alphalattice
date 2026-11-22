@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "77e6ac73fe50129f1735fe397c75ca06fb5b6a7d4b90fea518972f919740864e",
+   "successor": "1f477bc56d457e7418cb7fa3e89d4fa4e4db65d23de4e6e7f9c96ad25c22201b",
+   "change": "A workspace's first use prepares faster",
+   "reason": "Workspace preparation's implementation moves with the held connection and the one-snapshot admission; the replay of 185,251 records and the readers are ALL EQUAL, and the source has not changed since that replay apart from merging the target"
+  }
+ ]
+}

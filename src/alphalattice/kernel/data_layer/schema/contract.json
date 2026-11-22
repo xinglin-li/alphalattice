@@ -1,0 +1,13 @@
+{
+ "schema": "alphalattice.schema-contract.v1",
+ "rules": {
+  "coverage": "Every table in log.sql and catalog.sql has one entry here, and every entry has its table.",
+  "key": "An entry's key is its table's key: the DDL's primary key, or for the catalog, whose engine enforces none, its key comment, which every catalog table states.",
+  "id": "Each key part declares its source: Host-minted UUIDv7, log seq, another record's id, or an immutable scalar/fixed vocabulary/dated-alias fact (value, with its reason). An outside code identifying the thing it names is external and requires permanence[part] with a cited reference and its guarantee that the code never changes, retires or becomes reassigned; no such outside code is admitted today. A recomputed home may use a content address. A digest, caller's value or packed string is a break.",
+  "up": "A record stores one upward link, and links no table its upward chain already reaches, except by an edge: a declared link, with its reason, to another record of that table.",
+  "home": "Each fact has one home; a second copy is a view, never a table.",
+  "time": "Each time column names its clock: integer microseconds UTC, a log seq, a UTC timestamp, a source's own clock or a market date. A time kept as text on its writer's clock is a break.",
+  "status": "Each status column declares its states, its terminal states and its moves; the DDL checks the states, a terminal state never moves, and a trigger on its table, named here, refuses exactly the changes of it that are not declared moves.",
+  "version": "Each version column is bound to a registered definition version, by a link or by a trigger on its table that refuses exactly the inserts whose definition and version no lineage registers, naming how the insert names its definition; or it is the record's own version with its reason; no version has a default."
+ }
+}

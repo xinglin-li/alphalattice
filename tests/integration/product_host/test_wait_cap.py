@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 
 from alphalattice.interface.local_application import cli, client
+from alphalattice.kernel.shared_kernel import waits
 
 
 class _Clock:
@@ -25,6 +26,13 @@ class _Clock:
         assert seconds >= 0
         self.sleeps.append(seconds)
         self.now += seconds
+
+
+def _fake_time(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
+    """The client's clock and sleep, and the wait clock bound at import, all read the fake."""
+    monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(client.time, "sleep", clock.sleep)
+    monkeypatch.setattr(waits, "clock", clock.monotonic)
 
 
 class _Host:
@@ -122,8 +130,7 @@ def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, ar
     limit = cap or 3600.0
     clock = _Clock()
     host = _Host(tmp_path, clock, "goal" if kind == "goal" else kind, arrival)
-    monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
-    monkeypatch.setattr(client.time, "sleep", clock.sleep)
+    _fake_time(monkeypatch, clock)
     monkeypatch.setattr(client, "LocalResearchClient", lambda *_a, **_k: host)
     monkeypatch.setenv("CODEX_THREAD_ID", "lead")
     command = {
@@ -180,8 +187,7 @@ def test_a_restart_near_the_cap_gets_its_last_cli_read(
         return request(document, timeout)
 
     monkeypatch.setattr(host, "request", read)
-    monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
-    monkeypatch.setattr(client.time, "sleep", clock.sleep)
+    _fake_time(monkeypatch, clock)
     monkeypatch.setattr(client, "LocalResearchClient", lambda *_a, **_k: host)
     target = ["--goal", host.goal_id] if kind == "goal" else ["--task", host.task]
     code = cli.main(
@@ -211,8 +217,7 @@ def test_a_restart_near_the_cap_gets_its_last_cli_read(
 def test_the_shared_pause_reserves_a_final_read(monkeypatch, cap, delay) -> None:
     """All client polling/backoff delays share the cap rule, including sub-delay caps."""
     clock = _Clock()
-    monkeypatch.setattr(client.time, "monotonic", clock.monotonic)
-    monkeypatch.setattr(client.time, "sleep", clock.sleep)
+    _fake_time(monkeypatch, clock)
     reads = [clock.now]
     while client._sleep_before_read(delay, cap):
         reads.append(clock.now)

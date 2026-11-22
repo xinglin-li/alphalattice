@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
@@ -55,6 +54,9 @@ from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.identity_successors import is_current, predecessors
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 MAXIMUM_NEW_COLUMN_BUFFER_BYTES = 512 * 1024 * 1024
 
@@ -138,6 +140,8 @@ def _sector_returns(
         ValueError: `feature_research.sector_leaf_revision_moved` when the store's Sector
             revision is no longer the Panel's.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     store_history = feature.sector_history(universe, listing_ids=listings)
     if store_history is None or store_history.current_revision != str(lineage["sector_revision"]):
         raise ValueError("feature_research.sector_leaf_revision_moved")
@@ -175,6 +179,8 @@ def materialize_feature_columns(
     cancelled: Callable[[], bool] = lambda: False,
 ) -> ResearchFeatureMaterialization:
     """No Panel activation, fit or source writes; unchanged input columns stay referenced."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     workspace = definitions.workspace
     if cancelled():
         raise ValueError("feature_research.cancelled_at_safe_checkpoint")

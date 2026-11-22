@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.evaluation.person_ask import poster
 
 TEST_SOURCE = "src/devtools/evaluation/person_ask.py"
@@ -14,10 +15,10 @@ TEST_SOURCE = "src/devtools/evaluation/person_ask.py"
 def test_each_question_is_one_bounded_process_with_its_outcome_beside_the_record(tmp_path):
     """No command posts nothing; a post fills the record and question, a refusal or a command
     that cannot start is recorded as such."""
-    assert poster(None) is None
+    assert poster(None, run=spawn.run) is None
     record, posted = tmp_path / "ask.json", tmp_path / "ask.posted.json"
     said = "import sys; sys.stderr.write('|'.join(sys.argv[1:])); sys.exit(len(sys.argv[2]) > 100)"
-    post = poster([sys.executable, "-c", said, "{ask}", "{question}"])
+    post = poster([sys.executable, "-c", said, "{ask}", "{question}"], run=spawn.run)
     assert post(record, "May I use the network?") is True
     assert json.loads(posted.read_text("utf-8")) == {
         "exit": 0,
@@ -25,5 +26,5 @@ def test_each_question_is_one_bounded_process_with_its_outcome_beside_the_record
     }
     assert post(record, "x" * 200) is False  # the question is cut to 120 characters
     assert json.loads(posted.read_text("utf-8")) == {"exit": 1, "said": f"{record}|{'x' * 120}"}
-    assert poster([str(tmp_path / "absent")])(record, "Anyone?") is False
+    assert poster([str(tmp_path / "absent")], run=spawn.run)(record, "Anyone?") is False
     assert set(json.loads(posted.read_text("utf-8"))) == {"error"}

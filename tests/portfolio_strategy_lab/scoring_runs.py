@@ -9,7 +9,7 @@ Test support beside its owner; nothing here is product authority.
 
 from __future__ import annotations
 
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 
 PACKAGE = "RETURN_G6_MU_ONLY"
 

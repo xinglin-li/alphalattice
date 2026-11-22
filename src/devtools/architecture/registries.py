@@ -25,11 +25,14 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.interface.local_application.message_catalog import english_message_ids
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     ImportHygiene,
     PackageArchitectureRegistry,
+    data_family_violations,
+    discover_persistence_sites,
     discover_table_writes,
     import_contract_violations,
     load_storage_authority_registry,
@@ -402,6 +405,13 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     return out
 
 
+def data_family_problems(root: Path, sources: Sequence[Path]) -> tuple[str, ...]:
+    """A persisting writer in ``sources`` that no data family lists (the census, LAWS.md DA2)."""
+    registry = json.loads((root / REGISTRIES / "data-families.json").read_text("utf-8"))
+    sites = discover_persistence_sites(tuple(sources), source_root=root / "src")
+    return data_family_violations(sites, registry, whole_tree=False)
+
+
 def problems(root: Path, files: Sequence[str]) -> list[str]:
     """What ``files`` add to a registry without registering it."""
 
@@ -465,6 +475,7 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
                 whole_tree=False,
             )
         )
+        out.extend(data_family_problems(root, sources))
     known_host = baseline(root, "host-modules")
     for relative in files:
         if (
@@ -710,14 +721,29 @@ def g1_matches(prefix: str, nouns: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _census_file_facts(path: str, text: str) -> dict[str, int]:
     tree = ast.parse(text, filename=path)
+    literal_groups = {
+        assignment.targets[0].id: assignment.value
+        for assignment in tree.body
+        if isinstance(assignment, ast.Assign)
+        and len(assignment.targets) == 1
+        and isinstance(assignment.targets[0], ast.Name)
+        and isinstance(assignment.value, ast.Subscript)
+        and isinstance(assignment.value.value, ast.Name)
+        and assignment.value.value.id == "Literal"
+    }
     return {
         "message-kinds|" + code: line for code, line in refusals(path, tree, locations=True).items()
     } | {
-        "operations|" + n.value: n.lineno
+        "operations|" + literal.value: literal.lineno
         for alias in ast.walk(tree)
         if isinstance(alias, ast.TypeAlias) and alias.name.id == "PortfolioResearchOperation"
         for n in ast.walk(alias.value)
-        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        for literal in (
+            ast.walk(literal_groups[n.id])
+            if isinstance(n, ast.Name) and n.id in literal_groups
+            else (n,)
+        )
+        if isinstance(literal, ast.Constant) and isinstance(literal.value, str)
     }
 
 
@@ -764,23 +790,32 @@ def _message_forms(code: str, row: dict[str, Any]) -> list[str]:
     ):
         return [f"messages: {code} invalid arguments"]
     fields = ("words", "reason", "scope", "way_on") if question else ("words",)
+    choices = row.get("choices", {}) if question else {}
+    if not isinstance(choices, dict):
+        return [f"messages: {code}.choices: not a mapping of choice to its words"]
+    named = [(field, row.get(field, {})) for field in fields]
     out = []
-    for field in fields:
-        forms = row.get(field, {})
+    for field, forms in [*named, *((f"choices.{c}", w) for c, w in choices.items())]:
         for locale in ("en", "zh-CN"):
             text = forms.get(locale) if isinstance(forms, dict) else None
-            try:
-                if not isinstance(text, str) or not text.strip():
-                    raise ValueError("missing form")
-                parts = list(string.Formatter().parse(text))
-                names = {name for _, name, _, _ in parts if name is not None}
-                if names != set(arguments) or any(
-                    spec or conversion for _, _, spec, conversion in parts
-                ):
-                    raise ValueError("named arguments differ")
-            except ValueError as error:
+            if (error := _form_problem(text, arguments)) is not None:
                 out.append(f"messages: {code}{'.' if question else ' '}{field}.{locale}: {error}")
     return out
+
+
+def _form_problem(text: object, arguments: list[str]) -> str | None:
+    """Why one language form of a message cannot be shown, or None: it is missing, or it names
+    other arguments than its message declares, or formats one."""
+    if not isinstance(text, str) or not text.strip():
+        return "missing form"
+    try:
+        parts = list(string.Formatter().parse(text))
+    except ValueError as error:
+        return str(error)
+    names = {name for _, name, _, _ in parts if name is not None}
+    if names != set(arguments) or any(spec or conversion for _, _, spec, conversion in parts):
+        return "named arguments differ"
+    return None
 
 
 def _unique_message_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1191,7 +1226,7 @@ def _description_census(
     bootstrap = dimension not in base
     basis = "HEAD:"
     if inputs.pending or len(inputs.parents) > 2:
-        ancestor = subprocess.run(
+        ancestor = spawn.run(
             ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
             cwd=root,
             capture_output=True,

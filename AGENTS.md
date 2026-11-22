@@ -18,7 +18,7 @@ step, and a nested part's own hint describes only that part.
 `.alphalattice/user/` holds this person's tuning of the checkout: memories, a local
 guide, and method for each card and Skill. No release contains or writes it. Read
 its index and guide first, as above, and `agent-notes/INDEX.md` in a workspace you
-continue. They refine this
+continue when that file exists. They refine this
 guide and never widen what it permits; a memory is background, so verify what it
 names before acting on it. A sealing goal answer offers `RECORD_THE_EXPERIENCE`:
 follow it through the alphalattice-maintenance Skill, using its Goal and Task reads.
@@ -47,6 +47,8 @@ inputs request, repair the invalid fields and plan again with the same research 
 ## Open the workspace
 
 At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+
+Data extensions come from the locked DuckLake and SQLite scanner packages. Do not use runtime SQL `INSTALL` to repair them; restore the locked data dependencies and follow the named refusal.
 
 Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
 
@@ -188,6 +190,11 @@ its way on: decide each data issue with its offered `confirm`, or take the refus
 step under the delegation, then run the same command again. The network setting and the offline switch matter only
 when an answer refuses for them. Never restart the Host or serve a second one for
 network access, and never ask the person to.
+
+Optional trace export is the person's separate choice. Do not set
+`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or enable
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`, without their explicit decision.
+The workspace network control and offline switch still apply.
 
 Follow the wait and first-use wake procedure in [operating](.agents/skills/alphalattice-research/references/operating.md).
 On Codex, a wake registration that answers `local_client.codex_unreachable` means no wake
@@ -380,7 +387,8 @@ as it stands; the Host takes nothing else for it.
   change issuers or scope.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
-- Daily research automation, the daily committee setting and the usage-reading switch.
+- Daily research automation, the daily committee setting, how a review's Analyst bundles
+  are read, and the usage-reading switch.
 - Storage cleanup and pins; data-decision grants and their revocation.
 - Preparation, data issues and membership changes outside the first use's
   delegation, and a new research-input version: keep the current input and tell

@@ -90,8 +90,9 @@ jobs:
         run: |
           $wheel = (Get-ChildItem "${{ runner.temp }}/dist/alphalattice-*-py3-none-any.whl").FullName
           $requirements = "${{ runner.temp }}/alphalattice-runtime-requirements.txt"
-          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" $wheel $requirements
-          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements
+          $overrides = "${{ runner.temp }}/alphalattice-runtime-overrides.txt"
+          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" $wheel $requirements $overrides
+          uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements --overrides $overrides
           "ALPHALATTICE_TEST_WHEEL=$wheel" >> $env:GITHUB_ENV
       - name: Smoke the installed command in fresh PowerShell and Git Bash
         shell: bash
@@ -149,6 +150,17 @@ jobs:
           else
             npx --no-install playwright install chromium
           fi
+      - name: Prepare the pinned Weaver kit
+        env:
+          PYTHONPATH: src
+        run: uv run --no-sync python -m devtools.testing.telemetry prepare "$RUNNER_TEMP/weaver"
+      - name: Check telemetry conventions and trace
+        env:
+          PYTHONPATH: src
+        run: |
+          export ALPHALATTICE_WEAVER_KIT="$RUNNER_TEMP/weaver"
+          uv run --no-sync python -m devtools.testing.telemetry check "$ALPHALATTICE_WEAVER_KIT"
+          uv run --no-sync python -m pytest tests/integration/data_layer/test_spans.py::test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree
       - name: Run the offline first-use scenario
         run: >-
           uv run python -m pytest
@@ -163,8 +175,9 @@ jobs:
           test "${#wheels[@]}" -eq 1
           wheel="${wheels[0]}"
           requirements="$RUNNER_TEMP/alphalattice-runtime-requirements.txt"
-          uv run python -c "import sys, zipfile, pathlib; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read('alphalattice/_runtime/config/release/runtime-requirements.txt'))" "$wheel" "$requirements"
-          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements"
+          overrides="$RUNNER_TEMP/alphalattice-runtime-overrides.txt"
+          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" "$wheel" "$requirements" "$overrides"
+          uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements" --overrides "$overrides"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
 
   public-tests-plan:
@@ -406,59 +419,6 @@ jobs:
                   return (yield)
               finally:
                   _event("end", node=item.nodeid)
-
-
-          @pytest.hookimpl(wrapper=True)
-          def pytest_runtest_makereport(item, call):
-              report = yield
-              if report.failed and "test_verified_source_leases.py::" in item.nodeid:
-                  store = sys.modules.get("alphalattice.control.workspace_runtime.content_store")
-                  try:
-                      if store is None:
-                          _event("lease", node=item.nodeid, status="module_not_loaded")
-                      elif not store._VERIFIED_ARRAY_CACHE_LOCK.acquire(blocking=False):
-                          _event("lease", node=item.nodeid, status="cache_busy")
-                      else:
-                          try:
-                              leases = [
-                                  lease for group in store._VERIFIED_SOURCE_LEASES.values() for lease in group
-                              ]
-                              hits, misses = (
-                                  store._VERIFIED_ARRAY_PROCESS_CACHE_HITS,
-                                  store._VERIFIED_ARRAY_PROCESS_CACHE_MISSES,
-                              )
-                          finally:
-                              store._VERIFIED_ARRAY_CACHE_LOCK.release()
-                          states = []
-                          for lease in leases:
-                              if not lease.lock.acquire(blocking=False):
-                                  states.append({"status": "lease_busy"})
-                                  continue
-                              try:
-                                  states.append(
-                                      {
-                                          "path_name": lease.path.name,
-                                          "identity": lease.identity[1:],
-                                          "pending": lease.pending,
-                                          "handle_open": lease.handle is not None,
-                                          "event_wait": lease.kernel.WaitForSingleObject(lease.event, 0)
-                                          if lease.event
-                                          else None,
-                                      }
-                                  )
-                              finally:
-                                  lease.lock.release()
-                          _event(
-                              "lease",
-                              node=item.nodeid,
-                              status="observed",
-                              hits=hits,
-                              misses=misses,
-                              leases=states,
-                          )
-                  except Exception as error:
-                      _event("lease", node=item.nodeid, status="unmeasured", reason=type(error).__name__)
-              return report
           PY
       - name: Run this shard of every public test
         env:

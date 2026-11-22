@@ -1,0 +1,32 @@
+{
+ "tables": {
+  "catalog.world.evidence_doc": {
+   "home": "world",
+   "key": [
+    "doc_id",
+    "version_id"
+   ],
+   "id": {
+    "doc_id": "uuid7",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "provider_id",
+    "amends_doc_id"
+   ],
+   "times": {
+    "published_at": "utc_timestamp",
+    "accepted_at": "source_clock",
+    "available_at": "utc_timestamp",
+    "report_period_end": "market_date",
+    "retrieved_at": "utc_timestamp",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  }
+ },
+ "known": {}
+}

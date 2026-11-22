@@ -1,0 +1,4 @@
+{
+ "factory": "alphalattice.control.product_host.research_authoring.factor_inputs:research_input_copies_family",
+ "mode": "machine-backup"
+}

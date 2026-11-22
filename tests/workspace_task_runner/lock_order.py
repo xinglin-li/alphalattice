@@ -7,7 +7,8 @@ test took in both orders, whichever threads took them, so the order is caught wh
 written rather than when two threads happen to meet.
 
 The locks it sees: each workspace mutation gate (`gate`), each Task registry's connection
-lock (`registry`), and each workspace database file (`instance:<file>`). A file is a lock only
+lock, now the held log's one-writer guard (`registry`), and each workspace database file
+(`instance:<file>`). A file is a lock only
 the way the database owner makes it one: a thread that retains it read-only holds it, and a
 thread that asks for it read-write waits for every such holder; readers attach to a writer's
 instance, and writers to each other's, without waiting. A lock created before
@@ -27,8 +28,8 @@ from typing import Any
 
 import pytest
 
-from alphalattice.control.task_control import registry as task_registry
 from alphalattice.control.workspace_runtime import database, mutation_gate
+from alphalattice.kernel.data_layer import history, log
 
 
 @dataclass
@@ -119,8 +120,10 @@ def record_lock_order(monkeypatch: pytest.MonkeyPatch) -> Iterator[LockOrder]:
 
     recorder = LockOrder()
     monkeypatch.setattr(mutation_gate, "RLock", lambda: _RecordedRLock(recorder, "gate"))
-    monkeypatch.setattr(task_registry, "RLock", lambda: _RecordedRLock(recorder, "registry"))
-    monkeypatch.setattr(task_registry, "_CONNECTION_LOCKS", type(task_registry._CONNECTION_LOCKS)())
+    # The registry's lock is the held log's guard: its writes and reads take it. The log opens
+    # again with a recorded guard, and once more after the test with a plain one.
+    history.close_history()
+    monkeypatch.setattr(log, "RLock", lambda: _RecordedRLock(recorder, "registry"))
     acquire = database._acquire
 
     def recorded_acquire(path: Path, *, read_only: bool, wait_seconds: float) -> Any:
@@ -129,7 +132,10 @@ def record_lock_order(monkeypatch: pytest.MonkeyPatch) -> Iterator[LockOrder]:
         return acquire(path, read_only=read_only, wait_seconds=wait_seconds)
 
     monkeypatch.setattr(database, "_acquire", recorded_acquire)
-    yield recorder
+    try:
+        yield recorder
+    finally:
+        history.close_history()
 
 
 @pytest.fixture

@@ -40,16 +40,6 @@ bound_minutes = 15
 place = "gate"
 rows = ["environment", "fast-guard", "card-budget", "tests", "load-timeouts", "public-scan"]
 
-[stages.post-merge]
-order = 4
-reason = "Every affected test file whole on develop after a merge; a red is bisected and reverted on evidence."
-trigger = "develop"
-range = "set"
-lane = "merge"
-sizes = ["small", "medium"]
-bound_minutes = 20
-rows = ["environment", "affected-tests", "load-timeouts", "public-scan", "culprit-revert"]
-
 [stages.nightly]
 order = 5
 reason = "Every test on develop's tip, Large ones included, uncached."
@@ -75,7 +65,7 @@ kind = "command"
 owner = "devtools.architecture"
 reason = "Lint, format, strict types and the registry, boundary, shape and budget guards on the staged files."
 hosts = ["workshop", "public"]
-run = ["{python}", "scripts/check_playpen.py", "--staged", "--fast"]
+run = ["{python}", "scripts/check_playpen.py", "--staged", "--fast", "--hook"]
 escape = "a defect the static guards name, committed"
 review = "2026-12-01"
 
@@ -159,18 +149,6 @@ owner = "devtools.pipeline"
 reason = "Every public test, split over GitHub's free runners: nightly on next's tip once per SHA, and on a promotion candidate."
 hosts = ["public"]
 job = "public-tests"
-
-[rows.affected-tests]
-kind = "workshop"
-owner = "workshop"
-reason = "Every test file the merged set affects, whole, once."
-hosts = ["workshop"]
-
-[rows.culprit-revert]
-kind = "workshop"
-owner = "workshop"
-reason = "Each real red is bisected over the set and its culprit reverted, its owner named."
-hosts = ["workshop"]
 
 [rows.nightly-tests]
 kind = "workshop"

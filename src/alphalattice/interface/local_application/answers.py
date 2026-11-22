@@ -267,7 +267,7 @@ class ExperimentReadbackAnswer(_Answer):
     task_id: str
     """The study, by its Task."""
     verification_basis: str | None = None
-    """How this read was proved: `FULL`, or `FILES_UNCHANGED ...` naming what it checked."""
+    """How this read was proved: `FULL`, or `SEALED <time>`, the full check it answered from."""
     document: dict[str, Any] | None = None
     """The study's normalized declaration."""
     next_requests: dict[str, Any] | None = None
@@ -388,6 +388,9 @@ class UpgradeOverviewAnswer(_Answer):
     """Each waiting Task with its standing."""
     next_requests: dict[str, Any]
     """The requests the overview offers, acknowledging it among them."""
+    first_start: dict[str, Any] | None = None
+    """While the Host owes its first 0.2.8 start: its plan (workspaces, families, backups with
+    their estimates), its state (PENDING, RUNNING, FAILED) and progress, and any refusal."""
 
 
 class ResearchInputRow(_Answer):
@@ -471,6 +474,107 @@ class ResearchHistoryAnswer(_Answer):
     names."""
 
 
+class ExperienceAnswer(_Answer):
+    """A bounded page of recorded trials and their attribution."""
+
+    trials: list[dict[str, Any]]
+    """Trials with their trial and trace IDs, selections, measures and conclusions."""
+    notes: list[dict[str, Any]]
+    """Bounded conclusions and lessons recorded about goals, including those without trials."""
+    unattributed_in_page: int
+    """Trials on this page that have no recorded hypothesis."""
+
+
+class ExperienceBriefAnswer(_Answer):
+    """What to know before new work on a goal, as known at a time, fitted to a token budget in
+    priority order."""
+
+    model_config = ConfigDict(extra="forbid")
+    goal: str
+    """The goal briefed."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    budget: int
+    """The budget, in tokens of about four characters."""
+    used: int
+    """The tokens the items taken use, never more than the budget."""
+    parts: list[dict[str, Any]]
+    """In priority order: decisions (the goal's current one of each kind), lessons (its own
+    first, then other goals' on its methods) and experiences (other goals' trials of its
+    method, with their conclusions); each with its items taken whole and how many were omitted."""
+
+
+class ExperienceClassAnswer(_Answer):
+    """Every trial of a trial's class as the history knew it at a time, with the class's spread
+    and the size of its search: what a recalled experience's statistics rest on."""
+
+    model_config = ConfigDict(extra="forbid")
+    trial: str
+    """The trial whose class was read."""
+    width: str
+    """The class's width: recipe, method_version or method."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    members: list[dict[str, Any]]
+    """Each member: its goal, workspace, agent, recipe, method and its version, parameters,
+    selection, universe, state then and measures recorded by then; at most 200."""
+    spread: list[dict[str, Any]]
+    """Per metric, version and dimensions: count, mean, standard deviation, minimum, median and
+    maximum over every member measured by then."""
+    effective_n: dict[str, Any]
+    """The class's effective number of independent trials (Bailey and Lopez de Prado 2014) from
+    its members' kept monthly return series: how many members hold one, the pairs correlated,
+    their mean correlation and N; N is null below two series."""
+    by_condition: list[dict[str, Any]]
+    """Each headline effect's spread in each band (low, mid, high: the members' terciles) of each
+    market condition metric of the members' selections known then."""
+    search: dict[str, Any]
+    """The search's size: trials, candidates, recipes, goals, workspaces, agents, and how many
+    completed and failed."""
+
+
+class ExperienceRecallAnswer(_Answer):
+    """The experiences most like a query in a workspace as the history knew them at a time, each
+    with its text and the classes of the trials it is on: what a recalled experience rests on."""
+
+    model_config = ConfigDict(extra="forbid")
+    score_type: str
+    """How hits are scored: LINEAR_FUSION, the fused order of the full-text and vector channels;
+    recall calls no cross-encoder."""
+    hits: list[dict[str, Any]]
+    """Each hit, best first: its experience_id, version, score, text and classes, a mapping from
+    each trial the experience is on to that trial's class as known then (null when unknown)."""
+
+
+class ExperienceRecordAnswer(_Answer):
+    """A review's note as the Host recorded it, with the run it rests on; its experience is
+    rendered after this reply."""
+
+    model_config = ConfigDict(extra="forbid")
+    status: str
+    """RECORDED once the note is in the Host's history."""
+    note_id: str
+    """The note, by its event id."""
+    verdict: str
+    """The verdict recorded: success, failure or inconclusive."""
+    input_tokens: int
+    """Model input tokens the reviewed run's traces used."""
+    output_tokens: int
+    """Model output tokens the reviewed run's traces used."""
+    cost_usd: float
+    """The reviewed run's model cost, in US dollars."""
+    seconds: float
+    """The reviewed run's elapsed seconds, each trace's first start to its last end."""
+    place: list[dict[str, Any]]
+    """For a trial: each headline measure's z and count in its approach's spread; else empty."""
+    trials: list[str]
+    """For a review task: the trials its note reviewed, which its experience names; else empty."""
+
+
 class GuardianEntry(_Answer):
     """One unfinished Task as Guanyin sees it: its liveness, progress, work kept and next steps."""
 
@@ -546,6 +650,13 @@ class FilteredOperationListAnswer(_Answer):
         return self
 
 
+class _DeclaredAnswer(_Answer):
+    # A declared answer's meanings are its row's (Field descriptions). Built by create_model, it
+    # has no class source, so the docstring search would only walk every frame's module, once per
+    # model, for no docstring.
+    model_config = ConfigDict(use_attribute_docstrings=False)
+
+
 def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseModel]:
     """One operation's answer model from its row: each field's kind (`string|null`),
     whether every answer carries it, and its meaning, which `schema show` prints."""
@@ -566,7 +677,7 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
         )
     model: type[BaseModel] = create_model(
         "".join(part.capitalize() for part in operation.split("_")) + "Answer",
-        __base__=_Answer,
+        __base__=_DeclaredAnswer,
         __doc__=purpose,
         **fields,
     )
@@ -647,6 +758,11 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESULTS": ResultsAnswer,
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
+    "EXPERIENCE_READ": ExperienceAnswer,
+    "EXPERIENCE_BRIEF": ExperienceBriefAnswer,
+    "EXPERIENCE_CLASS": ExperienceClassAnswer,
+    "EXPERIENCE_RECALL": ExperienceRecallAnswer,
+    "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),
 }

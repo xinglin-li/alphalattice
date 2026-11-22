@@ -22,9 +22,11 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.shared_kernel.bounded_memo import stage_digests
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
@@ -217,65 +219,66 @@ def test_child_rebinding_replaces_a_stale_bound_receipt_and_then_costs_nothing(
             now=now,
         )
 
-    first = audit(NOW)
-    assert bind(NOW) == (listing.listing_id,)
-    bound = reusable(NOW)
-    assert bound is not None and bound.raw_evidence_hash == first.raw_evidence_hash
-    # 1. A valid bound receipt and the same source: repeated calls validate nothing.
-    validated.clear()
-    assert bind(NOW) == () and bind(NOW) == ()
-    assert validated == []
-    # 2. The source is corrected after the binding: the child's copy no longer
-    # proves the bytes, the parent audits again and holds new valid evidence.
-    write(last.volume + 1, "correction-after-binding")
-    assert reusable(NOW) is None
-    later = NOW + timedelta(hours=1)
-    second = audit(later)
-    assert second.raw_evidence_hash != first.raw_evidence_hash
-    validated.clear()
-    assert bind(later) == (listing.listing_id,)
-    assert validated == [listing.listing_id]
-    rebound = reusable(later)
-    assert rebound is not None and rebound.raw_evidence_hash == second.raw_evidence_hash
-    assert rebound.observed_at == second.observed_at
-    # 5. Rebound, the listing is back on the cheap path.
-    validated.clear()
-    assert bind(later) == ()
-    assert validated == []
-    # 3. No qualified evidence anywhere: a second correction with no new audit.
-    # The parent's evidence is already held, so nothing is re-judged, nothing
-    # is bound, and the stale copies are not reused -- the acquisition path
-    # must audit again.
-    write(last.volume + 2, "correction-without-audit")
-    validated.clear()
-    assert bind(later) == ()
-    assert validated == []
-    assert reusable(later) is None
-    # 4. Foreign evidence the child does not hold is re-judged by the validator,
-    # not taken because it is newest: the parent audits the corrected bytes,
-    # the bytes move again before the child's cycle, and the binding refuses.
-    third = audit(later + timedelta(minutes=1))
-    write(last.volume + 3, "correction-after-third-audit")
-    validated.clear()
-    assert bind(later + timedelta(minutes=2)) == ()
-    assert validated == [listing.listing_id]
-    assert reusable(later + timedelta(minutes=2)) is None
-    # Once the parent has audited the bytes as they stand, the binding takes it.
-    fourth = audit(later + timedelta(minutes=3))
-    assert fourth.raw_evidence_hash != third.raw_evidence_hash
-    assert bind(later + timedelta(minutes=3)) == (listing.listing_id,)
-    current = reusable(later + timedelta(minutes=3))
-    assert current is not None and current.raw_evidence_hash == fourth.raw_evidence_hash
-    # The refused third receipt is unheld and still fresh, so a repeated call
-    # judges it again -- one digest over its range, no binding -- until its
-    # freshness ends; a later instant over the same range is not dominance
-    # (the bytes may have moved and returned between the two).
-    validated.clear()
-    assert bind(later + timedelta(minutes=3)) == ()
-    assert validated == [listing.listing_id]
-    validated.clear()
-    assert bind(later + timedelta(hours=25)) == ()
-    assert validated == []
+    with stage_digests():
+        first = audit(NOW)
+        assert bind(NOW) == (listing.listing_id,)
+        bound = reusable(NOW)
+        assert bound is not None and bound.raw_evidence_hash == first.raw_evidence_hash
+        # 1. A valid bound receipt and the same source: repeated calls validate nothing.
+        validated.clear()
+        assert bind(NOW) == () and bind(NOW) == ()
+        assert validated == []
+        # 2. The source is corrected after the binding: the child's copy no longer
+        # proves the bytes, the parent audits again and holds new valid evidence.
+        write(last.volume + 1, "correction-after-binding")
+        assert reusable(NOW) is None
+        later = NOW + timedelta(hours=1)
+        second = audit(later)
+        assert second.raw_evidence_hash != first.raw_evidence_hash
+        validated.clear()
+        assert bind(later) == (listing.listing_id,)
+        assert validated == [listing.listing_id]
+        rebound = reusable(later)
+        assert rebound is not None and rebound.raw_evidence_hash == second.raw_evidence_hash
+        assert rebound.observed_at == second.observed_at
+        # 5. Rebound, the listing is back on the cheap path.
+        validated.clear()
+        assert bind(later) == ()
+        assert validated == []
+        # 3. No qualified evidence anywhere: a second correction with no new audit.
+        # The parent's evidence is already held, so nothing is re-judged, nothing
+        # is bound, and the stale copies are not reused -- the acquisition path
+        # must audit again.
+        write(last.volume + 2, "correction-without-audit")
+        validated.clear()
+        assert bind(later) == ()
+        assert validated == []
+        assert reusable(later) is None
+        # 4. Foreign evidence the child does not hold is re-judged by the validator,
+        # not taken because it is newest: the parent audits the corrected bytes,
+        # the bytes move again before the child's cycle, and the binding refuses.
+        third = audit(later + timedelta(minutes=1))
+        write(last.volume + 3, "correction-after-third-audit")
+        validated.clear()
+        assert bind(later + timedelta(minutes=2)) == ()
+        assert validated == [listing.listing_id]
+        assert reusable(later + timedelta(minutes=2)) is None
+        # Once the parent has audited the bytes as they stand, the binding takes it.
+        fourth = audit(later + timedelta(minutes=3))
+        assert fourth.raw_evidence_hash != third.raw_evidence_hash
+        assert bind(later + timedelta(minutes=3)) == (listing.listing_id,)
+        current = reusable(later + timedelta(minutes=3))
+        assert current is not None and current.raw_evidence_hash == fourth.raw_evidence_hash
+        # The refused third receipt is unheld and still fresh, so a repeated call
+        # judges it again -- one digest over its range, no binding -- until its
+        # freshness ends; a later instant over the same range is not dominance
+        # (the bytes may have moved and returned between the two).
+        validated.clear()
+        assert bind(later + timedelta(minutes=3)) == ()
+        assert validated == [listing.listing_id]
+        validated.clear()
+        assert bind(later + timedelta(hours=25)) == ()
+        assert validated == []
 
 
 def test_older_ancestor_receipt_that_proves_the_current_bytes_is_not_pruned_by_its_instant(
@@ -739,6 +742,7 @@ def test_valuation_audit_permission_never_reenters_the_candidate_request(qualifi
         old, eligible_listing_ids=(removed.listing_id,)
     )
     market.bootstrap(active)
+    admit_market_fixture(workspace, manifest.workspace_id)
     binding = installed_data_update_binding()
     state = read_workspace_inputs(workspace, binding)
     before = WorkspaceInputStatus.seal(

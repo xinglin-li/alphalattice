@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from functools import cache
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,15 +38,33 @@ def person_question(code: str, *, operation: str | None = None) -> dict[str, Any
         "words_zh": entry["words"]["zh-CN"],
         "scope": dict(entry["scope"]),
         "way_on": dict(entry["way_on"]),
+        "choices": {name: dict(words) for name, words in entry.get("choices", {}).items()},
     }
 
 
-ASKED_IN_OWN_WORDS = frozenset({"network.workspace_access"})
-"""Registered questions whose words tell the agent how to ask, in its own one line; every other
-registered question is asked, and relayed, exactly as written."""
-CODED_ONLY = {"COMMITTEE_DAILY_SET": "committee.daily"}
+NETWORK_QUESTION = "network.workspace_access"
+"""The person's question for network access outside a delegation: put by every network stop and by
+an update plan whose provider work the workspace's network does not admit."""
+CODED_ONLY = {"COMMITTEE_DAILY_SET": "committee.daily", "ANALYST_READS_SET": "review.analyst_reads"}
 """Operations whose one question is a registered one: an uncoded relay of it can only be a
 retyped question, so it is refused with the code that carries the words."""
+
+
+def network_question(workspace: Path | None, now: datetime | None) -> list[dict[str, Any]]:
+    """The person's coded network question, when their yes can open the workspace's network: a
+    closed workspace control or the closed default. Never while the network is open, or the run
+    or the operator's switch holds it offline, which no answer of theirs changes."""
+    if workspace is None or now is None:
+        return []
+    # The launchers import this module, and their import graph loads no numerical library.
+    from alphalattice.control.workspace_runtime.network_access import (  # lazy: no numpy
+        network_access,
+    )
+
+    access = network_access(workspace, now=now)
+    if access.allowed or access.decided_by not in {"WORKSPACE_CONTROL", "DEFAULT"}:
+        return []
+    return [person_question(NETWORK_QUESTION)]
 
 
 def relayed_question(operation: str, code: str | None, asked: str | None) -> tuple[str, str | None]:
@@ -61,10 +81,6 @@ def relayed_question(operation: str, code: str | None, asked: str | None) -> tup
     """
     if code is not None:
         question = person_question(code, operation=operation)
-        if code in ASKED_IN_OWN_WORDS:
-            if not asked:
-                raise ValueError("person_confirmation.question_missing")
-            return asked, code
         if asked is not None and asked not in (question["words"], question["words_zh"]):
             raise ValueError("person_confirmation.question_words_differ")
         return asked or question["words"], code

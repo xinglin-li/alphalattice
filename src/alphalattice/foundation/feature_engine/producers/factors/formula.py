@@ -39,11 +39,10 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from fractions import Fraction
 from functools import cache
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.catalog.observation_clock import formula_skip_sessions
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
@@ -65,6 +64,9 @@ from .formula_language import (
     signatures,
     units,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 FORMULA_ID: Final = "factor.formula"
 FORMULA_SECTOR_ID: Final = "factor.formula.sector"
@@ -412,6 +414,8 @@ def compute_formula(source: pd.DataFrame, specification: FactorSpec) -> pd.Serie
     Raises:
         FormulaError: `factor_formula.not_canonical` for a formula kept in another spelling.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     skip = formula_skip_sessions(specification)
     tree = formula_tree(specification.formula, skip=skip)
     if canonical(tree) != specification.formula:
@@ -473,6 +477,8 @@ def _rebased_to_each_session(
     Returns:
         The values, in the same layout, the skip applied.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     carried = {name: pd.DataFrame(index).ffill().to_numpy() for name, index in indices.items()}
     rows, columns = next(iter(panels.values())).shape
     started = np.zeros((rows, columns), dtype=bool)

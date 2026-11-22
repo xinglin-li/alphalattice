@@ -30,9 +30,9 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
-from functools import cache
+from dataclasses import asdict, dataclass, replace
+from datetime import date, datetime, timedelta
+from functools import cache, partial
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -54,18 +54,12 @@ from alphalattice.control.product_host.composition.workspace import WorkspaceRun
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-from alphalattice.foundation.causal_outcomes.execution.publication import (
-    CausalExecutionOutcomePublisher,
-)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.inputs.closure_source import (
     FeatureClosureSourceRepository,
 )
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
-)
-from alphalattice.foundation.feature_engine.producers.factors.open_intraday import (
-    overnight_return_factor_spec,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
 from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
@@ -85,11 +79,11 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
 )
 from alphalattice.foundation.market_data_ops.sources.universe import (
-    ORIGINAL_RESEARCH_WHITELIST_STANDARD,
     CandidateMembershipEvidence,
     CurrentUniverseBootstrap,
     CurrentUniverseCandidate,
     CurrentUniverseCandidateManifest,
+    ResearchWhitelistStandard,
     candidate_manifest_document,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -100,6 +94,8 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer.arrays import CARRIED
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from devtools.architecture.structural import (
     dependency_closure,
@@ -110,23 +106,53 @@ from devtools.architecture.structural import (
     kept_facts,
 )
 from devtools.evaluation.golden_workspaces import remove_tree
+from tests._support import development_universe, sufficient_universe
+
+# Compatibility imports for existing tests. New family helpers are used from their owners.
+from tests.researcher_methodology_surface.real_workspace_features import development_feature_catalog
+from tests.researcher_methodology_surface.real_workspace_outcomes import publish_causal_outcomes
+from tests.researcher_methodology_surface.real_workspace_sector import (
+    _sector_revision as _sector_revision,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE_PATH = ROOT / "config" / "market-profiles" / "us-current-index-research.yaml"
 MARKET_PROFILE_ID = "us-current-index-research"
 
-# The readiness gate applies its own ten-year initial history policy, so the
-# provider must be able to answer over that whole window: a narrower fixture
-# fails every listing on coverage and onboarding blocks with zero feature-ready
-# listings. The panel's own floors (316 index sessions, 274 observations for the
-# widest factor) are cleared many times over by this range.
-HISTORY_START = date(2016, 7, 31)
+# The optimal development data set's time (testing.md): two years, the floor the universe source's
+# standard declares (development_universe.STANDARD), which the readiness gate applies. Its 502
+# sessions clear the panel's own floors (316 index sessions, 274 observations for the widest
+# factor), but a Factor or Alpha study's walk keeps only the 250 before the outcomes' sealed
+# 252-session holdout, where a year-long lookback has no value: such a study needs about three
+# years and all 53 Factors (universe qualification requires them), so it runs at FACTOR_SCALE.
 AS_OF = date(2026, 7, 31)
-OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)
+
+
+def history_start(standard: ResearchWhitelistStandard) -> date:
+    """The walk's first session date: `standard`'s history floor before AS_OF."""
+    return AS_OF.replace(year=AS_OF.year - standard.minimum_history_calendar_years)
+
+
+HISTORY_START = history_start(development_universe.STANDARD)
+FACTOR_SCALE = sufficient_universe.STANDARD
+"""The walk a Factor or Alpha study needs: seven calendar years of Factor observations (756
+training, three 252-session folds, a 252-session holdout) after the catalog's 252-session lookback,
+so eight years of history; at seven the walk cannot fill its folds. The sufficient set's standard,
+never the full ten years; its tests are large, nightly only."""
+OBSERVED_AT = development_universe.OBSERVED_AT
 
 # Two sectors of five, which is the smallest shape that satisfies the
 # five-member sector floor on both sides of the sector-balanced weighting.
 SYMBOLS = ("AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH", "III", "JJJ")
+DEVELOPMENT_SYMBOLS = tuple(item.symbol for item in development_universe.LISTINGS)
+"""The development universe's listings (testing.md, the optimal development data set): passed as
+`symbols`, the build serves that universe's provider, source and two-year calendar instead of the
+seeded walk, and the golden key, which binds `symbols`, keeps its workspace apart."""
+SUFFICIENT_SYMBOLS = sufficient_universe.SYMBOLS
+SUFFICIENT_SCALE = sufficient_universe.STANDARD
+"""The sufficient test data set (testing.md): passed as `symbols` with `standard=SUFFICIENT_SCALE`,
+the build serves its 108 listings over eight years; a test whose requirement is a product floor
+runs here instead of on FACTOR_SCALE's ten years."""
 
 
 @cache
@@ -258,7 +284,9 @@ class SeededWalkProvider:
         )
 
 
-def _bootstrap(symbols: Sequence[str]) -> CurrentUniverseBootstrap:
+def _bootstrap(
+    symbols: Sequence[str], standard: ResearchWhitelistStandard = development_universe.STANDARD
+) -> CurrentUniverseBootstrap:
     candidates = tuple(
         CurrentUniverseCandidate(
             symbol=symbol,
@@ -272,29 +300,26 @@ def _bootstrap(symbols: Sequence[str]) -> CurrentUniverseBootstrap:
     provisional = CurrentUniverseCandidateManifest(
         created_at=OBSERVED_AT,
         as_of_timestamp=OBSERVED_AT,
-        construction_rule=ORIGINAL_RESEARCH_WHITELIST_STANDARD.construction_rule,
-        data_validity_class=ORIGINAL_RESEARCH_WHITELIST_STANDARD.data_validity_class,
+        construction_rule=standard.construction_rule,
+        data_validity_class=standard.data_validity_class,
         sources=(),
         candidates=candidates,
         content_hash="",
+        minimum_history_calendar_years=standard.minimum_history_calendar_years,
+        minimum_factor_listings=standard.minimum_factor_listings,
     )
     document = candidate_manifest_document(provisional)
     document.pop("content_hash")
     return CurrentUniverseBootstrap(
-        source_manifest=CurrentUniverseCandidateManifest(
-            created_at=provisional.created_at,
-            as_of_timestamp=provisional.as_of_timestamp,
-            construction_rule=provisional.construction_rule,
-            data_validity_class=provisional.data_validity_class,
-            sources=provisional.sources,
-            candidates=provisional.candidates,
+        source_manifest=replace(
+            provisional,
             content_hash=sha256(
                 json.dumps(
                     document, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ).encode()
             ).hexdigest(),
         ),
-        standard=ORIGINAL_RESEARCH_WHITELIST_STANDARD,
+        standard=standard,
     )
 
 
@@ -317,87 +342,15 @@ class _MovingClock:
         return self.now
 
 
-def _source_loader_for(symbols: Sequence[str]):  # type: ignore[no-untyped-def]
+def _source_loader_for(  # type: ignore[no-untyped-def]
+    symbols: Sequence[str], standard: ResearchWhitelistStandard = development_universe.STANDARD
+):
     """Stand in for the three-index web fetch, and only for that, over one universe."""
 
     def load(**_kwargs: object) -> CurrentUniverseBootstrap:
-        return _bootstrap(symbols)
+        return _bootstrap(symbols, standard)
 
     return load
-
-
-def _sector_revision(workspace: RealRiskWorkspace) -> str:
-    from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
-        PanelClosureArtifactStore,
-    )
-    from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-
-    store = PanelClosureArtifactStore(ArtifactResolver(workspace.artifact_root))
-    paths = sorted((store.root / "sector-maps").glob("*.json"))
-    assert paths, "the shared workspace publishes a sector revision map"
-    return store.load_model(
-        category="sector-maps", content_hash=paths[0].stem, model=SectorRevisionMap
-    ).sector_revision
-
-
-def publish_causal_outcomes(
-    workspace: RealRiskWorkspace, *, at: datetime = OBSERVED_AT, recipe_id: str | None = None
-) -> tuple[str, str]:
-    """Publish the causal execution outcomes a Factor program reads, for real.
-
-    Kept out of ``build_real_risk_workspace`` deliberately. Risk needs a return
-    surface and never touches execution outcomes, so publishing them in the
-    shared builder would slow every Risk case for an artifact none of them reads.
-
-    Returns ``(snapshot_hash, manifest_ref)`` because a Factor program binds both
-    and the reader resolves a manifest by hash rather than by URI -- the two are
-    handed back together so a caller cannot pair a hash with someone else's ref.
-    """
-
-    store = MarketDataRepository(workspace.workspace)
-    published = CausalExecutionOutcomePublisher(
-        # Annotated ``PanelStateRepository`` on the publisher, but every method it
-        # reaches for -- the research manifest, the source watermark, raw bars and
-        # actions -- belongs to the market store. The annotation is stale; the
-        # market repository is what the code actually requires.
-        store=store,  # type: ignore[arg-type]
-        resolver=ArtifactResolver(workspace.artifact_root),
-        artifact_root=workspace.artifact_root,
-        mutation_gate=WorkspaceMutationGate(),
-    ).publish_daily(
-        panel_manifest_ref=workspace.panel_manifest_ref,
-        completed_at=at,
-        **({} if recipe_id is None else {"recipe_id": recipe_id}),
-    )
-    return str(published.manifest.snapshot_hash), str(published.manifest_artifact.uri)
-
-
-def development_feature_catalog() -> FeatureCatalog:
-    """The shipped catalog plus the one persistent extension under test.
-
-    This is the whole of "a researcher installs a method": take the governed
-    catalog, add the typed recipe the Feature capability already declares, and
-    hand the revision to the writers. The mathematics, the recipe and its
-    implementation identity are all product-owned -- ``overnight_return_factor_spec``
-    lives beside its kernel in ``feature_engine/producers``. Nothing is invented
-    here, and a spec assembled here instead would make "add a method in the
-    domain directory" false.
-
-    ``from_payload`` requires the factor axis sorted, so the merge sorts rather
-    than appends: the axis is positional in everything downstream that quotes it.
-
-    The shipped ``desktop-feature-catalog.json`` is not written to. This revision
-    exists only in the workspace that installs it, which is why no published
-    manifest and no current pointer moves.
-    """
-
-    shipped = FeatureCatalog.load()
-    payload = shipped.to_payload()
-    payload["factors"] = sorted(
-        [*payload["factors"], overnight_return_factor_spec().model_dump(mode="json")],
-        key=lambda factor: str(factor["factor_id"]),
-    )
-    return FeatureCatalog.from_payload(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,6 +400,7 @@ def build_real_risk_workspace(
     fresh: bool = False,
     sector_size: int = 5,
     factory: Any = None,
+    standard: ResearchWhitelistStandard = development_universe.STANDARD,
 ) -> RealRiskWorkspace:
     """Drive onboarding, features, the panel, and the return surface for real.
 
@@ -491,15 +445,18 @@ def build_real_risk_workspace(
     maintenance and publication path once per gate.
     """
 
+    from tests.pytest_environment import require_named_roots
+
+    require_named_roots("build_real_risk_workspace")
     installed_catalog = feature_catalog if feature_catalog is not None else FeatureCatalog.load()
     installed_kernels = (
         feature_kernels if feature_kernels is not None else default_extension_kernel_registry()
     )
     if fresh:
         return _build_workspace(
-            root / "workspace", installed_catalog, installed_kernels, symbols, sector_size
+            root / "workspace", installed_catalog, installed_kernels, symbols, sector_size, standard
         )
-    key = _golden_key(installed_catalog, installed_kernels, symbols, sector_size)
+    key = _golden_key(installed_catalog, installed_kernels, symbols, sector_size, standard)
     golden = _golden_root() / key
     workspace = root / "workspace"
     started = time.perf_counter()
@@ -512,7 +469,7 @@ def build_real_risk_workspace(
             golden,
             key,
             lambda: _materialize_golden(
-                golden, key, installed_catalog, installed_kernels, symbols, sector_size
+                golden, key, installed_catalog, installed_kernels, symbols, sector_size, standard
             ),
         )
         if not linked:
@@ -534,7 +491,13 @@ def build_real_risk_workspace(
                     golden,
                     key,
                     lambda: _materialize_golden(
-                        golden, key, installed_catalog, installed_kernels, symbols, sector_size
+                        golden,
+                        key,
+                        installed_catalog,
+                        installed_kernels,
+                        symbols,
+                        sector_size,
+                        standard,
                     ),
                 )
                 shutil.copytree(golden / "workspace", target)
@@ -565,29 +528,31 @@ def build_real_risk_workspace(
     return _restore(workspace, installed_catalog, installed_kernels, symbols, key, sidecar)
 
 
-def session_fresh_seed(factory):
+def session_fresh_seed(factory, symbols=SYMBOLS):
     """Build the real fresh workspace once per session, before a test's timer."""
     from tests.researcher_methodology_surface.session_workspace import session_workspace
 
     def build(root: Path) -> dict:
-        record = build_real_risk_workspace(root, fresh=True)
-        key = _golden_key(record.feature_catalog, record.feature_kernels, SYMBOLS)
-        return _sidecar(record, SYMBOLS, key)
+        record = build_real_risk_workspace(root, fresh=True, symbols=symbols)
+        key = _golden_key(record.feature_catalog, record.feature_kernels, symbols)
+        return _sidecar(record, symbols, key)
 
-    return session_workspace(factory, "fresh_real_risk", build, inputs=_environment_digest())
+    return session_workspace(
+        factory, "fresh_real_risk", build, inputs=(_environment_digest(), symbols)
+    )
 
 
-def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
+def copy_fresh_workspace(factory, target: Path, symbols=SYMBOLS) -> RealRiskWorkspace:
     """Give one test a private writable copy, restored through product readers."""
     from tests.researcher_methodology_surface.session_workspace import copy_workspace
 
-    source, metadata = session_fresh_seed(factory)
+    source, metadata = session_fresh_seed(factory, symbols)
     workspace = copy_workspace(source / "workspace", target)
     return _restore(
         workspace,
         FeatureCatalog.load(),
         default_extension_kernel_registry(),
-        SYMBOLS,
+        symbols,
         str(metadata["key"]),
         metadata,
     )
@@ -595,23 +560,48 @@ def copy_fresh_workspace(factory, target: Path) -> RealRiskWorkspace:
 
 READINESS_UNIVERSE = (tuple(f"F{i:03d}" for i in range(120)), 6)
 """The workspace-readiness tests' listings and sector size, a golden of its own."""
+READINESS_STANDARD = FACTOR_SCALE
+"""Its history: its fixture binds Factor inputs and runs a Factor study on them."""
 
 
 def warm_real_risk_golden(
-    *, external: bool = False, symbols: Sequence[str] | None = None, sector_size: int = 5
+    *,
+    external: bool = False,
+    symbols: Sequence[str] | None = None,
+    sector_size: int = 5,
+    standard: ResearchWhitelistStandard | None = None,
 ) -> None:
-    """Publish each golden the session uses before any test's timer: a timer cut a build short."""
+    """Publish each golden the session uses before any test's timer: a timer cut a build short.
+
+    With no `standard`, the universe's own: READINESS_STANDARD for the readiness universe, else
+    the development standard. A build opens this process's history at the session's data root (a
+    Host holds its root until it closes); the warm closes the root it opened, so a test that opens
+    its own root after collection is not refused (`data_layer.root_held`): a cold golden runs as a
+    warm one."""
+    from tests.pytest_environment import require_named_roots
+
+    require_named_roots("warm_real_risk_golden")
     symbols = SYMBOLS if symbols is None else symbols
+    if standard is None:
+        readiness = (tuple(symbols), sector_size) == READINESS_UNIVERSE
+        standard = READINESS_STANDARD if readiness else development_universe.STANDARD
     variants = [(FeatureCatalog.load(), default_extension_kernel_registry())]
     if external:  # the outside method's variant, when a collected test asks for its workspace
         from tests.researcher_methodology_surface import external_factor_method as method
 
         variants.append((method.external_feature_catalog(), method.external_kernel_registry()))
-    for catalog, kernels in variants:
-        key = _golden_key(catalog, kernels, symbols, sector_size)
-        with _golden_lease(golden := _golden_root() / key):
-            if not golden.exists():
-                _materialize_golden(golden, key, catalog, kernels, symbols, sector_size)
+    held_before = history.holding() is not None
+    try:
+        for catalog, kernels in variants:
+            key = _golden_key(catalog, kernels, symbols, sector_size, standard)
+            with _golden_lease(golden := _golden_root() / key):
+                if not golden.exists():
+                    _materialize_golden(
+                        golden, key, catalog, kernels, symbols, sector_size, standard
+                    )
+    finally:
+        if not held_before and history.holding() is not None:
+            history.close_history()
 
 
 def warm_before_tests() -> None:
@@ -841,7 +831,9 @@ def _source_tree_digest() -> str:
 
 
 def _workspace_files(workspace: Path) -> dict[str, str]:
-    """Content verification of an immutable test seed, not a scientific identity."""
+    """Content verification of an immutable test seed, not a scientific identity. The folder a seed
+    carries its log's arrays and kept files in (`arrays.CARRIED`) is not the golden's content: a
+    seed's builder writes it, and the Host that admits a copy proves each body by its digest."""
     root_info = workspace.lstat()
     if (
         not stat.S_ISDIR(root_info.st_mode)
@@ -863,7 +855,8 @@ def _workspace_files(workspace: Path) -> dict[str, str]:
                 ):
                     raise GoldenWorkspaceError(f"golden workspace contains a link: {path}")
                 if stat.S_ISDIR(info.st_mode):
-                    pending.append(path)
+                    if path.relative_to(workspace) != CARRIED:
+                        pending.append(path)
                 elif stat.S_ISREG(info.st_mode):
                     with path.open("rb") as stream:
                         hashes[path.relative_to(workspace).as_posix()] = hashlib.file_digest(
@@ -992,6 +985,7 @@ def _golden_key(
     kernels: FeatureKernelRegistry,
     symbols: Sequence[str],
     sector_size: int = 5,
+    standard: ResearchWhitelistStandard = development_universe.STANDARD,
 ) -> str:
     identity = {
         "format": _GOLDEN_FORMAT,
@@ -1001,6 +995,7 @@ def _golden_key(
         "kernels_hash": kernels.installed_capability_hash,
         "symbols": list(symbols),
         "sector_size": sector_size,
+        "standard": asdict(standard),  # every rule the build reads from it
     }
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]
 
@@ -1165,9 +1160,15 @@ def _materialize_golden(
     kernels: FeatureKernelRegistry,
     symbols: Sequence[str],
     sector_size: int = 5,
+    standard: ResearchWhitelistStandard = development_universe.STANDARD,
 ) -> None:
-    """Called under the same lease that protects copying and cache retention."""
+    """Called under the same lease that protects copying and cache retention.
+
+    The build opens this process's data root through the product's writers; a root it opened is
+    released when it ends, so the next fixture that opens its own root is not refused
+    ``data_layer.root_held``. A root the caller held stays held."""
     building = golden.with_name(golden.name + ".building")
+    held_before = history.holding() is not None
 
     def clear() -> None:
         # Its sealed files are read-only: rmtree, ignoring errors, left a whole build behind.
@@ -1181,7 +1182,7 @@ def _materialize_golden(
         building.mkdir()
         with _checked_build_sources():
             record = _build_workspace(
-                building / "workspace", catalog, kernels, symbols, sector_size
+                building / "workspace", catalog, kernels, symbols, sector_size, standard
             )
         sidecar = _sidecar(record, symbols, key)
         del record
@@ -1191,6 +1192,8 @@ def _materialize_golden(
         _prune_goldens(keep=golden)
     finally:
         clear()
+        if not held_before and history.holding() is not None:
+            history.close_history()
 
 
 def verify_golden_seal(golden: Path, key: str, build: Callable[[], None]) -> tuple[bool, dict]:
@@ -1314,82 +1317,42 @@ def _prune_goldens(*, keep: Path) -> None:
                 lease.close()
 
 
-GOLDEN_KEEP_KEYS = 3
-"""Golden workspaces the cache keeps by last use: every identity move made a key, and 78
-of them held 35 GB before the rule was kept by hand."""
-
-
-def retain_golden_workspaces(
-    *, keep: int = GOLDEN_KEEP_KEYS, apply: bool = False, root: Path | None = None
-) -> list[dict[str, object]]:
-    """The golden workspaces by last use, newest first, each kept or dropped.
-
-    The newest ``keep`` stay. With ``apply`` every other one is deleted under its own lease, and
-    one a builder holds is left ``BUSY``; without it nothing is deleted (``TO_DROP``).
-
-    Args:
-        keep: How many of the most recently used goldens stay.
-        apply: Whether to delete the others.
-        root: The cache's root; the checkout's own when None.
-
-    Returns:
-        One row per golden: its key, last use, bytes and disposition.
-    """
-
-    base = _golden_root() if root is None else root
-    found: list[tuple[float, Path]] = []
-    for candidate in sorted(base.iterdir()) if base.is_dir() else ():
-        sidecar = candidate / "golden.json"
-        if (
-            len(candidate.name) == 24
-            and all(c in "0123456789abcdef" for c in candidate.name)
-            and sidecar.exists()
-        ):
-            found.append((sidecar.stat().st_mtime, candidate))
-    rows: list[dict[str, object]] = []
-    for index, (used, candidate) in enumerate(sorted(found, reverse=True)):
-        size = sum(path.stat().st_size for path in candidate.rglob("*") if path.is_file())
-        disposition = "KEPT" if index < keep else "TO_DROP"
-        if disposition == "TO_DROP" and apply:
-            try:
-                lease = WorkspaceWriterLease.acquire(base / ".locks" / candidate.name)
-            except RuntimeError:
-                disposition = "BUSY"
-            else:
-                try:
-                    shutil.rmtree(candidate, ignore_errors=True)
-                    disposition = "TO_DROP" if candidate.exists() else "DROPPED"
-                finally:
-                    lease.close()
-        rows.append(
-            {
-                "key": candidate.name,
-                "last_used": datetime.fromtimestamp(used, UTC).isoformat(),
-                "bytes": size,
-                "disposition": disposition,
-            }
-        )
-    return rows
-
-
 def _build_workspace(
     workspace: Path,
     installed_catalog: FeatureCatalog,
     installed_kernels: FeatureKernelRegistry,
     symbols: Sequence[str],
     sector_size: int = 5,
+    standard: ResearchWhitelistStandard = development_universe.STANDARD,
 ) -> RealRiskWorkspace:
-    """Drive onboarding, features, the panel and the return surface for real, into ``workspace``."""
+    """Drive onboarding, features, the panel and the return surface for real, into ``workspace``,
+    over the history `standard` names (the walk's; the development universe declares its own)."""
 
     # The product's own layout: artifacts live under the workspace, which is what
     # every reader that takes only a workspace path assumes. A sibling directory
     # works only for callers that are told about it separately.
     artifact_root = workspace / "artifacts"
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    sessions = tuple(row["session_date"] for row in schedule.to_pylist())
-    provider = SeededWalkProvider(symbols, sessions, sector_size=sector_size)
+    if tuple(symbols) == SUFFICIENT_SYMBOLS:
+        provider = sufficient_universe.sufficient_provider()
+        load = sufficient_universe.source_loader
+    elif "DVA" in symbols and set(symbols).issubset(SUFFICIENT_SYMBOLS):
+        members = tuple(item for item in sufficient_universe.LISTINGS if item.symbol in symbols)
+        row_cap = (
+            development_universe.ROW_CAP
+            if set(symbols).issubset(DEVELOPMENT_SYMBOLS)
+            else sufficient_universe.ROW_CAP
+        )
+        provider = development_universe.DevelopmentProvider(
+            sessions=development_universe.calendar_sessions(), listings=members, row_cap=row_cap
+        )
+        load = partial(development_universe.source_loader, listings=members)
+    else:
+        schedule = materialize_calendar_schedule(
+            ("XNAS",), start=history_start(standard), end=AS_OF, as_of_timestamp=OBSERVED_AT
+        )
+        sessions = tuple(row["session_date"] for row in schedule.to_pylist())
+        provider = SeededWalkProvider(symbols, sessions, sector_size=sector_size)
+        load = _source_loader_for(symbols, standard)
 
     store = MarketDataRepository(workspace)
     # Onboarding installs the current-feature schema, so this repository has to
@@ -1409,7 +1372,7 @@ def _build_workspace(
         panel_state=panel_state,
         profile_path=PROFILE_PATH,
         provider=provider,
-        source_loader=_source_loader_for(symbols),
+        source_loader=load,
     )
     approved = gate.start_approved_onboarding(
         WorkspaceReadinessConsent(
@@ -1467,7 +1430,7 @@ def _build_workspace(
                 provider=provider,
                 # The coordinator assesses readiness without naming a loader, so
                 # a stale source check would otherwise reach the live network.
-                source_loader=_source_loader_for(symbols),
+                source_loader=load,
             ),
             clock=clock,
         )
@@ -1549,10 +1512,12 @@ def _build_workspace(
 
 __all__ = [
     "AS_OF",
-    "GOLDEN_KEEP_KEYS",
+    "FACTOR_SCALE",
     "HISTORY_START",
     "MARKET_PROFILE_ID",
     "OBSERVED_AT",
+    "SUFFICIENT_SCALE",
+    "SUFFICIENT_SYMBOLS",
     "SYMBOLS",
     "GoldenWorkspaceError",
     "RealRiskWorkspace",
@@ -1560,5 +1525,4 @@ __all__ = [
     "build_real_risk_workspace",
     "development_feature_catalog",
     "publish_causal_outcomes",
-    "retain_golden_workspaces",
 ]

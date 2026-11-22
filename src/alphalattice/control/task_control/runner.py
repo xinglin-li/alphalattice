@@ -23,6 +23,8 @@ from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.kernel.data_layer.history import held
+from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
@@ -43,6 +45,7 @@ from .contracts import (
 )
 from .registry import DuckDbTaskControlRegistry, TaskTransitionRejected
 from .timing import record_stage_spans
+from .upgrade import import_heartbeats, read_heartbeat, write_heartbeat
 
 _LOG = logging.getLogger(__name__)
 
@@ -137,6 +140,21 @@ class TaskDomainAdapter(Protocol):
         ...
 
 
+def _untyped_stage_cause(error: BaseException, *, detail: str = "") -> StageFailureCause:
+    """Name the raising source site without retaining its absolute path or arguments."""
+    trace = error.__traceback__
+    while trace is not None and trace.tb_next is not None:
+        trace = trace.tb_next
+    site = None
+    if trace is not None:
+        name = Path(trace.tb_frame.f_code.co_filename).name
+        suffix = f":{trace.tb_lineno}"
+        site = name[: 120 - len(suffix)] + suffix
+    return StageFailureCause(
+        exception_type=type(error).__name__[:120], detail=" ".join(detail.split())[:400], step=site
+    )
+
+
 def _bounded_raise(
     attempt: int,
     call: Callable[[], StageExecutionResult],
@@ -159,9 +177,7 @@ def _bounded_raise(
             StageDisposition.BLOCKED,
             failure_code=f"TASK_STAGE_RAISED:{type(error).__name__}",
             # What was raised rides beside the code, as an owner's cause does.
-            failure_cause=StageFailureCause.from_facts(
-                {"exception_type": type(error).__name__, "detail": str(error)}
-            ),
+            failure_cause=_untyped_stage_cause(error, detail=str(error)),
         )
 
 
@@ -172,6 +188,7 @@ def _spanned[T](
     stage_id: str,
     phase: str,
     call: Callable[[], T],
+    digests: StageDigests | None = None,
 ) -> T:
     """Run one phase of a stage inside a span ledger and keep what it spent its time on (A4).
 
@@ -179,7 +196,7 @@ def _spanned[T](
     """
     ledger: SpanLedger | None = None
     try:
-        with collect() as ledger:
+        with stage_digests(digests), collect() as ledger:
             return call()
     finally:
         if ledger is not None and ledger.readout_value is not None:
@@ -216,6 +233,8 @@ class _WorkPool:
         )
         self._running: dict[Future[StageExecutionResult], WorkItemDefinition] = {}
         self._finished: list[tuple[WorkItemDefinition, StageExecutionResult]] = []
+        self.digests: dict[str, StageDigests] = {}
+        self.failed_stage_id: str | None = None
 
     def __len__(self) -> int:
         return len(self._running) + len(self._finished)
@@ -232,7 +251,9 @@ class _WorkPool:
         self, definition: WorkItemDefinition, call: Callable[[], StageExecutionResult]
     ) -> None:
         if self._executor is None:
+            self.failed_stage_id = definition.stage_id
             self._finished.append((definition, call()))
+            self.failed_stage_id = None
         else:
             self._running[self._executor.submit(carry_background(call))] = definition
 
@@ -249,6 +270,7 @@ class _WorkPool:
         try:
             return definition, future.result()
         except BaseException:
+            self.failed_stage_id = definition.stage_id
             self.drain()
             raise
 
@@ -365,7 +387,7 @@ class TaskHeartbeatReader:
         # and nothing else is caught here.
         try:
             if not path.is_file():
-                return None
+                return read_heartbeat(path, execution_id)
             with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=5.0) as conn:
                 row = conn.execute(
                     "SELECT signal_json FROM workspace_task_heartbeat WHERE execution_id = ?",
@@ -373,6 +395,8 @@ class TaskHeartbeatReader:
                 ).fetchone()
         except (OSError, sqlite3.Error) as error:
             raise _StoreUnreadable("task_control.heartbeat_store_unreadable") from error
+        except ValueError as error:
+            raise _StoreUnreadable("task_control.heartbeat_signal_invalid") from error
         if row is None or row[0] is None:
             return None
         try:
@@ -435,7 +459,7 @@ class TaskControlRunner:
         # The runtime file's name names the heartbeat sidecar beside it; its folder keeps the
         # stages' spans.
         self._runtime_path = Path(runtime_path)
-        self._heartbeat_store = _SqliteHeartbeatStore(heartbeat_store_path(self._runtime_path))
+        self._heartbeat_store = _LogHeartbeatStore(heartbeat_store_path(self._runtime_path))
 
     def close(self) -> None:
         """Release what the runner holds between executions: nothing since W10's loop."""
@@ -520,6 +544,7 @@ class TaskControlRunner:
         *,
         verify_prefix: bool,
     ) -> TaskRecord:
+        pool: _WorkPool | None = None
         try:
             if verify_prefix:
                 definitions = {item.stage_id: item for item in task.plan.work_items}
@@ -590,6 +615,10 @@ class TaskControlRunner:
             self.registry.mark_recovery_required(
                 task_id=task.task_id,
                 failure_code=failure_code,
+                failure_cause=_untyped_stage_cause(error)
+                if failure_code == "TASK_EXECUTION_INTERRUPTED"
+                else None,
+                failed_stage_id=pool.failed_stage_id if pool is not None else None,
                 observed_at=self._now(),
             )
             self._publish_projection(task.task_id)
@@ -734,6 +763,8 @@ class TaskControlRunner:
             # This attempt, after the stage's interrupted ones in a row.
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
             refused = None if self.stage_gate is None else self.stage_gate(task)
+            digests: StageDigests = {}
+            pool.digests[definition.stage_id] = digests
             pool.start(
                 definition,
                 partial(
@@ -760,6 +791,7 @@ class TaskControlRunner:
                         ),
                         None if context.pool.width > 1 else self.stage_scope,
                     ),
+                    digests,
                 ),
             )
         if not pool:
@@ -876,6 +908,7 @@ class TaskControlRunner:
         result: StageExecutionResult,
     ) -> TaskRecord:
         registry = context.registry
+        context.pool.failed_stage_id = definition.stage_id
         registry.mark_ready(
             task_id=task_id,
             execution_id=execution.execution_id,
@@ -896,6 +929,7 @@ class TaskControlRunner:
                 work_item=definition,
                 evidence=result.evidence,
             ),
+            context.pool.digests.pop(definition.stage_id),
         )
         if verified != result.evidence:
             raise RuntimeError("stage verifier changed the proposed evidence identity")
@@ -913,6 +947,7 @@ class TaskControlRunner:
                 observed_at=self._now(),
             )
         )
+        context.pool.failed_stage_id = None
         self._publish_projection(task_id)
         return task
 
@@ -936,80 +971,27 @@ def _declared_width(adapter: TaskDomainAdapter, task: TaskRecord, width: int | N
     return max(1, min(int(declared(task)), width or os.cpu_count() or 1))
 
 
-class _SqliteHeartbeatStore:
-    """Operational liveness sidecar; it never owns task lifecycle."""
+class _LogHeartbeatStore:
+    """Operational lease on the process's held log; it never owns task lifecycle."""
 
     def __init__(self, path: Path) -> None:
         self.path = path.resolve()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
+
+        # Older roots acquire the same derived index as fresh roots at this first use.
+        with held().unit() as connection:
             connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workspace_task_heartbeat (
-                    execution_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL,
-                    worker_instance_id TEXT NOT NULL,
-                    heartbeat_at TEXT NOT NULL,
-                    sequence INTEGER NOT NULL,
-                    signal_json TEXT NOT NULL
-                )
-                """
+                "CREATE INDEX IF NOT EXISTS wait_heartbeat ON wait("
+                "json_extract(match_attrs, '$.source'),"
+                "json_extract(match_attrs, '$.signal.execution_id'), started_seq)"
+                " WHERE purpose = 'task.heartbeat'"
             )
-            columns = {
-                str(row[1])
-                for row in connection.execute(
-                    "PRAGMA table_info(workspace_task_heartbeat)"
-                ).fetchall()
-            }
-            for name, definition in (
-                ("task_id", "TEXT"),
-                ("sequence", "INTEGER"),
-                ("signal_json", "TEXT"),
-            ):
-                if name not in columns:
-                    connection.execute(
-                        f"ALTER TABLE workspace_task_heartbeat ADD COLUMN {name} {definition}"
-                    )
+        import_heartbeats(self.path)
 
     def touch(self, signal: TaskHeartbeatSignal) -> None:
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
-            connection.execute(
-                """
-                INSERT INTO workspace_task_heartbeat (
-                    execution_id, task_id, worker_instance_id, heartbeat_at,
-                    sequence, signal_json
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(execution_id) DO UPDATE SET
-                    task_id = excluded.task_id,
-                    worker_instance_id = excluded.worker_instance_id,
-                    heartbeat_at = excluded.heartbeat_at,
-                    sequence = excluded.sequence,
-                    signal_json = excluded.signal_json
-                """,
-                (
-                    str(signal.execution_id),
-                    str(signal.task_id),
-                    str(signal.worker_instance_id),
-                    signal.observed_at.isoformat(),
-                    signal.sequence,
-                    signal.model_dump_json(),
-                ),
-            )
+        write_heartbeat(self.path, signal)
 
     def read(self, execution_id: UUID) -> TaskHeartbeatSignal | None:
-        with sqlite3.connect(self.path, timeout=5.0) as connection:
-            row = connection.execute(
-                """
-                SELECT signal_json FROM workspace_task_heartbeat
-                WHERE execution_id = ?
-                """,
-                (str(execution_id),),
-            ).fetchone()
-        return (
-            None
-            if row is None or row[0] is None
-            else TaskHeartbeatSignal.model_validate_json(row[0])
-        )
+        return read_heartbeat(self.path, execution_id)
 
 
 __all__ = [

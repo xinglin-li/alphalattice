@@ -24,22 +24,13 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.7, now
+## 0.2.8, now
 
-- Every wait is bounded: `--max-wait` is capped at one hour, and workers end with the Host.
-- A first Codex session names the project's trust setting and the one step that sets it.
-- A refused question relay says what to fix, in English or Chinese, and a rerun stopped by its Task's stop explains why, with how to resume it.
-- Evidence search indexes are rebuilt on demand instead of kept on disk, and a retrieval environment built against an older lock is refused with the command that rebuilds it.
+- Workspaces under one data root share one event log and one catalog, and each update publishes its market changes there once.
+- A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back.
+- The Daily, Evidence and queries are faster on the same machine; the release notes give the measured seconds.
 
-See the [0.2.7 release notes](docs/public-source/release-notes.md#027) for each change. The versioned notes keep each measured workload and its limits.
-
-Use Claude Code or Codex as the lead. To see what a run used, open a session's
-**Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
-tokens each member used, and marks any gaps.
-
-Give your agent this repository's link and one intent:
-
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
+See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each change. The versioned notes keep each measured workload and its limits.
 
 ## Two ways to use AlphaLattice
 
@@ -48,12 +39,12 @@ Give your agent this repository's link and one intent:
    and the strategy, produces that date's research positions and follows them
    through review, committee discussion and a report.
 
-   **Expect a pause for your answer.** The agent stops once to ask whether
-   AlphaLattice may keep this workspace's network on for daily updates, fetching
-   market data and SEC filings within the default budget (3 per issuer,
-   600 documents and 3 GB overall). **The work waits until you answer yes or no.**
-   Your yes stays in force until you tell it to stop; each network use is disclosed
-   and recorded in activity, including automated updates.
+   The agent asks once whether AlphaLattice may keep this workspace's network on
+   for daily updates, fetching market data and SEC filings within the default budget
+   (3 per issuer, 600 documents and 3 GB overall). The first use continues without
+   waiting for your answer. Your yes stays in force until you tell it to stop;
+   network use is disclosed, including for automated updates. Activity records it
+   when available and names observation gaps.
 
    At the first-use report, the agent also asks whether daily updates should
    convene the investment committee. Decide it in the conversation, then or at any
@@ -79,9 +70,9 @@ Give your agent this repository's link and one intent:
 
 *Example run on synthetic data: a saved risk study shows its input window and diagnostics.*
 
-![The activity timeline of an example research workspace.](docs/assets/readme/activity-1280.png)
+![The History view of an example research workspace.](docs/assets/readme/activity-1280.png)
 
-*Example run on synthetic data: the activity record keeps the work behind the result.*
+*Example run on synthetic data: History lists recorded Tasks and updates.*
 
 <details>
 <summary>The same example run at a narrower width</summary>
@@ -123,7 +114,15 @@ See [Getting started](docs/public-source/getting-started.md) and the
 for installation, downloads and the permissions each step needs.
 
 Already using AlphaLattice? Follow [Upgrading](docs/public-source/upgrading.md)
-before installing a later 0.2.x patch in your existing workspace.
+when moving from 0.2.0 to a later 0.2.x patch in your existing workspace.
+Back up the agent project's `.alphalattice/user/`, note the workspace's absolute
+path, and stop its Host with `alphalattice host stop`, waiting for it to release
+the workspace before replacing the installation. For a source checkout, update the code, sync the locked dependencies
+and follow the doctor's repairs; a wheel uses its own runtime requirements and
+constraints. Continue in the same project and workspace, keeping earlier sealed
+goals and reports.
+If a refusal remains unresolved, generate `alphalattice problem report --output "<out>/report.json"`
+and review it before sharing in a GitHub issue; your agent asks before sending it.
 
 ## Why AlphaLattice
 
@@ -241,18 +240,20 @@ historical source availability alongside the performance.
 | [Agents](docs/public-source/agents.md) | Follow goals, sessions and specialist work. |
 | [Extending](docs/public-source/extending.md) | Develop and inspect factors and models. |
 | [Data and care](docs/public-source/data-and-care.md) | Update, inspect, back up and restore a workspace. |
-| [Privacy](docs/public-source/privacy.md) | Read what usage records contain and disable their reader. |
+| [Privacy](docs/public-source/privacy.md) | Read what usage records contain, disable their reader, or configure optional trace export. |
 | [Downloads and data terms](docs/public-source/third-party-and-data.md) | Read the terms for models and data sources. |
 
 The [guide index](docs/public-source/README.md) links the other reference pages.
 
 Use [backup and restore](docs/public-source/data-and-care.md) into a new directory
-to preserve the saved records and their integrity checks. [Privacy](docs/public-source/privacy.md)
+to preserve the saved records and their integrity checks. One Host runs per data
+root; a second is refused by name, and [Storage](docs/public-source/data-and-care.md#storage)
+gives the way on. [Privacy](docs/public-source/privacy.md)
 explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.7 is the current release.** It bounds every wait, guides a first Codex session through trusting the project, and fixes several Evidence, Host and retrieval cases. The [release notes](docs/public-source/release-notes.md#027) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
+**0.2.8 is the current release.** It rebuilds how AlphaLattice keeps its data, upgrades a 0.2.7 workspace in one start, and makes the Daily, Evidence and queries faster. The [release notes](docs/public-source/release-notes.md#028) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -331,7 +332,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-11-14 against 0.2.7
+Last checked: 2026-11-21 against 0.2.8
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

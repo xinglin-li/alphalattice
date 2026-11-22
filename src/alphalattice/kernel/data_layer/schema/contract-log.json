@@ -1,0 +1,1015 @@
+{
+ "tables": {
+  "log.artifact": {
+   "home": "projection",
+   "key": [
+    "artifact_id"
+   ],
+   "id": {
+    "artifact_id": "uuid7"
+   },
+   "links": [
+    "type_id",
+    "type_version",
+    "recipe_key",
+    "selection_id",
+    "trial_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "produced_seq": "log_seq",
+    "collected_seq": "log_seq"
+   },
+   "status": {
+    "body_state": {
+     "states": [
+      "never_stored",
+      "present",
+      "collected"
+     ],
+     "terminal": [
+      "never_stored",
+      "collected"
+     ],
+     "moves": {
+      "present": [
+       "collected"
+      ]
+     },
+     "enforced_by": "trigger artifact_body_state_moves"
+    }
+   },
+   "versions": {
+    "type_version": "definition"
+   }
+  },
+  "log.artifact_body": {
+   "home": "body",
+   "key": [
+    "artifact_id"
+   ],
+   "id": {
+    "artifact_id": "link"
+   },
+   "up": "artifact_id"
+  },
+  "log.book": {
+   "home": "projection",
+   "key": [
+    "book_id"
+   ],
+   "id": {
+    "book_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "times": {
+    "activated_seq": "log_seq",
+    "retired_seq": "log_seq",
+    "state_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "active",
+      "retired"
+     ],
+     "terminal": [
+      "retired"
+     ],
+     "moves": {
+      "active": [
+       "retired"
+      ]
+     },
+     "enforced_by": "trigger book_state_moves"
+    }
+   }
+  },
+  "log.cache_entry": {
+   "home": "cache",
+   "key": [
+    "recipe_key",
+    "derived_table",
+    "part",
+    "input_digest"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "derived_table": "value: its table in the catalog's derived schema",
+    "part": "value: a year, a year and listing, or an as-of date",
+    "input_digest": "content: a cached partition is valid for exactly the rows it read"
+   },
+   "links": [
+    "recipe_key"
+   ],
+   "times": {
+    "computed_us": "utc_us",
+    "last_read_us": "utc_us"
+   }
+  },
+  "log.cache_root": {
+   "home": "cache",
+   "key": [
+    "derived_table",
+    "recipe_key",
+    "part",
+    "input_digest",
+    "workspace_id"
+   ],
+   "id": {
+    "derived_table": "value: its table in the catalog's derived schema",
+    "recipe_key": "link",
+    "part": "value: a year, a year and listing, or an as-of date",
+    "input_digest": "content: the cached partition the workspace's reads take",
+    "workspace_id": "link"
+   },
+   "links": [
+    "workspace_id",
+    "recipe_key"
+   ]
+  },
+  "log.chain_checkpoint": {
+   "home": "log",
+   "key": [
+    "seq",
+    "kind"
+   ],
+   "id": {
+    "seq": "seq",
+    "kind": "value: what the checkpoint was kept for: month, backup, export or redaction"
+   },
+   "times": {
+    "seq": "log_seq",
+    "at_us": "utc_us"
+   },
+   "versions": {
+    "chain_version": "own: the encoding the events up to seq were folded with"
+   }
+  },
+  "log.chain_head": {
+   "home": "log",
+   "key": [
+    "id"
+   ],
+   "id": {
+    "id": "singleton"
+   },
+   "times": {
+    "seq": "log_seq"
+   },
+   "versions": {
+    "chain_version": "own: the chain's canonical encoding"
+   }
+  },
+  "log.daily_span": {
+   "home": "projection",
+   "key": [
+    "day",
+    "actor_kind",
+    "actor_id",
+    "node_id",
+    "type_id",
+    "outcome"
+   ],
+   "id": {
+    "day": "value: the UTC date the totals sum",
+    "actor_kind": "value: person, agent, host or node",
+    "actor_id": "value: the actor's own id",
+    "node_id": "link",
+    "type_id": "link",
+    "outcome": "value: the step's outcome"
+   },
+   "links": [
+    "node_id",
+    "type_id"
+   ],
+   "times": {
+    "day": "market_date"
+   }
+  },
+  "log.definition_lineage": {
+   "home": "definition",
+   "key": [
+    "definition_id"
+   ],
+   "id": {
+    "definition_id": "uuid7: minted by the Host at first registration. Existing lineages retain their original opaque id"
+   },
+   "times": {
+    "registered_seq": "log_seq",
+    "named_seq": "log_seq"
+   }
+  },
+  "log.definition_name": {
+   "home": "definition",
+   "key": [
+    "family",
+    "name"
+   ],
+   "id": {
+    "family": "value: a definition family, a fixed vocabulary",
+    "name": "value: a held name: this table maps every name a lineage held to its id, and a name is never reused"
+   },
+   "up": "definition_id",
+   "times": {
+    "named_seq": "log_seq"
+   }
+  },
+  "log.definition_ref": {
+   "home": "definition",
+   "key": [
+    "definition_id",
+    "version",
+    "role",
+    "ref_id"
+   ],
+   "id": {
+    "definition_id": "link",
+    "version": "link",
+    "role": "value: the spec field that names the other definition",
+    "ref_id": "link"
+   },
+   "up": [
+    "definition_id",
+    "version"
+   ],
+   "links": [
+    "ref_id"
+   ],
+   "versions": {
+    "version": "definition",
+    "ref_version": "trigger definition_ref_registered: definition_id ref_id"
+   },
+   "edges": {
+    "ref_id": "the other definition this one names, not its own lineage"
+   }
+  },
+  "log.definition_version": {
+   "home": "definition",
+   "key": [
+    "definition_id",
+    "version"
+   ],
+   "id": {
+    "definition_id": "link",
+    "version": "value: the lineage's own version number, counted from 1"
+   },
+   "up": "definition_id",
+   "times": {
+    "registered_seq": "log_seq",
+    "status_seq": "log_seq"
+   },
+   "status": {
+    "status": {
+     "states": [
+      "experimental",
+      "standard",
+      "deprecated",
+      "superseded"
+     ],
+     "terminal": [
+      "superseded"
+     ],
+     "moves": {
+      "experimental": [
+       "standard",
+       "deprecated",
+       "superseded"
+      ],
+      "standard": [
+       "deprecated",
+       "superseded"
+      ],
+      "deprecated": [
+       "superseded"
+      ]
+     },
+     "enforced_by": "trigger definition_version_status_moves"
+    }
+   },
+   "versions": {
+    "version": "own: the lineage's version number"
+   }
+  },
+  "log.deletion_queue": {
+   "home": "working",
+   "key": [
+    "handle"
+   ],
+   "id": {
+    "handle": "value: the file's own path, which another process holds open"
+   },
+   "times": {
+    "queued_us": "utc_us"
+   }
+  },
+  "log.event": {
+   "home": "log",
+   "key": [
+    "seq"
+   ],
+   "id": {
+    "seq": "seq"
+   },
+   "links": [
+    "cause_seq"
+   ],
+   "times": {
+    "seq": "log_seq",
+    "occurred_us": "utc_us",
+    "started_us": "utc_us",
+    "recorded_us": "utc_us",
+    "cause_seq": "log_seq"
+   },
+   "versions": {
+    "type_version": "trigger event_type_registered: family event_type, name type"
+   }
+  },
+  "log.event_artifact": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "role",
+    "artifact_id"
+   ],
+   "id": {
+    "seq": "link",
+    "role": "value: used or produced",
+    "artifact_id": "link"
+   },
+   "up": "seq",
+   "links": [
+    "artifact_id"
+   ],
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.event_text": {
+   "home": "log",
+   "key": [
+    "seq"
+   ],
+   "id": {
+    "seq": "link"
+   },
+   "up": "seq",
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.experience_made": {
+   "home": "projection",
+   "key": [
+    "experience_id"
+   ],
+   "id": {
+    "experience_id": "uuid7: the Host mints it when it renders a note's first version"
+   },
+   "up": "task_id",
+   "times": {
+    "made_seq": "log_seq",
+    "replaced_seq": "log_seq"
+   }
+  },
+  "log.experience_version": {
+   "home": "projection",
+   "key": [
+    "experience_id",
+    "version"
+   ],
+   "id": {
+    "experience_id": "link",
+    "version": "value: the experience's own rendering number, counted from 1"
+   },
+   "up": "experience_id",
+   "links": [
+    "note_seq"
+   ],
+   "times": {
+    "note_seq": "log_seq",
+    "recorded_seq": "log_seq"
+   },
+   "versions": {
+    "version": "own: the experience's rendering, the next one for each new renderer",
+    "renderer_version": "own: the Host renderer release that wrote this body (experiences.RENDERER_VERSION)"
+   }
+  },
+  "log.goal": {
+   "home": "projection",
+   "key": [
+    "goal_id"
+   ],
+   "id": {
+    "goal_id": "uuid7: the Host mints a new goal's id at its open; a goal opened before keeps its uuid5, as keys never change"
+   },
+   "up": "workspace_id",
+   "times": {
+    "deadline_us": "utc_us",
+    "set_seq": "log_seq",
+    "closed_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "open",
+      "done",
+      "dropped"
+     ],
+     "terminal": [
+      "done",
+      "dropped"
+     ],
+     "moves": {
+      "open": [
+       "done",
+       "dropped"
+      ]
+     },
+     "enforced_by": "trigger goal_state_moves"
+    }
+   }
+  },
+  "log.hypothesis": {
+   "home": "projection",
+   "key": [
+    "hypothesis_id"
+   ],
+   "id": {
+    "hypothesis_id": "uuid7"
+   },
+   "up": "goal_id",
+   "links": [
+    "workspace_id"
+   ],
+   "times": {
+    "stated_seq": "log_seq",
+    "standing_seq": "log_seq"
+   },
+   "status": {
+    "standing": {
+     "states": [
+      "open",
+      "supported",
+      "refuted",
+      "inconclusive",
+      "dropped"
+     ],
+     "terminal": [
+      "dropped"
+     ],
+     "moves": {
+      "open": [
+       "supported",
+       "refuted",
+       "inconclusive",
+       "dropped"
+      ],
+      "supported": [
+       "open",
+       "refuted",
+       "inconclusive",
+       "dropped"
+      ],
+      "refuted": [
+       "open",
+       "supported",
+       "inconclusive",
+       "dropped"
+      ],
+      "inconclusive": [
+       "open",
+       "supported",
+       "refuted",
+       "dropped"
+      ]
+     },
+     "enforced_by": "trigger hypothesis_standing_moves"
+    }
+   },
+   "edges": {
+    "workspace_id": "the parent of a hypothesis under no goal its workspace holds; a CHECK keeps exactly one parent"
+   }
+  },
+  "log.ledger_entry": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "line"
+   ],
+   "id": {
+    "seq": "link",
+    "line": "value: the line's place in its posting event"
+   },
+   "up": "book_id",
+   "links": [
+    "seq"
+   ],
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.live_ref": {
+   "home": "projection",
+   "key": [
+    "artifact_id",
+    "root_kind",
+    "root_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "root_kind": "value: what holds the body: task, book, publication, trial, backup, workspace or pin",
+    "root_id": "link"
+   },
+   "up": "artifact_id",
+   "links": [
+    "root_id"
+   ],
+   "times": {
+    "since_seq": "log_seq"
+   }
+  },
+  "log.measure": {
+   "home": "projection",
+   "key": [
+    "artifact_id",
+    "metric_id",
+    "metric_version",
+    "dims"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "metric_id": "link",
+    "metric_version": "link",
+    "dims": "value: the canonical JSON of a map of typed dimensions (project.dims); '{}' for the whole artifact"
+   },
+   "up": "artifact_id",
+   "links": [
+    "metric_id",
+    "metric_version"
+   ],
+   "times": {
+    "recorded_seq": "log_seq"
+   },
+   "versions": {
+    "metric_version": "definition"
+   }
+  },
+  "log.prediction": {
+   "home": "projection",
+   "key": [
+    "prediction_id"
+   ],
+   "id": {
+    "prediction_id": "uuid7"
+   },
+   "up": "trial_id",
+   "links": [
+    "workspace_id",
+    "score_metric_id",
+    "score_metric_version"
+   ],
+   "times": {
+    "horizon_us": "utc_us",
+    "registered_seq": "log_seq",
+    "outcome_seq": "log_seq"
+   },
+   "versions": {
+    "score_metric_version": "definition"
+   },
+   "edges": {
+    "workspace_id": "the parent of a prediction with no trial: a CHECK keeps exactly one of the two"
+   }
+  },
+  "log.recipe": {
+   "home": "projection",
+   "key": [
+    "recipe_id"
+   ],
+   "id": {
+    "recipe_id": "uuid7"
+   },
+   "links": [
+    "method_id",
+    "method_version"
+   ],
+   "times": {
+    "defined_seq": "log_seq"
+   },
+   "versions": {
+    "method_version": "definition"
+   }
+  },
+  "log.recipe_upstream": {
+   "home": "projection",
+   "key": [
+    "recipe_key",
+    "position"
+   ],
+   "id": {
+    "recipe_key": "link",
+    "position": "value: the upstream's place in the order its recipe reads it"
+   },
+   "up": "recipe_key",
+   "links": [
+    "upstream_key"
+   ],
+   "edges": {
+    "upstream_key": "the upstream recipe this recipe reads, not itself"
+   }
+  },
+  "log.selection": {
+   "home": "projection",
+   "key": [
+    "selection_id"
+   ],
+   "id": {
+    "selection_id": "uuid7"
+   },
+   "up": "workspace_id",
+   "times": {
+    "cutoff_us": "utc_us",
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "made_seq": "log_seq"
+   },
+   "links": [
+    "universe_id"
+   ]
+  },
+  "log.setting": {
+   "home": "projection",
+   "key": [
+    "scope",
+    "key"
+   ],
+   "id": {
+    "scope": "value: 'machine' or the workspace the setting belongs to",
+    "key": "value: the setting's name in the person's settings"
+   },
+   "times": {
+    "changed_seq": "log_seq"
+   }
+  },
+  "log.status_refusal": {
+   "home": "projection",
+   "key": [
+    "seq",
+    "name"
+   ],
+   "id": {
+    "seq": "link",
+    "name": "value: the schema's qualified status field name"
+   },
+   "up": "seq",
+   "times": {
+    "seq": "log_seq"
+   }
+  },
+  "log.tag": {
+   "home": "projection",
+   "key": [
+    "subject_kind",
+    "subject_id",
+    "key_id",
+    "value"
+   ],
+   "id": {
+    "subject_kind": "value: the kind of thing tagged",
+    "subject_id": "link",
+    "key_id": "link",
+    "value": "value: the vocabulary's value"
+   },
+   "links": [
+    "subject_id",
+    "key_id",
+    "tag_version"
+   ],
+   "times": {
+    "seq": "log_seq"
+   },
+   "versions": {
+    "tag_version": "definition"
+   }
+  },
+  "log.task": {
+   "home": "projection",
+   "key": [
+    "task_id"
+   ],
+   "id": {
+    "task_id": "uuid7"
+   },
+   "up": "goal_id",
+   "links": [
+    "parent_task_id",
+    "workspace_id",
+    "type_id"
+   ],
+   "times": {
+    "requested_seq": "log_seq",
+    "started_seq": "log_seq",
+    "ended_seq": "log_seq",
+    "admitted_us": "utc_us",
+    "updated_us": "utc_us",
+    "reviewed_seq": "log_seq",
+    "state_seq": "log_seq",
+    "lifecycle_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "requested",
+      "running",
+      "waiting",
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "terminal": [
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "moves": {
+      "requested": [
+       "running",
+       "failed",
+       "cancelled",
+       "waiting",
+       "completed"
+      ],
+      "running": [
+       "waiting",
+       "completed",
+       "failed",
+       "cancelled"
+      ],
+      "waiting": [
+       "running",
+       "failed",
+       "cancelled",
+       "completed"
+      ]
+     },
+     "enforced_by": "trigger task_state_moves"
+    },
+    "lifecycle": {
+     "states": [
+      "QUEUED",
+      "RUNNING",
+      "DEFERRED",
+      "REVIEW_PENDING",
+      "CANCEL_REQUESTED",
+      "CANCELLED",
+      "SUCCEEDED",
+      "BLOCKED",
+      "RECOVERY_REQUIRED"
+     ],
+     "terminal": [
+      "SUCCEEDED",
+      "CANCELLED"
+     ],
+     "moves": {
+      "QUEUED": [
+       "RUNNING",
+       "CANCELLED",
+       "BLOCKED",
+       "RECOVERY_REQUIRED"
+      ],
+      "RUNNING": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "REVIEW_PENDING",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "DEFERRED": [
+       "SUCCEEDED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "REVIEW_PENDING": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "CANCEL_REQUESTED": [
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ],
+      "RECOVERY_REQUIRED": [
+       "RUNNING",
+       "SUCCEEDED",
+       "DEFERRED",
+       "BLOCKED",
+       "CANCEL_REQUESTED",
+       "CANCELLED"
+      ],
+      "BLOCKED": [
+       "CANCELLED",
+       "RECOVERY_REQUIRED"
+      ]
+     },
+     "enforced_by": "trigger task_lifecycle_moves"
+    }
+   },
+   "versions": {
+    "product_version": "own: the product release it started under"
+   },
+   "edges": {
+    "workspace_id": "the parent of a task under no parent task and no goal; a CHECK keeps exactly one parent"
+   }
+  },
+  "log.task_step": {
+   "home": "projection",
+   "key": [
+    "task_id",
+    "step"
+   ],
+   "id": {
+    "task_id": "link",
+    "step": "value: the step's own name within its task: a recovery point"
+   },
+   "up": "task_id",
+   "times": {
+    "completed_seq": "log_seq"
+   }
+  },
+  "log.trial": {
+   "home": "projection",
+   "key": [
+    "trial_id"
+   ],
+   "id": {
+    "trial_id": "uuid7"
+   },
+   "up": "task_id",
+   "links": [
+    "hypothesis_id",
+    "selection_id",
+    "recipe_key"
+   ],
+   "times": {
+    "registered_seq": "log_seq",
+    "ended_seq": "log_seq",
+    "reviewed_seq": "log_seq",
+    "state_seq": "log_seq"
+   },
+   "status": {
+    "state": {
+     "states": [
+      "registered",
+      "running",
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "terminal": [
+      "completed",
+      "failed",
+      "cancelled"
+     ],
+     "moves": {
+      "registered": [
+       "running",
+       "failed",
+       "cancelled"
+      ],
+      "running": [
+       "completed",
+       "failed",
+       "cancelled"
+      ]
+     },
+     "enforced_by": "trigger trial_state_moves"
+    }
+   },
+   "versions": {
+    "product_version": "own: the product release it ran under"
+   }
+  },
+  "log.trial_experience": {
+   "home": "projection",
+   "key": [
+    "trial_id",
+    "experience_id",
+    "role"
+   ],
+   "id": {
+    "trial_id": "link",
+    "experience_id": "link",
+    "role": "value: read or reviewed"
+   },
+   "up": "trial_id",
+   "links": [
+    "experience_id"
+   ],
+   "times": {
+    "recorded_seq": "log_seq"
+   }
+  },
+  "log.wait": {
+   "home": "projection",
+   "key": [
+    "wait_id"
+   ],
+   "id": {
+    "wait_id": "uuid7"
+   },
+   "up": "task_id",
+   "links": [
+    "event_type_id"
+   ],
+   "times": {
+    "fires_us": "utc_us",
+    "started_seq": "log_seq",
+    "resolved_seq": "log_seq",
+    "resolved_by_seq": "log_seq"
+   }
+  },
+  "log.workspace": {
+   "home": "projection",
+   "key": [
+    "workspace_id"
+   ],
+   "id": {
+    "workspace_id": "uuid7"
+   },
+   "times": {
+    "created_seq": "log_seq",
+    "opened_seq": "log_seq",
+    "status_seq": "log_seq"
+   },
+   "status": {
+    "status": {
+     "states": [
+      "active",
+      "archived",
+      "missing",
+      "deleted"
+     ],
+     "terminal": [
+      "deleted"
+     ],
+     "moves": {
+      "active": [
+       "archived",
+       "missing",
+       "deleted"
+      ],
+      "archived": [
+       "active",
+       "missing",
+       "deleted"
+      ],
+      "missing": [
+       "active",
+       "archived",
+       "deleted"
+      ]
+     },
+     "enforced_by": "trigger workspace_status_moves"
+    }
+   }
+  },
+  "log.workspace_task_heartbeat_at": {
+   "home": "working",
+   "key": [
+    "execution_id"
+   ],
+   "id": {
+    "execution_id": "link"
+   },
+   "up": "execution_id",
+   "times": {
+    "last_heartbeat_us": "utc_us"
+   }
+  },
+  "log.workspace_task_projection": {
+   "home": "cache",
+   "key": [
+    "task_id"
+   ],
+   "id": {
+    "task_id": "link"
+   },
+   "up": "task_id",
+   "times": {
+    "updated_us": "utc_us"
+   }
+  }
+ },
+ "known": {}
+}

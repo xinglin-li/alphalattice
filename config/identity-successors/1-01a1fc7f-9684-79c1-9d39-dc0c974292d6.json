@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "9294286de37cd3d505a50eb446e3d7f399968c6522152c5b00b283a82dcdcd2e",
+   "successor": "7b9ad7bba10dc38cde91ef5720e30a47c0aded6107ca2e43f3366e96ecc8f602",
+   "change": "Load local Host routes on demand and speed up startup and shutdown",
+   "reason": "The Host now loads its request routes at first use instead of at start, so these four workflows' code moved while every answer they give is unchanged: the development replay and the request comparison read back equal, refusals included."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "54ac28c8e62da9c6337cfce29b929158c57122d9998afca900a145ed3b78ee3f",
+   "successor": "9ac5635c1d08eb5578dfa4061f68b67756661a1f067225ffcc94e1db8fb21735",
+   "change": "Load local Host routes on demand and speed up startup and shutdown",
+   "reason": "The Host now loads its request routes at first use instead of at start, so these four workflows' code moved while every answer they give is unchanged: the development replay and the request comparison read back equal, refusals included."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b67f5c358ed4a517e595ab32803cb66ab02d95f9c35887a409ec1e4fab91c6a2",
+   "successor": "020d638a5d2b9b8e5250d4498b7bc90b7157986fe4efc634abe75a53078073eb",
+   "change": "Load local Host routes on demand and speed up startup and shutdown",
+   "reason": "The Host now loads its request routes at first use instead of at start, so these four workflows' code moved while every answer they give is unchanged: the development replay and the request comparison read back equal, refusals included."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "eced425919c1dc0874638262bb0d2c157f6ddfe03cc97acae01784519e369131",
+   "successor": "efd3656957e946d9d54f0072ebafb632a2fa589472db6c4fc06491e2042f87e1",
+   "change": "Load local Host routes on demand and speed up startup and shutdown",
+   "reason": "The Host now loads its request routes at first use instead of at start, so these four workflows' code moved while every answer they give is unchanged: the development replay and the request comparison read back equal, refusals included."
+  }
+ ]
+}

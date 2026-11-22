@@ -24,8 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-
-import pandas as pd
+from typing import TYPE_CHECKING
 
 from alphalattice.foundation.feature_engine.catalog.contracts import DesktopCoreFeatureBundle
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
@@ -39,7 +38,10 @@ from alphalattice.foundation.feature_engine.producers.factors.core_bundle import
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-FeatureKernelFunction = Callable[[pd.DataFrame, FactorSpec], pd.Series]
+if TYPE_CHECKING:
+    import pandas as pd
+
+type FeatureKernelFunction = Callable[[pd.DataFrame, FactorSpec], pd.Series]
 
 
 @dataclass(frozen=True)
@@ -209,6 +211,8 @@ class FeatureKernelRegistry:
             ValueError: The implementation is unregistered, source fields are absent,
                 or the kernel returns a different number of rows.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         kernel = self.resolve(specification.formula_ref)
         required = {"listing_id", "session_date", *kernel.required_fields}
         missing = sorted(required - set(source.columns))

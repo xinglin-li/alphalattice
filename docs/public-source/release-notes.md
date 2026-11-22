@@ -1,7 +1,46 @@
 # AlphaLattice release notes
-Last checked: 2026-11-14 against 0.2.7
+Last checked: 2026-11-21 against 0.2.8
 
-Latest released version: [0.2.7](#027). Earlier measurements describe their own versions.
+Latest released version: [0.2.8](#028). Earlier measurements describe their own versions.
+
+## 0.2.8
+
+0.2.8 rebuilds how AlphaLattice keeps its data. Workspaces under one data root now share one append-only event log and one catalog, and each update publishes its market changes there once; a workspace keeps its own tables, features and Panels. A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back. The Daily, Evidence and queries are faster on the same machine.
+
+### Changed
+
+- Workspaces under one data root share one append-only event log and one catalog; each update publishes its market changes to the catalog once, and every workspace under the root reads market data there.
+- The first 0.2.8 start upgrades a 0.2.7 workspace in one start, after a verified backup; the upgrade's result reads equal to the 0.2.7 workspace on every compared record, and a restore from that backup reads equal too.
+- Evidence search keeps its text index and vectors in the Host's own store and updates them as documents change, with no separate search service.
+- A sealed file's digest is recorded when it is written and reused on later reads while the file is unchanged; a file with no settled digest is hashed when it is read.
+- Speed on one machine (a Windows 11 desktop, four cores, the same generated data for both versions), measured on a pre-release build as the median of three paired runs: the whole Daily took 190 s against 0.2.7's 333 s, and a cold `study list` 0.7 s against 2.7 s.
+
+### Known limits
+
+- A data root is moved or copied to another folder by backup and restore. A root moved or copied by hand is refused when it is opened; restore its backup in the new folder instead.
+- The first start after the upgrade from 0.2.7 composes the upgraded workspace once, which adds several seconds to that start only.
+- This release was not run live with Claude Code or Codex at its final commit. First use, the upgrade from 0.2.7 and the Daily are covered by tests and measured replays, not by a live session.
+
+### Deprecated
+
+- `answer:STORAGE_READBACK.inputs` and `answer:STORAGE_PLAN.bindings` are always empty, and `refusal:storage.input_binding_missing` is no longer raised; a version this machine does not hold is refused as `data_layer.input_missing`. Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them. Earliest removal is 0.3.0.
+- `operation:STORAGE_EVIDENCE_REBUILD` (`storage rebuild`) and `refusal:storage.evidence_generation_record_misfiled`: The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since. Read the evidence bytes with `operation:STORAGE_READBACK`. Earliest removal is 0.3.0.
+- `view:full` full stdout is deprecated (`read.legacy_full_deprecated`); use `--view summary --output PATH` for bounded display and the complete saved answer. Full stdout remains available; earliest removal is 0.3.0.
+- The data layer's rollback settings are retired: each family has one reader, the first 0.2.8 start upgrades a workspace's data, and its verified backup is the way back. The opt-in derived Feature and Panel reads went with them, so Feature values and Panel chunks are read from the workspace. Earliest removal of the refusals below is 0.3.0.
+- `refusal:causal_outcomes.outcome_store_invalid` is no longer raised; use `refusal:data_layer.outcome_missing`. The execution outcome rollback setting is retired; outcomes are read from the catalog.
+- `refusal:data_layer.derived_files_need_host` is no longer raised; use `refusal:data_layer.history_unavailable`. The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.
+- `refusal:feature_panel.chunk_unserved` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The opt-in derived Panel reads are retired; a missing chunk is refused as the stored reader refuses it.
+- `refusal:feature_panel.derived_reads_unserved` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.
+- `refusal:feature_panel.panel_reads_unknown` is no longer raised; use `refusal:feature_panel.logical_content_mismatch`. The Panel read setting is retired; Panel chunks are read from the workspace.
+- `refusal:market_data.market_reads_unknown` is no longer raised; use `refusal:data_layer.world_table_not_admitted`. The market read setting is retired; world serves market reads, with the workspace's tables before admission.
+- `refusal:portfolio_strategy_lab.array_store_invalid` is no longer raised; use `refusal:data_layer.array_missing`. The array store setting is retired; the Strategy Lab's lanes are read from the data root.
+- `refusal:risk_research.risk_store_invalid` is no longer raised; use `refusal:risk_research.covariance_chunk_incomplete`. The Risk store setting is retired; covariance is read from the catalog, with the packed file before admission.
+- `refusal:task_control.runtime_retirement_conflict` is no longer raised; use `refusal:task_control.heartbeat_import_unequal`. The upgrade no longer restores old Task runtime files; the pre-upgrade backup is the way back.
+- `refusal:workspace_database.derived_setup_absent` is no longer raised; use `refusal:data_layer.history_unavailable`. The opt-in derived Feature view is retired; Feature values are read from the workspace's table.
+
+### Fixed
+
+- A workspace backup restores on another machine, or into another folder, when `backup restore` names its generation by the whole hash; the newest generation and a shortened hash still find only generations taken in the same folder.
 
 ## 0.2.7
 

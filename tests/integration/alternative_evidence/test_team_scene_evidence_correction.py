@@ -58,7 +58,7 @@ from tests.alternative_evidence_desk.review_http_support import (
     build_workspace,
     start_service,
 )
-from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
 
 MODULES = (
@@ -537,12 +537,10 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         PortfolioResearchOperationRequest,
     )
 
-    goal = UUID(int=7)
     assert service.session.operations is not None
-    service.session.operations.goals.operate(
+    opened = service.session.operations.goals.operate(
         PortfolioResearchOperationRequest(
             operation="GOAL_OPEN",
-            goal_id=goal,
             goal_declaration={
                 "title": "Review",
                 "objective": "Review the book.",
@@ -553,6 +551,7 @@ def test_the_two_commands_carry_each_specialist_from_its_bundle_to_a_receipt(
         ),
         "EXTERNAL_AUTOMATION",
     )
+    goal = UUID(str(opened["goal_id"]))
 
     def run(*arguments: str) -> tuple[int, dict[str, Any]]:
         code = main(["--view", "full", *arguments], serve=lambda _: 99)
@@ -1018,13 +1017,13 @@ def _fifteen_keyed_submits_finish_while_a_task_runs_and_retries_keep_their_outco
             responses[0] = first.result(timeout=10)
         assert not late, "other keyed submissions waited for the held packet read"
         assert len(responses) == 15
-        ledger = service.session.activity._ledger
+        ledger = service.session.activity._reads
         assert ledger is not None
         recorded = ledger.observations_of_kind("ProductOperationObserved", limit=500)
         holds = [
             payload["subject"]["analyst_admission_gate_hold_us"]
             for row in recorded.items
-            if (payload := row.envelope.inline_safe_payload or {}).get("operation")
+            if (payload := row.record.inline_safe_payload or {}).get("operation")
             == "AGENT_ANSWER_SUBMIT"
             and payload.get("phase") == "RETURNED"
             and "analyst_admission_gate_hold_us" in payload.get("subject", {})
@@ -1269,7 +1268,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
         "activity": {"operation": "ACTIVITY_RECENT"},
         "tasks": {"operation": "TASKS"},
     }
-    assert service.session.activity is not None and service.session.activity._ledger is not None
+    assert service.session.activity is not None and service.session.activity._reads is not None
     # The same-Goal observation is the Host's, not the member's transcript.
     page = client.activity(limit=200)
     stalls = [
@@ -1287,7 +1286,7 @@ def _busy_refusal_is_counted_and_the_same_answer_can_be_resent(host, monkeypatch
         "AGENT_BUNDLE_PREPARE",
     )
     assert abs(subject["review_stall_wait_us"] / 1_000_000 - refused["waited_seconds"]) < 0.001
-    rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+    rows = service.session.activity._reads.refusal_counts(since_day="2000-01-01")
     assert (
         next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")["count"]
         == 1
@@ -1461,7 +1460,7 @@ def _held_answer_turn_returns_busy_then_allows_retry(host, monkeypatch, *, same_
             assert first_result["status"] == "CORRECT" and retried == first_result
         else:
             assert retried["status"] in {"ACCEPTED", "DONE", "REFUSED"}
-        rows = service.session.activity._ledger.refusal_counts(since_day="2000-01-01")
+        rows = service.session.activity._reads.refusal_counts(since_day="2000-01-01")
         assert (
             next(row for row in rows if row["failure_code"] == "agent_bundle.admission_busy")[
                 "count"

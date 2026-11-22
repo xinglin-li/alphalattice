@@ -52,6 +52,9 @@ from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import 
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     PortfolioReviewTaskAdapter,
 )
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.alternative_evidence_desk.planted_corpus import _NOW
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
@@ -66,6 +69,8 @@ from tests.portfolio_strategy_lab.synthetic_numerical import (
     prepared_for,
     snapshot_for,
 )
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 
 @pytest.fixture(
@@ -278,21 +283,20 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     assert subject["strategy_package_id"] == c.n.checkpoint.package.strategy_id
     assert subject["position_hash"] == c.value.pending_proposal.content_hash
     assert section["book"]["result_hash"] is None
-    goal_id = uuid4()
     declaration = {
         "title": "Positions",
         "objective": "Review positions",
         "kind": "RESEARCH",
         "criteria": [{"criterion_id": "positions", "text": "Positions stand."}],
     }
-    service.agent(
+    opened = service.agent(
         Request(
             operation="GOAL_OPEN",
-            goal_id=goal_id,
             change_reason="Review positions",
             goal_declaration=declaration,
         )
     )
+    goal_id = UUID(str(opened["goal_id"]))
     floor = committee.open_floor(
         service.session.operations.goals.store,
         goal_id,

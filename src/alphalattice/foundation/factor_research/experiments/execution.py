@@ -100,6 +100,47 @@ class FactorOutcomeReader(Protocol):
     ) -> pa.Table: ...
 
 
+SHIPPED_FACTOR_SCALE = (100, 10)
+"""The listings a period needs and the history years the default policies are built for."""
+SESSIONS_PER_YEAR_AT_LEAST = 245
+"""A year's sessions counted low, so folds sized from it always fit the calendar."""
+
+
+def factor_policies_at_scale(*, minimum_listings: int, history_years: int) -> dict[str, Any]:
+    """The Factor policies for a universe of this scale: none at the shipped scale, so every
+    shipped plan and identity keeps the defaults. A smaller universe (a development standard)
+    needs `minimum_listings` in each period. Its sealed holdout stays the one the execution
+    outcomes seal, and its train, validation and step lengths shrink in proportion until the
+    complete folds fit the development sessions left before that holdout; the formal periods a
+    redundancy pair needs shrink with them, to no fewer than three."""
+    if (minimum_listings, history_years) == SHIPPED_FACTOR_SCALE:
+        return {}
+    defaults = build_factor_walk_forward_policy()
+    folds = (
+        defaults.train_sessions
+        + defaults.validation_sessions
+        + (defaults.minimum_folds - 1) * defaults.step_sessions
+    )
+    development = history_years * SESSIONS_PER_YEAR_AT_LEAST - defaults.sealed_holdout_sessions
+    scale = min(1.0, development / folds)
+    return {
+        "evidence_policy": build_factor_evidence_policy(
+            minimum_cross_section_observations=minimum_listings
+        ),
+        "redundancy_policy": build_factor_redundancy_policy(
+            minimum_common_listings=minimum_listings,
+            minimum_formal_periods=max(
+                3, int(build_factor_redundancy_policy().minimum_formal_periods * scale)
+            ),
+        ),
+        "walk_forward_policy": build_factor_walk_forward_policy(
+            train_sessions=max(2, int(defaults.train_sessions * scale)),
+            validation_sessions=max(1, int(defaults.validation_sessions * scale)),
+            step_sessions=max(1, int(defaults.step_sessions * scale)),
+        ),
+    }
+
+
 class FactorExperimentExecutor:
     """Adapt the deterministic Factor path to the Desk executor Protocol.
 

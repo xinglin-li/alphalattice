@@ -1,0 +1,153 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "8c9bd6c73a4041534d6ec570e3647327476b4d97f843483f2cf7bf077ea8e434",
+   "successor": "5e9b41d3b61458f5aef831cf886bf6b09b04a9a704357393eeb2ddca19005c56",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "169d817e28fbbf96a4c1326bcbe7d66115c72343f294b814b4413a1c79a7ee2b",
+   "successor": "8aad92d3ffbb644b0bedd4d059325a9f331652b2ac46fadd6f4bfe0e760bd33c",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "dafb82f4b1e59df14aca7d89dc50c4c2eb04fab513f725dda2ff2e319f1c6dc6",
+   "successor": "a9e7874412ee2e19aaf70a898602f9e845f6c563f712446d79502d7c19693545",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "114dcd9c86902d4308e05458cdcf22c4ec401cfbb7f55bbfa5f46fb079fd781d",
+   "successor": "d8f3b91de1cdcf863598ceae44f5ecccec7a228d8862f673d504494e6cc86f75",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "e6e00ec3d13704bff23c99c51558bf0e92ab6286572903beeec2f998b20d660a",
+   "successor": "f834067d8353f398eaedde66db788d9fa7bb8bbf3c84ec134421ff80516c236f",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "499057fc260c87c30928e69638d75242a56e62042211d5bc2f1d513b4184ab31",
+   "successor": "5041145122636d21c54de3fd19ab15bc348abe268ff09cdb81934cee9480ec7b",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "ff777de518b22e66e936004321eddf67d52f356e2dd6a636446a31296692f6b8",
+   "successor": "cddb244a202c8d6892784cfa86b59036e660402f24143fc0688bddc6aa9a02b7",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "3d165b826612ef9510b7c6a56a8a03927303e859ef442bcc480b26253261adb5",
+   "successor": "caba1227acf7082d26680df01699b2425e149f6fcf384332709f3d03ef4e4cbf",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "d999e336902465e27182213e1c03f78864901c9f9e8bc089bff3f8cf1dbbe8b5",
+   "successor": "5c6b165f4c7b85ec1e9303d020afedd91da4f8e66621bb215789916972e87977",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3d76dd1c765752852318ff303a4783876d99509279150248084bca2b646ab7dd",
+   "successor": "4beec2613729928d2bc24ec268c7326e2391d3c02cda2f506d88ccca2b413542",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "4534822cf05b236f2ef640c70a638124a1e6e6dc1ac813539dd0f6cbd849876f",
+   "successor": "e4611572549e5f9ab300b64ec562ef4cc68f6985defbc5caa03db5349b694190",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "a9e4cb571c61b279396b584674388e8da2ffb8b42606aa0a7357cf7293e5c8a0",
+   "successor": "78524e92c2e8b85bc04a406034aba0f4177747594de34e65d1b92fa241c85fb2",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "a7972806068252c0c548e863dedf3d7c348d658ea52daa794f1e6349dbb1b9be",
+   "successor": "0f9cd3bb28b717561da63368fe924508d67343a2856ec4097bcf8909a45dd0ca",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "efe76560e01e6e9f7de106140f938cd98b6a06945a570e21d5b27e710c77b5d8",
+   "successor": "bf66fd169da4724e7bd9e636f595f88fea3097e8210524ab318e285b96d2e970",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "09f282c8916858d7cf95ede1e78b591a2f286cf33cf54d8ff7a884b974dc8e25",
+   "successor": "3a36fefbc0b0f7369b8b58f31465d70868d8f8e6062549e4de2a01a6b1d8ec41",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1d5c893a9052fae3a42939193eee4ea7669bd995bdc898499d7b031fb773daa2",
+   "successor": "efeddf21ffdb8b5525b2b2b0872f2075157ac455a7b6f310d2feeb5b369873ba",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1d5c893a9052fae3a42939193eee4ea7669bd995bdc898499d7b031fb773daa2",
+   "successor": "efeddf21ffdb8b5525b2b2b0872f2075157ac455a7b6f310d2feeb5b369873ba",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "23faab257daad664c11248088ce73807ff3b75319b48e99d5fd8f1174770d93f",
+   "successor": "51208904b81a7130ee1703f97980a245d688f718882936628375e1c19f29f8fb",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "34f48ab96f607f73a247a0a9cc1cac9e87206104c110b76b0b585d4af2c48d6c",
+   "successor": "2e23fbfe5d79465ab9fa3df7334b3832a6a0d27333792fdde9bf300ec2a75912",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "66c42d278f0f99dfe38c4e482de931d2fe0d808e5811e16d6e2c1247e8b72cd8",
+   "successor": "1930398f101898ad2341117ab347082404f30b714f028b3435f8557708f2c6f2",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "efad03d22a7d983d43ab096dbd6182e5aff5b9352c3274124fa0bdc8bf8b40fe",
+   "successor": "eb436116908b14b08eb10ba6bc880a76f44c713e2a3071c28cf6bdb1d1622222",
+   "change": "DuckDB connections honour OMP_NUM_THREADS as a thread limit",
+   "reason": "the repair binds the share at instance creation and keeps the applied-only reader; thread counts move no result, the queries order rows and sum no floating point; unset keeps today's threads; the same 21 roles by code closure"
+  }
+ ]
+}

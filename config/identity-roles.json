@@ -551,6 +551,14 @@
       "closure": "LISTED"
     },
     {
+      "role": "sector_research.development_execution",
+      "owner": "sector_research",
+      "installed": "alphalattice.investment.sector_research.experiments.development_artifacts:sector_development_source_closure_hash",
+      "arguments": {},
+      "comparison": "IS_CURRENT",
+      "closure": "LISTED"
+    },
+    {
       "role": "sector_research.forecast_catalog",
       "owner": "sector_research",
       "installed": "alphalattice.investment.sector_research.models.catalog:build_installed_sector_forecast_catalog",

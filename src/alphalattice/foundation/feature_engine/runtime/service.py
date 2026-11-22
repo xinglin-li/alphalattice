@@ -9,9 +9,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
-from typing import Any, NamedTuple, cast
-
-import pandas as pd
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
@@ -140,6 +138,9 @@ from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictErr
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 _PANEL_CONNECTION_SESSION_BUDGET = 630
 _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
 """A listing's computation, run in the Host's kept workers (W10)."""
@@ -182,6 +183,8 @@ def feature_source_frame(
     Returns:
         One row per bar, or per calendar session when aligned.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = pd.DataFrame(projected_feature_rows(source))
     if sessions is not None:
         frame = align_feature_source_sessions(frame, tuple(sessions))
@@ -416,6 +419,8 @@ class FeatureFoundationService:
         ``compose_panel=False`` stops once the base values are materialized and the Sector
         revision is active, for a membership its baseline qualification will replace.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         now = observed_at or datetime.now(UTC)
         if now.tzinfo is None:
             raise ValueError("feature build observed_at must be timezone-aware")
@@ -627,7 +632,9 @@ class FeatureFoundationService:
             with (
                 self.mutation_gate.hold(),
                 self.feature_state.feature_build_connection() as base_connection,
-                child_calls(_LISTING_ROWS, workers=workers) as calls,
+                child_calls(
+                    _LISTING_ROWS, workers=workers, preload_models=shipped_kernels is not None
+                ) as calls,
             ):
                 self.feature_persistence.reconcile_pending(
                     self.catalog.binding.catalog_hash,
@@ -1357,7 +1364,7 @@ class FeatureFoundationService:
         # records them in chunk order, as it did one by one (W10). A chunk a Sector
         # reclassification falls inside is one call per run of sessions that read one
         # map.
-        with child_calls(_PANEL_CHUNK, workers=workers) as panel_calls:
+        with child_calls(_PANEL_CHUNK, workers=workers, preload_models=False) as panel_calls:
             for factor_ids, grouped_sessions in panel_groups:
                 for connection_start in range(
                     0, len(grouped_sessions), _PANEL_CONNECTION_SESSION_BUDGET
@@ -1968,6 +1975,8 @@ class FeatureFoundationService:
         row before reusing it and the judgement after the build sees the
         recomputed ones.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         catalog_hash = self.catalog.binding.catalog_hash
         rows = self.feature_state.feature_rows(
             listing_ids=listing_ids,
@@ -2000,6 +2009,10 @@ class FeatureFoundationService:
         if not require_current_source or not qualification.exclusions:
             return qualification
         rows_by_listing = {str(row["listing_id"]): row for row in rows}
+        observed = self.market_data.raw_bar_sessions_by_listing(
+            [listing_id for listing_id, _reasons in qualification.exclusions],
+            through=as_of_session,
+        )
         market_frame: pd.DataFrame | None = None
         unproven: list[str] = []
         for listing_id, reasons in qualification.exclusions:
@@ -2017,6 +2030,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed[listing_id],
             ):
                 unproven.append(listing_id)
         if not unproven:
@@ -2033,8 +2047,10 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether a listing's unavailability at ``as_of_session`` is today's.
+        """Whether a listing's unavailability at ``as_of_session`` is today's, given its observed
+        sessions through it (read for every listing judged in one read).
 
         One bounded read of this listing (its window of source rows), only
         for a listing about to be excluded; the market frame is the caller's,
@@ -2051,6 +2067,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             )
         owners = self.layer.factor_parts()
         for part_hash in sorted({owners[factor_id] for factor_id in missing_factor_ids}):
@@ -2075,6 +2092,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             ):
                 return False
         return True
@@ -2090,8 +2108,10 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether the materialization that computed one catalog's row still applies."""
+        """Whether the materialization that computed one catalog's row still applies, given the
+        listing's observed sessions through ``as_of_session``."""
         receipt = row.get("source_verification_receipt_hash")
         if receipt is None:
             return False
@@ -2117,7 +2137,6 @@ class FeatureFoundationService:
         window, start, end = windows[receipt_hash]
         if not start <= as_of_session <= end:
             return False
-        observed = self.market_data.raw_bar_sessions(listing_id, through=as_of_session)
         if not observed:
             return False
         if observed_at is None and allows_missing_source_rows(self.panel.policy_hash):

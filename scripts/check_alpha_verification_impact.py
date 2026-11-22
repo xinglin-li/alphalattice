@@ -33,6 +33,7 @@ from alphalattice.investment.alpha_research.verification.identity import (  # no
 from alphalattice.investment.alpha_research.verification.impact import (  # noqa: E402
     alpha_verification_impact,
 )
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 
 # The gate owns the structural set; this runner only needs to know which paths
 # it has already executed. `check_playpen` imports no product runtime, so
@@ -319,7 +320,7 @@ def _run_group(
     print(f"PLAYPEN_TEST_STARTED {json.dumps(group)}", flush=True)
     with TemporaryDirectory(prefix="playpen-test-report-") as temporary:
         report = Path(temporary) / "junit.xml"
-        completed = subprocess.run(
+        completed = spawn.run(
             (
                 sys.executable,
                 "-m",
@@ -335,7 +336,9 @@ def _run_group(
                 *group,
             ),
             cwd=PLAYPEN_ROOT,
-            env=dict(os.environ),
+            env={
+                key: value for key, value in os.environ.items() if key != "ALPHALATTICE_DATA_ROOT"
+            },
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
             check=False,
@@ -343,6 +346,7 @@ def _run_group(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=5400,
         )
         costs = _junit_file_seconds(report, group)
     return TestGroupRun(
@@ -1109,7 +1113,7 @@ def _parent_tree(revision: str) -> Path:
 
     holder: TemporaryDirectory[str] = TemporaryDirectory(prefix="impact-parent-")
     _PARENT_TREES.append(holder)  # kept for the process, removed at its end
-    archive = subprocess.run(
+    archive = spawn.run(
         ("git", "-C", str(PLAYPEN_ROOT), "archive", "--format=tar", revision, "src", *_CASE_ROOTS),
         check=True,
         capture_output=True,
@@ -1122,7 +1126,7 @@ def _parent_tree(revision: str) -> Path:
 def _deleted_module_tests(value: str) -> tuple[str, ...]:
     """A deleted module's consumer tests, from the parent commit's graph (V106)."""
 
-    held = subprocess.run(
+    held = spawn.run(
         ("git", "-C", str(PLAYPEN_ROOT), "cat-file", "-e", f"{_PARENT_REVISION}:{value}"),
         capture_output=True,
         check=False,
@@ -1234,9 +1238,7 @@ def _declared_holders(
         command.append("--cached")
     elif base:
         command.append(base)
-    raw = subprocess.run(
-        command, check=True, capture_output=True, text=True, encoding="utf-8"
-    ).stdout
+    raw = spawn.run(command, check=True, capture_output=True, text=True, encoding="utf-8").stdout
     fields = raw.split("\0")
     if fields[-1:] == [""]:
         fields.pop()
@@ -1290,10 +1292,10 @@ def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
     elif base is not None:
         args.append(base)
     args.extend(("--name-only", "--diff-filter=ACDMR", "-z"))
-    completed = subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8")
+    completed = spawn.run(args, check=True, capture_output=True, text=True, encoding="utf-8")
     paths = {value for value in completed.stdout.split("\0") if value}
     if not staged and base is None:
-        untracked = subprocess.run(
+        untracked = spawn.run(
             (
                 "git",
                 "-c",

@@ -1,0 +1,41 @@
+[[live-check.matchers]]
+id = "cli.call"
+sample_type = "span"
+when = 'name == "cli.call"'
+signal = "cli.call"
+
+[[live-check.matchers]]
+id = "host.request"
+sample_type = "span"
+when = 'name == "host.request"'
+signal = "host.request"
+
+[[live-check.matchers]]
+id = "product.operation"
+sample_type = "span"
+when = 'name == "product.operation"'
+signal = "product.operation"
+
+[[live-check.matchers]]
+id = "task.telemetry"
+sample_type = "span"
+when = 'name == "task.telemetry"'
+signal = "task.telemetry"
+
+[[live-check.matchers]]
+id = "worker.call"
+sample_type = "span"
+when = 'name == "worker.call"'
+signal = "worker.call"
+
+[[live-check.matchers]]
+id = "gen_ai.retrieval"
+sample_type = "span"
+when = 'name == "gen_ai.retrieval"'
+signal = "gen_ai.retrieval"
+
+[[live-check.matchers]]
+id = "gen_ai.memory.client"
+sample_type = "span"
+when = 'name == "search_memory" || name == "create_memory"'
+signal = "gen_ai.memory.client"

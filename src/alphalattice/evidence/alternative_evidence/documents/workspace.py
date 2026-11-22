@@ -10,14 +10,7 @@ from uuid import UUID
 
 from alphalattice.control.workspace_runtime.core import Workspace
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
-from alphalattice.kernel.knowledge.retrieval import WorkspaceKnowledgeLibrary
-from alphalattice.kernel.knowledge.retrieval_contracts import (
-    KnowledgeAccessClass,
-    KnowledgeMediaType,
-    KnowledgeNamespace,
-    KnowledgeSourceCommitment,
-    WorkspaceKnowledgeDocument,
-)
+from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
@@ -26,15 +19,15 @@ from ..contracts import AlternativeEvidenceReadingDepth, seal_contract
 from ..sources.contracts import (
     AcquiredEvidenceDocument,
     AcquiredEvidenceDocumentReference,
-    source_object_bytes,
-    source_object_relative,
 )
+from ..storage import world, world_reads
 from .contracts import (
     AlternativeEvidenceCanonicalDocument,
     AlternativeEvidenceDocumentReference,
     AlternativeEvidenceDocumentRejection,
     AlternativeEvidenceDocumentSet,
 )
+from .library import EvidenceLibrary
 
 
 class AlternativeEvidenceDocumentPublisher:
@@ -43,12 +36,27 @@ class AlternativeEvidenceDocumentPublisher:
     def __init__(self, workspace_root: Path) -> None:
         """Bind document publication to one confined workspace."""
         self.workspace = Workspace.create(workspace_root)
-        self.library = WorkspaceKnowledgeLibrary(self.workspace)
+        self._library: EvidenceLibrary | None = None
+
+    @property
+    def library(self) -> EvidenceLibrary:
+        """The canonical documents in the Host's store, held from the first use; refused by name
+        outside a Host whose history records, which alone holds the store's writer."""
+        if self._library is None:
+            opened = history.opened_log()
+            if opened is None:
+                raise ValueError("alternative_evidence.host_history_unavailable")
+            self._library = EvidenceLibrary(*opened)
+        return self._library
 
     # ------------------------------------------------------- source objects
 
     def publish_source_object(
-        self, document: AcquiredEvidenceDocument, *, admit: Callable[[int], None] | None = None
+        self,
+        document: AcquiredEvidenceDocument,
+        *,
+        admit: Callable[[int], None] | None = None,
+        world_root: Path | None = None,
     ) -> AcquiredEvidenceDocumentReference:
         """Keep one document's original bytes once, by content address.
 
@@ -61,8 +69,8 @@ class AlternativeEvidenceDocumentPublisher:
         and canonical text are different assets -- a normalization is not
         reversible -- so both are kept, each once.
         """
-        content_sha256 = sha256_hex(document.content)
-        relative = source_object_relative(content_sha256)
+        reference = self.source_reference_of(document)
+        relative = reference.content_object_path
         with self.workspace.lock():
             target = make_confined_parents(self.workspace.root, relative)
             target = resolve_confined(self.workspace.root, relative)
@@ -70,7 +78,7 @@ class AlternativeEvidenceDocumentPublisher:
                 try:
                     if not target.is_file():
                         raise ValueError("not a file")
-                    source_object_bytes(target.read_bytes(), content_sha256, len(document.content))
+                    world_reads.workspace_body(target, reference, root=world_root)
                 except ValueError as error:
                     raise ValueError("alternative_evidence.source_object_integrity") from error
             else:
@@ -78,10 +86,15 @@ class AlternativeEvidenceDocumentPublisher:
                     admit(len(document.content))
                 staged = target.with_name(f".{target.name}.{os.getpid()}.staging")
                 staged.unlink(missing_ok=True)
-                write_new(staged, document.content)
+                stored = (
+                    document.content
+                    if world_root is None
+                    else world.keep_original(world_root, document.content)
+                )
+                write_new(staged, stored)
                 os.replace(staged, target)
                 fsync_directory(target.parent)
-        return AcquiredEvidenceDocumentReference.of(document, content_sha256=content_sha256)
+        return reference
 
     def source_reference_of(
         self, document: AcquiredEvidenceDocument
@@ -95,21 +108,54 @@ class AlternativeEvidenceDocumentPublisher:
             document, content_sha256=sha256_hex(document.content)
         )
 
-    def holds_source_object(self, content_sha256: str) -> bool:
-        """Whether bytes are already kept at this content address."""
-        path = resolve_confined(self.workspace.root, source_object_relative(content_sha256))
-        return bool(path.is_file())
+    def holds_source_object(
+        self, reference: AcquiredEvidenceDocumentReference, *, as_of: datetime | None
+    ) -> bool:
+        """Whether the reference's bytes are held: as world knew its document at `as_of` when world
+        serves the evidence reads (`world_reads.serving`) and holds that body, else at this
+        workspace's content address. `as_of` None asks this workspace's own store, as a writer
+        sizing what it adds does."""
+        port = None if as_of is None else world_reads.serving()
+        if port is not None and as_of is not None:
+            served = world_reads.body(port, reference, as_of)
+            if served.held:
+                return served.content is not None
+        path = resolve_confined(self.workspace.root, reference.content_object_path)
+        if port is None or as_of is None or not path.is_file():
+            return bool(path.is_file())
+        content = world_reads.workspace_body(path, reference, root=port.root)
+        return world_reads.known(port, content, as_of) is not False
+
+    def require_known(self, content: bytes, *, as_of: datetime | None) -> None:
+        """Refuse as missing a body world holds but did not know at `as_of`, however it is read:
+        from this workspace's store, under another source's reference, or inline. Nothing when
+        world does not serve the evidence reads, `as_of` is None, or world does not hold it."""
+        port = None if as_of is None else world_reads.serving()
+        knew = None if port is None or as_of is None else world_reads.known(port, content, as_of)
+        if knew is False:
+            raise ValueError("alternative_evidence.source_object_missing")
 
     def resolve_source_object(
-        self, reference: AcquiredEvidenceDocumentReference
+        self, reference: AcquiredEvidenceDocumentReference, *, as_of: datetime | None
     ) -> AcquiredEvidenceDocument:
-        """The document with its retained bytes, or a refusal that names what is wrong."""
+        """The document with its retained bytes, or a refusal that names what is wrong: read through
+        world's `evidence_doc_asof` at `as_of` when world serves the evidence reads, a body world
+        did not know then refused as missing; else from this workspace's store, as `as_of` None
+        always reads, for a store being imported."""
+        port = None if as_of is None else world_reads.serving()
+        if port is not None and as_of is not None:
+            served = world_reads.body(port, reference, as_of)
+            if served.held:
+                if served.content is None:
+                    raise ValueError("alternative_evidence.source_object_missing")
+                return reference.resolve(served.content)
         path = resolve_confined(self.workspace.root, reference.content_object_path)
         if not path.is_file():
             raise ValueError("alternative_evidence.source_object_missing")
-        content = source_object_bytes(
-            path.read_bytes(), reference.content_sha256, reference.content_bytes
+        content = world_reads.workspace_body(
+            path, reference, root=None if port is None else port.root
         )
+        self.require_known(content, as_of=as_of)
         try:
             return reference.resolve(content)
         except ValueError as error:
@@ -131,63 +177,32 @@ class AlternativeEvidenceDocumentPublisher:
         if not documents:
             raise ValueError("alternative_evidence.document_set_empty")
         if admit is not None:
-            # The bytes this publication adds: canonical blobs the library does
-            # not hold yet (content-addressed, so a filing already in the
-            # library adds nothing) and one small manifest per revision.
-            new_blobs = 0
-            for value in documents:
-                blob = self.workspace.root / "knowledge" / "blobs" / value.canonical_content_hash
-                if not blob.is_file():
-                    new_blobs += value.byte_count
-            admit(new_blobs + 4096 * len(documents))
+            # The bytes this publication may add to the Host's log: each canonical body and one
+            # small manifest per revision (a revision the store holds already adds nothing).
+            admit(sum(value.byte_count for value in documents) + 4096 * len(documents))
         revisions = []
         references = []
         for value in sorted(documents, key=lambda item: item.semantic_handle):
             document_id = _workspace_document_id(value)
-            access_class = (
-                KnowledgeAccessClass.SYSTEM
-                if value.source_name == "SEC_EDGAR"
-                else KnowledgeAccessClass.USER_PRIVATE
-            )
-            namespace = (
-                KnowledgeNamespace.SYSTEM_REFERENCE
-                if access_class is KnowledgeAccessClass.SYSTEM
-                else KnowledgeNamespace.USER_REFERENCE
-            )
-            document = WorkspaceKnowledgeDocument.create(
-                document_id=document_id,
-                namespace=namespace,
-                title=value.title[:160],
-                media_type=KnowledgeMediaType.MARKDOWN,
-            )
-            source = KnowledgeSourceCommitment(
-                source_id=f"ae.{value.source_name.casefold().replace('_', '-')}",
-                source_revision=1,
-                source_logical_hash=value.canonical_content_hash,
-                license_id=(
-                    "SEC-PUBLIC-FILING"
-                    if value.source_name == "SEC_EDGAR"
-                    else "USER-PROVIDED-LOCAL-RESEARCH"
-                ),
-                access_class=access_class,
-                available_at=value.available_at,
-            )
             receipt = self.library.publish_revision(
-                document=document,
-                revision=1,
-                source=source,
-                # Dated by the evidence, not by the task that happened to read
-                # it. The document id is content-addressed, so a second book
-                # asking about a filing already in the library republishes the
-                # same id; with the task's clock here the manifest differed and
-                # the immutable store refused it, so only the first evidence
-                # refresh in a workspace could ever succeed. `available_at` is
-                # a property of the filing, which makes the republish
-                # byte-identical and takes the library's replay path.
-                created_at=value.available_at,
-                content=value.canonical_markdown,
+                document_id=document_id,
+                title=value.title[:160],
+                # Dated by the evidence, not by the task that happened to read it: the document id
+                # is content-addressed, so a second book asking about a filing already published
+                # republishes the same revision, byte for byte.
+                source={
+                    "source_id": f"ae.{value.source_name.casefold().replace('_', '-')}",
+                    "source_logical_hash": value.canonical_content_hash,
+                    "license_id": (
+                        "SEC-PUBLIC-FILING"
+                        if value.source_name == "SEC_EDGAR"
+                        else "USER-PROVIDED-LOCAL-RESEARCH"
+                    ),
+                    "available_at": value.available_at.isoformat(),
+                },
+                content=value.canonical_markdown.decode("utf-8"),
             )
-            revisions.append(receipt.revision)
+            revisions.append(receipt)
             references.append(
                 AlternativeEvidenceDocumentReference(
                     semantic_handle=value.semantic_handle,
@@ -213,14 +228,7 @@ class AlternativeEvidenceDocumentPublisher:
                 )
             )
         ordered_revisions = tuple(
-            sorted(
-                revisions,
-                key=lambda item: (
-                    item.document.namespace.value,
-                    item.document.document_id,
-                    item.revision,
-                ),
-            )
+            sorted(revisions, key=lambda item: (item.document.document_id, item.revision))
         )
         snapshot_id = _stable_uuid(
             canonical_hash(

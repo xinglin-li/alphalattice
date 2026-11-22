@@ -1,9 +1,8 @@
 """Control CPU use for preparation, Task reads, and Alpha model fits.
 
 An execution parameter is the operator's, never identity (the final close-out, F1). A budget
-changes how fast a preparation runs and never what it prepares: each model session proves
-the retrieval canary when it loads (`knowledge_hybrid_contracts.EMBEDDING_CANARIES`), so no
-number depends on how the cores are split. The operator sets `auto` or a number of cores in
+changes how fast a preparation runs and never what it prepares: no number depends on how
+the cores are split. The operator sets `auto` or a number of cores in
 the workspace's typed configuration (`runtime/execution/cpu-budget.json`), by the CLI
 (`cpu-budget set --cores`) or in the Workbench's settings; `auto` takes the processors not
 in use when a preparation starts, never fewer than one session's safe threads
@@ -28,6 +27,7 @@ import importlib.metadata
 import os
 import platform
 import sys
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -37,24 +37,36 @@ from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    MAXIMUM_SESSION_THREADS,
-    safe_intra_op_threads,
-)
-from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
+from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+from alphalattice.kernel.shared_kernel.waits import pause
+
+MAXIMUM_SESSION_THREADS = 16
+"""The most threads one unit is planned (S2 measured 1-16, identical)."""
+
+
+def safe_intra_op_threads(cpu_count: int | None = None) -> int:
+    """The desktop-safe threads of one unit when no CPU budget says otherwise: the processors,
+    up to four (`os.cpu_count()` when `cpu_count` is None)."""
+    detected = os.cpu_count() if cpu_count is None else cpu_count
+    return max(1, min(4, detected or 1))
+
 
 EXECUTION_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, beside the Host's own state and outside the managed
 evidence roots: a setting and a log, not evidence."""
 CPU_BUDGET_FILE = "cpu-budget.json"
 PREPARATIONS_FILE = "preparations.jsonl"
+FIRST_UNIT_WAIT_SECONDS = 1800.0
+"""The longest a later unit waits for its book's first unit (162 s on the median book)."""
+FIRST_UNIT_POLL_SECONDS = 0.5
+"""How often a later unit reads whether the first unit is prepared."""
 MODEL_FITS_FILE = "model-fits.jsonl"
 TASKS_FILE = "tasks.jsonl"
 MAXIMUM_CPU_BUDGET = 1024
@@ -394,61 +406,49 @@ class CpuBudgetStore:
 
 
 class RunningPreparations:
-    """The book preparations of this process, and the threads their sessions load with.
-
-    A unit's own stages lease sessions of its share (`threads`: the first unit its plan's
-    `threads_first_unit`, a later unit `threads_per_session`), side by side (F2). Sessions
-    leased elsewhere -- a selection's reader -- load with the fewest threads any running
-    preparation allows (`VERIFIED_PACKS.use_threads`): the first unit's while it runs alone,
-    the later units' share once they begin their model work (`open`).
-    """
+    """The book preparations of this process, which a new plan shares the budget with."""
 
     def __init__(self) -> None:
-        """Track concurrent preparations and their model session widths."""
+        """Track the preparations running in this process."""
         self._lock = Lock()
-        self._threads: dict[UUID, int] = {}
         self._plans: dict[UUID, PreparationExecution] = {}
 
     def begin(self, task_id: UUID, plan: PreparationExecution) -> None:
-        """Register a preparation and apply its first-unit session width."""
+        """Register a preparation's plan."""
         with self._lock:
             self._plans[task_id] = plan
-            self._threads[task_id] = plan.threads_first_unit
-            VERIFIED_PACKS.hold_up_to(plan.units_at_once)
-            self._apply()
-
-    def open(self, task_id: UUID) -> None:
-        """Apply the session width for later units in a preparation."""
-        with self._lock:
-            plan = self._plans.get(task_id)
-            if plan is None or self._threads.get(task_id) == plan.threads_per_session:
-                return
-            self._threads[task_id] = plan.threads_per_session
-            self._apply()
-
-    def threads(self, task_id: UUID, *, first: bool) -> int | None:
-        """Return a unit's session width, if its Task was planned."""
-        with self._lock:
-            plan = self._plans.get(task_id)
-        if plan is None:
-            return None
-        return plan.threads_first_unit if first else plan.threads_per_session
 
     def running(self, alive: Callable[[UUID], bool]) -> int:
         """How many run, forgetting those `alive` says have ended."""
         with self._lock:
             for task_id in [value for value in self._plans if not alive(value)]:
                 del self._plans[task_id]
-                self._threads.pop(task_id, None)
-            self._apply()
             return len(self._plans)
-
-    def _apply(self) -> None:
-        VERIFIED_PACKS.use_threads(min(self._threads.values()) if self._threads else None)
 
 
 PREPARATIONS = RunningPreparations()
-"""This process's preparations (model sessions are the process's; `VERIFIED_PACKS`)."""
+"""This process's preparations."""
+
+
+def first_unit_settled(state: Callable[[], object]) -> bool:
+    """Wait until `state()` reads a book's first unit as no longer ``PENDING``: True then; False
+    at once when `state()` reads None (the Task ended or failed). A first unit still pending at
+    `FIRST_UNIT_WAIT_SECONDS` ends the wait by name, so a stuck first unit holds no later unit
+    without end and is seen.
+
+    Raises:
+        RuntimeError: ``alternative_evidence.first_unit_wait_expired``, the later unit's failure.
+    """
+    deadline = time.monotonic() + FIRST_UNIT_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        checkpoint()
+        now = state()
+        if now is None:
+            return False
+        if now != "PENDING":
+            return True
+        pause(FIRST_UNIT_POLL_SECONDS)
+    raise RuntimeError("alternative_evidence.first_unit_wait_expired")
 
 
 class TaskCpuLeases:
@@ -470,7 +470,7 @@ class TaskCpuLeases:
     def lease(self, task_id: UUID, cores: int, ceiling: int) -> Iterator[int]:
         """Hold the Task's cores while it runs; yield how many other Tasks hold cores."""
         with self._turn:
-            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling  # noqa: E731
+            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling
             self._turn.wait_for(fits)
             self._held[task_id] = cores
             others = len(self._held) - 1

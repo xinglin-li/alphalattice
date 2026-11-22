@@ -1,15 +1,18 @@
 import contextlib
 import json
-import subprocess
+import os
+import shutil
 import sys
 import time
 from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from scripts import pipeline as cli
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import receipt
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -220,11 +223,60 @@ for _case in (
 
 
 CASES["reader without pytest"] = ({}, {}, None)
+MOVES = {"move", "edited-move", "duplicate-move", "duplicate-source", "copy"}
+
+
+def _binding_history(root: Path, dup: bool, op: str) -> dict[str, str]:
+    """The source and target commits of one binding history: built once, copied per case."""
+    old_path, new_path = "tests/test_old.py", "tests/test_new.py"
+    _git(root, "init", "-q", "-b", "develop")
+    (root / "tests").mkdir()
+    (root / old_path).write_text("def test_a(): pass\n", encoding="utf-8")
+    if dup:
+        (root / "tests/test_duplicate.py").write_bytes((root / old_path).read_bytes())
+    _git(root, "add", "."), _git(root, "commit", "-qm", "source")
+    source_head = _git(root, "rev-parse", "HEAD")
+    if op in MOVES:
+        if op == "copy":
+            (root / new_path).write_bytes((root / old_path).read_bytes())
+        else:
+            _git(root, "mv", old_path, new_path)
+        if op == "edited-move":
+            (root / new_path).write_text("def test_a(): pass  # changed\n", encoding="utf-8")
+        if op == "duplicate-move":
+            (root / "tests/test_duplicate.py").write_bytes((root / new_path).read_bytes())
+        if op == "duplicate-source":
+            _git(root, "rm", "-q", "tests/test_duplicate.py")
+    elif op == "missing-target":
+        _git(root, "rm", "-q", old_path)
+    else:
+        (root / old_path).write_text("def test_a(): pass  # target\n", encoding="utf-8")
+    _git(root, "add", "."), _git(root, "commit", "-qm", "target")
+    target_head = _git(root, "rev-parse", "HEAD")
+    orphan = _git(root, "commit-tree", _git(root, "rev-parse", "HEAD^{tree}"), "-m", "unrelated")
+    return {"source_head": source_head, "target_head": target_head, "orphan": orphan}
+
+
+@pytest.fixture(scope="module")
+def built_once(tmp_path_factory):
+    """Each distinct Git history, built once per module by its builder; a case copies its path,
+    never mutates it."""
+    built: dict[tuple, tuple[Path, Any]] = {}
+
+    def get(builder, *key):
+        if (builder, *key) not in built:
+            path = tmp_path_factory.mktemp("history")
+            built[(builder, *key)] = (path, builder(path, *key))
+        return built[(builder, *key)]
+
+    return get
 
 
 @pytest.mark.proves("pipeline.receipt_verifies_only_complete_and_as_asked")
-@pytest.mark.parametrize("case", CASES)
-def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeypatch, case):
+@pytest.mark.parametrize("case", CASES, ids=str)
+def test_a_receipt_verifies_only_complete_and_as_asked(
+    tmp_path, capsys, monkeypatch, built_once, case
+):
     """A receipt counts only whole, with its claim standing over its events, and as asked."""
     if case == "reader without pytest":
         import subprocess
@@ -239,11 +291,12 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
             "sys.argv=['scripts/pipeline.py','show']\n"
             "runpy.run_path(sys.argv[0], run_name='__main__')\n"
         )
-        done = subprocess.run(
+        done = spawn.run(
             [sys.executable, "-c", code],
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=30,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -394,50 +447,17 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
         import subprocess
 
         supports_root = "cost_root" in inspect.signature(receipt.verify).parameters
+        op = case.removeprefix("binding ")
+        op = op if op in MOVES | {"missing-target"} else "modify"
+        dup = case == "binding duplicate-source"
+        path, history = built_once(_binding_history, dup, op)
         repo = tmp_path / "repo"
-        (repo / "tests").mkdir(parents=True)
-
-        def git(*args):
-            return subprocess.run(
-                ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
-            ).stdout.strip()
-
-        git("init", "-q", "-b", "develop")
-        git("config", "user.name", "Fixture")
-        git("config", "user.email", "fixture@example.invalid")
+        shutil.copytree(path, repo)
         old_path, new_path = "tests/test_old.py", "tests/test_new.py"
         old_node = old_path + "::test_a[param]"
-        (repo / old_path).write_text("def test_a(): pass\n", encoding="utf-8")
-        if case == "binding duplicate-source":
-            (repo / "tests/test_duplicate.py").write_bytes((repo / old_path).read_bytes())
-        git("add", "."), git("commit", "-qm", "source")
-        source_head = git("rev-parse", "HEAD")
-        moved = case in {
-            "binding move",
-            "binding edited-move",
-            "binding duplicate-move",
-            "binding duplicate-source",
-            "binding copy",
-        }
-        if moved:
-            if case == "binding copy":
-                (repo / new_path).write_bytes((repo / old_path).read_bytes())
-            else:
-                git("mv", old_path, new_path)
-            if case == "binding edited-move":
-                (repo / new_path).write_text("def test_a(): pass  # changed\n", encoding="utf-8")
-            if case == "binding duplicate-move":
-                (repo / "tests/test_duplicate.py").write_bytes((repo / new_path).read_bytes())
-            if case == "binding duplicate-source":
-                git("rm", "-q", "tests/test_duplicate.py")
-        elif case == "binding missing-target":
-            git("rm", "-q", old_path)
-        else:
-            (repo / old_path).write_text("def test_a(): pass  # target\n", encoding="utf-8")
-        git("add", "."), git("commit", "-qm", "target")
-        target_head = git("rev-parse", "HEAD")
-        if case == "binding nonancestor":
-            target_head = git("commit-tree", git("rev-parse", "HEAD^{tree}"), "-m", "unrelated")
+        moved = op in MOVES
+        source_head = history["source_head"]
+        target_head = history["orphan"] if case == "binding nonancestor" else history["target_head"]
         target_node = (new_path if moved else old_path) + (
             "::test_b[param]" if case == "binding wrong-node" else "::test_a[param]"
         )
@@ -535,7 +555,9 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
                 raise failure
 
             with monkeypatch.context() as scoped:
-                scoped.setattr(subprocess, "run", interrupted)
+                from devtools.architecture import git_inputs
+
+                scoped.setattr(git_inputs.spawn, "run", interrupted)
                 if case == "binding git-error":
                     with pytest.raises(receipt.ReceiptError, match="receipt_cost_unmeasured"):
                         receipt.verify(target_receipt, **args)
@@ -564,16 +586,19 @@ def test_a_receipt_verifies_only_complete_and_as_asked(tmp_path, capsys, monkeyp
                     digest,
                     str(source_receipt),
                 ]
-                completed = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                completed = spawn.run(
+                    command, capture_output=True, text=True, encoding="utf-8", timeout=30
+                )
                 assert completed.returncode == 0, completed.stderr
                 assert (
                     json.loads(completed.stdout)["cost_standing"][target_node]["source_node"]
                     == old_node
                 )
-                duplicate = subprocess.run(
+                duplicate = spawn.run(
                     [*command, "--cost-source", digest, str(source_receipt)],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     timeout=30,
                 )
                 assert duplicate.returncode != 0 and "duplicate" in duplicate.stderr.lower()
@@ -854,7 +879,9 @@ def test_the_plugin_writes_each_node_once_with_its_failure_and_disposes_of_itsel
     ],
 )
 @pytest.mark.proves("pipeline.health_report_counts_the_test_metrics")
-def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_history, fault):
+def test_the_health_report_counts_the_tree_and_the_stages(
+    tmp_path, synthetic_history, monkeypatch, fault
+):
     """The report counts what the tree and the receipts hold; an unreadable one gives no verdict."""
     from datetime import date
     from pathlib import Path
@@ -864,6 +891,9 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
     from devtools.pipeline.health import report
     from devtools.pipeline.health import stages as stage_health
 
+    # The code rows run real tools and Git reads; their own test measures them on a real tree.
+    code_row = {"stubbed": "the code rows are checked by the code report test"}
+    monkeypatch.setattr(health, "code", lambda *args, **kwargs: code_row)
     _, commit = synthetic_history
     root = Path(__file__).resolve().parents[2]
     policy = json.loads((root / "config/registries/test-sizes.json").read_bytes())
@@ -936,6 +966,7 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
         return
     found = report(tmp_path, [*paths, tmp_path / "missing.jsonl"], date(2026, 10, 25))
     tree, stages = found["tree"], found["stages"]
+    assert found["code"] is code_row  # report passes the code rows through unchanged
     additional = fault in {"holder-files", "holder-layers"}
     assert (tree["test_lines"], tree["source_lines"], tree["test_to_source"]) == (
         (10, 14, 0.714) if additional else (7, 14, 0.5)
@@ -1102,6 +1133,27 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
         )
 
 
+def _flake_history(root: Path, body: str, move: bool, edited: bool) -> list[str]:
+    """Two observations of one test holder, committed; the registries stay working-tree files,
+    which the function reads from disk, so only the test's own history is committed."""
+    _git(root, "init", "-q", "-b", "develop")
+    (root / "tests/a").mkdir(parents=True)
+    (root / "tests/a/test_x.py").write_text(body, encoding="utf-8")
+    _git(root, "add", "."), _git(root, "commit", "-qm", "first holder")
+    heads = [_git(root, "rev-parse", "HEAD")]
+    if move:
+        _git(root, "mv", "tests/a/test_x.py", "tests/a/test_moved.py")
+    else:
+        (root / "unrelated.txt").write_text("other change", encoding="utf-8")
+    _git(root, "add", "."), _git(root, "commit", "-qm", "second observation")
+    heads.append(_git(root, "rev-parse", "HEAD"))
+    if edited:
+        fixed = body.replace("def test_c(): pass", "def test_c(): assert True")
+        (root / "tests/a/test_x.py").write_text(fixed, encoding="utf-8")
+        _git(root, "add", "."), _git(root, "commit", "-qm", "holder fix")
+    return heads
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -1171,7 +1223,7 @@ def test_the_health_report_counts_the_tree_and_the_stages(tmp_path, synthetic_hi
 )
 @pytest.mark.proves("pipeline.flake_quarantine_candidates")
 def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
-    tmp_path, monkeypatch, case
+    tmp_path, monkeypatch, built_once, case
 ):
     """Two distinct recent flake observations identify one owned quarantine candidate."""
     from datetime import date
@@ -1228,7 +1280,6 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         requirements.unlink()
     if case == "requirements-malformed":
         requirements.write_text("{", encoding="utf-8")
-    (tmp_path / "tests/a").mkdir(parents=True)
     ids = (
         []
         if case == "missing-requirement"
@@ -1240,9 +1291,9 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         else ["example.flake"]
     )
     mark = "" if not ids else "@pytest.mark.proves(" + ", ".join(map(repr, ids)) + ")\n"
-    (tmp_path / "tests/a/test_x.py").write_text(
-        "import pytest\n" + mark + "def test_c(): pass\n", encoding="utf-8"
-    )
+    body = "import pytest\n" + mark + "def test_c(): pass\n"  # committed by the cached history
+    if case == "legacy-over-count":
+        body += "def test_extra(): pass\n"
     if case.startswith("legacy-"):
         ledger = tmp_path / "config/registries/ledger.json"  # found by its schema
         document = {
@@ -1253,45 +1304,18 @@ def test_flake_candidates_use_distinct_verified_heads_and_registered_owners(
         ledger.write_text(
             "{" if case == "legacy-malformed" else json.dumps(document), encoding="utf-8"
         )
-        if case == "legacy-over-count":
-            with (tmp_path / "tests/a/test_x.py").open("a", encoding="utf-8") as source:
-                source.write("def test_extra(): pass\n")
     node = "tests/a/test_x.py::test_c" if case != "no-owner" else "foreign/test_x.py::test_c"
     if case == "legacy-parameter":
         node += "[one]"
     if case in {"held-family", "held-sibling", "held-pattern"}:
         node += "[1]"
-    heads = ("a" * 40, "b" * 40)
     observed_nodes = (node, node)
-    import subprocess
-
-    def git(*args):
-        return subprocess.run(
-            ["git", "-C", str(tmp_path), *args], check=True, capture_output=True, text=True
-        ).stdout.strip()
-
-    (
-        git("init", "-q", "-b", "develop"),
-        git("config", "user.name", "Fixture"),
-        git("config", "user.email", "fixture@example.invalid"),
-    )
-    git("add", "."), git("commit", "-qm", "first holder")
-    source_head = git("rev-parse", "HEAD")
-    if case in {"digest-move", "digest-unknown-move"}:
-        git("mv", "tests/a/test_x.py", "tests/a/test_moved.py")
+    moved = case in {"digest-move", "digest-unknown-move"}
+    path, heads = built_once(_flake_history, body, moved, case == "digest-edited")
+    shutil.copytree(path, tmp_path, dirs_exist_ok=True)  # the cached history, copied, not replayed
+    heads = tuple(heads)
+    if moved:
         observed_nodes = (node, node.replace("test_x.py", "test_moved.py"))
-    else:
-        (tmp_path / "unrelated.txt").write_text("other change", encoding="utf-8")
-    git("add", "."), git("commit", "-qm", "second observation")
-    heads = (source_head, git("rev-parse", "HEAD"))
-    if case == "digest-edited":
-        path = tmp_path / "tests/a/test_x.py"
-        path.write_text(
-            path.read_text("utf-8").replace("def test_c(): pass", "def test_c(): assert True"),
-            encoding="utf-8",
-        )
-        git("add", "."), git("commit", "-qm", "holder fix")
-    if case in {"digest-move", "digest-unknown-move"}:
         node = observed_nodes[1]
 
     def stage(name, head, day, failure):
@@ -1921,14 +1945,24 @@ def test_every_red_is_classed_from_its_own_evidence_and_unknown_is_never_a_defec
 
 
 def _git(root: Path, *args: str) -> str:
-    done = subprocess.run(
+    """Git in the test's own repository, apart from the outer run's: no GIT_* key and no global or
+    system configuration reach it, and a refusal names git's own reason."""
+    import subprocess
+
+    environment = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_")}
+    environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+    done = spawn.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", *args],
         cwd=root,
-        check=True,
+        env=environment,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    assert done.returncode == 0, f"git {' '.join(args)} exited {done.returncode}: {done.stderr}"
     return done.stdout.strip()
 
 
@@ -1974,7 +2008,42 @@ CODE_CASES = {  # case -> (file under low, its text, landed by a card's merge or
 }
 
 
+@pytest.fixture(scope="module")
+def code_base(tmp_path_factory):
+    """The base tree every code case starts from: built once per module, copied per case."""
+    root = tmp_path_factory.mktemp("code-base") / "repo"
+    root.mkdir()
+    return {"path": str(root), "start": _code_tree(root)}
+
+
+def _empty_tools(monkeypatch, health) -> None:
+    """Each tool's seam answers with empty output, so its row is measured and holds no findings.
+    The two cases that read real tool output run the real commands; these rows are not asserted."""
+    monkeypatch.setattr(health, "GRAPH", 'print("[]")')
+    monkeypatch.setattr(health, "VULTURE", ("-c", "pass"))
+    monkeypatch.setattr(
+        health,
+        "DEPTRY",
+        ("-c", "import pathlib, sys; pathlib.Path(sys.argv[-1]).write_text('[]')"),
+    )
+    monkeypatch.setattr(health, "RUFF", ("-c", "print('[]')"))
+    monkeypatch.setattr(health, "DOCSTRINGS", ("-c", "print('[]')"))
+
+
+@pytest.fixture
+def git_apart():
+    """The test's process, the report's own git included, sees no GIT_* key of the outer run and
+    no global or system configuration; its own patch, which the test's undo leaves in place."""
+    with pytest.MonkeyPatch.context() as patch:
+        for key in [k for k in os.environ if k.upper().startswith("GIT_")]:
+            patch.delenv(key)
+        patch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        patch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+        yield
+
+
 @pytest.mark.proves("pipeline.code_health_reports_every_row")
+@pytest.mark.usefixtures("git_apart")
 @pytest.mark.parametrize(
     "case",
     [
@@ -1983,6 +2052,8 @@ CODE_CASES = {  # case -> (file under low, its text, landed by a card's merge or
         "dirty",
         "unmeasured measured again",
         "malformed store",
+        "truncated store",
+        "broken store rows",
         "unwritable store",
         "quiet day",
         "removed source",
@@ -1992,17 +2063,24 @@ CODE_CASES = {  # case -> (file under low, its text, landed by a card's merge or
         "staged source",
         "absent ignore rules",
     ],
+    ids=str,
 )
 def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasured(
-    tmp_path, monkeypatch, case
+    tmp_path, monkeypatch, code_base, case
 ):
     """The code rows are the tree's own, for every registered package, path and day, kept by the
     bytes they read; a row, input or store that cannot be trusted is measured anew or named."""
     from devtools.pipeline import health
 
     root, store = tmp_path / "repo", tmp_path / "store"
-    root.mkdir()
-    start = _code_tree(root)
+    shutil.copytree(code_base["path"], root)
+    start = code_base["start"]
+    if case not in {
+        "growing",
+        "cycle",
+        "unreadable graph",
+    }:  # those two run the real tools; the rest read empty output
+        _empty_tools(monkeypatch, health)
     registry = root / "config/package-architecture.json"
     if case in CODE_CASES:
         name, text, how = CODE_CASES[case]
@@ -2048,7 +2126,10 @@ def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasu
         registry.write_text(json.dumps({"packages": []}))
         _git(root, "commit", "-q", "-am", "no packages")
     found = health.code(root, store, day_start=start)
-    rows = {"sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity"}
+    rows = {
+        *("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity"),
+        "docstrings",
+    }
     assert set(found["seconds"]) == rows  # every row measured on a first report
     kept = next(iter(sorted(store.glob("*.json"))), None) if store.is_dir() else None
     measured = sorted(name for name in rows if "unmeasured" not in found[name])
@@ -2105,20 +2186,21 @@ def test_the_code_report_reads_the_tree_by_its_tools_and_a_failed_row_as_unmeasu
         again = health.code(root, store, day_start=start)
         assert again["reused"] == measured and "boundaries" not in measured
         assert again["boundaries"]["cycles"] == [] and "boundaries" in again["seconds"]
-    elif (
-        case == "malformed store"
-    ):  # malformed, wrong-shaped, truncated or incomplete: measured anew
-        for body in (
-            "{}",
-            "[1]",
-            '{"inputs": ',
-            json.dumps({"inputs": found["inputs"], "sizes": 3}),
-        ):
+    elif case in {
+        "malformed store",
+        "truncated store",
+    }:  # malformed, wrong-shaped, truncated or incomplete: measured anew
+        bodies = {  # malformed or wrong-shaped; truncated or incomplete
+            "malformed store": ("{}", "[1]"),
+            "truncated store": ('{"inputs": ', json.dumps({"inputs": found["inputs"], "sizes": 3})),
+        }
+        for body in bodies[case]:
             kept.write_text(body)
             again = health.code(root, store, day_start=start)
             assert again["sizes"] == found["sizes"] and again["reused"] == []
+    elif case == "broken store rows":  # the right inputs and keys, wrong or incomplete rows
         row = json.loads(kept.read_text("utf-8"))
-        for broken in (  # the right inputs and keys, the wrong or incomplete rows inside
+        for broken in (
             {
                 "sizes": {},
                 "boundaries": [],

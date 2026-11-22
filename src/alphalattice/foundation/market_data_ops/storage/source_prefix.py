@@ -1,6 +1,7 @@
 """Prove a market source prefix for a scope and for each listing in it, from one scan.
 
-The workspace store's raw bars and cutoff-admitted actions are the evidence; a reader of the
+The market's raw bars and cutoff-admitted actions, as the repository's market reads give them
+(world's, or the workspace's own), are the evidence; a reader of the
 kept score-input history compares the scope's proof and rebuilds only the listings whose own
 proof moved (`market_data_source_prefix_proofs`).
 """
@@ -9,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Sequence
-from contextlib import nullcontext
 from datetime import date
 from functools import cache
 from typing import TYPE_CHECKING
@@ -19,8 +19,8 @@ import numpy as np
 import pyarrow as pa
 
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
-    _SELECTED_PROVIDER_SQL,
     _canonical_hash,
+    _selected_provider_sql,
     _source_prefix_arrow_hash,
 )
 
@@ -91,11 +91,8 @@ def market_data_source_prefix_proofs(
     ):
         raise ValueError("market_data_ops.source_prefix_request_invalid")
     scope = tuple(sorted(scope))
-    providers_sql = _SELECTED_PROVIDER_SQL
-    boundary = (
-        market.database.read_transaction() if _connection is None else nullcontext(_connection)
-    )
-    with boundary as connection:
+    with market.market_reads(_connection, listings=scope) as (connection, tables):
+        providers_sql = _selected_provider_sql(tables["mappings"])
         providers = connection.execute(
             providers_sql
             + "SELECT listing_id, provider FROM selected_provider ORDER BY listing_id",
@@ -104,7 +101,7 @@ def market_data_source_prefix_proofs(
         if providers.column("provider").null_count:
             raise ValueError("listing has no provider mapping")
         raw = connection.execute(
-            """
+            f"""
             SELECT listing_id, provider, session_date,
                    COALESCE(open, 0::DOUBLE) AS open,
                    COALESCE(high, 0::DOUBLE) AS high,
@@ -114,7 +111,7 @@ def market_data_source_prefix_proofs(
                    open IS NULL AS open_is_null, high IS NULL AS high_is_null,
                    low IS NULL AS low_is_null, close IS NULL AS close_is_null,
                    volume IS NULL AS volume_is_null
-            FROM raw_daily_bar_current
+            FROM {tables["bars"]}
             WHERE listing_id IN (SELECT unnest(?))
               AND session_date BETWEEN ? AND ?
             ORDER BY listing_id, session_date, provider
@@ -123,7 +120,7 @@ def market_data_source_prefix_proofs(
         ).to_arrow_table()
         actions = connection.execute(
             providers_sql
-            + """
+            + f"""
             SELECT action.listing_id, action.provider, action.effective_date,
                    action.action_kind,
                    COALESCE(action.new_shares_per_old_share, 0::DOUBLE)
@@ -132,7 +129,7 @@ def market_data_source_prefix_proofs(
                    action.provisional, action.provenance,
                    action.new_shares_per_old_share IS NULL AS shares_is_null,
                    action.cash_amount IS NULL AS cash_is_null
-            FROM corporate_action_current AS action
+            FROM {tables["actions"]} AS action
             JOIN selected_provider AS selected
               ON selected.listing_id = action.listing_id
              AND selected.provider = action.provider

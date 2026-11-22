@@ -21,8 +21,7 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-import yaml  # type: ignore[import-untyped]
-
+from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -32,6 +31,7 @@ from alphalattice.interface.local_application.cli_contract import (
     EXIT_CODES,
     INSTANCE_HEADER,
     MAXIMUM_REQUEST_BODY_BYTES,
+    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     WAIT_EXITS,
     WORKSPACE_FROM,
     WORKSPACE_HEADER,
@@ -65,14 +65,9 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
+from alphalattice.interface.local_application.cli_invocation import cli_print as print
 from alphalattice.interface.local_application.failure_codes import (
     LocalResearchClientError as LocalResearchClientError,
-)
-from alphalattice.interface.local_application.goals import (
-    NEW_RESEARCH_SCOPE,
-    delegated_network,
-    first_use_asks,
-    target_sessions,
 )
 from alphalattice.interface.local_application.host_lookup import failure_with_hosts
 from alphalattice.interface.local_application.review_evidence import (
@@ -80,29 +75,32 @@ from alphalattice.interface.local_application.review_evidence import (
     review_prepared,
     select_preparation,
 )
+from alphalattice.interface.local_application.thin_cli import (
+    CONNECTION_NAME as CONNECTION_NAME,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    OPERATIONS_PATH,
+    agent_session_values,
+    connection_path,
+    connection_port,
+)
+from alphalattice.interface.local_application.thin_cli import (
+    workspace_connection_key as workspace_connection_key,
+)
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
-from alphalattice.kernel.shared_kernel.waits import pause
-from alphalattice.protocols.research_authoring.selection import (
-    dump_declaration,
-    load_safe_yaml_document,
-)
+from alphalattice.kernel.shared_kernel.waits import pause, spaced
 
-CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""
 WHOLE_REFERENCE = re.compile(
     r"\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
 """SHA-256 or UUID."""
-DEFAULT_HTTP_WAIT_SECONDS = 120.0
-"""Transport waiting, not a Task budget; verified historical PLAN/readback may exceed 30 s."""
-
-
-def workspace_connection_key(workspace: Path) -> str:
-    """Bind local transport to the requested location, not a supplied descriptor id."""
-    return sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,29 +124,9 @@ class LocalResearchConnection:
         Raises:
             ValueError: If the descriptor is malformed or points outside loopback.
         """
-        values = (self.schema_id, self.workspace, self.workspace_id, self.url, self.instance)
-        if (
-            not all(isinstance(value, str) for value in (*values, self.token))
-            or self.schema_id != "local-research-connection"
-            or not self.workspace_id
-            or not 16 <= len(self.instance) <= 128
-            or not 32 <= len(self.token) <= 128
-        ):
-            raise ValueError("local_client.connection_unreadable")
-        target = urlsplit(self.url)
-        if (
-            not Path(self.workspace).is_absolute()
-            or target.scheme != "http"
-            or target.hostname != "127.0.0.1"
-            or not target.port
-            or target.username is not None
-            or target.password is not None
-            or target.path not in ("", "/")
-            or target.query
-            or target.fragment
-            or self.url.rstrip("/") != f"http://127.0.0.1:{target.port}"
-        ):
-            raise ValueError("local_client.connection_not_local")
+        connection_port(
+            self.schema_id, self.workspace, self.workspace_id, self.url, self.instance, self.token
+        )
 
     def to_json(self) -> str:
         """Serialize the connection descriptor for its controlled local file.
@@ -181,11 +159,12 @@ class LocalResearchConnection:
         Raises:
             LocalResearchClientError: If the path is a symlink or escapes the root.
         """
-        root = workspace.resolve()
-        path = root / "runtime" / CONNECTION_NAME
-        if path.is_symlink() or not path.resolve().is_relative_to(root):
-            raise LocalResearchClientError("local_client.connection_path_escapes_workspace")
-        return path
+        try:
+            return connection_path(workspace)
+        except ValueError as error:
+            raise LocalResearchClientError(
+                "local_client.connection_path_escapes_workspace"
+            ) from error
 
     @classmethod
     def read(cls, workspace: Path) -> Self:
@@ -260,7 +239,11 @@ class LocalResearchClient:
 
             if (path := codex_command()[0]) is not None:
                 document = {**document, "wake_codex_path": path}
-        return self._exchange("/api/client/operations", document, timeout=timeout)
+        return self._exchange(OPERATIONS_PATH, document, timeout=timeout)
+
+    def publish_sector_development(self, document: dict[str, Any]) -> dict[str, Any]:
+        """Ask the served workspace to publish a Sector development experiment."""
+        return self._exchange(SECTOR_DEVELOPMENT_PUBLISH_PATH, document)[0]
 
     def activity(
         self,
@@ -324,7 +307,7 @@ class LocalResearchClient:
         if observation_id is not None:
             if (
                 not isinstance(observation_id, str)
-                or re.fullmatch(r"[0-9a-f]{64}", observation_id) is None
+                or re.fullmatch(r"[\da-f-]{36}", observation_id) is None
             ):
                 raise LocalResearchClientError("activity.observation_id_invalid")
             if before is not None or native_session_id is not None:
@@ -372,7 +355,7 @@ class LocalResearchClient:
             WORKSPACE_HEADER: workspace_connection_key(self.workspace),
             INSTANCE_HEADER: connection.instance,
             # The agent session this command runs in and the goal it names (OP13).
-            **agent_provenance_headers(os.environ, self.goal),
+            **agent_provenance_headers(cli_invocation.environment(), self.goal),
         }
         # The recorded loopback port itself: no configured proxy is consulted, and a redirect
         # is an answer, never followed.
@@ -394,7 +377,7 @@ class LocalResearchClient:
                 )
                 progress = Timer(
                     5.0,
-                    lambda: print(  # noqa: T201  # CLI stderr
+                    lambda: print(
                         json.dumps(
                             {
                                 "operation": operation,
@@ -720,6 +703,10 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
 
 def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
     """A file read by the one declaration loader, its syntax errors located."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read declarations
+        load_safe_yaml_document,
+        yaml,
+    )
 
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
@@ -764,6 +751,10 @@ def _listed(path: Path) -> list[Any]:
 
 def _response_document(path: Path) -> dict[str, Any]:
     """Read saved JSON/YAML; continuation parts must be whole, with refusal offers retained."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML responses
+        load_safe_yaml_document,
+        yaml,
+    )
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -1313,6 +1304,10 @@ def _save_output(
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
     elif format == "yaml":
+        from alphalattice.protocols.research_authoring.selection import (  # lazy: write YAML
+            dump_declaration,
+        )
+
         # The answer JSON saves: an export's inner answer where it carries one as text, so
         # `--from` reads the same Task and next requests from either file.
         whole = (
@@ -1329,49 +1324,16 @@ def _save_output(
     _write_new(path, payload, replace=replace)
 
 
-def allowed_value_notes(schema: Mapping[str, Any], *, limit: int = 40) -> list[str]:
-    """List each enumerated field of a declaration's schema with its allowed values.
-
-    The saved declaration heads with these values, so readers need not look them up separately.
-
-    Args:
-        schema: The declaration's JSON schema, its `$defs` included.
-        limit: The most fields listed.
-
-    Returns:
-        One ``path: a | b`` line per enumerated field; a list's items are ``path[]``.
-    """
-    definitions = schema.get("$defs") or {}
-    notes: list[str] = []
-
-    def resolve(node: Any) -> Any:
-        while isinstance(node, Mapping) and isinstance(node.get("$ref"), str):
-            node = definitions.get(node["$ref"].rsplit("/", 1)[-1], {})
-        return node
-
-    def walk(node: Any, path: str, depth: int) -> None:
-        node = resolve(node)
-        if not isinstance(node, Mapping) or depth > 6 or len(notes) >= limit:
-            return
-        if isinstance(node.get("enum"), list):
-            notes.append(f"{path}: " + " | ".join(str(value) for value in node["enum"]))
-            return
-        for option in node.get("anyOf") or node.get("oneOf") or ():
-            walk(option, path, depth + 1)
-        if isinstance(node.get("items"), Mapping):
-            walk(node["items"], f"{path}[]", depth + 1)
-        for name, child in (node.get("properties") or {}).items():
-            walk(child, f"{path}.{name}" if path else str(name), depth + 1)
-
-    walk(schema, "", 0)
-    return list(dict.fromkeys(notes))
-
-
 def _save_declaration(path: Path, body: dict[str, Any]) -> None:
     """The answer's editable declaration, for an author to edit: its ``yaml`` part, or
     its ``template`` in the declaration loader's dialect, as `feature controls` answers.
     When the answer carries the declaration's schema, its allowed values head the file as
     comments, which the loader ignores."""
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: write declarations
+        allowed_value_notes,
+        dump_declaration,
+    )
+
     value = body.get("yaml")
     if not isinstance(value, str) and isinstance(body.get("template"), dict):
         value = dump_declaration(json.loads(json.dumps(body["template"], default=_json_value)))
@@ -1540,7 +1502,7 @@ def _context(
     """The context every answer names, as agent CLIs name their session: the workspace
     and how it was chosen (`WORKSPACE_FROM`), the goal the request counted toward and
     the agent session it came from."""
-    headers = agent_provenance_headers(os.environ)
+    headers = agent_provenance_headers(cli_invocation.environment())
     session = headers.get(AGENT_SESSION_HEADER)
     counted = (body or {}).get("attributed_goal_id")
     return {
@@ -1936,6 +1898,11 @@ def saved_answer(
     Raises:
         LocalResearchClientError: Invalid file, representation or path.
     """
+    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML answers
+        load_safe_yaml_document,
+        yaml,
+    )
+
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
         raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")
@@ -2179,7 +2146,7 @@ def _follow_receipt(
                     saved[:] = [output]
             recovery = {**read, "format": format, "output": str(_next_output(output))}
     finally:
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "task_id": read.get("task_id"),
@@ -2266,6 +2233,7 @@ def _follow(
             if trial or remaining < 0.1
             else {**document, "wait_seconds": round(min(20.0, remaining), 3)}
         )
+        began = time.monotonic()
         client, read = _read_through_restarts(client, request, deadline)
         if read is None:
             return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
@@ -2283,13 +2251,7 @@ def _follow(
             )
         )
         stage = current.get("current_stage")
-        if (state, stage) != last:
-            print(  # noqa: T201  # CLI stderr
-                json.dumps({"follow": document, "state": state, "current_stage": stage}),
-                file=sys.stderr,  # noqa: TID251
-                flush=True,
-            )
-            last = (state, stage)
+        moved, last = _said(document, state, stage, last), (state, stage)
         # A review to decide, a Task to recover or a deferral waits on a request, not on this
         # waiter.
         if (exit_event := WAIT_EXITS.get(task_state(current) or "")) is not None:
@@ -2306,6 +2268,22 @@ def _follow(
         if trial:
             _sleep_before_read(delay, deadline)
             delay = min(delay * 2, 1.0)
+        elif (
+            not moved
+        ):  # a Host that answers at once, not after its wait, is not read again at once
+            spaced(began, deadline)
+
+
+def _said(document: dict[str, Any], state: object, stage: object, last: object) -> bool:
+    """Say on stderr that a followed Task moved; whether it did."""
+    if (state, stage) == last:
+        return False
+    print(
+        json.dumps({"follow": document, "state": state, "current_stage": stage}),
+        file=sys.stderr,  # noqa: TID251
+        flush=True,
+    )
+    return True
 
 
 def _wakes(message: dict[str, Any], me: str | None, mine: set[str]) -> bool:
@@ -2363,7 +2341,7 @@ def _wait_for_goal(
     """Wait for a goal's next Task to end or need a decision, its next message for this waiter
     (the session running the command; an accepted answer wakes its lead, never a message
     between two others; a request's own row wakes no one, its Task does), or its close."""
-    me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
+    me = agent_provenance_headers(cli_invocation.environment()).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
     deadline = _deadline(max_wait)
@@ -2442,7 +2420,7 @@ def _wait_for_goal(
 
 def _codex_thread() -> str:
     """The Codex thread the Host is to wake, named by the host's own session."""
-    thread = os.environ.get("CODEX_THREAD_ID", "").strip()
+    thread = agent_session_values(cli_invocation.environment())["codex"].strip()
     if not thread:
         raise LocalResearchClientError("local_client.codex_queue_unavailable")
     return thread
@@ -2468,7 +2446,7 @@ class _Chain:
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         if document.get("task_id"):
             self.receipt(self.client, None, {"operation": "STATUS", "task_id": document["task_id"]})
-        print(  # noqa: T201  # CLI stderr
+        print(
             json.dumps(
                 {
                     "flow": self.name,
@@ -2683,12 +2661,22 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         return ended
     if pending and chain.followed_answer is not None:
         prepared = chain.followed_answer
+    current = prepared
+    if not resuming and pending:
+        current = chain.send("evidence_prepared", prepare)
+        pending = outcome_of(current) == "PENDING"
+        if (ended := chain.followed("evidence_prepared", current)) is not None:
+            return ended
+        if pending:
+            prepared = chain.followed_answer or prepared
+    resuming = resuming or pending
     if resuming:
+        # Read the followed Task's packets. Preparing again can admit a new run
+        # when the Task succeeded with some units still failed.
         prepared, current, stopped = read_resumed(chain, prepared, prepare, preview_request, False)
         if stopped is not None:
             return stopped
-    else:
-        current = chain.send("evidence_prepared", prepare) if pending else prepared
+        preview = current
     return review_prepared(
         chain,
         root=root,
@@ -2919,6 +2907,12 @@ _NOT_RECORDED: Final = (
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """Run first use."""
+    from alphalattice.interface.local_application.goals import (  # lazy: first-use orchestration
+        delegated_network,
+        first_use_asks,
+        target_sessions,
+    )
+
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -2980,6 +2974,8 @@ def _prepared(
 ) -> tuple[dict[str, Any], str | None]:
     """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
     sentence's note when it was not recorded."""
+    from alphalattice.interface.local_application.goals import NEW_RESEARCH_SCOPE  # lazy: first use
+
     criterion = (
         f"The positions for {named['entry_session']}, with their review, stand for the person."
     )
@@ -3406,7 +3402,7 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         _profile_hint(answer, body)
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
@@ -3531,7 +3527,7 @@ def run(
                     ),
                 },
             )
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
@@ -3561,7 +3557,7 @@ def run(
         # Pydantic errors may contain the document; never echo it.
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
-        print(  # noqa: T201  # serializer
+        print(
             answer_json(
                 envelope(
                     operation=None,

@@ -28,6 +28,8 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     PANEL_IDENTITY_COLUMNS,
     panel_chunk_order,
 )
+from alphalattice.foundation.market_data_ops.storage import world, world_reads
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
 
 @dataclass(frozen=True)
@@ -301,17 +303,25 @@ class PanelClosureSourceRepository:
                 missing = table.filter(pa.array([not item for item in present])).select(
                     ["session_date", "listing_id"]
                 )
-                connection.register("panel_missing_base_keys", missing)
-                if connection.execute(
-                    """SELECT count(*) FROM panel_missing_base_keys k
-                    JOIN raw_daily_bar_current r USING (session_date, listing_id)"""
-                ).fetchone()[0]:
+                market = MarketDataRepository(self._database_path.parent)
+                with market.market_reads(listings=missing.column("listing_id").to_pylist()) as (
+                    reading,
+                    tables,
+                ):
+                    reading.register("panel_missing_base_keys", missing)
+                    observed = reading.execute(
+                        f"""SELECT count(*) FROM panel_missing_base_keys k
+                        JOIN {tables["bars"]} r USING (session_date, listing_id)"""
+                    ).fetchone()[0]
+                if observed:
                     raise ValueError("feature_panel.base_row_not_materialized")
         finally:
             connection.close()
         return table
 
-    def read_sector_rows(self, *, listing_ids: tuple[str, ...]) -> tuple[dict[str, object], ...]:
+    def read_sector_rows(
+        self, *, listing_ids: tuple[str, ...], cutoff_us: int | None = None
+    ) -> tuple[dict[str, object], ...]:
         """Read sector revision rows for the selected listings."""
         marks = ", ".join("?" for _ in listing_ids)
         connection = open_workspace_database(self._database_path, read_only=True)
@@ -332,6 +342,18 @@ class PanelClosureSourceRepository:
             connection.close()
         if len(rows) != len(listing_ids):
             raise ValueError("sector revision map source is incomplete")
+        with world_reads.reading(self._database_path) as cursor:
+            if cursor is not None:
+                names = world.sector_map(
+                    listing_ids,
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
+                if names == {str(row["listing_id"]): str(row["sector_name"]) for row in rows}:
+                    rows = tuple(
+                        row | {"sector_name": names[str(row["listing_id"])]} for row in rows
+                    )
         return rows
 
     def sector_revision_ledger_counts(self) -> tuple[int, int]:

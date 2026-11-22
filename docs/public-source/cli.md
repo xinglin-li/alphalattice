@@ -24,7 +24,7 @@ The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
 `detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
 When observed, `session_launches` counts this session's CLI launches, including
 help and schema reads. `data` contains the owner answer or its display projection.
-An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. The same permission source is kept in activity, including automated updates.
+An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. Activity records the same permission source when available, including for automated updates; observation gaps are named.
 A refusal names the code, explanation and permitted continuation. Keep its
 references and follow that continuation.
 
@@ -125,6 +125,10 @@ For the one daily-network question, the agent relays the person's yes through `n
 
 The first use's report asks the person once whether each daily update also convenes the investment committee. The agent relays their answer with `alphalattice committee daily --enabled true` or `alphalattice committee daily --enabled false`, using `--person-said` and `--asked`. Unanswered, the setting is off: a daily update's published review then answers `GIVE_THE_PM_VIEW`, so the agent gives the portfolio manager's view of the reviewed positions, and the committee for that date stays offered. `alphalattice workspace show` reads the setting as `committee_daily`.
 
+## How a review's Analysts are read
+
+A review that hands out more than one Evidence Analyst bundle asks the person once (`ask_now`, code `review.analyst_reads`) whether each bundle is read by its own subagent or by the lead session itself, one after another. The agent relays their answer with `alphalattice analyst-reads set --mode SUBAGENTS` or `--mode IN_SESSION`, with `--bundles` as the review names it, `--person-said` and `--question-code review.analyst_reads`. The answer stands for later reviews with no more bundles than it covers; a review with more asks again. Nothing is chosen until the person answers. `alphalattice analyst-reads show` reads the setting.
+
 ## Waits, document limits and units
 
 `--wait` follows the named Task until completion, decision, deferral, incident or
@@ -155,3 +159,13 @@ and applicable size limits.
 Read Portfolio metrics with the unit declared for their `metric_units`
 path. Unknown sections list available paths. [Research flows](research-flows.md)
 explains result claims, and [Privacy](privacy.md) explains observed usage.
+
+`alphalattice session exporters --workspace W` prints native exporter settings for
+the running Host: Claude Code's project environment and Codex's user-config lines.
+Only on the person's yes, add `--configure-claude` to merge the environment into
+the admitted project's local Claude Code settings; other settings are retained.
+Codex's user config is always printed, never written. These settings contain the
+Host's local authentication token; keep them private and regenerate them after a
+Host restart. The endpoint accepts loopback exports only and removes prompt, tool
+and opt-in content before storage. `session bind --usage off` disables this
+Session's ingest and usage reading. Missing exports remain unmeasured.

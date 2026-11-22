@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -16,6 +18,7 @@ import pytest
 
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
 from alphalattice.control.product_host.composition import committee, committee_materials
+from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition import portfolio_result_context as context
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
@@ -53,10 +56,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.kernel.data_layer import history as data_history
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
-from tests.portfolio_strategy_lab.local_web_support import run_node
+from tests.portfolio_strategy_lab.node_runner import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
     build_numerical,
@@ -107,9 +111,34 @@ def readback() -> dict[str, Any]:
 EVIDENCE = {"state": "EVIDENCE_AUTHORITY_NOT_ADMITTED", "evidence_as_of": None}
 
 
+def _registered(listings: tuple[str, ...]) -> None:
+    """The fixture's listings registered in world, as a market admission registers them: the
+    catalog keeps Risk only over listings it holds."""
+    import pyarrow as pa
+
+    from alphalattice.foundation.market_data_ops.storage.world import world_listing
+    from alphalattice.kernel.data_layer.chain import canonical
+    from alphalattice.kernel.data_layer.store import stage
+
+    log, port = data_history.held(), data_history.store()
+    key = {"family": "provider", "name": "committee-fixture", "version": 1}
+    text = canonical(key | {"text": "The Committee fixture's listings."}).decode()
+    log.record("definition.registered", ("definition", "provider/committee"), key, text=text)
+    provider = log.require_lineage("provider", "committee-fixture")
+    rows = {
+        "listing_id": [world_listing(item) for item in listings],
+        "market_id": [port.market_id("XNYS", provider)] * len(listings),
+    }
+    with stage(data_history.data_root(), "listing", provider, pa.table(rows)) as staged:
+        port.commit(staged)
+
+
 @pytest.fixture
-def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    """The book's installed Risk surface over real sessions and the market data's later returns."""
+def risk_source(
+    readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Any]:
+    """The book's installed Risk surface over real sessions and the market data's later returns,
+    dated in a Host's history as the Committee dates it: its factor surfaces live in the catalog."""
     positions = portfolio_update_positions(
         PortfolioUpdatePublication.model_validate(readback["publication"])
     )
@@ -142,7 +171,7 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
         epoch=SimpleNamespace(ordered_listing_ids=listings, universe_manifest_revision="u"),
     )
 
-    def carried(_market: Any, _universe: Any, listing: Any, sessions: Any, _connection: Any) -> Any:
+    def carried(_universe: Any, listing: Any, sessions: Any, _sources: Any) -> Any:
         if listing.listing_id not in state.bars:
             raise RiskReturnSurfaceError("risk_research.return_bars_missing")
         column = listings.index(listing.listing_id)
@@ -157,7 +186,8 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     market = SimpleNamespace(
         load_universe_manifest_revision=lambda _revision: "universe",
         listing_scope=lambda _u, listing_ids: [SimpleNamespace(listing_id=v) for v in listing_ids],
-        _connect=lambda read_only: SimpleNamespace(close=lambda: None),
+        raw_bars_by_listing=lambda ids, **_bounds: dict.fromkeys(ids, ()),
+        actions_by_listing=lambda ids: dict.fromkeys(ids, ()),
     )
     reader = SimpleNamespace(
         available_sessions=lambda _surface: tuple(state.sessions),
@@ -185,7 +215,12 @@ def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.Mo
     state.producer = context.RiskSurfaceProducer()
     monkeypatch.setattr(context, "RiskSurfaceProducer", lambda: state.producer)
     state.risk = lambda body=readback, held=positions: date_risk(tmp_path, manifest, body, held)
-    return state
+    data_history.open_history("committee", "committee", tmp_path)
+    try:
+        _registered(listings)
+        yield state
+    finally:
+        data_history.close_history()
 
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
@@ -409,15 +444,15 @@ def _floor(tmp_path: Path, readback: dict[str, Any]) -> tuple[GoalStore, list[da
         "kind": "RESEARCH",
         "criteria": [{"criterion_id": "positions", "text": "The positions stand, argued."}],
     }
-    app.operate(
-        Request(
-            operation="GOAL_OPEN",
-            goal_id=UUID(int=7),
-            goal_declaration=declaration,
-            change_reason="The person's sentence",
-        ),
-        "EXTERNAL_AUTOMATION",
-    )
+    with patch.object(composition, "uuid7", lambda: str(UUID(int=7))):  # the Host's id, read as 7
+        app.operate(
+            Request(
+                operation="GOAL_OPEN",
+                goal_declaration=declaration,
+                change_reason="The person's sentence",
+            ),
+            "EXTERNAL_AUTOMATION",
+        )
     opened = [
         committee.open_floor(
             app.store, UUID(int=7), readback, EVIDENCE, session=("claude-code", "s-1"), now=NOW
@@ -1261,21 +1296,48 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     app = GoalApplication(
         store, lambda: now[0], lambda *_: {}, lambda _: now[0], {}.get, workspace=tmp_path
     )
-    opened = Request(
-        operation="GOAL_OPEN", goal_id=UUID(int=8), goal_declaration=declared, change_reason="Said"
-    )
-    app.operate(opened, "EXTERNAL_AUTOMATION")
+    opened = Request(operation="GOAL_OPEN", goal_declaration=declared, change_reason="Said")
+    goal_id = app.operate(opened, "EXTERNAL_AUTOMATION")["goal_id"]
     answered = setting("HUMAN")
     assert answered["committee_daily"] == "ON"
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"
     assert answered["next_requests"]["goal"] == {
         "operation": "GOAL_SHOW",
-        "goal_id": str(UUID(int=8)),
+        "goal_id": str(goal_id),
     }
     record = json.loads((tmp_path / committee.DAILY_PATH).read_text("utf-8"))
     assert record["relayed_by"] == "claude-code:s-1"
     answered = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"  # asked, so the road ends
+    # The review's Analyst reads are the same kind of standing answer: more than one bundle
+    # asks the coded question until a relayed answer covers that many.
+    from alphalattice.control.product_host.composition import evidence_review_bundles as reads
+    from alphalattice.interface.local_application.questions import person_question
+
+    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 1)  # one: nothing to choose
+    asked = reads.analyst_reads_answer(tmp_path, 14)
+    question = person_question("review.analyst_reads")
+    assert (asked["analyst_reads"], asked["next_requests"]) == ("UNANSWERED", {})  # no default
+    assert asked["person_questions"] == [question] and question["words"] in asked["ask_now"]
+    assert set(question["choices"]) == {"SUBAGENTS", "IN_SESSION"}
+    assert "--bundles 14 " in asked["ask_now"][-1]
+    assert asked["ask_now"][-1].endswith("--question-code review.analyst_reads")
+    choice = {"operation": "ANALYST_READS_SET", "analyst_reads_mode": "IN_SESSION"}
+    choice["analyst_reads_bundles"] = 14
+    code, decided = "review.analyst_reads", decision_hash(choice)
+    coded = confirmation.model_copy(
+        update={"question": question["words"], "question_code": code, "decision_hash": decided}
+    )
+    assert relayed_decision(choice, coded) == coded.decision_hash
+    with pytest.raises(ValueError, match=r"question_code_required:review\.analyst_reads"):
+        relayed_decision(choice, coded.model_copy(update={"question_code": None}))
+    kept = reads.set_analyst_reads(tmp_path, mode="IN_SESSION", bundles=14, relayed_by="c:s-1")
+    assert (kept["analyst_reads"], kept["answered_for"]) == ("IN_SESSION", 14)
+    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 14)  # kept within its count
+    again = reads.analyst_reads_answer(tmp_path, 15)  # a larger cost never rides on an old answer
+    assert again["analyst_reads"] == "IN_SESSION" and "--bundles 15 " in again["ask_now"][-1]
+    (tmp_path / reads.ANALYST_READS_PATH).write_text('{"mode": "SUBAGENTS"}', "utf-8")
+    assert reads.analyst_reads_answer(tmp_path, 2)["analyst_reads"] == "UNANSWERED"  # not its own
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
@@ -1465,7 +1527,7 @@ def test_a_members_request_counts_toward_its_floors_open_goal_and_never_override
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
-    tmp_path: Path, readback: dict[str, Any]
+    tmp_path: Path, readback: dict[str, Any], recording_history: str
 ) -> None:
     """Floor rows retain member, session and reply-recipient identities for Team."""
     store, now = _floor(tmp_path, readback)
@@ -1500,7 +1562,7 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     assert floor is not None
     observer = WorkspaceActivity(
         workspace=tmp_path,
-        workspace_id="committee-fixture",
+        workspace_id=recording_history,
         gate=WorkspaceMutationGate(),
         instance="committee-fixture",
         clock=lambda: now[0],

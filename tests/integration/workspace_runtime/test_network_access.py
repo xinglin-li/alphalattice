@@ -210,7 +210,7 @@ def test_admitted_network_work_names_whose_setting_allowed_it(
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
     now = datetime.now(UTC)
     admitted = {"status": "ADMITTED", "task_id": "t1"}
-    control = lambda: {"workspace": tmp_path, "now": now}  # noqa: E731
+    control = lambda: {"workspace": tmp_path, "now": now}
     delegated = {"delegation": "first-use-goal:g", "until": now + timedelta(hours=1)}
     yes = {"relayed": ("claude-code:s", "Yes.", "Keep the network on?")}
     for setting, under in (

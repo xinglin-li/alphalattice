@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import alphalattice.control.observation_runtime.telemetry.progress as progress_module
@@ -15,6 +16,7 @@ from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressUpdate,
     WorkspaceProgressPublisher,
 )
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     CurrentPortfolioResearchMarker,
     CurrentPortfolioResearchPointer,
@@ -385,7 +387,11 @@ def test_current_readback_requires_complete_dossier_rfc_and_review(tmp_path: Pat
         store.read_current()
 
 
-@pytest.mark.parametrize("reader", ["model", "columns", "packed", "document"])
+@pytest.mark.parametrize(
+    "reader",
+    ["model", "columns", "packed", "document"],
+    ids=["model", "columns", "packed", "document"],
+)
 def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     tmp_path: Path, reader: str
 ) -> None:
@@ -408,12 +414,24 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     assert "restore" in refusal_words("portfolio_strategy_lab.artifact_absent")["detail"]
     with pytest.raises(PortfolioPublicationError, match=r"^content_store\.identity_invalid$"):
         load("bad-hash")
-    folder = store.root / category
-    folder.mkdir(parents=True)
-    extension = "parquet" if reader in {"columns", "packed"} else "json"
-    (folder / f"{identity}.{extension}").write_bytes(b"corrupt")
-    with pytest.raises(
-        PortfolioPublicationError, match=r"^portfolio_strategy_lab\.artifact_tampered$"
+    if reader in {"columns", "packed"}:  # a lane's body is the door's, under the data root
+        from alphalattice.kernel.data_layer import history
+
+        identity = store.publish_array(category=category, values=np.arange(3.0))
+        history.flush()  # a lane's body is placed when its batch commits
+        found = history.array_profile(identity)
+        assert found is not None
+        (history.data_root() / "blobs" / found["artifact_id"]).write_bytes(b"corrupt")
+    else:
+        folder = store.root / category
+        folder.mkdir(parents=True)
+        (folder / f"{identity}.json").write_bytes(b"corrupt")
+    # Corrupt bytes are refused by name where they are proved: under full proof (LAWS.md EV2).
+    with (
+        full_content_proof(),
+        pytest.raises(
+            PortfolioPublicationError, match=r"^portfolio_strategy_lab\.artifact_tampered$"
+        ),
     ):
         load(identity)
 

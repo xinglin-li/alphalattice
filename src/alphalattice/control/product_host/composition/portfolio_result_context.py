@@ -48,6 +48,7 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import Sect
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import named
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.activity import refusal_code, returned_status
 from alphalattice.interface.local_application.failure_codes import (
@@ -101,6 +102,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     position_row_groups,
 )
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
+from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -110,6 +112,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
     RiskReturnSurfaceError,
     listing_returns,
+    listing_sources,
 )
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -557,7 +560,7 @@ def forward_update_read_requests(
     return tuple(result)
 
 
-@verified_model_read_scope(reuse_verified=True)
+@verified_model_read_scope()
 @verified_lifecycle_admissions()
 def read_portfolio(
     operations: Any,
@@ -952,8 +955,10 @@ def _date_risk(
     reader = CausalRiskReturnReader(root)
     closure = PanelClosureArtifactStore(ArtifactResolver(root))
     sessions = reader.available_sessions(surface)
-    classification = closure.load_model(
-        category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+    classification = named(  # the risk producer's Sectors, through world
+        closure.load_model(
+            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+        )
     )
     formation, forward, hashes, listings, missing, held, covered, gap = _dated_risk_inputs(
         workspace, surface, classification, sessions, session, readback, positions
@@ -999,7 +1004,8 @@ def _date_risk(
             classification,
             source,
             sector_history_as_of(closure, classification.sector_revision).subset(listings),
-        )
+        ),
+        store=catalog_factor_surfaces(),
     ).surface
     w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
     variance, shares = float(model.book_variance(w)), model.variance_shares(w)
@@ -1051,17 +1057,12 @@ def _carried_returns(
         return None
     returns = np.full((len(sessions) - 1, len(listings)), np.nan)
     hashes: list[str] = []
-    connection = market._connect(read_only=True)
-    try:
-        for listing in scope:
-            try:
-                rows = listing_returns(market, universe, listing, sessions, connection)
-            except RiskReturnSurfaceError:
-                continue
-            returns[:, listings.index(listing.listing_id)] = [
-                r["open_total_return_log"] for r in rows
-            ]
-            hashes.extend(str(row["row_hash"]) for row in rows)
-    finally:
-        connection.close()
+    sources = listing_sources(market, scope, sessions)
+    for listing in scope:
+        try:
+            rows = listing_returns(universe, listing, sessions, sources)
+        except RiskReturnSurfaceError:
+            continue
+        returns[:, listings.index(listing.listing_id)] = [r["open_total_return_log"] for r in rows]
+        hashes.extend(str(row["row_hash"]) for row in rows)
     return (returns, hashes) if hashes else None

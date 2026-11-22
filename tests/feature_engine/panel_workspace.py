@@ -33,8 +33,15 @@ from alphalattice.foundation.feature_engine.inputs.closure_source import (
 from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelArtifactCompositionOwner,
 )
+from alphalattice.foundation.feature_engine.panels.closure import (
+    PanelClosurePublication,
+    PanelClosurePublisher,
+)
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
+)
+from alphalattice.foundation.feature_engine.panels.closure_source import (
+    PanelClosureSourceRepository,
 )
 from alphalattice.foundation.feature_engine.panels.feature_closure_coordinator import (
     FeatureBaseClosureCoordinator,
@@ -50,6 +57,9 @@ from alphalattice.foundation.feature_engine.panels.logical_identity import (
 from alphalattice.foundation.feature_engine.panels.recovery_binding import (
     PanelRecoveryBindingPublisher,
 )
+from alphalattice.foundation.feature_engine.producers.preprocessing.contracts import (
+    PanelClippingEvidence,
+)
 from alphalattice.foundation.feature_engine.producers.reference_data import (
     MarketReference,
 )
@@ -58,6 +68,7 @@ from alphalattice.foundation.feature_engine.publication.sector_map_activation im
 )
 from alphalattice.foundation.feature_engine.publication.snapshots import (
     FeaturePanelSnapshotPublisher,
+    resolve_panel_preprocessing_lineage,
 )
 from alphalattice.foundation.feature_engine.runtime.closure_genesis import (
     FeatureClosureGenesisService,
@@ -85,12 +96,20 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 )
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support import development_universe
+from tests._support.development_universe import DevelopmentProvider
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider, ordered_window
 
 NOW = datetime(2026, 8, 3, 22, tzinfo=UTC)
 
 
-SESSIONS = tuple(pd.bdate_range("2018-01-02", periods=1_600).date)
+# Four calendar years in about two of sessions: a closed year's reuse reads the year before the
+# open one (2019 beside 2020, which ends in its first quarter), and 2017's last days make the
+# fourth year a rematerialization's three-year base cache evicts.
+SESSIONS = tuple(pd.bdate_range("2017-12-27", "2020-02-03").date)
+"""About two years of business days, through 2020-02-03: 2018 and 2019 closed and 2020 open in its
+first quarter, past the widest formula's 274 observations; fifteen listings and SPY over them stay
+within the development set's 10,000 bars a family."""
 
 
 def extended_formula_layer(
@@ -228,30 +247,68 @@ class FixtureProvider:
     fetch_current_sector = SeededWalkProvider.fetch_current_sector
 
 
-def fixture_manifest(*, listing_count: int = 15) -> UniverseManifest:
+def fixture_manifest(
+    *, listing_count: int = 15, symbols: tuple[str, ...] = (), provider: str = "fixture"
+) -> UniverseManifest:
     profile = MarketProfile(
         "fixture-feature-market",
         "Fixture feature market",
         "US",
         "USD",
         "XNYS",
-        "fixture",
+        provider,
         "unadjusted",
         SESSIONS[-1],
         "CURRENT_UNIVERSE_RESEARCH_ONLY",
     )
     listings = tuple(
-        ManifestListing(f"listing-{index:02d}", f"T{index:02d}", "XNYS", f"T{index:02d}")
-        for index in range(listing_count)
+        ManifestListing(f"listing-{index:02d}", symbol, "XNYS", symbol)
+        for index, symbol in enumerate(symbols or tuple(f"T{i:02d}" for i in range(listing_count)))
     )
     return UniverseManifest("fixture-feature-manifest", profile, listings, "f" * 64)
+
+
+def development_panel_inputs(
+    members: tuple[development_universe.Listing, ...] = development_universe.DENSE_LISTINGS,
+    *,
+    row_cap: int = development_universe.ROW_CAP,
+) -> tuple[UniverseManifest, DevelopmentProvider]:
+    provider = DevelopmentProvider(sessions=SESSIONS, listings=members, row_cap=row_cap)
+    symbols = tuple(item.provider_symbol or item.symbol for item in members)
+    return fixture_manifest(symbols=symbols, provider=provider.name), provider
+
+
+def capture_panel_closure(
+    database_path: Path, resolver: ArtifactResolver
+) -> tuple[PanelClosurePublication, PanelClosureArtifactStore]:
+    store = PanelClosureArtifactStore(resolver)
+    capture = PanelClosurePublisher(
+        resolver=resolver,
+        source=PanelClosureSourceRepository(database_path=database_path, resolver=resolver),
+        store=store,
+    )
+    return capture.publish(), store
+
+
+def clipping_evidence(
+    resolver: ArtifactResolver, manifest: dict[str, object]
+) -> PanelClippingEvidence:
+    lineage = resolve_panel_preprocessing_lineage(
+        resolver, panel_content_hash=str(manifest["panel_content_hash"])
+    )
+    assert lineage is not None
+    return PanelClippingEvidence.model_validate(
+        resolver.load_panel_clipping_evidence(
+            resolver.panel_clipping_evidence_uri(str(lineage["clipping_evidence_hash"]))
+        )
+    )
 
 
 def seed_feature_input_fixture(
     market_data: MarketDataRepository,
     feature_state: FeatureStateRepository,
     manifest: UniverseManifest,
-    provider: FixtureProvider,
+    provider: FixtureProvider | DevelopmentProvider,
     *,
     end: date = SESSIONS[-1],
     spy_revision: str = "a" * 64,
@@ -283,7 +340,7 @@ def seed_feature_input_fixture(
 def insert_fixture_bars(
     market_data: MarketDataRepository,
     manifest: UniverseManifest,
-    provider: FixtureProvider,
+    provider: FixtureProvider | DevelopmentProvider,
     *,
     start: date,
     end: date,
@@ -347,14 +404,21 @@ class PanelWorkspace:
     ledger: FeatureClosureLedger
     service: FeatureFoundationService
     publisher: FeaturePanelSnapshotPublisher
-    provider: FixtureProvider
+    provider: FixtureProvider | DevelopmentProvider
 
 
 def panel_workspace(
-    root: Path, manifest: UniverseManifest, *, end: date, spy: str, seed: bool = True
+    root: Path,
+    manifest: UniverseManifest,
+    *,
+    end: date,
+    spy: str,
+    seed: bool = True,
+    provider: FixtureProvider | DevelopmentProvider | None = None,
 ) -> PanelWorkspace:
     """The fixture workspace at ``root``: seeded through ``end``, or reopened as it stands."""
-    provider = FixtureProvider(tuple(item.symbol for item in manifest.listings))
+    if provider is None:
+        provider = FixtureProvider(tuple(item.symbol for item in manifest.listings))
     market_data = MarketDataRepository(root / "workspace")
     feature_state = FeatureStateRepository(market_data.database, market_data=market_data)
     panel_state = PanelStateRepository(market_data.database, market_data=market_data)

@@ -12,7 +12,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from contextlib import closing
@@ -48,6 +47,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_autho
     PostObservedStrategyAuthorityManifest,
     admit_post_observed_strategy_authority,
 )
+from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 SOURCE_FILES = {
@@ -114,7 +114,7 @@ def _verified_file(path: Path, expected_hash: str) -> Path:
 
 
 def _repository_root(closure: Path) -> Path:
-    result = subprocess.run(
+    result = spawn.run(
         ["git", "-C", str(closure), "rev-parse", "--show-toplevel"],
         check=False,
         capture_output=True,
@@ -123,7 +123,7 @@ def _repository_root(closure: Path) -> Path:
     if result.returncode != 0:
         raise MaterializationError("research_repository_unreadable")
     root = Path(result.stdout.strip()).resolve()
-    head = subprocess.run(
+    head = spawn.run(
         ["git", "-C", str(root), "rev-parse", "HEAD"],
         check=False,
         capture_output=True,

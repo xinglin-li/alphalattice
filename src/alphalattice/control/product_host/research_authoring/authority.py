@@ -343,7 +343,9 @@ class WorkspaceResearchAuthorityResolver:
         sample = exploration_sample_size(envelope.universe_handle)
         if sample is not None and envelope.kind not in EXPLORATION_SAMPLE_KINDS:
             raise AuthoringError(f"research_lane.sample_not_supported:{envelope.kind}")
-        store = MarketDataRepository(self._workspace)
+        store = MarketDataRepository(
+            self._workspace, cutoff_us=envelope.sessions.as_of.selection_cutoff_us
+        )
         current_manifest = None
         if envelope.data_snapshot_handle == CURRENT_SNAPSHOT_HANDLE:
             # Preserve the generic current-route refusal order: an unknown
@@ -373,8 +375,13 @@ class WorkspaceResearchAuthorityResolver:
             raise AuthoringError(
                 "research_authoring.snapshot_universe_lineage_unavailable"
             ) from error
+        # An exact Panel names a sealed roster that can have been admitted after
+        # the study's decision date. Keep the decision cutoff for dated reads.
+        manifest_store = (
+            store if current_manifest is not None else MarketDataRepository(self._workspace)
+        )
         try:
-            manifest = store.load_universe_manifest_revision(manifest_revision)
+            manifest = manifest_store.load_universe_manifest_revision(manifest_revision)
         except ValueError as error:
             raise AuthoringError("research_authoring.universe_handle_unresolved") from error
         if manifest.profile.market_profile_id != profile:

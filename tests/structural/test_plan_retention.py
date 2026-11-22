@@ -105,13 +105,13 @@ def test_no_owner_keeps_a_preview_in_one_slot() -> None:
 
 
 EXPIRY_REPLANS = {
-    "model_training.preview_required": "composition/portfolio_research_operations.py",
-    "portfolio_calibration.plan_required": "composition/portfolio_research_operations.py",
-    "research_input.preview_required": "composition/portfolio_research_operations.py",
-    "research_strategy.preview_required": "composition/portfolio_research_operations.py",
-    "strategy_score.plan_required": "composition/portfolio_research_operations.py",
-    "workspace_data_update.plan_required": "composition/portfolio_research_operations.py",
-    "workspace_preparation.preview_required": "composition/portfolio_research_operations.py",
+    "model_training.preview_required": "composition/research_operations.py",
+    "portfolio_calibration.plan_required": "composition/portfolio_operations.py",
+    "research_input.preview_required": "composition/research_operations.py",
+    "research_strategy.preview_required": "composition/research_operations.py",
+    "strategy_score.plan_required": "composition/portfolio_operations.py",
+    "workspace_data_update.plan_required": "composition/data_operations.py",
+    "workspace_preparation.preview_required": "composition/research_operations.py",
     "research_foundation.preview_required": "composition/research_experiments.py",
     "research_experiment.preview_expired": "composition/research_experiments.py",
 }

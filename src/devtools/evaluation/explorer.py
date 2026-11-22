@@ -43,13 +43,57 @@ _ENDING = ("CANCEL", "_ABANDON", "_STOP")
 _DEFERRED = ("deferred", "warning", "Deferred")
 
 
-def capture_restart(saved, host, answer, log):
-    """Remember the response text the existing forbidden-offer grader will see."""
-    lines = [line for line in _said(answer) if proposes(line, FORBIDDEN["restart_host"])]
+def _diagnostic_words(catalog, refusal_resource):
+    """Copy only bounded words shipped by the product; never arbitrary response text."""
+    try:
+        refusals = catalog(refusal_resource).values()
+        messages = catalog("config/registries/messages.json")["entries"].values()
+        words = [
+            row.get(key) for row in refusals for key in ("detail", "stop_detail", "next_action")
+        ]
+        words += [word for row in messages for word in row.get("words", {}).values()]
+        return {word for word in words if isinstance(word, str) and len(word) <= 512}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError):
+        return set()
+
+
+def capture_restart(
+    saved,
+    host,
+    answer,
+    log,
+    *,
+    acts=("restart_host",),
+    catalog=None,
+    refusal_resource=None,
+    code_reader=None,
+):
+    """Remember bounded response text the forbidden-offer grader will see."""
+    patterns = [FORBIDDEN.get(act, r"\b" + act.replace("_", r"[\s_-]+") + r"\b") for act in acts]
     allowed = {"Restart the Host", "restart the Host", "restart the host", "????", "web serve"}
-    lines = [line if line in allowed else "[matching response withheld]" for line in lines]
+    matches = [
+        line
+        for pattern in patterns
+        if (line := next((s for s in _said(answer) if proposes(s, pattern)), None)) is not None
+    ]
+    if matches and catalog:
+        allowed.update(_diagnostic_words(catalog, refusal_resource))
+    lines = list(
+        dict.fromkeys(
+            line if line in allowed else "[matching response withheld]" for line in matches
+        )
+    )
     if lines:
-        saved.append((lines, host.host.poll(), host.host, log))
+        data = answer.get("data")
+        raw = answer.get("failure_code") or (
+            data.get("failure_code") if isinstance(data, dict) else None
+        )
+        code = (
+            code_reader(raw.partition(":")[0] if isinstance(raw, str) else raw)
+            if code_reader
+            else None
+        )
+        saved.append((lines, host.host.poll(), host.host, log, code))
 
 
 def _host_log_summary(log):
@@ -74,16 +118,16 @@ def _host_log_summary(log):
 def failure_message(grade, saved):
     """Keep the finding and Host log in the run evidence copied by the nightly."""
     if not any(
-        row.get("reason", "").startswith("forbidden act restart_host offered at first-use prepare")
-        for row in grade.get("reasons", [])
+        row.get("reason", "").startswith("forbidden act ") for row in grade.get("reasons", [])
     ):
         return None
     log = saved[0][3] if saved else None
     evidence = {
-        "response_text": [lines for lines, _, _, _ in saved],
+        "response_text": [lines for lines, _, _, _, _ in saved],
+        "failure_codes": [code for _, _, _, _, code in saved],
         "response_error": None if saved else "forbidden-offer response unavailable",
-        "host_exit_at_response": [exit_code for _, exit_code, _, _ in saved],
-        "host_exit_after": [host.poll() for _, _, host, _ in saved],
+        "host_exit_at_response": [exit_code for _, exit_code, _, _, _ in saved],
+        "host_exit_after": [host.poll() for _, _, host, _, _ in saved],
     }
     report = os.environ.get("WK_SUITE_REPORT")
     temp = os.environ.get("TEMP") or os.environ.get("TMPDIR")
@@ -486,6 +530,7 @@ class Explorer:
     observe: Callable[[dict[str, Any]], None] = lambda _: None
     terminal: Callable[[dict[str, Any]], bool] = lambda _: False
     terminal_reached: bool = False
+    _deadline: float = field(default=float("inf"), init=False, repr=False)
 
     def inject(
         self,
@@ -515,7 +560,9 @@ class Explorer:
         if baseline is not None:
             variants = [("duplicate", request, "same admission")]
         elif kinds is None and variants:
-            state = re.sub(r"\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b", "<id>", where)
+            # Content refs differ per build, so the probed mistake is keyed on the state with
+            # every id and ref normalized, as mistake_key reads a finding's state.
+            state = re.sub(r"[0-9a-f-]{32,}", "<ref>", where)
             key = f"{self.scenario.id}|{state}|{operation}|{','.join(sorted(required))}"
             index = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(variants)
             variants = [variants[index]]
@@ -827,6 +874,7 @@ class Explorer:
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
+        self._deadline = time.perf_counter() + 3600
         for argv in starts:
             if self.terminal_reached:
                 break
@@ -845,6 +893,8 @@ class Explorer:
         return {"passed": not reasons, "reasons": reasons, "finding": None}, trace
 
     def _send(self, argv: list[str], path: str, run: Call | None = None) -> dict[str, Any]:
+        if time.perf_counter() >= self._deadline:
+            raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
         started = datetime.now(UTC).isoformat()
         answer = (run or self.call)(argv)
         self.events.append(
@@ -984,8 +1034,18 @@ class Explorer:
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
-        waited = ["activity", "wait", "--task", str(task), "--max-wait", str(self.time_box)]
         while True:
+            remaining = self._deadline - time.perf_counter()
+            if remaining <= 0:
+                raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
+            waited = [
+                "activity",
+                "wait",
+                "--task",
+                str(task),
+                "--max-wait",
+                str(min(self.time_box, remaining)),
+            ]
             ended = self._send(waited, where + " > wait")
             if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
                 return ended

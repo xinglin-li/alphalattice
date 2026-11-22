@@ -13,6 +13,8 @@ import pytest
 from scripts.release.public_manifest import project_public
 from scripts.release.public_snapshot import SnapshotRefused, build
 
+from alphalattice.kernel.shared_kernel import spawn
+
 SCANNER = "scripts/release/public_manifest.py"  # each source's own scanner and projection
 
 REGISTRY = "config/registries/sample.json"
@@ -29,8 +31,12 @@ REGISTRY_PUBLIC = (
 
 
 def _git(directory: Path, *arguments: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(directory), *arguments], capture_output=True, text=True, check=True
+    return spawn.run(
+        ["git", "-C", str(directory), *arguments],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
     ).stdout.strip()
 
 
@@ -95,13 +101,17 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     manifest = tmp_path / "manifest.json"
     source = _manifest(private, manifest, ["LICENSE", "src/tool.py"])
     out = tmp_path / "public"
-    reads, run = [], subprocess.run
+    from scripts.release import public_snapshot
+
+    reads, run = [], public_snapshot.spawn.run
 
     def counted(argv: list[str], **options: object) -> subprocess.CompletedProcess:
         reads.extend([argv[3:5]] if "cat-file" in argv else [])
+        if argv[:2] == ["git", "-C"]:
+            assert options["timeout"] == 300
         return run(argv, **options)
 
-    monkeypatch.setattr(subprocess, "run", counted)
+    monkeypatch.setattr(public_snapshot.spawn, "run", counted)
     provenance = build(
         private,
         manifest,
@@ -109,8 +119,8 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
         author="Example Author <author@example.com>",
         message="AlphaLattice: first public release",
     )
-    monkeypatch.setattr(subprocess, "run", run)
-    assert reads.count(["cat-file", "--batch"]) == 2 and len(reads) == 3  # 3: the scanner's own
+    monkeypatch.setattr(public_snapshot.spawn, "run", run)
+    assert reads.count(["cat-file", "--batch"]) == 2 and len(reads) == 3  # one scanner blob
     assert (provenance["source_sha"], provenance["file_count"]) == (source, 2)
     assert [row["path"] for row in provenance["files"]] == ["LICENSE", "src/tool.py"]
     assert provenance["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -134,6 +144,12 @@ def test_the_snapshot_holds_the_manifests_files_in_one_commit_by_the_user(
     manifest.write_text(json.dumps(document), encoding="utf-8")
     # A projected registry loads through its declared owner in the public tree, or is refused.
     from scripts.release import public_snapshot
+
+    with pytest.raises(
+        SnapshotRefused,
+        match=r"release\.projection_unloadable:config/registries/agent-surface\.json",
+    ):
+        public_snapshot._load_projected(out, "config/registries/agent-surface.json")
 
     for loader, refused_as in ((None, "unloaded"), ("raise ValueError('rule')", "unloadable")):
         with monkeypatch.context() as declared:

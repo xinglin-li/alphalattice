@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import BaseModel
 
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     advance_decision_state,
 )
@@ -224,7 +225,7 @@ def test_rolling_head_store_reopens_by_hash_and_detects_tamper(rolling_fixture, 
     assert tampered != original
     path.write_bytes(tampered)
     try:
-        with pytest.raises(ValueError, match="artifact_tampered"):
+        with full_content_proof(), pytest.raises(ValueError, match="artifact_tampered"):
             store.load_rolling_report_head(head.head_hash)
     finally:
         path.write_bytes(original)
@@ -341,7 +342,7 @@ def test_two_daily_heads_append_only_two_refs_each_and_detect_earlier_file_tampe
     original_increment = increment_path.read_bytes()
     increment_path.write_bytes(original_increment[:-1] + bytes([original_increment[-1] ^ 1]))
     try:
-        with pytest.raises(ValueError, match="artifact_tampered"):
+        with full_content_proof(), pytest.raises(ValueError, match="artifact_tampered"):
             store.content.load_model(
                 category="decision-updates",
                 content_hash=publications[0].content_hash,

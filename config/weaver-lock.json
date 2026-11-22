@@ -1,0 +1,31 @@
+{
+  "version": "0.28.0",
+  "archives": {
+    "Windows-AMD64": {
+      "url": "https://github.com/open-telemetry/weaver/releases/download/v0.28.0/weaver-x86_64-pc-windows-msvc.zip",
+      "sha256": "23204db0d97bee60a51bb4e9ee0c185ea3cc5f788ceb51b0ded2135d297ccf10"
+    },
+    "Linux-x86_64": {
+      "url": "https://github.com/open-telemetry/weaver/releases/download/v0.28.0/weaver-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "9878e2d56ad82ae441b0b527377a4f6001ae19f4af362fb0a4d951884f59ab61"
+    },
+    "Darwin-arm64": {
+      "url": "https://github.com/open-telemetry/weaver/releases/download/v0.28.0/weaver-aarch64-apple-darwin.tar.xz",
+      "sha256": "b334b37372325f77374b461fd6a11d38bc050122832eb83a9732fcd6831a5ab1"
+    },
+    "Darwin-x86_64": {
+      "url": "https://github.com/open-telemetry/weaver/releases/download/v0.28.0/weaver-x86_64-apple-darwin.tar.xz",
+      "sha256": "40dd65d72b43bc97041b849203e450b322cd786629af8f926cfd2d05798d9ca4"
+    }
+  },
+  "registries": {
+    "opentelemetry": {
+      "url": "https://codeload.github.com/open-telemetry/semantic-conventions/tar.gz/refs/tags/v1.45.0",
+      "sha256": "32f2ba6b5f38d631174a729b9ddc786dbd54b0e85e19a8889ce974cbe7e2197b"
+    },
+    "genai": {
+      "url": "https://codeload.github.com/open-telemetry/semantic-conventions-genai/tar.gz/622b2b6073b15e5ed886c3c12a65a892b9cd5c70",
+      "sha256": "813412845ec374e58315a915bf83ea9cf139e6c011e7edde5a0fbbe4dfd5ed58"
+    }
+  }
+}

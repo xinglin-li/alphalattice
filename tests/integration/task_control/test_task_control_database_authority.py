@@ -159,4 +159,4 @@ def test_the_registry_accepts_the_resolved_store_and_no_other_file_appears(
         for path in tmp_path.rglob("*")
         if path.suffix == ".duckdb"
     }
-    assert created == {f"runtime/{TASK_CONTROL_DATABASE_FILENAME}"}
+    assert created == set()  # the Tasks are on the machine's log; the workspace keeps no store

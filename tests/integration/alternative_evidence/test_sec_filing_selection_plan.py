@@ -502,7 +502,7 @@ def test_a_scoped_acquisition_fetches_the_named_originals_as_the_index_holds_the
     reference = publisher.publish_source_object(ten_k)
     assert reference.report_period_end == date(2025, 9, 30)
     assert reference.published_precision == "DATE" and reference.retrieved_at == NOW
-    assert publisher.resolve_source_object(reference) == ten_k
+    assert publisher.resolve_source_object(reference, as_of=None) == ten_k
     legacy = reference.model_dump(mode="json")
     for name in ("published_precision", "report_period_end", "retrieved_at"):
         legacy.pop(name)

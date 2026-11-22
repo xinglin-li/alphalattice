@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 from alphalattice.control.product_host.composition.local_web_session import (
     EvidenceReviewAuthority,
@@ -18,6 +19,8 @@ from alphalattice.control.product_host.composition.local_web_session import (
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
+    named_workspace_id,
+    publish_research_workspace_manifest,
 )
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -59,6 +62,10 @@ from tests.portfolio_strategy_lab.local_web_support import (
 )
 
 PortfolioResearchAgentRequest = PortfolioResearchRequestDocument
+
+
+SERVICE_ID = "qa-gate-9c5-http"
+"""The id a service's workspace is opened by when it holds no manifest of its own."""
 
 
 def _workspace_manifest(workspace_id: str) -> ResearchWorkspaceManifest:
@@ -230,10 +237,13 @@ def build_authority(
 
 
 def build_workspace(tmp_path: Path) -> Any:
-    """One real Portfolio path, published, with its lease released again."""
+    """One real Portfolio path, published, with its lease released again. The workspace holds
+    the manifest its service opens it by first, as an installed one does, so its Tasks are
+    that workspace's."""
 
     portfolio = tmp_path / "portfolio"
-    portfolio.mkdir(parents=True, exist_ok=True)
+    named = _workspace_manifest(f"{SERVICE_ID}-{uuid4().hex[:12]}")  # one workspace, one id
+    publish_research_workspace_manifest(portfolio / "workspace", named)
     with _harness(portfolio) as harness:
         result = _run(harness, PortfolioResearchSpec.default())
         report = harness.application.report(result.result_hash)
@@ -249,7 +259,7 @@ def start_service(
 ) -> _Service:
     session = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_workspace_manifest("qa-gate-9c5-http"),
+        workspace_manifest=_workspace_manifest(named_workspace_id(workspace) or SERVICE_ID),
         resolver=_Resolver(_resolved()),
         clock=clock or (lambda: _NOW),
         review_authority=authority,

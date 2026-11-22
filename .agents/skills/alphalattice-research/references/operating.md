@@ -26,18 +26,19 @@ uv sync --locked --all-extras
 uv run python -m alphalattice.interface.local_application.native_setup doctor
 uv run python scripts/build_local_web_ui.py --product
 uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
-uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
+uv run python -c "from pathlib import Path; from scripts.release.wheel_build import runtime_overrides; Path('.venv/alphalattice-runtime-overrides.txt').write_bytes(runtime_overrides().encode())"
+uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt --overrides .venv/alphalattice-runtime-overrides.txt
 ```
 
 Run each missing item's returned `facts.commands` (the Workbench's `facts.command`). The retrieval runtime resolves `config/requirements-retrieval.lock` online as the agent's act: say its `disclosure` in one line, even on an empty cache, and ask no second question or renewed first-use network consent. Explicit `--offline` reads only the local cache. Software outside the lock still needs the person's permission. Run the doctor again after repairs and configuration; optional user-layer readings and Host-dependent measurements do not prevent research by themselves.
 
 `uv sync` installs the checkout command editable, and the tool install pins its runtime to the exported lock. From a checkout you may also run `python scripts/run_alphalattice.py` or `uv run alphalattice`. Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell. Each host command starts a fresh shell, so variables do not carry over. The first use goal belongs to the session that ran `first-use prepare`; the same sentence and date reuse it from another session. With no agent session, put `--goal <goal_id>` before each later step. Run `uv tool uninstall alphalattice` before switching installation legs.
 
-For a release wheel, use a separate directory; no checkout is needed. Extract its runtime lock, then install the wheel with it as requirements and constraints:
+For a release wheel, use a separate directory; no checkout is needed. Extract its locked requirements and resolver overrides, then pass both files to the installer:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.7-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
-uv tool install --python 3.12 ./alphalattice-0.2.7-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.8-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
+uv tool install --python 3.12 ./alphalattice-0.2.8-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
 ```
 
 A checkout is its own agent project: configure it from its root, `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. On the wheel leg, configure the separate agent folder with the tool environment's own interpreter, beneath `uv tool dir`. In a shell with no agent session, give the doctor the same `--host` choice; otherwise it defaults to Codex:

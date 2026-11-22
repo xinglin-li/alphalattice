@@ -31,7 +31,8 @@ def test_a_wait_returns_its_result_or_ends_by_name_at_its_deadline_or_stop(pause
     got = waits.wait_until(
         lambda left: seen.append(left) or next(results), timeout=5, what="ready", interval=0.1
     )
-    assert got == "ready" and seen == [5, 5 - paused[0], 5 - paused[0] - paused[1]]
+    # The time left is a sum of jittered floats: equal to the pauses, within rounding.
+    assert got == "ready" and seen == pytest.approx([5, 5 - paused[0], 5 - paused[0] - paused[1]])
     assert 0.1 <= paused[0] <= 0.2 and 0.2 <= paused[1] <= 0.3  # the backoff doubles
     paused.clear()
     with pytest.raises(waits.WaitTimeout, match="the lane frees not reached within 10 s"):

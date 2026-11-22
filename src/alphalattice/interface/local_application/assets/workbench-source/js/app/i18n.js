@@ -141,7 +141,7 @@ const I18N = (() => {
     subjects = keys.filter((k) => k.includes('{subject}') && !CONTEXT.test(k)).map((k) => [new RegExp('^' + k.split('{subject}').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.*?)') + '$'), catalog[k]]);
     return subjects;
   }
-  function templated(s) { const stopped = registeredUnitStop(s); if (stopped !== null) return stopped;
+  function templated(s) { const registered = registeredSubjectSentence(s); if (registered !== null) return registered;
     for (const [re, fn] of TEMPLATES) {
       const m = s.match(re);
       if (m) return fn(m);
@@ -248,9 +248,19 @@ const I18N = (() => {
     return raw.match(/^\s*/)[0] +
       interpolate(words[key][locale === 'zh-CN' ? 'zh-CN' : 'en'], vars) + raw.match(/\s*$/)[0];
   }
-  function registeredUnitStop(s) {
+  function registeredSubjectSentence(s) {
+    if (typeof MESSAGE_WORDS === 'undefined') return null;
+    for (const id of ['retrieval.legacy_canary_rebuild', 'research_update.stage_missing']) {
+      const words = MESSAGE_WORDS[id];
+      if (!words) continue;
+      const parts = words.en.split('{subject}');
+      if (!s.startsWith(parts[0])) continue;
+      const pattern = '^' + parts.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.*?)') + '$';
+      const match = s.match(new RegExp(pattern));
+      if (match) { let i = 0; return words['zh-CN'].replace(/\{subject\}/g, () => match[++i]); }
+    }
     // The unit's recorded cause and way on follow this registered sentence.
-    const unitStop = typeof MESSAGE_WORDS === 'undefined' ? null : MESSAGE_WORDS['evidence.unit_stopped'];
+    const unitStop = MESSAGE_WORDS['evidence.unit_stopped'];
     if (!unitStop) return null;
     const [before, after] = unitStop.en.split('{subject}');
     const end = s.startsWith(before) && after ? s.indexOf(after, before.length) : -1;

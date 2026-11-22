@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import date, timedelta
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -23,8 +24,10 @@ from typing import Any
 import duckdb
 import numpy as np
 import pandas as pd
+import psutil
 import pyarrow as pa
 import pytest
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from alphalattice.control.observation_runtime.telemetry import (
     process_metrics,
@@ -69,6 +72,9 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     observation_clock_for,
 )
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
+from alphalattice.foundation.feature_engine.panels.materialization_identity import (
+    align_feature_source_sessions,
+)
 from alphalattice.foundation.feature_engine.panels.observation_clock_authority import (
     FeaturePanelObservationClockVerifier,
 )
@@ -89,6 +95,7 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     build_installed_factor_formula_specifications,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
@@ -182,6 +189,7 @@ def test_every_installed_formula_lands_its_window_on_the_observation_session() -
     assert NEW_FEATURE_OBSERVATION_CLOCK == "TRUE_OBSERVATION_SESSION"
 
 
+@pytest.mark.proves("feature_engine.aligned_gap_names_missing_observation")
 def test_a_declared_economic_skip_survives_the_successor() -> None:
     """requirement: an economic skip is Formula meaning and is not removed."""
 
@@ -205,6 +213,19 @@ def test_a_declared_economic_skip_survives_the_successor() -> None:
         atol=1e-12,
         equal_nan=True,
     )
+    # Preserve the calendar rows. An early gap falls inside a consumed window at row 330;
+    # a later gap is inside volatility's window but in momentum's economic skip at row 399.
+    sessions = tuple(frame["session_date"].dt.date)
+    gapped = align_feature_source_sessions(frame.drop(index=[100, 380]), sessions)
+    with_gaps = BaseFeatureMaterializer(catalog).materialize_listing(
+        listing_id="skip", projected_bars=gapped, market_bars=_bars(400, seed=19)
+    )
+    facts = with_gaps.ineligibility.set_index(["session_date", "factor_id"])
+    assert facts.loc[(sessions[330], "mom_252_21"), "reason"] == "missing_observation"
+    assert facts.loc[(sessions[-1], "vol_252"), "reason"] == "missing_observation"
+    assert facts.loc[(sessions[0], "vol_252"), "reason"] == "insufficient_history"
+    assert with_gaps.values.iloc[-1]["mom_252_21"] == block.values.iloc[-1]["mom_252_21"]
+
     calendar_ids = catalog.calendar_factor_ids
     for spec in catalog.factors:
         clock = clocks[spec.factor_id]
@@ -726,7 +747,7 @@ def test_the_panel_driver_never_deletes_a_development_workspace(
 
 
 @pytest.mark.skipif(
-    os.name != "nt" and not hasattr(os, "sched_setaffinity"),
+    sys.platform == "darwin" or (os.name != "nt" and not hasattr(os, "sched_setaffinity")),
     reason="pins processor affinity, which this system does not offer",
 )
 @pytest.mark.proves(
@@ -881,11 +902,38 @@ def test_runtime_plan_jointly_bounds_desktop_workers_models_and_duckdb(
         connection.execute("CREATE TABLE observations(value INTEGER)")
         connection.execute("INSERT INTO observations VALUES (1)")
     before = database.path.read_bytes()
+    # A test node sets OMP_NUM_THREADS; this row is the machine without one.
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     monkeypatch.setattr(reader_threads, "_THREADS", [2])
     with database.connect(read_only=True) as connection:
         assert int(connection.execute("SELECT current_setting('threads')").fetchone()[0]) == 2
         assert connection.execute("SELECT SUM(value) FROM observations").fetchone()[0] == 1
     assert database.path.read_bytes() == before
+    # A test node gives each process one thread (OMP_NUM_THREADS); every DuckDB pool sized to all
+    # ten cores in every worker held mac1 at load 80 (11-19).
+    from alphalattice.kernel.shared_kernel import environment
+
+    reader_threads._THREADS.clear()  # the list patched above: nothing applied
+    monkeypatch.setattr(reader_threads.pa, "set_cpu_count", lambda threads: None)
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    # The getter reports the applied budget alone, which a feature pool sizes by.
+    assert reader_threads.reader_threads() is None
+    with database.connect(read_only=True) as connection:
+        pools = connection.execute(
+            "SELECT current_setting('threads'), current_setting('async_threads')"
+        ).fetchone()
+        assert tuple(map(int, pools)) == (1, 1)  # both pools
+    with monkeypatch.context() as created:  # the instance as it was created, before any SET
+        created.setattr(reader_threads, "configure_duckdb", lambda connection: connection)
+        with reader_threads.connect_duckdb(database.path, read_only=True) as connection:
+            pools = connection.execute(
+                "SELECT current_setting('threads'), current_setting('async_threads')"
+            ).fetchone()
+            assert tuple(map(int, pools)) == (1, 1)  # neither pool starts wider than the share
+    assert reader_threads.apply_reader_threads(4) == 1  # a budget applied later never widens it
+    for value, pools in (("2", {"threads": 2, "async_threads": 2}), ("", {}), ("0", {}), ("x", {})):
+        monkeypatch.setenv("OMP_NUM_THREADS", value)
+        assert environment.duckdb_thread_config() == pools  # none set: every instance as before
 
 
 def test_runtime_plan_is_workload_aware_across_desktop_and_throughput_profiles() -> None:
@@ -976,21 +1024,33 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
         include_live_descendants=True,
     )
     monitor.start()
-    child = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import time; payload = bytearray(4 * 1024 * 1024); time.sleep(0.35)",
-        ]
-    )
     try:
-        child.wait(timeout=10)
-    finally:
-        if child.poll() is None:
-            child.kill()
+        with spawn.InteractiveSession(timeout=10, stop_scope="tree") as session:
+            child = session.start(
+                [
+                    sys.executable,
+                    "-c",
+                    "import time; payload = bytearray(4 * 1024 * 1024); time.sleep(0.35)",
+                ],
+                stdin=subprocess.DEVNULL,
+            )
             child.wait(timeout=10)
+            session.check()
+    finally:
         usage = monitor.finish()
 
+    observed = psutil.Process().memory_info().rss
+    measured = process_metrics.current_rss_bytes()
+    if sys.platform == "darwin":
+        assert measured == 0  # the existing /proc-based reader is unavailable here
+    else:
+        assert abs(measured - observed) < 4 * 1024 * 1024
+    cpu = psutil.Process().cpu_times()
+    assert abs(process_metrics.process_cpu_seconds() - cpu.user - cpu.system) < 0.25
+    with monkeypatch.context() as patched:
+        patched.setattr(InMemoryMetricReader, "get_metrics_data", lambda self: None)
+        with pytest.raises(RuntimeError, match=r"process_metrics\.cpu_unavailable"):
+            process_metrics.process_cpu_seconds()
     assert usage.measurement_scope == "PARENT_AND_LIVE_DESCENDANTS"
     assert usage.process_tree_peak_rss_bytes >= usage.peak_rss_bytes
     assert usage.sample_interval_seconds == 0.02
@@ -1036,6 +1096,26 @@ def test_process_resource_monitor_reports_a_time_aligned_live_child_tree(
             (101,),
             "PROCESS_TREE_ENUMERATION_UNAVAILABLE",
         )
+
+    # A recovered final read must not hide an earlier failed background sample.
+    lost = ProcessResourceMonitor(include_live_descendants=True)
+    lost._sample(initial=True)
+    lost._thread = Mock()
+    read_metrics = InMemoryMetricReader.get_metrics_data
+    reads: list[bool] = []
+
+    def transient(reader: InMemoryMetricReader) -> Any:
+        reads.append(True)
+        return None if len(reads) == 1 else read_metrics(reader)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(lost._stop, "wait", Mock(side_effect=[False, True]))
+        patched.setattr(InMemoryMetricReader, "get_metrics_data", transient)
+        with suppress(RuntimeError):  # the reviewed head loses the thread exception
+            lost._sample_until_stopped()
+        with pytest.raises(RuntimeError, match=r"process_metrics\.cpu_unavailable"):
+            lost.finish()
+        assert len(reads) == 2  # the final collection recovered
 
 
 def _assert_capacity_ceiling_holds(

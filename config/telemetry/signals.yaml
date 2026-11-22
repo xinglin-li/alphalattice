@@ -1,0 +1,305 @@
+file_format: definition/2
+attributes:
+- key: alphalattice.workspace_id
+  type: string
+  brief: The workspace this operation serves.
+  stability: development
+- key: alphalattice.trial_id
+  type: string
+  brief: The research trial this operation serves.
+  stability: development
+- key: alphalattice.selection_id
+  type: string
+  brief: The selection this operation serves.
+  stability: development
+- key: alphalattice.goal_id
+  type: string
+  brief: The goal this operation serves.
+  stability: development
+- key: alphalattice.actor_kind
+  type: string
+  brief: The kind of actor responsible for this operation.
+  stability: development
+- key: alphalattice.actor_id
+  type: string
+  brief: The actor responsible for this operation.
+  stability: development
+- key: alphalattice.subject_kind
+  type: string
+  brief: The category of the observed subject.
+  stability: development
+- key: alphalattice.subject_id
+  type: string
+  brief: The identity of the observed subject.
+  stability: development
+- key: alphalattice.node
+  type: string
+  brief: The process role which emitted the observation.
+  stability: development
+- key: alphalattice.call_started_us
+  type: string
+  brief: The CLI call start time in Unix microseconds, sent as baggage.
+  stability: development
+- key: alphalattice.call_parent
+  type: string
+  brief: The CLI call's parent span ID, sent as baggage.
+  stability: development
+- key: alphalattice.command
+  type: string
+  brief: The CLI command name, sent as baggage.
+  stability: development
+- key: operation
+  type: string
+  brief: The product operation or request route.
+  stability: development
+- key: route
+  type: string
+  brief: The request method and matched route.
+  stability: development
+- key: call
+  type: string
+  brief: The worker's qualified callable name.
+  stability: development
+- key: caller
+  type: string
+  brief: The command or surface that initiated the product operation.
+  stability: development
+- key: command
+  type: string
+  brief: The CLI command name.
+  stability: development
+- key: exit_code
+  type: int
+  brief: The CLI process exit code.
+  stability: development
+- key: unattributed
+  type: boolean
+  brief: Whether the caller could not be attributed.
+  stability: development
+- key: event_kind
+  type: string
+  brief: The type of activity reported by an agent client.
+  stability: development
+- key: code
+  type: string
+  brief: The code of the question shown to the person.
+  stability: development
+- key: state
+  type: string
+  brief: Whether the question was asked or answered.
+  stability: development
+- key: failure_code
+  type: string
+  brief: The product refusal code.
+  stability: development
+- key: source
+  type: string
+  brief: The telemetry source path for the Task.
+  stability: development
+- key: channel
+  type: string
+  brief: The phase or progress channel of the Task.
+  stability: development
+- key: goal_id
+  type: string
+  brief: The goal inherited by a recorded CLI or worker span.
+  stability: development
+- key: trial_id
+  type: string
+  brief: The trial inherited by a worker span returned to its Host.
+  stability: development
+- key: selection_id
+  type: string
+  brief: The selection inherited by a worker span returned to its Host.
+  stability: development
+- key: links
+  type: string[]
+  brief: The preceding trace and span identifiers for linked CLI calls.
+  stability: development
+spans:
+- type: host.request
+  kind: internal
+  name:
+    templates:
+    - host.request
+  brief: A request served by the Host.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: operation
+    requirement_level: required
+  - ref: route
+    requirement_level: recommended
+  requirement_level: recommended
+- type: worker.call
+  kind: internal
+  name:
+    templates:
+    - worker.call
+  brief: A worker call serving a Host step.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: call
+    requirement_level: required
+  - ref: goal_id
+    requirement_level: recommended
+  - ref: trial_id
+    requirement_level: recommended
+  - ref: selection_id
+    requirement_level: recommended
+  requirement_level: recommended
+- type: product.operation
+  kind: internal
+  name:
+    templates:
+    - product.operation
+  brief: A product operation served by the Host.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: operation
+    requirement_level: required
+  - ref: caller
+    requirement_level: required
+  requirement_level: recommended
+- type: cli.call
+  kind: internal
+  name:
+    templates:
+    - cli.call
+  brief: A CLI invocation recorded by the Host.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: command
+    requirement_level: required
+  - ref: exit_code
+    requirement_level: recommended
+  - ref: unattributed
+    requirement_level: recommended
+  - ref: gen_ai.conversation.id
+    requirement_level: recommended
+  - ref: gen_ai.provider.name
+    requirement_level: recommended
+  - ref: gen_ai.agent.id
+    requirement_level: recommended
+  - ref: goal_id
+    requirement_level: recommended
+  - ref: links
+    requirement_level: recommended
+  requirement_level: recommended
+- type: task.telemetry
+  kind: internal
+  name:
+    templates:
+    - task.telemetry
+  brief: A Task progress update or completed phase.
+  stability: development
+  requirement_level: recommended
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: source
+    requirement_level: required
+  - ref: channel
+    requirement_level: required
+span_refinements:
+- id: alphalattice.retrieval
+  ref: gen_ai.retrieval
+  name:
+    templates:
+    - gen_ai.retrieval
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: gen_ai.operation.name
+    requirement_level: required
+  - ref: gen_ai.retrieval.query.text
+    requirement_level: recommended
+- id: alphalattice.memory
+  ref: gen_ai.memory.client
+  name:
+    templates:
+    - '{gen_ai.operation.name}'
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: gen_ai.operation.name
+    requirement_level: required
+  - ref: gen_ai.memory.store.id
+    requirement_level: required
+imports:
+  spans:
+  - gen_ai.retrieval
+  - gen_ai.memory.client
+  - gen_ai.invoke_agent.internal
+  - gen_ai.execute_tool
+events:
+- name: task.transition
+  brief: A Task Control wake or command return.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  requirement_level: recommended
+- name: artifact.verified
+  brief: Verification of a result artifact.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  requirement_level: recommended
+- name: agent.activity
+  brief: Activity reported by an agent client.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: event_kind
+    requirement_level: required
+  requirement_level: recommended
+- name: person.question
+  brief: A question asked or answered.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: code
+    requirement_level: required
+  - ref: state
+    requirement_level: required
+  requirement_level: recommended
+- name: clock.correlated
+  brief: A published correlation between a source clock and the Host clock.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  requirement_level: recommended
+- name: request.refused
+  brief: A request refused by the Host.
+  stability: development
+  attributes:
+  - ref_group: alphalattice.context
+  - ref: operation
+    requirement_level: required
+  - ref: failure_code
+    requirement_level: required
+  - ref: caller
+    requirement_level: required
+  requirement_level: recommended
+attribute_groups:
+- id: alphalattice.context
+  visibility: internal
+  attributes:
+  - ref: alphalattice.workspace_id
+    requirement_level: recommended
+  - ref: alphalattice.trial_id
+    requirement_level: recommended
+  - ref: alphalattice.selection_id
+    requirement_level: recommended
+  - ref: alphalattice.goal_id
+    requirement_level: recommended
+  - ref: alphalattice.actor_kind
+    requirement_level: recommended
+  - ref: alphalattice.actor_id
+    requirement_level: recommended
+  - ref: alphalattice.subject_kind
+    requirement_level: recommended
+  - ref: alphalattice.subject_id
+    requirement_level: recommended
+  - ref: alphalattice.node
+    requirement_level: recommended

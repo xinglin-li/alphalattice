@@ -11,13 +11,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast, runtime_checkable
-
-import duckdb
-import numpy as np
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
@@ -57,6 +51,7 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
     canonical_cutoff_set,
     ensure_feature_current_schema,
     feature_storage_layout,
+    refuse_before_0_2_7,
     runtime_view_hash,
 )
 from alphalattice.foundation.feature_engine.publication.persistence import admitted_writes
@@ -73,10 +68,8 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
     DailyPriceBasis,
     FeatureAdmissionBlocked,
-    action_set_hash,
     project_as_traded_series,
     project_research_series,
-    provider_adjusted_close_evidence_hash,
     provider_adjusted_ratio_diagnostics,
 )
 from alphalattice.foundation.market_data_ops.returns.sector_revision_identity import (
@@ -88,8 +81,12 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
-from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
+from alphalattice.foundation.market_data_ops.sources.manifest import (
+    ManifestListing,
+    UniverseManifest,
+)
 from alphalattice.foundation.market_data_ops.sources.sector_forward import sector_effective_session
+from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     FeaturePersistenceSqlProfiler,
@@ -103,6 +100,12 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     raw_bars_from_table,
 )
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
+
+if TYPE_CHECKING:
+    import duckdb
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
 
 
 class _FeatureInputAdmissionLike(Protocol):
@@ -171,6 +174,8 @@ def _staged_rows(columns: Sequence[str], rows: Sequence[Sequence[object]]) -> pa
     gathers each column's values and converts them with `pa.array` -- without the
     mappings (1.19M rows over a first build's Feature rows).
     """
+    import pyarrow as pa  # lazy: only builders of staged rows use Arrow
+
     by_column = zip(*rows, strict=True)
     return pa.table(
         {name: pa.array(values) for name, values in zip(columns, by_column, strict=True)}
@@ -194,6 +199,8 @@ def _canonical_stage(
     timestamp and doubles, NaN kept. ``verification`` holds, when given, the
     ``source_verification_receipt_hash`` every row carries.
     """
+    import pyarrow as pa  # lazy: only feature row staging builds these columns
+
     count = len(cells)
     sessions, cutoffs, row_hashes = (list(values) for values in zip(*cells, strict=True))
     by_cell = {
@@ -235,6 +242,8 @@ def _ineligibility_facts(
     of mappings, go through the checks fact by fact, so the first failing fact raises what
     it always raised.
     """
+    import pandas as pd  # lazy: only this adapter reads DataFrame input
+
     required = ("session_date", "factor_id", "reason", "observation_count")
     if isinstance(ineligibility, pd.DataFrame):
         if not set(required).issubset(ineligibility.columns):
@@ -369,7 +378,10 @@ def projected_feature_rows(inputs: FeatureSourceInputs) -> list[dict[str, object
         if bars[0].session_date <= item.effective_date <= bars[-1].session_date
     )
     projected = project_research_series(
-        bars, scoped_actions, daily_price_basis=inputs.daily_price_basis
+        bars,
+        scoped_actions,
+        daily_price_basis=inputs.daily_price_basis,
+        action_digest=inputs.action_hash if len(scoped_actions) == len(inputs.actions) else None,
     )
     traded = (
         {
@@ -495,6 +507,8 @@ class FeatureStateRepository(WorkspaceRepository):
 
     def feature_input_candidate(self, market_profile_id: str) -> UniverseManifest | None:
         """Load the Feature-owned candidate through the Market manifest reader."""
+        import duckdb  # lazy: recognize a missing catalog only when reading a candidate
+
         if not self.path.exists():
             return None
         connection = self._connect(read_only=True)
@@ -520,79 +534,7 @@ class FeatureStateRepository(WorkspaceRepository):
         return manifest
 
     def _ensure_feature_ineligibility_view(self, connection: duckdb.DuckDBPyConnection) -> None:
-        """Migrate the old row table once, then expose a diagnostic-only view."""
-        object_row = connection.execute(
-            """
-            SELECT table_type FROM information_schema.tables
-            WHERE table_schema = 'main' AND table_name = 'feature_ineligibility'
-            """
-        ).fetchone()
-        if object_row is not None and str(object_row[0]) == "BASE TABLE":
-            connection.execute("BEGIN TRANSACTION")
-            try:
-                connection.execute(
-                    "ALTER TABLE feature_ineligibility RENAME TO feature_ineligibility_legacy"
-                )
-                scopes = connection.execute(
-                    """
-                    SELECT DISTINCT listing_id, catalog_hash
-                    FROM feature_ineligibility_legacy ORDER BY listing_id, catalog_hash
-                    """
-                ).fetchall()
-                for listing_id, catalog_hash in scopes:
-                    legacy = connection.execute(
-                        """
-                        SELECT listing_id, session_date, catalog_hash, factor_id, reason,
-                               observation_count, materialization_receipt_hash, updated_at
-                        FROM feature_ineligibility_legacy
-                        WHERE listing_id = ? AND catalog_hash = ?
-                        ORDER BY factor_id, session_date
-                        """,
-                        [listing_id, catalog_hash],
-                    ).fetchall()
-                    positions = {
-                        row[0]: index
-                        for index, row in enumerate(
-                            connection.execute(
-                                """
-                                SELECT session_date FROM feature_daily_runtime
-                                WHERE listing_id = ? AND catalog_hash = ? ORDER BY session_date
-                                """,
-                                [listing_id, catalog_hash],
-                            ).fetchall()
-                        )
-                    }
-                    runs = self._compress_ineligibility_rows(
-                        {
-                            name: [row[index] for row in legacy]
-                            for index, name in enumerate(_INELIGIBILITY_FACT_COLUMNS)
-                        },
-                        positions,
-                    )
-                    if runs:
-                        # The same staged-relation shape the live write path
-                        # already uses below. Per row this migration paid an
-                        # index probe for its conflict clause, and a workspace
-                        # can carry tens of thousands of legacy runs.
-                        legacy_stage = "feature_ineligibility_legacy_run_stage"
-                        connection.register(
-                            legacy_stage, _staged_rows(_INELIGIBILITY_RUN_COLUMNS, runs)
-                        )
-                        try:
-                            connection.execute(
-                                f"""
-                                INSERT INTO feature_ineligibility_run
-                                SELECT * FROM {legacy_stage}
-                                ON CONFLICT (run_id) DO NOTHING
-                                """
-                            )
-                        finally:
-                            connection.unregister(legacy_stage)
-                connection.execute("DROP TABLE feature_ineligibility_legacy")
-                connection.execute("COMMIT")
-            except Exception:
-                connection.execute("ROLLBACK")
-                raise
+        """Expose the diagnostic-only view over the ineligibility runs."""
         connection.execute(
             """
             CREATE OR REPLACE VIEW feature_ineligibility AS
@@ -648,6 +590,8 @@ class FeatureStateRepository(WorkspaceRepository):
         about a million facts, and the mappings, their sort and their lookups
         cost its single writer about 4 s.
         """
+        import numpy as np  # lazy: only this compression sorts NumPy arrays
+
         sessions = facts["session_date"]
         factors = facts["factor_id"]
         reasons = facts["reason"]
@@ -806,9 +750,16 @@ class FeatureStateRepository(WorkspaceRepository):
             connection.close()
 
     def ensure_current_storage(self) -> None:
-        """Install the active catalog-shaped Feature current schema."""
+        """Install the active catalog-shaped Feature current schema. A workspace a release before
+        0.2.7 last opened still holds a table 0.2.7 retired at its open, and is refused by name:
+        0.2.8 upgrades only from 0.2.7."""
         connection = self._connect()
         try:
+            (tables,) = connection.execute(
+                "SELECT map(list(table_name), list(table_type)) FROM information_schema.tables"
+                " WHERE table_schema = 'main'"
+            ).fetchone()
+            refuse_before_0_2_7(tables or {})
             self._ensure_feature_current_storage(connection)
             self._ensure_feature_ineligibility_view(connection)
         finally:
@@ -889,42 +840,46 @@ class FeatureStateRepository(WorkspaceRepository):
 
         The reads of ``projected_feature_frame``, by columns where a listing has a row per
         session: a build's writer reads them and the worker that computes the listing projects
-        them (``projected_feature_rows``), so the writer builds no object per bar.
+        them (``projected_feature_rows``), so the writer builds no object per bar. The values
+        come from the market's reads (``MarketDataRepository.market_reads``); the raw-evidence
+        hash, a receipt of the workspace's rows, from the workspace.
         """
-        self._market_data._assert_manifest_scope(manifest, (listing_id,))
-        connection = _connection or self._connect(read_only=True)
-        owns_connection = _connection is None
-        try:
-            bars = self._market_data._raw_bar_table(
-                connection, listing_id, start=start, through=through
+        import pyarrow as pa  # lazy: this query converts the source projection to Arrow
+
+        market = self._market_data
+        market._assert_manifest_scope(manifest, (listing_id,))
+        with market.market_reads(_connection, listings=(listing_id,)) as (reading, tables):
+            bars = market._raw_bar_table(
+                reading, listing_id, start=start, through=through, tables=tables
             )
             if not bars.num_rows:
                 raise ValueError("listing has no raw bars for feature materialization")
             first_session = cast(date, bars.column("session_date")[0].as_py())
-            provider = self._market_data._provider_for_listing(connection, listing_id)
-            # What ``actions`` reads, under the provider read once for the listing's inputs.
-            actions = self._market_data._current_actions(connection, listing_id, provider)
-            raw_hash = self._market_data._raw_evidence_hash(
-                connection,
-                listing_id=listing_id,
-                provider=provider,
-                history_start=first_session,
-                history_end=through,
-            )
+            # What ``actions`` reads, with the provider it selects for the listing's inputs.
+            provider, actions = market._provider_actions(reading, (listing_id,), tables)[listing_id]
             adjusted_close = cast(
                 pa.Table,
-                connection.execute(
-                    """
+                reading.execute(
+                    f"""
                     SELECT session_date, adjusted_close
-                    FROM provider_adjusted_close_current
+                    FROM {tables["adjusted"]}
                     WHERE listing_id = ? AND provider = ? AND session_date BETWEEN ? AND ?
                     ORDER BY session_date
                     """,
                     [listing_id, provider, first_session, through],
                 ).to_arrow_table(),
             )
+        connection = _connection or self._connect(read_only=True)
+        try:
+            raw_hash = market._raw_evidence_hash(
+                connection,
+                listing_id=listing_id,
+                provider=provider,
+                history_start=first_session,
+                history_end=through,
+            )
         finally:
-            if owns_connection:
+            if _connection is None:
                 connection.close()
         return FeatureSourceInputs(
             listing_id=listing_id,
@@ -935,7 +890,7 @@ class FeatureStateRepository(WorkspaceRepository):
             allow_missing_adjusted=allow_missing_adjusted,
             as_traded=as_traded,
             raw_hash=raw_hash,
-            action_hash=action_set_hash(actions),
+            action_hash=market._action_set_digest(listing_id, actions),
         )
 
     def feature_source_inputs_by_listing(
@@ -952,19 +907,22 @@ class FeatureStateRepository(WorkspaceRepository):
         ``starts`` maps a listing to its manifest and first session. A listing with no bars from
         its start, or no provider mapping, is left out: its own read refuses it by name.
         """
+        import pyarrow as pa  # lazy: this query reads and selects Arrow source rows
+
         market = self._market_data
         for listing_id, (manifest, _start) in starts.items():
             market._assert_manifest_scope(manifest, (listing_id,))
-        connection = _connection or self._connect(read_only=True)
-        owns_connection = _connection is None
-        try:
+        with market.market_reads(_connection, listings=list(starts)) as (reading, named):
             tables = market._raw_bar_tables(
-                connection,
+                reading,
                 {listing: start for listing, (_m, start) in starts.items()},
                 through=through,
+                tables=named,
             )
             providers = _selected_providers(
-                connection, [listing for listing, table in tables.items() if table.num_rows]
+                reading,
+                [listing for listing, table in tables.items() if table.num_rows],
+                named["mappings"],
             )
             held = sorted(
                 listing for listing, provider in providers.items() if provider is not None
@@ -975,20 +933,18 @@ class FeatureStateRepository(WorkspaceRepository):
                 listing: cast(date, tables[listing].column("session_date")[0].as_py())
                 for listing in held
             }
-            actions = market.actions_by_listing(held, _connection=connection)
-            raw_hashes = market._raw_evidence_hashes(
-                connection,
-                {
-                    listing: (cast(str, providers[listing]), firsts[listing], through)
-                    for listing in held
-                },
-            )
+            actions = {
+                listing: listing_actions
+                for listing, (_provider, listing_actions) in market._provider_actions(
+                    reading, held, named
+                ).items()
+            }
             adjusted = cast(
                 pa.Table,
-                connection.execute(
-                    """
+                reading.execute(
+                    f"""
                     SELECT listing_id, provider, session_date, adjusted_close
-                    FROM provider_adjusted_close_current
+                    FROM {named["adjusted"]}
                     WHERE listing_id IN (SELECT unnest(?::VARCHAR[]))
                       AND session_date BETWEEN ? AND ?
                     ORDER BY listing_id, session_date
@@ -996,8 +952,17 @@ class FeatureStateRepository(WorkspaceRepository):
                     [held, min(firsts.values()), through],
                 ).to_arrow_table(),
             )
+        connection = _connection or self._connect(read_only=True)
+        try:
+            raw_hashes = market._raw_evidence_hashes(
+                connection,
+                {
+                    listing: (cast(str, providers[listing]), firsts[listing], through)
+                    for listing in held
+                },
+            )
         finally:
-            if owns_connection:
+            if _connection is None:
                 connection.close()
         listings = adjusted.column("listing_id").to_pylist()
         selected = [
@@ -1032,7 +997,7 @@ class FeatureStateRepository(WorkspaceRepository):
                 allow_missing_adjusted=allow_missing_adjusted,
                 as_traded=as_traded,
                 raw_hash=raw_hashes[listing],
-                action_hash=action_set_hash(actions[listing]),
+                action_hash=market._action_set_digest(listing, actions[listing]),
             )
         return out
 
@@ -1077,6 +1042,8 @@ class FeatureStateRepository(WorkspaceRepository):
         nothing written in between; given, they are consumed instead of read
         again here, per listing. Without them they are read.
         """
+        import pandas as pd  # lazy: only materialization writes accept a DataFrame
+        import pyarrow as pa  # lazy: materialization writes build Arrow rows
 
         def record(stage: str, started: float) -> None:
             if timing_sink is not None:
@@ -2226,6 +2193,8 @@ class FeatureStateRepository(WorkspaceRepository):
         retaining only the full table and one earlier prefix. Arrow and IPC buffers are not
         automatically bounded by DuckDB's memory limit.
         """
+        import numpy as np  # lazy: only the prefix reader searches the NumPy session axis
+
         latest = max(ends)
         rows = connection.execute(statement, [*leading, start, latest]).to_arrow_table()
         multiple_chunks = any(column.num_chunks > 1 for column in rows.columns)
@@ -2609,8 +2578,8 @@ class FeatureStateRepository(WorkspaceRepository):
             ):
                 return None
             actions = self._market_data._current_actions(connection, listing_id, provider)
-            if receipt.action_set_hash != action_set_hash(
-                actions
+            if receipt.action_set_hash != self._market_data._action_set_digest(
+                listing_id, actions
             ) or receipt.action_evidence_hash != self._market_data._action_evidence_hash(
                 connection, listing_id=listing_id, provider=provider
             ):
@@ -2641,7 +2610,9 @@ class FeatureStateRepository(WorkspaceRepository):
             if (
                 not bars
                 or {item.session_date for item in bars} != {item.session_date for item in adjusted}
-                or provider_adjusted_close_evidence_hash(adjusted)
+                or self._market_data._adjusted_evidence_digest(
+                    listing_id, provider, receipt.history_start, receipt.history_end, adjusted
+                )
                 != receipt.provider_adjusted_close_evidence_hash
             ):
                 return None
@@ -2857,6 +2828,8 @@ class FeatureStateRepository(WorkspaceRepository):
         observed_at: datetime,
     ) -> None:
         """Persist a validated sector fan-in without one connection per listing."""
+        import pyarrow as pa  # lazy: only a sector write builds these Arrow columns
+
         prepared = tuple(
             (
                 manifest_revision,
@@ -3001,6 +2974,23 @@ class FeatureStateRepository(WorkspaceRepository):
             connection.close()
 
     def activate_sector_revision(
+        self,
+        *,
+        manifest: UniverseManifest,
+        observations: Sequence[Mapping[str, object]],
+        observed_at: datetime,
+    ) -> tuple[str, bool, str, date | None]:
+        """Activate a revision while its writer reads the workspace, then admit it to world."""
+        with world_reads.writing(
+            self.path,
+            lambda workspace_id: world.admit_sectors(self.path, workspace_id),
+            dataset="sector",
+        ):
+            return self._activate_sector_revision(
+                manifest=manifest, observations=observations, observed_at=observed_at
+            )
+
+    def _activate_sector_revision(
         self,
         *,
         manifest: UniverseManifest,
@@ -3385,6 +3375,7 @@ class FeatureStateRepository(WorkspaceRepository):
         manifest: UniverseManifest,
         *,
         _connection: duckdb.DuckDBPyConnection | None = None,
+        cutoff_us: int | None = None,
     ) -> SectorReferenceState | None:
         """Return sector state only when every manifest listing shares one revision."""
         owns_connection = _connection is None
@@ -3411,6 +3402,16 @@ class FeatureStateRepository(WorkspaceRepository):
         if len(revisions) != 1:
             return None
         sector_by_listing = {str(row[0]): str(row[1]) for row in rows}
+        with world_reads.reading(self.path) as cursor:
+            if cursor is not None:
+                named = world.sector_map(
+                    tuple(sector_by_listing),
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
+                if named == sector_by_listing:
+                    sector_by_listing = named
         distribution: dict[str, int] = {}
         for sector in sector_by_listing.values():
             distribution[sector] = distribution.get(sector, 0) + 1
@@ -3422,7 +3423,11 @@ class FeatureStateRepository(WorkspaceRepository):
         )
 
     def sector_history(
-        self, manifest: UniverseManifest, *, listing_ids: Sequence[str] = ()
+        self,
+        manifest: UniverseManifest,
+        *,
+        listing_ids: Sequence[str] = (),
+        cutoff_us: int | None = None,
     ) -> SectorHistory | None:
         """The Sector each session reads, for a manifest's members and these listings.
 
@@ -3433,13 +3438,30 @@ class FeatureStateRepository(WorkspaceRepository):
         Returns:
             The history, or None when the manifest has no complete current classification.
         """
-        state = self.current_sector_state(manifest)
+        state = self.current_sector_state(manifest, cutoff_us=cutoff_us)
         if state is None:
             return None
         current = dict(state.sector_by_listing_id)
         missing = [listing_id for listing_id in listing_ids if listing_id not in current]
         if missing:
-            current.update(self.sector_classifications(missing))
+            current.update(self.sector_classifications(missing, cutoff_us=cutoff_us))
+        with world_reads.reading(self.path) as cursor:
+            if cursor is not None:
+                cutoff = world_reads.LATEST if cutoff_us is None else cutoff_us
+                if (
+                    world.sector_map(
+                        tuple(current), session=date.max, cutoff_us=cutoff, cursor=cursor
+                    )
+                    == current
+                ):
+                    transitions = world.sector_transitions(
+                        tuple(current), cutoff_us=cutoff, cursor=cursor
+                    )
+                    return SectorHistory(
+                        current_revision=state.sector_revision,
+                        current=current,
+                        reclassifications=transitions,
+                    )
         connection = self._connect(read_only=True)
         try:
             # A store sealed before the forward rule (a research input's read-only copy) lacks
@@ -3481,7 +3503,9 @@ class FeatureStateRepository(WorkspaceRepository):
             ),
         )
 
-    def sector_classifications(self, listing_ids: Sequence[str]) -> dict[str, str]:
+    def sector_classifications(
+        self, listing_ids: Sequence[str], *, cutoff_us: int | None = None
+    ) -> dict[str, str]:
         """Return the current sector of listings outside the manifest's own state.
 
         A Panel's calculation axis holds every listing that is a member of
@@ -3493,6 +3517,14 @@ class FeatureStateRepository(WorkspaceRepository):
         """
         if not listing_ids:
             return {}
+        with world_reads.reading(self.path) as cursor:
+            if cursor is not None:
+                return world.sector_map(
+                    listing_ids,
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
         marks = ", ".join("?" for _ in listing_ids)
         connection = self._connect(read_only=True)
         try:
@@ -3658,13 +3690,14 @@ class PanelStateRepository(WorkspaceRepository):
             ).fetchall()
             missing = tuple(sorted(set(listing_ids) - {str(row[0]) for row in rows}))
             if missing and allow_missing_market_observations:
-                has_source = connection.execute(
-                    """
-                    SELECT DISTINCT listing_id FROM raw_daily_bar_current
-                    WHERE session_date = ? AND listing_id IN (SELECT unnest(?))
-                    """,
-                    [as_of_session, missing],
-                ).fetchall()
+                with self._market_data.market_reads(listings=missing) as (reading, tables):
+                    has_source = reading.execute(
+                        f"""
+                        SELECT DISTINCT listing_id FROM {tables["bars"]}
+                        WHERE session_date = ? AND listing_id IN (SELECT unnest(?))
+                        """,
+                        [as_of_session, missing],
+                    ).fetchall()
                 if has_source:
                     raise ValueError("feature.panel_member_row_not_materialized")
                 rows = sorted([*rows, *((listing_id, None) for listing_id in missing)])
@@ -4360,6 +4393,9 @@ class PanelStateRepository(WorkspaceRepository):
         DuckDB, and blocks all listed inputs on known ambiguity or a same-source
         adjusted-close mismatch greater than five basis points.
         """
+        import pyarrow as pa  # lazy: only freezing a snapshot builds its Arrow table
+        import pyarrow.parquet as pq  # lazy: only freezing a snapshot writes Parquet
+
         observed_at = _utc_naive(observed_at)
         selected = tuple(manifest.listings)
         if requested_listing_ids is not None:
@@ -4373,8 +4409,12 @@ class PanelStateRepository(WorkspaceRepository):
         receipt_hashes: set[str] = set()
         failures: list[FailureEvidence] = []
         prepared: list[tuple[str, tuple[object, ...], ActionAuditReceipt]] = []
+        bars_by_listing = self._market_data.raw_bars_by_listing(
+            [item.listing_id for item in selected], through=as_of_session
+        )
+        ready: list[tuple[ManifestListing, tuple[RawDailyBar, ...], ActionAuditReceipt]] = []
         for listing in selected:
-            bars = self._market_data.raw_bars(listing.listing_id, through=as_of_session)
+            bars = bars_by_listing[listing.listing_id]
             if not bars:
                 failures.append(
                     FailureEvidence(
@@ -4406,11 +4446,15 @@ class PanelStateRepository(WorkspaceRepository):
                     )
                 )
                 continue
+            ready.append((listing, bars, receipt))
+        held_actions = self._market_data.actions_by_listing(
+            [listing.listing_id for listing, _bars, _receipt in ready]
+        )
+        for listing, bars, receipt in ready:
             try:
-                actions = self._market_data.actions(listing.listing_id)
                 projection = project_research_series(
                     bars,
-                    actions,
+                    held_actions[listing.listing_id],
                     daily_price_basis=manifest.profile.daily_price_basis,
                 )
             except FeatureAdmissionBlocked as exc:

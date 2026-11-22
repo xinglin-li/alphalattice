@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import ast
-import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+
+from alphalattice.kernel.shared_kernel import spawn
 
 SCANNED = ("src", "scripts", "tests", "tools/tests")
 PATCHES = {"setattr", "delattr", "object", "patch"}
@@ -129,7 +130,7 @@ def problems(root: Path, *, staged: bool) -> list[str]:
     """This commit's (or the working tree's) changed modules, checked across `SCANNED`."""
 
     def git(*args: str) -> str:
-        done = subprocess.run(("git", *args), cwd=root, capture_output=True, encoding="utf-8")
+        done = spawn.run(("git", *args), cwd=root, capture_output=True, encoding="utf-8")
         return done.stdout if done.returncode == 0 else ""
 
     def read(p: str) -> str:  # a staged check reads the index where the working tree differs

@@ -1229,8 +1229,6 @@
           "src/alphalattice/kernel/knowledge/contracts.py:291",
           "src/alphalattice/kernel/knowledge/contracts.py:293",
           "src/alphalattice/kernel/knowledge/contracts.py:524",
-          "src/alphalattice/kernel/knowledge/hybrid.py:2803",
-          "src/alphalattice/kernel/knowledge/hybrid.py:2812",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:276",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:290",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:359",
@@ -1415,7 +1413,6 @@
       "identity_basis": "Network permission or storage-cap control is outside sealed computation method identities; no method parameter is changed.",
       "readers": {
         "literal": [
-          "src/alphalattice/control/observation_runtime/ledger.py:176",
           "src/alphalattice/control/product_host/storage/input_references.py:576",
           "src/alphalattice/control/product_host/storage/input_references.py:578",
           "src/alphalattice/control/product_host/storage/input_references.py:585",
@@ -1433,10 +1430,6 @@
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/pages-settings.js:70",
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/pages-settings.js:71",
           "src/alphalattice/interface/local_application/native_setup.py:441",
-          "src/alphalattice/kernel/knowledge/_reranking.py:308",
-          "src/alphalattice/kernel/knowledge/_reranking.py:315",
-          "src/alphalattice/kernel/knowledge/_reranking.py:470",
-          "tests/integration/alternative_evidence/test_evidence_index_storage.py:519",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:12",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:20",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:30",
@@ -1451,9 +1444,6 @@
           "tests/integration/local_application/test_native_bridge.py:538",
           "tests/integration/product_host/test_strategy_activation.py:1901",
           "tests/integration/product_host/test_strategy_activation.py:1905",
-          "tests/integration/observation_runtime/test_unified_observation.py:495",
-          "tests/integration/observation_runtime/test_unified_observation.py:511",
-          "tests/integration/observation_runtime/test_unified_observation.py:532",
           "tests/integration/product_host/test_current_state_storage.py:109",
           "tests/integration/product_host/test_current_state_storage.py:94",
           "tests/integration/product_host/test_current_state_storage.py:95"
@@ -2309,7 +2299,6 @@
           "src/alphalattice/interface/local_application/operations.py:1025",
           "src/alphalattice/interface/local_application/operations.py:1088",
           "src/alphalattice/interface/local_application/operations.py:1129",
-          "src/alphalattice/kernel/knowledge/_torch.py:15",
           "src/devtools/evaluation/intent.py:180",
           "src/devtools/evaluation/intent.py:34",
           "src/devtools/evaluation/intent.py:37",
@@ -3577,7 +3566,6 @@
           "src/alphalattice/kernel/data/table.py:35",
           "src/alphalattice/kernel/data/table.py:63",
           "src/alphalattice/kernel/data/universe.py:276",
-          "src/alphalattice/kernel/knowledge/_embeddings.py:902",
           "src/alphalattice/kernel/knowledge/contracts.py:232",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:381",
           "src/alphalattice/kernel/knowledge/hybrid_contracts.py:384",
@@ -7265,7 +7253,6 @@
           "tests/integration/local_application/test_product_script_refusals.py:360",
           "tests/integration/local_application/test_product_script_refusals.py:400",
           "tests/integration/local_application/test_product_script_refusals.py:468",
-          "tests/integration/knowledge/test_retrieval_recipes.py:264",
           "tests/integration/product_host/test_input_revisions.py:470",
           "tests/integration/product_host/test_workspace_preparation.py:608"
         ]

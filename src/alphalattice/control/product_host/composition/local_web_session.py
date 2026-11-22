@@ -1,16 +1,8 @@
-"""Compose the local Web product: session, application, dispatcher, routes.
+"""Compose the local Web session, applications, dispatcher and routes.
 
-This is the only place that knows all of it at once, which is the point. The
-Local Application boundary declares ports and owns no wiring; Task Control owns
-lifecycle; Portfolio owns numbers; the browser owns nothing. Composition holds
-the workspace session open, builds one application over it, hands the service its
-ports, and registers the routes a projection can reach.
-
-Three things are deliberately *not* here. There is no second report owner -- the
-`/report/*.html` route serves the page the executor already sealed. There is no
-second Task registry -- the dispatcher admits through the session's. And the
-Evidence & CRO routes are not special: they are three more operations of the one
-operation owner, so the browser and the generic Agent tool share them.
+Task Control owns lifecycle; Portfolio owns numbers. This composition retains
+one workspace session and Task registry. Reports serve the executor's sealed
+pages; Evidence and CRO share the browser and generic Agent operation owner.
 """
 
 from __future__ import annotations
@@ -18,35 +10,25 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
-from threading import Event
-from typing import Any, Final, cast, get_args
+from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING, Any, Final, cast, get_args
 from urllib.parse import urlencode
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from alphalattice.control.data_platform.readiness import SourceLoader
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.decision_advancement import (
-    DecisionAdvancementCommand,
-)
-from alphalattice.control.product_host.composition.evidence_authority_setup import (
-    EVIDENCE_INSTALL_TASK_KIND,
-    EvidenceInstallCommand,
-)
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    EvidenceReviewApplication,
-)
-from alphalattice.control.product_host.composition.evidence_review_workspace import (
-    admit_evidence_review_workspace,
+from alphalattice.control.product_host.composition.first_start import (
+    FirstStart,
+    refusal_reason,
 )
 from alphalattice.control.product_host.composition.goal_case_routes import (
     CASE_ROUTES,
@@ -58,40 +40,8 @@ from alphalattice.control.product_host.composition.local_web_connection import (
     remove_client_connection,
     workspace_web,
 )
-from alphalattice.control.product_host.composition.native_usage_reader import (
-    NativeUsageReader,
-    attach_native_usage,
-    read_usage,
-)
-from alphalattice.control.product_host.composition.portfolio_application import (
-    PLAN_FIELDS as PORTFOLIO_PLAN_FIELDS,
-)
-from alphalattice.control.product_host.composition.portfolio_application import (
-    PortfolioResearchApplication,
-)
-from alphalattice.control.product_host.composition.portfolio_finalization import (
-    HostCompletedDevelopmentTasks,
-    PortfolioFinalizationApplication,
-)
-from alphalattice.control.product_host.composition.portfolio_research_operations import (
-    PORTFOLIO_RUN_COMMAND,
-    PortfolioResearchOperations,
-    PortfolioRunCommand,
-)
-from alphalattice.control.product_host.composition.portfolio_result_context import (
-    portfolio_report_context,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    TASK_KIND as PORTFOLIO_UPDATE_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import PortfolioUpdateCommand
+from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
-from alphalattice.control.product_host.composition.research_experiments import (
-    TASK_KIND as STUDY_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    ResearchExperimentCommand,
-)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceEvidenceReview,
     ResearchWorkspaceManifest,
@@ -99,43 +49,19 @@ from alphalattice.control.product_host.composition.research_workspace import (
     admit_research_workspace,
     initialize_research_workspace,
     manifest_fields_hash,
+    named_workspace_id,
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.composition.strategy_calibration import (
-    TASK_KIND as CALIBRATION_TASK_KIND,
+from alphalattice.control.product_host.composition.task_kinds import (
+    EVIDENCE_INSTALL_TASK_KIND,
+    EVIDENCE_REVIEW_RUNTIME_FILE,
+    PORTFOLIO_UPDATE_TASK_KIND,
+    STRATEGY_CALIBRATION_TASK_KIND,
+    STRATEGY_SCORE_TASK_KIND,
+    STUDY_VERIFICATION_TASK_KIND,
 )
-from alphalattice.control.product_host.composition.strategy_calibration import (
-    StrategyCalibrationCommand,
-)
-from alphalattice.control.product_host.composition.strategy_scoring import (
-    TASK_KIND as STRATEGY_SCORE_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.strategy_scoring import (
-    StrategyScoreCommand,
-)
-from alphalattice.control.product_host.composition.verification_sweep import (
-    StudyVerificationSweepCommand,
-)
-from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
-from alphalattice.control.product_host.data_preparation.application import (
-    WorkspacePreparationCommand,
-)
-from alphalattice.control.product_host.data_preparation.feature_research import (
-    ResearchFeatureBuildCommand,
-)
-from alphalattice.control.product_host.data_preparation.input_capture import (
-    ResearchInputCaptureCommand,
-)
-from alphalattice.control.product_host.data_preparation.model_training import (
-    ModelTrainingInputCommand,
-)
-from alphalattice.control.product_host.data_preparation.research_strategy import (
-    ResearchStrategyCommand,
-)
-from alphalattice.control.product_host.maintenance.data_update import (
-    DATA_UPDATE_TASK_KIND,
-    WorkspaceDataUpdateApplication,
-    WorkspaceDataUpdateCommand,
+from alphalattice.control.product_host.composition.task_kinds import (
+    RESEARCH_EXPERIMENT_TASK_KIND as STUDY_TASK_KIND,
 )
 from alphalattice.control.product_host.maintenance.signals import (
     MaintenanceBackgroundHost,
@@ -150,26 +76,11 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
-from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
-from alphalattice.evidence.alternative_evidence.publication.analysis import (
-    AlternativeEvidenceAnalysisPublicationService,
-)
-from alphalattice.evidence.alternative_evidence.publication.artifacts import (
-    AlternativeEvidenceArtifactStore,
-)
-from alphalattice.evidence.alternative_evidence.runtime.policy import AdmittedEvidencePolicy
-from alphalattice.evidence.alternative_evidence.runtime.service import (
-    AlternativeEvidenceDocumentIntelligenceRuntime,
-)
-from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
-    AlternativeEvidenceDocumentTaskAdapter,
-    AlternativeEvidenceDocumentTaskResources,
-)
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
     admit_workspace_source,
 )
-from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
@@ -178,12 +89,15 @@ from alphalattice.interface.local_application.activity import (
     refusal_code,
     returned_status,
 )
+from alphalattice.interface.local_application.call_span import CALL_PATH
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
+    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     RequestProvenance,
     agent_session,
     refusal_words,
 )
+from alphalattice.interface.local_application.cli_invocation import invoke as invoke_cli
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
 )
@@ -202,6 +116,7 @@ from alphalattice.interface.local_application.native_bridge import (
     NativeBridgeError,
     NativeResearchBinding,
     autobind_root,
+    read_session_usage,
     session_binding,
 )
 from alphalattice.interface.local_application.portfolio_research import (
@@ -211,8 +126,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
+    validate_request_document,
 )
+from alphalattice.interface.local_application.thin_cli import CLI_OPERATION
 from alphalattice.interface.local_application.web import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     LocalWebApplication,
@@ -229,9 +145,6 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.candidate_freeze import (
-    freeze_candidate,
-)
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
 )
@@ -246,16 +159,66 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer.history import (
+    data_root,
+    held,
+    move_carried,
+    release_history,
+    render_in_background,
+)
+from alphalattice.kernel.data_layer.store import preload_grouping
+from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
-    AdmittedListingTickerAuthority,
-)
-from alphalattice.oversight.chief_risk_officer.publication.portfolio_review import (
-    PortfolioReviewPublicationService,
-)
-from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
-    PortfolioReviewActor,
-)
+
+if TYPE_CHECKING:
+    from alphalattice.control.data_platform.readiness import SourceLoader
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        EvidenceReviewApplication,
+    )
+    from alphalattice.control.product_host.composition.native_usage_reader import NativeUsageReader
+    from alphalattice.control.product_host.composition.portfolio_application import (
+        PortfolioResearchApplication,
+    )
+    from alphalattice.control.product_host.composition.portfolio_finalization import (
+        PortfolioFinalizationApplication,
+    )
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
+    from alphalattice.control.product_host.maintenance.data_update import (
+        WorkspaceDataUpdateApplication,
+    )
+    from alphalattice.evidence.alternative_evidence.contracts import SecIssuerRegistrySnapshot
+    from alphalattice.evidence.alternative_evidence.publication.analysis import (
+        AlternativeEvidenceAnalysisPublicationService,
+    )
+    from alphalattice.evidence.alternative_evidence.publication.artifacts import (
+        AlternativeEvidenceArtifactStore,
+    )
+    from alphalattice.evidence.alternative_evidence.runtime.policy import (
+        AdmittedEvidencePolicy,
+    )
+    from alphalattice.evidence.alternative_evidence.runtime.service import (
+        AlternativeEvidenceDocumentIntelligenceRuntime,
+    )
+    from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
+        AlternativeEvidenceDocumentTaskResources,
+    )
+    from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
+    from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
+        PortfolioExecutionProgram,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
+        PortfolioReportContext,
+    )
+    from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
+        AdmittedListingTickerAuthority,
+    )
+    from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
+        PortfolioReviewActor,
+    )
 
 ASSET_ROOT = Path(__file__).resolve().parents[3] / "interface" / "local_application" / "assets"
 
@@ -272,7 +235,7 @@ _utc_now.clock_domain = "UTC"  # type: ignore[attr-defined]  # the default Host 
 """Local files, served from the installed package. No CDN, no font host."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class HostPortfolioFreeze:
     """The Gate 9B freeze and finalization owners, projected for a local UI.
 
@@ -284,11 +247,28 @@ class HostPortfolioFreeze:
 
     session: WorkspaceApplicationSession
     application: PortfolioResearchApplication
-    finalization: PortfolioFinalizationApplication
+    store: PortfolioFinalizationStore
+    _finalization: PortfolioFinalizationApplication | None = field(
+        init=False, default=None, repr=False
+    )
+    _finalization_lock: Lock = field(init=False, default_factory=Lock, repr=False)
 
-    @property
-    def _store(self) -> PortfolioFinalizationStore:
-        return self.finalization.store
+    def _protected_finalization(self) -> PortfolioFinalizationApplication:
+
+        # Only the status of an existing candidate needs the protected path.
+        from .portfolio_finalization import (  # lazy: on use
+            PortfolioFinalizationApplication,
+        )
+
+        with self._finalization_lock:
+            if self._finalization is None:
+                self._finalization = PortfolioFinalizationApplication(
+                    workspace_id=self.application.workspace_id,
+                    session=self.session,
+                    continuation=None,  # type: ignore[arg-type]
+                    finalization_store=self.store,
+                )
+            return self._finalization
 
     def freeze(self, *, result_hash: str) -> FrozenCandidateProjection:
         """Freeze a published development result through its originating Task owner.
@@ -305,9 +285,18 @@ class HostPortfolioFreeze:
         manifest = self.application.pipeline.find_for_result(result_hash)
         if manifest is None:
             raise LocalWebError("local_web.result_has_no_originating_task")
-        candidate = freeze_candidate(
+
+        # Only a freeze request needs the candidate publication and Task adapters.
+        from ....investment.portfolio_strategy_lab.application import (  # lazy: freeze
+            candidate_freeze,
+        )
+        from .portfolio_finalization import (  # lazy: on use
+            HostCompletedDevelopmentTasks,
+        )
+
+        candidate = candidate_freeze.freeze_candidate(
             self.application.ledger,
-            self._store,
+            self.store,
             workspace_id=self.application.workspace_id,
             result_hash=result_hash,
             development_task_id=str(manifest.task_id),
@@ -324,7 +313,7 @@ class HostPortfolioFreeze:
         Returns:
             The candidate projection, or None when no candidate is recorded.
         """
-        candidate = self._store.open_candidate(candidate_hash)
+        candidate = self.store.open_candidate(candidate_hash)
         return None if candidate is None else _projected(candidate)
 
     def finalization_status(self, candidate_hash: str) -> FinalizationStatusProjection:
@@ -337,14 +326,15 @@ class HostPortfolioFreeze:
             Status distinguishing an absent candidate, awaiting protected authority
             or publication, and the released package with its recorded handoff.
         """
-        candidate = self._store.open_candidate(candidate_hash)
+        candidate = self.store.open_candidate(candidate_hash)
         if candidate is None:
             return FinalizationStatusProjection(
                 candidate_hash=candidate_hash,
                 disposition="NOT_FROZEN",
                 detail="no candidate was frozen under this identity",
             )
-        permit = self.finalization.gate.reopen_permit(candidate=candidate)
+        gate = self._protected_finalization().gate
+        permit = gate.reopen_permit(candidate=candidate)
         if permit is None:
             return FinalizationStatusProjection(
                 candidate_hash=candidate_hash,
@@ -355,16 +345,16 @@ class HostPortfolioFreeze:
                     "holds neither."
                 ),
             )
-        package = self._store.find_package_for_permit(permit.permit_hash)
-        receipt = self.finalization.gate.reopen_receipt(permit=permit)
+        package = self.store.find_package_for_permit(permit.permit_hash)
+        receipt = gate.reopen_receipt(permit=permit)
         if package is None or receipt is None:
             return FinalizationStatusProjection(
                 candidate_hash=candidate_hash,
                 disposition="AWAITING_PROTECTED_AUTHORITY",
                 detail="a permit exists; the protected path has not been sealed and closed",
             )
-        release = self._store.find_release_for_package(package.package_hash)
-        handoff = self._store.find_handoff_for_package(package.package_hash)
+        release = self.store.find_release_for_package(package.package_hash)
+        handoff = self.store.find_handoff_for_package(package.package_hash)
         if release is None or handoff is None:
             return FinalizationStatusProjection(
                 candidate_hash=candidate_hash,
@@ -472,26 +462,25 @@ class PortfolioForwardPrewarm:
                 if observed is not None:
                     observed(kind, task_id, failure)
             finally:
-                if (
-                    not self._stopping.is_set()
-                    and failure is None
-                    and kind
-                    in {
-                        DATA_UPDATE_TASK_KIND,
-                        ADVANCEMENT_TASK_KIND,
-                        PORTFOLIO_UPDATE_TASK_KIND,
-                    }
-                ):
-                    # A returned worker may have deferred, blocked or cancelled its
-                    # Task. Only the registry's terminal success warms new data.
-                    try:
-                        task = self.operations.workspace_session.task_control_registry.task(task_id)
-                    except Exception:
-                        task = None
-                    if task is not None and task.lifecycle is TaskLifecycle.SUCCEEDED:
-                        self.wake()
+                if failure is None and not self._stopping.is_set():
+                    self._wake_after_update(kind, task_id)
 
         dispatcher.on_command_returned = command_returned
+
+    def _wake_after_update(self, kind: str, task_id: UUID) -> None:
+        from ..maintenance.data_update import (  # lazy: successful data or Portfolio update
+            DATA_UPDATE_TASK_KIND,
+        )
+
+        if kind not in {DATA_UPDATE_TASK_KIND, ADVANCEMENT_TASK_KIND, PORTFOLIO_UPDATE_TASK_KIND}:
+            return
+        # Only terminal success warms new data, since a returned worker may have stopped.
+        try:
+            task = self.operations.workspace_session.task_control_registry.task(task_id)
+        except Exception:
+            return
+        if task is not None and task.lifecycle is TaskLifecycle.SUCCEEDED:
+            self.wake()
 
     def start(self) -> None:
         """Start the serial reader and queue the initial startup read."""
@@ -527,7 +516,7 @@ class PortfolioForwardPrewarm:
         """Return the existing maintenance owner's bounded read failure code."""
         return self._host.last_error_code
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def _read_once(self) -> None:
         if self._stopping.is_set() or self.operations.activations is None:
@@ -559,6 +548,83 @@ class PortfolioForwardPrewarm:
             )
 
 
+class _RecoveryCommands(Mapping[str, LocalApplicationCommand]):
+    """Restore ownership by kind without constructing a command for settled Tasks."""
+
+    def __init__(
+        self,
+        factories: dict[str, Callable[[], LocalApplicationCommand]],
+        verified: dict[str, LocalApplicationCommand],
+    ) -> None:
+        self._factories = factories
+        self._issued = verified
+        self._kinds = dict.fromkeys((*factories, *verified))
+
+    def __contains__(self, kind: object) -> bool:
+        return kind in self._kinds
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._kinds)
+
+    def __len__(self) -> int:
+        return len(self._kinds)
+
+    def __getitem__(self, kind: str) -> LocalApplicationCommand:
+        try:
+            return self._issued[kind]
+        except KeyError:
+            command = self._factories[kind]()
+            self._issued[kind] = command
+            return command
+
+
+def _recovery_command[Owner](
+    constructor: Callable[[Owner], LocalApplicationCommand], owner: Owner | None
+) -> LocalApplicationCommand:
+    assert owner is not None
+    return constructor(owner)
+
+
+def _portfolio_recovery(
+    operations: PortfolioResearchOperations, kind: str
+) -> LocalApplicationCommand:
+
+    from . import (  # lazy: only owed Portfolio work opens the family's recovery commands.
+        portfolio_operations,
+    )
+
+    return portfolio_operations.recovery_command(operations, kind)
+
+
+def _experiment_recovery(operations: PortfolioResearchOperations) -> LocalApplicationCommand:
+
+    # Only this recovery command needs its owner's adapter.
+    from .research_experiments import (  # lazy: on use
+        ResearchExperimentCommand,
+    )
+
+    return ResearchExperimentCommand(operations.experiments)
+
+
+def _sweep_recovery(operations: PortfolioResearchOperations) -> LocalApplicationCommand:
+
+    from .verification_sweep import (  # lazy: only this recovery command needs its owner's adapter.
+        StudyVerificationSweepCommand,
+    )
+
+    return StudyVerificationSweepCommand(operations.sweep)
+
+
+def _evidence_install_recovery(operations: PortfolioResearchOperations) -> LocalApplicationCommand:
+
+    # Only this recovery command needs its owner's adapter.
+    from .evidence_authority_setup import (  # lazy: on use
+        EvidenceInstallCommand,
+    )
+
+    return EvidenceInstallCommand(operations.evidence_install)
+
+
 @dataclass(slots=True)
 class LocalPortfolioWebSession:
     """Everything the local product needs, started and stopped as one unit."""
@@ -568,6 +634,15 @@ class LocalPortfolioWebSession:
     resolver: PortfolioExecutionResolver | None
     port: int = 0
     idle_timeout_seconds: int = field(default=DEFAULT_IDLE_TIMEOUT_SECONDS, kw_only=True)
+    upgrade: UpgradeRunner | None = field(default=None, kw_only=True)
+    """A runner given in place of the first start's own (`FirstStart`); it finishes before the
+    Host binds."""
+    first_start: FirstStart | None = field(default=None, init=False, repr=False)
+    """The upgrade this start owes: while it is not done, the Host serves only its routes."""
+    stop_host: Callable[[], dict[str, object]] | None = field(default=None, kw_only=True)
+    """How `host stop` stops this Host, given to its operations when they compose."""
+    _upgrading: Thread | None = field(default=None, init=False, repr=False)
+    _admitting: Lock = field(default_factory=Lock, init=False, repr=False)
 
     review_authority: EvidenceReviewAuthority | None = None
     data_provider: MarketDataProvider | None = None
@@ -575,8 +650,6 @@ class LocalPortfolioWebSession:
     clock: Callable[[], datetime] = _utc_now
     """The service's own timezone-aware clock, shared with everything it builds."""
     session: WorkspaceApplicationSession | None = field(default=None, init=False)
-    application: PortfolioResearchApplication | None = field(default=None, init=False)
-    service: LocalPortfolioResearchService | None = field(default=None, init=False)
     dispatcher: LocalBackgroundDispatcher | None = field(default=None, init=False)
     operations: PortfolioResearchOperations | None = field(default=None, init=False)
     activity: WorkspaceActivity | None = field(default=None, init=False)
@@ -584,11 +657,26 @@ class LocalPortfolioWebSession:
     native_usage_reader: NativeUsageReader | None = field(default=None, init=False)
     web: LocalWebService | None = field(default=None, init=False)
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
-    review: EvidenceReviewApplication | None = field(default=None, init=False)
+    _history: bool = field(default=False, init=False, repr=False)
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
     stop_requested: Callable[[], bool] = field(default=bool, init=False)
     _workspace_review_authority: bool = field(default=False, init=False)
     _official_source: OfficialSourceAdmission | None = field(default=None, init=False)
+
+    @property
+    def application(self) -> PortfolioResearchApplication | None:
+        """Open the workspace Portfolio application on first use."""
+        return None if self.operations is None else self.operations.application
+
+    @property
+    def service(self) -> LocalPortfolioResearchService | None:
+        """Open the workspace Portfolio service and its application on first use."""
+        return None if self.operations is None else self.operations.service
+
+    @property
+    def review(self) -> EvidenceReviewApplication | None:
+        """Open the workspace Evidence review on first use."""
+        return None if self.operations is None else self.operations.review
 
     @property
     def workspace_id(self) -> str:
@@ -604,6 +692,7 @@ class LocalPortfolioWebSession:
         review_authority: EvidenceReviewAuthority | None = None,
         clock: Callable[[], datetime] = _utc_now,
         official_source: OfficialSourceAdmission | None = None,
+        upgrade: UpgradeRunner | None = None,
     ) -> LocalPortfolioWebSession:
         """Ordinary composition: one path in, verified manifest and catalog out.
 
@@ -612,6 +701,8 @@ class LocalPortfolioWebSession:
         `official_source` replaces that admission with a fixed one, a rehearsal's own.
         """
         initialize_research_workspace(workspace)
+        if (named := named_workspace_id(workspace)) is not None:
+            move_carried(workspace.resolve(), named)  # a copy's lanes, before admission reads them
         admitted = admit_research_workspace(workspace)
         value = cls(
             workspace=admitted.root,
@@ -624,6 +715,7 @@ class LocalPortfolioWebSession:
             port=port,
             review_authority=review_authority,
             clock=clock,
+            upgrade=upgrade,
         )
         value._workspace_review_authority = (
             review_authority is None and admitted.manifest.evidence_review is not None
@@ -632,16 +724,14 @@ class LocalPortfolioWebSession:
         return value
 
     def start(self) -> str:
-        """Acquire, compose, bind -- or leave nothing behind.
-
-        Half of this is a lease and a worker thread, and the other half is a
-        socket. A failure part-way through used to leave the first half live
-        with no URL to stop it through, which is a held workspace and a
-        non-daemon thread the process cannot exit past. So the whole thing is
-        one transaction: anything already started is torn down, in the order a
-        healthy stop uses, before the failure is re-raised.
-        """
+        """Acquire, compose, bind -- or leave nothing behind: a failure part-way tears down what
+        already started (the history, a lease, a non-daemon worker) in a healthy stop's order,
+        and is re-raised, so no held workspace is left with no URL to stop it through."""
         try:
+            WorkspaceApplicationSession.open_history(
+                self.workspace_manifest.workspace_id, self.workspace, self.clock
+            )
+            self._history = True
             return self._start()
         except BaseException:
             self._teardown(timeout=None)
@@ -652,46 +742,193 @@ class LocalPortfolioWebSession:
             binding = self.workspace_manifest.evidence_review
             assert binding is not None
             self.review_authority = self._workspace_authority(binding)
-        session = WorkspaceApplicationSession.acquire(self.workspace).__enter__()
+        if self.upgrade is None:
+            first = FirstStart(data_root(), held(), self.workspace)
+            if first.plan is not None:
+                self.first_start = first
+                restricted = self._upgrade_web(first)
+                self.web = LocalWebService(application=restricted, port=self.port)
+                url = self.web.start()
+                self._publish_connection(restricted, url)
+                if first.state == "RUNNING":  # acknowledged when it started: it resumes
+                    self._upgrade_in_background()
+                return url
+        return self._compose()
+
+    def _upgrade_web(self, first: FirstStart) -> LocalWebApplication:
+        """The Host while its upgrade is owed: the Workbench's assets, /api/session, the plan and
+        its progress on /api/upgrade, and its acknowledgement, which the CLI's `upgrade show` and
+        `upgrade acknowledge` reach through /api/client/operations. Every other path and
+        operation refuses `upgrade.in_progress` with the progress."""
+        web = workspace_web(self.workspace, None)
+        serve_assets(web, ASSET_ROOT)
+        # Nothing it answers writes the log: a span or a CLI call's end would land between the
+        # data root's backup and the run's check that the backup holds the log's head. A CLI's
+        # call end is refused with the progress, which the CLI does not read.
+        del web.routes[("POST", CALL_PATH)]
+        routes = {"UPGRADE_OVERVIEW": ("GET", "/api/upgrade")}
+        routes["UPGRADE_ACKNOWLEDGE"] = ("POST", "/api/upgrade/acknowledge")
+        web.withheld = lambda: {
+            "failure_code": "upgrade.in_progress",
+            "upgrade": first.view()["first_start"],
+        }
+
+        @web.route("GET", "/api/session", session=True)
+        def _session(_query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+            return {
+                "workspace_id": self.workspace_id,
+                "workspace_manifest_hash": self.workspace_manifest.manifest_hash,
+                "execution_mode": "UPGRADE",
+                "session_token": web.session_token,
+                "upgrade": first.view()["first_start"],
+                "routes": {op: {"method": m, "path": path} for op, (m, path) in routes.items()},
+            }
+
+        @web.route(*routes["UPGRADE_OVERVIEW"])
+        def _overview(_query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
+            return first.view()
+
+        @web.route(*routes["UPGRADE_ACKNOWLEDGE"], mutates=True, traced=False)
+        def _acknowledge(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            with self._admitting:
+                first.admit(payload.get("upgrade_set_hash"))
+                self._upgrade_in_background()
+            return first.view()
+
+        @web.route(
+            "POST", "/api/client/operations", mutates=True, external_client=True, traced=False
+        )
+        def _client(query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            try:
+                request = validate_request_document(payload)
+            except ValidationError as error:
+                failure = located_failure(error, "local_client.request_invalid", request=payload)
+                return {"status": "REFUSED", **failure}
+            operation = request.to_operation_request()
+            try:
+                if operation.operation == "UPGRADE_OVERVIEW":
+                    return first.view()
+                if operation.operation == "UPGRADE_ACKNOWLEDGE":
+                    return _acknowledge(query, {"upgrade_set_hash": operation.upgrade_set_hash})
+            except DataError as error:
+                return refused(error.failure.code)
+            return refused("upgrade.in_progress") | {"upgrade": first.view()["first_start"]}
+
+        return web
+
+    def _publish_connection(
+        self, web: LocalWebApplication, url: str, serving_host: dict[str, object] | None = None
+    ) -> None:
+        """Publish the connection the CLI reads to reach this Host's `web` at `url`."""
+        connection = LocalResearchConnection(
+            workspace=str(self.workspace.resolve()),
+            workspace_id=self.workspace_id,
+            url=url,
+            instance=web.external_instance,
+            token=web.external_token,
+        )
+        publish_client_connection(connection, serving_host=serving_host)
+        self.client_connection = connection
+        preload_grouping()  # the admission's grouping engine loads once the Host serves
+
+    def _upgrade_in_background(self) -> None:
+        """Run the acknowledged upgrade off the request thread, then compose and serve in full."""
+
+        def finish() -> None:
+            first = self.first_start
+            assert first is not None
+            try:
+                first.run()
+                self._compose()
+            except Exception as error:  # kept for /api/upgrade; the Host stays restricted
+                first.state, first.failure = "FAILED", first.failure or refusal_reason(error)
+
+        self._upgrading = Thread(target=finish, name="first-start-upgrade", daemon=False)
+        self._upgrading.start()
+
+    def upgraded(self, timeout: float | None = None) -> bool:
+        """Wait up to `timeout` for the acknowledged first-start upgrade to end; True once the
+        Host serves its full composition."""
+        if self._upgrading is not None:
+            self._upgrading.join(timeout)
+        return self.operations is not None
+
+    def _compose(self) -> str:
+        from .native_usage_reader import attach_native_usage  # lazy: full Host only
+        from .operation_route_families import HostRouteFamilies  # lazy: full Host only
+        from .portfolio_research_operations import (  # lazy: full Host only
+            PortfolioResearchOperations,
+        )
+        from .workspace_activity import WorkspaceActivity  # lazy: full Host only
+
+        session = WorkspaceApplicationSession.acquire(self.workspace, self.upgrade).__enter__()
         self.session = session
         # The one holder of the workspace manifest every application reads; the operations
         # refresh it when a publication moves the manifest.
         manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
-        if self.resolver is not None:
-            resolver = self.resolver
-            application = PortfolioResearchApplication(
-                workspace_id=self.workspace_id,
-                workspace=self.workspace,
-                manifest_binding=lambda: manifest_fields_hash(
-                    manifests.current, PORTFOLIO_PLAN_FIELDS
-                ),
-                session=session,
-                resolver=self.resolver,
-                report_context=lambda program, day: portfolio_report_context(
+        resolver = self.resolver
+        open_portfolio = None
+        finalization_store = None
+        pipeline = None
+        if resolver is not None:
+            # The light history reader opens the publication store without compiling a book.
+            from ..publication.portfolio_research import (  # lazy: bound workspace
+                PortfolioResearchPipelineStore,
+            )
+
+            root = session.workspace / "runtime" / "artifacts"
+            history = PortfolioResearchPipelineStore(root)
+            candidate_store = PortfolioFinalizationStore(root)
+            pipeline, finalization_store = history, candidate_store
+
+            def open_portfolio() -> tuple[
+                PortfolioResearchApplication, LocalPortfolioResearchService
+            ]:
+
+                # The Portfolio application compiles only when its routes or recovery use it.
+                from . import (  # lazy: on use
+                    portfolio_application,
+                )
+
+                def report_context(
+                    program: PortfolioExecutionProgram, day: date
+                ) -> PortfolioReportContext:
+
+                    # The numerical report reader belongs to a published Portfolio result.
+                    from . import (  # lazy: on use
+                        portfolio_result_context,
+                    )
+
+                    return portfolio_result_context.portfolio_report_context(
+                        workspace=self.workspace,
+                        packages=resolver.installed_packages(),
+                        manifest=manifests.current,
+                        program=program,
+                        session=day,
+                    )
+
+                application = portfolio_application.PortfolioResearchApplication(
+                    workspace_id=self.workspace_id,
                     workspace=self.workspace,
-                    packages=resolver.installed_packages(),
-                    manifest=manifests.current,
-                    program=program,
-                    session=day,
-                ),
-                clock=self.clock,  # the one service clock, so its runner's heartbeats and
-                # the readers that judge them share it
-            )
-            self.application = application
-            finalization = PortfolioFinalizationApplication(
-                workspace_id=self.workspace_id,
-                session=session,
-                continuation=None,  # type: ignore[arg-type]
-            )
-            freeze = HostPortfolioFreeze(
-                session=session, application=application, finalization=finalization
-            )
-            self.service = LocalPortfolioResearchService(
-                application=application,
-                lineage=application,
-                freeze=freeze,
-                programs=application,
-            )
+                    manifest_binding=lambda: manifest_fields_hash(
+                        manifests.current, portfolio_application.PLAN_FIELDS
+                    ),
+                    session=session,
+                    resolver=resolver,
+                    report_context=report_context,
+                    clock=self.clock,
+                    pipeline=history,
+                )
+                freeze = HostPortfolioFreeze(
+                    session=session, application=application, store=candidate_store
+                )
+                return application, LocalPortfolioResearchService(
+                    application=application,
+                    lineage=application,
+                    freeze=freeze,
+                    programs=application,
+                )
+
         self.dispatcher = LocalBackgroundDispatcher(
             status_port=session.task_control_registry,
             queue_full_error=TaskQueueFull,
@@ -704,20 +941,56 @@ class LocalPortfolioWebSession:
         session.task_control_registry.overlapping = runs_beside_others
         session.task_control_registry.started = self.dispatcher.drive_waiting
         self.dispatcher.start()
-        self.review = self._review_application(
-            session, None if self.resolver is None else finalization.store
+        # The light history reader and the review owner share their publication store.
+        # Bound workspace.
+        from ....evidence.alternative_evidence.publication.artifacts import (  # lazy: on use
+            AlternativeEvidenceArtifactStore,
         )
-        if self._workspace_review_authority and self._official_source is not None:
-            self.review.use_source(self._official_source)
-        self.review.refresh_source()
+
+        authority = self.review_authority
+        review_artifacts = (
+            authority.artifacts
+            if authority is not None
+            else AlternativeEvidenceArtifactStore(self.workspace / "runtime" / "artifacts")
+        )
+
+        def open_review() -> EvidenceReviewApplication:
+            review = self._review_application(
+                session, finalization_store, artifacts=review_artifacts
+            )
+            if self._workspace_review_authority and self._official_source is not None:
+                review.use_source(self._official_source)
+            review.refresh_source()
+            return review
+
+        update_clock = self.clock
+        data_provider = self.data_provider
+        data_source_loader = self.data_source_loader
+
+        def open_data_update() -> WorkspaceDataUpdateApplication:
+            from ..maintenance.data_update import (  # lazy: first workspace data update use
+                WorkspaceDataUpdateApplication,
+            )
+
+            return WorkspaceDataUpdateApplication(
+                session=session,
+                manifest=manifests,
+                clock=update_clock,
+                provider=data_provider,
+                source_loader=data_source_loader,
+            )
+
         self.operations = PortfolioResearchOperations(
-            service=self.service,
             dispatcher=self.dispatcher,
-            application=self.application,
             workspace_manifest=self.workspace_manifest,
+            route_families=HostRouteFamilies(),
+            portfolio_factory=open_portfolio,
+            portfolio_pipeline=pipeline,
+            installed_packages=None if resolver is None else resolver.installed_packages,
             manifests=manifests,
             workspace_session=session,
-            review=self.review,
+            review_factory=open_review,
+            review_artifacts=review_artifacts,
             recover_task=self.resume,
             recoverable_task_kinds=self.recoverable_task_kinds,
             resume_refusal=self.resume_refusal,
@@ -725,15 +998,9 @@ class LocalPortfolioWebSession:
             official_source=self._official_source,
             heartbeats=TaskHeartbeatReader(
                 session.runtime_path,
-                *([self.review.runner_runtime_path()] if self.review is not None else []),
+                self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE,
             ),
-            data_update=WorkspaceDataUpdateApplication(
-                session=session,
-                manifest=manifests,
-                clock=self.clock,
-                provider=self.data_provider,
-                source_loader=self.data_source_loader,
-            ),
+            data_update_factory=open_data_update,
         )
         # The activity observer is composed after every owner it reads and before the socket opens,
         # so the first request is already observed. Activity is optional infrastructure: a store
@@ -744,7 +1011,6 @@ class LocalPortfolioWebSession:
             gate=session.mutation_gate,
             instance=secrets.token_hex(16),
             clock=self.clock,
-            storage_cap_reader=self.operations.storage.capacity_cap_bytes,
         )
         self.activity = activity
         self.operations.observer = activity
@@ -756,34 +1022,33 @@ class LocalPortfolioWebSession:
         )
         self.forward_prewarm = PortfolioForwardPrewarm(self.operations)
         self.forward_prewarm.attach(self.dispatcher)
-        web_application = build_local_web_application(
-            service=self.service,
-            operations=self.operations,
-            activity=activity,
-        )
+        attach_native_usage(self, self.operations, activity)
+        web_application = build_local_web_application(operations=self.operations, activity=activity)
         web_application.admission = self.dispatcher._admit
-        self.web = LocalWebService(application=web_application, port=self.port)
-        url = self.web.start()
-        connection = LocalResearchConnection(
-            workspace=str(self.workspace.resolve()),
-            workspace_id=self.workspace_id,
-            url=url,
-            instance=web_application.external_instance,
-            token=web_application.external_token,
-        )
-        publish_client_connection(connection, serving_host=activity.serving_host)
-        self.client_connection = connection
+        _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
+        self.operations.stop_host = self.stop_host
+        with self.operations.recover_after_connection():
+            if self.web is None:
+                self.web = LocalWebService(application=web_application, port=self.port)
+                url = self.web.start()
+            else:  # the upgrade's socket, its session kept: the browser that opened it stays in
+                self.web.serve(web_application)
+                url = self.web.url
+            self._publish_connection(web_application, url, activity.serving_host)
         self.resumed_task_ids = self.resume()
         # A Codex lead's wake whose Task ended, stopped or deferred while no Host ran (WAKE).
         activity.replay_wakes()
-        if self.operations.automation is not None:
-            self.operations.automation.start()
+        if (automation := self.operations.automation) is not None:
+            automation.start()
         if not self.resumed_task_ids:
             # A Host that starts idle sweeps as one that went idle would.
             self.operations.sweep_if_due()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
-        attach_native_usage(self, self.operations, activity)
+        # A note a stopped Host left unrendered, or one a changed renderer rewrites, is rendered
+        # once the Host serves in full: a start that fails, or one restricted to its upgrade,
+        # starts no render and writes nothing to the log through one.
+        render_in_background()
         return url
 
     def resume(
@@ -860,6 +1125,12 @@ class LocalPortfolioWebSession:
         self, binding: ResearchWorkspaceEvidenceReview
     ) -> EvidenceReviewAuthority:
         """The workspace's recorded package; the review admits the official source at runtime."""
+
+        # Only a workspace with recorded review authority needs its admission.
+        from .evidence_review_workspace import (  # lazy: on use
+            admit_evidence_review_workspace,
+        )
+
         admitted = admit_evidence_review_workspace(workspace=self.workspace, binding=binding)
         return EvidenceReviewAuthority(
             registry=admitted.registry,
@@ -877,6 +1148,8 @@ class LocalPortfolioWebSession:
         self,
         session: WorkspaceApplicationSession,
         finalization_store: PortfolioFinalizationStore | None,
+        *,
+        artifacts: AlternativeEvidenceArtifactStore | None = None,
     ) -> EvidenceReviewApplication:
         return build_evidence_review_application(
             workspace=self.workspace,
@@ -884,6 +1157,7 @@ class LocalPortfolioWebSession:
             session=session,
             application=self.application,
             finalization_store=finalization_store,
+            artifacts=artifacts,
             authority=self.review_authority,
             official_source=(
                 partial(admit_workspace_source, self.workspace, clock=self.clock)
@@ -918,80 +1192,123 @@ class LocalPortfolioWebSession:
         replaced = held[0] if held[1] else None
         return None if replaced is None else replaced.evidence_runtime
 
-    def _recovery_commands(self, *, owed_only: bool = True) -> dict[str, LocalApplicationCommand]:
-        commands: dict[str, LocalApplicationCommand] = {}
-        if self.operations is not None:
-            experiment_command = ResearchExperimentCommand(self.operations.experiments)
-            commands[experiment_command.command_kind] = experiment_command
-            preparation_command = WorkspacePreparationCommand(self.operations.preparation)
-            commands[preparation_command.command_kind] = preparation_command
-            capture_command = ResearchInputCaptureCommand(self.operations.input_capture)
-            commands[capture_command.command_kind] = capture_command
-            training_command = ModelTrainingInputCommand(self.operations.model_training_inputs)
-            commands[training_command.command_kind] = training_command
-            research_strategy_command = ResearchStrategyCommand(self.operations.research_strategies)
-            commands[research_strategy_command.command_kind] = research_strategy_command
-            feature_command = ResearchFeatureBuildCommand(self.operations.feature_builds)
-            commands[feature_command.command_kind] = feature_command
-            sweep_command = StudyVerificationSweepCommand(self.operations.sweep)
-            commands[sweep_command.command_kind] = sweep_command
-            install_command = EvidenceInstallCommand(self.operations.evidence_install)
-            commands[install_command.command_kind] = install_command
-        if self.operations is not None and self.operations.research_updates is not None:
-            advancement_command = DecisionAdvancementCommand(self.operations.research_updates)
-            commands[advancement_command.command_kind] = advancement_command
-        # What the workspace holds now, read from the one holder the applications read.
-        manifest = (
-            self.workspace_manifest
-            if self.operations is None or self.operations.manifests is None
-            else self.operations.manifests.current
+    def _recovery_commands(
+        self, *, owed_only: bool = True
+    ) -> Mapping[str, LocalApplicationCommand]:
+
+        # Recovery builds its commands once a queued or recovery-required Task needs them.
+        from ..data_preparation.application import (  # lazy: on use
+            WorkspacePreparationCommand,
         )
-        if (
-            self.operations is not None
-            and self.operations.updates is not None
-            and manifest.decision_updates
-        ):
-            commands[PORTFOLIO_UPDATE_TASK_KIND] = PortfolioUpdateCommand(self.operations.updates)
-        if (
-            self.operations is not None
-            and self.operations.calibration is not None
-            and manifest.calibration_inputs
-        ):
-            commands[CALIBRATION_TASK_KIND] = StrategyCalibrationCommand(
-                self.operations.calibration
+        from ..data_preparation.feature_research import (  # lazy: Task recovery catalog
+            ResearchFeatureBuildCommand,
+        )
+        from ..data_preparation.input_capture import (  # lazy: Task recovery catalog
+            ResearchInputCaptureCommand,
+        )
+        from ..data_preparation.model_training import (  # lazy: Task recovery catalog
+            ModelTrainingInputCommand,
+        )
+        from ..data_preparation.research_strategy import (  # lazy: Task recovery catalog
+            ResearchStrategyCommand,
+        )
+        from ..maintenance.data_update import (  # lazy: Task recovery catalog
+            WorkspaceDataUpdateCommand,
+        )
+        from .portfolio_research_operations import (  # lazy: Task recovery catalog
+            PORTFOLIO_RUN_COMMAND,
+            PortfolioRunCommand,
+        )
+
+        factories: dict[str, Callable[[], LocalApplicationCommand]] = {}
+        operations = self.operations
+        if operations is not None:
+            factories.update(
+                {
+                    STUDY_TASK_KIND: partial(_experiment_recovery, operations),
+                    WorkspacePreparationCommand.command_kind: lambda: WorkspacePreparationCommand(
+                        operations.preparation
+                    ),
+                    ResearchInputCaptureCommand.command_kind: lambda: ResearchInputCaptureCommand(
+                        operations.input_capture
+                    ),
+                    ModelTrainingInputCommand.command_kind: lambda: ModelTrainingInputCommand(
+                        operations.model_training_inputs
+                    ),
+                    ResearchStrategyCommand.command_kind: lambda: ResearchStrategyCommand(
+                        operations.research_strategies
+                    ),
+                    ResearchFeatureBuildCommand.command_kind: lambda: ResearchFeatureBuildCommand(
+                        operations.feature_builds
+                    ),
+                    STUDY_VERIFICATION_TASK_KIND: partial(_sweep_recovery, operations),
+                    EVIDENCE_INSTALL_TASK_KIND: partial(_evidence_install_recovery, operations),
+                }
             )
-        if (
-            self.operations is not None
-            and self.operations.scoring is not None
-            and manifest.score_inputs
-        ):
-            commands[STRATEGY_SCORE_TASK_KIND] = StrategyScoreCommand(self.operations.scoring)
-        if (
-            self.operations is not None
-            and self.operations.data_update is not None
-            and manifest.data_update is not None
-        ):
-            commands[DATA_UPDATE_TASK_KIND] = WorkspaceDataUpdateCommand(
-                self.operations.data_update
+            # Read what the workspace binds from the same holder as its owners.
+            manifest = (
+                self.workspace_manifest
+                if operations.manifests is None
+                else operations.manifests.current
             )
+            if operations.has_portfolio:
+                if operations.has_data_update:
+                    factories[ADVANCEMENT_TASK_KIND] = partial(
+                        _portfolio_recovery, operations, ADVANCEMENT_TASK_KIND
+                    )
+                if manifest.decision_updates:
+                    factories[PORTFOLIO_UPDATE_TASK_KIND] = partial(
+                        _portfolio_recovery, operations, PORTFOLIO_UPDATE_TASK_KIND
+                    )
+                if manifest.calibration_inputs:
+                    factories[STRATEGY_CALIBRATION_TASK_KIND] = partial(
+                        _portfolio_recovery, operations, STRATEGY_CALIBRATION_TASK_KIND
+                    )
+                if manifest.score_inputs:
+                    factories[STRATEGY_SCORE_TASK_KIND] = partial(
+                        _portfolio_recovery, operations, STRATEGY_SCORE_TASK_KIND
+                    )
+            if operations.has_data_update and manifest.data_update is not None:
+                factories[WorkspaceDataUpdateCommand.command_kind] = lambda: _recovery_command(
+                    WorkspaceDataUpdateCommand, operations.data_update
+                )
         assert self.session is not None
-        if self.application is not None and (
-            not owed_only
-            or any(
-                task.lifecycle in {TaskLifecycle.RECOVERY_REQUIRED, TaskLifecycle.QUEUED}
-                and task.task_kind == PORTFOLIO_PUBLIC_TASK_KIND
-                for task in self.session.task_control_registry.tasks()
-            )
+        registry = self.session.task_control_registry
+        records = registry.tasks() if owed_only else registry.record_collection().records
+        owed_kinds = {
+            task.task_kind
+            for task in records
+            if task.lifecycle in {TaskLifecycle.RECOVERY_REQUIRED, TaskLifecycle.QUEUED}
+        }
+        if (
+            operations is not None
+            and operations.has_portfolio
+            and (not owed_only or PORTFOLIO_PUBLIC_TASK_KIND in owed_kinds)
         ):
-            commands[PORTFOLIO_RUN_COMMAND] = PortfolioRunCommand.recover(
-                application=self.application
+
+            def open_run() -> LocalApplicationCommand:
+                application = operations.application
+                assert application is not None
+                return PortfolioRunCommand.recover(application=application)
+
+            factories[PORTFOLIO_RUN_COMMAND] = open_run
+        verified: dict[str, LocalApplicationCommand] = {}
+        if owed_kinds:
+            # Only owed Evidence or CRO work needs the review runtime.
+            from ....evidence.alternative_evidence.runtime.task_adapter import (  # lazy: on use
+                TASK_KIND as evidence_kind,
             )
-        if self.review is not None:
-            # Resume the admitted Task's durable identity, verified stages and inputs.
-            # Rebuild from the recovery-required Task so it cannot answer another question.
-            for kind, command in self.review.recovery_commands(owed_only=owed_only).items():
-                commands[kind] = cast(LocalApplicationCommand, command)
-        return commands
+            from ....oversight.chief_risk_officer.runtime import (  # lazy: CRO recovery
+                portfolio_review_task,
+            )
+
+            cro_kind = portfolio_review_task.TASK_KIND
+
+            if owed_kinds & {evidence_kind, cro_kind} and (review := self.review) is not None:
+                # Keep the review's durable Task input and complete-or-refused authority check.
+                for kind, command in review.recovery_commands(owed_only=owed_only).items():
+                    verified[kind] = cast(LocalApplicationCommand, command)
+        return _RecoveryCommands(factories, verified)
 
     def stop(self, *, timeout: float | None = None) -> None:
         """Join writers before releasing the workspace lease.
@@ -1007,12 +1324,16 @@ class LocalPortfolioWebSession:
         """Join work and requests before releasing the lease. True when complete."""
 
         quiet = True
+        if self._upgrading is not None:
+            self._upgrading.join(timeout)
+            if self._upgrading.is_alive():
+                return False
         if self.forward_prewarm is not None:
             quiet = self.forward_prewarm.close(timeout=timeout) and quiet
         if self.operations is not None:
             self.operations.supervisor.stop()
-        if self.operations is not None and self.operations.automation is not None:
-            quiet = self.operations.automation.close(timeout=timeout) and quiet
+        if self.operations is not None and (automation := self.operations._automation) is not None:
+            quiet = automation.close(timeout=timeout) and quiet
         if self.dispatcher is not None:
             quiet = self.dispatcher.close(timeout=timeout) and quiet
         if self.web is not None and quiet:
@@ -1033,25 +1354,22 @@ class LocalPortfolioWebSession:
         ):
             self.review_authority.evidence_runtime.close()
             self.review_authority = None
-        if self.review is not None:
-            self.review.close_source()
+        if self.operations is not None and self.operations._review is not None:
+            self.operations._review.close_source()
+        if self._history:
+            self._history = False
+            release_history()
+        if self.client_connection is not None:  # a Host serving only its upgrade published one
+            remove_client_connection(self.client_connection)
+            self.client_connection = None
         if self.session is not None:
-            if self.client_connection is not None:
-                remove_client_connection(self.client_connection)
-                self.client_connection = None
             self.session.__exit__(None, None, None)
         self.web = None
         self.dispatcher = None
         self.session = None
-        self.application = None
-        self.service = None
         self.operations = None
         self.forward_prewarm = None
         self.native_usage_reader = None
-        # The review application holds this session's registry and its adapter,
-        # both of which are now closed. Keeping it would leave a stopped service
-        # able to answer questions about a workspace it no longer holds.
-        self.review = None
         return True
 
     def __enter__(self) -> LocalPortfolioWebSession:
@@ -1126,6 +1444,7 @@ def build_evidence_review_application(
     application: PortfolioResearchApplication | None,
     finalization_store: PortfolioFinalizationStore | None,
     authority: EvidenceReviewAuthority | None = None,
+    artifacts: AlternativeEvidenceArtifactStore | None = None,
     official_source: Callable[[], OfficialSourceAdmission] | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> EvidenceReviewApplication:
@@ -1136,11 +1455,31 @@ def build_evidence_review_application(
     that constructed the owner only when it already had an answer could never
     report the wait.
     """
-    artifacts = (
-        authority.artifacts
-        if authority is not None
-        else AlternativeEvidenceArtifactStore(workspace / "runtime" / "artifacts")
+
+    # Evidence and CRO compose their readers together at first use.
+    from alphalattice.evidence.alternative_evidence.runtime.policy import (  # lazy: admitted review
+        AdmittedEvidencePolicy,
     )
+
+    from ....evidence.alternative_evidence.publication.artifacts import (  # lazy: admitted review
+        AlternativeEvidenceArtifactStore,
+    )
+    from ....evidence.alternative_evidence.runtime.task_adapter import (  # lazy: admitted review
+        AlternativeEvidenceDocumentTaskAdapter,
+    )
+
+    # Admitted review.
+    from ....oversight.chief_risk_officer.publication.portfolio_review import (  # lazy: on use
+        PortfolioReviewPublicationService,
+    )
+    from .evidence_review_application import (  # lazy: on use
+        EvidenceReviewApplication,
+    )
+
+    if authority is not None:
+        artifacts = authority.artifacts
+    elif artifacts is None:
+        artifacts = AlternativeEvidenceArtifactStore(workspace / "runtime" / "artifacts")
     adapter: AlternativeEvidenceDocumentTaskAdapter | None = None
     if (
         authority is not None
@@ -1211,6 +1550,11 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/tasks/recovery", "TASK_RECOVERY"),
     ("GET", "/api/tasks/guardian", "TASK_GUARDIAN"),
     ("GET", "/api/research-history", "RESEARCH_HISTORY"),
+    ("GET", "/api/experience", "EXPERIENCE_READ"),
+    ("GET", "/api/experience-brief", "EXPERIENCE_BRIEF"),
+    ("GET", "/api/experience-class", "EXPERIENCE_CLASS"),
+    ("GET", "/api/experience-recall", "EXPERIENCE_RECALL"),
+    ("POST", "/api/experience", "EXPERIENCE_RECORD"),
     ("GET", "/api/upgrade", "UPGRADE_OVERVIEW"),
     ("POST", "/api/upgrade/acknowledge", "UPGRADE_ACKNOWLEDGE"),
     ("GET", "/api/workspace/network", "NETWORK_ACCESS"),
@@ -1315,6 +1659,7 @@ OPERATION_ROUTES: Final[tuple[tuple[str, str, str], ...]] = (
     ("GET", "/api/goals/schema", "GOAL_SCHEMA"),
     ("GET", "/api/goals/show", "GOAL_SHOW"),
     ("GET", "/api/goals/narrative", "GOAL_NARRATIVE"),
+    ("GET", "/api/goals/profile", "GOAL_PROFILE"),
     ("GET", "/api/goals/reference", "GOAL_REFERENCE"),
     ("GET", "/api/goals/export", "GOAL_EXPORT"),
     ("POST", "/api/goals/open", "GOAL_OPEN"),
@@ -1395,9 +1740,68 @@ def read_workbench_portfolio(
     return body
 
 
+def mount_sector_development_publish(
+    web: LocalWebApplication, workspace: Path, mutation_gate: WorkspaceMutationGate
+) -> None:
+    """Publish and verify through the served workspace's existing Host writer."""
+
+    @web.route("POST", SECTOR_DEVELOPMENT_PUBLISH_PATH, mutates=True, external_client=True)
+    def publish(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+        from alphalattice.control.workspace_runtime.artifacts import (  # lazy: publish
+            ArtifactResolver,
+        )
+        from alphalattice.foundation.causal_outcomes.execution.readers import (  # lazy: publish
+            CausalExecutionOutcomeDevelopmentReader,
+        )
+        from alphalattice.investment.sector_research.experiments.service import (  # lazy: publish
+            SectorExperimentRequest,
+            SectorResearchDevelopmentService,
+        )
+
+        try:
+            request = TypeAdapter(SectorExperimentRequest).validate_python(payload, extra="forbid")
+        except ValidationError as error:
+            raise LocalWebError("local_client.request_invalid") from error
+
+        artifacts = workspace / "artifacts"
+        service = SectorResearchDevelopmentService(
+            artifact_root=artifacts,
+            outcome_reader=CausalExecutionOutcomeDevelopmentReader(artifacts),
+            resolver=ArtifactResolver(artifacts),
+        )
+        try:
+            with mutation_gate.hold():
+                published = service.publish(request)
+                lineage = service.verify(experiment_hash=published.experiment.experiment_hash)
+        except FileNotFoundError as error:
+            if owner_failure_code(error) is not None:
+                raise
+            return {
+                "action": "UNRESOLVED",
+                "failure_code": "sector_research.evidence_not_published",
+                "current_pointer_writes": 0,
+            }
+
+        return {
+            "action": "PUBLISHED",
+            "experiment_hash": published.experiment.experiment_hash,
+            "sector_target_evidence_hash": published.target_evidence.evidence_hash,
+            "forecast_surface_hash": published.surface.surface_hash,
+            "evaluation_hash": published.evaluation.evaluation_hash,
+            "causal_outcome_snapshot_hash": lineage.outcome_snapshot_hash,
+            "outcome_method_binding_hash": lineage.outcome_method_binding_hash,
+            "maturity_lag_sessions": lineage.maturity_lag_sessions,
+            "method_id": published.surface.recipe.method_id,
+            "formation_count": len(published.formation_sessions),
+            "forecast_formation_count": len(published.forecast_formation_sessions),
+            "sector_count": len(published.ordered_sectors),
+            "current_pointer_writes": 0,
+            "alpha_model_fits": 0,
+        }
+
+
 def build_local_web_application(
     *,
-    service: LocalPortfolioResearchService | None,
     operations: PortfolioResearchOperations,
     activity: WorkspaceActivity | None = None,
 ) -> LocalWebApplication:
@@ -1408,14 +1812,25 @@ def build_local_web_application(
     if activity is not None:
         _activity_routes(web, activity)
     _native_session_routes(web, operations)
+    session = operations.workspace_session
+    mount_sector_development_publish(web, session.workspace, session.mutation_gate)
 
     # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)
 
+    def refuse_forwarded_serve(_arguments: list[str]) -> int:
+        raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
+
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
     def external_operation(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+        if payload.get("operation") == CLI_OPERATION:
+            from alphalattice.interface.local_application.cli import main  # lazy: CLI dispatch
+
+            return invoke_cli(
+                payload, session.workspace, lambda argv: main(argv, serve=refuse_forwarded_serve)
+            )
         try:
-            document = PortfolioResearchRequestDocument.model_validate(payload)
+            document = validate_request_document(payload)
         except ValidationError as error:
             if activity is not None:
                 # A request that does not meet its schema is counted like any refusal, under
@@ -1489,7 +1904,7 @@ def build_local_web_application(
         )
 
     _result_routes(web, operations)
-    _dispatch_routes(web, operations, service)
+    _dispatch_routes(web, operations)
 
     def case_route(operation: str):  # type: ignore[no-untyped-def]
         """The case page's call, answered by the goal it names until a later interface update."""
@@ -1510,6 +1925,25 @@ def build_local_web_application(
         web.route(method, path, mutates=method == "POST")(case_route(operation))
 
     return web
+
+
+def _agent_telemetry_routes(
+    web: LocalWebApplication, reader: NativeUsageReader | None, workspace_id: str
+) -> None:
+    """Receive native exports on the Host's existing authenticated loopback socket."""
+    for signal in ("logs", "traces", "metrics"):
+
+        @web.route(
+            "POST", f"/v1/{signal}", mutates=True, external_client=True, otlp=(signal, workspace_id)
+        )
+        def receive(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
+            if reader is None:
+                raise LocalWebError("native_bridge.lead_usage_read_failed")
+            reader.receive(payload["rows"])
+            content_type = payload["content_type"]
+            return LocalWebResponse(
+                HTTPStatus.OK, b"{}" if content_type == "application/json" else b"", content_type
+            )
 
 
 def _maintenance_routes(web: LocalWebApplication, operations: PortfolioResearchOperations) -> None:
@@ -1857,7 +2291,6 @@ def _result_routes(web: LocalWebApplication, operations: PortfolioResearchOperat
 def _dispatch_routes(
     web: LocalWebApplication,
     operations: PortfolioResearchOperations,
-    service: LocalPortfolioResearchService | None,
 ) -> None:
     @web.route(*_HANDLED_ROUTE["EVIDENCE_CRO_EXPORT"])
     def _review_export(query: Mapping[str, list[str]], _payload: dict[str, Any]) -> object:
@@ -1891,6 +2324,7 @@ def _dispatch_routes(
         input set.
         """
 
+        service = operations.service
         if service is None:
             raise LocalWebError("research_workspace.strategy_not_installed")
         page = service.open_html(_one(query, "result_hash"))
@@ -1934,6 +2368,7 @@ def _dispatch_routes(
                     ) from error
             for name in (
                 "history_limit",
+                "experience_limit",
                 "delivery_part",
                 "delivery_budget_bytes",
                 "session_limit",
@@ -2096,8 +2531,8 @@ def _native_session_event(
                 )
                 try:
                     return operations.execute(
-                        PortfolioResearchRequestDocument(
-                            operation="EVENT_DECLARE", event=document
+                        validate_request_document(
+                            {"operation": "EVENT_DECLARE", "event": document}
                         ).to_operation_request(),
                         caller="EXTERNAL_AUTOMATION",
                     )
@@ -2110,7 +2545,13 @@ def _native_session_event(
             provenance.session,
         ) != (binding.host, binding.session_id):
             return _native_session_refusal("native_bridge.event_scope_invalid")
-        return read_usage(operations, project, binding, publish, goal_id)
+        return read_session_usage(
+            project,
+            binding,
+            workspace_id=operations.workspace_manifest.workspace_id,
+            publish=publish,
+            goal_id=goal_id,
+        )
     except NativeBridgeError as error:
         return _native_session_refusal(str(error))
     except (KeyError, TypeError, ValueError) as error:

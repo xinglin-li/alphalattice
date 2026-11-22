@@ -846,7 +846,7 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_SCOPE"
       ],
-      "definition_line": 50,
+      "definition_line": 58,
       "key": "store/category/hash/model + verified file identity/bytes",
       "dependency_coverage": "Yes: exact payload/stamp and type checked",
       "invalidation_rule": "scope exit/reset",
@@ -866,10 +866,10 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_MODEL_CACHE"
       ],
-      "definition_line": 56,
-      "key": "same typed content + payload SHA/file identity",
-      "dependency_coverage": "Yes: fresh bytes read before parse reuse",
-      "invalidation_rule": "new identity; opt-in scope",
+      "definition_line": 61,
+      "key": "store path + content hash + model + identity field",
+      "dependency_coverage": "Yes: a sealed name's bytes never change (EV2); full proof reads them again",
+      "invalidation_rule": "full proof rebuilds; LRU",
       "size_bound": "128 entries (no byte cap)",
       "bound_scope": "128 entries (no byte cap)",
       "eviction": "LRU",
@@ -879,14 +879,14 @@
         "path_expression": "In-memory _VERIFIED_MODEL_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches verified immutable artifact models across opted-in reads, missing on changed file or content identity and dropping the least recently used excess."
+      "description": "Caches validated immutable artifact models by sealed name and content across requests, answering outside full proof and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_ARRAY_SCOPE::verified-array-request-scope": {
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_SCOPE"
       ],
-      "definition_line": 61,
+      "definition_line": 66,
       "key": "caller identity tuple; immutable/copy policy",
       "dependency_coverage": "Conditional: caller must supply complete identity",
       "invalidation_rule": "scope exit or replacement",
@@ -906,47 +906,27 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_ARRAY_CACHE"
       ],
-      "definition_line": 70,
-      "key": "caller identity; source paths + valid read leases where used",
-      "dependency_coverage": "Conditional: exact identity + valid held OS proof",
-      "invalidation_rule": "lease break/identity mismatch/replacement",
+      "definition_line": 73,
+      "key": "caller identity + absolute source paths",
+      "dependency_coverage": "Yes: a sealed name's bytes never change (EV2); full proof reads them again",
+      "invalidation_rule": "full proof rebuilds; byte-bounded LRU",
       "size_bound": "512 MiB",
       "bound_scope": "512 MiB",
       "eviction": "LRU",
-      "safe_to_drop": "Yes through owner, close leases",
+      "safe_to_drop": "Yes",
       "location": {
         "scope": "process",
         "path_expression": "In-memory _VERIFIED_ARRAY_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches decoded array values across opted-in reads, rebuilding when the source lease breaks or identity changes and evicting values at the byte limit."
-    },
-    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_SOURCE_LEASES::source-read-lease-proof-reuse": {
-      "owner": "alphalattice.control.workspace_runtime",
-      "defined_by": [
-        "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_SOURCE_LEASES"
-      ],
-      "definition_line": 74,
-      "key": "file-read-lease + logical identity + absolute source paths",
-      "dependency_coverage": "Yes only while all path/OS read leases unchanged",
-      "invalidation_rule": "oplock break, replacement, eviction, release",
-      "size_bound": "512 handles",
-      "bound_scope": "512 handles",
-      "eviction": "LRU coupled to array entries",
-      "safe_to_drop": "Conditional: close handles via owner",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory _VERIFIED_SOURCE_LEASES in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches source-file read leases for retained decoded values, closing them on lease break, replacement, eviction or process exit."
+      "description": "Caches immutable values built from sealed sources across requests, answering outside full proof and evicting values at the byte limit."
     },
     "src/alphalattice/control/workspace_runtime/content_store.py::<module>._VERIFIED_PROOF_SCOPE::verified-proof-request-set": {
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_SCOPE"
       ],
-      "definition_line": 91,
+      "definition_line": 88,
       "key": "caller proof identity tuple",
       "dependency_coverage": "Conditional: caller-supplied identity",
       "invalidation_rule": "scope exit",
@@ -966,10 +946,10 @@
       "defined_by": [
         "src/alphalattice/control/workspace_runtime/content_store.py::_VERIFIED_PROOF_CACHE"
       ],
-      "definition_line": 94,
+      "definition_line": 91,
       "key": "exact immutable proof identity",
       "dependency_coverage": "Conditional: producer proof contract",
-      "invalidation_rule": "new identity/process end",
+      "invalidation_rule": "new identity; full proof repeats; LRU",
       "size_bound": "4096 entries",
       "bound_scope": "4096 entries",
       "eviction": "LRU",
@@ -979,7 +959,7 @@
         "path_expression": "In-memory _VERIFIED_PROOF_CACHE in its module, instance, or call namespace"
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches successful exact-identity proofs across opted-in reads, requiring new proofs for changed identities and dropping the least recently used excess."
+      "description": "Caches successful exact-identity proofs across requests, answering outside full proof and dropping the least recently used excess."
     },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._KEPT::held-workspace-file-fact-maps-kept": {
       "owner": "alphalattice.control.workspace_runtime",
@@ -2356,126 +2336,6 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches banded OSQP solver templates by selected-asset and sector counts until the optimizer is discarded."
     },
-    "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries::reranker-in-memory-pair-scores": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_embeddings.py::PairScoreCache.__init__.self._entries"
-      ],
-      "definition_line": 271,
-      "key": "xxh3_128 index and complete query and passage strings; one adapter/context",
-      "dependency_coverage": "Full canonical pair checked on hits; model/rerank spec fixed on adapter",
-      "invalidation_rule": "adapter replacement/disposal",
-      "size_bound": "250000 pairs default",
-      "bound_scope": "250000 pairs default",
-      "eviction": "LRU",
-      "safe_to_drop": "Yes for same pinned model/spec; deterministic rounding",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory PairScoreCache.__init__.self._entries in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches successful rounded reranker scores by the complete query and passage, evicting the least recently used excess and releasing them with the adapter."
-    },
-    "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries::verified-model-pack-proof-report-registry": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._entries"
-      ],
-      "definition_line": 521,
-      "key": "root,spec/context + xxh3_128 index and full canonical consumed-file content and directory entries",
-      "dependency_coverage": "Consumed file SHA-256 and directory listings; load-time changes are not cached",
-      "invalidation_rule": "content or listing change, unreadable input, or release",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "replace per key; release all",
-      "safe_to_drop": "Conditional: full pack verification with same pinned bytes",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory VerifiedPackRegistry.__init__.self._entries in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches model-pack verification reports while consumed-file facts match, replacing them after changed facts or LRU eviction and clearing them on release."
-    },
-    "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools::leased-model-session-pools": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_embeddings.py::VerifiedPackRegistry.__init__.self._pools"
-      ],
-      "definition_line": 522,
-      "key": "pack root,spec/context; fits thread count; xxh3_128 index and full canonical consumed-file content and directory entries",
-      "dependency_coverage": "Consumed file SHA-256 and directory listings; load-time changes are not cached",
-      "invalidation_rule": "changed facts/failed session; retire after leases; release",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded globally; sessions_per_pack=1 default per key",
-      "eviction": "retire bad/non-fitting idle session; no global LRU",
-      "safe_to_drop": "Conditional: close through registry after leases, reload pinned pack and canary",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory VerifiedPackRegistry.__init__.self._pools in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches leased model sessions by pack and context, retiring sessions when file facts change or a session becomes unusable and closing them after their last lease."
-    },
-    "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._blocks::pair-score-pending-in-process-batch": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._pending"
-      ],
-      "definition_line": 318,
-      "key": "query/passage digest within reranker context + admitted block IDs",
-      "dependency_coverage": "Yes: pinned context/rounding, full blocks verified",
-      "invalidation_rule": "seal at close; session disposal",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "successful seal removes pending; reader close",
-      "safe_to_drop": "Conditional: repeat inference from retained texts/model; never discard committed proof",
-      "location": {
-        "scope": "process",
-        "path_expression": "PairScoreStore instance self._pending mapping from pair digest to score awaiting sealing."
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches pending reranker query-passage scores until flushing seals or refuses the next batch, with remaining pairs retained until the store object is discarded."
-    },
-    "src/alphalattice/kernel/knowledge/hybrid.py::WorkspaceHybridKnowledgeRetriever.__init__.self._chunks::hybrid-reader-verified-chunks-vectors": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/hybrid.py::WorkspaceHybridKnowledgeRetriever.__init__.self._chunks"
-      ],
-      "definition_line": 2594,
-      "key": "chunk ID within exact committed generation",
-      "dependency_coverage": "Yes: generation/spec/commitment checked on open",
-      "invalidation_rule": "reader close/new generation",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded by cache bytes; generation-sized",
-      "eviction": "reader close",
-      "safe_to_drop": "Yes with committed source/vector blocks; requires valid reader reopen",
-      "location": {
-        "scope": "process",
-        "path_expression": "In-memory WorkspaceHybridKnowledgeRetriever.__init__.self._chunks in its module, instance, or call namespace"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches a retrieval generation's verified chunks and vectors until the reader closes or opens another generation."
-    },
-    "src/alphalattice/kernel/knowledge/hybrid.py::<module>.READER_PAGE_CACHE_KIB::hybrid-sqlite-connection-page-cache": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/hybrid.py::READER_PAGE_CACHE_KIB"
-      ],
-      "definition_line": 715,
-      "key": "SQLite database page + connection generation",
-      "dependency_coverage": "Yes under read-only verified connection",
-      "invalidation_rule": "connection close/SQLite pager invalidation",
-      "size_bound": "64 MiB per open reader",
-      "bound_scope": "64 MiB per open reader",
-      "eviction": "SQLite pager policy",
-      "safe_to_drop": "Yes, page reread",
-      "location": {
-        "scope": "process",
-        "path_expression": "SQLite page cache on each kept reader connection, configured by _verify_projection(keep_open=True) and owned by WorkspaceHybridKnowledgeRetriever._connection."
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches SQLite pages within each open hybrid retrieval connection, releasing them when that connection closes."
-    },
     "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::AlternativeEvidenceDocumentTaskAdapter.__init__.self._completed_units::evidence-review-child-unit-receipt-progress-memo": {
       "owner": "alphalattice.evidence.alternative_evidence",
       "defined_by": [
@@ -3199,66 +3059,6 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches prepared workspace observation-history parts by layout and content, reusing only unchanged stable prefixes with matching scope, selection, listing and session axes."
     },
-    "src/alphalattice/kernel/knowledge/hybrid.py::<module>.committed_database_relative::hybrid-sqlite-retrieval-projections": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/hybrid.py::committed_database_relative"
-      ],
-      "definition_line": 436,
-      "key": "corpus hash + logical index spec + schema version",
-      "dependency_coverage": "Yes: committed rows/vectors/spec verified whole on open",
-      "invalidation_rule": "new corpus/spec/schema creates generation; no automatic GC",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "explicit owner eviction marker, leases/pins/commitments checked",
-      "safe_to_drop": "Conditional: closed unpinned generation, explicit rebuild from retained commitments",
-      "location": {
-        "scope": "workspace",
-        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-indexes"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Persists hybrid retrieval database projections by corpus, index specification and schema version, creating another generation when any of those identities changes."
-    },
-    "src/alphalattice/kernel/knowledge/hybrid.py::<module>._commitment_for::committed-vector-blocks-reused-across-index-generations": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/hybrid.py::_commitment_for"
-      ],
-      "definition_line": 652,
-      "key": "payload byte SHA + model/spec/corpus commitments",
-      "dependency_coverage": "Yes: canonical payload and exact commitment",
-      "invalidation_rule": "new content; historical/pinned blocks retained",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "only owner/reference-aware retention",
-      "safe_to_drop": "No generic drop: becomes sealed input authority; exact source/model generation must survive",
-      "location": {
-        "scope": "workspace",
-        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-vectors"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Persists verified embedding vector blocks by payload byte hash, reusing the same bytes across index generations and selecting another block for changed content."
-    },
-    "src/alphalattice/kernel/knowledge/_reranking.py::<module>.PAIR_SCORE_STORE_CAP_BYTES::sealed-reranker-pair-score-blocks": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_reranking.py::PAIR_SCORE_STORE_CAP_BYTES"
-      ],
-      "definition_line": 236,
-      "key": "reranker context + SHA(query,passage) + rounded score block hash",
-      "dependency_coverage": "Yes: only admitted committed blocks used; conflicts refuse",
-      "invalidation_rule": "new reranker context; immutable blocks",
-      "size_bound": "unbounded",
-      "bound_scope": "64 MiB per context; aggregate contexts unbounded",
-      "eviction": "new sealing refused when full; no LRU",
-      "safe_to_drop": "Conditional: no retained receipt pin/lease and exact reranker/text inputs available",
-      "location": {
-        "scope": "workspace",
-        "path_expression": "<workspace>/runtime/evidence-knowledge/.system/knowledge-scores"
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Persists rounded reranker query-passage score blocks under their reranker context, selecting another store when that context changes and keeping sealed blocks immutable."
-    },
     "scripts/playwright.ps1::<script>::playwright-pinned-browser-binaries": {
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
@@ -3339,26 +3139,6 @@
       },
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches content-hashed web assets in the browser for at most one year, fetching a new URL when asset content changes."
-    },
-    "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self.cap_bytes::hybrid-loaded-pair-score-blocks": {
-      "owner": "alphalattice.kernel.knowledge",
-      "defined_by": [
-        "src/alphalattice/kernel/knowledge/_reranking.py::PairScoreStore.__init__.self._blocks"
-      ],
-      "definition_line": 317,
-      "key": "admitted block hashes + reranker context",
-      "dependency_coverage": "whole block/header/order/conflicts verified on load",
-      "invalidation_rule": "reader close/new admission",
-      "size_bound": "unbounded",
-      "bound_scope": "New sealed block payloads are limited by configured cap_bytes (64 MiB default) per context. load() reads all admitted blocks without a separate byte admission; no hard in-memory or aggregate-context quota is enforced.",
-      "eviction": "reader close; no across-context cap",
-      "safe_to_drop": "Yes from admitted immutable blocks",
-      "location": {
-        "scope": "process",
-        "path_expression": "PairScoreStore instance self._blocks tuple of verified admitted score blocks, loaded by PairScoreStore.load."
-      },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches admitted sealed reranker score blocks in memory, adding newly sealed blocks and releasing all loaded blocks when the score-store object is discarded."
     },
     "src/alphalattice/foundation/market_data_ops/sources/providers.py::YFinanceMarketDataProvider.fetch_daily.frame::yfinance-historical-http-responses-delegated": {
       "owner": "alphalattice.foundation.market_data_ops",

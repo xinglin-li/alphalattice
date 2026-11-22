@@ -146,7 +146,7 @@ def _reports():
 def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch, live):
     """A sealed delivery crosses the served Host once with its exact retained references."""
     from alphalattice.kernel.shared_kernel.identity import canonical_hash
-    from tests.portfolio_strategy_lab.local_web_support import _json
+    from tests.portfolio_strategy_lab.host_requests import _json
 
     primary, other, reports = _reports()
     counts = Counter()

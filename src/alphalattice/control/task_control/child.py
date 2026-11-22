@@ -26,8 +26,10 @@ import multiprocessing
 import multiprocessing.connection
 import os
 import pickle
+import sys
 import tempfile
 import threading
+import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping
 from concurrent import futures
@@ -37,18 +39,32 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
     SpanLedger,
     absorb,
     collect,
+    cpu_seconds_of,
     span,
 )
 
+if TYPE_CHECKING:  # the SDK is imported by a traced call alone
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from alphalattice.kernel.data_layer.spans import RowsExporter
+
+_TRACER: tuple[TracerProvider, RowsExporter] | None = None
+"""This worker process's tracer provider and the exporter keeping its spans' rows."""
 POLL_SECONDS = 0.5
 """How often the waiting parent reads the call's answer and the Task's cancellation."""
+
+WEDGED_SECONDS = 120.0
+"""How long the worker owing a call may use no CPU at all before it is taken as wedged: a process
+blocked on a lock, a wait or I/O that never returns, suspended, or never started, is ended and
+its call interrupted, where a long numerical call keeps using CPU and is waited for."""
 
 KEPT_WORKER_IDLE_SECONDS = 180.0
 """How long a kept worker waits with no call before it retires; the next call starts it again.
@@ -134,6 +150,7 @@ def run_in_child(
         with span("wait", "worker"):
             answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
     absorb(answer.get("spans"))
+    _traced(answer)
     return _answered(answer)
 
 
@@ -151,7 +168,12 @@ class ChildCalls:
     """
 
     def __init__(
-        self, target: str, *, workers: int, cancelled: Callable[[], bool] | None = None
+        self,
+        target: str,
+        *,
+        workers: int,
+        cancelled: Callable[[], bool] | None = None,
+        preload_models: bool = True,
     ) -> None:
         """Bind the function and how many kept workers its calls spread over."""
         if workers < 1:
@@ -159,6 +181,7 @@ class ChildCalls:
         self._target = target
         self._workers = workers
         self._cancelled = cancelled
+        self._preload_models = preload_models
         self._made = 0
         self._pending: deque[_Submitted] = deque()
         self._folder = tempfile.TemporaryDirectory(prefix="alphalattice-calls-")
@@ -192,7 +215,15 @@ class ChildCalls:
         answer = Path(self._folder.name) / f"{self._made}.answer"
         self._made += 1
         self._pending.append(
-            _submitted(worker, self._target, arguments, self._flag, threads=1, answer=answer)
+            _submitted(
+                worker,
+                self._target,
+                arguments,
+                self._flag,
+                threads=1,
+                answer=answer,
+                preload_models=self._preload_models,
+            )
         )
 
     def answer(self) -> Any:
@@ -201,6 +232,7 @@ class ChildCalls:
         with span("wait", "worker"):
             answer = _waited(submitted, self._flag, self._cancelled)
         absorb(answer.get("spans"))
+        _traced(answer)
         if answer["status"] != "OK" or submitted.answer is None:
             return _answered(answer)
         with submitted.answer.open("rb") as source:
@@ -226,16 +258,21 @@ class ChildCalls:
                         {"call_set": self._folder.name},
                         self._flag,
                         threads=1,
+                        preload_models=self._preload_models,
                     )
         self._folder.cleanup()
 
 
 @contextmanager
 def child_calls(
-    target: str, *, workers: int, cancelled: Callable[[], bool] | None = None
+    target: str,
+    *,
+    workers: int,
+    cancelled: Callable[[], bool] | None = None,
+    preload_models: bool = True,
 ) -> Iterator[ChildCalls]:
     """`ChildCalls` of ``module:function`` over `workers` kept workers, closed on leaving."""
-    calls = ChildCalls(target, workers=workers, cancelled=cancelled)
+    calls = ChildCalls(target, workers=workers, cancelled=cancelled, preload_models=preload_models)
     try:
         yield calls
     finally:
@@ -261,9 +298,15 @@ def _submitted(
     *,
     threads: int | None,
     answer: Path | None = None,
+    preload_models: bool = True,
 ) -> _Submitted:
-    """Hand one call to a kept worker; one that has ended answers as an interruption."""
+    """Hand one call to a kept worker; one that has ended answers as an interruption. The worker
+    may open the files this process holds, so none is kept open until the call ends."""
+    from alphalattice.control.workspace_runtime.database import hand_off  # lazy: DuckDB
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+
     pool = None
+    ended = hand_off()
     try:
         pool = _worker(worker)
         future = pool.submit(
@@ -273,14 +316,23 @@ def _submitted(
             str(flag),
             threads,
             None if answer is None else str(answer),
+            _carrier(),
+            os.environ.get(DATA_ROOT_ENV),
+            preload_models,
         )
     except BrokenProcessPool:
+        ended()
         assert pool is not None
         raise _ended(worker, pool) from None
     except (OSError, MemoryError) as error:
+        ended()
         if pool is not None:
             _retire_worker(worker, pool)
         raise ChildStartFailed(error) from error
+    except BaseException:
+        ended()
+        raise
+    future.add_done_callback(lambda _done: ended())
     _hold(worker, pool, future)
     return _Submitted(worker, pool, future, answer)
 
@@ -316,6 +368,7 @@ def _waited(
     submitted: _Submitted, flag: Path, cancelled: Callable[[], bool] | None
 ) -> dict[str, Any]:
     """Wait for a call's answer, relaying the Task's cancellation while it runs."""
+    progress: tuple[float | None, float] = (None, time.monotonic())
     try:
         while True:
             try:
@@ -323,8 +376,39 @@ def _waited(
             except FutureTimeout:
                 if cancelled is not None and not flag.exists() and cancelled():
                     flag.touch()
+                progress = _progressed(submitted.pool, progress)
+                if time.monotonic() - progress[1] > WEDGED_SECONDS:
+                    raise _ended_wedged(submitted) from None
     except BrokenProcessPool:
         raise _ended(submitted.worker, submitted.pool) from None
+
+
+def _progressed(
+    pool: ProcessPoolExecutor, last: tuple[float | None, float]
+) -> tuple[float | None, float]:
+    """The worker's CPU seconds and when they last moved. Whatever the worker runs for this
+    call -- the call itself, or one queued before it -- uses CPU while it works; a worker with
+    no process to read (one that never started) never moves."""
+    used = _cpu_seconds(pool)
+    return last if used is None or used == last[0] else (used, time.monotonic())
+
+
+def _cpu_seconds(pool: ProcessPoolExecutor) -> float | None:
+    """The CPU seconds the pool's worker process has used, or None when it has none to read."""
+    for process in list(getattr(pool, "_processes", {}).values()):
+        if process.pid is not None:
+            return cpu_seconds_of(process.pid)
+    return None
+
+
+def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
+    """End a wedged worker's process and retire its pool; its call is interrupted by name."""
+    for process in list(getattr(submitted.pool, "_processes", {}).values()):
+        process.terminate()
+    _retire_worker(submitted.worker, submitted.pool)
+    return ChildInterrupted(
+        "task_control.child_wedged", type_name="ChildWedged", failure_class=None
+    )
 
 
 def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:
@@ -384,12 +468,25 @@ def _worker_started(worker: int = 0) -> None:
     threading.Thread(target=_watch_parent, name="parent-watch", daemon=True).start()
 
 
+def _follow_root(root: str | None) -> None:
+    """Name the caller's data root in this worker's environment, which `data_root` reads."""
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+
+    if root is None:
+        os.environ.pop(DATA_ROOT_ENV, None)
+    else:
+        os.environ[DATA_ROOT_ENV] = root
+
+
 def _call(
     target: str,
     arguments: dict[str, Any],
     flag: str,
     threads: int | None = None,
     answer: str | None = None,
+    trace: Mapping[str, str] | None = None,
+    root: str | None = None,
+    preload_models: bool = True,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -398,14 +495,24 @@ def _call(
     `threads`, the numerical libraries are held to that many threads for the call; with
     `answer`, the result is written to that file and the pipe carries only that it was. The
     call's spans, with the worker's CPU seconds and bytes over it, ride beside the answer for
-    the parent's stage ledger (A4).
+    the parent's stage ledger (A4). With `trace`, the W3C context of the step that sent the call,
+    the call is one `worker.call` span in that trace, handed back as its step event (`trace`).
+    The call reads the data root its caller names (`root`, unset for the default): a kept worker
+    started under another root, before the caller's history opened, reads the caller's.
     """
     ledger: SpanLedger | None = None
+    rows: list[dict[str, Any]] = []
     try:
+        _follow_root(root)
         arguments = _held(arguments)
         module_name, _, name = target.partition(":")
         function = getattr(importlib.import_module(module_name), name)
-        with held_offline(), _numerical_threads(threads), collect() as ledger:
+        with (
+            held_offline(),
+            _numerical_threads(threads, preload_models=preload_models),
+            collect() as ledger,
+            _worker_span(target, trace, rows),
+        ):
             result = function(**arguments, cancelled=lambda: os.path.exists(flag))
         if answer is not None:
             with open(answer, "wb") as sink:
@@ -420,12 +527,60 @@ def _call(
             "message": str(error)[:2000],
             "failure_class": declared if isinstance(declared, str) else None,
             "spans": None if ledger is None else ledger.readout_value,
+            "trace": rows or None,
         }
     return {
         "status": "OK",
         "result": result,
         "spans": None if ledger is None else ledger.readout_value,
+        "trace": rows or None,
     }
+
+
+def _carrier() -> dict[str, str]:
+    """The trace of the step sending a call. Only a Host loads its history, so a process that has
+    not cannot be recording, and pays no import for it."""
+    history = sys.modules.get("alphalattice.kernel.data_layer.history")
+    return {} if history is None else history.trace_carrier()
+
+
+def _traced(answer: Mapping[str, Any]) -> None:
+    """Hand the worker's spans to the Host's log, when the call carried a trace."""
+    if answer.get("trace"):
+        from alphalattice.kernel.data_layer.history import traced  # lazy: a traced answer alone
+
+        traced(answer["trace"])
+
+
+@contextmanager
+def _worker_span(
+    target: str, trace: Mapping[str, str] | None, rows: list[dict[str, Any]]
+) -> Iterator[None]:
+    """The call as one `worker.call` span in the trace `trace` names; its step event goes to
+    `rows`. Without a trace, nothing: the SDK is imported only by a traced call."""
+    if not trace:
+        yield
+        return
+    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, for a traced call alone
+        RowsExporter,
+        context_of,
+        tracer_provider,
+    )
+
+    global _TRACER
+    if _TRACER is None:  # one per worker process, kept with it
+        kept = RowsExporter()
+        _TRACER = (tracer_provider(kept), kept)
+    provider, exporter = _TRACER
+    tracer = provider.get_tracer("worker")
+    try:
+        with tracer.start_as_current_span(
+            telemetry.SPAN_WORKER_CALL, context_of(trace), attributes={telemetry.CALL: target}
+        ):
+            yield
+    finally:
+        rows.extend(exporter.rows)
+        exporter.rows.clear()
 
 
 def _held(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -448,12 +603,12 @@ def _forget(call_set: str, cancelled: Callable[[], bool]) -> None:
 
 
 @contextmanager
-def _numerical_threads(threads: int | None) -> Iterator[None]:
+def _numerical_threads(threads: int | None, *, preload_models: bool) -> Iterator[None]:
     """The numerical libraries held to `threads` threads for a block; unchanged without one."""
     if threads is None:
         yield
         return
-    with numerical_thread_limit(threads):
+    with numerical_thread_limit(threads, preload_models=preload_models):
         yield
 
 

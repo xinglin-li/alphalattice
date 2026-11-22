@@ -2,6 +2,8 @@
 
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Iterator, MutableMapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from os import cpu_count, getpid
 from threading import RLock
 from typing import Final
@@ -138,3 +140,30 @@ class BoundedMemo[K: Hashable, V](MutableMapping[K, V]):
             self._retained = self._unknown = 0
             self._sequence += 1
             self._observe(ledger)
+
+
+StageDigests = dict[tuple[object, ...], tuple[object, str]]
+_STAGE_DIGESTS: ContextVar[StageDigests | None] = ContextVar("stage_digests", default=None)
+
+
+@contextmanager
+def stage_digests(digests: StageDigests | None = None) -> Iterator[None]:
+    """Open the stage's digest holder in the thread running its current phase."""
+    token = _STAGE_DIGESTS.set({} if digests is None else digests)
+    try:
+        yield
+    finally:
+        _STAGE_DIGESTS.reset(token)
+
+
+def stage_digest[T](slot: tuple[object, ...], inputs: T, digest: Callable[[T], str]) -> str:
+    """Reuse a digest only when the reader sees the same immutable inputs in its slot."""
+    held = _STAGE_DIGESTS.get()
+    if held is None:
+        return digest(inputs)
+    prior = held.get(slot)
+    if prior is not None and prior[0] == inputs:
+        return prior[1]
+    value = digest(inputs)
+    held[slot] = inputs, value
+    return value

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, cast
 
 import numpy.typing as npt
 from pydantic import BaseModel
@@ -81,10 +82,58 @@ from alphalattice.investment.risk_research.calibration.diagnostic_contracts impo
 from alphalattice.investment.risk_research.contracts import HistoricalCovarianceSurface
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.data_layer.arrays import CARRIED
+from alphalattice.kernel.data_layer.upgrade import Family
+
+LAB: Final = "portfolio-strategy-lab"
+_NOT_LANES: Final = frozenset({"public", "pending-finalization", "carried", "current"})
+"""A Strategy Lab folder's children whose files are no lane of this store: the ledger's
+namespaces, the lanes a copy carries (moved at first use, `history.carry_arrays`) and pointers."""
+_DOCUMENTS: Final = Path("development", "paired-alpha-portfolio", "objective-audits")
+"""The one category whose legacy `.bin` files are documents, not packed lanes."""
+_DIGEST: Final = re.compile(r"[0-9a-f]{64}")
 
 
 class PortfolioPublicationError(ValueError):
     """Stable fail-closed evidence and current-pointer boundary."""
+
+
+MANIFEST: Final = "research-workspace.json"
+"""The file that marks a workspace's folder (the Host's RESEARCH_WORKSPACE_MANIFEST_NAME)."""
+_AUTHORITY: dict[Path, bool] = {}
+"""Per process, per workspace: whether its own lane files are still its lanes' authority."""
+
+
+def _files(root: Path) -> Path | None:
+    """The folder whose own lane files a store at `root` reads, or None when it reads the door.
+
+    Unset, a workspace that still holds lane files the door lacks keeps them as its lanes'
+    authority until the upgrade's family moves them, as a 0.2.7 Task store stays its Tasks'
+    until moved: decided once per process per workspace, from its own state.
+    contract: the unset rule retires when the upgrade has moved every workspace's lanes.
+    """
+    workspace = next((f for f in (root, *root.parents) if (f / MANIFEST).is_file()), None)
+    if workspace is None:
+        return None
+    if workspace not in _AUTHORITY:
+        _AUTHORITY[workspace] = _unmoved(workspace)
+    return workspace if _AUTHORITY[workspace] else None
+
+
+def _unmoved(workspace: Path) -> bool:
+    """Whether the workspace holds lane files the door lacks."""
+    return bool(history.arrays_lacking(path.stem for path in lane_files(workspace)))
+
+
+def _door_refusal(error: DataError) -> str:
+    code = str(error.failure.code)
+    if code in {"data_layer.array_missing", "data_layer.array_collected"}:
+        return "portfolio_strategy_lab.artifact_absent"  # lost work, as a missing lane file was
+    if code == "data_layer.history_unavailable":
+        return code
+    return "portfolio_strategy_lab.artifact_tampered"
 
 
 def _load_refusal(error: ContentAddressedStoreError) -> str:
@@ -211,6 +260,7 @@ class PortfolioResearchArtifactStore:
         Raises:
             PortfolioPublicationError: Content-addressed storage refuses identity reuse.
         """
+        history.flush()  # the lanes it may cite are committed before it names them
         try:
             self._content.publish_model(
                 category=category,
@@ -264,16 +314,21 @@ class PortfolioResearchArtifactStore:
         return self.publish_columns(category=category, columns={"value": values})
 
     def publish_columns(self, *, category: str, columns: Mapping[str, npt.NDArray[Any]]) -> str:
-        """Write numerical columns of one shape as one table, named by their digest."""
+        """Keep numerical columns of one shape as one array through the data root's door, named
+        by their digest; `category` names the lane for the legacy reader alone. Its profile is
+        committed with the next document or model this store publishes, which may cite it."""
         try:
-            return self._content.publish_columns(category=category, columns=columns)
-        except ContentAddressedStoreError as error:
+            return str(history.keep_array(columns, durable=False))
+        except DataError as error:
+            if error.failure.code != "data_layer.array_digest_reused":
+                raise
             raise PortfolioPublicationError(
                 "portfolio_strategy_lab.artifact_identity_reused"
             ) from error
 
     def publish_document(self, *, category: str, payload: bytes) -> str:
         """Write one canonical JSON document, named by the digest of its bytes."""
+        history.flush()  # the lanes it may cite are committed before it names them
         try:
             return self._content.publish_document(
                 category=category, payload=payload, extension="json"
@@ -284,22 +339,56 @@ class PortfolioResearchArtifactStore:
             ) from error
 
     def holds_array(self, *, category: str, content_hash: str) -> bool:
-        """Whether this store holds the lane a digest names, as Parquet."""
-        return self._content.holds_columns(category=category, content_hash=content_hash)
+        """Whether the lane a digest names is held as columns (a legacy packed lane is not)."""
+        self._content.require_hash(content_hash)
+        if (workspace := _files(self.root)) is not None:
+            held = self._content.holds_columns(category=category, content_hash=content_hash)
+            return held or (workspace / CARRIED / f"{content_hash}.parquet").is_file()
+        found = history.array_profile(content_hash)
+        return found is not None and found["body_state"] == "present" and found["kind"] != "packed"
 
     def load_columns(self, *, category: str, content_hash: str) -> dict[str, npt.NDArray[Any]]:
         """Read one table's flat columns and prove they are the ones that were asked for."""
-        try:
-            return self._content.load_columns(category=category, content_hash=content_hash)
-        except ContentAddressedStoreError as error:
-            raise PortfolioPublicationError(_load_refusal(error)) from error
+        return cast(dict[str, Any], self._lane(category, content_hash, packed=False))
 
     def load_packed_bytes(self, *, category: str, content_hash: str) -> bytes:
         """Read one lane's packed bytes and prove they are the ones that were asked for."""
+        return cast(bytes, self._lane(category, content_hash, packed=True))
+
+    def _lane(self, category: str, content_hash: str, *, packed: bool) -> Any:
+        if (workspace := _files(self.root)) is not None:
+            return self._file_lane(workspace, category, content_hash, packed=packed)
         try:
-            return self._content.load_packed_bytes(category=category, content_hash=content_hash)
+            self._content.require_hash(content_hash)
         except ContentAddressedStoreError as error:
             raise PortfolioPublicationError(_load_refusal(error)) from error
+        try:
+            return history.read_array(content_hash, packed=packed)
+        except DataError as error:
+            raise PortfolioPublicationError(_door_refusal(error)) from error
+
+    def _file_lane(self, workspace: Path, category: str, content_hash: str, *, packed: bool) -> Any:
+        """A lane from the workspace's own files: where this store wrote it, else among the lanes
+        a copy carries (`history.carry_arrays`), read in place."""
+        carried = [workspace / CARRIED / f"{content_hash}{s}" for s in (".parquet", ".bin")]
+        found = next((path for path in carried if path.is_file()), None)
+        written = self._content.holds_columns(category=category, content_hash=content_hash)
+        if found is None or written:
+            load = self._content.load_packed_bytes if packed else self._content.load_columns
+            try:
+                return load(category=category, content_hash=content_hash)
+            except ContentAddressedStoreError as error:
+                raise PortfolioPublicationError(_load_refusal(error)) from error
+        try:
+            lane = arrays.read_file(found)
+        except DataError as error:
+            raise PortfolioPublicationError(_door_refusal(error)) from error
+        if isinstance(lane, bytes):
+            if not packed:
+                raise PortfolioPublicationError("portfolio_strategy_lab.artifact_tampered")
+            return lane
+        flat = {name: values.reshape(-1) for name, values in lane.items()}
+        return b"".join(values.tobytes() for values in flat.values()) if packed else flat
 
     def load_document(self, *, category: str, content_hash: str) -> bytes:
         """Read one JSON document and prove it is the one that was asked for."""
@@ -1276,6 +1365,67 @@ class PortfolioResearchArtifactStore:
             )
 
 
+def lane_files(workspace: Path) -> list[Path]:
+    """Every lane file the Strategy Lab store wrote under `workspace` before the door: a
+    `<digest>.parquet`, or a legacy packed `<digest>.bin` outside the documents' category, in any
+    Strategy Lab folder but the ledger's, the carried and the pointers. A workspace not made yet
+    holds none; an unreadable folder is refused by its error, never read as empty."""
+
+    top_folder = workspace.resolve()
+
+    def refuse(error: OSError) -> None:
+        if isinstance(error, FileNotFoundError) and error.filename == str(top_folder):
+            return  # a Host started on a workspace it has yet to create
+        raise error
+
+    found: list[Path] = []
+    for top, folders, _files in os.walk(top_folder, onerror=refuse):
+        if LAB not in folders:
+            continue
+        folders.remove(LAB)  # its own files are walked below; a lab never nests another
+        lab = Path(top, LAB)
+        for child in sorted(lab.iterdir()):
+            if not child.is_dir() or child.is_symlink() or child.name in _NOT_LANES:
+                continue
+            for folder, _folders, names in os.walk(child, onerror=refuse):
+                for path in (Path(folder, name) for name in names):
+                    if path.suffix not in {".parquet", ".bin"} or not _DIGEST.fullmatch(path.stem):
+                        continue
+                    if path.suffix == ".bin" and path.parent.relative_to(lab) == _DOCUMENTS:
+                        continue
+                    found.append(path)
+    return sorted(found)
+
+
+def lane_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
+    """The upgrade's move of the Strategy Lab's lane files into the array door: each kept with
+    the hold of the workspace it lies in (`holder` names its id), the files left as they are; its
+    ALL EQUAL reads every lane back through the door against its file's bytes."""
+
+    def step(runner: Any) -> None:
+        for workspace in runner.workspaces:
+            held = holder(workspace)
+            for path in lane_files(workspace):
+                arrays.keep_file(runner.root, runner.log, path, workspace=held, durable=False)
+            runner.log.flush()
+        _AUTHORITY.clear()  # each workspace is decided again from its state after the move
+
+    def verify(runner: Any) -> bool:
+        for workspace in runner.workspaces:
+            for path in lane_files(workspace):
+                old = arrays.read_file(path)
+                if not isinstance(old, bytes):
+                    old = b"".join(values.tobytes() for values in old.values())
+                if arrays.read_packed(runner.root, runner.log.read, path.stem) != old:
+                    return False
+        return True
+
+    def holds(workspace: Path) -> bool:
+        return _unmoved(workspace)
+
+    return Family("strategy-lab-lanes", step, verify, holds)
+
+
 __all__ = [
     "CurrentPortfolioFold3AttributionPublication",
     "CurrentPortfolioResearchPublication",
@@ -1284,4 +1434,6 @@ __all__ = [
     "CurrentPortfolioStrategyResearchPublication",
     "PortfolioPublicationError",
     "PortfolioResearchArtifactStore",
+    "lane_files",
+    "lane_upgrade_family",
 ]

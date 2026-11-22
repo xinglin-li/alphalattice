@@ -10,7 +10,6 @@ still looked plausible.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from dataclasses import replace
 from datetime import date, timedelta
@@ -37,6 +36,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAllocationProjection,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 LISTINGS = 120
 BUCKETS = 4
@@ -380,7 +380,7 @@ def test_the_binding_declares_no_optimizer_and_states_its_semantics() -> None:
 def test_the_public_catalog_is_solver_free_in_a_fresh_interpreter() -> None:
     """Control: Public policy catalog construction omits solver packages."""
     root = Path(__file__).resolve().parents[3]
-    result = subprocess.run(
+    result = spawn.run(
         [
             sys.executable,
             "-c",

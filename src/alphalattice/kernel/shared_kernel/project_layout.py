@@ -105,7 +105,9 @@ def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
 @cache
 def _tool_bin(uv: str) -> str:
     """Cache successful directory discovery; failed probes remain retriable."""
-    found = subprocess.run(
+    from alphalattice.kernel.shared_kernel import spawn  # lazy: only tool directory discovery.
+
+    found = spawn.run(
         [uv, "tool", "dir", "--bin"],
         capture_output=True,
         encoding="utf-8",

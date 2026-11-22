@@ -21,6 +21,7 @@ from alphalattice.control.data_platform.preflight import (
 )
 from alphalattice.control.data_platform.runtime import PreFactorDataOperations
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
+from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
@@ -90,6 +91,17 @@ class WorkspaceApplicationControls(Protocol):
     mutation_gate: WorkspaceMutationGate
     writer_lease: WorkspaceWriterLease
     task_control_registry: DuckDbTaskControlRegistry
+
+
+def _task_registry(
+    database: WorkspaceDatabase, gate: WorkspaceMutationGate
+) -> DuckDbTaskControlRegistry:
+    """The workspace's Task Control, under the id its manifest names it by."""
+    return DuckDbTaskControlRegistry(
+        resolve_task_control_database(database.workspace),
+        gate=gate,
+        workspace_id=named_workspace_id(database.workspace),
+    )
 
 
 @dataclass
@@ -245,9 +257,7 @@ class WorkspaceRuntime:
                 feature_catalog=catalog,
                 feature_kernels=kernels,
                 task_control_registry=(
-                    DuckDbTaskControlRegistry(
-                        resolve_task_control_database(database.workspace), gate=mutation_gate
-                    )
+                    _task_registry(database, mutation_gate)
                     if application_controls is None
                     else application_controls.task_control_registry
                 ),

@@ -23,7 +23,38 @@ from typing import Any
 OFFLINE_SWITCH = "ALPHALATTICE_NETWORK_DISABLED"
 """The operator's offline switch: ``=1`` keeps the process offline, whatever a workspace allows."""
 
+THREAD_SHARE = "OMP_NUM_THREADS"
+"""The operator's thread share for each process: OpenMP's variable, which Arrow reads too."""
+
 _HELD_OFFLINE: ContextVar[bool] = ContextVar("alphalattice_held_offline", default=False)
+
+
+def thread_share(environment: Mapping[str, str] | None = None) -> int | None:
+    """The threads the operator gives each process (`OMP_NUM_THREADS`), or None when it names none.
+
+    A machine running many processes at once, as a test node does, sets it so that no process
+    sizes a pool to every core. The product's DuckDB instances take it, as Arrow's CPU pool does,
+    and a budget applied later never widens it (`reader_threads.apply_reader_threads`).
+
+    Args:
+        environment: The environment to read, the process's own when omitted.
+
+    Returns:
+        A positive count, or None when the variable is unset or not one positive integer.
+    """
+    value = (os.environ if environment is None else environment).get(THREAD_SHARE, "").strip()
+    return int(value) if value.isdigit() and int(value) > 0 else None
+
+
+def duckdb_thread_config(environment: Mapping[str, str] | None = None) -> dict[str, int]:
+    """A DuckDB instance's pools under the operator's share; empty when it names none.
+
+    Both pools: its worker threads, and its async I/O pool, which DuckDB sizes to four times the
+    cores in every instance (`async_threads`; 163 threads for one default instance on 32 cores,
+    5 under a share of one, 11-19).
+    """
+    share = thread_share(environment)
+    return {"threads": share, "async_threads": share} if share else {}
 
 
 def offline(environment: Mapping[str, str] | None = None) -> bool:
@@ -211,10 +242,13 @@ _UNLIMITED: list[Any] = []
 _LIMITS_LOCK = threading.Lock()
 
 
-def _load_limited_libraries() -> None:
+def _load_limited_libraries(*, preload_models: bool) -> None:
     """Load the numerical libraries a limit holds before it is set: one first loaded inside a
     limited block would start at its own default threads, which the limit never reaches."""
-    import scipy.linalg  # type: ignore[import-untyped]  # noqa: F401  # lazy: SciPy's BLAS
+    import scipy.linalg  # noqa: F401  # lazy: SciPy's BLAS
+
+    if not preload_models:
+        return
     import sklearn  # noqa: F401  # lazy: the OpenMP runtime scikit-learn's estimators use
 
     with suppress(ImportError, OSError):  # LightGBM needs its OpenMP runtime to load at all
@@ -222,7 +256,7 @@ def _load_limited_libraries() -> None:
 
 
 @contextmanager
-def numerical_thread_limit(limits: int) -> Iterator[None]:
+def numerical_thread_limit(limits: int, *, preload_models: bool = True) -> Iterator[None]:
     """Limit the numerical libraries' threads in the block, as ``threadpool_limits`` does.
 
     The libraries it holds are loaded first, so one an adapter imports at its first fit runs
@@ -231,7 +265,7 @@ def numerical_thread_limit(limits: int) -> Iterator[None]:
     scope to close restores the counts from before the first, so a scope closing early leaves
     no other unlimited.
     """
-    _load_limited_libraries()
+    _load_limited_libraries(preload_models=preload_models)
     with _LIMITS_LOCK:
         if not _LIMITS:
             _UNLIMITED.append(_thread_pool_controller().limit(limits=limits))
@@ -251,6 +285,8 @@ def numerical_thread_limit(limits: int) -> Iterator[None]:
 
 __all__ = [
     "OFFLINE_SWITCH",
+    "THREAD_SHARE",
+    "duckdb_thread_config",
     "held_offline",
     "numerical_thread_counts",
     "numerical_thread_limit",
@@ -259,4 +295,5 @@ __all__ = [
     "package_versions",
     "recorded_environment",
     "running_held_offline",
+    "thread_share",
 ]

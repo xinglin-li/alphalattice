@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d03bb327690be42cbc6da4a1348ed86bcb8d9971618f949281bd4c562ebb2495",
+   "successor": "8cdf9038951640cc099a6bd825bb16ef5e569e190131e63346e9bc4775db48cc",
+   "change": "Risk runs on large universes record their full profile and complete",
+   "reason": "Risk runs on large universes record their full profile and complete: the public research path writes a Risk factor profile as versioned text beside its event, with the same Risk shape and content identity"
+  }
+ ]
+}

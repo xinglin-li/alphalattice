@@ -7,6 +7,7 @@ import json
 import keyword
 from collections.abc import Iterable, Mapping, Sequence
 from fnmatch import fnmatchcase
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -16,9 +17,37 @@ from .requirements import (
     file_holders,
     schema_path,
 )
-from .sizes import _declarations, whole_tree_scope
+from .sizes import _declarations, load_policy, whole_tree_scope
 
 REGISTRIES = ("config/registries/test-sizes.json", "config/registries/test-private.json")  # public
+
+Backends = Sequence[Mapping[str, str]]
+
+
+@cache
+def backend_catalog() -> Backends:
+    """Freeze the static guard's catalog once; collection passes its already-read policy."""
+    rows = load_policy(Path(__file__).resolve().parents[3]).get("unit_backends", [])
+    if not rows:
+        raise ValueError("testing.layer_contract_unmeasured: restore the unit backend catalog")
+    return tuple(rows)
+
+
+def import_violations(
+    names: tuple[str, ...], layer: str, backends: Backends | None = None
+) -> tuple[str, ...]:
+    """One import contract for the existing static guard and the runtime subscriber."""
+    if layer != "unit":
+        return ()
+    catalog = backend_catalog() if backends is None else backends
+    return tuple(
+        f"testing.layer_contract: unit dependency {name}; move the test to integration"
+        for name in names
+        if any(
+            name == row["name"] or (row["kind"] == "module" and name.startswith(row["name"] + "."))
+            for row in catalog
+        )
+    )
 
 
 def placed_tests(root: Path) -> dict[str, str]:

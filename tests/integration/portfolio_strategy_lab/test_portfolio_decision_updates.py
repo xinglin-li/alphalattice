@@ -11,6 +11,7 @@ from uuid import UUID
 import numpy as np
 import pytest
 
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -751,7 +752,7 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
         store.decision_history(n.checkpoint.content_hash)
 
 
-@pytest.mark.parametrize("parts", [False, True])
+@pytest.mark.parametrize("parts", [False, True], ids=["one-model-file", "observation-parts"])
 def test_exact_reuse_revalidates_observation_and_html_children(
     numerical, tmp_path, monkeypatch, parts
 ):
@@ -801,11 +802,12 @@ def test_exact_reuse_revalidates_observation_and_html_children(
                 path.write_bytes(b"tampered")
             try:
                 code = "artifact_missing" if missing else "artifact_tampered"
-                with pytest.raises(ValueError, match=code) as caught:
+                # A changed child is refused where it is proved: in full proof (LAWS.md EV2).
+                with full_content_proof(), pytest.raises(ValueError, match=code) as caught:
                     app.reusable(plan)
                 with monkeypatch.context() as patch:
                     patch.setattr(type(caught.value), "__str__", lambda e: e.args[0].split(":")[0])
-                    with pytest.raises(ValueError, match=code):
+                    with full_content_proof(), pytest.raises(ValueError, match=code):
                         app.reusable(plan)
                 if missing:
                     assert not path.exists()  # verification never repairs a missing child
@@ -1300,5 +1302,9 @@ def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_
     (older,) = updates["older"]
     path = next((tmp_path / "artifacts").rglob(f"{older.snapshot_hash}.json"))
     path.write_bytes(path.read_bytes().replace(b"0.5", b"0.6"))
-    with pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"):
+    # A sealed score is proved under full proof (an export, the scrub; LAWS.md EV2).
+    with (
+        full_content_proof(),
+        pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"),
+    ):
         completed(owner)

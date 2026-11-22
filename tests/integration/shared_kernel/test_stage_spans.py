@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -253,8 +254,14 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     finally:
         runner.close()
 
+    kept_on_log = read_stage_spans(runtime, task.task_id)
+    assert len(kept_on_log) == 4
     path = stage_spans_path(runtime, task.task_id)
     assert path == tmp_path / "runtime" / "execution" / "spans" / f"{task.task_id}.jsonl"
+    assert not path.exists()
+    # The old reader still names a torn legacy source before that source can switch.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row) + "\n" for row in kept_on_log), encoding="utf-8")
     with path.open("a", encoding="utf-8") as sink:
         sink.write('{"torn": \n')
     diagnostics = []
@@ -291,7 +298,7 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     assert read_stage_spans(runtime, task.task_id, diagnostics=diagnostics) == ()
     assert diagnostics == [{"code": "PHASE_ROWS_UNREADABLE", "source": str(path)}]
     path.unlink()
-    assert read_stage_spans(runtime, task.task_id) == ()
+    assert read_stage_spans(runtime, task.task_id) == kept_on_log
 
 
 def test_a_stage_gate_refusal_blocks_the_stage_before_its_work(tmp_path: Path) -> None:

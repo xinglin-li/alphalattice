@@ -75,6 +75,7 @@ Thumbs.db
 .vscode/
 .venv-retrieval/
 .venv-retrieval-setup.log
+.scratch/
 .codex/native-research.local.d/
 # Retired with FLOW-1's producer sequences; an older checkout may still hold them.
 .codex/native-research-sequences.local.*

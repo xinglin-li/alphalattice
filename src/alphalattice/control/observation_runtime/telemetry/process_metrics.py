@@ -24,70 +24,83 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Self
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+_metric_lock = threading.RLock()
+_metric_reader: Any = None
+_metric_pid = 0
 
-def _windows_memory_bytes() -> tuple[int, int]:
-    """Read current and peak Windows working sets without platform-only exports."""
-    loader: Any = getattr(ctypes, "WinDLL", None)
-    if loader is None:
-        return 0, 0
 
-    class _Counters(ctypes.Structure):
-        _fields_ = [
-            ("cb", ctypes.c_ulong),
-            ("PageFaultCount", ctypes.c_ulong),
-            ("PeakWorkingSetSize", ctypes.c_size_t),
-            ("WorkingSetSize", ctypes.c_size_t),
-            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-            ("PagefileUsage", ctypes.c_size_t),
-            ("PeakPagefileUsage", ctypes.c_size_t),
-            ("PrivateUsage", ctypes.c_size_t),
-        ]
+def _after_fork() -> None:
+    """Do not inherit a locked reader when a POSIX worker starts by fork."""
+    global _metric_lock
+    _metric_lock = threading.RLock()
 
-    counters = _Counters()
-    counters.cb = ctypes.sizeof(counters)
-    kernel32 = loader("kernel32", use_last_error=True)
-    psapi = loader("psapi", use_last_error=True)
-    get_current_process = kernel32.GetCurrentProcess
-    get_current_process.restype = ctypes.c_void_p
-    get_memory_info = psapi.GetProcessMemoryInfo
-    get_memory_info.argtypes = [
-        ctypes.c_void_p,
-        ctypes.POINTER(_Counters),
-        ctypes.c_ulong,
-    ]
-    get_memory_info.restype = ctypes.c_bool
-    if not get_memory_info(get_current_process(), ctypes.byref(counters), counters.cb):
-        return 0, 0
-    return int(counters.WorkingSetSize), int(counters.PeakWorkingSetSize)
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_after_fork)
+
+
+def _current_process_values() -> tuple[float, int]:
+    """Collect the standard process CPU time and RSS from the local SDK reader."""
+    global _metric_pid, _metric_reader
+    with _metric_lock:
+        if _metric_pid != os.getpid():
+            from opentelemetry.instrumentation.system_metrics import (  # lazy: first sample
+                SystemMetricsInstrumentor,
+            )
+            from opentelemetry.sdk.metrics import MeterProvider  # lazy: first sample
+            from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # lazy: first sample
+
+            # The standard instrumentor is a singleton; this owner must not reset another's.
+            own_type = type(
+                "_ProcessMetricsInstrumentor", (SystemMetricsInstrumentor,), {"_instance": None}
+            )
+            instrumentor = own_type(
+                config={
+                    "process.cpu.time": ["user", "system"],
+                    "process.memory.usage": None,
+                    "process.thread.count": None,
+                }
+            )
+            reader = InMemoryMetricReader()
+            provider = MeterProvider(metric_readers=[reader], shutdown_on_exit=False)
+            instrumentor.instrument(meter_provider=provider, raise_exception_on_conflict=True)
+            _metric_reader, _metric_pid = reader, os.getpid()
+        data = _metric_reader.get_metrics_data()
+        values: dict[str, list[float]] = {}
+        if data is not None:
+            for resource in data.resource_metrics:
+                for scope in resource.scope_metrics:
+                    for metric in scope.metrics:
+                        values[metric.name] = [
+                            float(point.value) for point in metric.data.data_points
+                        ]
+        cpu = values.get("process.cpu.time", [])
+        if len(cpu) != 2:
+            raise RuntimeError("process_metrics.cpu_unavailable")
+        rss = values.get("process.memory.usage", [])
+        # The old reader has no /proc source on macOS. Preserve its unavailable value for
+        # capacity readers while the instrumentor still exposes the standard process metric.
+        memory = 0 if sys.platform == "darwin" else int(rss[0]) if rss else 0
+        return sum(cpu), memory
 
 
 def current_rss_bytes() -> int:
     """Return current resident memory in bytes, or zero when unavailable."""
-    if os.name == "nt":
-        return _windows_memory_bytes()[0]
-    try:
-        sysconf = getattr(os, "sysconf", None)
-        if not callable(sysconf):
-            return 0
-        page_count = int(Path("/proc/self/statm").read_text(encoding="ascii").split()[1])
-        return page_count * int(sysconf("SC_PAGE_SIZE"))
-    except (OSError, ValueError, IndexError, AttributeError):
-        return 0
+    return _current_process_values()[1]
 
 
 def peak_rss_bytes() -> int:
-    """Return process peak resident memory in bytes, or zero when unavailable."""
+    """Return the operating system's process-lifetime peak resident memory in bytes."""
     if os.name == "nt":
-        return _windows_memory_bytes()[1]
-
+        try:
+            return int(psutil.Process().memory_info().peak_wset)
+        except (OSError, AttributeError, psutil.Error):
+            return 0
     resource: Any = importlib.import_module("resource")  # lazy: POSIX.
     value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     return value if value > 10_000_000 else value * 1024
@@ -311,7 +324,7 @@ def _process_tree_sample(root_pid: int, *, include_descendants: bool) -> _Proces
         usage: tuple[float, int] | None
         try:
             if process_id == root_pid:
-                usage = (process_cpu_seconds(), current_rss_bytes())
+                usage = _current_process_values()
             elif os.name == "nt":
                 usage = _windows_process_usage(process_id)
             elif Path("/proc").is_dir():
@@ -364,6 +377,7 @@ class ProcessResourceMonitor:
         self._process_tree_peak_rss_bytes = 0
         self._process_tree_peak_live_descendant_count = 0
         self._instrumentation_limitation: str | None = None
+        self._sample_error: Exception | None = None
         self._usage: ProcessResourceUsage | None = None
 
     def start(self) -> None:
@@ -386,7 +400,11 @@ class ProcessResourceMonitor:
 
     def _sample_until_stopped(self) -> None:
         while not self._stop.wait(self._sample_interval_seconds):
-            self._sample()
+            try:
+                self._sample()
+            except Exception as error:
+                self._sample_error = error
+                return
 
     def _sample(self, *, initial: bool = False) -> None:
         wall = time.perf_counter()
@@ -411,7 +429,9 @@ class ProcessResourceMonitor:
                 self._peak_machine_cpu_percent,
                 max(0.0, usage),
             )
-        self._peak_rss_bytes = max(self._peak_rss_bytes, current_rss_bytes())
+        self._peak_rss_bytes = max(
+            self._peak_rss_bytes, sample.rss_bytes_by_pid.get(self._root_pid, 0)
+        )
         self._process_tree_peak_rss_bytes = max(
             self._process_tree_peak_rss_bytes,
             sum(sample.rss_bytes_by_pid.values()),
@@ -443,6 +463,8 @@ class ProcessResourceMonitor:
         self._stop.set()
         self._thread.join()
         self._sample()
+        if self._sample_error is not None:
+            raise self._sample_error
         wall_seconds = max(0.0, self._last_wall - self._start_wall)
         average = (
             self._total_cpu_seconds / wall_seconds / self._logical_cpu_count * 100.0
@@ -1226,8 +1248,7 @@ def process_cpu_seconds() -> float:
     was *allowed* and what it actually used are different facts, and only the
     second one can show that a ceiling was doing anything.
     """
-    times = os.times()
-    return float(times.user + times.system)
+    return _current_process_values()[0]
 
 
 __all__ = [

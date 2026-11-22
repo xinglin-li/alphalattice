@@ -6,8 +6,9 @@ from those timestamps, so a Task's timing is the same fact for the Web, the CLI 
 
 Beside them, the runner keeps what each stage's execution and verification spent its time on:
 the spans its owners marked, added up by category, and the process's CPU and read/write bytes
-(A4, `shared_kernel.spans`). They are kept per Task in the runtime folder's
-`execution/spans/`, one JSON line a phase, and read back with their stage. They are execution
+(A4, `shared_kernel.spans`). They are kept per Task as spans in the held machine log,
+one event a phase, and read back with their stage. Legacy JSONL is compared and set aside at
+first use; a reader sees that source until its switch. They are execution
 metadata: no verification, identity or decision reads them, and a Task without them (older,
 or its line unreadable) reads exactly as before.
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +31,11 @@ from alphalattice.control.task_control.contracts import (
     WorkItemState,
 )
 from alphalattice.kernel.shared_kernel.clocks import clock_metadata
+from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
+
+from .upgrade import import_telemetry
+from .upgrade import read_task_telemetry as read_task_telemetry
+from .upgrade import record_task_telemetry as record_task_telemetry
 
 _LOG = logging.getLogger(__name__)
 
@@ -50,7 +57,7 @@ _STAGE_ENDED = frozenset(
 
 
 def stage_spans_path(runtime_path: Path, task_id: UUID) -> Path:
-    """Where a Task's stage spans are kept: `execution/spans/` in its runner's runtime folder."""
+    """The legacy source name, retained as the log reader's source key after its switch."""
     return runtime_path.parent / "execution" / "spans" / f"{task_id}.jsonl"
 
 
@@ -64,7 +71,7 @@ def record_stage_spans(
     readout: Mapping[str, Any],
     clock: Callable[[], datetime] | None = None,
 ) -> None:
-    """Append one phase's span readout; a write the filesystem refuses is logged, never raised.
+    """Record one phase's span readout; a refused optional write is logged, never raised.
 
     The runner is the Task's one writer while it runs, so one Task's lines never interleave.
     """
@@ -76,12 +83,11 @@ def record_stage_spans(
         **readout,
         **clock_metadata(clock),
     }
-    path = stage_spans_path(runtime_path, task_id)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as sink:
-            sink.write(json.dumps(line, sort_keys=True, separators=(",", ":")) + "\n")
-    except OSError:
+        path = stage_spans_path(runtime_path, task_id)
+        import_telemetry((path,))
+        record_task_telemetry(path, line)
+    except (OSError, ValueError, RuntimeError, AlphaLatticeError, sqlite3.Error):
         _LOG.warning("stage spans for %s %s were not kept", task_id, stage_id, exc_info=True)
 
 
@@ -94,6 +100,14 @@ def read_stage_spans(
     decide nothing, so a missing one is only less explanation.
     """
     path = stage_spans_path(runtime_path, task_id)
+    if not path.is_file():
+        try:
+            rows: tuple[dict[str, Any], ...] = read_task_telemetry(path, task_id)
+            return rows
+        except (OSError, ValueError, sqlite3.Error):
+            if diagnostics is not None:
+                diagnostics.append({"code": "PHASE_ROWS_UNREADABLE", "source": str(path)})
+            return ()
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):

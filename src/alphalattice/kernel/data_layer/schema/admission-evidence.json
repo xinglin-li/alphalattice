@@ -1,0 +1,11 @@
+{
+ "world": [
+  {
+   "order": 9,
+   "table": "evidence_doc",
+   "key": [
+    "doc_id"
+   ]
+  }
+ ]
+}

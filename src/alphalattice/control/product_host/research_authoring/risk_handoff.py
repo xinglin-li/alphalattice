@@ -347,7 +347,7 @@ def risk_workflow(
     # its final realized session (for example from a later-delisted member).
     first_raw = bundle.sessions.index(formations[0]) - REQUIRED_LOOKBACK_SESSIONS - 1
     required_sessions = bundle.sessions[first_raw : bundle.sessions.index(next_session) + 1]
-    market = MarketDataRepository(source)
+    market = MarketDataRepository(source, cutoff_us=envelope.sessions.as_of.selection_cutoff_us)
     manifest = market.load_universe_manifest_revision(authority.universe_revision_sha256)
     if manifest.profile.market_profile_id != PROFILE:
         raise AuthoringError("risk_research.input_universe_epoch_mismatch")

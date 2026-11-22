@@ -2794,3 +2794,46 @@ body[data-page] .fv-step.is-complete:has(+ .fv-step.is-working)::before {
   /* The interval and the cutoff: one row on a wide lane, one field a line on a narrow one (their dates showed 71 of 97 px) */
   .lab-control-group .form-grid:has(> :nth-child(3):last-child) { grid-template-columns: var(--grid-1); }
 }
+
+/* A goal's time (live-goals `waterfall`): one row a call, its steps under it and the agent's time between calls,
+ * each bar placed on the goal's window; the label and the seconds keep their columns. */
+.waterfall {
+  display: grid;
+  gap: var(--space-05);
+  margin-top: var(--space-3);
+}
+.waterfall-row {
+  display: grid;
+  grid-template-columns: var(--status-name-width) minmax(0, 1fr) var(--meter-width);
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--style-footnote-size);
+  line-height: var(--style-footnote-leading);
+}
+.waterfall-row.depth-1 .waterfall-label { padding-left: var(--space-3); }
+.waterfall-row.depth-2 .waterfall-label { padding-left: var(--space-5); }
+.waterfall-row.depth-3 .waterfall-label,
+.waterfall-row.depth-4 .waterfall-label { padding-left: var(--space-6); }
+.waterfall-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waterfall-track {
+  display: block;
+  height: var(--meter-height);
+  background: var(--meter-track);
+  border-radius: var(--meter-radius);
+}
+.waterfall-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--meter-fill);
+}
+.waterfall-bar.step { opacity: var(--opacity-secondary); }
+.waterfall-bar.agent { background: var(--muted); }
+.waterfall-bar.agent.inferred { opacity: var(--opacity-faded); }
+.waterfall-bar.call.flagged { outline: var(--edge-hair) dashed var(--text); }
+.waterfall-row .num { text-align: right; color: var(--muted); }

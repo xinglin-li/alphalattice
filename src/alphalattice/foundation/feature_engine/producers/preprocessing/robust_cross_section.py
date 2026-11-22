@@ -6,10 +6,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
@@ -25,6 +24,9 @@ from alphalattice.kernel.quant.cross_section import (
     median_mad_winsor,
     robust_zscore,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 SMALL_SECTOR_WARNING_BELOW = 10
 PANEL_SESSION_BATCH_SIZE = 126
@@ -195,6 +197,8 @@ class PanelCrossSectionKernel:
             ValueError: Rows are empty or duplicated, axes or sectors are invalid, temporal
                 membership is incomplete, or source eligibility contradicts the recorded policy.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         if isinstance(feature_rows, pd.DataFrame):
             is_empty = feature_rows.empty
         else:

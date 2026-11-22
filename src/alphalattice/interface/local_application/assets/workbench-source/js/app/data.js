@@ -541,6 +541,7 @@ const Data = (() => {
   }
   function entryPage(h = hashParams(), q = new URLSearchParams(location.search)) {
     if (!bareEntry(h, q)) return null;
+    if (workspace?.execution_mode === 'UPGRADE') return 'upgrade'; // the Host serves only its first start's plan
     if (h.get('follow') || preparation && !preparation.inputs?.length) return 'overview';
     return decisions?.some(d => d.kind === 'UPGRADE') ? 'upgrade' : null;
   }

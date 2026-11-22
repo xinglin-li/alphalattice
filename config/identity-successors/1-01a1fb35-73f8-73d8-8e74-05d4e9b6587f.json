@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "1527364890a1e6bbba7741b5eb30b6dfde47597b7bca1c85af612b169c6cd187",
+   "successor": "908c45d954cf51a7b7f875d4e6504c9ab45f07beb5265925231c5ffa9b930bc2",
+   "change": "Verify newly written files immediately during first-use preparation",
+   "reason": "Implementation roles move because file digests are taken without waiting; every published Parquet digest, the Panel manifest identity and the prepared results are equal across all six workspaces (carried across composition on f4694d7a554d0d6e16c10c6aca3a110f56d851f0)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "1527364890a1e6bbba7741b5eb30b6dfde47597b7bca1c85af612b169c6cd187",
+   "successor": "908c45d954cf51a7b7f875d4e6504c9ab45f07beb5265925231c5ffa9b930bc2",
+   "change": "Verify newly written files immediately during first-use preparation",
+   "reason": "Implementation roles move because file digests are taken without waiting; every published Parquet digest, the Panel manifest identity and the prepared results are equal across all six workspaces (carried across composition on f4694d7a554d0d6e16c10c6aca3a110f56d851f0)"
+  }
+ ]
+}

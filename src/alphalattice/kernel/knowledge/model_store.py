@@ -26,14 +26,14 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_MODEL_ARTIFACT_SHA256,
@@ -42,7 +42,10 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_TOKENIZER_SHA256,
     MODEL_ARTIFACT_SHA256,
     MODEL_ID,
+    MODEL_INT8_ARTIFACT_SHA256,
+    MODEL_INT8_GRAPH,
     MODEL_REVISION,
+    NEW_BUILD_RECIPE,
     QWEN3_EMBEDDING_MODEL_ID,
     QWEN3_EMBEDDING_MODEL_REVISION,
     QWEN3_EMBEDDING_PACK,
@@ -51,15 +54,18 @@ from alphalattice.kernel.knowledge.hybrid_contracts import (
     QWEN3_RERANKER_PACK,
     RECIPE_BGE_SMALL_CPU,
     RECIPE_MINILM_CPU,
+    RECIPE_MINILM_INT8_CPU,
     RECIPE_QWEN3_ENCODER_GPU,
     RECIPE_QWEN3_GPU,
     RECIPE_QWEN3_RERANKER_GPU,
+    RERANKER_INT8_PACK,
     RERANKER_MODEL_ID,
     RERANKER_MODEL_REVISION,
     RERANKER_PACK,
     SUPPORTED_RECIPES,
     TOKENIZER_SHA256,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +83,9 @@ class PackDefinition:
     license_id: str
     runtime: str
     approximate_bytes: int
+    variant: str = ""
+    """Names another set of files of the same repository revision (`int8`), which is
+    installed in its own directory beside the revision's."""
 
     @property
     def directory_name(self) -> str:
@@ -86,6 +95,15 @@ class PackDefinition:
             Repository identifier with each slash replaced by two hyphens.
         """
         return self.repository.replace("/", "--")
+
+    @property
+    def revision_directory(self) -> str:
+        """Return the revision's directory name, with the variant's suffix when it has one.
+
+        Returns:
+            The pinned revision, or the revision, a hyphen and the variant.
+        """
+        return f"{self.revision}-{self.variant}" if self.variant else self.revision
 
 
 MINILM_ENCODER = PackDefinition(
@@ -97,6 +115,16 @@ MINILM_ENCODER = PackDefinition(
     "ONNX_CPU",
     475_370_661,
 )
+MINILM_INT8_ENCODER = PackDefinition(
+    "minilm-l12-multilingual-int8",
+    MODEL_ID,
+    MODEL_REVISION,
+    ((MODEL_INT8_GRAPH, MODEL_INT8_ARTIFACT_SHA256), ("sentencepiece.bpe.model", TOKENIZER_SHA256)),
+    "Apache-2.0",
+    "ONNX_CPU",
+    123_481_449,
+    variant="int8",
+)
 MSMARCO_RERANKER = PackDefinition(
     "ms-marco-minilm-l6",
     RERANKER_MODEL_ID,
@@ -105,6 +133,16 @@ MSMARCO_RERANKER = PackDefinition(
     "Apache-2.0",
     "FASTEMBED_ONNX_CPU",
     91_707_303,
+)
+MSMARCO_INT8_RERANKER = PackDefinition(
+    "ms-marco-minilm-l6-int8",
+    RERANKER_MODEL_ID,
+    RERANKER_MODEL_REVISION,
+    RERANKER_INT8_PACK,
+    "Apache-2.0",
+    "FASTEMBED_ONNX_CPU",
+    23_727_592,
+    variant="int8",
 )
 BGE_ENCODER = PackDefinition(
     "bge-small-en-v1.5",
@@ -149,12 +187,63 @@ QWEN3_RERANKER = PackDefinition(
     "TORCH_CUDA_CAUSAL_LM",
     1_207_471_008,
 )
+STATIC_ENCODER = PackDefinition(
+    "bekko-static-512-int8",
+    "hotchpotch/bekko-static-embedding-v1",
+    "c18167b8f244c1bc6de21ce9b710bac8a29c4615",
+    (
+        (
+            "onnx/model_int8_dim512.onnx",
+            "2b906189a954cc1df2fa8ccc463a7e304dfc088f9aa2e6e0b928b24ae4200f22",
+        ),
+        ("tokenizer.json", "308823060352e35bf9fff6b42ef343f31cc68fa800e284568cc44e9cc0f70a73"),
+    ),
+    "MIT",
+    "ONNX_CPU",
+    108_305_839,
+    variant="512-int8",
+)
+ETTIN_RERANKER = PackDefinition(
+    "ettin17-int8",
+    "cross-encoder/ettin-reranker-17m-v1",
+    "9e4aa35321a6dd1a43ca313f500c4b4f7cfb5cc6",
+    (
+        (
+            "onnx/model_qint8_avx512.onnx",
+            "b485f6bf9da93544a6caee44c3170d12db4d5aa35350ea21d1dfd4a8281ed903",
+        ),
+        ("tokenizer.json", "28c5e078e4c52aa37cf0e6de1a212878f3dbd58dd1c70466298efe0b6b86db35"),
+        (
+            "2_Dense/model.safetensors",
+            "85e9596d9250a871deb159fb5db6979e910b4cf181d05c806733c49bc43d47c8",
+        ),
+        (
+            "3_LayerNorm/model.safetensors",
+            "de99fa351fb4badb74b56e85fa70b5bbd3fcf4d0e74de79eb749dba1e9e28b4a",
+        ),
+        (
+            "4_Dense/model.safetensors",
+            "654827171b89c76d19d663162243f38d63d1ba812ac1ec9c1b36512f1a8e9ce8",
+        ),
+    ),
+    "Apache-2.0",
+    "ONNX_CPU",
+    20_976_635,
+    variant="int8",
+)
+RETRIEVAL_STORE_PACKS: tuple[PackDefinition, PackDefinition] = (STATIC_ENCODER, ETTIN_RERANKER)
+"""The retrieval store's encoder and English reranker (kernel/data_layer/encoders.py), every file
+upstream at its pinned revision; the retrieval measurement chose them."""
+RETRIEVAL_STORE: Final = "retrieval-store"
+"""The name the pack installer takes for RETRIEVAL_STORE_PACKS, beside the recipes'."""
 PACKS: tuple[PackDefinition, ...] = (
     MINILM_ENCODER,
     MSMARCO_RERANKER,
     BGE_ENCODER,
     QWEN3_ENCODER,
     QWEN3_RERANKER,
+    MINILM_INT8_ENCODER,
+    MSMARCO_INT8_RERANKER,
 )
 RECIPE_PACKS: dict[str, tuple[PackDefinition, PackDefinition]] = {
     RECIPE_MINILM_CPU: (MINILM_ENCODER, MSMARCO_RERANKER),
@@ -162,10 +251,16 @@ RECIPE_PACKS: dict[str, tuple[PackDefinition, PackDefinition]] = {
     RECIPE_QWEN3_ENCODER_GPU: (QWEN3_ENCODER, MSMARCO_RERANKER),
     RECIPE_QWEN3_RERANKER_GPU: (MINILM_ENCODER, QWEN3_RERANKER),
     RECIPE_QWEN3_GPU: (QWEN3_ENCODER, QWEN3_RERANKER),
+    RECIPE_MINILM_INT8_CPU: (MINILM_INT8_ENCODER, MSMARCO_INT8_RERANKER),
 }
 """Encoder and reranker of every supported recipe; the two presets a user
 chooses between are recipes, never a free pairing."""
 assert set(RECIPE_PACKS) == set(SUPPORTED_RECIPES)
+INSTALLABLE: dict[str, tuple[PackDefinition, PackDefinition]] = {
+    **RECIPE_PACKS,
+    RETRIEVAL_STORE: RETRIEVAL_STORE_PACKS,
+}
+"""Every pair of packs the installer takes by name."""
 
 PACK_ABSENT = "ABSENT"
 PACK_STAGED = "STAGED_INCOMPLETE"
@@ -271,13 +366,13 @@ def pack_directory(store: Path, pack: PackDefinition) -> Path:
         pack: Exact repository and immutable pinned revision.
 
     Returns:
-        Repository directory followed by the immutable pinned revision.
+        Repository directory followed by the immutable pinned revision (and its variant).
     """
-    return store / pack.directory_name / pack.revision
+    return store / pack.directory_name / pack.revision_directory
 
 
 def _staging_directory(store: Path, pack: PackDefinition) -> Path:
-    return store / pack.directory_name / f".staging-{pack.revision}"
+    return store / pack.directory_name / f".staging-{pack.revision_directory}"
 
 
 def _sha256(path: Path) -> str:
@@ -288,11 +383,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_PACK_CHECK = threading.Lock()
+_verified: dict[tuple[Path, PackDefinition], tuple[tuple[int, ...], ...]] = {}
+
+
+def _file_stamp(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
 def verify_directory(directory: Path, pack: PackDefinition) -> str | None:
     """Verify that a pack directory contains exactly its pinned files and digests.
 
     None when every consumed file is present with its hash and nothing
     else is there; otherwise what is wrong, naming the first file.
+    A process reuses a successful check while the pinned files keep their identity and stamps.
 
     Args:
         directory: Local pack directory to verify.
@@ -311,9 +416,17 @@ def verify_directory(directory: Path, pack: PackDefinition) -> str | None:
     unexpected = sorted(present - expected)
     if unexpected:
         return f"unadmitted file {unexpected[0]}"
-    for name, digest in pack.files:
-        if _sha256(directory / name) != digest:
-            return f"hash differs for {name}"
+    key = directory.resolve(), pack
+    with _PACK_CHECK:
+        stamps = tuple(_file_stamp(directory / name) for name, _ in pack.files)
+        if _verified.get(key) == stamps:
+            return None
+        for name, digest in pack.files:
+            if _sha256(directory / name) != digest:
+                return f"hash differs for {name}"
+        if stamps != tuple(_file_stamp(directory / name) for name, _ in pack.files):
+            return "pack changed during verification"
+        _verified[key] = stamps
     return None
 
 
@@ -564,7 +677,7 @@ def _link_directory(link: Path, target: Path) -> None:
         else:
             shutil.rmtree(link)
     if os.name == "nt":
-        subprocess.run(
+        spawn.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)],
             check=True,
             capture_output=True,
@@ -586,9 +699,9 @@ def recipe_pack_statuses(store: Path, recipe: str) -> tuple[PackStatus, PackStat
     Raises:
         ModelStoreError: The recipe identifier is unsupported.
     """
-    if recipe not in RECIPE_PACKS:
+    if recipe not in INSTALLABLE:
         raise ModelStoreError(f"model_store.recipe_unsupported:{recipe}")
-    encoder, reranker = RECIPE_PACKS[recipe]
+    encoder, reranker = INSTALLABLE[recipe]
     return pack_status(store, encoder), pack_status(store, reranker)
 
 
@@ -772,8 +885,8 @@ def runtime_availability() -> dict[str, object]:
     }
 
 
-def recipe_readiness(store: Path, recipe: str) -> dict[str, object]:
-    """One recipe's packs and runtime as they stand: what a user sees before choosing."""
+def recipe_readiness(store: Path, recipe: str = NEW_BUILD_RECIPE) -> dict[str, object]:
+    """One recipe's packs and runtime as they stand (a new build's by default)."""
     encoder, reranker = recipe_pack_statuses(store, recipe)
     gpu = any(pack.runtime.startswith("TORCH") for pack in (encoder.pack, reranker.pack))
     runtime = (

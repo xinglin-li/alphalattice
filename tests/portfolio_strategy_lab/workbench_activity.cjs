@@ -399,5 +399,16 @@ library.context(c, root);vm.runInContext(fs.readFileSync(path.join(root,'status.
       A.setFollowing(null);
     }
   }
+  // The CLI call each group ran under, from the page's `calls` by its items' trace: named while it
+  // runs (its started row is live), then ended when a later page reads its end.
+  words631.I18N.set('en');
+  const trace='a'.repeat(32),under=(n,phase,extra={})=>item(n,'ProductOperationObserved',{operation:'GOAL_SHOW',caller:'EXTERNAL_AUTOMATION',phase,operation_ref:'traced',subject:{},...extra},{trace_id:trace,span_id:'b'.repeat(16),parent_span_id:'c'.repeat(16)});
+  const call={span_id:'d'.repeat(16),command:'goal show',conversation:'s-1',unattributed:false,started_at:'2026-09-14T12:00:01Z',ended_at:null};
+  pages=[{...page('RESET','traced',[under(1,'REQUESTED')]),calls:{[trace]:call}}];await A.refresh();
+  const callRunning=words631.t('activity.call_running',{command:'goal show'}),callEnded=words631.t('activity.call',{command:'goal show'});
+  assert.ok(callRunning!==callEnded&&A.section().includes(callRunning)&&!A.section().includes(callEnded+'<'),'a running call is named as running: '+A.section().slice(0,600));
+  A.absorbPage({...page('CONTINUED','traced',[under(2,'RETURNED',{status:'GOAL_SHOWN'})]),calls:{[trace]:{...call,ended_at:'2026-09-14T12:00:02Z',exit_code:0}}});
+  assert.ok(A.section().includes(callEnded)&&!A.section().includes(callRunning),'its end, read later, ends it');
+  assert.equal(A.groups().length,1,'the started and ended rows are one operation');
   finish();
 })().catch(e=>{console.error(e);process.exitCode=1;});

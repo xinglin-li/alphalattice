@@ -31,7 +31,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 TABLE = ROOT / "config" / "identity-roles.json"
-SUCCESSORS = ROOT / "config" / "identity-successors.json"
+SUCCESSORS = ROOT / "config" / "identity-successors"
 REACH = ROOT / "config" / "registries" / "identity-reach.json"
 
 
@@ -84,18 +84,22 @@ def record(changes: dict[str, tuple[str, str]], change: str, reason: str) -> lis
             "identity_readout: these roles compare exactly, so a move makes their current "
             f"plans historical; give them a role that follows recorded moves first: {exact}"
         )
-    document = json.loads(SUCCESSORS.read_text(encoding="utf-8"))
-    for role, (predecessor, successor) in changes.items():
-        document["moves"].append(
-            {
-                "role": role,
-                "predecessor": predecessor,
-                "successor": successor,
-                "change": change,
-                "reason": reason,
-            }
-        )
-    SUCCESSORS.write_bytes((json.dumps(document, indent=1, ensure_ascii=False) + "\n").encode())
+    from alphalattice.kernel.data_layer.log import uuid7
+
+    moves = [
+        {
+            "role": role,
+            "predecessor": predecessor,
+            "successor": successor,
+            "change": change,
+            "reason": reason,
+        }
+        for role, (predecessor, successor) in changes.items()
+    ]
+    document = {"schema": "identity-successors", "version": 1, "moves": moves}
+    SUCCESSORS.mkdir(exist_ok=True)
+    with (SUCCESSORS / f"1-{uuid7()}.json").open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(document, indent=1, ensure_ascii=False) + "\n")
     return sorted(changes)
 
 

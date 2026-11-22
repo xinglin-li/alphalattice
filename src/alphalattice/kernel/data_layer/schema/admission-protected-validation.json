@@ -1,0 +1,11 @@
+{
+ "results": [
+  {
+   "order": 6,
+   "table": "validation_receipt",
+   "key": [
+    "artifact_id"
+   ]
+  }
+ ]
+}

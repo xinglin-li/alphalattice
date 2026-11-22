@@ -7,10 +7,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pyarrow as pa
-import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -22,6 +21,9 @@ from alphalattice.foundation.feature_engine.panels.identity import (
 )
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
+if TYPE_CHECKING:
+    pass
+
 _VALUES_VERIFIED: BoundedMemo[str, bool] = BoundedMemo()
 """The byte digests of the chunk files whose values this process has checked: a
 chunk is read many times in one study, and its values need checking once per content."""
@@ -31,6 +33,32 @@ def configure_panel_proof_memo(*, capacity: int | None = None) -> None:
     """Set this reader owner's capacity; evicted chunks receive full validation again."""
     global _VALUES_VERIFIED
     _VALUES_VERIFIED = BoundedMemo(capacity=capacity)
+
+
+def _validate_manifest_chunk(path: object, manifest: dict[str, object], item: dict) -> None:
+    """Prove the chunk file `path` against the identity `manifest` records for its entry `item`:
+    schema hash, row count, the chunk hash over its row hashes, and its values against those row
+    hashes (FeaturePanelReader._validate_chunk_content); raises ValueError on a mismatch."""
+    summary = manifest.get("safe_summary")
+    catalog = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None
+    # A chunk is hashed with the binding of the build that wrote it. A manifest that reuses
+    # another build's partition records that origin; one written before partition reuse
+    # recorded none, and every such writer used the snapshot's own binding.
+    origin = item.get("origin_binding_hash")
+    FeaturePanelReader._validate_chunk_content(
+        path,
+        expected_chunk_hash=str(item["chunk_hash"]),
+        expected_schema_hash=str(manifest.get("schema_hash", "")),
+        panel_binding_hash=str(
+            origin if origin is not None else manifest.get("panel_binding_hash", "")
+        ),
+        year=int(item["year"]),
+        part=int(item.get("part") or 0),
+        expected_row_count=int(item["row_count"]),
+        row_hash_factor_ids=(
+            tuple(sorted(str(value) for value in catalog)) if isinstance(catalog, dict) else None
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -129,6 +157,8 @@ class FeaturePanelReader:
         self, manifest: dict[str, object], request: FeaturePanelReadRequest
     ) -> Iterator[pa.RecordBatch]:
         """Read verified immutable cells for this owner; research admission belongs to batches."""
+        import pyarrow.dataset as ds  # lazy: not at the Host's start
+
         chunk_paths = self._qualified_chunk_paths(manifest, request)
         if not chunk_paths:
             raise ValueError("feature panel read range has no snapshot chunks")
@@ -317,6 +347,8 @@ class FeaturePanelReader:
         Raises:
             ValueError: Catalog, admission, temporal identity, or chunk integrity is invalid.
         """
+        import pyarrow.dataset as ds  # lazy: not at the Host's start
+
         manifest = self.resolver.load_feature_panel_manifest(manifest_ref)
         summary = manifest.get("safe_summary")
         factors = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None
@@ -350,13 +382,6 @@ class FeaturePanelReader:
         raw_chunks = manifest.get("chunks")
         if not isinstance(raw_chunks, list):
             raise ValueError("feature panel manifest has no chunk catalog")
-        panel_binding_hash = str(manifest.get("panel_binding_hash", ""))
-        schema_hash = str(manifest.get("schema_hash", ""))
-        summary = manifest.get("safe_summary")
-        catalog = summary.get("factor_catalog_summary") if isinstance(summary, dict) else None
-        row_hash_factor_ids = (
-            tuple(sorted(str(value) for value in catalog)) if isinstance(catalog, dict) else None
-        )
         paths: list[str] = []
         for item in raw_chunks:
             if not isinstance(item, dict):
@@ -365,27 +390,12 @@ class FeaturePanelReader:
             last = date.fromisoformat(str(item["last_session"]))
             if last < request.start_session or first > request.end_session:
                 continue
-            content_hash = str(item["chunk_hash"])
             path = self.resolver.resolve_feature_panel_chunk_ref(
                 uri=str(item["uri"]),
-                content_hash=content_hash,
+                content_hash=str(item["chunk_hash"]),
                 metadata_hash=str(item["metadata_hash"]),
             )
-            # A chunk is hashed with the binding of the build that wrote it.
-            # A manifest that reuses another build's partition records that
-            # origin; one written before partition reuse recorded none, and
-            # every such writer used the snapshot's own binding.
-            origin = item.get("origin_binding_hash")
-            self._validate_chunk_content(
-                path,
-                expected_chunk_hash=content_hash,
-                expected_schema_hash=schema_hash,
-                panel_binding_hash=str(origin) if origin is not None else panel_binding_hash,
-                year=int(item["year"]),
-                part=int(item.get("part") or 0),
-                expected_row_count=int(item["row_count"]),
-                row_hash_factor_ids=row_hash_factor_ids,
-            )
+            _validate_manifest_chunk(path, manifest, item)
             paths.append(str(path))
         return paths
 

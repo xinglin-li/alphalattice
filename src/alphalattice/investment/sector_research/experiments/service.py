@@ -70,8 +70,11 @@ from .development_artifacts import (
     SECTOR_CAMPAIGN_DECISION_CATEGORY,
     SECTOR_CAMPAIGN_DOSSIER_CATEGORY,
     SECTOR_CAMPAIGN_REPLAY_CATEGORY,
+    SECTOR_FORECAST_EVALUATION_CATEGORY,
+    SECTOR_FORECAST_SURFACE_CATEGORY,
     SECTOR_METHOD_COMPARISON_CATEGORY,
     SECTOR_SHRINK_CALIBRATION_CATEGORY,
+    SECTOR_TARGET_EVIDENCE_CATEGORY,
     SectorDevelopmentArtifactStore,
     SectorExperimentEvidence,
     SectorForecastEvaluation,
@@ -257,9 +260,13 @@ class SectorResearchDevelopmentService:
 
         # Children before parents, so nothing durable ever names a document
         # that does not yet exist. The experiment root is published last.
-        target_evidence_uri = self.store.publish_target_evidence(evidence)
-        surface_uri = self.store.publish_forecast_surface(surface)
-        evaluation_uri = self.store.publish_evaluation(evaluation)
+        target_evidence_uri = sector_artifact_uri(
+            SECTOR_TARGET_EVIDENCE_CATEGORY, evidence.evidence_hash
+        )
+        surface_uri = sector_artifact_uri(SECTOR_FORECAST_SURFACE_CATEGORY, surface.surface_hash)
+        evaluation_uri = sector_artifact_uri(
+            SECTOR_FORECAST_EVALUATION_CATEGORY, evaluation.evaluation_hash
+        )
         experiment = SectorExperimentEvidence.create(
             kind="SectorExperimentEvidence",
             causal_outcome_snapshot_hash=evidence.causal_outcome_snapshot_hash,
@@ -271,7 +278,9 @@ class SectorResearchDevelopmentService:
             evaluation_hash=evaluation.evaluation_hash,
             ordered_child_uris=(target_evidence_uri, surface_uri, evaluation_uri),
         )
-        experiment_uri = self.store.publish_experiment_evidence(experiment)
+        experiment_uri = self.store.publish_experiment_results(
+            evidence, surface, evaluation, experiment
+        )
 
         # Read back through the verifier rather than trusting the objects still
         # in memory: a publisher that verifies its own variables proves only

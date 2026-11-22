@@ -59,7 +59,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_moves
+from alphalattice.kernel.shared_kernel.identity_successors import effective_moves
 from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
 
 type MergeSemantics = Literal[
@@ -100,32 +100,36 @@ stored before a move is read through."""
 
 
 @cache
-def _value_moves() -> dict[str, str]:
-    """Each value a value role moved through, by the value its moves started from."""
-    previous: dict[str, str] = {}
-    for move in recorded_moves():
+def _value_moves(root: Path | None = None) -> dict[str, dict[str, str]]:
+    """Each value role's moves in force (`effective_moves`), by the value each moves from."""
+    roles: dict[str, dict[str, str]] = {}
+    for move in effective_moves(root):
         if move.role.startswith(VALUE_ROLE_PREFIXES):
-            previous[move.successor] = move.predecessor
-    roots: dict[str, str] = {}
-    for value in {*previous, *previous.values()}:
-        root, seen = value, {value}
-        while root in previous and previous[root] not in seen:
-            root = previous[root]
-            seen.add(root)
-        roots[value] = root
-    return roots
+            roles.setdefault(move.role, {})[move.predecessor] = move.successor
+    return roles
 
 
-def recipe_hashes_match(first: str, second: str) -> bool:
+def _latest(moves: dict[str, str], value: str) -> str:
+    seen = {value}
+    while value in moves and moves[value] not in seen:
+        value = moves[value]
+        seen.add(value)
+    return value
+
+
+def recipe_hashes_match(first: str, second: str, *, root: Path | None = None) -> bool:
     """Whether two recorded recipe hashes name one recipe.
 
-    Equal, or one moved to the other through a value role's recorded moves: a hash written before
-    NM1 against one written after.
+    Equal, or both lead to one value through a value role's moves in force, as `latest` follows
+    them: a hash written before NM1 against one written after, and a value moved back to and on.
     """
     if first == second:
         return True
-    roots = _value_moves()
-    return first in roots and roots[first] == roots.get(second)
+    return any(
+        _latest(moves, first) == _latest(moves, second)
+        for moves in _value_moves(root).values()
+        if first in moves or second in moves
+    )
 
 
 class StrategyPackageError(ValueError):

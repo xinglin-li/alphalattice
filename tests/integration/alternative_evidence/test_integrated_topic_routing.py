@@ -9,12 +9,15 @@ continued as one chain."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from alphalattice.evidence.alternative_evidence.analysis import packet
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     CONTEXT_COMPLETE_SELECTION_RULES_ID,
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -29,6 +32,7 @@ from alphalattice.evidence.alternative_evidence.analysis.matters import (
     TOPIC_LANES_ALLOCATION_ID,
 )
 from alphalattice.evidence.alternative_evidence.analysis.packet import (
+    CANDIDATE_READS_PER_ISSUER,
     EVIDENCE_QUERY_PROGRAM,
     MATTER_FAMILIES,
     MAXIMUM_PACKET_SPANS,
@@ -86,7 +90,7 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 from alphalattice.evidence.alternative_evidence.runtime.history import (
     receipt_matter_selection_id,
 )
-from alphalattice.kernel.knowledge._embeddings import MODEL_WORK
+from alphalattice.kernel.data_layer import history
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _registry,
@@ -147,9 +151,32 @@ def _open(tmp_path: Path, request: AlternativeEvidenceRequest) -> tuple[Any, Any
         documents=(*_filings_with_debt(entities), *_repeating_filings()),
         published_at=_NOW,
     )
-    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+    document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
     generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
     return runtime, document_set, generation
+
+
+@contextmanager
+def _store_calls() -> Iterator[list[str]]:
+    """The retrieval store's model work made inside it: each search (a query embedded, its pairs
+    scored), and each indexing that embedded a chunk the store did not hold."""
+    calls: list[str] = []
+
+    def counting(name: str) -> Any:
+        real = getattr(history, name)
+
+        def counted(*args: Any, **kw: Any) -> Any:
+            answer = real(*args, **kw)
+            if name == "search_references" or getattr(answer, "embedded", 0):
+                calls.append(name)
+            return answer
+
+        return counted
+
+    with pytest.MonkeyPatch.context() as patch:
+        for name in ("index_references", "search_references"):
+            patch.setattr(history, name, counting(name))
+        yield calls
 
 
 def test_the_policy_names_all_three_families_and_the_routing_table_covers_every_topic() -> None:
@@ -213,7 +240,7 @@ def test_a_late_filing_notice_is_delivered_in_the_governance_lane(tmp_path: Path
             documents=(*_filings_with_debt(("AAPL",)), notice),
             published_at=_NOW,
         )
-        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
         receipt, spans = runtime.select_evidence(
             request=request, document_set=document_set, generation=generation
@@ -380,6 +407,8 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
 ) -> None:
     """The integrated selection seals one receipt with its routing."""
 
+    # Leave real in-scope candidates for the continuation in this compact book.
+    monkeypatch.setattr(packet, "SPANS_PER_ISSUER", 4)
     request = _request(("AAPL", "MSFT"), selection=INTEGRATED)
     runtime, document_set, generation = _open(tmp_path, request)
     try:
@@ -603,12 +632,13 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
                 published_at=_NOW + timedelta(hours=1),
             )[1],
             published_at=_NOW + timedelta(hours=1),
+            as_of=_NOW + timedelta(hours=1),
         )
         other_generation = runtime.build_retrieval(
             document_set=other_set, built_at=_NOW + timedelta(hours=1)
         )
         assert other_generation.generation_hash != generation.generation_hash
-        assert other_generation.corpus_hash == generation.corpus_hash
+        assert other_generation.index_id == generation.index_id
         rotated, rotated_spans = runtime.select_evidence(
             request=other, document_set=other_set, generation=other_generation
         )
@@ -653,17 +683,16 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         assert runtime.selection_reuse_count == 2
         # Continuation: the chain keeps the routing and the same plan.
         assert matters.pending_windows > 0
-        work_before = MODEL_WORK.snapshot()
-        successor, successor_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=3,
-            window_limit=192,
-        )
-        work_after = MODEL_WORK.snapshot()
+        with _store_calls() as calls:
+            successor, successor_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=3,
+                window_limit=192,
+            )
         chain = successor.litigation_matters
         assert chain is not None and chain.continued_from == receipt.receipt_hash
         assert chain.plan_hash == matters.plan_hash
@@ -680,19 +709,27 @@ def test_the_integrated_selection_seals_one_receipt_with_its_routing(
         # those, at their sealed ranges, spending no search; the ledger
         # counts the covered, the read and the pending apart, and a partial
         # overlap is reported apart from a cover.
-        assert work_after == work_before, "a continuation embeds nothing and scores no pair"
+        assert not calls, "a continuation embeds nothing and scores no pair"
         read = successor.routing.candidate_span_handles
         successor_plan = successor.routing.candidates()
         assert read and all(h.startswith("SPAN-C02-") for h in read)
         first_plan = routing.candidates()
-        assert not any(c.state == "PENDING" for c in successor_plan)
+        # A candidate still pending waits only behind an issuer that read its whole share this
+        # session (the next continuation reads it).
+        waiting = [c for c in successor_plan if c.state == "PENDING"]
+        read_now = [c for c in successor_plan if c.state == "READ" and c.session_index == 2]
+        assert all(
+            sum(1 for c in read_now if c.entity_id == w.entity_id) == CANDIDATE_READS_PER_ISSUER
+            for w in waiting
+        )
         covered = [c for c in successor_plan if c.state == "COVERED"]
         assert covered, "the fixture's windows hold whole candidates"
         # What the continuation's own windows came to hold whole is covered
         # in this session, not read; the rest of the pending is read.
         covered_now = [c for c in covered if c.session_index == 2]
         assert covered_now, "the second session's windows cover more"
-        assert len(read) == sum(1 for c in first_plan if c.state == "PENDING") - len(covered_now)
+        pending_first = sum(1 for c in first_plan if c.state == "PENDING")
+        assert len(read) == pending_first - len(covered_now) - len(waiting)
         assert sum(c.candidates_covered for c in successor.routing.cells) == len(covered)
         assert sum(c.candidates_read for c in successor.routing.cells) == len(read)
         by_handle = {s.span_handle: s for s in successor_spans}
@@ -1004,7 +1041,7 @@ def test_the_table_share_is_dealt_across_the_topics_that_have_tables() -> None:
     governance = need("d4", 1, "GOVERNANCE_CONTROLS")
     unrenderable = need("d5", 1, "COMMERCIAL_COUNTERPARTY")
     needs = [*liquidity, shared, *operations, governance, unrenderable]
-    renderable = lambda n: n.document_key != "d5"  # noqa: E731
+    renderable = lambda n: n.document_key != "d5"
     views = topic_fair_views(needs, share=6, renderable=renderable)
     dealt = [(v.document_key, v.placeholder.ordinal) for v in views]
     # Round one in the topics' declared order: liquidity takes the shared
@@ -1453,7 +1490,7 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
         )
         _registry_snapshot, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
         )
         generation = runtime.build_retrieval(
             document_set=document_set, built_at=request.evidence_as_of
@@ -1521,17 +1558,17 @@ def test_a_chain_reads_its_pending_candidates_and_table_pages_without_a_search(
             "sealed",
             len(routing.candidates()),
         )
-        work_before = MODEL_WORK.snapshot()
-        second, second_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=4,
-            window_limit=192,
-        )
-        assert MODEL_WORK.snapshot() == work_before, "a read, not a search campaign"
+        with _store_calls() as calls:
+            second, second_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=4,
+                window_limit=192,
+            )
+        assert not calls, "a read, not a search campaign"
         chain = second.litigation_matters
         assert chain is not None and chain.session_index == 2 and chain.read_windows == 0
         assert second.routing is not None
@@ -1686,7 +1723,7 @@ def test_a_routed_table_is_delivered_as_a_view_inside_the_matter_allowance(
         )
         _registry_snapshot, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
         )
         generation = runtime.build_retrieval(
             document_set=document_set, built_at=request.evidence_as_of
@@ -1828,7 +1865,7 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
             ),
             published_at=_NOW,
         )
-        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW)
+        document_set = runtime.canonicalize(source_set=source_set, published_at=_NOW, as_of=_NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=_NOW)
         receipt, spans = runtime.select_evidence(
             request=request, document_set=document_set, generation=generation
@@ -1850,19 +1887,17 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
         assert first_ledger is not None
         assert first_ledger["candidates"]["sealed"] == len(plan)
         assert first_ledger["candidates"]["pending"] == sum(1 for c in plan if c.state == "PENDING")
-        work_before = MODEL_WORK.snapshot()
-        second, second_spans = runtime.continue_evidence(
-            request=request,
-            document_set=document_set,
-            generation=generation,
-            prior_receipt=receipt,
-            prior_spans=spans,
-            session_limit=3,
-            window_limit=192,
-        )
-        assert MODEL_WORK.snapshot() == work_before, (
-            "a continuation embeds nothing and scores no pair"
-        )
+        with _store_calls() as calls:
+            second, second_spans = runtime.continue_evidence(
+                request=request,
+                document_set=document_set,
+                generation=generation,
+                prior_receipt=receipt,
+                prior_spans=spans,
+                session_limit=3,
+                window_limit=192,
+            )
+        assert not calls, "a continuation embeds nothing and scores no pair"
         assert second.routing is not None
         read = second.routing.candidate_span_handles
         assert read and all(h.startswith("SPAN-C02-") for h in read)
@@ -1873,8 +1908,11 @@ def test_a_continuation_reads_the_frontier_and_skips_what_the_chain_has_covered(
         assert len(read) == min(
             sum(1 for c in plan if c.state == "PENDING") - len(covered_now), SPANS_PER_ISSUER
         ), "sixteen an issuer a session, from the frontier, less what this session covered"
+        # Covered by this session's own windows, or by a typed statement already delivered: a
+        # candidate is a matched line, so a statement can hold it whole.
         assert all(
-            c.covered_by is not None and c.covered_by.startswith("SPAN-M") for c in covered_now
+            c.covered_by is not None and c.covered_by.startswith(("SPAN-M", "SPAN-T"))
+            for c in covered_now
         )
         assert {c.span_handle for c in second_plan if c.state == "READ"} == set(read)
         # The read candidates are read round by round over the cells in the

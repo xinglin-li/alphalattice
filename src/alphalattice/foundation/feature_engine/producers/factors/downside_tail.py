@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
@@ -14,6 +13,9 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
 from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 from .series_math import centered_beta, ordered_frame
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 DOWNSIDE_TAIL_METHOD_FAMILY: Final = "DOWNSIDE_TAIL"
 BETA_ASYMMETRY_ID: Final = "factor.desktop.experimental.beta_asymmetry_252.v1"
@@ -142,6 +144,8 @@ def _apply(
     fixed trailing windows, so one immutable listing array is equivalent and
     keeps their original numpy reduction order inside each window.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered = ordered_frame(source)
     output: np.ndarray = np.full(len(ordered), np.nan, dtype=float)
     for _listing, positions in ordered.groupby("listing_id", sort=False).indices.items():

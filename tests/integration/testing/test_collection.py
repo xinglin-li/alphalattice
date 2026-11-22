@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from xdist.scheduler import LoadScheduling
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.testing import collection
 from tests.structural.pytest_support import child_environment
 
@@ -82,7 +83,7 @@ def test_session_fixture_footprint_and_peak_are_recorded(tmp_path, workers, scen
         (tmp_path / f"session-footprint-{'f' * 32}-main.log").write_text(
             "occupied", encoding="utf8"
         )
-    done = subprocess.run(
+    done = spawn.run(
         [
             sys.executable,
             "-B",
@@ -261,7 +262,7 @@ def test_a_module_fixtures_roots_go_with_it_unless_a_test_failed(tmp_path, verdi
         f"def test_one(held, kept):\n    assert {verdict != 'failed'}\n",
         encoding="utf-8",
     )
-    done = subprocess.run(
+    done = spawn.run(
         [
             sys.executable,
             "-B",

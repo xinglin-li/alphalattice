@@ -50,6 +50,10 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import (
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import (
+    classified,
+    named,
+)
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     WORKSPACE_DEFAULT_STRATEGY_PACKAGE_ID,
     OwnerCoverage,
@@ -87,6 +91,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_retur
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
 )
+from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -593,7 +598,7 @@ def _sector_lanes(
     # A history with a reclassification is read per formation, by Sector name.
     if history.reclassifications:
         return sector_exposure_lanes(history, listings=listings, sessions=sessions)
-    entries = {value.listing_id: value for value in classification.entries}
+    entries = {value.listing_id: value for value in classified(classification)}
     return sector_exposure_lanes(
         {value: entries[value].sector_key or entries[value].sector_name for value in listings},
         listings=listings,
@@ -736,7 +741,7 @@ class SharedPortfolioInputResolver:
             )
         )
         risk_sessions = CausalRiskReturnReader(artifact_root).available_sessions(risk_surface)
-        classification = (
+        classification = named(  # the risk producer's Sectors, through world
             _sector_map(
                 artifact_root, manifest_revision=risk_surface.epoch.universe_manifest_revision
             )
@@ -1030,6 +1035,7 @@ class SharedPortfolioInputResolver:
             [listing_positions[value] for value in listings], dtype=np.int64
         )
         producer = RiskSurfaceProducer()
+        factor_store = catalog_factor_surfaces()
         allocations = {}
         attributions = {}
         required = (
@@ -1053,7 +1059,8 @@ class SharedPortfolioInputResolver:
                     classification,
                     risk_surface.surface_hash,
                     history,
-                )
+                ),
+                store=factor_store,
             )
             allocations[session] = produced.allocation
             attributions[session] = produced.attribution

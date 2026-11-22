@@ -7,9 +7,11 @@ import json
 import os
 import pathlib
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
+from dataclasses import field as data_field
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -20,6 +22,7 @@ import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
+from blake3 import blake3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.alpha_modeling.contracts import (
@@ -38,6 +41,7 @@ from alphalattice.capabilities.causal_inputs.contracts import (
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
+    full_proof,
     staging_directory,
     verified_npz_arrays,
     verified_request_value,
@@ -95,6 +99,9 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
     total_return_array_identity,
 )
+from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
@@ -261,7 +268,7 @@ def model_fit_sidecar_scope() -> Iterator[None]:
 
     One lifecycle formation reads every child's sidecar three or four times: the planned-refit
     check, the child's renewal, the model set's verification and the score. The first read in
-    the block runs every check, the lease ones included; a later read of the same operation in
+    the block runs every check its proof mode asks for; a later read of the same operation in
     the same store gets the verified sidecar and receipt and its own copy of the estimator.
     Nothing survives the block, so each formation verifies every child again.
     """
@@ -277,6 +284,34 @@ def model_fit_sidecar_scope() -> Iterator[None]:
 
 class AlphaDevelopmentArtifactReadbackError(ValueError):
     """A development Alpha parent/child chain is missing, stale, or tampered."""
+
+
+@dataclass
+class StagedAlphaDevelopment:
+    """Private handoff from one worker; the Host owns the catalog and the published paths."""
+
+    folder: Path
+    documents: dict[Path, Path] = data_field(default_factory=dict)
+    chunks: dict[str, tuple[str, str, Path]] = data_field(default_factory=dict)
+    summaries: dict[str, history.AlphaDevelopmentMeasures] = data_field(default_factory=dict)
+
+
+_STAGED_DEVELOPMENT: ContextVar[tuple[StagedAlphaDevelopment, Callable[[], None]] | None] = (
+    ContextVar("staged_alpha_development", default=None)
+)
+
+
+@contextmanager
+def stage_alpha_development(
+    folder: Path, checkpoint: Callable[[], None]
+) -> Iterator[StagedAlphaDevelopment]:
+    """Keep the child's evidence private until the Host commits the parts and rows."""
+    output = StagedAlphaDevelopment(folder)
+    token = _STAGED_DEVELOPMENT.set((output, checkpoint))
+    try:
+        yield output
+    finally:
+        _STAGED_DEVELOPMENT.reset(token)
 
 
 class AlphaDevelopmentArtifactStore:
@@ -320,8 +355,11 @@ class AlphaDevelopmentArtifactStore:
         packed_capacity: Callable[[int], None] = lambda _bytes: None,
         sharing_workspace: Path | None = None,
     ) -> None:
+        """Open the workspace's Alpha evidence and its retained artifact files."""
         self.root = artifact_root.resolve() / "alpha-research"
         self._packed_capacity = packed_capacity
+        self._development_chunks: dict[str, tuple[str, pa.Table]] | None = None
+        self._development_summaries: dict[str, history.AlphaDevelopmentMeasures] | None = None
         # A fold's listing positions and a score's values are numerical lanes: Parquet named by
         # the digest of their packed bytes; a store in a legacy format reads its `.bin` files.
         self._lanes = ContentAddressedStore(
@@ -340,7 +378,12 @@ class AlphaDevelopmentArtifactStore:
 
     def _path(self, category: str, content_hash: str, suffix: str) -> Path:
         self._require_hash(content_hash)
-        return self.root / category / f"{content_hash}.{suffix}"
+        return self._document_path(self.root / category / f"{content_hash}.{suffix}")
+
+    @staticmethod
+    def _document_path(target: Path) -> Path:
+        staged = _STAGED_DEVELOPMENT.get()
+        return target if staged is None else staged[0].documents.get(target, target)
 
     @classmethod
     def uri(cls, category: str, content_hash: str) -> str:
@@ -374,6 +417,31 @@ class AlphaDevelopmentArtifactStore:
             os.replace(staged, target)
             staged.unlink(missing_ok=True)
 
+    @classmethod
+    def publish_staged_documents(cls, documents: Mapping[Path, Path]) -> None:
+        """Publish the documents in the child's order, after their bodies are durable."""
+        for target, source in documents.items():
+            cls._write_identity_json(target, source.read_bytes())
+
+    @classmethod
+    def _write_identity_json(cls, target: Path, serialized: bytes) -> None:
+        if target.exists():
+            if target.read_bytes() != serialized:
+                raise ValueError("Alpha content identity was reused with different JSON")
+        else:
+            cls._atomic_write(target, serialized)
+
+    @classmethod
+    def _write_document(cls, target: Path, serialized: bytes) -> None:
+        staged = _STAGED_DEVELOPMENT.get()
+        if staged is not None and not target.exists():
+            output, _checkpoint = staged
+            source = output.folder / f"alpha-document-{len(output.documents)}"
+            cls._write_identity_json(source, serialized)
+            output.documents[target] = source
+        else:
+            cls._write_identity_json(target, serialized)
+
     def _publish_identity_json(
         self,
         *,
@@ -381,6 +449,7 @@ class AlphaDevelopmentArtifactStore:
         value: BaseModel,
         identity_field: str,
     ) -> str:
+        history.flush()  # every array a sealed document can cite must already be committed
         with span("serialize", "alpha_json"):
             payload = value.model_dump(mode="json")
         content_hash = str(payload[identity_field])
@@ -393,16 +462,19 @@ class AlphaDevelopmentArtifactStore:
         with span("serialize", "alpha_json"):
             serialized = self._json_bytes(payload)
         target = self._path(category, content_hash, "json")
-        if target.exists():
-            if target.read_bytes() != serialized:
-                raise ValueError("Alpha content identity was reused with different JSON")
-        else:
-            self._atomic_write(target, serialized)
+        self._write_document(target, serialized)
         return self.uri(category, content_hash)
 
-    def _publish_packed_bytes(self, *, category: str, payload: bytes) -> str:
+    def _publish_packed_bytes(self, *, category: str, payload: bytes, durable: bool = True) -> str:
         with span("hash", "alpha_packed"):
             content_hash = sha256(payload).hexdigest()
+        if category.startswith("current/") and self._packed_is_door(
+            category.removeprefix("current/")
+        ):
+            history.keep_alpha_part(
+                content_hash, category, payload, capacity=self._packed_capacity, durable=durable
+            )
+            return content_hash
         target = self._path(category, content_hash, "bin")
         if not target.exists():
             self._packed_capacity(len(payload))
@@ -428,6 +500,8 @@ class AlphaDevelopmentArtifactStore:
         ):
             raise self._packed_readback_error("alpha_research.shared_input_outside_workspace")
         payload = source._frozen_payload(category, content_hash)
+        if self._packed_is_door(category):
+            return self._publish_packed_bytes(category="current/" + category, payload=payload)
         if target.exists() or self._sharing_workspace is None:
             return self._publish_packed_bytes(category="current/" + category, payload=payload)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -448,6 +522,65 @@ class AlphaDevelopmentArtifactStore:
 
     _packed_readback_error = AlphaDevelopmentArtifactReadbackError
 
+    def _packed_is_door(self, category: str) -> bool:
+        return category in {
+            "frozen-observation-arrays",
+            "frozen-feature-arrays",
+            "lifecycle-arrays",
+        }
+
+    def _publish_lane(self, *, category: str, columns: Mapping[str, npt.NDArray[Any]]) -> str:
+        described = arrays.describe(columns)
+        payload = described.body()
+        history.keep_alpha_part(
+            described.content_digest, category + "/parquet", payload, capacity=self._packed_capacity
+        )
+        return cast(str, described.content_digest)
+
+    def _load_lane(self, *, category: str, content_hash: str) -> bytes:
+        self._lanes.require_hash(content_hash)
+        try:
+            layout = category + "/parquet"
+            if history.alpha_part_body_digest(content_hash, layout) is None:
+                layout = category + "/bin"  # contract: pre-Parquet lanes retire at row U
+            payload = cast(bytes, history.read_alpha_part(content_hash, layout))
+            if layout.endswith("/parquet"):
+                table = pq.ParquetFile(pa.BufferReader(payload)).read()
+                payload = b"".join(
+                    np.ascontiguousarray(table.column(name).to_numpy()).tobytes()
+                    for name in table.column_names
+                )
+            if arrays.packed_digest(payload) != content_hash:
+                raise ContentAddressedStoreError("content_store.artifact_tampered")
+            return payload
+        except DataError as error:
+            code = (
+                "content_store.artifact_missing"
+                if error.failure.code == "data_layer.part_missing"
+                else "content_store.artifact_tampered"
+            )
+            raise ContentAddressedStoreError(f"{code}: {content_hash}") from error
+
+    def _score_body(self, content_hash: str, layout: str, kind: str) -> bytes:
+        try:
+            return cast(bytes, history.read_alpha_part(content_hash, layout))
+        except DataError as error:
+            if error.failure.code == "data_layer.part_missing":
+                raise FileNotFoundError(f"{kind} is missing") from error
+            raise self._packed_readback_error(f"{kind} content changed") from error
+
+    def _packed_source_path(self, category: str, content_hash: str) -> Path:
+        """The source whose identity invalidates an Alpha packed read."""
+        path = self._path(f"current/{category}", content_hash, "bin")
+        if not self._packed_is_door(category):
+            return path
+        try:
+            return cast(Path, history.alpha_part_body_path(content_hash, "current/" + category))
+        except DataError as error:
+            if error.failure.code in {"data_layer.part_missing", "data_layer.array_missing"}:
+                raise FileNotFoundError(f"alpha array is missing: {content_hash}") from error
+            raise
+
     def _frozen_payload(self, category: str, content_hash: str) -> bytes:
         """Read immutable model/input bytes; this grants no current-pointer authority."""
         payload, _ = self._frozen_payload_with_identity(category, content_hash)
@@ -456,13 +589,41 @@ class AlphaDevelopmentArtifactStore:
     def _frozen_payload_with_identity(
         self, category: str, content_hash: str
     ) -> tuple[bytes, tuple[str, ...]]:
-        """Return exact verified bytes without retaining a second packed-byte cache.
+        """Return a sealed payload's bytes without retaining a second packed-byte cache.
 
-        The descriptor identity distinguishes atomic replacements at one resolved path.
-        Each cold or invalidated read computes the digest in full. Path metadata alone never
-        permits reuse; write/admission paths and platforms without leases always read in full.
+        The bytes are taken at their content-addressed name; full proof (an export, a stage's
+        check of what it wrote, the scrub) hashes them and refuses a mismatch (LAWS.md EV2).
         """
-        path = self._path(f"current/{category}", content_hash, "bin")
+        path = self._packed_source_path(category, content_hash)
+        if self._packed_is_door(category):
+            try:
+                before = path.stat()
+                payload = history.read_alpha_part(content_hash, "current/" + category)
+                after = path.stat()
+            except DataError as error:
+                if error.failure.code in {
+                    "data_layer.part_missing",
+                    "data_layer.array_missing",
+                    "data_layer.array_collected",
+                }:
+                    raise FileNotFoundError(f"alpha array is missing: {content_hash}") from error
+                raise self._packed_readback_error(
+                    "alpha_research.frozen_input_content_invalid"
+                ) from error
+            if (before.st_dev, before.st_ino, before.st_size) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+            ):
+                raise self._packed_readback_error("alpha_research.frozen_input_content_invalid")
+            return payload, (
+                str(path),
+                str(after.st_dev),
+                str(after.st_ino),
+                str(after.st_size),
+                content_hash,
+                content_hash,
+            )
         resolved = path.resolve()
         if not resolved.is_relative_to(self.root.parent):
             raise self._packed_readback_error("alpha_research.frozen_input_path_outside_root")
@@ -471,8 +632,11 @@ class AlphaDevelopmentArtifactStore:
             before = os.fstat(stream.fileno())
             payload = stream.read()
             after = os.fstat(stream.fileno())
-        with span("hash", "alpha_packed"):
-            observed_hash = sha256(payload).hexdigest()
+        if full_proof():
+            with span("hash", "alpha_packed"):
+                observed_hash = sha256(payload).hexdigest()
+        else:
+            observed_hash = content_hash
         if (
             observed_hash != content_hash
             or len(payload) != before.st_size
@@ -493,8 +657,8 @@ class AlphaDevelopmentArtifactStore:
     def _frozen_arrays_with_identity(
         self, category: str, content_hash: str
     ) -> tuple[dict[str, npt.NDArray[Any]], tuple[str, ...]]:
-        """Retain only immutable decoded arrays behind their exact packed-source lease."""
-        path = self._path(f"current/{category}", content_hash, "bin")
+        """Retain only immutable decoded arrays, kept under their sealed name (LAWS.md EV2)."""
+        path = self._packed_source_path(category, content_hash)
 
         def verify() -> tuple[tuple[tuple[str, npt.NDArray[Any]], ...], tuple[str, ...]]:
             payload, file_identity = self._frozen_payload_with_identity(category, content_hash)
@@ -546,10 +710,16 @@ class AlphaDevelopmentArtifactStore:
     ) -> tuple[bytes, tuple[str, ...]]:
         """The exact verified bytes of one JSON file snapshot and its descriptor identity."""
         content_hash = self._hash_from_uri(uri, category)
-        target = self._path(category, content_hash, "json")
+        target = self.root / category / f"{content_hash}.json"
         resolved = target.resolve()
         if not resolved.is_relative_to(self.root.parent):
             raise AlphaDevelopmentArtifactReadbackError("Alpha JSON artifact is outside root")
+        staged = _STAGED_DEVELOPMENT.get()
+        if staged is not None and (source := staged[0].documents.get(target)) is not None:
+            target = source
+            resolved = target.resolve()
+            if resolved != target or not resolved.is_relative_to(staged[0].folder):
+                raise AlphaDevelopmentArtifactReadbackError("Alpha JSON artifact is outside root")
 
         def verify() -> tuple[bytes, tuple[str, ...]]:
             try:
@@ -578,13 +748,14 @@ class AlphaDevelopmentArtifactStore:
                 raise AlphaDevelopmentArtifactReadbackError(
                     "Alpha JSON requested identity is invalid"
                 )
-            identity = dict(payload)
-            identity.pop(identity_field)
-            with span("hash", "alpha_json"):
-                if canonical_hash(identity) != content_hash:
-                    raise AlphaDevelopmentArtifactReadbackError(
-                        "Alpha JSON payload hash is invalid"
-                    )
+            if full_proof():
+                identity = dict(payload)
+                identity.pop(identity_field)
+                with span("hash", "alpha_json"):
+                    if canonical_hash(identity) != content_hash:
+                        raise AlphaDevelopmentArtifactReadbackError(
+                            "Alpha JSON payload hash is invalid"
+                        )
             file_identity = (
                 str(resolved),
                 str(after.st_dev),
@@ -592,7 +763,6 @@ class AlphaDevelopmentArtifactStore:
                 str(after.st_size),
                 str(after.st_mtime_ns),
                 str(after.st_ctime_ns),
-                sha256(raw).hexdigest(),
                 content_hash,
                 identity_field,
             )
@@ -911,16 +1081,22 @@ class AlphaDevelopmentArtifactStore:
     def load_score_aggregation_surface(
         self, content_hash: str
     ) -> tuple[AlphaScoreAggregationSurface, tuple[str, ...], np.ndarray]:
+        """Read and verify the aggregation's row axis and scores."""
         surface = self._read_identity_json(
             AlphaScoreAggregationSurface,
             category=ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
             content_hash=content_hash,
             identity_field="surface_hash",
         )
-        target = self._path(ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY, content_hash, "parquet")
-        if not target.is_file():
-            raise FileNotFoundError("Alpha score aggregation surface is missing")
-        table = pq.read_table(target)
+        table = pq.read_table(
+            pa.BufferReader(
+                self._score_body(
+                    content_hash,
+                    ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
+                    "Alpha score aggregation surface",
+                )
+            )
+        )
         if table.column_names != ["row_id", "aggregated_score"]:
             raise AlphaDevelopmentArtifactReadbackError(
                 "Alpha score aggregation surface schema is invalid"
@@ -953,6 +1129,7 @@ class AlphaDevelopmentArtifactStore:
         evidence: AlphaDevelopmentTrialEvidence,
         surface: AlphaCampaignPredictionSurface,
     ) -> str:
+        """Keep a campaign prediction under its evidence's semantic identity."""
         if surface.trial_evidence_hash != evidence.evidence_hash:
             raise ValueError("ALPHA_CAMPAIGN_PREDICTION_EVIDENCE_MISMATCH")
         values = np.asarray(surface.predictions, dtype=np.float64)
@@ -973,33 +1150,35 @@ class AlphaDevelopmentArtifactStore:
             or artifact_hash != surface.artifact_hash
         ):
             raise ValueError("ALPHA_CAMPAIGN_PREDICTION_IDENTITY_MISMATCH")
-        target = self._path("development/campaign/prediction-surfaces", artifact_hash, "parquet")
         table = pa.table(
             {
                 "row_id": pa.array(surface.validation_row_ids, type=pa.string()),
                 "prediction": pa.array(values, type=pa.float64()),
             }
         )
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-            pq.write_table(table, staged, compression="zstd")
-            os.replace(staged, target)
-            staged.unlink(missing_ok=True)
+        output = pa.BufferOutputStream()
+        pq.write_table(table, output, compression="zstd")
+        history.keep_alpha_part(
+            artifact_hash,
+            "development/campaign/prediction-surfaces",
+            output.getvalue().to_pybytes(),
+        )
         self.load_campaign_prediction_surface(evidence=evidence)
         return self.uri("development/campaign/prediction-surfaces", artifact_hash)
 
     def load_campaign_prediction_surface(
         self, *, evidence: AlphaDevelopmentTrialEvidence
     ) -> tuple[tuple[str, ...], np.ndarray]:
-        target = self._path(
-            "development/campaign/prediction-surfaces",
-            evidence.prediction_artifact_hash,
-            "parquet",
+        """Read the prediction surface bound to the trial's evidence."""
+        table = pq.read_table(
+            pa.BufferReader(
+                self._score_body(
+                    evidence.prediction_artifact_hash,
+                    "development/campaign/prediction-surfaces",
+                    "Alpha campaign prediction surface",
+                )
+            )
         )
-        if not target.is_file():
-            raise FileNotFoundError("Alpha campaign prediction surface is missing")
-        table = pq.read_table(target)
         if table.column_names != ["row_id", "prediction"]:
             raise AlphaDevelopmentArtifactReadbackError(
                 "Alpha campaign prediction surface schema is invalid"
@@ -1121,7 +1300,7 @@ class AlphaDevelopmentArtifactStore:
         """Read one exact packed listing-position lane by content hash."""
 
         try:
-            return self._lanes.load_packed_bytes(
+            return self._load_lane(
                 category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY, content_hash=content_hash
             )
         except ContentAddressedStoreError as error:
@@ -1159,7 +1338,7 @@ class AlphaDevelopmentArtifactStore:
             if (
                 len(payload) != fold.row_count * np.dtype(fold.listing_position_dtype).itemsize
                 or sha256(payload).hexdigest() != fold.listing_position_lane_hash
-                or self._lanes.publish_columns(
+                or self._publish_lane(
                     category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY,
                     columns={
                         "listing_position": np.frombuffer(
@@ -1187,7 +1366,7 @@ class AlphaDevelopmentArtifactStore:
             or score_values_identity(values) != simple_score_binding.values_identity
         ):
             raise ValueError("Alpha simple-score values do not match their binding")
-        payload_hash = self._lanes.publish_columns(
+        payload_hash = self._publish_lane(
             category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, columns={"score": values}
         )
         self._publish_identity_json(
@@ -1456,22 +1635,18 @@ class AlphaDevelopmentArtifactStore:
                 or artifact.values_identity != binding.values_identity
             ):
                 raise ValueError("value artifact axis or binding mismatch")
-            payload = self._lanes.load_packed_bytes(
+            payload = self._load_lane(
                 category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, content_hash=artifact.payload_hash
             )
-            dtype = np.dtype(artifact.dtype)
-            if (
-                sha256(payload).hexdigest() != artifact.payload_hash
-                or len(payload) != int(np.prod(artifact.shape, dtype=np.int64)) * dtype.itemsize
-            ):
+            dtype = np.dtype(artifact.dtype)  # the store proves the payload's digest at the edges
+            if len(payload) != int(np.prod(artifact.shape, dtype=np.int64)) * dtype.itemsize:
                 raise ValueError("value artifact payload mismatch")
             values: npt.NDArray[np.float64] = np.frombuffer(payload, dtype=dtype).reshape(
                 artifact.shape
             )
-            if (
-                not np.isfinite(values).all()
-                or score_values_identity(values) != artifact.values_identity
-            ):
+            if not np.isfinite(values).all() or (
+                full_proof() and score_values_identity(values) != artifact.values_identity
+            ):  # the values' digest is proved with the payload's, at the edges (EV2)
                 raise ValueError("value artifact numerical identity mismatch")
             values.setflags(write=False)
             return binding, artifact, values
@@ -1503,7 +1678,7 @@ class AlphaDevelopmentArtifactStore:
                 content_hash=binding_hash,
                 identity_field="binding_hash",
             )
-            payload = self._lanes.load_packed_bytes(
+            payload = self._load_lane(
                 category=SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY, content_hash=artifact.payload_hash
             )
             expected_shape = (
@@ -1517,8 +1692,7 @@ class AlphaDevelopmentArtifactStore:
                 artifact.binding_hash != binding_hash
                 or artifact.shape != expected_shape
                 or artifact.values_identity != binding.values_identity
-                or len(payload) != expected_bytes
-                or sha256(payload).hexdigest() != artifact.payload_hash
+                or len(payload) != expected_bytes  # its digest is the store's to prove (EV2)
             ):
                 raise ValueError("value artifact metadata mismatch")
             return binding, artifact, len(payload)
@@ -1564,7 +1738,7 @@ class AlphaDevelopmentArtifactStore:
             fit_provenance_hash=fit_provenance.provenance_hash,
         )
         self._publish("model-fit-sidecars", sidecar, "sidecar_hash")
-        pointer = (
+        pointer = self._document_path(
             self.root
             / "current"
             / "model-fit-sidecar-by-operation"
@@ -1578,7 +1752,7 @@ class AlphaDevelopmentArtifactStore:
                     "model fit operation has divergent sidecar evidence"
                 )
         else:
-            self._atomic_write(pointer, self._json_bytes(payload))
+            self._write_document(pointer, self._json_bytes(payload))
         return sidecar
 
     @spanned("verify", "model_fit_sidecar")
@@ -1586,12 +1760,13 @@ class AlphaDevelopmentArtifactStore:
         self,
         operation_binding_hash: str,
     ) -> tuple[AlphaModelFitSidecar, AlphaEstimatorContent, AlphaFitProvenanceReceipt]:
+        """Verify the model fit sidecar and the two artifacts it binds."""
         scope = _SIDECAR_SCOPE.get()
         key = (str(self.root), operation_binding_hash)
         if scope is not None and key in scope:
             kept_sidecar, kept_estimator, kept_provenance = scope[key]
             return kept_sidecar, copy.deepcopy(kept_estimator), kept_provenance
-        pointer = (
+        pointer = self._document_path(
             self.root
             / "current"
             / "model-fit-sidecar-by-operation"
@@ -1695,9 +1870,25 @@ class AlphaDevelopmentArtifactStore:
             ),
         )
 
-    def resolve_validation_chunk(self, value: AlphaDevelopmentValidationChunkRef) -> pa.Table:
-        target = self._path("current/development-validation-chunks", value.content_hash, "parquet")
-        columns = tuple(pq.ParquetFile(target).schema_arrow.names)
+    def resolve_validation_chunk(
+        self, value: AlphaDevelopmentValidationChunkRef, *, catalog_rows: pa.Table | None = None
+    ) -> pa.Table:
+        """Verify the exact validation rows named by the fold."""
+        if (
+            catalog_rows is None
+            and self._development_chunks is None
+            and self.catalog_development_reads()
+        ):
+            catalog_rows = history.read_alpha_development_chunks((value.content_hash,))[
+                value.content_hash
+            ]
+        if catalog_rows is None:
+            target = self._path(
+                "current/development-validation-chunks", value.content_hash, "parquet"
+            )
+            columns = tuple(pq.ParquetFile(target).schema_arrow.names)
+        else:
+            columns = tuple(catalog_rows.schema.names)
         if columns not in (
             self._DEVELOPMENT_VALIDATION_COLUMNS,
             self._DEVELOPMENT_ECONOMIC_VALIDATION_COLUMNS,
@@ -1710,6 +1901,7 @@ class AlphaDevelopmentArtifactStore:
             columns=columns,
             category="development-validation-chunks",
             kind="AlphaDevelopmentValidationChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "request_hash": value.request_hash,
                 "development_surface_hash": value.development_surface_hash,
@@ -1732,13 +1924,16 @@ class AlphaDevelopmentArtifactStore:
         the chunk a second time.
         """
 
-        result = self._load(
+        result = self._fold_surface_reference(value)
+        return result, self.resolve_validation_chunk(result.validation_chunk)
+
+    def _fold_surface_reference(self, value: str) -> AlphaDevelopmentFoldSurface:
+        return self._load(
             "development-fold-surfaces",
             value,
             "surface_fold_hash",
             AlphaDevelopmentFoldSurface,
         )
-        return result, self.resolve_validation_chunk(result.validation_chunk)
 
     def publish_candidate_score_chunk(
         self,
@@ -1774,14 +1969,20 @@ class AlphaDevelopmentArtifactStore:
     def resolve_candidate_score_chunk(
         self,
         value: AlphaCandidateDevelopmentScoreChunkRef | AlphaNumericalDevelopmentScoreChunkRef,
+        *,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
+        """Verify a legacy or numerical score chunk by its sealed reference."""
         if isinstance(value, AlphaNumericalDevelopmentScoreChunkRef):
-            return self.resolve_numerical_score_chunk(value)
+            if catalog_rows is None:
+                return self.resolve_numerical_score_chunk(value)
+            return self.resolve_numerical_score_chunk(value, catalog_rows=catalog_rows)
         return self._resolve_development_chunk(
             reference=value,
             columns=self._DEVELOPMENT_SCORE_COLUMNS,
             category="development-score-chunks",
             kind="AlphaCandidateDevelopmentScoreChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "request_hash": value.request_hash,
                 "development_surface_hash": value.development_surface_hash,
@@ -1826,12 +2027,16 @@ class AlphaDevelopmentArtifactStore:
     def resolve_numerical_score_chunk(
         self,
         value: AlphaNumericalDevelopmentScoreChunkRef,
+        *,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
+        """Verify the score rows named by one numerical fold result."""
         return self._resolve_development_chunk(
             reference=value,
             columns=self._DEVELOPMENT_SCORE_COLUMNS,
             category="numerical-development-score-chunks",
             kind="AlphaNumericalDevelopmentScoreChunk",
+            catalog_rows=catalog_rows,
             identity={
                 "execution_binding_hash": value.execution_binding_hash,
                 "development_surface_binding_hash": value.development_surface_binding_hash,
@@ -1969,7 +2174,10 @@ class AlphaDevelopmentArtifactStore:
     def load_candidate_fold_evidence(
         self,
         value: str,
+        *,
+        verify_score: bool = True,
     ) -> AlphaCandidateFoldEvidence | LegacyAlphaCandidateFoldEvidence:
+        """Load a sealed fold record and verify its legacy children."""
         uri = self.uri("current/candidate-fold-evidence", value)
         payload = self._load_identity_json(
             uri=uri,
@@ -1992,7 +2200,7 @@ class AlphaDevelopmentArtifactStore:
                 LegacyAlphaCandidateFoldEvidence,
                 LegacyAlphaCandidateFoldEvidence.model_validate(payload),
             )
-            if result.score_chunk is not None:
+            if verify_score and result.score_chunk is not None:
                 if isinstance(result.score_chunk, AlphaNumericalDevelopmentScoreChunkRef):
                     self.resolve_numerical_score_chunk(result.score_chunk)
                 else:
@@ -2009,8 +2217,9 @@ class AlphaDevelopmentArtifactStore:
         self,
         value: AlphaCandidateNumericalFoldResult,
     ) -> str:
+        """Bind completed numerical evidence to its execution for an exact retry."""
         uri = self._publish("candidate-numerical-fold-results", value, "numerical_result_hash")
-        pointer = (
+        pointer = self._document_path(
             self.root
             / "current"
             / "candidate-numerical-fold-by-binding"
@@ -2028,7 +2237,12 @@ class AlphaDevelopmentArtifactStore:
                     "candidate-fold execution binding has divergent numerical evidence"
                 )
         else:
-            self._atomic_write(pointer, self._json_bytes(payload))
+            self._write_document(pointer, self._json_bytes(payload))
+        staged = _STAGED_DEVELOPMENT.get()
+        if staged is not None:
+            output, checkpoint = staged
+            self._stage_catalog_chunks(output, self._development_chunks or {})
+            checkpoint()
         return uri
 
     def load_candidate_numerical_fold_result(
@@ -2048,17 +2262,27 @@ class AlphaDevelopmentArtifactStore:
         result carries no score chunk.
         """
 
-        result = self._load(
+        return self._verify_numerical_fold(self._numerical_fold_reference(value))
+
+    def _numerical_fold_reference(self, value: str) -> AlphaCandidateNumericalFoldResult:
+        return self._load(
             "candidate-numerical-fold-results",
             value,
             "numerical_result_hash",
             AlphaCandidateNumericalFoldResult,
         )
-        scores = (
-            None
-            if result.score_chunk is None
-            else self.resolve_numerical_score_chunk(result.score_chunk)
-        )
+
+    def _verify_numerical_fold(
+        self, result: AlphaCandidateNumericalFoldResult, *, catalog_rows: pa.Table | None = None
+    ) -> tuple[AlphaCandidateNumericalFoldResult, pa.Table | None]:
+        if result.score_chunk is None:
+            scores = None
+        elif catalog_rows is None:
+            scores = self.resolve_numerical_score_chunk(result.score_chunk)
+        else:
+            scores = self.resolve_numerical_score_chunk(
+                result.score_chunk, catalog_rows=catalog_rows
+            )
         if result.estimator_state_hash is not None:
             state = self.load_development_estimator_state(result.estimator_state_hash)
             if (
@@ -2088,11 +2312,81 @@ class AlphaDevelopmentArtifactStore:
                     )
         return result, scores
 
+    def read_development_folds(
+        self,
+        fold_hashes: Sequence[str],
+        numerical_hashes: Sequence[str],
+        *,
+        legacy_scores: Sequence[
+            AlphaCandidateDevelopmentScoreChunkRef | AlphaNumericalDevelopmentScoreChunkRef
+        ] = (),
+    ) -> tuple[
+        dict[str, tuple[AlphaDevelopmentFoldSurface, pa.Table]],
+        dict[str, tuple[AlphaCandidateNumericalFoldResult, pa.Table | None]],
+        dict[str, pa.Table],
+    ]:
+        """Project a stage's named validation rows and scores in one catalog read."""
+        if not self.catalog_development_reads():
+            return (
+                {key: self.read_fold_surface(key) for key in dict.fromkeys(fold_hashes)},
+                {
+                    key: self.read_candidate_numerical_fold_result(key)
+                    for key in dict.fromkeys(numerical_hashes)
+                },
+                {
+                    ref.content_hash: self.resolve_candidate_score_chunk(ref)
+                    for ref in legacy_scores
+                },
+            )
+        folds = {key: self._fold_surface_reference(key) for key in dict.fromkeys(fold_hashes)}
+        numerical = {
+            key: self._numerical_fold_reference(key) for key in dict.fromkeys(numerical_hashes)
+        }
+        rows = history.read_alpha_development_chunks(
+            (
+                *(value.validation_chunk.content_hash for value in folds.values()),
+                *(
+                    value.score_chunk.content_hash
+                    for value in numerical.values()
+                    if value.score_chunk is not None
+                ),
+                *(ref.content_hash for ref in legacy_scores),
+            )
+        )
+        return (
+            {
+                key: (
+                    value,
+                    self.resolve_validation_chunk(
+                        value.validation_chunk,
+                        catalog_rows=rows[value.validation_chunk.content_hash],
+                    ),
+                )
+                for key, value in folds.items()
+            },
+            {
+                key: self._verify_numerical_fold(
+                    value,
+                    catalog_rows=None
+                    if value.score_chunk is None
+                    else rows[value.score_chunk.content_hash],
+                )
+                for key, value in numerical.items()
+            },
+            {
+                ref.content_hash: self.resolve_candidate_score_chunk(
+                    ref, catalog_rows=rows[ref.content_hash]
+                )
+                for ref in legacy_scores
+            },
+        )
+
     def find_candidate_numerical_fold_result(
         self,
         execution_binding_hash: str,
     ) -> AlphaCandidateNumericalFoldResult | None:
-        pointer = (
+        """Find and verify the complete fold for an execution binding, if any."""
+        pointer = self._document_path(
             self.root
             / "current"
             / "candidate-numerical-fold-by-binding"
@@ -2145,7 +2439,37 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def publish_candidate_report(self, value: AlphaCandidateDevelopmentReport) -> str:
-        return self._publish("candidate-development-reports", value, "report_hash")
+        """Seal the report and record its candidate measures in Host history."""
+        uri = self._publish("candidate-development-reports", value, "report_hash")
+        metrics = value.metrics
+        if metrics is None:
+            return uri
+        named = (
+            ("alpha_mae", metrics.mae),
+            ("alpha_mse", metrics.mse),
+            ("alpha_zero_relative_oos_r2", metrics.zero_relative_oos_r2),
+            ("ic_mean", metrics.rank_ic_mean),
+            ("ic_ir", metrics.icir),
+            ("alpha_gross_decile_spread", metrics.gross_decile_spread_mean),
+            ("alpha_formation_decile_turnover", metrics.formation_decile_turnover_mean),
+            ("alpha_fold_mse_std", metrics.fold_mse_std),
+        )
+        measures: history.AlphaDevelopmentMeasures = [
+            (name, 1, {"availability": metric.availability.value}, metric.value)
+            for name, metric in named
+        ]
+        measures.extend(
+            (
+                ("n_obs", 1, {"axis": "comparison"}, metrics.common_surface_row_count),
+                ("n_obs", 1, {"axis": "scored"}, metrics.scored_row_count),
+                ("coverage", 1, {"aggregation": "fold_mean"}, metrics.fold_coverage_mean),
+            )
+        )
+        if self._development_summaries is None:
+            history.record_alpha_development_summary(value.report_hash, measures)
+        else:
+            self._development_summaries[value.report_hash] = measures
+        return uri
 
     def load_candidate_report(self, value: str) -> AlphaCandidateDevelopmentReport:
         return self._load(
@@ -2167,6 +2491,67 @@ class AlphaDevelopmentArtifactStore:
             value,
             "evidence_hash",
             AlphaCandidateInferenceEvidence,
+        )
+
+    @contextmanager
+    def admit_development_chunks(self) -> Iterator[None]:
+        """Publish one catalog admission for the development stage's immutable chunks."""
+        staged = _STAGED_DEVELOPMENT.get()
+        if staged is None and not history.recording():
+            yield
+            return
+        chunks: dict[str, tuple[str, pa.Table]] = {}
+        summaries: dict[str, history.AlphaDevelopmentMeasures] = {}
+        self._development_chunks = chunks
+        self._development_summaries = summaries
+        try:
+            yield
+            if staged is None:
+                history.write_alpha_development_chunks(chunks, summaries=summaries)
+            else:
+                output = staged[0]
+                self._stage_catalog_chunks(output, chunks)
+                output.summaries.update(summaries)
+        finally:
+            self._development_chunks = None
+            self._development_summaries = None
+
+    @staticmethod
+    def _stage_catalog_chunks(
+        output: StagedAlphaDevelopment, chunks: Mapping[str, tuple[str, pa.Table]]
+    ) -> None:
+        for digest, (seal, table) in chunks.items():
+            if digest in output.chunks:
+                if output.chunks[digest][0] != seal:
+                    raise AlphaDevelopmentArtifactReadbackError("staged Alpha catalog seal changed")
+                continue
+            path = output.folder / f"alpha-breakdown-{len(output.chunks)}"
+            with pa.OSFile(str(path), "wb") as sink, pa.ipc.new_file(sink, table.schema) as writer:
+                writer.write_table(table)
+            with pa.OSFile(str(path), "rb") as source:
+                body_digest = blake3(source.read_buffer()).hexdigest()
+            output.chunks[digest] = seal, body_digest, path
+
+    @classmethod
+    def publish_staged_development(cls, output: StagedAlphaDevelopment) -> None:
+        """Admit the returned catalog rows before making their evidence discoverable."""
+        chunks: dict[str, tuple[str, pa.Table]] = {}
+        for digest, (seal, expected, path) in output.chunks.items():
+            with pa.OSFile(str(path), "rb") as source:
+                body = source.read_buffer()
+            if blake3(body).hexdigest() != expected:
+                raise AlphaDevelopmentArtifactReadbackError("staged Alpha catalog rows changed")
+            chunks[digest] = seal, pa.ipc.open_file(body).read_all()
+        history.write_alpha_development_chunks(chunks, summaries=output.summaries)
+        cls.publish_staged_documents(output.documents)
+
+    @staticmethod
+    def catalog_development_reads() -> bool:
+        """Read the catalog on a data root and the files on a standalone workspace."""
+        if _STAGED_DEVELOPMENT.get() is not None:
+            return False  # The worker reads its verified transport bodies before catalog admission.
+        return bool(
+            history.recording() or (history.data_root() / "machine" / "catalog.sqlite").is_file()
         )
 
     def _publish_development_chunk(
@@ -2198,25 +2583,35 @@ class AlphaDevelopmentArtifactStore:
             provisional.model_dump(mode="json", exclude={"metadata_hash", "uri"})
         )
         reference = model.model_validate({**values, "metadata_hash": metadata_hash})
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        target.parent.mkdir(parents=True, exist_ok=True)
         metadata = {
             b"alphalattice.snapshot_kind": kind.encode(),
             b"alphalattice.content_hash": content_hash.encode(),
             b"alphalattice.metadata_hash": metadata_hash.encode(),
         }
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-        if not target.exists():
-            pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, target)
-        staged.unlink(missing_ok=True)
-        self._resolve_development_chunk(
+        if category in {"development-score-chunks", "numerical-development-score-chunks"}:
+            output = pa.BufferOutputStream()
+            pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
+            history.keep_alpha_part(
+                content_hash, "current/" + category, output.getvalue().to_pybytes()
+            )
+        else:
+            target = self._path(f"current/{category}", content_hash, "parquet")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
+            if not target.exists():
+                pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
+                os.replace(staged, target)
+            staged.unlink(missing_ok=True)
+        read = self._resolve_development_chunk(
             reference=reference,
             columns=columns,
             category=category,
             kind=kind,
             identity=identity,
+            legacy_publication=True,
         )
+        if self._development_chunks is None:
+            history.write_alpha_development_chunks({content_hash: (metadata_hash, read)})
         return reference
 
     def _resolve_development_chunk(
@@ -2227,6 +2622,8 @@ class AlphaDevelopmentArtifactStore:
         category: str,
         kind: str,
         identity: dict[str, object],
+        legacy_publication: bool = False,
+        catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
         content_hash = str(reference.content_hash)
         metadata_hash = str(reference.metadata_hash)
@@ -2234,26 +2631,45 @@ class AlphaDevelopmentArtifactStore:
         row_count = int(reference.row_count)
         if uri != self.uri(f"current/{category}", content_hash):
             raise AlphaDevelopmentArtifactReadbackError(f"{kind} URI changed")
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        raw = target.read_bytes()
-        parquet = pq.ParquetFile(pa.BufferReader(raw))
-        metadata = parquet.schema_arrow.metadata or {}
         if (
-            metadata.get(b"alphalattice.snapshot_kind") != kind.encode()
-            or metadata.get(b"alphalattice.content_hash") != content_hash.encode()
-            or metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode()
+            catalog_rows is None
+            and self._development_chunks is None
+            and not legacy_publication
+            and self.catalog_development_reads()
         ):
-            raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
-        table = pq.read_table(pa.BufferReader(raw)).replace_schema_metadata(None)
+            catalog_rows = history.read_alpha_development_chunks((content_hash,))[content_hash]
+        if catalog_rows is not None:
+            metadata = catalog_rows.schema.metadata or {}
+            if metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode():
+                raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
+            table = catalog_rows.replace_schema_metadata(None)
+            derived = _chunk_content_hash(table, identity)
+        else:
+            if category in {"development-score-chunks", "numerical-development-score-chunks"}:
+                raw = self._score_body(content_hash, "current/" + category, kind)
+            else:
+                raw = self._path(f"current/{category}", content_hash, "parquet").read_bytes()
+            parquet = pq.ParquetFile(pa.BufferReader(raw))
+            metadata = parquet.schema_arrow.metadata or {}
+            if (
+                metadata.get(b"alphalattice.snapshot_kind") != kind.encode()
+                or metadata.get(b"alphalattice.content_hash") != content_hash.encode()
+                or metadata.get(b"alphalattice.metadata_hash") != metadata_hash.encode()
+            ):
+                raise AlphaDevelopmentArtifactReadbackError(f"{kind} metadata changed")
+            table = pq.read_table(pa.BufferReader(raw)).replace_schema_metadata(None)
+            derived = _verified_content_hash(raw, table, identity)
         if (
             tuple(table.schema.names) != columns
             or table.num_rows != row_count
-            or _verified_content_hash(raw, table, identity) != content_hash
+            or derived != content_hash
         ):
             raise AlphaDevelopmentArtifactReadbackError(f"{kind} content changed")
         for field, expected in identity.items():
             if getattr(reference, field) != expected:
                 raise AlphaDevelopmentArtifactReadbackError(f"{kind} identity changed")
+        if self._development_chunks is not None:
+            self._development_chunks[content_hash] = (metadata_hash, table)
         return table
 
     def publish_estimator_state(self, value: AlphaEstimatorState) -> str:
@@ -2431,6 +2847,118 @@ class AlphaDevelopmentArtifactStore:
             "report_hash",
             AlphaDecisionReproducibilityReport,
         )
+
+
+_ALPHA_PACKED = frozenset(
+    {
+        "current/frozen-observation-arrays",
+        "current/frozen-feature-arrays",
+        "current/lifecycle-arrays",
+    }
+)
+_ALPHA_LANES = frozenset({FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY, SIMPLE_SCORE_VALUE_PAYLOAD_CATEGORY})
+_ALPHA_SCORES = frozenset(
+    {
+        "current/current-candidate-score-chunks",
+        "current/current-score-chunks",
+        "current/development-score-chunks",
+        "current/numerical-development-score-chunks",
+        "development/campaign/prediction-surfaces",
+        ALPHA_SCORE_AGGREGATION_SURFACE_CATEGORY,
+    }
+)
+_ALPHA_HISTORY = "current/workspace-observation-history/parts/"
+
+
+def alpha_array_files(workspace: Path) -> list[tuple[Path, str]]:
+    """The old Alpha part files and the layout each existing reader commits."""
+
+    def refuse(error: OSError) -> None:
+        raise error
+
+    found: list[tuple[Path, str]] = []
+    for folder, children, _ in os.walk(workspace, onerror=refuse):
+        if "alpha-research" not in children:
+            continue
+        children.remove("alpha-research")
+        root = Path(folder, "alpha-research")
+        if root.is_symlink():
+            raise DataError(
+                "the Alpha artifact directory is a link", code="data_layer.part_invalid"
+            )
+        for part, folders, files in os.walk(root, onerror=refuse):
+            if any(Path(part, name).is_symlink() for name in folders):
+                raise DataError(
+                    "an Alpha artifact directory is a link", code="data_layer.part_invalid"
+                )
+            directory = Path(part).relative_to(root).as_posix()
+            for name in files:
+                path = Path(part, name)
+                score = directory in _ALPHA_SCORES and path.suffix == ".parquet"
+                lane = (
+                    (directory in _ALPHA_PACKED and path.suffix == ".bin")
+                    or (directory in _ALPHA_LANES and path.suffix in {".bin", ".parquet"})
+                    or (directory.startswith(_ALPHA_HISTORY) and path.suffix == ".parquet")
+                )
+                if score or lane:
+                    if (
+                        len(path.stem) != 64
+                        or any(c not in "0123456789abcdef" for c in path.stem)
+                        or path.is_symlink()
+                    ):
+                        raise DataError("an Alpha part is invalid", code="data_layer.part_invalid")
+                    layout = (
+                        directory + "/" + path.suffix[1:]
+                        if directory in _ALPHA_LANES
+                        else directory
+                    )
+                    found.append((path, layout))
+    return sorted(found)
+
+
+def alpha_array_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
+    """Keep old Alpha bodies under their identities, verify ALL EQUAL, and retain the files."""
+
+    def step(runner: Any) -> None:
+        for workspace in runner.workspaces:
+            held = holder(workspace)
+            for path, layout in alpha_array_files(workspace):
+                if layout not in _ALPHA_SCORES:
+                    arrays.read_file(
+                        path
+                    )  # prove the old lane's own cited digest before keeping it
+                history.keep_alpha_part(
+                    path.stem,
+                    layout,
+                    path.read_bytes(),
+                    upgrade_owner=(runner.log, runner.root, held),
+                )
+            runner.log.flush()
+
+    def verify(runner: Any) -> bool:
+        for workspace in runner.workspaces:
+            for path, layout in alpha_array_files(workspace):
+                digest = history._alpha_part_body(runner.log.read, path.stem, layout)
+                if (
+                    digest is None
+                    or arrays.read_packed(runner.root, runner.log.read, digest) != path.read_bytes()
+                ):
+                    return False
+        return True
+
+    def holds(workspace: Path) -> bool:
+        try:
+            workspace.stat()
+        except FileNotFoundError:  # a new workspace has no old Alpha parts
+            return False
+        held = holder(workspace)
+        for path, layout in alpha_array_files(workspace):
+            digest = history.alpha_part_body_digest(path.stem, layout)
+            if digest is None or not history.array_held_by(digest, held):
+                return True
+        return False
+
+    return Family("alpha-arrays", step, verify, holds)
 
 
 __all__ = [

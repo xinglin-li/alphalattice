@@ -52,19 +52,16 @@ from alphalattice.interface.local_application.evidence_cro import (
     project_published_review,
     source_authority_not_admitted,
 )
-from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioReviewInputIncomplete,
 )
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
-    PortfolioReviewPublication,
 )
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.coverage.selections import (
     recorded_selection,
@@ -141,50 +138,6 @@ class EvidenceCroProjector:
             "state": "NOT_READ",
             "next_requests": {"review": {"operation": "EVIDENCE_CRO", **selector.request_fields()}},
         }
-
-    @staticmethod
-    def review_metadata(
-        app: EvidenceReviewApplication,
-    ) -> tuple[tuple[PortfolioReviewPublication, ...], tuple[tuple[str, str], ...]]:
-        """Discover verified review metadata, retaining failures beside readable peers.
-
-        Args:
-            app: The Evidence owner whose sealed publication store is read.
-
-        Returns:
-            Strictly loaded publication metadata and named record or location refusals.
-            Full selected readback still verifies every descendant at its owner.
-        """
-        store = app.review_publications.store
-        directory = store.root / "cro-review-publications"
-        paths = []
-        refused: list[tuple[str, str]] = []
-        try:
-            for path in directory.iterdir():
-                if path.name.endswith(".json"):
-                    paths.append(path)
-        except FileNotFoundError:
-            if not paths:
-                return (), ()
-            refused.append(("cro-review-publications", "research_history.entry_unreadable"))
-        except OSError as error:
-            refused.append(
-                (
-                    "cro-review-publications",
-                    public_failure(error, "research_history.entry_unreadable"),
-                )
-            )
-        readable: list[PortfolioReviewPublication] = []
-        for path in sorted(paths):
-            try:
-                readable.append(
-                    store.load("cro-review-publications", path.stem, PortfolioReviewPublication)
-                )
-            except (ValueError, OSError) as error:
-                refused.append(
-                    (path.stem, public_failure(error, "research_history.entry_unreadable"))
-                )
-        return tuple(readable), tuple(refused)
 
     def __init__(
         self, app: EvidenceReviewApplication, delivery: EvidenceReviewDelivery | None = None
@@ -939,7 +892,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     return evidence_as_of, expires_at
@@ -997,7 +950,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     continue

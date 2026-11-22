@@ -24,6 +24,7 @@ from typing import Any, TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline.definition import DefinitionError
 from devtools.pipeline.receipt import (
     CASCADE,
@@ -61,7 +62,7 @@ LARGE_BYTES = 100 * 1024  # the shape guard's ceiling for any tracked file under
 
 
 def _tracked(root: Path, top: str) -> list[Path]:
-    listed = subprocess.run(
+    listed = spawn.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", top],
         capture_output=True,
         check=True,
@@ -594,7 +595,7 @@ class _HolderResolver:
         self.blobs: dict[str, str | None] = {}
         self.moves: dict[str, dict[str, str]] = {}
         self.clean: set[str] = set()
-        result = subprocess.run(
+        result = spawn.run(
             ["git", "rev-parse", "--verify", "HEAD^{commit}"],
             cwd=root,
             capture_output=True,
@@ -645,7 +646,7 @@ class _HolderResolver:
         if disk.is_symlink() or not disk.resolve().is_relative_to(self.root.resolve()):
             raise ValueError("the target holder resolves outside its checkout")
         if target_path not in self.clean:
-            checked = subprocess.run(
+            checked = spawn.run(
                 ["git", "diff", "--quiet", self.target, "--", target_path],
                 cwd=self.root,
                 capture_output=True,
@@ -893,7 +894,7 @@ def flake_assessment(
 
 def _merged(root: Path, head: str) -> bool | None:
     """Whether a stage's head is in this checkout's history; None when Git cannot tell."""
-    found = subprocess.run(
+    found = spawn.run(
         ["git", "-C", str(root), "merge-base", "--is-ancestor", head, "HEAD"], capture_output=True
     )
     return {0: True, 1: False}.get(found.returncode)
@@ -930,7 +931,7 @@ CODE_SECONDS = 300
 """One code-health tool's bound; one that overruns reads unmeasured."""
 READ = ("config/package-architecture.json", "pyproject.toml", ".gitignore")
 """What the rows read beside src's modules: the registry, the project metadata, the ignore rules."""
-ROWS = ("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity")
+ROWS = ("sizes", "boundaries", "growers", "dead_code", "dependencies", "complexity", "docstrings")
 GRAPH = """import json, sys
 import grimp
 graph = grimp.build_graph(*sys.argv[1:], cache_dir=None)
@@ -945,6 +946,13 @@ RUFF = (
     *("-m", "ruff", "check", "--isolated", "--select", "C901,PLR0912,PLR0915"),
     *("--output-format", "json", "--no-cache", "src"),
 )
+DOCSTRINGS = (
+    *("-m", "ruff", "check", "--select", "D10,D419"),
+    *("--output-format", "json", "--no-cache", "src"),
+)
+"""The library's public definitions with no docstring, or an empty one, by the repository's own
+configuration: the debt a commit leaves (scripts/check_test_shape.py refuses the definitions a
+change writes), so the count only falls."""
 
 
 def code(
@@ -991,6 +999,7 @@ def code(
         "dead_code": lambda: _dead_code(root),
         "dependencies": lambda: _dependencies(root),
         "complexity": lambda: _complexity(root),
+        "docstrings": lambda: _complexity(root, DOCSTRINGS),
     }
     seconds: dict[str, float] = {}
     rows = {
@@ -1018,7 +1027,7 @@ def _read_digest(root: Path) -> str:
         for p in (root / "src").rglob("*")
         if p.suffix in {".py", ".pyi"} or p.name == ".gitignore"
     ]
-    listed = subprocess.run(
+    listed = spawn.run(
         ["git", "-C", str(root), "ls-files", "-z", "--", "src"], capture_output=True, check=True
     ).stdout
     digest = sha256(b"%d\0" % len(listed) + listed)
@@ -1133,6 +1142,7 @@ SHAPES: dict[str, TypeAdapter[Any]] = {
     "dead_code": TypeAdapter(_Named),
     "dependencies": TypeAdapter(_Dependencies),
     "complexity": TypeAdapter(_Complexity),
+    "docstrings": TypeAdapter(_Complexity),
 }
 """Each measured row's whole shape, the one a kept row must have to be reused."""
 
@@ -1155,7 +1165,7 @@ def _run(
         argv = (sys.executable, *argv)
     else:
         argv = ("git", "-c", "core.quotepath=off", *argv[1:])
-    done = subprocess.run(
+    done = spawn.run(
         argv,
         cwd=root,
         capture_output=True,
@@ -1321,8 +1331,9 @@ def _dependencies(root: Path) -> dict[str, Any]:
     }
 
 
-def _complexity(root: Path) -> dict[str, Any]:
-    (owner, _), rows = _owner(root), json.loads(_run(root, *RUFF, ok=(0, 1)) or "[]")
+def _complexity(root: Path, command: tuple[str, ...] = RUFF) -> dict[str, Any]:
+    """A Ruff selection's findings over src: their count, by rule and by owning package."""
+    (owner, _), rows = _owner(root), json.loads(_run(root, *command, ok=(0, 1)) or "[]")
     where = [Path(r["filename"]).resolve().relative_to(root.resolve()).as_posix() for r in rows]
     return {
         "findings": len(rows),

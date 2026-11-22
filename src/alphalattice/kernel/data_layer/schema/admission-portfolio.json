@@ -1,0 +1,22 @@
+{
+ "results": [
+  {
+   "order": 2,
+   "table": "holding",
+   "key": [
+    "artifact_id",
+    "as_of",
+    "listing_id"
+   ]
+  },
+  {
+   "order": 3,
+   "table": "series",
+   "key": [
+    "artifact_id",
+    "name",
+    "session_date"
+   ]
+  }
+ ]
+}

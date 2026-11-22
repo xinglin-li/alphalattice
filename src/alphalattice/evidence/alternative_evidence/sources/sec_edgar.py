@@ -8,10 +8,9 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
-from typing import Protocol, Self, get_args
+from typing import TYPE_CHECKING, Protocol, Self, get_args
 from urllib.parse import urlsplit
 
-import httpx
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
@@ -39,6 +38,9 @@ from .contracts import (
     SecFilingSelectionPlan,
     SecMaterialForm,
 )
+
+if TYPE_CHECKING:
+    import httpx
 
 _SEC_DATA = "https://data.sec.gov"
 _MATERIAL_FORMS = frozenset(get_args(SecMaterialForm))
@@ -96,9 +98,11 @@ class LocalSourceLookup(Protocol):
     entry's exact resource, or None.
     """
 
-    def find(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceDocument | None: ...
+    def find(
+        self, entry: SecFilingInventoryEntry, *, as_of: datetime
+    ) -> AcquiredEvidenceDocument | None: ...
 
-    def holds(self, entry: SecFilingInventoryEntry) -> bool: ...
+    def holds(self, entry: SecFilingInventoryEntry, *, as_of: datetime) -> bool: ...
 
     def deferral(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceSourceDeferral | None: ...
 
@@ -221,6 +225,8 @@ class HttpxSecOfficialTransport:
         ledger: SecCampaignLedger | None = None,
     ) -> None:
         """Configure the official client, rate limit, and campaign budgets."""
+        import httpx  # lazy: not at the Host's start
+
         if "@" not in user_agent:
             raise ValueError("alternative_evidence.sec_user_agent_invalid")
         if ledger is not None:
@@ -352,6 +358,8 @@ class HttpxSecOfficialTransport:
 
     def get(self, url: str, *, maximum_bytes: int) -> SecOfficialResponse:
         """Fetch a bounded official response with budgeted retries."""
+        import httpx  # lazy: not at the Host's start
+
         _require_official_url(url)
         error: Exception | None = None
         resource = "body" if url.startswith(_SEC_ARCHIVES) else "metadata"
@@ -790,7 +798,7 @@ class SecEdgarSource:
                     for value in entries
                     if local is None
                     or (
-                        not local.holds(value)
+                        not local.holds(value, as_of=request.evidence_as_of)
                         and _deferral_eligible(local.deferral(value), request, cap, explicit_retry)
                     )
                 )
@@ -820,7 +828,7 @@ class SecEdgarSource:
             record = _OutcomeRecorder(outcomes, entity_id=entity_id, filing=filing)
             if local is not None:
                 try:
-                    held = local.find(filing)
+                    held = local.find(filing, as_of=request.evidence_as_of)
                 except ValueError as error:
                     record("FAILED", detail=f"local integrity: {error}")
                     continue

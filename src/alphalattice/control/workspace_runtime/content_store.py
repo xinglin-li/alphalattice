@@ -4,14 +4,20 @@ Each file is named by its content's digest and written in its DA9 type: a contra
 document as JSON, numerical lanes as Parquet, a rendered page as HTML. A legacy store
 kept lanes, documents and pages as packed ``.bin`` bytes under the same digest; those are
 read, never written, until the formats registry names their upgrader.
+
+A sealed file is proved from its bytes when it enters (a write, an import, a stage's check of what
+it just wrote), when it leaves (an export) and by the background scrub, never on an ordinary read
+(LAWS.md EV2): the Host is its only writer and nothing rewrites a sealed name. A read inside
+``full_content_proof()`` proves every sealed byte it reads; any other read takes the bytes at
+their name and keeps its structural checks.
 """
 
 from __future__ import annotations
 
-import atexit
 import base64
 import copy
 import ctypes
+import functools
 import hashlib
 import json
 import marshal
@@ -23,21 +29,17 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import Context, ContextVar
-from ctypes import wintypes
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from io import BytesIO
-from itertools import count
 from pathlib import Path
-from queue import Queue
-from threading import BoundedSemaphore, Event, Lock, Thread
-from time import sleep, time_ns
+from threading import BoundedSemaphore, Lock
+from time import sleep
 from types import CodeType
 from typing import Any, cast
 from uuid import UUID, uuid4
-from weakref import WeakSet
 
 import numpy as np
 import numpy.typing as npt
@@ -46,22 +48,21 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.verified_facts import (
+    _FULL_PROOF,
     _content_sha256,
     file_fact,
+    full_content_proof,
+    full_proof,
     record_file_fact,
 )
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.spans import span
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
-_WINDOWS_WAIT_HANDLE_LIMIT = 64
 _VERIFIED_MODEL_CACHE_LIMIT = 128
 _VERIFIED_MODEL_KEY = tuple[object, ...]
 _VERIFIED_MODEL_SCOPE: ContextVar[dict[_VERIFIED_MODEL_KEY, BaseModel] | None] = ContextVar(
     "content_store_verified_models", default=None
-)
-_REUSE_VERIFIED_MODELS: ContextVar[bool] = ContextVar(
-    "content_store_reuse_verified_models", default=False
 )
 _VERIFIED_MODEL_CACHE: OrderedDict[_VERIFIED_MODEL_KEY, BaseModel] = OrderedDict()
 _VERIFIED_MODEL_CACHE_LOCK = Lock()
@@ -71,21 +72,12 @@ _VERIFIED_ARRAY_KEY = tuple[object, ...]
 _VERIFIED_ARRAY_SCOPE: ContextVar[OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object, int]] | None] = (
     ContextVar("content_store_verified_arrays", default=None)
 )
-_REUSE_VERIFIED_ARRAYS: ContextVar[bool] = ContextVar(
-    "content_store_reuse_verified_arrays", default=False
-)
 _VERIFIED_SOURCE_BUILD: ContextVar[bool] = ContextVar(
     "content_store_verified_source_build", default=False
 )
 _VERIFIED_ARRAY_CACHE: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object, int]] = OrderedDict()
 _VERIFIED_ARRAY_CACHE_BYTES = 0
 _VERIFIED_ARRAY_CACHE_LOCK = Lock()
-# One daily's Goal read leases about 2,400 sources; a bound below its working set evicts them all
-# before the next read, so every read verified again (11-10: goal show 25-36 s, 7.5 s warm here).
-VERIFIED_SOURCE_LEASE_LIMIT = 4096
-_VERIFIED_SOURCE_LEASES: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[_WindowsReadLease, ...]] = (
-    OrderedDict()
-)
 _VERIFIED_SOURCE_BUILDS: dict[_VERIFIED_ARRAY_KEY, Future[None]] = {}
 _VERIFIED_SOURCE_CHECK_WORKERS = 2
 _VERIFIED_SOURCE_CHECK_POOL: ThreadPoolExecutor | None = None
@@ -94,8 +86,6 @@ _VERIFIED_SOURCE_CHECK_SLOTS = BoundedSemaphore(_VERIFIED_SOURCE_CHECK_WORKERS)
 _VERIFIED_SOURCE_CHECK_RUNNING: ContextVar[bool] = ContextVar(
     "content_store_verified_source_check_running", default=False
 )
-_VERIFIED_SOURCE_ISSUER: _WindowsReadLeaseIssuer | None = None
-_VERIFIED_SOURCE_ISSUER_LOCK = Lock()
 _VERIFIED_ARRAY_PROCESS_CACHE_HITS = 0
 _VERIFIED_ARRAY_PROCESS_CACHE_MISSES = 0
 _VERIFIED_ARRAY_PROCESS_CACHE_EVICTIONS = 0
@@ -107,401 +97,16 @@ _VERIFIED_PROOF_CACHE: OrderedDict[tuple[object, ...], None] = OrderedDict()
 _VERIFIED_PROOF_CACHE_LOCK = Lock()
 
 
-def _windows_kernel() -> Any:
-    if sys.platform != "win32":
-        raise OSError("Windows read leases are unavailable")
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    declarations = {
-        "CreateFileW": (
-            [
-                wintypes.LPCWSTR,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                wintypes.HANDLE,
-            ],
-            wintypes.HANDLE,
-        ),
-        "CreateEventW": (
-            [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR],
-            wintypes.HANDLE,
-        ),
-        "DeviceIoControl": (
-            [
-                wintypes.HANDLE,
-                wintypes.DWORD,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-            ],
-            wintypes.BOOL,
-        ),
-        "GetFileInformationByHandle": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-        "GetFileInformationByHandleEx": (
-            [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
-            wintypes.BOOL,
-        ),
-        "GetFinalPathNameByHandleW": (
-            [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
-            wintypes.DWORD,
-        ),
-        "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
-        "WaitForMultipleObjects": (
-            [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL, wintypes.DWORD],
-            wintypes.DWORD,
-        ),
-        "CancelIoEx": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
-        "GetOverlappedResult": (
-            [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, wintypes.BOOL],
-            wintypes.BOOL,
-        ),
-        "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
-    }
-    for name, (arguments, result) in declarations.items():
-        function = getattr(kernel, name)
-        function.argtypes = arguments
-        function.restype = result
-    return kernel
+def at_the_edge[**P, R](read: Callable[P, R]) -> Callable[P, R]:
+    """`read` as an edge: each call runs inside ``full_content_proof()``, so what it reports as
+    verified is proved from the bytes on disk, never from a value an earlier read kept."""
 
+    @functools.wraps(read)
+    def proved(*args: P.args, **kwargs: P.kwargs) -> R:
+        with full_content_proof():
+            return read(*args, **kwargs)
 
-class _WindowsReadLease:
-    """A file-level read-handle oplock with a same-handle path identity check.
-
-    A break event can be observed after an incompatible write has completed. The path's
-    NTFS ChangeTime detects a closed same-size write with restored mtime, provided the
-    initial value is older than the clock's resolution. A fresh or future ChangeTime
-    grants no reuse. A writer that still holds its handle open is not covered by that
-    timing guarantee; neither is a writer that deliberately restores ChangeTime or a
-    filesystem that does not maintain it.
-    Closing a broken handle acknowledges rename,
-    replacement and ancestor-directory rename, so retaining proof never obstructs those acts.
-    The event is one-shot: a completed or failed request is
-    discarded, never reset. A current path identity check additionally detects deletion,
-    renames, replacement and changed path resolution. Unavailable leases grant no reuse.
-    These leases are for immutable content-addressed sources only; a process-lived issuer
-    also closes signalled handles when no reader is running.
-    """
-
-    on_close: Callable[[], None] | None = None  # the issuer's watch rebuilds on each close
-
-    def __init__(self, path: Path) -> None:
-        class Overlapped(ctypes.Structure):
-            _fields_ = [
-                ("Internal", ctypes.c_size_t),
-                ("InternalHigh", ctypes.c_size_t),
-                ("Offset", wintypes.DWORD),
-                ("OffsetHigh", wintypes.DWORD),
-                ("hEvent", wintypes.HANDLE),
-            ]
-
-        class FileInformation(ctypes.Structure):
-            _fields_ = [
-                ("attributes", wintypes.DWORD),
-                ("creation", wintypes.FILETIME),
-                ("access", wintypes.FILETIME),
-                ("write", wintypes.FILETIME),
-                ("volume", wintypes.DWORD),
-                ("size_high", wintypes.DWORD),
-                ("size_low", wintypes.DWORD),
-                ("links", wintypes.DWORD),
-                ("index_high", wintypes.DWORD),
-                ("index_low", wintypes.DWORD),
-            ]
-
-        class FileIdInformation(ctypes.Structure):
-            _fields_ = [("volume", ctypes.c_ulonglong), ("file_id", ctypes.c_ubyte * 16)]
-
-        class OplockInput(ctypes.Structure):
-            _fields_ = [
-                ("version", wintypes.WORD),
-                ("length", wintypes.WORD),
-                ("level", wintypes.DWORD),
-                ("flags", wintypes.DWORD),
-            ]
-
-        class OplockOutput(ctypes.Structure):
-            _fields_ = [
-                ("version", wintypes.WORD),
-                ("length", wintypes.WORD),
-                ("original_level", wintypes.DWORD),
-                ("new_level", wintypes.DWORD),
-                ("flags", wintypes.DWORD),
-                ("access", wintypes.DWORD),
-                ("share", wintypes.WORD),
-            ]
-
-        self.path = path
-        self.lock = Lock()
-        self.file_id_type = FileIdInformation
-        self.information_type = FileInformation
-        self.kernel = _windows_kernel()
-        self.identity = self._lease_identity()
-        self.handle = None
-        self.event = None
-        self.pending = False
-        self.overlapped = Overlapped()
-        self.oplock_input = OplockInput(1, ctypes.sizeof(OplockInput), 3, 1)
-        self.oplock_output = OplockOutput()
-        try:
-            self.handle = self.kernel.CreateFileW(
-                os.fspath(path), 0x80000000, 7, None, 3, 0x40000000, None
-            )
-            if self.handle in (None, ctypes.c_void_p(-1).value):
-                self.handle = None
-                raise OSError("OS read lease unavailable")
-            observed = FileInformation()
-            if not self.kernel.GetFileInformationByHandle(self.handle, ctypes.byref(observed)):
-                raise OSError("OS read lease unavailable")
-            file_id = FileIdInformation()
-            if not self.kernel.GetFileInformationByHandleEx(
-                self.handle, 18, ctypes.byref(file_id), ctypes.sizeof(file_id)
-            ):
-                raise OSError("OS read lease unavailable")
-            if (
-                file_id.volume,
-                int.from_bytes(bytes(file_id.file_id), "little"),
-                (observed.size_high << 32) | observed.size_low,
-            ) != self.identity[1:4]:
-                raise OSError("OS read lease path changed")
-            self.event = self.kernel.CreateEventW(None, True, False, None)
-            if not self.event:
-                raise OSError("OS read lease unavailable")
-            self.overlapped.hEvent = self.event
-            returned = wintypes.DWORD()
-            completed = self.kernel.DeviceIoControl(
-                self.handle,
-                0x00090240,
-                ctypes.byref(self.oplock_input),
-                ctypes.sizeof(self.oplock_input),
-                ctypes.byref(self.oplock_output),
-                ctypes.sizeof(self.oplock_output),
-                ctypes.byref(returned),
-                ctypes.byref(self.overlapped),
-            )
-            self.pending = (
-                not completed and sys.platform == "win32" and ctypes.get_last_error() == 997
-            )
-            if not self.pending:
-                raise OSError("OS read lease unavailable")
-        except BaseException:
-            self.close()
-            raise
-
-    def _lease_identity(self) -> tuple[str, int, int, int, int, int, int]:
-        """Refuse a racily fresh ChangeTime before acquiring a reusable lease."""
-        identity = self._path_identity()
-        # FILETIME is in 100 ns units since 1601; read the clock after the identity.
-        now_filetime = time_ns() // 100 + 116444736000000000
-        if identity[-1] <= 0 or identity[-1] > now_filetime - 1_000_000:
-            raise OSError("OS read lease unavailable: source ChangeTime is too recent")
-        return identity
-
-    def _path_identity(self) -> tuple[str, int, int, int, int, int, int]:
-        """The path's current resolution and file, all read from one handle opened by it.
-
-        The final path is what realpath reads (GetFinalPathNameByHandle on a handle opened by
-        the path), here without its second open to drop the long-path prefix. Taking it with
-        the file ID, size and times from one attribute-only open, which breaks no oplock,
-        means every field names the same file: no swap fits between them.
-        """
-        handle = self.kernel.CreateFileW(os.fspath(self.path), 0x80, 7, None, 3, 0x02000000, None)
-        if handle in (None, ctypes.c_void_p(-1).value):
-            raise OSError("OS read lease path unavailable")
-        try:
-            size = 1024
-            while True:
-                final = ctypes.create_unicode_buffer(size)
-                length = self.kernel.GetFinalPathNameByHandleW(handle, final, size, 0)
-                if length < size:
-                    break
-                size = length + 1
-            observed = self.information_type()
-            file_id = self.file_id_type()
-            basic = (ctypes.c_longlong * 5)()  # FILE_BASIC_INFO: four times, then attributes
-            if not (
-                length
-                and self.kernel.GetFileInformationByHandle(handle, ctypes.byref(observed))
-                and self.kernel.GetFileInformationByHandleEx(
-                    handle, 18, ctypes.byref(file_id), ctypes.sizeof(file_id)
-                )
-                and self.kernel.GetFileInformationByHandleEx(
-                    handle, 0, ctypes.byref(basic), ctypes.sizeof(basic)
-                )
-            ):
-                raise OSError("OS read lease path unavailable")
-            return (
-                final.value,
-                file_id.volume,
-                int.from_bytes(bytes(file_id.file_id), "little"),
-                (observed.size_high << 32) | observed.size_low,
-                (observed.write.dwHighDateTime << 32) | observed.write.dwLowDateTime,
-                (observed.creation.dwHighDateTime << 32) | observed.creation.dwLowDateTime,
-                basic[3],
-            )
-        finally:
-            self.kernel.CloseHandle(handle)
-
-    def unchanged(self) -> bool:
-        """Fail closed for a signalled event, an API failure or any path identity change."""
-        try:
-            # A competing open, the path identity's included, can wait for the RH break to be
-            # acknowledged. Never keep the lease lock across an open: the break thread needs it
-            # to close us, and an ancestor rename waits on that close.
-            if not (self._pending() and self._path_identity() == self.identity):
-                return False
-            if not self._current_read_access():
-                return False
-            return self._pending() and self._path_identity() == self.identity
-        except Exception:
-            return False
-
-    def _pending(self) -> bool:
-        """Whether the oplock request is still pending: no break, no failure, not closed."""
-        with self.lock:
-            return bool(self.pending and self.kernel.WaitForSingleObject(self.event, 0) == 258)
-
-    def _current_read_access(self) -> bool:
-        """Prove current read permission and exact file ID without reading its bytes."""
-        handle = self.kernel.CreateFileW(
-            os.fspath(self.path), 0x80000000, 7, None, 3, 0x40000000, None
-        )
-        if handle in (None, ctypes.c_void_p(-1).value):
-            return False
-        try:
-            file_id = self.file_id_type()
-            return bool(
-                self.kernel.GetFileInformationByHandleEx(
-                    handle, 18, ctypes.byref(file_id), ctypes.sizeof(file_id)
-                )
-                and (file_id.volume, int.from_bytes(bytes(file_id.file_id), "little"))
-                == self.identity[1:3]
-            )
-        finally:
-            self.kernel.CloseHandle(handle)
-
-    def release_if_broken(self) -> None:
-        """Acknowledge an OS break by closing; API failure also forfeits cached proof."""
-        try:
-            with self.lock:
-                broken = self.pending and self.kernel.WaitForSingleObject(self.event, 0) != 258
-        except Exception:
-            broken = True
-        if broken:
-            self.close()
-
-    def close(self) -> None:
-        """Cancel and drain the IRP before freeing its OVERLAPPED/event storage."""
-        with self.lock:
-            if self.handle is not None:
-                if self.pending:
-                    returned = ctypes.c_ulong()
-                    self.kernel.CancelIoEx(self.handle, ctypes.byref(self.overlapped))
-                    self.kernel.GetOverlappedResult(
-                        self.handle, ctypes.byref(self.overlapped), ctypes.byref(returned), True
-                    )
-                self.kernel.CloseHandle(self.handle)
-                self.handle = None
-                self.pending = False
-            if self.event:
-                self.kernel.CloseHandle(self.event)
-                self.event = None
-        if self.on_close is not None:
-            self.on_close()
-
-
-class _WindowsReadLeaseIssuer:
-    """Issue pending oplock IRPs on one process-lived thread, never a request thread.
-
-    Windows cancels event-based pending I/O when its issuing thread exits. Only lease
-    acquisition runs here; builders, cache decisions and current-access checks remain
-    on the caller. Serialized acquisition allows at most one queued job.
-    """
-
-    def __init__(self) -> None:
-        self.jobs: Queue[tuple[Path, Future[_WindowsReadLease]] | None] = Queue(maxsize=1)
-        self.stopped = False
-        self.issued: WeakSet[_WindowsReadLease] = WeakSet()
-        self.issued_lock = Lock()
-        self.changes, self.version = count(1), 0
-        self.breaks_stopped = Event()
-        self.thread = Thread(target=self._run, name="content-store-read-leases", daemon=True)
-        self.break_thread = Thread(
-            target=self._release_breaks, name="content-store-lease-breaks", daemon=True
-        )
-        self.thread.start()
-        self.break_thread.start()
-
-    def _release_breaks(self) -> None:
-        # Inspect only OS events. Never a stat/timestamp shortcut, and never a second proof
-        # cache. A separate thread can acknowledge a rename while acquisition is waiting
-        # in Windows; using the issuing thread for both could deadlock that rename. The
-        # batches are rebuilt only when a lease is issued or closed: snapshotting every
-        # retained lease each tick held the GIL for most of the Host's idle time.
-        seen = -1
-        batches: tuple[tuple[tuple[_WindowsReadLease, ...], Any], ...] = ()
-        while not self.breaks_stopped.wait(0.01):
-            if seen != self.version:
-                seen = self.version  # read before the snapshot, so a later change rebuilds
-                with self.issued_lock:
-                    issued = tuple(lease for lease in self.issued if lease.pending and lease.event)
-                batches = tuple(
-                    (held, (ctypes.c_void_p * len(held))(*(lease.event for lease in held)))
-                    for held in (
-                        issued[offset : offset + _WINDOWS_WAIT_HANDLE_LIMIT]
-                        for offset in range(0, len(issued), _WINDOWS_WAIT_HANDLE_LIMIT)
-                    )
-                )
-            for held, events in batches:
-                try:
-                    state = held[0].kernel.WaitForMultipleObjects(len(held), events, False, 0)
-                except Exception:
-                    state = None
-                # Concurrent closes can invalidate a batch handle. A failed/signalled batch
-                # falls back to each lease's locked event check; failure never grants reuse.
-                if state != 258:
-                    for lease in held:
-                        lease.release_if_broken()
-
-    def _changed(self) -> None:
-        self.version = next(self.changes)
-
-    def _run(self) -> None:
-        while (job := self.jobs.get()) is not None:
-            path, result = job
-            try:
-                lease = _WindowsReadLease(path)
-                lease.on_close = self._changed
-                with self.issued_lock:
-                    self.issued.add(lease)
-                self._changed()
-                # Register before the current-access open: a rename can break this new
-                # RH lease while that open waits for the break thread to acknowledge it.
-                if not lease.unchanged():
-                    lease.close()
-                    raise OSError("OS read lease unavailable")
-                result.set_result(lease)
-            except BaseException as error:
-                result.set_exception(error)
-
-    def acquire(self, path: Path) -> _WindowsReadLease:
-        if self.stopped or not self.thread.is_alive() or not self.break_thread.is_alive():
-            raise OSError("OS read lease issuer unavailable")
-        result: Future[_WindowsReadLease] = Future()
-        self.jobs.put_nowait((path, result))
-        return result.result()
-
-    def close(self) -> None:
-        self.stopped = True
-        if self.thread.is_alive():
-            self.jobs.put_nowait(None)
-            self.thread.join()
-        self.breaks_stopped.set()
-        self.break_thread.join()
+    return proved
 
 
 @contextmanager
@@ -533,33 +138,6 @@ def staging_directory(parent: Path, prefix: str = ".staging-") -> Iterator[Path]
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def _acquire_source_lease(path: Path) -> _WindowsReadLease:
-    global _VERIFIED_SOURCE_ISSUER
-    with _VERIFIED_SOURCE_ISSUER_LOCK:
-        if _VERIFIED_SOURCE_ISSUER is None:
-            _VERIFIED_SOURCE_ISSUER = _WindowsReadLeaseIssuer()
-        return _VERIFIED_SOURCE_ISSUER.acquire(path)
-
-
-def _close_source_leases(key: _VERIFIED_ARRAY_KEY) -> None:
-    for lease in _VERIFIED_SOURCE_LEASES.pop(key, ()):
-        lease.close()
-
-
-def _close_all_source_leases() -> None:
-    global _VERIFIED_SOURCE_ISSUER
-    with _VERIFIED_SOURCE_ISSUER_LOCK:
-        with _VERIFIED_ARRAY_CACHE_LOCK:
-            for key in tuple(_VERIFIED_SOURCE_LEASES):
-                _close_source_leases(key)
-        if _VERIFIED_SOURCE_ISSUER is not None:
-            _VERIFIED_SOURCE_ISSUER.close()
-            _VERIFIED_SOURCE_ISSUER = None
-
-
-atexit.register(_close_all_source_leases)
-
-
 def verified_source_value[T](
     identity: tuple[object, ...],
     sources: tuple[Path, ...],
@@ -567,101 +145,64 @@ def verified_source_value[T](
     *,
     nbytes: int | Callable[[T], int],
 ) -> T:
-    """Reuse a full immutable verification result while file read leases remain valid.
+    """Build an owner's value from sealed sources once per process, and keep it (EV2).
 
-    The owner supplies exact content commitments and performs all ordinary byte, hash and
-    semantic checks in ``builder``. Leases are acquired before that verification and checked
-    afterwards and on every hit. This shares the existing 512-MiB result LRU; at most 512
-    source handles are retained, closed on invalidation, eviction or process exit. Only an
-    explicitly opted-in read scope uses leases. Unsupported filesystems/platforms and any
-    unavailable/failed signal perform the original full verification on every access.
-    A builder owns all of its declared sources. Nested helpers still verify in full but
-    do not retain a second source result or process copy of its intermediate arrays.
-    A single process-lived issuer keeps pending read leases alive after request threads exit;
-    process cleanup closes and drains retained leases before stopping that issuer.
-    Concurrent readers of one exact key share a producer, then check its retained leases
-    normally. Waiting never holds the cache lock and never grants proof by itself.
+    ``builder`` reads its declared sources and makes the owner's checks; ``identity`` binds the
+    owner's namespace and the sources' content commitments, so a kept value answers every later
+    read of the same sealed bytes in this process. Inside ``full_content_proof()`` the builder
+    runs once per proof and its value replaces what was kept. Concurrent readers of one key share
+    one producer; waiting never holds the cache lock. A builder owns every source it declares:
+    helpers nested in it build in full and keep nothing of their own.
     """
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
         return builder()
-    paths = tuple(path.absolute() for path in sources)
-    if (
-        os.name != "nt"
-        or not paths
-        or len(paths) > VERIFIED_SOURCE_LEASE_LIMIT
-        or _VERIFIED_ARRAY_SCOPE.get() is None
-        or not _REUSE_VERIFIED_ARRAYS.get()
-    ):
-        with span("verify", "source_value"):
+    facts = tuple(_file_identity(path) for path in sources)
+    if None in facts:  # a source that cannot be read keeps nothing; its builder names the failure
+        token = _VERIFIED_SOURCE_BUILD.set(True)
+        try:
             return builder()
-    key = ("file-read-lease", *identity, *(os.fspath(path) for path in paths))
+        finally:
+            _VERIFIED_SOURCE_BUILD.reset(token)
+    key = (
+        "sealed-source",
+        *identity,
+        *((os.fspath(path.absolute()), fact) for path, fact in zip(sources, facts, strict=True)),
+    )
+    proved = _FULL_PROOF.get()
     while True:
         with _VERIFIED_ARRAY_CACHE_LOCK:
+            if proved is not None and key in proved:
+                return cast(T, proved[key])
             cached = _VERIFIED_ARRAY_CACHE.get(key)
-            leases = _VERIFIED_SOURCE_LEASES.get(key)
-            if cached is not None and leases and all(lease.unchanged() for lease in leases):
+            if cached is not None and proved is None:
                 _VERIFIED_ARRAY_CACHE.move_to_end(key)
-                _VERIFIED_SOURCE_LEASES.move_to_end(key)
                 _VERIFIED_ARRAY_PROCESS_CACHE_HITS += 1
                 return cast(T, cached[0])
             pending = _VERIFIED_SOURCE_BUILDS.get(key)
             if pending is None:
                 _VERIFIED_ARRAY_PROCESS_CACHE_MISSES += 1
-                _close_source_leases(key)
-                if cached is not None:
-                    global _VERIFIED_ARRAY_CACHE_BYTES
-                    _VERIFIED_ARRAY_CACHE_BYTES -= _VERIFIED_ARRAY_CACHE.pop(key)[1]
                 pending = Future()
                 _VERIFIED_SOURCE_BUILDS[key] = pending
                 break
         pending.result()
-    acquired: list[_WindowsReadLease] = []
-
-    def build() -> T:
-        token = _VERIFIED_SOURCE_BUILD.set(True)
-        try:
-            with span("verify", "source_value"):
-                return builder()
-        finally:
-            _VERIFIED_SOURCE_BUILD.reset(token)
-
+    token = _VERIFIED_SOURCE_BUILD.set(True)
     try:
-        try:
-            for path in paths:
-                acquired.append(_acquire_source_lease(path))
-        except BaseException as error:
-            for lease in acquired:
-                lease.close()
-            acquired = []
-            if isinstance(error, Exception):
-                return build()
-            raise
-        try:
-            value = build()
-            if not all(lease.unchanged() for lease in acquired):
-                for lease in acquired:
-                    lease.close()
-                acquired = []
-                return build()
-            size = nbytes(value) if callable(nbytes) else nbytes
-            if size < 0:
-                raise ValueError("content_store.verified_value_size_invalid")
-            if (
-                size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES
-                and _immutable_request_value(value)
-                and all(lease.unchanged() for lease in acquired)
-            ):
-                _remember_process_value(key, value, size, leases=tuple(acquired))
-                acquired = []
-            return value
-        finally:
-            for lease in acquired:
-                lease.close()
+        with span("verify", "source_value"):
+            value = builder()
+        size = nbytes(value) if callable(nbytes) else nbytes
+        if size < 0:
+            raise ValueError("content_store.verified_value_size_invalid")
+        if size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES and _immutable_request_value(value):
+            _remember_process_value(key, value, size)
+            if proved is not None:
+                proved[key] = value
+        return value
     except BaseException as error:
         pending.set_exception(error)
         raise
     finally:
+        _VERIFIED_SOURCE_BUILD.reset(token)
         with _VERIFIED_ARRAY_CACHE_LOCK:
             _VERIFIED_SOURCE_BUILDS.pop(key)
         if not pending.done():
@@ -672,23 +213,22 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
     """Complete independent full source-owner validations with a process bound of two.
 
     Cross-record bindings, dependencies and control checks remain in the caller. Each
-    callback performs its owner's complete byte/hash, structure and local semantic checks;
-    a structural-only check cannot replace a complete source-owner proof. Callbacks run in
-    fresh Contexts and independent model/array/proof scopes, inheriting only the caller's
-    respective reuse and declared-source-build policies. At most two callbacks are submitted
+    callback performs its owner's checks. Callbacks run in fresh Contexts and independent
+    model/array/proof scopes, inheriting only the caller's proof mode and declared-source-build
+    policy. At most two callbacks are submitted
     process-wide; nested calls run serially to avoid waiting on their own pool. Every
     submitted check completes before return or refusal, with errors in input order.
     """
-    array_reuse = _REUSE_VERIFIED_ARRAYS.get()
-    model_reuse = _REUSE_VERIFIED_MODELS.get()
+    full = _FULL_PROOF.get()
     source_build = _VERIFIED_SOURCE_BUILD.get()
 
     def run(check: Callable[[], None]) -> None:
         _VERIFIED_SOURCE_CHECK_RUNNING.set(True)
         _VERIFIED_SOURCE_BUILD.set(source_build)
+        _FULL_PROOF.set(full)
         with (
-            verified_array_read_scope(reuse_verified=array_reuse),
-            verified_model_read_scope(reuse_verified=model_reuse),
+            verified_array_read_scope(),
+            verified_model_read_scope(),
             span("verify", "source_check"),
         ):
             check()
@@ -731,74 +271,82 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
             pending.append(future)
     except BaseException as error:
         submission_error = error
-    for future in pending:
-        while True:
-            try:
-                future.result()
-                break
-            except BaseException as error:
-                if failure is None:
-                    failure = error
-                if future.done():
-                    break
+    failure = _joined(pending)
     if failure is not None:
         raise failure
     if submission_error is not None:
         raise submission_error
 
 
-@contextmanager
-def verified_array_read_scope(*, reuse_verified: bool = False) -> Iterator[None]:
-    """Share immutable NPZ values in one request, optionally reusing a bounded process LRU.
+def _joined(pending: Iterable[Future[None]]) -> BaseException | None:
+    """Wait for each submitted check in input order: the first check's own failure. An interrupt
+    raised while waiting (Ctrl-C) is the caller's, never a check's: it is raised at once."""
+    failure: BaseException | None = None
+    for future in pending:
+        try:
+            future.result()
+        except BaseException as error:
+            if not future.done():
+                raise
+            if failure is None:
+                failure = error
+    return failure
 
-    Nested owners join the existing scope and cannot widen its cross-request policy. The
-    persistent LRU (bounded independently to 512 MiB) is used only when the outer operation
-    explicitly opts in; the local request cache always clears when its outer scope exits.
+
+@contextmanager
+def verified_array_read_scope() -> Iterator[None]:
+    """Share immutable values built in one request; nested owners join the outer scope.
+
+    The process memo answers outside full proof whatever the scope; this request memo always
+    clears when its outer scope exits.
     """
     if _VERIFIED_ARRAY_SCOPE.get() is not None:
         yield
         return
     scope: OrderedDict[_VERIFIED_ARRAY_KEY, tuple[object, int]] = OrderedDict()
     token = _VERIFIED_ARRAY_SCOPE.set(scope)
-    reuse_token = _REUSE_VERIFIED_ARRAYS.set(reuse_verified)
     proof_token = _VERIFIED_PROOF_SCOPE.set(set())
     try:
         yield
     finally:
         scope.clear()
         _VERIFIED_PROOF_SCOPE.reset(proof_token)
-        _REUSE_VERIFIED_ARRAYS.reset(reuse_token)
         _VERIFIED_ARRAY_SCOPE.reset(token)
 
 
 def verified_request_proof(identity: tuple[object, ...], check: Callable[[], None]) -> None:
-    """Reuse an exact-byte successful proof without retaining the numerical values.
+    """Keep a successful proof of sealed bytes without retaining the numerical values.
 
-    Owners must fully read/hash the current sources before calling, and bind the key to
-    their namespace, resolved paths, same-read file identities and content commitments.
-    Failed checks are never remembered. The separate 4,096-entry proof LRU cannot be evicted
-    by large decoded arrays; across-request use still requires the outer read's opt-in.
+    Owners bind the key to their namespace, resolved paths and content commitments. Failed
+    checks are never remembered, and full proof runs the check once per proof. The separate
+    4,096-entry proof LRU cannot be evicted by large decoded arrays.
     """
+    proved = _FULL_PROOF.get()
+    if proved is not None:
+        if ("request-proof", identity) in proved:
+            return
+        with span("verify", "request_proof"):
+            check()
+        proved["request-proof", identity] = None
+        return
     scope = _VERIFIED_PROOF_SCOPE.get()
     if scope is not None:
         if identity in scope:
             return
-        if _REUSE_VERIFIED_ARRAYS.get():
-            with _VERIFIED_PROOF_CACHE_LOCK:
-                if identity in _VERIFIED_PROOF_CACHE:
-                    _VERIFIED_PROOF_CACHE.move_to_end(identity)
-                    scope.add(identity)
-                    return
+        with _VERIFIED_PROOF_CACHE_LOCK:
+            if identity in _VERIFIED_PROOF_CACHE:
+                _VERIFIED_PROOF_CACHE.move_to_end(identity)
+                scope.add(identity)
+                return
     with span("verify", "request_proof"):
         check()
     if scope is not None:
         scope.add(identity)
-        if _REUSE_VERIFIED_ARRAYS.get():
-            with _VERIFIED_PROOF_CACHE_LOCK:
-                _VERIFIED_PROOF_CACHE[identity] = None
-                _VERIFIED_PROOF_CACHE.move_to_end(identity)
-                while len(_VERIFIED_PROOF_CACHE) > _VERIFIED_PROOF_CACHE_LIMIT:
-                    _VERIFIED_PROOF_CACHE.popitem(last=False)
+        with _VERIFIED_PROOF_CACHE_LOCK:
+            _VERIFIED_PROOF_CACHE[identity] = None
+            _VERIFIED_PROOF_CACHE.move_to_end(identity)
+            while len(_VERIFIED_PROOF_CACHE) > _VERIFIED_PROOF_CACHE_LIMIT:
+                _VERIFIED_PROOF_CACHE.popitem(last=False)
 
 
 class _Copied:
@@ -823,9 +371,8 @@ def verified_request_value[T](
 ) -> T:
     """Memoize one immutable, validated value under local and optional process byte bounds.
 
-    Owners must re-read and fully verify every current source artifact before calling
-    this helper. The identity must bind the owner namespace, exact content commitments,
-    and the source file's resolved path and identity. Builders that raise are never cached.
+    The identity binds the owner namespace, exact content commitments and the source
+    file's resolved path. Builders that raise are never cached; full proof builds once per proof.
     Values larger than either cache's byte limit are returned uncached. The two limits apply
     separately; active requests and caller-held references can keep evicted bytes alive.
 
@@ -835,13 +382,16 @@ def verified_request_value[T](
     where that copy is cheap against rebuilding the value.
     """
     key = tuple(identity)
+    proved = _FULL_PROOF.get()
+    if proved is not None:
+        return _proved_request_value(proved, key, builder, nbytes, copy_mutable=copy_mutable)
     scope = _VERIFIED_ARRAY_SCOPE.get()
     if scope is not None and key in scope:
         value, _ = scope[key]
         scope.move_to_end(key)
         return cast(T, _handed(value))
 
-    if scope is not None and _REUSE_VERIFIED_ARRAYS.get():
+    if scope is not None:
         global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
         with _VERIFIED_ARRAY_CACHE_LOCK:
             cached = _VERIFIED_ARRAY_CACHE.get(key)
@@ -870,13 +420,35 @@ def verified_request_value[T](
         return value
     if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         _remember_request_value(scope, key, kept, size)
-    if (
-        _REUSE_VERIFIED_ARRAYS.get()
-        and not _VERIFIED_SOURCE_BUILD.get()
-        and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES
-    ):
+    if not _VERIFIED_SOURCE_BUILD.get() and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
         _remember_process_value(key, kept, size)
     return cast(T, _handed(kept))
+
+
+def _proved_request_value[T](
+    proved: dict[tuple[object, ...], object],
+    key: tuple[object, ...],
+    builder: Callable[[], T],
+    nbytes: int | Callable[[T], int],
+    *,
+    copy_mutable: bool,
+) -> T:
+    """One full proof's value: built once inside it, never answered from what was kept before."""
+    if ("request-value", key) in proved:
+        return cast(T, _handed(proved["request-value", key]))
+    value = builder()
+    size = nbytes(value) if callable(nbytes) else nbytes
+    if size < 0:
+        raise ValueError("content_store.verified_value_size_invalid")
+    if size > _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
+        return value
+    if _immutable_request_value(value):
+        proved["request-value", key] = value
+    elif copy_mutable:
+        proved["request-value", key] = _Copied(value)
+    else:
+        return value
+    return cast(T, _handed(proved["request-value", key]))
 
 
 def _remember_request_value(
@@ -892,54 +464,31 @@ def _remember_request_value(
     scope[key] = (value, size)
 
 
-def _remember_process_value(
-    key: _VERIFIED_ARRAY_KEY,
-    value: object,
-    size: int,
-    *,
-    leases: tuple[_WindowsReadLease, ...] = (),
-) -> None:
+def _remember_process_value(key: _VERIFIED_ARRAY_KEY, value: object, size: int) -> None:
     global _VERIFIED_ARRAY_CACHE_BYTES, _VERIFIED_ARRAY_PROCESS_CACHE_EVICTIONS
     with _VERIFIED_ARRAY_CACHE_LOCK:
         previous = _VERIFIED_ARRAY_CACHE.pop(key, None)
-        _close_source_leases(key)
         if previous is not None:
             _VERIFIED_ARRAY_CACHE_BYTES -= previous[1]
         while (
             _VERIFIED_ARRAY_CACHE
             and _VERIFIED_ARRAY_CACHE_BYTES + size > _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES
         ):
-            evicted_key, (_, evicted_size) = _VERIFIED_ARRAY_CACHE.popitem(last=False)
-            _close_source_leases(evicted_key)
+            _evicted, (_, evicted_size) = _VERIFIED_ARRAY_CACHE.popitem(last=False)
             _VERIFIED_ARRAY_CACHE_BYTES -= evicted_size
             _VERIFIED_ARRAY_PROCESS_CACHE_EVICTIONS += 1
         if size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
             _VERIFIED_ARRAY_CACHE[key] = (value, size)
             _VERIFIED_ARRAY_CACHE_BYTES += size
-            if leases:
-                while (
-                    _VERIFIED_SOURCE_LEASES
-                    and sum(len(held) for held in _VERIFIED_SOURCE_LEASES.values()) + len(leases)
-                    > VERIFIED_SOURCE_LEASE_LIMIT
-                ):
-                    prior = next(iter(_VERIFIED_SOURCE_LEASES))
-                    _close_source_leases(prior)
-                    _VERIFIED_ARRAY_CACHE_BYTES -= _VERIFIED_ARRAY_CACHE.pop(prior)[1]
-                    _VERIFIED_ARRAY_PROCESS_CACHE_EVICTIONS += 1
-                _VERIFIED_SOURCE_LEASES[key] = leases
 
 
 def verified_npz_arrays(
     payload: bytes, *, identity: tuple[object, ...]
 ) -> dict[str, npt.NDArray[Any]]:
-    """Decode an already verified NPZ once per exact request or opted-in process identity.
+    """Decode a sealed NPZ once per exact identity, in the request and the process memo.
 
-    Callers must read and fully hash the current file on every invocation before
-    calling this function, and include that same-read digest, expected artifact
-    hash, resolved path, file identity and owner namespace in ``identity``. This
-    function does not grant verification or current-pointer authority. It only
-    avoids repeating NPZ inflation after those checks have succeeded. Cross-request
-    reuse is available only within ``verified_array_read_scope(reuse_verified=True)``.
+    ``identity`` names the owner namespace, the artifact's content hash and its resolved
+    path. This grants no current-pointer authority; it only avoids repeating NPZ inflation.
 
     Returned mappings are fresh shells. Their arrays are backed by immutable
     ``bytes`` so neither array flags nor mutation through a shared view can alter
@@ -973,26 +522,69 @@ def verified_npz_arrays(
 
 
 @contextmanager
-def verified_model_read_scope(*, reuse_verified: bool = False) -> Iterator[None]:
-    """Share verified immutable JSON models during one request, optionally across reads.
+def verified_model_read_scope() -> Iterator[None]:
+    """Share validated immutable JSON models during one request; nested scopes join it.
 
-    Nested owner scopes join the outer request and cannot widen its across-request policy.
-    A separate bounded process cache is consulted only when the outer scope explicitly opts
-    in; ordinary execution and write paths therefore keep validating from disk.
+    A bounded process cache answers outside full proof as well, since a sealed model's bytes
+    never change under its name.
     """
-    with verified_array_read_scope(reuse_verified=reuse_verified):
+    with verified_array_read_scope():
         if _VERIFIED_MODEL_SCOPE.get() is not None:
             yield
             return
         scope: dict[_VERIFIED_MODEL_KEY, BaseModel] = {}
         scope_token = _VERIFIED_MODEL_SCOPE.set(scope)
-        reuse_token = _REUSE_VERIFIED_MODELS.set(reuse_verified)
         try:
             yield
         finally:
             scope.clear()
-            _REUSE_VERIFIED_MODELS.reset(reuse_token)
             _VERIFIED_MODEL_SCOPE.reset(scope_token)
+
+
+def _file_identity(path: Path) -> tuple[object, ...] | None:
+    """The file now at ``path`` for its lifetime, or None when none can be named there.
+
+    A kept value is bound to it, so a file gone from its path, or another file put there, is read
+    again rather than answered from memory: a test's numbered tmp_path is reused once pytest
+    removes a passing test's folder, and a restored workspace sits at its old path. A sealed file
+    rewritten in place is still the same file: an ordinary read keeps the bytes proved when they
+    entered, and full proof refuses the change (EV2).
+
+    Linux gives a freed inode number to the next new file at once, so there the file is named by
+    its file handle, the inode number with its generation (name_to_handle_at). Elsewhere the file
+    id, which NTFS and APFS do not give again at once, is bound to the file's creation time. A
+    file system that names no handle (9p, an overlay without one) keeps nothing."""
+    try:
+        if sys.platform == "linux":
+            return _file_handle(path)
+        stat = os.stat(path)
+        return (stat.st_dev, stat.st_ino, stat.st_birthtime)
+    except OSError:
+        return None
+
+
+class _FileHandle(ctypes.Structure):
+    """Linux's struct file_handle, with room for the largest handle (MAX_HANDLE_SZ)."""
+
+    _fields_ = [
+        ("handle_bytes", ctypes.c_uint),
+        ("handle_type", ctypes.c_int),
+        ("f_handle", ctypes.c_ubyte * 128),
+    ]
+
+
+_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform == "linux" else None
+
+
+def _file_handle(path: Path) -> tuple[object, ...] | None:
+    """The mount and file handle of the file at ``path``, following a link as os.stat does."""
+    handle, mount = _FileHandle(handle_bytes=128), ctypes.c_int()
+    named = getattr(_LIBC, "name_to_handle_at", None)
+    at_cwd, follow = -100, 0x400  # AT_FDCWD, AT_SYMLINK_FOLLOW
+    pointers = (ctypes.byref(handle), ctypes.byref(mount))
+    if named is None or named(at_cwd, os.fsencode(path), *pointers, follow):
+        return None
+    return (mount.value, handle.handle_type, bytes(handle.f_handle[: handle.handle_bytes]))
 
 
 def _deeply_immutable_model(value: BaseModel) -> bool:
@@ -1057,39 +649,20 @@ def _immutable_request_value(value: object) -> bool:
     return False
 
 
-def _verified_model_file_identity(path: Path, payload: bytes) -> tuple[object, ...] | None:
-    """Bind reuse to the resolved file, stat identity and exact bytes read this time."""
-    try:
-        resolved = path.resolve(strict=False)
-        info = path.stat()
-    except OSError:
-        return None
-    return (
-        os.fspath(resolved),
-        info.st_dev,
-        info.st_ino,
-        info.st_size,
-        info.st_mtime_ns,
-        info.st_ctime_ns,
-        hashlib.sha256(payload).hexdigest(),
-    )
-
-
 def _verified_model_get(key: _VERIFIED_MODEL_KEY) -> BaseModel | None:
     scope = _VERIFIED_MODEL_SCOPE.get()
-    if scope is not None:
-        value = scope.get(key)
+    if scope is None or _FULL_PROOF.get() is not None:
+        return None
+    value = scope.get(key)
+    if value is not None:
+        return value
+    with _VERIFIED_MODEL_CACHE_LOCK:
+        value = _VERIFIED_MODEL_CACHE.get(key)
         if value is not None:
-            return value
-        if _REUSE_VERIFIED_MODELS.get():
-            with _VERIFIED_MODEL_CACHE_LOCK:
-                value = _VERIFIED_MODEL_CACHE.get(key)
-                if value is not None:
-                    _VERIFIED_MODEL_CACHE.move_to_end(key)
-            if value is not None:
-                _verified_model_put(scope, key, value)
-                return value
-    return None
+            _VERIFIED_MODEL_CACHE.move_to_end(key)
+    if value is not None:
+        scope[key] = value
+    return value
 
 
 def _verified_model_put(
@@ -1098,12 +671,11 @@ def _verified_model_put(
     value: BaseModel,
 ) -> None:
     scope[key] = value
-    if _REUSE_VERIFIED_MODELS.get():
-        with _VERIFIED_MODEL_CACHE_LOCK:
-            _VERIFIED_MODEL_CACHE[key] = value
-            _VERIFIED_MODEL_CACHE.move_to_end(key)
-            while len(_VERIFIED_MODEL_CACHE) > _VERIFIED_MODEL_CACHE_LIMIT:
-                _VERIFIED_MODEL_CACHE.popitem(last=False)
+    with _VERIFIED_MODEL_CACHE_LOCK:
+        _VERIFIED_MODEL_CACHE[key] = value
+        _VERIFIED_MODEL_CACHE.move_to_end(key)
+        while len(_VERIFIED_MODEL_CACHE) > _VERIFIED_MODEL_CACHE_LIMIT:
+            _VERIFIED_MODEL_CACHE.popitem(last=False)
 
 
 def replace_shared_file(staged: Path, destination: Path) -> None:
@@ -1317,10 +889,16 @@ class ContentAddressedStore:
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.json"
         scope = _VERIFIED_MODEL_SCOPE.get()
-        cacheable = scope is not None and model.model_config.get("frozen")
+        fact = _file_identity(target) if scope is not None else None
+        cacheable = fact is not None and model.model_config.get("frozen")
+
+        key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
 
         def verify() -> ContractT:
-            file_identity = None
+            if cacheable:
+                kept = _verified_model_get(key)
+                if kept is not None:
+                    return cast(ContractT, kept)
             try:
                 with span("read", "model"):
                     payload = target.read_bytes()
@@ -1330,13 +908,6 @@ class ContentAddressedStore:
                 ) from error
             except Exception as error:
                 raise ContentAddressedStoreError("content_store.artifact_tampered") from error
-            if cacheable:
-                file_identity = _verified_model_file_identity(target, payload)
-                if file_identity is not None:
-                    key = (*file_identity, content_hash, model, identity_field)
-                    kept = _verified_model_get(key)
-                    if kept is not None:
-                        return cast(ContractT, kept)
             try:
                 with span("serialize", "model_validate"):
                     value = model.model_validate_json(payload)
@@ -1344,7 +915,7 @@ class ContentAddressedStore:
                 raise ContentAddressedStoreError("content_store.artifact_tampered") from error
             if getattr(value, identity_field) != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
-            if cacheable and file_identity is not None and _deeply_immutable_model(value):
+            if cacheable and _deeply_immutable_model(value):
                 assert scope is not None
                 _verified_model_put(scope, key, value)
             return cast(ContractT, value)
@@ -1414,9 +985,11 @@ class ContentAddressedStore:
         return (self.root / category / f"{content_hash}.parquet").is_file()
 
     def load_columns(self, *, category: str, content_hash: str) -> dict[str, npt.NDArray[Any]]:
-        """Read one table's columns, flat, and prove they are the ones its digest names."""
+        """Read one table's columns, flat; in full proof, prove its digest names them."""
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
+        if _FULL_PROOF.get() is None:
+            return self._columns(target)
         kind = _column_kind(self)
         stat = os.stat(target) if target.is_file() else None
         columns, content = self._stable_columns(target)
@@ -1434,6 +1007,10 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.parquet"
+        if _FULL_PROOF.get() is None:
+            if not target.is_file():
+                return self._legacy(category, content_hash)
+            return b"".join(values.tobytes() for values in self._columns(target).values())
         kind = _column_kind(self)
         if not target.is_file():
             payload, stat = self._legacy(category, content_hash), None
@@ -1463,7 +1040,10 @@ class ContentAddressedStore:
         return content_hash
 
     def load_document(self, *, category: str, content_hash: str, extension: str) -> bytes:
-        """Read one document and prove it is the one asked for; a legacy store's is ``.bin``."""
+        """Read one document; in full proof, prove it is the one asked for.
+
+        A legacy store's is ``.bin``.
+        """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.{extension}"
         try:
@@ -1471,6 +1051,8 @@ class ContentAddressedStore:
                 payload = target.read_bytes()
         except FileNotFoundError:
             payload = self._legacy(category, content_hash)
+        if _FULL_PROOF.get() is None:
+            return payload
         with span("hash", "document"):
             if hashlib.sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
@@ -1688,12 +1270,13 @@ class CommittedIndex:
 
 
 __all__ = [
-    "VERIFIED_SOURCE_LEASE_LIMIT",
     "CommittedIndex",
     "CommittedKind",
     "ContentAddressedStore",
     "ContentAddressedStoreError",
     "columns_digest",
+    "full_content_proof",
+    "full_proof",
     "verified_array_read_scope",
     "verified_model_read_scope",
     "verified_npz_arrays",

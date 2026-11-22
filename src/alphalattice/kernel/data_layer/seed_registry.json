@@ -1,0 +1,1140 @@
+{
+  "schema": "alphalattice.data_layer.seed_registry.v1",
+  "note": "The definitions 0.2.8 starts with, each version 1 of a definition lineage in log.sqlite, whose id the Host mints and records at seeding (from the 0.2.8 reference schemas' definitions). A family's spec is contract content the Host checks for form.",
+  "families": {
+    "event_type": "what may be written to the log, and the shape of its attributes",
+    "artifact_type": "what an artifact is, where its body lives and which measures every one of its kind records",
+    "metric": "how a measure is computed; a recorded value names the version it was made under",
+    "method": "a computation a recipe names; its version moves only when its values move",
+    "feature_set": "the factors of one wide derived table",
+    "source": "an outside data source: its world table, its key and its fields",
+    "lag_rule": "how long after its valid date a source's row became known, for rows with no known time of their own",
+    "tag": "a tag key and the values it admits",
+    "node": "a module: what it provides, uses, emits and owns",
+    "provider": "an outside data provider; world rows name it by its lineage's id",
+    "sector_scheme": "a sector classification; world.sector rows name it by its lineage's id",
+    "universe": "a set of listings over time; world.universe_member rows name it by its lineage's id",
+    "world_table": "a world table of the catalog; world.superseded names it by its lineage's id"
+  },
+  "event_types": [
+    {
+      "name": "registry.seeded",
+      "work": false,
+      "subject": null,
+      "required": [
+        "count"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "The seed definitions were registered."
+    },
+    {
+      "name": "registry.seeded",
+      "version": 2,
+      "relation": "not_comparable",
+      "work": false,
+      "subject": null,
+      "required": [
+        "count"
+      ],
+      "text": "required",
+      "durable": false,
+      "description": "The seed definitions were registered with the lineage ids in the event text."
+    },
+    {
+      "name": "definition.registered",
+      "work": false,
+      "subject": "definition",
+      "required": [
+        "family",
+        "name",
+        "version"
+      ],
+      "text": "required",
+      "durable": false,
+      "description": "A definition version was added; its text is the definition's canonical JSON."
+    },
+    {
+      "name": "definition.status_changed",
+      "work": false,
+      "subject": "definition",
+      "required": [
+        "family",
+        "name",
+        "version",
+        "status"
+      ],
+      "text": "optional",
+      "durable": false,
+      "description": "A version became standard, deprecated or superseded."
+    },
+    {
+      "name": "definition.renamed",
+      "work": false,
+      "subject": "definition",
+      "required": [
+        "family",
+        "name",
+        "to"
+      ],
+      "text": "optional",
+      "durable": false,
+      "description": "A definition lineage took a new name; its id, versions and every name it held stay."
+    },
+    {
+      "name": "workspace.created",
+      "work": false,
+      "subject": "workspace",
+      "required": [
+        "name"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A workspace tag was made."
+    },
+    {
+      "name": "workspace.opened",
+      "work": false,
+      "subject": "workspace",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "A workspace was opened."
+    },
+    {
+      "name": "workspace.status_changed",
+      "work": false,
+      "subject": "workspace",
+      "required": [
+        "status"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A workspace was archived, lost or deleted."
+    },
+    {
+      "name": "setting.changed",
+      "work": false,
+      "subject": "setting",
+      "required": [
+        "scope",
+        "key"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person changed a setting."
+    },
+    {
+      "name": "goal.set",
+      "work": false,
+      "subject": "goal",
+      "required": [
+        "title"
+      ],
+      "text": "optional",
+      "durable": true,
+      "description": "A goal was set."
+    },
+    {
+      "name": "goal.closed",
+      "work": false,
+      "subject": "goal",
+      "required": [
+        "state"
+      ],
+      "text": "optional",
+      "durable": false,
+      "description": "A goal was met or dropped."
+    },
+    {
+      "name": "task.requested",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "type",
+        "product_version",
+        "input_hash",
+        "plan_hash",
+        "workflow_definition_hash",
+        "admitted_at"
+      ],
+      "text": "optional",
+      "durable": true,
+      "description": "A Task was admitted; its text is the frozen request it was admitted to do, and its record follows (`task.saved`)."
+    },
+    {
+      "name": "task.requested",
+      "version": 2,
+      "relation": "not_comparable",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "type",
+        "product_version",
+        "input_hash",
+        "plan_hash",
+        "workflow_definition_hash",
+        "admitted_at"
+      ],
+      "text": "optional",
+      "durable": true,
+      "description": "A Task was admitted under its one parent: `parent_task_id`, else `goal_id`, else neither (its workspace); its text is the frozen request, and its record follows (`task.saved`)."
+    },
+    {
+      "name": "task",
+      "work": true,
+      "subject": "task",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "One execution of a task; it also records `started`."
+    },
+    {
+      "name": "step.completed",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "step"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "A slow step, or one with an outside effect, finished; a restart skips it."
+    },
+    {
+      "name": "wait.started",
+      "work": false,
+      "subject": "wait",
+      "required": [
+        "task_id",
+        "kind",
+        "purpose"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A task began to wait for an event or a time."
+    },
+    {
+      "name": "wait.resolved",
+      "work": false,
+      "subject": "wait",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "The wait ended."
+    },
+    {
+      "name": "task.saved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "lifecycle",
+        "updated_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's record, its text, was sealed at its next version."
+    },
+    {
+      "name": "work_item.saved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "stage_id",
+        "lifecycle",
+        "updated_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's work item, its text, was sealed at its next version; its first save names its place."
+    },
+    {
+      "name": "task.noted",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "event_id",
+        "sequence",
+        "kind",
+        "recorded_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "Task Control noted what happened to a Task, its details the text: a transition, a wake, a recovery link, an admission subject."
+    },
+    {
+      "name": "execution.started",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "execution_id",
+        "graph_thread_id",
+        "worker_instance_id",
+        "compatibility_hash",
+        "started_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "An execution of a Task, its text, began on a bound worker."
+    },
+    {
+      "name": "stage.verified",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "receipt_hash",
+        "execution_id",
+        "stage_id",
+        "observed_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A Task's stage was verified by its receipt, the text."
+    },
+    {
+      "name": "command.accepted",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "command_id",
+        "command_hash",
+        "accepted_at"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A command on a Task, its text, was accepted against the version it confirmed."
+    },
+    {
+      "name": "command.resolved",
+      "work": false,
+      "subject": "task",
+      "required": [
+        "command_id",
+        "resolved_at",
+        "resolution"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "An accepted command was resolved."
+    },
+    {
+      "name": "admission",
+      "work": true,
+      "subject": "admission",
+      "required": [
+        "provider",
+        "dataset"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "The step that fetched, checked and wrote outside data."
+    },
+    {
+      "name": "admission.committed",
+      "work": false,
+      "subject": "admission",
+      "required": [
+        "provider_id",
+        "dataset",
+        "row_count",
+        "catalog_snapshot",
+        "known_us"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "Outside data entered the world; the catalog commit carried this event, and the store's repair appends it again from that commit."
+    },
+    {
+      "name": "selection.made",
+      "work": false,
+      "subject": "selection",
+      "required": [
+        "cutoff_us"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "What a piece of research may see was fixed."
+    },
+    {
+      "name": "recipe.defined",
+      "work": false,
+      "subject": "recipe",
+      "required": [
+        "method",
+        "method_version",
+        "params",
+        "recipe_key"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "An action's definition was first used."
+    },
+    {
+      "name": "hypothesis.stated",
+      "work": false,
+      "subject": "hypothesis",
+      "required": [],
+      "text": "required",
+      "durable": false,
+      "description": "A hypothesis was stated; its text is the statement."
+    },
+    {
+      "name": "hypothesis.standing_changed",
+      "work": false,
+      "subject": "hypothesis",
+      "required": [
+        "standing"
+      ],
+      "text": "optional",
+      "durable": false,
+      "description": "Evidence moved a hypothesis's standing; trial_id names the trial that moved it."
+    },
+    {
+      "name": "trial.registered",
+      "work": false,
+      "subject": "trial",
+      "required": [
+        "selection_id",
+        "recipe_key",
+        "seeds",
+        "product_version"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A trial was registered before it ran, with its state summary."
+    },
+    {
+      "name": "trial",
+      "work": true,
+      "subject": "trial",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "The trial's run; it also records `started`."
+    },
+    {
+      "name": "artifact.produced",
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "type",
+        "type_version",
+        "meaning",
+        "storage",
+        "identity_kind"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "An artifact was made; these attributes are its profile."
+    },
+    {
+      "name": "result.recorded",
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "measures"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "Measures of an artifact: a list of metric, version, dims and value."
+    },
+    {
+      "name": "artifact.collected",
+      "work": false,
+      "subject": "artifact",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "An artifact's body was removed; its profile and measures stay."
+    },
+    {
+      "name": "conclusion.drawn",
+      "work": false,
+      "subject": null,
+      "required": [],
+      "text": "required",
+      "durable": false,
+      "description": "A conclusion about its subject (a trial, a hypothesis, a goal)."
+    },
+    {
+      "name": "lesson.recorded",
+      "work": false,
+      "subject": null,
+      "required": [],
+      "text": "required",
+      "durable": false,
+      "description": "A lesson for later work, about its subject."
+    },
+    {
+      "name": "proposal.made",
+      "work": false,
+      "subject": null,
+      "required": [],
+      "text": "required",
+      "durable": false,
+      "description": "An agent proposed something for the person to decide."
+    },
+    {
+      "name": "review.completed",
+      "work": false,
+      "subject": null,
+      "required": [
+        "verdict"
+      ],
+      "text": "required",
+      "durable": false,
+      "description": "A review of its subject: an agent's note on a trial, task or goal, whose text holds its hypothesis, method, conclusion and lessons and whose attributes its verdict and its run's aggregates. It closes what it reviews."
+    },
+    {
+      "name": "experience.recorded",
+      "work": false,
+      "subject": "experience",
+      "required": [
+        "version",
+        "note_seq",
+        "body",
+        "size",
+        "renderer_version",
+        "known_us"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A review's note rendered into one experience body (blobs/, by its BLAKE3): version 1 makes the experience and points its layer at it, replacing the one before; a later version renders the same note anew. task_id names the task that made it."
+    },
+    {
+      "name": "knowledge.revision_published",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_source",
+      "required": ["source_id", "kind", "version_id", "version", "known_us", "body_digest", "membership_id", "document_id", "revision"],
+      "text": "required",
+      "durable": true,
+      "description": "A source version and its workspace membership. Text carries publication metadata and, for a reference only, its body; evidence and experience keep their authority's source id and body."
+    },
+    {
+      "name": "knowledge.source_retired",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_source",
+      "required": ["known_us"],
+      "text": "none",
+      "durable": true,
+      "description": "A source is no longer current from its authority's known time; its earlier versions remain readable."
+    },
+    {
+      "name": "knowledge.snapshot_published",
+      "first_seed_count": 123,
+      "work": false,
+      "subject": "knowledge_snapshot",
+      "required": ["reference_id"],
+      "text": "required",
+      "durable": true,
+      "description": "An immutable workspace snapshot and its ordered source-version links, rebuilt from this event."
+    },
+    {
+      "name": "decision.made",
+      "work": false,
+      "subject": "decision",
+      "required": [
+        "kind",
+        "chosen",
+        "alternatives"
+      ],
+      "text": "required",
+      "durable": true,
+      "description": "A decision, the alternatives weighed and, as text, the reasons."
+    },
+    {
+      "name": "prediction.registered",
+      "work": false,
+      "subject": "prediction",
+      "required": [
+        "target",
+        "horizon_us",
+        "confidence"
+      ],
+      "text": "required",
+      "durable": false,
+      "description": "A prediction was registered before its outcome."
+    },
+    {
+      "name": "outcome.observed",
+      "work": false,
+      "subject": null,
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "What happened at the horizon, for its subject."
+    },
+    {
+      "name": "prediction.scored",
+      "work": false,
+      "subject": "prediction",
+      "required": [
+        "score",
+        "metric",
+        "metric_version"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A prediction was scored against its outcome."
+    },
+    {
+      "name": "feedback.given",
+      "work": false,
+      "subject": null,
+      "required": [
+        "adopted"
+      ],
+      "text": "optional",
+      "durable": true,
+      "description": "The person adopted its subject or did not, read from what they did."
+    },
+    {
+      "name": "tag.added",
+      "work": false,
+      "subject": null,
+      "required": [
+        "key",
+        "value"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A research-memory key was put on its subject."
+    },
+    {
+      "name": "tag.removed",
+      "work": false,
+      "subject": null,
+      "required": [
+        "key",
+        "value"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "A wrong key was taken off its subject."
+    },
+    {
+      "name": "trial.kept",
+      "work": false,
+      "subject": "trial",
+      "required": [],
+      "text": "none",
+      "durable": true,
+      "description": "The person keeps a trial's artifacts."
+    },
+    {
+      "name": "book.activated",
+      "work": false,
+      "subject": "book",
+      "required": [
+        "mode"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "A strategy book went active, on paper or live."
+    },
+    {
+      "name": "book.rebalanced",
+      "work": false,
+      "subject": "book",
+      "required": [
+        "holding_artifact"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "An active book's target holdings moved to a new artifact."
+    },
+    {
+      "name": "book.retired",
+      "work": false,
+      "subject": "book",
+      "required": [],
+      "text": "optional",
+      "durable": true,
+      "description": "A book was retired."
+    },
+    {
+      "name": "artifact.held",
+      "work": false,
+      "subject": "artifact",
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "A workspace keeps an artifact's body: its live_ref until the workspace lets it go."
+    },
+    {
+      "name": "artifact.pinned",
+      "first_seed_count": 107,
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "pin_id"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person pins an artifact's body: the pin `pin_id` holds it until it is unpinned."
+    },
+    {
+      "name": "artifact.unpinned",
+      "first_seed_count": 107,
+      "work": false,
+      "subject": "artifact",
+      "required": [
+        "pin_id"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person lets the pin `pin_id` go; the body is collected once nothing holds it."
+    },
+    {
+      "name": "publication.released",
+      "work": false,
+      "subject": "artifact",
+      "required": [],
+      "text": "none",
+      "durable": true,
+      "description": "An artifact was published outside the machine."
+    },
+    {
+      "name": "ledger.posted",
+      "work": false,
+      "subject": "book",
+      "required": [
+        "lines"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "A fill, a fee or a cash movement: balanced ledger lines."
+    },
+    {
+      "name": "record.forgotten",
+      "work": false,
+      "subject": null,
+      "required": [
+        "seq"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "The person had a record's text removed; this tombstone stays."
+    },
+    {
+      "name": "chain.checkpointed",
+      "work": false,
+      "subject": null,
+      "required": [
+        "kind",
+        "seq",
+        "head"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "The chain head was kept: monthly, in a backup or in an export."
+    },
+    {
+      "name": "backup.made",
+      "work": false,
+      "subject": null,
+      "required": [
+        "seq",
+        "head"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "A backup finished; it holds the chain head of its moment."
+    },
+    {
+      "name": "agent.turn",
+      "work": true,
+      "subject": null,
+      "required": [],
+      "text": "none",
+      "durable": false,
+      "description": "One turn of an agent."
+    },
+    {
+      "name": "model.call",
+      "work": true,
+      "subject": null,
+      "required": [
+        "gen_ai.request.model"
+      ],
+      "text": "none",
+      "durable": true,
+      "description": "A model call: its metadata under OpenTelemetry's GenAI names, never its transcript."
+    },
+    {
+      "name": "tool.call",
+      "work": true,
+      "subject": null,
+      "required": [
+        "tool"
+      ],
+      "text": "none",
+      "durable": false,
+      "description": "An agent's call into the product."
+    }
+  ],
+  "metrics": [
+    {
+      "name": "alpha_development_target",
+      "first_seed_count": 119,
+      "unit": "target units",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's transformed Alpha development target."
+    },
+    {
+      "name": "alpha_development_economic_return",
+      "first_seed_count": 119,
+      "unit": "ratio",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's Alpha development economic return."
+    },
+    {
+      "name": "alpha_development_score",
+      "first_seed_count": 119,
+      "unit": "score",
+      "direction": "none",
+      "params": {},
+      "description": "An observation's published Alpha development forecast."
+    },
+    {
+      "name": "alpha_mae",
+      "first_seed_count": 119,
+      "unit": "target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean absolute prediction error on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_mse",
+      "first_seed_count": 119,
+      "unit": "squared target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean squared prediction error on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_zero_relative_oos_r2",
+      "first_seed_count": 119,
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {},
+      "description": "Out-of-sample R-squared against the zero forecast on Alpha's common comparison surface."
+    },
+    {
+      "name": "alpha_gross_decile_spread",
+      "first_seed_count": 119,
+      "unit": "target units",
+      "direction": "higher",
+      "params": {},
+      "description": "Mean gross top-minus-bottom decile target spread across Alpha formation sessions."
+    },
+    {
+      "name": "alpha_formation_decile_turnover",
+      "first_seed_count": 119,
+      "unit": "ratio",
+      "direction": "lower",
+      "params": {},
+      "description": "Mean one-way decile turnover between consecutive Alpha formation sessions."
+    },
+    {
+      "name": "alpha_fold_mse_std",
+      "first_seed_count": 119,
+      "unit": "squared target units",
+      "direction": "lower",
+      "params": {},
+      "description": "Standard deviation of mean squared error across Alpha development folds."
+    },
+    {
+      "name": "n_obs",
+      "unit": "count",
+      "direction": "none",
+      "params": {},
+      "description": "Observations the artifact covers."
+    },
+    {
+      "name": "ann_return",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {
+        "periods": 252
+      },
+      "description": "Annualized mean of daily returns."
+    },
+    {
+      "name": "ann_vol",
+      "unit": "ratio",
+      "direction": "lower",
+      "params": {
+        "periods": 252
+      },
+      "description": "Annualized standard deviation of daily returns."
+    },
+    {
+      "name": "sharpe",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {
+        "periods": 252,
+        "risk_free": 0.0
+      },
+      "description": "Annualized mean excess daily return over its standard deviation."
+    },
+    {
+      "name": "max_drawdown",
+      "unit": "ratio",
+      "direction": "lower",
+      "params": {},
+      "description": "The largest peak-to-trough fall of the net value, as a positive fraction."
+    },
+    {
+      "name": "turnover",
+      "unit": "ratio",
+      "direction": "lower",
+      "params": {
+        "periods": 252
+      },
+      "description": "Annualized one-way turnover of the holdings."
+    },
+    {
+      "name": "cost_bps",
+      "unit": "bps",
+      "direction": "lower",
+      "params": {},
+      "description": "Trading cost charged, in basis points a year."
+    },
+    {
+      "name": "ic_mean",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {
+        "rank": true
+      },
+      "description": "Mean rank correlation of the score with the forward return; dims carry the horizon."
+    },
+    {
+      "name": "ic_ir",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {
+        "rank": true
+      },
+      "description": "Mean of the information coefficient over its standard deviation."
+    },
+    {
+      "name": "hit_rate",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {},
+      "description": "Share of periods with a positive return."
+    },
+    {
+      "name": "brier",
+      "unit": "score",
+      "direction": "lower",
+      "params": {},
+      "description": "Squared error of a stated probability against the outcome."
+    },
+    {
+      "name": "coverage",
+      "unit": "ratio",
+      "direction": "higher",
+      "params": {},
+      "description": "Share of the universe the artifact has a value for."
+    }
+  ],
+  "artifact_types": [
+    {
+      "name": "alpha_development_chunk",
+      "first_seed_count": 119,
+      "storage": "table",
+      "table": "results.breakdown",
+      "measures": [
+        "alpha_development_target",
+        "alpha_development_economic_return",
+        "alpha_development_score"
+      ],
+      "keep": "while_active",
+      "description": "The sealed validation or score rows of one Alpha development chunk."
+    },
+    {
+      "name": "alpha_development_summary",
+      "first_seed_count": 119,
+      "storage": "none",
+      "table": null,
+      "measures": [
+        "alpha_mae",
+        "alpha_mse",
+        "alpha_zero_relative_oos_r2",
+        "alpha_gross_decile_spread",
+        "alpha_formation_decile_turnover",
+        "alpha_fold_mse_std",
+        "coverage",
+        "ic_mean",
+        "ic_ir",
+        "n_obs"
+      ],
+      "keep": "while_active",
+      "description": "The measures of one sealed Alpha candidate development report."
+    },
+    {
+      "name": "backtest",
+      "storage": "table",
+      "table": "results.series",
+      "measures": [
+        "n_obs",
+        "ann_return",
+        "ann_vol",
+        "sharpe",
+        "max_drawdown",
+        "turnover",
+        "cost_bps",
+        "hit_rate"
+      ],
+      "keep": "7d",
+      "description": "A simulated book's net value over a period."
+    },
+    {
+      "name": "alpha_score",
+      "storage": "table",
+      "table": "results.alpha_score",
+      "measures": [
+        "n_obs",
+        "coverage",
+        "ic_mean",
+        "ic_ir"
+      ],
+      "keep": "7d",
+      "description": "A score per listing and date."
+    },
+    {
+      "name": "array",
+      "storage": "blob",
+      "table": null,
+      "measures": [],
+      "keep": "while_active",
+      "description": "An array with no coordinates (a numerical lane's columns), its body kept once per machine."
+    },
+    {
+      "name": "holding",
+      "storage": "table",
+      "table": "results.holding",
+      "measures": [
+        "n_obs",
+        "turnover"
+      ],
+      "keep": "while_active",
+      "description": "Target holdings of a book."
+    },
+    {
+      "name": "model",
+      "storage": "blob",
+      "table": null,
+      "measures": [
+        "n_obs"
+      ],
+      "keep": "while_active",
+      "description": "A fitted model's parameters."
+    },
+    {
+      "name": "report",
+      "storage": "inline",
+      "table": null,
+      "measures": [],
+      "keep": "forever",
+      "description": "A written report for the person."
+    },
+    {
+      "name": "evidence_packet",
+      "storage": "blob",
+      "table": null,
+      "measures": [
+        "n_obs",
+        "coverage"
+      ],
+      "keep": "7d",
+      "description": "The evidence passages selected for one analysis."
+    },
+    {
+      "name": "scratch",
+      "storage": "none",
+      "table": null,
+      "measures": [],
+      "keep": "never",
+      "description": "An intermediate result that is never stored; only its profile and measures are."
+    },
+    {
+      "name": "outcome",
+      "storage": "none",
+      "table": null,
+      "measures": [
+        "n_obs"
+      ],
+      "keep": "never",
+      "description": "What happened after: a trial's or a book's realized measures over a horizon, with dims naming it."
+    }
+  ],
+  "tags": [
+    {
+      "name": "instrument",
+      "values": null,
+      "description": "A listing the subject is about."
+    },
+    {
+      "name": "theme",
+      "values": null,
+      "description": "A research theme, such as momentum or reversal."
+    },
+    {
+      "name": "regime",
+      "values": null,
+      "description": "The market condition the subject was done under."
+    },
+    {
+      "name": "quality",
+      "values": null,
+      "description": "How far the subject can be trusted."
+    }
+  ],
+  "world_tables": [
+    {
+      "name": "market",
+      "first_seed_count": 120,
+      "description": "The catalog's world.market: a Host-minted market identity and its dated MIC names."
+    },
+    {
+      "name": "listing",
+      "description": "The catalog's world.listing."
+    },
+    {
+      "name": "provider_symbol",
+      "description": "The catalog's world.provider_symbol."
+    },
+    {
+      "name": "universe_member",
+      "description": "The catalog's world.universe_member."
+    },
+    {
+      "name": "sector",
+      "description": "The catalog's world.sector."
+    },
+    {
+      "name": "raw_bar",
+      "description": "The catalog's world.raw_bar."
+    },
+    {
+      "name": "corporate_action",
+      "description": "The catalog's world.corporate_action."
+    },
+    {
+      "name": "session",
+      "description": "The catalog's world.session."
+    },
+    {
+      "name": "evidence_doc",
+      "description": "The catalog's world.evidence_doc."
+    }
+  ]
+}

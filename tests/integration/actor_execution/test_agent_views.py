@@ -49,12 +49,17 @@ from alphalattice.protocols.actor_execution.bundles import (
     pack_sections,
     wrap_text,
 )
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
 )
 from tests.alternative_evidence_desk.planted_corpus import _recorded_document
 from tests.alternative_evidence_desk.review_dossiers import _NOW, _dossier, _finding, _issuer
+
+pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
 CODEX_TOOL_OUTPUT_BYTES = 40_000

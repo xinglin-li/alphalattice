@@ -125,7 +125,9 @@ class ResolvedStageSixCovariance:
         for chunk in self.surface.chunks:
             if not any(value in wanted for value in chunk.formation_sessions):
                 continue
-            matrices = unpack_chunk_matrices(store=store, chunk=chunk)
+            matrices = unpack_chunk_matrices(
+                store=store, chunk=chunk, ordered_listing_ids=self.surface.chunk_listing_ids(chunk)
+            )
             for offset, session in enumerate(chunk.formation_sessions):
                 index = wanted.get(session)
                 if index is None:
@@ -191,7 +193,9 @@ class ResolvedStageSixCovariance:
         for chunk in self.surface.chunks:
             if not any(value in wanted for value in chunk.formation_sessions):
                 continue
-            matrices = unpack_chunk_matrices(store=store, chunk=chunk)
+            matrices = unpack_chunk_matrices(
+                store=store, chunk=chunk, ordered_listing_ids=self.surface.chunk_listing_ids(chunk)
+            )
             for offset, session in enumerate(chunk.formation_sessions):
                 position = wanted.get(session)
                 if position is None:

@@ -17,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.structural import (
     _PHYSICAL_NAMESPACE_GROUPS,
     PackageArchitectureRegistry,
@@ -91,7 +92,7 @@ def run(argv: list[object], root: Path, **env: str) -> subprocess.CompletedProce
     exit 127 with its error, never an exception."""
     words = [str(word) for word in argv]
     try:
-        return subprocess.run(
+        return spawn.run(
             words,
             cwd=root,
             capture_output=True,

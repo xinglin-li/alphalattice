@@ -14,8 +14,6 @@ import time
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
@@ -29,6 +27,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     bind_factor_inputs,
+    factor_input_paths,
     read_factor_bundle,
 )
 from alphalattice.interface.local_application.cli_contract import error_projection
@@ -38,31 +37,37 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.data_layer import inputs as kept_inputs
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
+from tests._support.alternative_evidence_desk_fixtures import (
+    review_on_the_store as review_on_the_store,
+)
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
-    _manifest,
-    _request,
     _resolved,
     _Resolver,
 )
+from tests.portfolio_strategy_lab.process_death import crash
 from tests.researcher_methodology_surface.factor_web_support import (
     _alpha_payload,
     _drain_trial,
     _facts,
     _session,
-)
-from tests.researcher_methodology_surface.real_workspace import (
-    publish_causal_outcomes,
+    assert_trial_reads_during_saves,
+    refused_at_the_edges,
 )
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
     keep_seed_links,
+    restore_seed,
     session_workspace,
 )
+from tests.workspace_task_runner.task_control_support import task_log
 
 
 def _wait_for_boundary(process: subprocess.Popen[bytes], marker: Path, timeout: float) -> bool:
@@ -86,6 +91,7 @@ def completed_alpha_seed(alpha_seed, tmp_path_factory):
     """Readback, handoff and Feature trials need this model as input, not another fit."""
 
     def build(root: Path) -> dict:
+        restore_seed(alpha_seed[0])  # the outcome bodies its copy names live in that machine
         copy_workspace(alpha_seed[0], root)
         case = (root, *alpha_seed[1:])
         with _session(root) as live:
@@ -101,7 +107,9 @@ def completed_alpha_seed(alpha_seed, tmp_path_factory):
             assert report["status"] == "EXPERIMENT_PUBLISHED", report
         return {}
 
-    source, _metadata = session_workspace(tmp_path_factory, "completed_alpha", build)
+    source, _metadata = session_workspace(
+        tmp_path_factory, "completed_alpha", build, inputs=alpha_seed[0].parent.name
+    )
     return source, *alpha_seed[1:]
 
 
@@ -124,6 +132,9 @@ def _lightgbm_parameters(seed=1729):
     )
 
 
+# The fixed F120 book supplies exact zero turnover on the embargo HOLDs.
+@pytest.mark.parametrize("input_seed", ["f120"], indirect=True)
+@pytest.mark.usefixtures("review_on_the_store")
 def test_completed_alpha_hands_off_to_portfolio_without_refitting(
     completed_alpha_case, monkeypatch, tmp_path
 ):
@@ -135,7 +146,6 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         AlphaExperimentExecutor,
     )
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
-        LANES,
         SEGMENTS,
         PortfolioExperimentCancelled,
         PortfolioReplaySegment,
@@ -200,6 +210,7 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
         body = _json(live, f"/api/experiments/readback?task_id={task_id}")
         assert body["status"] == "EXPERIMENT_PUBLISHED", body
         assert body["portfolio_source"]["alpha_task_id"] == parent_id
+        assert "risk_surface_hash" not in body["portfolio_source"]  # no Risk study is linked
         holds = [r for r in body["series"] if r["decision_mode"] == "HOLD"]
         assert len(holds) == body["execution_preview"]["hold_session_count"] > 0
         assert all(r["one_way_turnover"] == 0 for r in holds)
@@ -262,13 +273,11 @@ def test_completed_alpha_hands_off_to_portfolio_without_refitting(
             model=PortfolioReplaySegment,
             identity_field="segment_hash",
         )
-        path = next((store.root / LANES).glob(f"{segment.lanes['executed']}.*"))
+        path = history.array_body_path(segment.lanes["executed"])
         content = path.read_bytes()
         try:
-            path.write_bytes(bytes([content[0] ^ 1]) + content[1:])
-            assert (
-                _json(live, f"/api/experiments/readback?task_id={task_id}")["status"] == "REFUSED"
-            )
+            path.write_bytes(content[:-1])
+            refused_at_the_edges(live, task_id, body)
         finally:
             path.write_bytes(content)
         assert (root / "research-workspace.json").read_bytes() == manifest
@@ -293,8 +302,8 @@ def _exercise_authored_review(root, selected, tmp_path):
     from urllib.parse import urlencode
     from uuid import UUID
 
+    from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
     from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
-        LANES,
         SEGMENTS,
         PortfolioReplaySegment,
     )
@@ -307,6 +316,7 @@ def _exercise_authored_review(root, selected, tmp_path):
 
     workspace = tmp_path / "authored-review"
     shutil.copytree(root, workspace, copy_function=keep_seed_links)
+    carry_copy(root, workspace)
     original = read_research_workspace_manifest(workspace)
     manifest = ResearchWorkspaceManifest.research_only(original.workspace_id).with_bindings(
         experiment_inputs=original.experiment_inputs,
@@ -420,12 +430,12 @@ def _exercise_authored_review(root, selected, tmp_path):
                 model=PortfolioReplaySegment,
                 identity_field="segment_hash",
             )
-            path = next((store.root / LANES).glob(f"{segment.lanes['executed']}.*"))
+            path = history.array_body_path(segment.lanes["executed"])
             saved = path.read_bytes()
             try:
-                path.write_bytes(bytes([saved[0] ^ 1]) + saved[1:])
-                status, _ = service.request("/api/cro-review", method="POST", payload=selector)
-                assert status == 400
+                path.write_bytes(saved[:-1])
+                code, _ = service.request("/api/evidence-cro/export?" + urlencode(export_selector))
+                assert code == 400
                 assert len(service.registry.tasks()) == tasks
             finally:
                 path.write_bytes(saved)
@@ -517,124 +527,16 @@ def test_a_foundation_preview_is_sealed_after_a_restart_within_its_hour(alpha_ca
         assert sealed["admission"] == preview["admission"]
 
 
-def test_foundation_axis_cannot_be_narrowed_or_reordered_by_a_direct_compiler():
-
-    from alphalattice.investment.alpha_research.experiments.authoring import AlphaExperimentCompiler
-
-    # Catalogs are irrelevant to this pure axis check; no Program or authority is fabricated.
-    compiler = AlphaExperimentCompiler(
-        target_recipes=Mock(),
-        model_mandate=Mock(),
-        model_catalog=Mock(),
-        panel_factor_ids=("a", "b"),
-        factor_evidence_factor_ids=("a", "b"),
-        factor_evidence_checkpoint_hash="a" * 64,
-        research_foundation_hash="b" * 64,
+def _workspace_binding_holds(live: LocalPortfolioWebSession) -> set[str]:
+    rows = history.held().read(
+        "SELECT a.content_digest FROM live_ref r"
+        " JOIN artifact a ON a.artifact_id = r.artifact_id"
+        " JOIN definition_name d ON d.definition_id = a.type_id"
+        " WHERE r.root_kind = 'workspace' AND r.root_id = ?"
+        " AND d.family = 'artifact_type' AND d.name = ?",
+        (live.session.task_control_registry.workspace_id, kept_inputs.BINDING),
     )
-    assert compiler._resolve_feature_axis({"ordered_feature_ids": ["a", "b"]}) == ("a", "b")
-    for axis in (["a"], ["b", "a"], ["c"]):
-        with pytest.raises(ValueError, match=r"research_foundation\.feature_axis_frozen"):
-            compiler._resolve_feature_axis({"ordered_feature_ids": axis})
-
-
-def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations():
-    from alphalattice.investment.alpha_research.inputs.development_foundation import (
-        AlphaDevelopmentExecutionOutcomeRef,
-        AlphaDevelopmentFoundationBinding,
-    )
-    from alphalattice.kernel.validation.enums import RebalanceFrequency
-
-    digest = "1" * 64
-    legacy = AlphaDevelopmentFoundationBinding.create(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash=digest,
-        logical_panel_hash=digest,
-        logical_semantic_index_hash=digest,
-        ordered_factor_ids=("factor",),
-        selected_factor_ids=("factor",),
-        execution_outcome=AlphaDevelopmentExecutionOutcomeRef(
-            research_cadence=RebalanceFrequency.DAILY,
-            snapshot_hash=digest,
-            manifest_ref="fixture",
-            listing_set_hash=digest,
-        ),
-        factor_development_receipt_hash=digest,
-        factor_development_checkpoint_hash=digest,
-        factor_development_program_hash=digest,
-        factor_development_binding_hash=digest,
-        sector_revision=digest,
-    )
-    payload = legacy.model_dump(mode="json")
-    assert "sector_coverage_hash" not in payload
-    assert AlphaDevelopmentFoundationBinding.model_validate(payload) == legacy
-    expanded = AlphaDevelopmentFoundationBinding.create(
-        **{
-            k: getattr(legacy, k)
-            for k in type(legacy).model_fields
-            if k not in {"foundation_hash", "sector_coverage_hash"}
-        },
-        sector_coverage_hash="2" * 64,
-    )
-    assert expanded.foundation_hash != legacy.foundation_hash
-    assert expanded.sector_revision == legacy.sector_revision
-    tampered = {**expanded.model_dump(mode="json"), "sector_coverage_hash": "3" * 64}
-    with pytest.raises(ValueError, match="development_foundation_identity_invalid"):
-        AlphaDevelopmentFoundationBinding.model_validate(tampered)
-
-
-def test_alpha_sector_coverage_follows_the_selected_panel_axis(monkeypatch, tmp_path):
-
-    from alphalattice.control.product_host.research_authoring import authority, execution
-
-    revision, sector_revision = "1" * 64, "2" * 64
-    manifest = SimpleNamespace(profile=SimpleNamespace(market_profile_id="fixture"))
-    seen = []
-
-    def load(selected):
-        seen.append(selected)
-        return manifest
-
-    rows = {"earlier-member": "A", "retained-member": "A"}
-    state = SimpleNamespace(
-        current_sector_state=lambda selected: SimpleNamespace(
-            sector_revision=sector_revision, sector_by_listing_id={"retained-member": "A"}
-        ),
-        sector_classifications=lambda ids: {key: rows[key] for key in ids if key in rows},
-    )
-    monkeypatch.setattr(
-        execution,
-        "MarketDataRepository",
-        lambda _: SimpleNamespace(
-            database=None,
-            load_universe_manifest_revision=load,
-        ),
-    )
-    # The reader's body is `authority.panel_sector_labels` since V59; execution delegates to it.
-    monkeypatch.setattr(authority, "FeatureStateRepository", lambda *a, **k: state)
-    arguments = {
-        "workspace": tmp_path,
-        "market_profile_id": "fixture",
-        "panel_manifest": {
-            "safe_summary": {
-                "lineage": {
-                    "manifest_revision": revision,
-                    "sector_revision": sector_revision,
-                }
-            }
-        },
-    }
-    axis = ("earlier-member", "retained-member")
-    labels, first = execution._sector_by_listing_id(**arguments, listing_ids=axis)
-    assert labels == rows and first is not None and seen == [revision]
-    assert execution._sector_by_listing_id(**arguments, listing_ids=("retained-member",)) == (
-        {"retained-member": "A"},
-        None,
-    )
-    rows["earlier-member"] = "B"
-    assert execution._sector_by_listing_id(**arguments, listing_ids=axis)[1] != first
-    del rows["earlier-member"]
-    with pytest.raises(ValueError, match="sector_coverage_incomplete"):
-        execution._sector_by_listing_id(**arguments, listing_ids=axis)
+    return {row[0] for row in rows}
 
 
 def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypatch):
@@ -734,12 +636,10 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
             "curation_receipt_hash": admission["curation_receipt_hash"],
         }
         storage = _json(live, "/api/workspace/storage")
-        # The retention owner, not a UI pin, protects both named inputs.
-        from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-
-        _bundles, roots, _evidence = ResearchInputStorage(live.session)._references()
-        assert "RESEARCH_FOUNDATION" in roots[binding.binding_hash]
-        assert "RESEARCH_FOUNDATION" in roots[admission["factor_input_binding_hash"]]
+        # The workspace's data-layer holds protect both inputs named in the Foundation.
+        retained_bindings = _workspace_binding_holds(live)
+        assert binding.binding_hash in retained_bindings
+        assert admission["factor_input_binding_hash"] in retained_bindings
         assert storage["status"] != "REFUSED", storage
         payload = _alpha_payload(alpha_case)
         reports = []
@@ -909,10 +809,9 @@ def test_foundation_seal_consumption_readback_and_refusals(alpha_case, monkeypat
                 assert len(registry.tasks()) == before_controls
         finally:
             bad_path.unlink()
-        not_installed = (
-            "factor_research.evidence_curation_not_host_admitted:"
-            "factor_research.review_decision_policy_not_installed"
-        )
+        # The Factor study answers from its kept full check (EV2); the Foundation's own
+        # policy check names the uninstalled policy.
+        not_installed = "factor_research.review_decision_policy_not_installed"
         with monkeypatch.context() as m:
             m.setattr(decisions, "factor_research_decision_policy_hash", lambda *_a, **_k: "f" * 64)
             historical = listed()
@@ -996,8 +895,6 @@ def test_experiment_collection_keeps_readable_tasks_beside_an_invalid_saved_plan
 def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, published):
     """unreadable peers do not hide curation owned by a readable Factor study."""
 
-    import duckdb
-
     factor_task, _report, _export = published
     with _session(inputs) as live:
         before = _json(live, "/api/decisions")
@@ -1019,9 +916,9 @@ def test_pending_task_damage_keeps_curation_for_a_readable_factor_study(inputs, 
             expected_task_hash=peer.record_hash,
             observed_at=datetime.now(UTC),
         )
-        with duckdb.connect(str(registry.database_path)) as connection:
+        with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
+                "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
         answer = _json(live, "/api/decisions")
@@ -1046,8 +943,6 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
     sampled_alpha_case,
 ):
     """a real completed exploration and runnable preview need complete Task authority."""
-
-    import duckdb
 
     alpha_case, sampled = sampled_alpha_case
     root, _binding, factor_task, _decision, _draft = alpha_case
@@ -1085,9 +980,9 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
             expected_task_hash=peer.record_hash,
             observed_at=datetime.now(UTC),
         )
-        with duckdb.connect(str(registry.database_path)) as connection:
+        with task_log() as connection:
             connection.execute(
-                "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
+                "UPDATE task SET record_json = '\"damaged\"' WHERE task_id = ?",
                 [str(peer.task_id)],
             )
             stored_before = connection.execute(
@@ -1113,7 +1008,7 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
         assert {factor_task, sent["task_id"]}.issubset(
             row["task_id"] for row in studies["experiments"]
         )
-        with duckdb.connect(str(registry.database_path), read_only=True) as connection:
+        with task_log() as connection:
             assert (
                 connection.execute(
                     "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
@@ -1122,87 +1017,102 @@ def test_pending_task_damage_withholds_absence_based_preview_and_promotion_offer
             )
 
 
+DECLARED_MODELS = [
+    ("capability-1", {"family": "ridge", "alpha": 1.0}),
+    ("capability-1", {"family": "lasso", "alpha_max_multiplier": 0.1}),
+    ("capability-1", {"family": "elastic_net", "alpha_max_multiplier": 0.1, "l1_ratio": 0.5}),
+    ("capability-2", _lightgbm_parameters()),  # the main product's model, at its G6 point
+]
+
+
+def _plan_declared_model(live, alpha_case, handle, parameters):
+    """One declared model's handoff controls and PLAN preview, with no fit: the page names both
+    installed models and shows this capability's parameters, the PLAN resolves its adapter and
+    admits no Task, and the installed Agent plans the same."""
+    _root, binding, factor_task, decision, _original = alpha_case
+    payload = _alpha_payload(alpha_case, parameters, handle)
+    expected_adapter = {
+        "capability-1": "regularized_linear",
+        "capability-2": "dynamic_panel_lightgbm",
+    }[handle]
+    count = len(live.session.task_control_registry.tasks())
+    # The controls a page reads (the handoff preview's authoring options)
+    # name both installed models and show this capability's parameters;
+    # the PLAN preview names the one this declaration resolved to.
+    handoff = _json(
+        live,
+        "/api/experiments/handoff",
+        method="POST",
+        payload={
+            "task_id": factor_task,
+            "curation_receipt_hash": decision,
+            "research_input_id": binding.input_id,
+            "input_binding_hash": binding.binding_hash,
+            "experiment_document": payload["experiment_document"],
+        },
+    )
+    assert handoff["status"] == "INPUT_COMPILER_PREFLIGHT_PASSED", handoff
+    controls = handoff["authoring_options"]["controls"]
+    capability_control = next(
+        c for c in controls if c["path"] == ["alpha", "model_capability_handle"]
+    )
+    assert [o["label"] for o in capability_control["options"]] == [
+        "regularized_linear",
+        "dynamic_panel_lightgbm",
+    ]
+    document = payload["experiment_document"]
+
+    def _stated(path):
+        value = document
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        return value
+
+    shown = {
+        c["path"][-1]
+        for c in controls
+        if c["path"][:2] == ["alpha", "model_parameters"]
+        and all(_stated(cond["path"]) in cond["values"] for cond in c.get("when", []))
+    }
+    assert shown == set(parameters), (shown, set(parameters))
+    plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
+    assert plan["status"] == "PLANNED", plan
+    assert plan["numerical_call_count"] == 0
+    assert plan["execution_preview"]["model_adapter_id"] == expected_adapter
+    assert plan["execution_preview"]["fit_protocol"] == "DIRECT_FIT"
+    assert plan["execution_preview"]["model_parameters"] == parameters
+    assert len(live.session.task_control_registry.tasks()) == count
+    bridge = InstalledAgent(live.operations)
+    assert (
+        json.loads(
+            bridge.invoke(
+                PortfolioResearchAgentRequest(
+                    operation="EXPERIMENT_PLAN",
+                    **payload,
+                )
+            )
+        )
+        == plan
+    )
+    return payload, plan, count
+
+
 @pytest.mark.parametrize(
-    ("handle", "parameters"),
-    [
-        ("capability-1", {"family": "ridge", "alpha": 1.0}),
-        ("capability-1", {"family": "lasso", "alpha_max_multiplier": 0.1}),
-        ("capability-1", {"family": "elastic_net", "alpha_max_multiplier": 0.1, "l1_ratio": 0.5}),
-        # The main product's model through the same declaration, operation and
-        # readback: the second installed capability, at the installed G6 point.
-        ("capability-2", _lightgbm_parameters()),
-    ],
+    ("handle", "parameters"), DECLARED_MODELS, ids=["ridge", "lasso", "elastic-net", "lightgbm"]
 )
 def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
     alpha_case, handle, parameters
 ):
     root, binding, factor_task, decision, _original = alpha_case
     manifest = (root / "research-workspace.json").read_bytes()
-    payload = _alpha_payload(alpha_case, parameters, handle)
-    expected_adapter = {
-        "capability-1": "regularized_linear",
-        "capability-2": "dynamic_panel_lightgbm",
-    }[handle]
     with _session(root) as live:
-        count = len(live.session.task_control_registry.tasks())
-        # The controls a page reads (the handoff preview's authoring options)
-        # name both installed models and show this capability's parameters;
-        # the PLAN preview names the one this declaration resolved to.
-        handoff = _json(
-            live,
-            "/api/experiments/handoff",
-            method="POST",
-            payload={
-                "task_id": factor_task,
-                "curation_receipt_hash": decision,
-                "research_input_id": binding.input_id,
-                "input_binding_hash": binding.binding_hash,
-                "experiment_document": payload["experiment_document"],
-            },
-        )
-        assert handoff["status"] == "INPUT_COMPILER_PREFLIGHT_PASSED", handoff
-        controls = handoff["authoring_options"]["controls"]
-        capability_control = next(
-            c for c in controls if c["path"] == ["alpha", "model_capability_handle"]
-        )
-        assert [o["label"] for o in capability_control["options"]] == [
-            "regularized_linear",
-            "dynamic_panel_lightgbm",
-        ]
-        document = payload["experiment_document"]
-
-        def _stated(path):
-            value = document
-            for key in path:
-                value = value.get(key) if isinstance(value, dict) else None
-            return value
-
-        shown = {
-            c["path"][-1]
-            for c in controls
-            if c["path"][:2] == ["alpha", "model_parameters"]
-            and all(_stated(cond["path"]) in cond["values"] for cond in c.get("when", []))
-        }
-        assert shown == set(parameters), (shown, set(parameters))
-        plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
-        assert plan["status"] == "PLANNED", plan
-        assert plan["numerical_call_count"] == 0
-        assert plan["execution_preview"]["model_adapter_id"] == expected_adapter
-        assert plan["execution_preview"]["fit_protocol"] == "DIRECT_FIT"
-        assert plan["execution_preview"]["model_parameters"] == parameters
-        assert len(live.session.task_control_registry.tasks()) == count
-        bridge = InstalledAgent(live.operations)
-        assert (
-            json.loads(
-                bridge.invoke(
-                    PortfolioResearchAgentRequest(
-                        operation="EXPERIMENT_PLAN",
-                        **payload,
-                    )
-                )
-            )
-            == plan
-        )
+        payload, plan, count = _plan_declared_model(live, alpha_case, handle, parameters)
+        if (handle, parameters) != DECLARED_MODELS[-1]:
+            # Every family is planned above with no fit. The run, reopen and reuse below is one
+            # path for every family, so it runs once, with the product's model. The other fits
+            # are proved at their adapter owner, test_model_adapter_boundary.py (alpha_research):
+            # test_regularized_linear_adapter_preserves_numerical_owner.
+            return
         sent = _json(
             live,
             "/api/experiments/run",
@@ -1245,8 +1155,7 @@ def test_alpha_declared_model_runs_reopens_and_reuses_existing_owners(
         original = paths[0].read_bytes()
         try:
             paths[0].write_bytes(b"{}")
-            refused = _json(live, f"/api/experiments/readback?task_id={task_id}")
-            assert refused["status"] == "REFUSED", refused
+            count += bool(refused_at_the_edges(live, task_id, body))  # the scrub's Task
         finally:
             paths[0].write_bytes(original)
         again = _json(live, f"/api/experiments/readback?task_id={task_id}")
@@ -1413,15 +1322,13 @@ def test_alpha_cancel_keeps_complete_children_and_explicit_retry_reuses_them(
                 )
                 assert reused["status"] == "REUSED_IN_FLIGHT", reused
                 assert reused["task_id"] == str(current.task_id)
-                storage = _json(live, "/api/workspace/storage")
                 refs = current.input.payload["plan"]
                 bound_inputs = {
                     refs["binding"]["binding_hash"],
                     refs["alpha_source"]["factor_binding"]["binding_hash"],
                 }
-                rows = {r["binding_hash"]: r for r in storage["inputs"]}
                 assert len(bound_inputs) == 2
-                assert all("IN_FLIGHT_RECOVERY" in rows[h]["roots"] for h in bound_inputs)
+                assert bound_inputs <= _workspace_binding_holds(live)
                 assert _json(
                     live,
                     "/api/cancel",
@@ -1481,7 +1388,8 @@ from alphalattice.control.product_host.composition.research_experiments import (
 from alphalattice.investment.alpha_research.experiments.development_execution import (
     _FoldCancellation,
 )
-from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved
 import alphalattice.control.product_host.research_authoring.factor_handoff as handoff
 from tests.integration.product_host.test_local_web_factor_experiments import _inline
 # The fit runs in this process, so the fold boundary below pauses it where the test kills it.
@@ -1534,42 +1442,46 @@ def _stop_alpha(root: Path, tmp_path: Path, request: dict, boundary: str, rule: 
     marker = tmp_path / "boundary.json"
     payload = tmp_path / "request.json"
     payload.write_text(json.dumps(request), encoding="utf-8")
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            _STOPPED_ALPHA,
-            str(root),
-            str(payload),
-            str(marker),
-            boundary,
-            rule,
-        ],
-        cwd=Path(__file__).resolve().parents[3],
-        # The interrupted run computes on one BLAS thread and the recovery on two: a sealed
-        # fold must be reused as sealed, whatever thread count or host resumes it (OpenBLAS
-        # splits a long dot product by thread count, so a recomputed metric differs).
-        env={
-            **os.environ,
-            "PYTHONPATH": "src",
-            "ALPHALATTICE_NETWORK_DISABLED": "1",
-            "OPENBLAS_NUM_THREADS": "1",
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    try:
-        if not _wait_for_boundary(process, marker, 180):
-            process.terminate()
-            pytest.fail(f"Alpha did not reach {boundary}: {process.communicate(timeout=15)!r}")
-        task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        process.kill()
-        process.communicate(timeout=15)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.communicate(timeout=15)
+    # The child is the root's one Host while it runs: this process lets go of the root it
+    # holds (a seed test's history), and its next session takes it back.
+    history.close_history()
+    with spawn.InteractiveSession(timeout=240, stop_scope="tree") as session:
+        process = session.start(
+            [
+                sys.executable,
+                "-c",
+                _STOPPED_ALPHA,
+                str(root),
+                str(payload),
+                str(marker),
+                boundary,
+                rule,
+            ],
+            cwd=Path(__file__).resolve().parents[3],
+            # The interrupted run computes on one BLAS thread and the recovery on two: a sealed
+            # fold must be reused as sealed, whatever thread count or host resumes it (OpenBLAS
+            # splits a long dot product by thread count, so a recomputed metric differs).
+            env={
+                **os.environ,
+                "PYTHONPATH": "src",
+                "ALPHALATTICE_NETWORK_DISABLED": "1",
+                "OPENBLAS_NUM_THREADS": "1",
+            },
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        try:
+            if not _wait_for_boundary(process, marker, 180):
+                process.terminate()
+                pytest.fail(f"Alpha did not reach {boundary}: {process.communicate(timeout=15)!r}")
+            task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
+            crash(process)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=15)
     return str(task_id)
 
 
@@ -1651,127 +1563,6 @@ def test_a_study_stopped_under_the_old_schema_rule_is_refused_by_name_and_planne
         assert body["status"] == "EXPERIMENT_PUBLISHED", body
         folds = body["execution_preview"]["fold_count"]
         assert body["result"]["fit_call_count"] == folds - 2
-
-
-@pytest.mark.proves("feature_engine.factor_handoff_refuses_a_changed_input")
-def test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool(
-    inputs: Path, tmp_path: Path, monkeypatch
-):
-    """Binding refuses corrupt or changed inputs."""
-
-    from alphalattice.control.product_host.research_authoring import factor_inputs as owner
-
-    original = read_research_workspace_manifest(inputs).experiment_inputs[0]
-    bundle = read_factor_bundle(inputs, original.binding_hash)
-    source = inputs / "research-inputs" / original.binding_hash / "source"
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    publish_research_workspace_manifest(workspace, _manifest("binding-boundaries"))
-    bind = dict(
-        workspace=workspace,
-        source=source,
-        panel_snapshot_hash=bundle.panel_snapshot_hash,
-        outcome_snapshot_hash=bundle.outcome_snapshot_hash,
-        include_alpha_handoff=True,
-    )
-    copy2 = owner.shutil.copy2
-
-    def corrupt_copy(src, dst, *args, **kwargs):
-        copy2(src, dst, *args, **kwargs)
-        if Path(dst).suffix == ".json" and "feature-panel/manifests" in Path(dst).as_posix():
-            Path(dst).write_bytes(b"{}")
-
-    monkeypatch.setattr(owner.shutil, "copy2", corrupt_copy)
-    with pytest.raises(AuthoringError, match="source_changed_during_binding"):
-        bind_factor_inputs(**bind)
-    monkeypatch.setattr(owner.shutil, "copy2", copy2)
-    assert not any(
-        p.is_dir() and len(p.name) == 64 for p in (workspace / "research-inputs").iterdir()
-    )
-    # The source moves after the copies were taken: the final pass refuses.
-    lifecycle = next(p for p in source.rglob("*.json") if p.parent.name == "feature-panel")
-    copy_input = owner._copy_input
-    original_bytes = lifecycle.read_bytes()
-
-    def move_source_after_copy(workspace_, src, target, expected, **kwargs):
-        verified = copy_input(workspace_, src, target, expected, **kwargs)
-        if src.samefile(lifecycle):
-            lifecycle.write_bytes(original_bytes + b"\n")
-        return verified
-
-    monkeypatch.setattr(owner, "_copy_input", move_source_after_copy)
-    try:
-        with pytest.raises(AuthoringError, match="source_changed_during_binding"):
-            bind_factor_inputs(**bind)
-    finally:
-        lifecycle.write_bytes(original_bytes)
-        monkeypatch.setattr(owner, "_copy_input", copy_input)
-    assert not any(
-        p.is_dir() and len(p.name) == 64 for p in (workspace / "research-inputs").iterdir()
-    )
-    # A clean binding publishes; a pool object whose bytes no longer match
-    # its content-addressed name is refused by a later binding that would
-    # link it, before anything is linked.
-    binding = bind_factor_inputs(**bind)
-    enhanced = read_factor_bundle(workspace, binding.binding_hash)
-    pooled = next(
-        p for p in (workspace / "research-inputs" / "parquet").iterdir() if p.suffix == ".parquet"
-    )
-    poisoned = pooled.read_bytes()
-    pooled.write_bytes(poisoned[:-1] + bytes([poisoned[-1] ^ 1]))
-    try:
-        with pytest.raises(AuthoringError, match="input_file_tampered"):
-            read_factor_bundle(workspace, binding.binding_hash)
-        other = tmp_path / "other"
-        other.mkdir()
-        publish_research_workspace_manifest(other, _manifest("binding-boundaries-other"))
-        shutil.copytree(
-            workspace / "research-inputs" / "parquet", other / "research-inputs" / "parquet"
-        )
-        with pytest.raises(AuthoringError, match="input_file_tampered"):
-            bind_factor_inputs(**{**bind, "workspace": other})
-    finally:
-        pooled.write_bytes(poisoned)
-    assert read_factor_bundle(workspace, binding.binding_hash) == enhanced
-
-
-@pytest.mark.proves("feature_engine.handoff_binds_logical_closure_without_mutating_inputs")
-def test_handoff_binding_adds_logical_closure_without_mutating_factor_inputs(
-    inputs: Path, tmp_path: Path
-):
-    from alphalattice.control.product_host.research_authoring.factor_inputs import (
-        compatible_factor_inputs,
-        logical_panel_owner,
-    )
-
-    original = read_research_workspace_manifest(inputs).experiment_inputs[0]
-    bundle = read_factor_bundle(inputs, original.binding_hash)
-    source = inputs / "research-inputs" / original.binding_hash / "source"
-    publish_research_workspace_manifest(tmp_path, _manifest("handoff-inputs"))
-    binding = bind_factor_inputs(
-        workspace=tmp_path,
-        source=source,
-        panel_snapshot_hash=bundle.panel_snapshot_hash,
-        outcome_snapshot_hash=bundle.outcome_snapshot_hash,
-        include_alpha_handoff=True,
-    )
-    enhanced = read_factor_bundle(tmp_path, binding.binding_hash)
-    assert compatible_factor_inputs(bundle, enhanced)
-    assert binding.binding_hash != original.binding_hash
-    target = tmp_path / "research-inputs" / binding.binding_hash / "source"
-    logical_panel_owner(target).verify_snapshot(bundle.panel_snapshot_hash)
-    assert not tuple(target.rglob("current.json"))
-    assert (
-        bind_factor_inputs(
-            workspace=tmp_path,
-            source=source,
-            panel_snapshot_hash=bundle.panel_snapshot_hash,
-            outcome_snapshot_hash=bundle.outcome_snapshot_hash,
-            include_alpha_handoff=True,
-        )
-        == binding
-    )
-    assert read_factor_bundle(inputs, original.binding_hash) == bundle
 
 
 def test_bound_input_runs_reopens_and_replays_the_real_factor_owner(
@@ -1883,7 +1674,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
     monkeypatch.setattr(FactorExperimentExecutor, "execute", forbidden)
     task_id, report, _export = published
     original = read_research_workspace_manifest(inputs).experiment_inputs[0]
-    source = inputs / "research-inputs" / original.binding_hash / "source"
+    source = factor_input_paths(inputs, original.binding_hash)[0]
     bundle = read_factor_bundle(inputs, original.binding_hash)
     enhanced = bind_factor_inputs(
         workspace=inputs,
@@ -2074,7 +1865,7 @@ def test_factor_curation_and_alpha_handoff_are_durable_actor_neutral_and_never_t
         assert replay == preview
         # The decision remains historical evidence if an enhanced input breaks;
         # fresh downstream preparation must not silently reuse earlier success.
-        target = inputs / "research-inputs" / enhanced.binding_hash / "source"
+        target = factor_input_paths(inputs, enhanced.binding_hash)[0]
         mapping = (
             target
             / "artifacts/feature-panel/closure/logical/operational/snapshot-mappings"
@@ -2185,9 +1976,12 @@ def _study_on_the_bound_input(session: LocalPortfolioWebSession) -> str:
     return str(run["task_id"])
 
 
-def test_input_and_result_tamper_refuse_without_losing_historical_readback(
+@pytest.mark.proves("composition.replay_refuses_a_tampered_input")
+def test_input_tamper_refuses_a_replay_without_losing_historical_readback(
     inputs: Path, published
 ) -> None:
+    """tamper: a replay from a tampered input copy is refused by name, and the study's historical
+    readback is unchanged."""
     with _session(inputs) as session:
         task_id = _study_on_the_bound_input(session)
         old = _json(session, f"/api/experiments/readback?task_id={task_id}")
@@ -2195,7 +1989,7 @@ def test_input_and_result_tamper_refuse_without_losing_historical_readback(
         binding = session.workspace_manifest.experiment_inputs[0]
         bundle = read_factor_bundle(inputs, binding.binding_hash)
         chunk_name = next(name for name, _ in bundle.files if name.endswith(".parquet"))
-        chunk = inputs / "research-inputs" / binding.binding_hash / "source" / chunk_name
+        chunk = factor_input_paths(inputs, binding.binding_hash)[0] / chunk_name
         original = chunk.read_bytes()
         try:
             chunk.write_bytes(original + b"tampered")
@@ -2207,54 +2001,44 @@ def test_input_and_result_tamper_refuse_without_losing_historical_readback(
             assert _facts(again) == _facts(old)
         finally:
             chunk.write_bytes(original)
-        output = inputs / old["document"]["experiment"]["output_workspace"] / "research-evidence"
-        evidence_file = next(output.glob("*.json"))
-        original = evidence_file.read_bytes()
-        try:
-            evidence_file.write_bytes(b"{}")
-            refused = _json(session, f"/api/experiments/readback?task_id={task_id}")
-            assert refused["status"] == "REFUSED"
-        finally:
-            evidence_file.write_bytes(original)
-        again = _json(session, f"/api/experiments/readback?task_id={task_id}")
-        assert _facts(again) == _facts(old)
 
 
-def test_a_read_reuses_the_study_verification_while_its_files_are_unchanged(
-    inputs: Path, published, monkeypatch
+@pytest.mark.proves("composition.scrub_finds_a_changed_study_and_export_refuses_it")
+def test_a_read_answers_from_the_full_check_and_the_scrub_finds_a_planted_change(
+    inputs: Path, published
 ) -> None:
-    """A read reuses the study verification while its files are unchanged."""
+    """tamper: a study read answers from its full check, a planted change is refused at export and
+    found by the scrub, and the study refuses until it checks again."""
 
-    root = inputs
     task_id = published[0]
-    with _session(root) as live:
+    with _session(inputs) as live:
         readback = f"/api/experiments/readback?task_id={task_id}"
         export = f"/api/experiments/export?task_id={task_id}"
         first, second = _json(live, readback), _json(live, readback)
         assert first["verification_basis"] == "FULL"
-        assert second["verification_basis"].startswith("FILES_UNCHANGED ")
-        assert _facts(second) == _facts(first)
-        output = root / first["document"]["experiment"]["output_workspace"] / "research-evidence"
-        evidence_file = next(output.glob("*.json"))
-        original, stat = evidence_file.read_bytes(), evidence_file.stat()
-        # Same size, same modification time: the fingerprint cannot see it.
-        evidence_file.write_bytes(original.replace(b'"', b"'", 1))
-        os.utime(evidence_file, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        assert _json(live, readback)["verification_basis"].startswith("FILES_UNCHANGED ")
+        assert second["verification_basis"].startswith("SEALED ")
+        output = inputs / first["document"]["experiment"]["output_workspace"] / "research-evidence"
+        sealed = next(output.glob("*.json"))
+        original, stat = sealed.read_bytes(), sealed.stat()
+        sealed.write_bytes(original.replace(b'"', b"'", 1))
+        os.utime(sealed, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        held = _json(live, readback)
+        assert held["verification_basis"].startswith("SEALED ") and _facts(held) == _facts(first)
         assert _json(live, export)["status"] == "REFUSED"
         sent = live.operations.verify_all()
         assert sent["status"] == "ADMITTED" and sent["saved_studies"] >= 1, sent
         live.dispatcher.drain_for_tests()
         failed = live.operations.sweep.failed_studies()
         assert str(task_id) in failed
+        mark = next((live.workspace / "runtime").rglob(f"{task_id}-refused.json"))
         assert _json(live, readback)["status"] == "REFUSED"
-        overview = _json(live, "/api/upgrade")
-        (row,) = [study for study in overview["studies"] if study["task_id"] == str(task_id)]
+        (row,) = [s for s in _json(live, "/api/upgrade")["studies"] if s["task_id"] == str(task_id)]
         assert row["state"] == "INTEGRITY_FAILED" and row["failure_code"] == failed[str(task_id)]
-        evidence_file.write_bytes(original)
+        sealed.write_bytes(original)
         assert _json(live, readback)["verification_basis"] == "FULL"
-        evidence_file.write_bytes(b"{}")
-        assert _json(live, readback)["status"] == "REFUSED"
+        mark.write_text("{}")  # a refusal stopped before the kept check left
+        assert _json(live, readback)["verification_basis"] == "FULL"
+        assert _json(live, export)["status"] != "REFUSED"
 
 
 def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
@@ -2284,17 +2068,16 @@ def test_an_alpha_studys_full_verification_is_kept_on_disk_across_a_restart(
         readback = f"/api/experiments/readback?task_id={sent['task_id']}"
         first = _json(live, readback)
         assert first["verification_basis"] == "FULL", first
+        first_check = _json(live, readback)["verification_basis"].removeprefix("SEALED ")
     with _session(root) as restarted:
         again = _json(restarted, readback)
-        assert again["verification_basis"].startswith("FILES_UNCHANGED "), again
-        assert "path, size, time and identity" in again["verification_basis"]
+        assert again["verification_basis"] == f"SEALED {first_check}", again
         assert _facts(again) == _facts(first)
-        output = root / first["document"]["experiment"]["output_workspace"]
-        moved = next(path for path in sorted(output.rglob("*")) if path.is_file())
-        stat = moved.stat()
-        os.utime(moved, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
-        assert _json(restarted, readback)["verification_basis"] == "FULL"
-    monkeypatch.setattr(owner, "plan_implementation_hash", lambda _plan: "0" * 64)
+    monkeypatch.setattr(
+        owner.ResearchExperimentApplication,
+        "installed_implementation",
+        lambda _self, _kind, **_options: "0" * 64,
+    )
     with _session(root) as upgraded:
         assert _json(upgraded, readback)["verification_basis"] == "FULL"
 
@@ -2359,7 +2142,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.research_experiments import (
     ResearchExperimentApplication, STAGES,
 )
-from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved, _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _Resolver, _resolved
 root, marker = Path(sys.argv[1]), Path(sys.argv[2])
 original = ResearchExperimentApplication.execute_stage
 def pause(self, **kwargs):
@@ -2384,26 +2168,32 @@ with LocalPortfolioWebSession(workspace=root,
     assert run['task_id'], run
     threading.Event().wait()
 """
-    process = subprocess.Popen(
-        [sys.executable, "-c", script, str(inputs), str(marker)],
-        cwd=Path(__file__).resolve().parents[3],
-        env={**os.environ, "PYTHONPATH": "src", "ALPHALATTICE_NETWORK_DISABLED": "1"},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
-    try:
-        if not _wait_for_boundary(process, marker, 120):
-            process.terminate()
-            out, error = process.communicate(timeout=15)
-            pytest.fail(f"worker did not reach the committed evidence boundary: {out!r} {error!r}")
-        task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
-        process.kill()
-        process.communicate(timeout=15)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.communicate(timeout=15)
+    # The child is the root's one Host while it runs: this process lets go of the root it
+    # holds (a seed test's history), and its next session takes it back.
+    history.close_history()
+    with spawn.InteractiveSession(timeout=180, stop_scope="tree") as session:
+        process = session.start(
+            [sys.executable, "-c", script, str(inputs), str(marker)],
+            cwd=Path(__file__).resolve().parents[3],
+            env={**os.environ, "PYTHONPATH": "src", "ALPHALATTICE_NETWORK_DISABLED": "1"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        try:
+            if not _wait_for_boundary(process, marker, 120):
+                process.terminate()
+                out, error = process.communicate(timeout=15)
+                pytest.fail(
+                    f"worker did not reach the committed evidence boundary: {out!r} {error!r}"
+                )
+            task_id = json.loads(marker.read_text(encoding="utf-8"))["task_id"]
+            crash(process)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=15)
     from alphalattice.foundation.factor_research.experiments.execution import (
         FactorExperimentExecutor,
     )
@@ -2424,249 +2214,6 @@ with LocalPortfolioWebSession(workspace=root,
             )
             == 1
         )
-
-
-def test_a_capacity_block_reopens_the_same_study_only_after_capacity_is_restored(
-    inputs: Path,
-) -> None:
-    """An operator cap stop retains the sealed plan and requires a current recovery confirmation."""
-    with _session(inputs) as live:
-        controls = _json(
-            live, "/api/experiments/controls?experiment_kind=risk.covariance-development"
-        )
-        assert controls["status"] == "READY", controls
-        plan = _json(
-            live,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_document": controls["template"]},
-        )
-        assert plan["status"] == "PLANNED", plan
-        manifest = (inputs / "research-workspace.json").read_bytes()
-        _json(live, "/api/workspace/storage/cap", method="POST", payload={"storage_cap_bytes": "1"})
-        run = _json(
-            live,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": plan["plan_hash"]},
-        )
-        task = run["task_id"]
-        live.dispatcher.drain_for_tests()
-        view = _json(live, "/api/tasks/recovery?task_id=" + task)
-        assert view["lifecycle"] == "BLOCKED", view
-        assert view["stop"]["code"] == "storage.managed_capacity_exceeded"
-        assert next(a for a in view["actions"] if a["action"] == "RECOVER")["available"]
-        recover = {k: v for k, v in view["next_requests"]["recover"].items() if k != "operation"}
-        refused = _json(live, "/api/recover", method="POST", payload=recover)
-        assert refused["failure_code"] == "storage.managed_capacity_exceeded", refused
-        unchanged = _json(live, "/api/tasks/recovery?task_id=" + task)
-        assert unchanged["task_record_hash"] == view["task_record_hash"]
-        assert unchanged["stages"] == view["stages"]
-        _json(
-            live,
-            "/api/workspace/storage/cap",
-            method="POST",
-            payload={"storage_cap_bytes": str(20 * 1024**3)},
-        )
-        # Restored capacity cannot authorize a changed input. The same confirmed
-        # Task remains blocked until the exact input bytes are restored too.
-        source = inputs / "research-inputs" / controls["input_binding_hash"] / "source"
-        held = next(
-            p
-            for p in source.rglob("*.json")
-            if p.parent.name == "manifests" and p.parent.parent.name == "feature-panel"
-        )
-        saved = held.read_bytes()
-        try:
-            held.write_bytes(b"{}")
-            changed = _json(live, "/api/recover", method="POST", payload=recover)
-            assert changed["disposition"] == "REFUSED", changed
-            assert "input_file_tampered" in changed["failure_code"], changed
-            still = _json(live, "/api/tasks/recovery?task_id=" + task)
-            assert still["task_record_hash"] == view["task_record_hash"]
-            assert still["stages"] == view["stages"]
-        finally:
-            held.write_bytes(saved)
-        resumed = _json(live, "/api/recover", method="POST", payload=recover)
-        assert resumed["resumed_task_ids"] == [task], resumed
-        live.dispatcher.drain_for_tests()
-        finished = _json(live, "/api/tasks/recovery?task_id=" + task)
-        assert finished["lifecycle"] == "SUCCEEDED", finished
-        assert finished["verified_stage_count"] == finished["total_stage_count"] == 2
-        assert _json(live, "/api/recover", method="POST", payload=recover)["failure_code"] == (
-            "local_application.confirmation_stale"
-        )
-        result = _json(live, "/api/experiments/readback?task_id=" + task)
-        assert result["status"] == "EXPERIMENT_PUBLISHED", result
-        assert result["document"] == plan["document"]
-        assert (inputs / "research-workspace.json").read_bytes() == manifest
-        reused = _json(
-            live,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": plan["plan_hash"]},
-        )
-        assert reused["status"] == "REUSED_EXACT" and reused["publication_task_id"] == task
-
-
-def test_bad_requests_admit_no_task_and_do_not_affect_portfolio(inputs: Path) -> None:
-    from tests.portfolio_strategy_lab.local_web_support import _request
-
-    with _session(inputs) as session:
-        controls = _json(session, "/api/experiments/controls")
-        before = len(session.session.task_control_registry.tasks())
-        for payload in (
-            {"experiment_yaml": 5},
-            {"experiment_document": []},
-            {"experiment_document": {"experiment": []}},
-            {"experiment_yaml": "!!python/object:builtins.object {}"},
-            {"experiment_yaml": controls["yaml"], "chosen_by": "INSTALLED_AGENT"},
-        ):
-            code, _headers, raw = _request(
-                session, "/api/experiments/plan", method="POST", payload=payload
-            )
-            body = json.loads(raw)
-            assert code == 400 or body.get("status") == "REFUSED", body
-            assert code != 500
-        document = controls["template"]
-        document["experiment"]["output_workspace"] = "../outside"
-        body = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_document": document},
-        )
-        assert body["status"] == "REFUSED"
-        assert len(session.session.task_control_registry.tasks()) == before
-        assert _json(session, "/api/controls")["controls"]
-        first = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_yaml": controls["yaml"]},
-        )
-        alternate = json.loads(json.dumps(controls["template"]))
-        alternate["experiment"]["output_workspace"] = "managed"
-        alternate["factor"]["factor_ids"] = alternate["factor"]["factor_ids"][:2]
-        _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_document": alternate},
-        )
-        # A second PLAN no longer displaces the first: both stay addressable by
-        # their own hash, and only a hash this service never previewed is refused.
-        retained = _json(
-            session, f"/api/experiments/preview?experiment_plan_hash={first['plan_hash']}"
-        )
-        assert retained["status"] == "AVAILABLE" and retained["retained_previews"] == 2
-        stale = _json(
-            session,
-            "/api/experiments/run",
-            method="POST",
-            payload={"experiment_plan_hash": "0" * 64},
-        )
-        assert stale["status"] == "REFUSED" and "preview_required" in stale["failure_code"]
-        assert len(session.session.task_control_registry.tasks()) == before
-        document = controls["template"]
-        document["experiment"]["output_workspace"] = "managed"
-        document["experiment"]["sessions"] = {
-            "start": "2024-02-01",
-            "end": "2024-03-01",
-            "as_of": {"session": "2024-03-15", "phase": "OFFICIAL_CLOSE"},
-        }
-        cutoff = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_document": document},
-        )
-        assert (
-            cutoff["status"] == "REFUSED"
-            and "outcomes_after_declared_cutoff" in cutoff["failure_code"]
-        )
-        assert len(session.session.task_control_registry.tasks()) == before
-
-
-def test_a_feature_listing_page_is_read_as_its_number(tmp_path: Path) -> None:
-    """regression (the UI pass's closing stills): over the Local Web a page number is a query
-    string; the route reads `extensions_page` as the int it names, so a page past the last is
-    refused by that name, not as an invalid field."""
-
-    root = tmp_path / "workspace"
-    # Pagination reads the extension records, not market rows or a bound study.
-    publish_research_workspace_manifest(root, _manifest("feature-page"))
-    with _session(root) as live:
-        first = _json(live, "/api/feature-research?extensions_page=1")
-        assert (first["status"], first["page"]) == ("FEATURE_EXTENSIONS", 1)
-        past = first["page_count"] + 1
-        _status, _headers, body = _request(live, f"/api/feature-research?extensions_page={past}")
-        refused = json.loads(body)
-        assert (refused["status"], refused["failure_code"]) == (
-            "REFUSED",
-            f"feature_extension.extensions_page_out_of_range:{past} of {past - 1}",
-        ), refused
-
-
-def test_cli_and_web_compile_the_same_bound_document(inputs: Path, tmp_path: Path) -> None:
-    with _session(inputs) as session:
-        controls = _json(session, "/api/experiments/controls")
-        preview = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_yaml": controls["yaml"]},
-        )
-        assert preview["status"] == "PLANNED", preview
-    document = tmp_path / "experiment.yaml"
-    document.write_text(controls["yaml"], encoding="utf-8")
-    root = Path(__file__).resolve().parents[3]
-    run = subprocess.run(
-        [
-            sys.executable,
-            "scripts/run_research_experiment.py",
-            "--preflight",
-            "--workspace",
-            str(inputs),
-            "--research-input",
-            controls["input_id"],
-            str(document),
-        ],
-        cwd=root,
-        env={**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1"},
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
-    assert run.returncode == 0, (run.stdout, run.stderr)
-    body = json.loads(run.stdout)
-    assert body["program"]["program_hash"] == preview["program"]["program_hash"]
-    assert body["document"] == preview["document"]
-
-
-def test_small_input_reports_the_production_requirement_before_any_task(
-    real_risk_workspace,
-    tmp_path: Path,
-) -> None:
-    publish_research_workspace_manifest(tmp_path, _manifest("small-factor"))
-    outcome, _ref = publish_causal_outcomes(
-        real_risk_workspace, at=datetime(2026, 8, 2, tzinfo=UTC)
-    )
-    bind_factor_inputs(
-        workspace=tmp_path, source=real_risk_workspace.workspace, outcome_snapshot_hash=outcome
-    )
-    with _session(tmp_path) as session:
-        controls = _json(session, "/api/experiments/controls")
-        result = _json(
-            session,
-            "/api/experiments/plan",
-            method="POST",
-            payload={"experiment_yaml": controls["yaml"]},
-        )
-        assert result["status"] == "REFUSED"
-        assert "insufficient_listing_support" in result["failure_code"]
-        assert session.session.task_control_registry.tasks() == ()
 
 
 # ---- trying a feature is one request
@@ -2767,7 +2314,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         trial_id = started["feature_trial_id"]
         # The real CLI waits while the Host's idle hook advances the reopened chain.
         answer_path = root / "trial-wait-answer.json"
-        waited = subprocess.run(
+        waited = spawn.run(
             [
                 sys.executable,
                 "scripts/run_alphalattice.py",
@@ -2786,6 +2333,7 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
             env={**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1"},
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=630,
             check=False,
         )
@@ -2812,8 +2360,9 @@ def test_a_feature_is_tried_in_one_request_and_reopened_when_asked_again(complet
         listed = _json(live, "/api/feature-trials")["trials"]
         assert [t["feature_trial_id"] for t in listed] == [trial_id]
 
-        # A record damaged in place is named with its way on, never skipped or read:
-        # starting the trial again keeps it aside and runs the chain anew, by reuse alone.
+        assert_trial_reads_during_saves(ops.trials, trial_id)
+
+        # Name and keep damaged records; restart reuses unchanged steps.
         record = root / "runtime" / "feature-trials" / f"{trial_id}.json"
         record.write_bytes(record.read_bytes()[:40])
         damaged = _json(live, f"/api/feature-trials/readback?feature_trial_id={trial_id}")
@@ -3087,6 +2636,8 @@ def test_a_trial_refused_its_study_names_the_studies_it_can_run_against(complete
 
 def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_case):
     """A formula factor is reviewed and a person activates it."""
+    from alphalattice.control.product_host.research_authoring.feature_research import CATEGORY
+
     alpha_case = completed_alpha_case
 
     from alphalattice.control.product_host.composition.research_workspace import (
@@ -3217,15 +2768,14 @@ def test_a_formula_factor_is_reviewed_and_a_person_activates_it(completed_alpha_
         assert "refused_plans" not in listed
         healthy_shape = set(listed)
 
-        # A broken unrelated definition must be named beside this readable plan. Exercise the
-        # actual on-disk JSON and the stored-name/address identity check through the owner route.
-        plan_store = root / "artifacts/feature-panel/closure/research-feature-plans"
+        # Plant two malformed neighbours in the same closure store as the readable plan.
+        plan_files = ops.trials.feature_builds.definitions().store.files
         corrupt_hash = "0" * 64 if plan_hash != "0" * 64 else "1" * 64
         mismatch_hash = "f" * 64 if plan_hash != "f" * 64 else "e" * 64
         mismatch_target = "d" * 64 if mismatch_hash != "d" * 64 else "c" * 64
-        (plan_store / f"{corrupt_hash}.json").write_bytes(b"{")
-        (plan_store / f"{mismatch_target}.json").write_text(
-            json.dumps({"plan_hash": mismatch_hash}), encoding="utf-8", newline="\n"
+        plan_files.write(f"{CATEGORY}/{corrupt_hash}.json", b"{")
+        plan_files.write(
+            f"{CATEGORY}/{mismatch_target}.json", json.dumps({"plan_hash": mismatch_hash}).encode()
         )
         mixed = _json(live, "/api/feature-research")
         assert set(mixed) == healthy_shape | {"refused_plans"}
@@ -3361,43 +2911,6 @@ def test_the_study_reads_answer_their_published_models(inputs: Path, published) 
             ANSWERS[operation].model_validate(body)
 
 
-def test_a_declaration_carries_no_identity_the_host_computes() -> None:
-    """requirement (LAWS OP8): an authored ``envelope_hash`` or a foreign ``schema_id``
-    is refused at PLAN, before it can shape a managed output path or move an identity."""
-
-    from alphalattice.control.product_host.composition.research_experiments import (
-        ENVELOPE_SCHEMA_ID,
-        refuse_authored_identity,
-    )
-
-    section = {"kind": "factor.screening-development", "schema_id": ENVELOPE_SCHEMA_ID}
-    refuse_authored_identity(section)
-    with pytest.raises(AuthoringError, match="resolved_identity_authored:envelope_hash"):
-        refuse_authored_identity({**section, "envelope_hash": "0" * 64})
-    with pytest.raises(AuthoringError, match="schema_id_not_installed"):
-        refuse_authored_identity({**section, "schema_id": "research-experiment-envelope-v2"})
-
-
-def test_an_object_document_is_checked_as_a_yaml_one_is() -> None:
-    """requirement: the object entry of PLAN runs the YAML entry's guard, so a document
-    that names a module is refused whichever way it arrives."""
-
-    from alphalattice.control.research_program.authoring.document import (
-        load_authoring_document,
-        require_authoring_document,
-    )
-
-    named = {"experiment": {"kind": "risk.covariance-development"}, "risk": {"module": "typo"}}
-    with pytest.raises(AuthoringError, match="document_declares_python_path"):
-        load_authoring_document(json.dumps(named))
-    with pytest.raises(AuthoringError, match="document_declares_python_path"):
-        require_authoring_document(named)
-    with pytest.raises(AuthoringError, match="document_not_a_mapping"):
-        require_authoring_document(["experiment"])
-    plain = {"experiment": {"kind": "risk.covariance-development"}, "risk": {"estimator": {}}}
-    assert require_authoring_document(plain) is plain
-
-
 def test_a_continuation_without_its_policy_is_told_the_field_and_the_draft(
     inputs: Path, published
 ) -> None:
@@ -3437,6 +2950,7 @@ def risk_seed(completed_alpha_seed, tmp_path_factory):
 
     def build(root: Path) -> dict:
         alpha_case = completed_alpha_seed
+        restore_seed(alpha_case[0])
         copy_workspace(alpha_case[0], root)
         with _session(root) as live:
             parent_id = next(
@@ -3564,12 +3078,10 @@ def test_a_portfolio_study_weighs_by_a_linked_risk_studys_volatility(risk_link):
     body = _published(link, weighed)
     source = body["portfolio_source"]
     assert source["risk_task_id"] == link.risk_task and source["risk_surface_hash"]
-    equal = _published(link, _planned(link))
-    assert "risk_surface_hash" not in equal["portfolio_source"]
-    # The same names on the same sessions, weighed by inverse volatility rather than equally:
-    # the held books differ, and no equal book is more concentrated than its iv1 twin.
-    assert body["position"]["weights"] != equal["position"]["weights"]
-    assert body["position"]["hhi"] > equal["position"]["hhi"]
+    # An unlinked study carries no risk surface (test_completed_alpha_hands_off_to_portfolio_
+    # without_refitting), and iv1 weighs apart from and more concentrated than equal weight at
+    # its owner (test_tranche_book.py::test_inverse_volatility_exponents_differ_and_equal_
+    # weight_ignores_risk), so no second, equal-weight study is published here.
 
 
 def test_a_portfolio_study_runs_a_catalog_policy_on_a_linked_risk_studys_covariance(risk_link):
@@ -3721,25 +3233,6 @@ def test_a_portfolio_draft_offers_only_risk_choices_its_reader_admits(
             shutil.rmtree(root)
 
 
-def test_the_kept_backups_are_read_without_making_one(tmp_path: Path):
-    """requirement: the Storage page reads the backup root and the kept generations
-    at GET /api/workspace/backup (`workspace backups`), and reading makes none."""
-
-    root = tmp_path / "workspace"
-    # This read uses the manifest and backup directory, not any study or market rows.
-    publish_research_workspace_manifest(root, _manifest("backup-read"))
-    with _session(root) as live:
-        first = _json(live, "/api/workspace/backup")
-        assert (first["status"], first["generation_hash"]) == ("READ", None), first
-        assert first["backup_root"] and isinstance(first["generations"], list)
-        again = _json(live, "/api/workspace/backup")
-        assert again["generations"] == first["generations"]
-
-
-def stop_child_for_cli_start_check(*, cancelled):
-    os._exit(7)
-
-
 def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
     alpha_case, monkeypatch, tmp_path, capsys
 ):
@@ -3754,7 +3247,7 @@ def test_cli_wait_reads_a_real_alpha_task_whose_child_cannot_start(
         plan = _json(live, "/api/experiments/plan", method="POST", payload=payload)
         assert plan["status"] == "PLANNED", plan
         with pytest.raises(ChildInterrupted):
-            run_in_child(f"{__name__}:stop_child_for_cli_start_check", {})
+            run_in_child("devtools.testing.child_targets:exit_at_start", {})
         request = tmp_path / "run.json"
         request.write_text(
             json.dumps({"operation": "EXPERIMENT_RUN", "experiment_plan_hash": plan["plan_hash"]}),

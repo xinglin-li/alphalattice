@@ -1,0 +1,76 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "18ff27cf5b554c05bb75413ff57045a4b6502d09155938f61ce400371d89ffa6",
+   "successor": "d03bb327690be42cbc6da4a1348ed86bcb8d9971618f949281bd4c562ebb2495",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "caba1227acf7082d26680df01699b2425e149f6fcf384332709f3d03ef4e4cbf",
+   "successor": "fa56ca8628c8bcec72340d3a245e3cfffddba9b7c67756435d79c606fe392906",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "9fdcfedb875df654facc0cc999f3f57b0d33163de56da28fa363fb14a550530d",
+   "successor": "f7f0f2da4f16c855de67768de70941fbc06bbfd15a51f3210a8b283ab45866c1",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "746b2e9b632717e3628ab772dc3bc772ccaf2ab0c68d5536725e02a5d2d8e050",
+   "successor": "1ad5e4e5c40c7520a9339e8f4ca2c61e682d26e7607bb250699a0ba492664413",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "e4611572549e5f9ab300b64ec562ef4cc68f6985defbc5caa03db5349b694190",
+   "successor": "9519ea7262d0d27831604466ebc908c7982c37709b1d2e391d3dd34f53317df2",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "4f7528f9b43099367debf2c2327051ddd27ff5338739d37c6cf9a4a2f4a347b1",
+   "successor": "536fd02ccd2755d399581a8ca9e457d826ada6f73a1bfa50655b6e31b7ca9394",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3a36fefbc0b0f7369b8b58f31465d70868d8f8e6062549e4de2a01a6b1d8ec41",
+   "successor": "8783b1937adc9422ca029eef57552b4e8b5ce995bbd1948ad3b4ebaf53f84794",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "894284dd9f303959ecaf822f96780328544ca9a2dbf70a4c488e50db310cc3ea",
+   "successor": "1436fc82df1c9fcb9ed917352572b9ef4b3c535c4ba5f35d5d551bb80d04f245",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "894284dd9f303959ecaf822f96780328544ca9a2dbf70a4c488e50db310cc3ea",
+   "successor": "1436fc82df1c9fcb9ed917352572b9ef4b3c535c4ba5f35d5d551bb80d04f245",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "39b91f8f69f6191fb78ae12e2ecf29142798ee1e33902232b6e45d2c4ab0144f",
+   "successor": "9f5204413766329bfc8a9bd361cc97a3dbd07d8c00bca6888304ae9db1ba877d",
+   "change": "Upgrade moves Panel closure files onto the data layer byte for byte",
+   "reason": "10 implementation roles move on the Feature and Panel read paths the upgrade now carries (materialization, preparation, input projection, and the Alpha and Sector development that read them); no value moves, per the card's upgrade replay ALL EQUAL"
+  }
+ ]
+}

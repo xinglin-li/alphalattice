@@ -14,10 +14,12 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import definition
 from release.public_manifest import (
     INTERNAL_ID_BASELINE,
     RULES,
+    _carry_refusal,
     attach_reviews,
     classify,
     content_keys,
@@ -138,6 +140,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     blobs = {
         "config/anywhere/listing.json": b'{"schema": "alphalattice.release.public-manifest"}',
         "config/anywhere/escaped.json": b'{"schema": "alphalattice.tests\\u002dunregistered.v1"}',
+        "config/anywhere/admissions.json": b'{"schema": "alphalattice.source-ratchet.v1"}',
         "config/anywhere/other.json": b'{"schema": "alphalattice.public.v1"}',
         "config/anywhere/torn.json": b'{"schema": "alphalattice.public.v1"',
         "tests/structural/test_declared.py": b'"""Reads it.\n\nPRIVATE\\x5fTEST: needs it."""\n',
@@ -148,6 +151,7 @@ def test_the_full_release_closure_check_names_its_private_inventory_input():
     assert declared == {
         "config/anywhere/listing.json",
         "config/anywhere/escaped.json",
+        "config/anywhere/admissions.json",
         "config/anywhere/torn.json",
         "tests/structural/test_declared.py",
         "tests/structural/test_torn.py",
@@ -460,7 +464,7 @@ def test_development_vocabulary_matches_internal_forms_without_refusing_ordinary
     ] == [ux, perf, fix, cards[6], cards[4]]
 
 
-@pytest.mark.parametrize("part", ["moves", "batches", "history"], ids=str)  # its three seams
+@pytest.mark.parametrize("part", ["moves", "batches", "history"])  # its three seams
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
 def test_committed_development_label_allowance_cannot_grow_or_reset(
     tmp_path, synthetic_history, monkeypatch, part
@@ -485,14 +489,27 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     if part == "moves":
         table.parent.mkdir(parents=True)
         extra = "SYNTHETIC-CARD"
-        for named, occurrences, refusal in (
-            ({moved: owner}, {moved: {label: 1}}, None),
-            ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
-            ({moved: owner}, {moved: {label: 2}}, "labels differ"),
-            ({}, {moved: {label: 1}}, "map does not name it"),
-            ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
-            ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+        for index, (named, occurrences, refusal) in enumerate(
+            (
+                ({moved: owner}, {moved: {label: 1}}, None),
+                ({moved: owner}, {moved: {label: 1, extra: 1}}, "labels differ"),
+                ({moved: owner}, {moved: {label: 2}}, "labels differ"),
+                ({}, {moved: {label: 1}}, "map does not name it"),
+                ({moved: "src/absent.py"}, {moved: {label: 1}}, "holds no allowance"),
+                ({moved: owner}, {owner: {label: 1}, moved: {label: 1}}, "keeps its allowance"),
+            )
         ):
+            reason = _carry_refusal(
+                moved, occurrences[moved], {"occurrences": occurrences}, policy, named
+            )
+            if refusal is None:
+                assert reason is None
+            else:
+                assert reason is not None and re.search(refusal, reason)
+            # One passing and one refusing Git history prove the seam; the other rows
+            # vary the same move decision on the in-memory policies above.
+            if index > 1:
+                continue
             rows = {new: {"domain": "d", "old": old, "reason": "r"} for new, old in named.items()}
             table.write_text(json.dumps({"files": rows}), encoding="utf-8", newline="\n")
             baseline.write_text(
@@ -544,13 +561,12 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
                 + raw
                 + b"\n\n"
             )
-        subprocess.check_output(
-            ["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream
-        )
+        spawn.check_output(["git", "-C", str(tmp_path), "fast-import", "--quiet"], input=stream)
         tip = _git("rev-parse", "batched")
         side = _git("commit-tree", _git("write-tree"), "-p", branch, "-m", "Side branch")
         merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
-        check_output, responses = subprocess.check_output, {}
+        check_output, responses = spawn.check_output, {}
+        run, resolved = spawn.run, {}
         popen, sent = subprocess.Popen, bytearray()
 
         def recorded(
@@ -559,15 +575,23 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             process = popen(command, **kwargs)
             if "--batch-command" in command:
                 stdin, sent[:] = process.stdin, b""
-                write = lambda data: sent.extend(data) or stdin.write(data)  # noqa: E731
-                process.stdin = SimpleNamespace(write=write, flush=stdin.flush, close=stdin.close)
+                write = lambda data: sent.extend(data) or stdin.write(data)
+                process.stdin = SimpleNamespace(
+                    write=write, flush=stdin.flush, close=stdin.close, closed=False
+                )
             return process
+
+        def record_run(command, **kwargs):
+            answer = run(command, **kwargs)
+            resolved[tuple(command)] = answer
+            return answer
 
         with monkeypatch.context() as patch:
             starts = Mock(wraps=recorded)
             patch.setattr(subprocess, "Popen", starts)
+            patch.setattr(spawn, "run", record_run)
             patch.setattr(
-                subprocess,
+                spawn,
                 "check_output",
                 lambda command, **kwargs: responses.setdefault(
                     tuple(command), check_output(command, **kwargs)
@@ -593,8 +617,9 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             ("--parents", lambda raw: merged + " " + "0" * 40 + "\n"),
         ):
             with monkeypatch.context() as patch:
+                patch.setattr(spawn, "run", lambda command, **_kwargs: resolved[tuple(command)])
                 patch.setattr(
-                    subprocess,
+                    spawn,
                     "check_output",
                     lambda command, option=option, damage=damage, **kwargs: (
                         damage(responses[tuple(command)])
@@ -602,15 +627,33 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
                         else responses[tuple(command)]
                     ),
                 )
-                patch.setattr(
-                    subprocess,
-                    "Popen",
-                    lambda command, option=option, damage=damage, **kwargs: (
-                        MagicMock(stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0)
-                        if option in command
-                        else popen(command, **kwargs)
-                    ),
-                )
+                if option == "--batch-command":
+
+                    class DamagedSession:
+                        def __init__(self, *, damage=damage, **kwargs):
+                            self.child = MagicMock(
+                                stdin=io.BytesIO(), stdout=io.BytesIO(damage(said)), returncode=0
+                            )
+
+                        def start(self, *args, **kwargs):
+                            return self.child
+
+                        def send(self, data):
+                            self.child.stdin.write(data)
+
+                        def close_input(self):
+                            self.child.stdin.close()
+
+                        def check(self):
+                            pass
+
+                        def stop(self):
+                            pass
+
+                        def __exit__(self, *args):
+                            pass
+
+                    patch.setattr(spawn, "InteractiveSession", DamagedSession)
                 with pytest.raises(ValueError, match=r"git object response|history graph"):
                     validate_internal_id_history(tmp_path, merged)
         return
@@ -628,10 +671,8 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
     with pytest.raises(ValueError, match="allowance increased"):
         validate_internal_id_history(tmp_path, "HEAD")
     shallow = tmp_path.parent / (tmp_path.name + "-shallow")
-    subprocess.check_output(
-        ["git", "clone", "--quiet", "--depth=1", tmp_path.as_uri(), str(shallow)]
-    )
-    shallow_head = subprocess.check_output(
+    spawn.check_output(["git", "clone", "--quiet", "--depth=1", tmp_path.as_uri(), str(shallow)])
+    shallow_head = spawn.check_output(
         ["git", "-C", str(shallow), "rev-parse", "HEAD"], text=True
     ).strip()
     assert _git("rev-parse", "HEAD") == shallow_head
@@ -983,7 +1024,7 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
         PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
         PYTEST_WORKER_DIAGNOSTICS=str(diagnostics),
     )
-    run = subprocess.run(
+    run = spawn.run(
         [
             sys.executable,
             "-m",

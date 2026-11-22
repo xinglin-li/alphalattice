@@ -12,11 +12,11 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import sys
 import tempfile
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
@@ -26,7 +26,9 @@ import pytest
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
+from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application import cli, client, native_setup
 from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
@@ -46,7 +48,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.evaluation.forms import Scenario
+from tests._support.history_fixtures import recording_history as recording_history
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
     _cli,
@@ -54,7 +58,7 @@ from tests.portfolio_strategy_lab.cli_support import (
     _session_cli,
     strategy_readback_operations,
 )
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.structural.refusal_support import rerun_refusal_codes
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
@@ -121,19 +125,34 @@ _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"}
     "failure", ["task_control.queue_full", "TASK_STAGE_RAISED:private-content"]
 )
 def test_problem_report_projects_real_activity_without_private_values(
-    live, tmp_path, monkeypatch, capsys, failure
+    recording_history, tmp_path, monkeypatch, capsys, request, failure
 ) -> None:
     """A local report keeps replay facts and excludes private ledger and doctor values."""
-    private = [str(live.workspace), "private-holdings", "private-content"]
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    activity = WorkspaceActivity(
+        workspace=workspace,
+        workspace_id=recording_history,
+        gate=WorkspaceMutationGate(),
+        instance="problem-report",
+    )
+    request.addfinalizer(activity.close)
+
+    def local_client(path: Path, *, timeout: float) -> SimpleNamespace:
+        assert path == workspace and timeout > 0
+        return SimpleNamespace(activity_recent=activity.recent)
+
+    monkeypatch.setattr(native_setup, "LocalResearchClient", local_client)
+    private = [str(workspace), "private-holdings", "private-content"]
     private += [str(uuid4()), "987654.321"]
-    request = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
-    span = live.activity.entered(request, caller="EXTERNAL_AUTOMATION")
+    operation = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
+    span = activity.entered(operation, caller="EXTERNAL_AUTOMATION")
     assert span is not None
     answer = dict(status="REFUSED", failure_code=failure, next_action="READ_TASK")
     answer.update(task_id=private[3], holdings=private[1], figure=float(private[4]))
     answer.update(file_contents=private[2], conversation=private[2], workspace=private[0])
     answer["next_requests"] = {"retry": {"operation": "WORKSPACE_SHOW", "file": private[0]}}
-    live.activity.returned(span, answer)
+    activity.returned(span, answer)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_THREAD_ID", "test-report-session")
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -148,7 +167,7 @@ def test_problem_report_projects_real_activity_without_private_values(
         args = ["--lang", language, "problem", "report", "--output", str(saved)]
         sentence = "Report the WORKSPACE_SHOW problem to the developers."
         args += ["--sentence", sentence, "--expected-route", "WORKSPACE_SHOW"]
-        code, shown, _ = _inprocess_cli(live.workspace, *args, capsys=capsys)
+        code, shown, _ = _inprocess_cli(workspace, *args, capsys=capsys)
         expected = (0, "PROBLEM_REPORT", "PROBLEM_REPORT")
         assert (code, shown["operation"], shown["status"]) == expected
         report = json.loads(saved.read_text("utf-8"))
@@ -452,10 +471,11 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
     asked = ("--request-timeout", "700", "task", "list")
 
     def launch(*arguments: str, env: dict[str, str] = environment) -> dict[str, Any]:
-        result = subprocess.run(
+        result = spawn.run(
             [sys.executable, str(SCRIPT), "--workspace", str(empty), *arguments],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=120,
             env=env,
         )
@@ -484,7 +504,7 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """One session reader assigns both requests and their counted launches to the same
-    unambiguous session."""
+    unambiguous session; a trace in the environment is sent only as one ASCII line."""
 
     from alphalattice.interface.local_application import cli_contract
 
@@ -494,6 +514,9 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     both = {**claude, **codex}
     assert cli_contract.agent_session(both) is None
     assert cli_contract.agent_provenance_headers(both) == {}
+    traced = {"TRACEPARENT": "00-1-2-01", "BAGGAGE": "a=1\r\nX-Injected: 1"}  # one line only
+    assert cli_contract.agent_provenance_headers(traced) == {"traceparent": "00-1-2-01"}
+    assert cli_contract.agent_provenance_headers({"BAGGAGE": "a=é"}) == {}  # ASCII only
     launches = [cli_contract.count_launch(env) for env in (claude, both, claude, codex)]
     assert launches == [1, None, 2, 1]
     assert cli_contract.agent_session(claude) == ("claude-code", "claude-1")
@@ -579,10 +602,11 @@ def test_an_empty_document_file_is_refused_by_its_own_code(
 
 def test_a_nouns_help_names_every_verbs_flags() -> None:
     """Object and top-level help show registered actions, flags, person-only doors and order."""
-    result = subprocess.run(
+    result = spawn.run(
         [sys.executable, str(SCRIPT), "feature", "--help"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=120,
         env={**os.environ, "COLUMNS": "240"},
     )
@@ -607,8 +631,12 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
     assert "FEATURE_ACTIVATE" in table["person_only"] and "person" in rows["activate"]
     assert "--from (a saved answer)" in text
 
-    shown = subprocess.run(
-        [sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, timeout=60
+    shown = spawn.run(
+        [sys.executable, str(SCRIPT), "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
     )
     words = " ".join(shown.stdout.split())
     positions = [words.index(command) for command in table["common_path"]]
@@ -799,7 +827,15 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
         sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         parser = sub.choices[word]
     seen = next(a for a in parser._actions if a.dest == "committee_seen")
-    assert "M7 is 7" in seen.help  # the number, not the id the floor shows (#5)
+    assert "M7 or 7" in seen.help  # the floor's name or its number (#5)
+    parse = cli.command_parser().parse_args
+    for given in ("M3", "m3", "3"):
+        assert parse(cli.floor_numbers([*committee, "--seen", given])).committee_seen == 3
+    assert parse(cli.floor_numbers([*committee, "--seen=M3"])).committee_seen == 3
+    # The forms agents try read as the command they mean: the PM's verdict is a submit, and a
+    # research update's Task is the update the committee verbs name.
+    assert parse(["committee", "verdict", "--update", "u"]).operations == ("COMMITTEE_SUBMIT",)
+    assert parse(["research-update", "show", "--update", "u"]).task_id == "u"
 
 
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
@@ -958,6 +994,8 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         "evidence_setup": "--acquire-sec --entities AAPL --network-consent --install",
         "usage_reading_enabled": "false",
         "committee_daily_enabled": "true",
+        "analyst_reads_mode": "SUBAGENTS",
+        "analyst_reads_bundles": "3",
         "input_pinned": "true",
         "task_id": str(uuid4()),
         "automation_enabled": "true",
@@ -1342,8 +1380,12 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     """Owner-supplied words and routes stay exact when registered metadata is added."""
 
     from alphalattice.interface.local_application.cli_contract import (
+        ANSWER_LANGUAGE,
         refusal_problem,
         worded_refusal,
+    )
+    from alphalattice.interface.local_application.cli_contract import (
+        worded as translated,
     )
     from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebApplication
 
@@ -1359,6 +1401,17 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     assert panel_words["status"] == "REFUSED" and panel_words["failure_code"] == panel_code
     assert panel_words["next_action"] == "DATA_UPDATE_READBACK"
     assert refusal_problem(panel_words) is None
+    binding = worded_refusal(
+        {"status": "REFUSED", "failure_code": "research_update.features_binding_invalid"}
+    )
+    assert "feature" in binding["detail"] and "plan" in binding["detail"]
+    assert binding["next_action"] == "READ_UPDATE_AND_PLAN_AGAIN"
+    assert refusal_problem(binding) is None
+    language = ANSWER_LANGUAGE.set("zh")
+    try:
+        assert translated(binding["detail"]) != binding["detail"]
+    finally:
+        ANSWER_LANGUAGE.reset(language)
     panel_request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
     panel = worded_refusal(
         {

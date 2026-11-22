@@ -1,0 +1,48 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "8cdf9038951640cc099a6bd825bb16ef5e569e190131e63346e9bc4775db48cc",
+   "successor": "e37bf803977d3191a67f700526c4a1f6cd26e7e4ae1d91c44210df32d833da2f",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5d5068af79aef892b1a24f75c4a79c566d119cdf39ad9ecd8004eaa3af0797cc",
+   "successor": "3abe92420031522c31f119ae8d7c2572786d565e54e5305e5b9173a9906ac30a",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d79cf43b23583763e0f53952126d93e2fb6599bbacd9aad61e8e3d4140168390",
+   "successor": "82b6f34bcd1c4ffdc885ccfe763c156ffbeea3ffedcc6a15f3e82290e2d37d34",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "347bd5178cb227c8613ffe3efe02c750ca5b2de75d9f145c17f9dcc7c2eafa75",
+   "successor": "554e9713530b73f74d0c61ef3608b4033847057db15521a2fba87d28dbfe2f1f",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "edeb9379f7c7b1695aea72b015460e79a92cd9394f1fa6487b40ba5a9482832c",
+   "successor": "279568f1ad5127e28ea3f311d6a348132c7439565b6b1f00d3f7fe259180cdc4",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "0037e677337de806ecf46f53e925f8065776fd9e2bd5fbeeda3f53e11581023e",
+   "successor": "dc117e9b92ca3c9468a688ecc5403cda352709766800e03478787fcbffaaa24b",
+   "change": "First use admits market data to the world store only when it changes",
+   "reason": "First use now admits market data once per update and stages only rows that changed, under one admission rule; after first use every stored table reads back equal except one listing's adjusted closes, which were missing before and now match the provider's own adjusted closes, and only the first-use receipt reads a listing's current provider mapping"
+  }
+ ]
+}

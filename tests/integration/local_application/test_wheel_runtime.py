@@ -13,6 +13,7 @@ import sys
 import tomllib
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -25,7 +26,7 @@ from alphalattice.control.product_host.composition import (
     retrieval_pack_setup,
 )
 from alphalattice.interface.local_application import cli_contract, native_bridge, native_setup
-from alphalattice.kernel.shared_kernel import project_layout
+from alphalattice.kernel.shared_kernel import project_layout, spawn
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "config/release/runtime-resources.json"
@@ -102,7 +103,7 @@ def test_every_shipped_instruction_link_reaches_its_checkout_target() -> None:
 
     roots = {"AGENTS.md", "CLAUDE.md", "README.md"}
     scopes = ("docs/public-source/", ".agents/", ".claude/", ".codex/")
-    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+    tracked = spawn.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
     names = sorted(
         name
         for name in tracked
@@ -127,15 +128,65 @@ def test_runtime_setup_owners_expose_the_checkout_flags(owner, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
-def test_the_console_entry_and_runtime_exceptions_are_explicit() -> None:
+@pytest.mark.parametrize(
+    "case",
+    [
+        "metadata",
+        "build-child",
+        pytest.param(
+            "client-imports",
+            marks=pytest.mark.proves(
+                "local_application.console_entry_imports_only_the_standard_library"
+            ),
+        ),
+    ],
+)
+def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch) -> None:
     """requirement: one packaged console entry, existing backend, named development exceptions."""
+    if case == "client-imports":
+        probe = """
+import json
+import sys
+before = set(sys.modules)
+from alphalattice.control.product_host.composition import entry
+
+names = {name.split(".", 1)[0] for name in set(sys.modules) - before}
+print(json.dumps({
+    "third_party": sorted(names - sys.stdlib_module_names - {"__main__", "alphalattice"}),
+    "full_cli": "alphalattice.interface.local_application.cli" in sys.modules,
+}))
+"""
+        loaded = spawn.run(
+            [sys.executable, "-I", "-B", "-c", probe],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=True,
+            timeout=15,
+        )
+        assert json.loads(loaded.stdout) == {"third_party": [], "full_cli": False}
+        return
+    if case == "build-child":
+        from scripts.release import wheel_build
+
+        calls = []
+        monkeypatch.setattr(
+            wheel_build.spawn,
+            "run",
+            lambda *a, **kw: (
+                calls.append((a, kw)) or SimpleNamespace(stdout="locked requirements\n")
+            ),
+        )
+        assert runtime_requirements() == "locked requirements\n"
+        assert calls[0][0][0][:2] == ["uv", "export"]
+        assert calls[0][1]["check"] and calls[0][1]["text"]
+        return
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["tool"]["uv"]["package"] is True
     assert project["project"]["scripts"] == {
         "alphalattice": "alphalattice.control.product_host.composition.entry:main"
     }
     assert project["build-system"] == {
-        "requires": ["setuptools==83.0.0"],
+        "requires": ["setuptools==83.0.0", "psutil==7.2.2"],
         "build-backend": "setuptools.build_meta",
     }
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -171,23 +222,39 @@ def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() ->
 
 def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> None:
     """requirement: actual wheel entries and bytes hold every declared runtime resource."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    patterns = project["tool"]["setuptools"]["package-data"]["alphalattice"]
+    package = ROOT / "src/alphalattice"
     wheel_value = os.environ.get("ALPHALATTICE_TEST_WHEEL")
     if wheel_value:
         wheel = Path(wheel_value)
     else:
-        stale = ROOT / "build/lib/alphalattice/retired_v429_module.py"
+        source = tmp_path / "source"
+        tracked = spawn.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+        names = (
+            set(filter(None, tracked))
+            | {path.relative_to(ROOT).as_posix() for path in package.rglob("*.py")}
+            | {
+                path.relative_to(ROOT).as_posix()
+                for pattern in patterns
+                for path in package.glob(pattern)
+                if path.is_file()
+            }
+        )
+        for name in sorted(names):
+            target = source / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, target)
+        stale = source / "build/lib/alphalattice/retired_v429_module.py"
         stale.parent.mkdir(parents=True, exist_ok=True)
         stale.write_text("raise RuntimeError('retired staging file')\n", encoding="utf-8")
-        subprocess.run(
+        spawn.run(
             ["uv", "build", "--wheel", "--offline", "--out-dir", str(tmp_path)],
-            cwd=ROOT,
+            cwd=source,
             check=True,
             capture_output=True,
         )
         wheel = next(tmp_path.glob("*.whl"))
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    patterns = project["tool"]["setuptools"]["package-data"]["alphalattice"]
-    package = ROOT / "src/alphalattice"
     expected = {path.relative_to(ROOT / "src").as_posix() for path in package.rglob("*.py")}
     expected.update(
         path.relative_to(ROOT / "src").as_posix()
@@ -200,6 +267,7 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
     expected.update("alphalattice/_runtime/" + name for name in inputs)
     expected.add("alphalattice/_runtime/config/release/source-hashes.json")
     expected.add("alphalattice/_runtime/config/release/runtime-requirements.txt")
+    expected.add("alphalattice/_runtime/config/release/runtime-overrides.txt")
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
         assert {name for name in names if ".dist-info/" not in name} == expected
@@ -216,6 +284,8 @@ def test_a_built_wheel_holds_the_exact_runtime_content_set(tmp_path: Path) -> No
         }
         requirements = archive.read("alphalattice/_runtime/config/release/runtime-requirements.txt")
         assert requirements.decode() == runtime_requirements()
+        overrides = archive.read("alphalattice/_runtime/config/release/runtime-overrides.txt")
+        assert overrides.decode().splitlines() == project["tool"]["uv"]["override-dependencies"]
         assert "-e ." not in requirements.decode()
         assert not any(
             name.startswith(("scripts/", "tests/", "devtools/", "workspaces/")) for name in names
@@ -466,6 +536,12 @@ def test_the_bash_smoke_starts_the_git_bash_that_path_names(
 ) -> None:
     """regression: process creation finds System32's WSL bash.exe before PATH (the hosted Windows
     runner has one); the smoke starts the bash PATH names and refuses the WSL launcher by name."""
+    ticks = iter((0.0, 1.0, 2.0, 3.0))
+    monkeypatch.setattr(
+        wheel_smoke, "time", SimpleNamespace(monotonic=lambda: next(ticks)), raising=False
+    )
+    with pytest.raises(ValueError, match=r"wheel_smoke\.launch_timeout"):
+        wheel_smoke.read_launch(SimpleNamespace(get=lambda **_: "still starting"), timeout=2)
     git_bash = str(tmp_path / "Git/usr/bin/bash.exe")
     monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: git_bash)
     assert wheel_smoke.shell_command(["alphalattice", "--help"], "bash")[0] == git_bash
@@ -474,3 +550,60 @@ def test_the_bash_smoke_starts_the_git_bash_that_path_names(
     monkeypatch.setattr(wheel_smoke.shutil, "which", lambda name: launcher)
     with pytest.raises(SystemExit, match="no Git Bash on PATH"):
         wheel_smoke.shell_command(["alphalattice", "--help"], "bash")
+
+    # The smoke supplies a private data root and uses one bounded Host session.
+    import io
+    from contextlib import nullcontext
+
+    calls, sessions = [], []
+
+    class Session:
+        def __init__(self, *, timeout, stop_scope):
+            assert (timeout, stop_scope) == (300, "tree")
+            self.sent = []
+            sessions.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def start(self, command, **options):
+            calls.append((command, options))
+            return SimpleNamespace(
+                stdin=io.StringIO(), stdout=io.StringIO(), wait=lambda timeout: 0
+            )
+
+        def send(self, data):
+            self.sent.append(data)
+
+        def close_input(self):
+            pass
+
+    def run(command, **options):
+        calls.append((command, options))
+        if "--help" in command:
+            return SimpleNamespace(returncode=0, stdout="workspace serve")
+        if len(calls) == 2:
+            refusal = {
+                "failure_code": "local_client.service_not_running",
+                "detail": "d",
+                "next_action": "n",
+            }
+            return SimpleNamespace(returncode=4, stdout=json.dumps(refusal))
+        return SimpleNamespace(returncode=0, stdout='{"outcome":"OK"}')
+
+    response = SimpleNamespace(status=200, read=lambda: b'{"session":"fixture"}')
+    opener = SimpleNamespace(open=lambda *args, **kwargs: nullcontext(response))
+    monkeypatch.setattr(wheel_smoke.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(wheel_smoke.spawn, "run", run)
+    monkeypatch.setattr(wheel_smoke.spawn, "InteractiveSession", Session)
+    monkeypatch.setattr(wheel_smoke, "read_launch", lambda lines: "http://127.0.0.1:1234/launch")
+    monkeypatch.setattr(wheel_smoke.urllib.request, "build_opener", lambda *args: opener)
+    answer = wheel_smoke.smoke(["fixture"], cwd=tmp_path)
+    assert answer["host_stop_exit"] == 0 and sessions[0].sent == ["stop\n"]
+    assert all(
+        Path(options["env"]["ALPHALATTICE_DATA_ROOT"]).is_relative_to(tmp_path)
+        for _, options in calls
+    )

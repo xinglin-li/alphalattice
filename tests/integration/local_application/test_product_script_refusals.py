@@ -27,6 +27,7 @@ from zipfile import ZipFile
 import pytest
 
 from alphalattice.interface.local_application.cli_contract import refusal_words, worded
+from alphalattice.kernel.shared_kernel import spawn
 
 
 def _blocked(tmp_path: Path) -> Path:
@@ -54,7 +55,7 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     from scripts import install_retrieval_pack as installer
 
     blocked = _blocked(tmp_path)
-    arguments = ["--install", "hybrid-v2-minilm", "--network"]
+    arguments = ["--install", "retrieval-store", "--network"]
     assert not blocked.resolve().is_relative_to(installer.PLAYPEN), "pytest's root is outside"
     assert installer.main(["--store", str(blocked), *arguments]) == 2
     refusal = _refusal(capsys)
@@ -70,6 +71,8 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
         pointer.parent.mkdir(parents=True)
         pointer.write_text("{", encoding="utf-8")
         patch.setattr(Path, "home", classmethod(lambda cls: home))
+        patch.setenv("LOCALAPPDATA", str(home))
+        patch.setenv("XDG_DATA_HOME", str(home))
         patch.delenv("ALPHALATTICE_MODEL_STORE", raising=False)
         assert installer.main(["--status"]) == 2
         refused = _refusal(capsys)
@@ -90,27 +93,8 @@ def test_the_pack_installer_refuses_an_unwritable_store_by_name(
     for view in (("--vie", "summary"), ("--vie=summary",)):
         assert installer.main(["--status", "--store", str(tmp_path / "missing"), *view]) == 0
         command = json.loads(capsys.readouterr().out)["full_answer"]["command"]
-        replay = subprocess.run(command, capture_output=True, check=False)
+        replay = spawn.run(command, capture_output=True, check=False)
         assert replay.returncode == 0 and "representation" not in json.loads(replay.stdout)
-    if (
-        sys.platform != "win32"
-    ):  # a path past macOS's and Linux's length limits is refused before the status
-        pytest.skip("Windows-only long-path status; earlier refusal checks ran")
-    store = tmp_path.joinpath(*(["中" * 48] * 120))
-    line = ["--status", "--store", str(store)]
-    assert installer.main(line) == 0
-    whole = capsys.readouterr().out.rstrip("\n").encode()
-    saved = tmp_path / "pack-status.json"
-    read = [*line, "--view", "summary", "--output", str(saved)]
-    assert installer.main(read) == 0
-    printed = capsys.readouterr().out
-    summary = json.loads(printed)
-    assert len(printed.encode()) <= 32768 and not store.exists()
-    assert summary["full_answer"] == {"file": str(saved.resolve())}
-    assert saved.read_bytes() == whole
-    assert installer.main(read) == 2
-    assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
-    assert saved.read_bytes() == whole
     monkeypatch.setattr(
         installer.model_store, "hub_fetcher", lambda **_: pytest.fail("unexpected install")
     )
@@ -125,7 +109,6 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
 ) -> None:
     """Locked setup fills an empty uv cache locally; failures retain actionable owner answers."""
 
-    from scripts import create_gpu_environment as gpu
     from scripts import create_retrieval_environment as setup
 
     cache, venv = tmp_path / "uv-cache", tmp_path / "venv"
@@ -140,7 +123,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         }.items():
             wheel.writestr(name, content)
     with monkeypatch.context() as local:
-        subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+        spawn.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
         python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         pins = tmp_path / "requirements-retrieval.lock"
         pins.write_text("click==8.5.0\n", encoding="utf-8")
@@ -151,7 +134,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
         local.setenv("UV_FIND_LINKS", str(tmp_path))
         local.setattr(sys, "argv", setup.fill_command()[2:])
         assert setup.main() == 0
-        subprocess.run([str(python), "-c", "import click"], check=True)
+        spawn.run([str(python), "-c", "import click"], check=True)
     capsys.readouterr()
 
     calls: list[dict[str, Any]] = []
@@ -178,6 +161,7 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     monkeypatch.setenv(
         "PIP_INDEX_URL", "https://example.invalid/simple?key=x7Z"
     )  # too short to mask
+    monkeypatch.setattr(setup.spawn, "run", exits)
     monkeypatch.setattr(setup.subprocess, "run", exits)
     monkeypatch.setattr(sys, "argv", ["create_retrieval_environment.py", "--offline"])
     assert setup.main() == 2
@@ -219,23 +203,22 @@ def test_the_retrieval_environment_setup_answers_its_failure_in_words(
     assert refusal["network"]["UV_HTTP_TIMEOUT"] == "30"
     assert refusal["next_action"] == "RUN_LOCKED_DEPENDENCY_SETUP"
     assert refusal["next_commands"]["setup"] == setup.fill_command()
-    assert gpu.main() == 2
-    assert _refusal(capsys)["failure_code"] == "gpu_environment.setup_failed:uv sync exited 1"
 
     def missing(command: tuple[str, ...], **_options: object) -> None:
         raise FileNotFoundError(2, "The system cannot find the file specified")
 
-    monkeypatch.setattr(setup.subprocess, "run", missing)
+    monkeypatch.setattr(setup.spawn, "run", missing)
     assert setup.main() == 2
     assert _refusal(capsys)["failure_code"] == "retrieval_environment.uv_unavailable"
 
 
 @pytest.mark.proves("local_application.retrieval_setup_uses_writable_scratch")
 @pytest.mark.proves("local_application.native_tool_setup_uses_writable_scratch")
-@pytest.mark.skipif(os.name != "nt", reason="Windows executable temp handling")
+@pytest.mark.skipif(os.name != "nt", reason="Checkout scratch is the Windows installer contract")
 def test_retrieval_setup_uses_checkout_scratch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Both Windows installers isolate subprocess scratch without changing the caller's TEMP."""
     from scripts import create_retrieval_environment as setup
 
     checkout = tmp_path / "checkout"
@@ -264,7 +247,7 @@ def test_retrieval_setup_uses_checkout_scratch(
         local.setattr(setup, "PLAYPEN", checkout)
         local.setattr(setup, "LOCK", checkout / "uv.lock")
         local.setattr(setup, "ENVIRONMENT", checkout / ".venv-retrieval")
-        local.setattr(setup.subprocess, "run", checked)
+        local.setattr(setup.spawn, "run", checked)
         setup.create(offline=True)
         assert len(seen) == 2 and seen[0] == seen[1] and not seen[0].exists()
         assert os.environ["TEMP"] == str(blocked_temp)
@@ -273,7 +256,7 @@ def test_retrieval_setup_uses_checkout_scratch(
             checked(command, **options)
             raise subprocess.CalledProcessError(2, command)
 
-        local.setattr(setup.subprocess, "run", failed)
+        local.setattr(setup.spawn, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             setup.create(offline=True)
     assert len(seen) == 3 and not seen[-1].exists()
@@ -282,22 +265,36 @@ def test_retrieval_setup_uses_checkout_scratch(
 
     with monkeypatch.context() as local:
         local.setattr(native_setup, "ROOT", checkout)
-        local.setattr(native_setup.subprocess, "run", checked)
+        local.setattr(native_setup.spawn, "run", checked)
         assert native_setup._install_tool()["status"] == "TOOL_INSTALLED"
-        assert len(seen) == 7 and len(set(seen[3:])) == 1 and not seen[3].exists()
-        local.setattr(native_setup.subprocess, "run", failed)
+        assert len(seen) == 8 and len(set(seen[3:])) == 1 and not seen[3].exists()
+        local.setattr(native_setup.spawn, "run", failed)
         with pytest.raises(subprocess.CalledProcessError):
             native_setup._install_tool()
-    assert len(seen) == 8 and not seen[-1].exists()
+    assert len(seen) == 9 and not seen[-1].exists()
 
 
+@pytest.mark.parametrize("case", ["unwritable", "check-child"])
 def test_the_local_web_build_answers_an_asset_it_cannot_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], case: str
 ) -> None:
     """requirement: the build writes its assets beside their sources in the checkout; a
     write it cannot make is refused in words, the served assets left as they were."""
 
     from scripts import build_local_web_ui as build
+
+    if case == "check-child":
+        calls = []
+        monkeypatch.setattr(build.spawn, "run", lambda command, **kw: calls.append((command, kw)))
+        monkeypatch.setattr(build, "concat", lambda *_: "")
+        monkeypatch.setattr(build, "parameters_js", lambda: "")
+        monkeypatch.setattr(build, "messages_js", lambda: "")
+        monkeypatch.setattr(build, "read", lambda *_: "")
+        monkeypatch.setattr(build, "dictionary", lambda *_: "")
+        build.check()
+        assert calls[0][0][0] == sys.executable
+        assert len(calls) == 5 and all(call[0][:2] == ["node", "--check"] for call in calls[1:])
+        return
 
     for name in build.FONT_FILES:
         target = tmp_path / name
@@ -606,7 +603,7 @@ def test_every_product_setup_script_words_an_unexpected_failure(
         monkeypatch.setattr(setup.NativeResearchBinding, "binding_entries", failed)
         arguments = ["unbind", "--session-id", "fixture-session"]
     else:
-        monkeypatch.setattr(setup.model_store, "recipe_readiness", failed)
+        monkeypatch.setattr(setup.model_store, "pack_status", failed)
         arguments = ["--status", "--store", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", [f"{script}.py", *arguments])
     assert setup.main() == 2
@@ -653,10 +650,10 @@ def _setup_runs(setup: Any, script: str, tmp_path: Path) -> list[tuple[str, list
     if script == "install_retrieval_pack":
         store = ["--store", str(tmp_path / "store")]
         return [
-            ("offline", ["--status", *store], setup.model_store, "recipe_readiness"),
+            ("offline", ["--status", *store], setup.model_store, "pack_status"),
             (
                 "network",
-                ["--install", "hybrid-v2-minilm", "--network", *store],
+                ["--install", "retrieval-store", "--network", *store],
                 setup.model_store,
                 "hub_fetcher",
             ),
@@ -715,6 +712,8 @@ def test_every_setup_refusal_claims_only_what_it_carries_and_its_way_on_fits_its
         payload = json.loads(capsys.readouterr().out)
         assert payload["status"] == "REFUSED" and payload["detail"], (script, mode, payload)
         code = str(payload.get("failure_code") or payload.get("reason"))
+        if script == "create_gpu_environment" and kind == "command":
+            assert code == "gpu_environment.setup_failed:uv sync exited 1"
         quoted = {code, code.partition(":")[2]}
         for place in set(_ANSWER_PATH.findall(payload["detail"])) - quoted:
             found: Any = payload
@@ -753,8 +752,47 @@ def test_every_setup_refusal_word_names_its_way_on_and_only_places_every_setup_c
         assert "next_commands" in places and places <= {"causes", "next_commands"}, code
 
 
-def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, capsys, tmp_path):
-    """Control: Unwritable stores report sanitized OS causes before any download."""
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("denied-store", id="denied-store"),
+        pytest.param(
+            "long-status",
+            id="long-status",
+            marks=[
+                pytest.mark.proves(
+                    "local_application.long_windows_model_store_status_keeps_its_full_answer"
+                ),
+                pytest.mark.skipif(sys.platform != "win32", reason="Exercises Windows long paths"),
+            ],
+        ),
+    ],
+)
+def test_a_denied_store_reports_the_os_cause_before_any_download(
+    monkeypatch, capsys, tmp_path, case: str
+):
+    """Model-store answers keep OS causes and complete status files without downloading."""
+
+    if case == "long-status":
+        from scripts import install_retrieval_pack as installer
+
+        store = tmp_path.joinpath(*(["中" * 48] * 120))
+        line = ["--status", "--store", str(store)]
+        assert installer.main(line) == 0
+        whole = capsys.readouterr().out.rstrip("\n").encode()
+        saved = tmp_path / "pack-status.json"
+        read = [*line, "--view", "summary", "--output", str(saved)]
+        assert installer.main(read) == 0
+        printed = capsys.readouterr().out
+        summary = json.loads(printed)
+        assert len(printed.encode()) <= 32768 and not store.exists()
+        assert summary["full_answer"] == {"file": str(saved.resolve())}
+        assert saved.read_bytes() == whole
+        assert installer.main(read) == 2
+        assert _refusal(capsys)["failure_code"] == "local_client.output_exists_choose_another_path"
+        assert saved.read_bytes() == whole
+        return
+
     from scripts import install_retrieval_pack as setup
 
     def denied(**_kwargs):
@@ -770,7 +808,7 @@ def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, ca
 
     monkeypatch.setattr(setup.model_store.tempfile, "TemporaryFile", denied)
     monkeypatch.setattr(setup.model_store, "hub_fetcher", lambda **_kwargs: fetch)
-    assert setup.main(["--store", str(tmp_path), "--install", "hybrid-v2-minilm", "--network"]) == 2
+    assert setup.main(["--store", str(tmp_path), "--install", "retrieval-store", "--network"]) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["failure_code"] == "model_store.store_unwritable"
     assert payload["store"] == str(tmp_path.resolve())
@@ -782,7 +820,7 @@ def test_a_denied_store_reports_the_os_cause_before_any_download(monkeypatch, ca
     assert "NEVER-PRINT-ME" not in json.dumps(payload) and fetched == []
 
 
-def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsys):
+def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsys, tmp_path):
     """regression: missing host declarations, native binding refusals and a failed node/check
     step are worded too, not just OS writes covered by the original writer pin."""
     from scripts import build_local_web_ui as assets
@@ -821,6 +859,32 @@ def test_setup_validation_and_asset_check_failures_have_words(monkeypatch, capsy
     assert payload["causes"][0]["exit_code"] == 1
     assert payload["detail"] and payload["next_action"]
     assert "NEVER-PRINT-ME" not in json.dumps(payload)
+
+    from scripts import run_sector_research_development as sector
+
+    required = {
+        "workspace": str(tmp_path),
+        "snapshot-hash": "a" * 64,
+        "sector-revision": "b" * 64,
+        "method": "sector_persistence",
+        "training-start": "2024-08-01",
+        "training-end": "2024-08-02",
+        "forecast-start": "2024-08-05",
+        "forecast-end": "2024-08-09",
+    }
+    assert (
+        sector.main(
+            [
+                "--publish",
+                *(part for name, value in required.items() for part in ("--" + name, value)),
+            ]
+        )
+        == 2
+    )
+    answer = _refusal(capsys)
+    assert answer["failure_code"] == "local_client.service_not_running"
+    assert answer["current_pointer_writes"] == 0 and list(tmp_path.iterdir()) == []
+    assert "Start one" in answer["detail"]
 
 
 # The setup entry is exercised only against synthetic offline installations.
@@ -874,7 +938,7 @@ def _pw_stub_npm(tmp_path: Path, env: dict[str, str], operation: str = "") -> Pa
 
 
 def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return spawn.run(
         [
             "powershell.exe",
             "-NoProfile",
@@ -888,6 +952,7 @@ def _pw_call(project: Path, env: dict[str, str], *args: str) -> subprocess.Compl
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=60,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )

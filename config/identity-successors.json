@@ -15037,6 +15037,1378 @@
    "successor": "552d62654276f4c7cb7929988832227026c43ad328d5b9dba2b26a0dc2d80add",
    "change": "Make the development fast guard portable across platforms",
    "reason": "The development fast guard now reads process memory the same way on every platform, which changes the code identity of eight roles (model lifecycle replay, conditional decision advancement, portfolio updates, research strategy preparation, strategy calibration and three alpha research implementations); their cached results are recomputed once. Comparisons on Windows and macOS show the same memory budget, content-store reads and writes, and an identical frozen alpha array."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "55aa0e8de56f92c1c76ef390943083124cc21882498218ba48b437ab9225a7cd",
+   "successor": "b4e98a97c128c94179695add42f8acf0bd2c9faf679786fc870cb1d9fedfd67b",
+   "change": "New workspaces prepare Evidence about 30% faster with int8 retrieval",
+   "reason": "Evidence retrieval gains a faster int8 recipe whose indexes, vectors and pair scores are bound to the machine class that computed them, so results from one kind of processor are never reused on another; the existing fp32 recipe keeps every identity, hash and sealed canary unchanged"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "d988ce47555817709d8a422f003c3ddccd79718ab8015538ac6c9260997a50e3",
+   "successor": "e7037d16c547d615143e4e4534082b0afcf9dae2b3e40ff23aeb5d7be653d5a2",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "739fff03778aad9ac9cf662c7c75df0175cb505ced55b8d4daf6a101d780e547",
+   "successor": "a256bdab7436d7af98403b3e576323d5ee2ef3d340ecf6d4cda767e08cad2358",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "3a3505dc3c4da713f1b5e293cd3312e807895130f0c4fc2fae157eaa9df36661",
+   "successor": "5d14fde1aea40a93e4dc09837d5b86934e79ab5e8a7c556253503cd4911d1c4c",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "b46ec3a84123b33e0b57ada0cd01af74eeebdfc13fb13816b22a1e38376a528d",
+   "successor": "19afda46fa6cb2afbee98184f50232fbceb5c686e66cf6d24ec4a44436c6ed59",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "c830dee393ca0cd35126245da20ddb3335b1d985aa129b76aa11aacabf833b79",
+   "successor": "5ef4193ed2d274903fba3f88d02b367a64cc8d02fcf35de6ed9bb6bb428369ce",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "9980ca7bd25e2955d72732a54a1e5715e47e78ecb46452a14ee552e0897c4e08",
+   "successor": "af1602595d82f00fbffcb43800789e154cefa77bcf14a15ca242da2e56f6ab0f",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "964b4fd4b1b08ec1f17b89e73b60396b6098145312ab08f2110a409dc6a8840e",
+   "successor": "c209a2c83f4926e744b0eba5f35ee7b05c9c56a249f055d3f982f8839537508d",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "fabe1e346498002b56c88f9388a1ab8251eec5d0f58a1867f51cc7817fb04900",
+   "successor": "5c36308cf95cfadc9e6caefad6df46c59a220de0f6b86c995547617bdc209ce6",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "successor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "6f42a31210295a918f18f9c224e46ffc0de21dd794235233c0df9707270d016f",
+   "successor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "552d62654276f4c7cb7929988832227026c43ad328d5b9dba2b26a0dc2d80add",
+   "successor": "b1bb1ecfb62af98a0ff89c0d87409d25e9fe8cb93fd6187d73004e6aa056aa15",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "5a5a66649d1a8f5d692ea81158697aa7924a272b35e3360848f5728b05a783bb",
+   "successor": "be660fae1790536200994d0a754d77214971d0d1f9d230d1552f536737b6ef75",
+   "change": "Prove saved studies at their edges, not on every read",
+   "reason": "Sealed research files are now proved when work starts, when results leave and by an idle scrub, instead of on every read; the readers of model lifecycle, scoring, calibration, strategy preparation, feature materialization, training input, portfolio updates and decision advancement compute the same values, and a changed sealed file is still found by the scrub and refused at export"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "a256bdab7436d7af98403b3e576323d5ee2ef3d340ecf6d4cda767e08cad2358",
+   "successor": "0e324664b9dda855c4c10b7225d5bfb3f6cb2728bb46511191134e4cff0493b1",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "5d14fde1aea40a93e4dc09837d5b86934e79ab5e8a7c556253503cd4911d1c4c",
+   "successor": "86e38efcd5e4b1d5ae68e3a493d12ffe69f859ffa928876169780a83ce26d287",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c209a2c83f4926e744b0eba5f35ee7b05c9c56a249f055d3f982f8839537508d",
+   "successor": "4527626637e7901bec7fc42800e2780ab0d295ea33f2c24dd8a50898bb364297",
+   "change": "A portfolio readback reports a deleted or changed artifact as failed",
+   "reason": "Portfolio exact readback now runs as a proving edge, reading every sealed byte from disk before it reports VERIFIED; three product host roles' implementation fingerprints move with that wrapper, while their inputs, computation and every other identity are unchanged (76 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6c7a3414549f169177a8473cc7a86e2771e0aab1805305e9c7154cddb9c0b86c",
+   "successor": "448af902a9973d38fdd15fd868d39d2e6946c79f020c3f5d51385a5f626e2f07",
+   "change": "The Host no longer asks for a restart while it prepares data",
+   "reason": "Data preparation now records each manifest it is about to publish under the mutation gate before writing it; two product host roles' implementation fingerprints move with that ownership record, while their inputs, computation and every other identity are unchanged (77 of 79 readout values equal)."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "205459793ffcf23441b50202504a7f3b1514dc6e8edd15e0298537188339f5b1",
+   "successor": "4e52960f3376090348764c303a2d86dc7bcb9a37d92242c8e05bdf05d1531834",
+   "change": "The Host no longer asks for a restart while it prepares data",
+   "reason": "Data preparation now records each manifest it is about to publish under the mutation gate before writing it; two product host roles' implementation fingerprints move with that ownership record, while their inputs, computation and every other identity are unchanged (77 of 79 readout values equal)."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "successor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "bf55f68491f1493ce060521dd083d0cc0b75fee6852359a0b783938161c8fe9b",
+   "successor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "11609a7ad8665fb1269616d5bbbcf8476f1b9e16b17096f76ded8822c44eb55f",
+   "successor": "12e8f2a6a10696d4f34a4629e3a9fb3f4afbf243ad734f9feb6f23dbee4e84d7",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "d2c15cf18691bd8c34e7b2de937b030687b3c822f21bc4a66f3a16605e4678b9",
+   "successor": "bc5590e040f36da93ee57fd05373ea87914550df70ac54385fd47a6bee04b81e",
+   "change": "The Host keeps a replayable history of research runs and goal revisions",
+   "reason": "lawful successors: the four moved roles are implementation fingerprints of the research experiment modules whose projections moved onto the log; the card's replay proves every projection ALL EQUAL old against new, and its controls are unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0e324664b9dda855c4c10b7225d5bfb3f6cb2728bb46511191134e4cff0493b1",
+   "successor": "b0d9dea78a415895b87531bc8140d0bedf5cd88da928126f6f79066b56e3b6ee",
+   "change": "A kept read is never answered for a file replaced at its path",
+   "reason": "lawful code-closure move, values equal: the card changes only content_store's in-process memo key (a kept value is bound to its file's lifetime, so a recreated file never inherits it); no stored value, schema or result changes; the three moved roles (conditional_decision_advancement, portfolio_updates, strategy_calibration) moved because content_store.py is in their source closure; the memo holders pass in both orders and on both file-system rules"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "86e38efcd5e4b1d5ae68e3a493d12ffe69f859ffa928876169780a83ce26d287",
+   "successor": "4b10228fb669ff973ad5439c4cbf612c064badfdc1ef2c53a8aa6acd30832d88",
+   "change": "A kept read is never answered for a file replaced at its path",
+   "reason": "lawful code-closure move, values equal: the card changes only content_store's in-process memo key (a kept value is bound to its file's lifetime, so a recreated file never inherits it); no stored value, schema or result changes; the three moved roles (conditional_decision_advancement, portfolio_updates, strategy_calibration) moved because content_store.py is in their source closure; the memo holders pass in both orders and on both file-system rules"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "4527626637e7901bec7fc42800e2780ab0d295ea33f2c24dd8a50898bb364297",
+   "successor": "4d3a10eb059da8cab0289ed13dc9638a7c3f8b19ab3899aaf31eca436fef2f7d",
+   "change": "A kept read is never answered for a file replaced at its path",
+   "reason": "lawful code-closure move, values equal: the card changes only content_store's in-process memo key (a kept value is bound to its file's lifetime, so a recreated file never inherits it); no stored value, schema or result changes; the three moved roles (conditional_decision_advancement, portfolio_updates, strategy_calibration) moved because content_store.py is in their source closure; the memo holders pass in both orders and on both file-system rules"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "b4e98a97c128c94179695add42f8acf0bd2c9faf679786fc870cb1d9fedfd67b",
+   "successor": "897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457",
+   "change": "Improve storage path handling and explain refusal recovery",
+   "reason": "The retrieval binding's code changed only in what its sealed-canary refusal says: on a machine where the full-precision recipe does not match, the refusal now names the way on (rebuild the index under the current int8 recipe), in English and Chinese. No sealed value changed, the refusal still closes, and no other role moved."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b0d9dea78a415895b87531bc8140d0bedf5cd88da928126f6f79066b56e3b6ee",
+   "successor": "679d1d1f782be209d1a9ff8b3d0f3469b8819be6aacda3677a90d9613f7266a4",
+   "change": "Accept more of the command forms agents try, and code network questions",
+   "reason": "A daily's network stop and the full-history audit block now name their coded question or confirm request; who may confirm or approve a decision is unchanged."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "9b8e8be24a9248f4d04abbac9e837a36500e5a865c3d2539192fb37a5be16b7f",
+   "successor": "241e5e6bb3b591982dc373d07b62dba54ac62963c5a1e3329e03751d0e7e2174",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "679d1d1f782be209d1a9ff8b3d0f3469b8819be6aacda3677a90d9613f7266a4",
+   "successor": "fed3467e9eaff2731095d93662dcc420906306344797de9ef3eb3076a295048d",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "4b10228fb669ff973ad5439c4cbf612c064badfdc1ef2c53a8aa6acd30832d88",
+   "successor": "1d9bf2e9b2a3b20622c1a434f6d71a6a820be37620de11b0074b37ece33d9458",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "4d3a10eb059da8cab0289ed13dc9638a7c3f8b19ab3899aaf31eca436fef2f7d",
+   "successor": "04fb95199d3f8862bf7e7c4916f3069f19fb440e4e3c8ee80a521bfc25cfe372",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "5c36308cf95cfadc9e6caefad6df46c59a220de0f6b86c995547617bdc209ce6",
+   "successor": "82f27216919f552e7a86668316e735de19e0e4a638aaaf17dceb8fd012f445b6",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "4e52960f3376090348764c303a2d86dc7bcb9a37d92242c8e05bdf05d1531834",
+   "successor": "23d6178105ef9f658e67f345036e5c0661f1231e710f772a403c744249af7ad1",
+   "change": "Waits that could hang now end at a bound, with a named error",
+   "reason": "the same six roles signed at the earlier head; this head adds a forward merge of develop and one removed registry entry, so the lawful change is the loops moving into the product runtime, controls unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "23d6178105ef9f658e67f345036e5c0661f1231e710f772a403c744249af7ad1",
+   "successor": "e2900bfeb526b3fa61a3da8e68e6605f64b8a899593653bdc34f443f7d9a114f",
+   "change": "Keep each workspace's Tasks in the log of its data root",
+   "reason": "lawful change: a workspace's Task Control registry is built with the workspace id its manifest names (composition/workspace.py _task_registry), so its Tasks are keyed on the data root's log under that id; no preparation input, parameter, data decision rule (rule_hash unchanged), binding, receipt or result changes; successor recorded in config/identity-successors.json as TL"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "241e5e6bb3b591982dc373d07b62dba54ac62963c5a1e3329e03751d0e7e2174",
+   "successor": "8e8954080092dccd7edb850a35d34fbbdc1410b2593730fa5ebc8d67380a71ff",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "fed3467e9eaff2731095d93662dcc420906306344797de9ef3eb3076a295048d",
+   "successor": "c045d6856ec9e2437c301045261a7c31bab583ceb41a5606e33851a7a5038e91",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "ac5778064c6d5c7d82b87e74c4aa635c74bf8d0e5a5d4302e675518944fb9311",
+   "successor": "aad624cbd6f20fa0020cfef16e5e1ae4050e82e76cf831a03bee133a48c895df",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "af1602595d82f00fbffcb43800789e154cefa77bcf14a15ca242da2e56f6ab0f",
+   "successor": "72c4b68610f57fd5d9ed11a4275839195d9536e93f0d8ae89fddcc7f0ba82b4b",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "04fb95199d3f8862bf7e7c4916f3069f19fb440e4e3c8ee80a521bfc25cfe372",
+   "successor": "7c55b011c9a500bf7c2eb560c9248a0abf1a513ba7ead4bd396ec9f7384e1e78",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "82f27216919f552e7a86668316e735de19e0e4a638aaaf17dceb8fd012f445b6",
+   "successor": "c9415e283437a330b0a75c234d36c3660bd138f6005ab8a38043a9f3c2e1ea3e",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e2900bfeb526b3fa61a3da8e68e6605f64b8a899593653bdc34f443f7d9a114f",
+   "successor": "dda37bce47e671a77c8ae5279bfefa669f5a5e4de09548cfa3a2c3066ba912f2",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "successor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "fecb1bce76ee5efb523198d4317f9e067d65e0f28dc64e1c2b9e065b819cb4e9",
+   "successor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "be660fae1790536200994d0a754d77214971d0d1f9d230d1552f536737b6ef75",
+   "successor": "47fa63e23c088760068f81130e9565461d6eae1d8053147c574be58e11e36d51",
+   "change": "Market prices are read from the shared store by default",
+   "reason": "Market values are now read from the machine-wide store with every value unchanged: all 19 converted reads are equal under both read settings, a fresh child process reads the same feature inputs, and an in-session write is served equal; the workspace setting stays as the rollback"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "dda37bce47e671a77c8ae5279bfefa669f5a5e4de09548cfa3a2c3066ba912f2",
+   "successor": "3df0e687b1ae0171e7bd420f919fb91801c18bbb740e8f002458be235daf7bc1",
+   "change": "Keep task heartbeats and progress in the machine's history log",
+   "reason": "equal-value change: workspace preparation's heartbeats renew a wait on the data root's log and its phase and progress telemetry become spans; the preparation's results, its stale threshold and its task lifecycle are unchanged, and every available QA heartbeat signal and wait replays ALL EQUAL"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c045d6856ec9e2437c301045261a7c31bab583ceb41a5606e33851a7a5038e91",
+   "successor": "78ef054274ab19317635a99c515ae6bfdc3512964a0f9bdeea786dc9dfa43bbb",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "aad624cbd6f20fa0020cfef16e5e1ae4050e82e76cf831a03bee133a48c895df",
+   "successor": "75f98ea0463d1ecef8ec065b966a16ee7dc654eefa379e222b29422b97b340a9",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "448af902a9973d38fdd15fd868d39d2e6946c79f020c3f5d51385a5f626e2f07",
+   "successor": "bcdf9367bf05f42bf2786252a4f24ad66fcc74e79404748c0b3ff18b7dc07347",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "7c55b011c9a500bf7c2eb560c9248a0abf1a513ba7ead4bd396ec9f7384e1e78",
+   "successor": "dff37b2a71dee54021b56fe4620ce527d938d598a2ed6c76817b7d0ea9b38e1d",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c9415e283437a330b0a75c234d36c3660bd138f6005ab8a38043a9f3c2e1ea3e",
+   "successor": "42a8daef63fe3cfebe7612799c19536d774ff58339f028bf0f3eb61719430300",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "3df0e687b1ae0171e7bd420f919fb91801c18bbb740e8f002458be235daf7bc1",
+   "successor": "d50f91fb489eaa7cfabd0f91d60932efaa60c133ece8fa389f6cb40d703c95b5",
+   "change": "A bound research input reads world's market data as of its selection",
+   "reason": "equal-value change on the composed merge: the same six roles move as signed, workspace preparation's before value now including the task lease move merged since; a research input reads its market values through what it may see at binding only while the machine's market store holds exactly its values, and every value research reads is unchanged"
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "870a853897a448c6b2ee47b467ca807b8bcd07e801f2a11efa9118de7d0a879c",
+   "successor": "9742856c37d3bca91406b4d02ae4a1615d970a1dd97f66168aeae3700d5da2cc",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "e7037d16c547d615143e4e4534082b0afcf9dae2b3e40ff23aeb5d7be653d5a2",
+   "successor": "fa1a05d97b7361acd6c412677a210cf8759b76a3378218a8e00266928e2c822d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "9c50c97985136e938c0fcacddca69e3413b1e72551d16e51dc70194537c7e000",
+   "successor": "967b82dd7020af43f783447ca1da69d19bd8d68e98336e95e10783102c9463bb",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "8e8954080092dccd7edb850a35d34fbbdc1410b2593730fa5ebc8d67380a71ff",
+   "successor": "98d2b205a21b77d3eb654099763ed1de8c67f2af6ee2a46aaa856fd74b7bb9ea",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "78ef054274ab19317635a99c515ae6bfdc3512964a0f9bdeea786dc9dfa43bbb",
+   "successor": "7470a619f274042ae2e1fb921e6763128544ed2e93e5f0f2a93d6a06d89d426a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "1d9bf2e9b2a3b20622c1a434f6d71a6a820be37620de11b0074b37ece33d9458",
+   "successor": "44bb74a51812e2403c87cb5befa96fe3955fecc036af2ed4c1c38cadc0ac770f",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "19afda46fa6cb2afbee98184f50232fbceb5c686e66cf6d24ec4a44436c6ed59",
+   "successor": "98e67718d5c725a837d30281bae0daa6e714733069a8293cc46d3d52cc9d7f4d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "5ef4193ed2d274903fba3f88d02b367a64cc8d02fcf35de6ed9bb6bb428369ce",
+   "successor": "713fd97c3970d8bb53b167842bd72b9a5bb84c990682cc41a5a943faa52ebb60",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "75f98ea0463d1ecef8ec065b966a16ee7dc654eefa379e222b29422b97b340a9",
+   "successor": "3f03d4096ee837e4c2ca9312a33928c2071fe09d3871f367d20a397ab6cb9e62",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "bcdf9367bf05f42bf2786252a4f24ad66fcc74e79404748c0b3ff18b7dc07347",
+   "successor": "30348543ff8974c5a7f92e5cae148b836c27d792c8ab7a1a5d3072ecbd7150fd",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "72c4b68610f57fd5d9ed11a4275839195d9536e93f0d8ae89fddcc7f0ba82b4b",
+   "successor": "7ec9695bb57cd1bce9833e7ffc5eb8ae58d628a9f776045ac4d620dd6602f6a1",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "dff37b2a71dee54021b56fe4620ce527d938d598a2ed6c76817b7d0ea9b38e1d",
+   "successor": "9c70825ac95d687ae10c28f450f2b80ee6463c579d36241d280fed2a03f2fe1e",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "42a8daef63fe3cfebe7612799c19536d774ff58339f028bf0f3eb61719430300",
+   "successor": "badc30e5778d0b10609c091a9a67a2ba5aeefb243098d4faeb91299ff9489375",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "d50f91fb489eaa7cfabd0f91d60932efaa60c133ece8fa389f6cb40d703c95b5",
+   "successor": "29df854e25855251ee68dbde961eb5c9a17034d7987fca4f3fce76dffd12339c",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "successor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "53185f5ae0c549d8c300e8c770639ef8afe3b36a616d6042462972797ffacf9a",
+   "successor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "b1bb1ecfb62af98a0ff89c0d87409d25e9fe8cb93fd6187d73004e6aa056aa15",
+   "successor": "406913a9deb02dd1268b2311ec647c0375a0efa390335fc41291a2c27e2e9694",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "12e8f2a6a10696d4f34a4629e3a9fb3f4afbf243ad734f9feb6f23dbee4e84d7",
+   "successor": "93fd7574092e7ad941602580ebc443b1f4c862a8298b3abf6f27d1dacea2236d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "47fa63e23c088760068f81130e9565461d6eae1d8053147c574be58e11e36d51",
+   "successor": "4ef35231fc4964b9c06786df065f3ee83bac0e0167d79939ae1de40bd17a3e2d",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "bc5590e040f36da93ee57fd05373ea87914550df70ac54385fd47a6bee04b81e",
+   "successor": "9a7af9b35592db9c906da8f5617c964822e96b4b05b3d48f55b370b313a01f5f",
+   "change": "World reads of many listings now run about as fast as the workspace's",
+   "reason": "the market reads change form only, single reads to bulk statements and an eight-thread session; every read returns equal values before and after on a copy of QA ls1-daily, so the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7470a619f274042ae2e1fb921e6763128544ed2e93e5f0f2a93d6a06d89d426a",
+   "successor": "c5bb15af3f479000939ad6d92030c89338f4f93687cb8d5c39f028f501611eaf",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "3f03d4096ee837e4c2ca9312a33928c2071fe09d3871f367d20a397ab6cb9e62",
+   "successor": "1a75bc25db16b0fb42f7647b229085440718b7cdcc99af42315a1538e9fdb43b",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "badc30e5778d0b10609c091a9a67a2ba5aeefb243098d4faeb91299ff9489375",
+   "successor": "35fa9ce6106b29a861e6b49d4c971c186a82fb0aaea79ef2d6e3672c41e11461",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "successor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "5409a7bfe4e855774f8f6fc8f4ae8149366c79fd6931c0c9b409c6d9ee921a2a",
+   "successor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "change": "Keep sector classifications in the shared catalog",
+   "reason": "sector classifications are read through world; the read falls back to the workspace whenever its current classifications or revisions differ from world, so no served value moves, and the workspace replay stays all equal; the roles move by code, not by value"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "033f4b3cecd20dbad9ebd6cb8aaecde58877bc07dd9175fe8049f82f018d92ca",
+   "successor": "ab5a1b085544880ca29dbc6a5de2d7aa419069fc7106cfc928bfd3d8abbcad39",
+   "change": "Evidence documents are kept once per machine, dated by their acceptance",
+   "reason": "evidence documents are held once per machine in world, each identified by its own id with its body's digest as a column; every body equals its bytes and keeps its 0.2.7 facts and availability times, so the canonicalization binding moves with its storage and keeps its meaning, its successor recorded"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "5bdc9f009204c57ef569d82c32df1df951ac63ca7eeeca2128c08e6c99b4f96d",
+   "successor": "01133406e6c5153e9c7513cdfae0e08865e18c54c09009de3be5bc44a6cff175",
+   "change": "Evidence documents are read through world at their selection's cutoff",
+   "reason": "evidence bodies are read through the shared world at each caller's cutoff, with the workspace kept as rollback; a copied workspace replays every reference, set and document read equal through world, workspace and rollback, a legacy document's later version keeps its own availability, and a reference reads its exact bytes, so the two bindings move by their read path, not by value"
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "ab5a1b085544880ca29dbc6a5de2d7aa419069fc7106cfc928bfd3d8abbcad39",
+   "successor": "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476",
+   "change": "Evidence documents are read through world at their selection's cutoff",
+   "reason": "evidence bodies are read through the shared world at each caller's cutoff, with the workspace kept as rollback; a copied workspace replays every reference, set and document read equal through world, workspace and rollback, a legacy document's later version keeps its own availability, and a reference reads its exact bytes, so the two bindings move by their read path, not by value"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c5bb15af3f479000939ad6d92030c89338f4f93687cb8d5c39f028f501611eaf",
+   "successor": "5f128dde1b726b9d381c7ce20fcaa8bab50f302a0b79b87c78184cf61d680fa9",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1a75bc25db16b0fb42f7647b229085440718b7cdcc99af42315a1538e9fdb43b",
+   "successor": "a571b471ffc235a90fd74fc27ef8090d0d22a57418aa8cb124bea741eb91d600",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "9c70825ac95d687ae10c28f450f2b80ee6463c579d36241d280fed2a03f2fe1e",
+   "successor": "cee7aa9264d3e8a17094f57033318dca0dcdeba0f71674cb5fc4ebfb03bf6b73",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "35fa9ce6106b29a861e6b49d4c971c186a82fb0aaea79ef2d6e3672c41e11461",
+   "successor": "6bb104feb302b015f3686246c76dbbab76d2c1b03f6e5cb0139bb90d5ddf09e3",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "29df854e25855251ee68dbde961eb5c9a17034d7987fca4f3fce76dffd12339c",
+   "successor": "a645e59d654e938aced1fb697699b18b5318f943d3dab6de9900b64b39c839a6",
+   "change": "Read market checks and audit receipts from admitted data, with rollback",
+   "reason": "Equal-value replay at this head on the retained read-only QA copy through the actual world dispatcher: 2,351 audit receipts over 474 ranges and all 517 quality verdicts equal through workspace, world and rollback, admission reading 1,252,430 bars, 15,433 actions and 519 listings; the original transaction, receipt and hash function bodies verify unchanged. The five roles move because their code closure reaches the world read path; the one lawful change is M16.1, where a revision is deduplicated per source workspace, so one workspace's equal-content admission no longer suppresses another's journal import, which the single-workspace QA copy does not exercise and the holder proves."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5f128dde1b726b9d381c7ce20fcaa8bab50f302a0b79b87c78184cf61d680fa9",
+   "successor": "b69a5488a5c5b14fb132f3a4dabab8c6dba48be20cdb1aa1ccdd37ff9e228916",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "713fd97c3970d8bb53b167842bd72b9a5bb84c990682cc41a5a943faa52ebb60",
+   "successor": "e18e7481cd4ee8e815bde61e435e8f927e18b6a21bd4e8cb904917b38d7904ed",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a571b471ffc235a90fd74fc27ef8090d0d22a57418aa8cb124bea741eb91d600",
+   "successor": "6647a5b837f332f020374e9a6f07a51db6856fb16011d30a32593e36af6f9cbd",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "7ec9695bb57cd1bce9833e7ffc5eb8ae58d628a9f776045ac4d620dd6602f6a1",
+   "successor": "2bc46ab6857bc05f710737c49fe93e7098235d932d974ae6e457f4e86ba1948e",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "cee7aa9264d3e8a17094f57033318dca0dcdeba0f71674cb5fc4ebfb03bf6b73",
+   "successor": "aa6fc0be00f186456f31571122aec1ed6f635a5fa5de78e5b7751430aee7700a",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "6bb104feb302b015f3686246c76dbbab76d2c1b03f6e5cb0139bb90d5ddf09e3",
+   "successor": "584734d6c35d562a3e5374d36112f44dff82af1a79a24c65b5048dc5dc433332",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "4ef35231fc4964b9c06786df065f3ee83bac0e0167d79939ae1de40bd17a3e2d",
+   "successor": "79eb1ab3817f464f29aace88c058275511cb060bda3aefb6b4e19226e9cfc466",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "9a7af9b35592db9c906da8f5617c964822e96b4b05b3d48f55b370b313a01f5f",
+   "successor": "3a9ac45eff67d6193325f8e7e12a0dcf6cf5ae2172afe65da78cd6ea1285a230",
+   "change": "Read admitted universe membership from shared data, with rollback",
+   "reason": "Equal-value replay on a fresh QA copy of this merged tree: all six manifests, the bootstrap, the journal and 2,513 of 2,513 session memberships read equal through the Host and the direct reader. The eight roles move because the universe reader now reads the machine catalog, beside the admitted market revision reads; the one lawful change is that a late membership decision applies only from its effective session close."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "9742856c37d3bca91406b4d02ae4a1615d970a1dd97f66168aeae3700d5da2cc",
+   "successor": "bf71439c1cd9841bcaa3a2dcf662a3c7b3a86314d05742bbf86c5b1f3c381297",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "fa1a05d97b7361acd6c412677a210cf8759b76a3378218a8e00266928e2c822d",
+   "successor": "2fe5641a945a9e5ced999d3b6732623112dad74245378f998778d29cf710dcce",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "967b82dd7020af43f783447ca1da69d19bd8d68e98336e95e10783102c9463bb",
+   "successor": "5677f8d8b6468f59df75e24de8643f9bfd3f1280843c9ae0c9bc14d5b371ed05",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "98d2b205a21b77d3eb654099763ed1de8c67f2af6ee2a46aaa856fd74b7bb9ea",
+   "successor": "6fe08fac7802b86906db3080bf6ecb75e1a1e6754d9d973a7537ed0a8c60612a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b69a5488a5c5b14fb132f3a4dabab8c6dba48be20cdb1aa1ccdd37ff9e228916",
+   "successor": "67e0f269f1a2f9ba2435a3cc5ee450b11a393d5c1dc7922944015b4bdd8cffc9",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "44bb74a51812e2403c87cb5befa96fe3955fecc036af2ed4c1c38cadc0ac770f",
+   "successor": "84946270d924fe7183b020f098033471fbfd2d16a6f37b686d59dc84678ae2ca",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "98e67718d5c725a837d30281bae0daa6e714733069a8293cc46d3d52cc9d7f4d",
+   "successor": "f137766a773cc08946a45df19961ec771b70a6f8126a001cafedbc9f32a060ec",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "e18e7481cd4ee8e815bde61e435e8f927e18b6a21bd4e8cb904917b38d7904ed",
+   "successor": "eb9928c7ff4a9514c6549e7b18e0a7cfc09f35e0e64ac6fc0d2526bbb5da663b",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "30348543ff8974c5a7f92e5cae148b836c27d792c8ab7a1a5d3072ecbd7150fd",
+   "successor": "6250a34921163a07afd73a70c6d7068695167925192f73d5f488d8149c3aeeef",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "2bc46ab6857bc05f710737c49fe93e7098235d932d974ae6e457f4e86ba1948e",
+   "successor": "07a75a32be5f03c0edd66bdb6451dc2150a9da05226d0f3a40b779932206177f",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "aa6fc0be00f186456f31571122aec1ed6f635a5fa5de78e5b7751430aee7700a",
+   "successor": "ae90feb8713b784898bf26f2423598ee81c5e182622d4e3d4fee5b4ac19da360",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "584734d6c35d562a3e5374d36112f44dff82af1a79a24c65b5048dc5dc433332",
+   "successor": "a2f1aadde76e2f234d1e1e59cc55e731b383147d6e57215df2a133e444b6a808",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a645e59d654e938aced1fb697699b18b5318f943d3dab6de9900b64b39c839a6",
+   "successor": "559441365172d497e589632cca32a97432b58b54579de78237c97fd15c0554b7",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "successor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "2c8862ca995a2d2a24d97892fa3f4bfb08446dd2683d09a0702790690e70500e",
+   "successor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "406913a9deb02dd1268b2311ec647c0375a0efa390335fc41291a2c27e2e9694",
+   "successor": "2fde2054f52763795f51abf1cafed6c654ad06438bc2e523a580ddfc6c3c718b",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "93fd7574092e7ad941602580ebc443b1f4c862a8298b3abf6f27d1dacea2236d",
+   "successor": "b999ccbbb74a1562c6a84b309266e8fb1a838950f601bb92124855818f388fb3",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "79eb1ab3817f464f29aace88c058275511cb060bda3aefb6b4e19226e9cfc466",
+   "successor": "52b7d4af184fc14ef7d6e9d5a6c27a1c7f4d5d56da26c95506abe8801515ab1a",
+   "change": "Keep execution outcomes in the machine catalog",
+   "reason": "The same 18 roles move as at the two previously signed heads. Since then the head only merged develop's later landings, each signed on its own, and regenerated its identity successor rows to match this merge's net moves; no execution-outcome read or write changed, so the equal-value replay on the independent QA copy (43 reads ALL EQUAL through the old store, the catalog and rollback) carries by a diff argument."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "67e0f269f1a2f9ba2435a3cc5ee450b11a393d5c1dc7922944015b4bdd8cffc9",
+   "successor": "19fcc93ffb5fd0a8425d326ed3cc89ff508674659745dbf5ee75a90478628c9a",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6647a5b837f332f020374e9a6f07a51db6856fb16011d30a32593e36af6f9cbd",
+   "successor": "1a75a80925511401006e9cafb667f05f0db65dacbb17e976a46b51b31d471bca",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "ae90feb8713b784898bf26f2423598ee81c5e182622d4e3d4fee5b4ac19da360",
+   "successor": "87d1f4ad2ee6f6943c2964b47a366b85be95b1e09aa6a314031be9cd95fa19ce",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "a2f1aadde76e2f234d1e1e59cc55e731b383147d6e57215df2a133e444b6a808",
+   "successor": "1ec39f1f9c02893c782465b5fcfbba676f681aac1956c2f62ef691a44d74fcbf",
+   "change": "Keep task progress in workspace copies and open the market store once",
+   "reason": "The lawful change: three read faults repaired at their causes. The data stage hashes its admitted market tables through the store it already holds instead of reopening the file; a copied workspace carries its tasks' progress snapshots, so preparation reads them after a reopen; the session view reads a served Host's own records, so every committee member's session shows. The four roles move because their code reaches those reads; no computed value changes for unchanged inputs."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "19fcc93ffb5fd0a8425d326ed3cc89ff508674659745dbf5ee75a90478628c9a",
+   "successor": "1ef053dd528631b8d91685494408893d84495fa94a7b3a3f5a99959479368855",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1a75a80925511401006e9cafb667f05f0db65dacbb17e976a46b51b31d471bca",
+   "successor": "d781a7093399f5ca30661be2f56f8eeed9423c4ab8c99aad92370207a70a9c3e",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "1ec39f1f9c02893c782465b5fcfbba676f681aac1956c2f62ef691a44d74fcbf",
+   "successor": "17e4176a078f9edd0f7347de8953a989184d651e6ae0378b1f5e7bc6709cfd9b",
+   "change": "Read Feature values from the catalog under ALPHALATTICE_FEATURE_READS",
+   "reason": "Unchanged values: this head adds content-addressed derived partitions and their roots under the catalog writer, which no reader uses by default; Feature reads stay on the stored table unless the derived switch is set, so the three roles move only because their code reaches the changed data layer files, and every value they compute is unchanged."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6250a34921163a07afd73a70c6d7068695167925192f73d5f488d8149c3aeeef",
+   "successor": "6fdcdeb0474c03a9a1235161806f734ce7482fc22bc9b7202b174e17e04a0d9d",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "559441365172d497e589632cca32a97432b58b54579de78237c97fd15c0554b7",
+   "successor": "592213e783cd9e2cf04be0d814e868be7df0291c791e6e4b182f5a5d19055285",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "successor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "97b7b5cd61b7e159200ace05a3b5f824918f5ee4afc7e380203ad5a9e13b352a",
+   "successor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "b999ccbbb74a1562c6a84b309266e8fb1a838950f601bb92124855818f388fb3",
+   "successor": "a431f234c2cb9a67ad74081b80f56f782d6c7d7326f5022db23b815b787a33f8",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "3a9ac45eff67d6193325f8e7e12a0dcf6cf5ae2172afe65da78cd6ea1285a230",
+   "successor": "ebf697d4847ae44b74ac5fabd7181b0e8b00144d907e94841576238bff1728be",
+   "change": "Name each research record on the log by an id",
+   "reason": "Lawful change, values unchanged: two runs that produce equal results now record two artifacts by minted ids instead of the later trial referencing none, as the goal decided; the Host-scale log replay read every research value and measure equal at the previous head, and this head changes only trial_history's artifact suppression, which the six roles reach through their trial recording."
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "bf71439c1cd9841bcaa3a2dcf662a3c7b3a86314d05742bbf86c5b1f3c381297",
+   "successor": "2b4ceced14e391cb1c7262daec0ed53a8a8749c2ac358e6d0d3d5119d9c61b60",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "2fe5641a945a9e5ced999d3b6732623112dad74245378f998778d29cf710dcce",
+   "successor": "dc3cf7b415dad318a5e327e35b00e7cd98282c301077b89610336cb327f9aa58",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "5677f8d8b6468f59df75e24de8643f9bfd3f1280843c9ae0c9bc14d5b371ed05",
+   "successor": "ed068005ecb51b999c9f8e74813b67ee5505928159910b4eab0bfea2bc26aad7",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "6fe08fac7802b86906db3080bf6ecb75e1a1e6754d9d973a7537ed0a8c60612a",
+   "successor": "b507c7acc8c5bdf6bbe57e4bccf30e03330f19a50e74b793f59a3b84aebea411",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1ef053dd528631b8d91685494408893d84495fa94a7b3a3f5a99959479368855",
+   "successor": "1fba10d066fba720f622bdc544e17410df3ef1f7aecea597e7f030325600ad32",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "84946270d924fe7183b020f098033471fbfd2d16a6f37b686d59dc84678ae2ca",
+   "successor": "33c76e7547866958d80754c49cfb777cca23eada88751c495ef2d6878327b827",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "f137766a773cc08946a45df19961ec771b70a6f8126a001cafedbc9f32a060ec",
+   "successor": "acd657110285d1b632b6092e883a4db6467ca29ad40515f1f21d313f523383a3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "eb9928c7ff4a9514c6549e7b18e0a7cfc09f35e0e64ac6fc0d2526bbb5da663b",
+   "successor": "60ddb0b7719586ab8e7afa40ab3dcc05f9323a7f849cfc7d3b7880bb108abcfa",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6fdcdeb0474c03a9a1235161806f734ce7482fc22bc9b7202b174e17e04a0d9d",
+   "successor": "73e8f45f84693e53e3e434e7cb9bd3a9fdd7fcb0148620cc0d998b2832085cdb",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "07a75a32be5f03c0edd66bdb6451dc2150a9da05226d0f3a40b779932206177f",
+   "successor": "efdaa1c567de1d213a906b8d9e42096e0a0ac0c207ac2644d2c3b7d1ac2ca6db",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "87d1f4ad2ee6f6943c2964b47a366b85be95b1e09aa6a314031be9cd95fa19ce",
+   "successor": "6f69f9757b2f1d3040cf1c897bb8604b12174c04d96236b3d9173f3dec0f3216",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "17e4176a078f9edd0f7347de8953a989184d651e6ae0378b1f5e7bc6709cfd9b",
+   "successor": "02101cb4dbfffa85c4f3a16751424e7b5b2f07ec75dbcb62ea6295de0ff0ab0f",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "592213e783cd9e2cf04be0d814e868be7df0291c791e6e4b182f5a5d19055285",
+   "successor": "a818beed371c2417c3bb000c230dda9e3994603a7b0c3a8293cc428321e08172",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "successor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "66f25ca6f1e509fdf4cc116f37d8c51d22aa99e1fbe186136c40ff108490bbb1",
+   "successor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "2fde2054f52763795f51abf1cafed6c654ad06438bc2e523a580ddfc6c3c718b",
+   "successor": "8cc37df6feea4879014699bc6703ed6ed44dbb5b75cd0891e51862b36a96cb1f",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "a431f234c2cb9a67ad74081b80f56f782d6c7d7326f5022db23b815b787a33f8",
+   "successor": "269afb3c86672eb051ec8686500d7e0df4d20dfb81b70a33daa55972e6a17c29",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "52b7d4af184fc14ef7d6e9d5a6c27a1c7f4d5d56da26c95506abe8801515ab1a",
+   "successor": "e94f27facb37ebbc2204a2012e09f3ef72777b67515633e64fb0482432f8ddbe",
+   "change": "A workspace written by this version opens on a new machine",
+   "reason": "diff argument: a first start skips a chunk only on the catalog's own outcome-missing refusal; an unavailable reader or any other catalog fault now stops the start by name; every path that produced a value before is unchanged, so the 18 roles move by closure only"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "b507c7acc8c5bdf6bbe57e4bccf30e03330f19a50e74b793f59a3b84aebea411",
+   "successor": "e668d9bb4d8d714cace7b51757d9e940ef32e78a99ccd5148d5b810c6db801d8",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1fba10d066fba720f622bdc544e17410df3ef1f7aecea597e7f030325600ad32",
+   "successor": "6b51a6089fb9b4b2af57b9da49c559411c10c5487021c69b5f6866feec65c36b",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "33c76e7547866958d80754c49cfb777cca23eada88751c495ef2d6878327b827",
+   "successor": "ba42fc7c063a66fac4d83c5c84de65fa7c33f778aee532812e64c6b433b99832",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "efdaa1c567de1d213a906b8d9e42096e0a0ac0c207ac2644d2c3b7d1ac2ca6db",
+   "successor": "62a66dff96c6bb4174a9ca2b6a786bd559921d8c09746d4ff6fe26a3fdc7ccd0",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "6f69f9757b2f1d3040cf1c897bb8604b12174c04d96236b3d9173f3dec0f3216",
+   "successor": "5bbc444a049d222f33cf004463e68ad2c0ebbafd3df33538cb2db5c406a6235c",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "e94f27facb37ebbc2204a2012e09f3ef72777b67515633e64fb0482432f8ddbe",
+   "successor": "bbfd148457aae7f22f13c12763f01ec2bc312a014af3ddbfda0b6b6050b38884",
+   "change": "Keep Strategy Lab result files once in the data root",
+   "reason": "the QA equal-value proof stands (8 workspaces, 4,304 of 4,304 lane references equal); since it, a develop merge and two repairs: a Host on a workspace not yet created finds no lanes instead of refusing, and an import form; no lane value or digest moves"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e668d9bb4d8d714cace7b51757d9e940ef32e78a99ccd5148d5b810c6db801d8",
+   "successor": "b75c972eb36daef2dc036abe3349af2e600b55a69e8bceb4557e84245e440ce1",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "73e8f45f84693e53e3e434e7cb9bd3a9fdd7fcb0148620cc0d998b2832085cdb",
+   "successor": "5d057f071f261b40ab8d6c4fb7992ab4dc392e789cd623378ab444c6ac3bddfc",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "62a66dff96c6bb4174a9ca2b6a786bd559921d8c09746d4ff6fe26a3fdc7ccd0",
+   "successor": "b1d5a3667cf538dc236431bb4660224593d115123472054d07e6039fb4f30f75",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a818beed371c2417c3bb000c230dda9e3994603a7b0c3a8293cc428321e08172",
+   "successor": "eac64b944139e8db96e3a626d48417f8d2adf1afe101e67c6283cb170b69f780",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "successor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f6a64800d797f2593ed282b13dd94f85fd38d12b6904a050b9df2840e49b30e3",
+   "successor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "change": "Read a Panel's sector names through the data root's world",
+   "reason": "QA copy ALL EQUAL: five of five maps selected, each map's classified entries equal its artifact entries and sector history as of each revision equal against rollback; frozen books and maps byte-identical (4,140 files unchanged); a selection is made only on exact name equality"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6b51a6089fb9b4b2af57b9da49c559411c10c5487021c69b5f6866feec65c36b",
+   "successor": "165058e441bab4fe54a707df3151563ad1323db7df4fcb5dd80f85eba7b34cf9",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d781a7093399f5ca30661be2f56f8eeed9423c4ab8c99aad92370207a70a9c3e",
+   "successor": "9145543502f2dc3c550fd2d0fc90be0430d378040390948efd632832de9b29d1",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "5bbc444a049d222f33cf004463e68ad2c0ebbafd3df33538cb2db5c406a6235c",
+   "successor": "a0923d35db30329b79a34fa608303f0a3dea0d9650868e51e700f18b47d0c4b5",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "02101cb4dbfffa85c4f3a16751424e7b5b2f07ec75dbcb62ea6295de0ff0ab0f",
+   "successor": "217d1dd620f38ed4a33b1ab5fe8ca6239181f719b502035ee6955df4c135afcc",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "eac64b944139e8db96e3a626d48417f8d2adf1afe101e67c6283cb170b69f780",
+   "successor": "9c522885b0ea6cc956788cff8d41dc0e62318a4838c11bb00e7f9d13689dcce5",
+   "change": "First use commits market bars once, with their adjustment audit",
+   "reason": "the five moves are the reviewed intended correction recomposed on develop: market backing rows carry the audited adjusted close visible after admission instead of NULL, with computations, recipes and thresholds unchanged and every ledger record kept"
+  },
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "2b4ceced14e391cb1c7262daec0ed53a8a8749c2ac358e6d0d3d5119d9c61b60",
+   "successor": "9342647a868efa0f64695b9c950aaf270ee636dfcf2b01e724264ccce8b7d6c8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "dc3cf7b415dad318a5e327e35b00e7cd98282c301077b89610336cb327f9aa58",
+   "successor": "80991e3db0e517a769e4e5f81b6e8a545b7dd3e52943caf5612bc257bddddba2",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "ed068005ecb51b999c9f8e74813b67ee5505928159910b4eab0bfea2bc26aad7",
+   "successor": "17e4c73618c36cdef22f7dc1987d15b7a5ea2f431d419803d8e33b8b2f9fcdb5",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "b75c972eb36daef2dc036abe3349af2e600b55a69e8bceb4557e84245e440ce1",
+   "successor": "f54cff3e02d31f78c5160b6c464d1ac009c901f59b03ff59364959da869629ef",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "165058e441bab4fe54a707df3151563ad1323db7df4fcb5dd80f85eba7b34cf9",
+   "successor": "0e030a895fd840f2096c21ec45d8090ad562800e822a613f13579480d5977a21",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "ba42fc7c063a66fac4d83c5c84de65fa7c33f778aee532812e64c6b433b99832",
+   "successor": "dee739137238c0ed6b9128faefb257ec1c4d0bfff6b0da133071ade0fb6a4915",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "acd657110285d1b632b6092e883a4db6467ca29ad40515f1f21d313f523383a3",
+   "successor": "9e9e1420f501c2a981ab670b02e53f1521c92377985c0d9d7f886be8a8fd5017",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "0c6da0886096fdb32d1314cf714342d89a1acc8d20327b97ff75df476a67d46c",
+   "successor": "80a64f0aa59765bf4d684dee89f3d43521157f1dc8b84786e15052b6e811d957",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "60ddb0b7719586ab8e7afa40ab3dcc05f9323a7f849cfc7d3b7880bb108abcfa",
+   "successor": "9f29d4ac726df6a2a36006e881ca2702ff087a16793575ea7e79888a69de44ff",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "9145543502f2dc3c550fd2d0fc90be0430d378040390948efd632832de9b29d1",
+   "successor": "d49abfe34118039e92920fd2cef9781d0422e39ebf2bf63b79f8f0a0e1bf15c4",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "5d057f071f261b40ab8d6c4fb7992ab4dc392e789cd623378ab444c6ac3bddfc",
+   "successor": "ae39b76e64906cc7e9597a1f77da1d0f8e3a4abe596ecc415aed3a3014ecb16a",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "b1d5a3667cf538dc236431bb4660224593d115123472054d07e6039fb4f30f75",
+   "successor": "df9cdf6939dd3a53c1a5d8bb76039182b5dd959e30efdbc0273b1a6dbc682ff0",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "a0923d35db30329b79a34fa608303f0a3dea0d9650868e51e700f18b47d0c4b5",
+   "successor": "b2139298f18f6783c3b4c8b8c4b2fc9da0875f86b317733bd92bab9ce02eea9a",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "217d1dd620f38ed4a33b1ab5fe8ca6239181f719b502035ee6955df4c135afcc",
+   "successor": "f681d0b9618d5ace7752ab7a8190ebe6424b37cbb82dcc74862129bc4a4c73f6",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "9c522885b0ea6cc956788cff8d41dc0e62318a4838c11bb00e7f9d13689dcce5",
+   "successor": "e5a6a232911e0eb8ef209b0f4efa5f18560ff6f4fb55611989049c7f3e44ad1b",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "successor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "dd26105a4af288cbeeb679ed510ed53d579cff2ffadbccd4cb5b0276db16f281",
+   "successor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "8cc37df6feea4879014699bc6703ed6ed44dbb5b75cd0891e51862b36a96cb1f",
+   "successor": "ac60092af70439946eeefb304b0bc86669cbb90bc18fbe32efec772a7ba87858",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "269afb3c86672eb051ec8686500d7e0df4d20dfb81b70a33daa55972e6a17c29",
+   "successor": "db8e667e09ab7d76ad66c10db99eb8d44eb49dd0130b0308dd51e9762454e134",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "bbfd148457aae7f22f13c12763f01ec2bc312a014af3ddbfda0b6b6050b38884",
+   "successor": "dc2c33ad822e6a68751552d96b9fe5a18862205bca4a734aaf789d6c843861c0",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "ebf697d4847ae44b74ac5fabd7181b0e8b00144d907e94841576238bff1728be",
+   "successor": "f8ebe2a10e346e3cdc7edb13ac01de60f1ef00608023098d863824e919f7900b",
+   "change": "Panel chunks are refilled and evicted only when proven",
+   "reason": "composed with develop's newer merges, the same 21 read-path roles move through the Panel reader and the resolver; eviction only removes bodies the reader's own proof holds, so no recorded identity value changes"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "80991e3db0e517a769e4e5f81b6e8a545b7dd3e52943caf5612bc257bddddba2",
+   "successor": "0afb931c2133d280cf07ece4e0fa0db18712d80dead54f1f423cdeab8c048eae",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f54cff3e02d31f78c5160b6c464d1ac009c901f59b03ff59364959da869629ef",
+   "successor": "9abe488c480a37c0ef060305347aeee18e4010623af545b8787e0d108fb0a6ec",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0e030a895fd840f2096c21ec45d8090ad562800e822a613f13579480d5977a21",
+   "successor": "a418a49f0636ba90554dc4458505bacea5b54a2eebe9704417f0767d884c5349",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "dee739137238c0ed6b9128faefb257ec1c4d0bfff6b0da133071ade0fb6a4915",
+   "successor": "232a2b3dc9fb73f7e91febcf081b74c62bd6b2500535e238ab844d85d87c8a30",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "9e9e1420f501c2a981ab670b02e53f1521c92377985c0d9d7f886be8a8fd5017",
+   "successor": "7f5f00515de491605d8aecc872fb9e1393d69e0f45ead5bdf23cf1af49316cbf",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "80a64f0aa59765bf4d684dee89f3d43521157f1dc8b84786e15052b6e811d957",
+   "successor": "ab45e9ba656dc8941761d21241da863336f40eaff97b2124db51f8b65c30ab7c",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "9f29d4ac726df6a2a36006e881ca2702ff087a16793575ea7e79888a69de44ff",
+   "successor": "4999c19effdb57937f3fd9d9d94cd050a2bb46cc380754858a0c1058671e87d4",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d49abfe34118039e92920fd2cef9781d0422e39ebf2bf63b79f8f0a0e1bf15c4",
+   "successor": "085d6c87e1ce0664a01f433b502ad33470b7526dd4efc32571dd2c27bcd4cdea",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "ae39b76e64906cc7e9597a1f77da1d0f8e3a4abe596ecc415aed3a3014ecb16a",
+   "successor": "cc81430425416fed8ce199febb09ca1bda260534547c4624e8464bed050b0a3e",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "df9cdf6939dd3a53c1a5d8bb76039182b5dd959e30efdbc0273b1a6dbc682ff0",
+   "successor": "dd8a80cee63d50dd26ae892e42eeaca064bb33efefffacd684b42cb3a48304de",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b2139298f18f6783c3b4c8b8c4b2fc9da0875f86b317733bd92bab9ce02eea9a",
+   "successor": "19e88c551a68b554b23d8650e0065dc1b31b1edbbc91c588d670a6e47dc6db4e",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f681d0b9618d5ace7752ab7a8190ebe6424b37cbb82dcc74862129bc4a4c73f6",
+   "successor": "95ead64a018af9ffda1430a920a34c71a4670a79573676a7c4b7e8213b8ab9d9",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e5a6a232911e0eb8ef209b0f4efa5f18560ff6f4fb55611989049c7f3e44ad1b",
+   "successor": "b8996ac00ff389a5c171c97640a7db94e151a0b610789b2ca492be3571d4221c",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "successor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "60797f856239386748271d9851c985921962baef2f3a08890ef1cc051d3b82e8",
+   "successor": "cc71134a632d34a93b6375fb37ee3c130b8c22c76e4f06013d150f1b93696f61",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "ac60092af70439946eeefb304b0bc86669cbb90bc18fbe32efec772a7ba87858",
+   "successor": "2fb4f291556743cd980362cd3657b745bf22c0475674fe82c4cc47ed4678b9aa",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "dc2c33ad822e6a68751552d96b9fe5a18862205bca4a734aaf789d6c843861c0",
+   "successor": "896124f34f8b5a42e2b9ae85b6d48f85e4444c4aa7cd08745a968f4b29768c7d",
+   "change": "Reads of sealed research files no longer re-hash them each time",
+   "reason": "recomposed on develop's newer merges again: the moved roles are read-path roles importing the verifier and the Panel reader, and a sealed file's digest is computed once at write and checked as before, so no recorded identity value changes"
   }
  ]
 }

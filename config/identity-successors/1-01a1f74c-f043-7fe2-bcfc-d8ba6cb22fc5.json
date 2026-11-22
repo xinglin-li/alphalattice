@@ -1,0 +1,48 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5872f2d311f387b23e7e91bc63a22103df5f692d8ef82f1ab6136fedb3e62204",
+   "successor": "5d5068af79aef892b1a24f75c4a79c566d119cdf39ad9ecd8004eaa3af0797cc",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "1ad5e4e5c40c7520a9339e8f4ca2c61e682d26e7607bb250699a0ba492664413",
+   "successor": "d79cf43b23583763e0f53952126d93e2fb6599bbacd9aad61e8e3d4140168390",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "9519ea7262d0d27831604466ebc908c7982c37709b1d2e391d3dd34f53317df2",
+   "successor": "439f1b3b74c53676a43c5e7e6057144db7c6ac0ab77635bf1f4f9fdc70bb888e",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "536fd02ccd2755d399581a8ca9e457d826ada6f73a1bfa50655b6e31b7ca9394",
+   "successor": "e85fac4a972a4c49eea77a34cb2ef11faf134d5aa988f7f41e0136fb4b411246",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "6c72fbc5719442b5b7f365214c8139e0546c0e6803c05002f218a4edd87c738e",
+   "successor": "edeb9379f7c7b1695aea72b015460e79a92cd9394f1fa6487b40ba5a9482832c",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "8783b1937adc9422ca029eef57552b4e8b5ce995bbd1948ad3b4ebaf53f84794",
+   "successor": "0037e677337de806ecf46f53e925f8065776fd9e2bd5fbeeda3f53e11581023e",
+   "change": "Research inputs are kept once per machine; their pins are retired",
+   "reason": "Research inputs are read through the shared data door, kept once per machine: input materialization, feature source projection, strategy preparation, scoring, decision advancement and workspace preparation change how they read, and no research value changes"
+  }
+ ]
+}

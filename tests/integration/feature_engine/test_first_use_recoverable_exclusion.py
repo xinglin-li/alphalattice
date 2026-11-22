@@ -13,40 +13,37 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
 from alphalattice.control.task_control.contracts import TaskLifecycle
-from tests.portfolio_strategy_lab.local_web_support import _json
-from tests.researcher_methodology_surface.real_workspace import (
-    OBSERVED_AT,
-    _source_loader_for,
-)
+from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
+from tests._support import development_universe
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
 
-def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
+def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, monkeypatch):
     """First use continues after recoverable sector exclusion."""
 
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-    from tests.researcher_methodology_surface.real_workspace import (
-        AS_OF,
-        HISTORY_START,
-        SeededWalkProvider,
-    )
 
-    symbols = tuple(f"F{i:03d}" for i in range(104))
-    schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
-    )
-    provider = SeededWalkProvider(symbols, tuple(v["session_date"] for v in schedule.to_pylist()))
-    # Three wide sectors keep every sector above the gateway minimum after one
-    # exclusion; the missing symbol makes the sector refresh partial.
-    provider.sectors = {s: f"Sector-{i % 3}" for i, s in enumerate(symbols)}
-    provider.sectors["SPY"] = "Reference"
-    missing = symbols[7]
-    del provider.sectors[missing]
+    symbols = {item.symbol for item in development_universe.LISTINGS} - {"DVM", "DVQ", "DVR", "DVS"}
+    provider = development_universe.development_provider()
+    missing = "DVK"
+    sector = provider.fetch_current_sector
+
+    def missing_sector(*, provider_symbol):
+        if provider_symbol == missing:
+            raise ProviderFetchError(
+                "sector.missing_current_sector", "not observed", retryable=False
+            )
+        return sector(provider_symbol=provider_symbol)
+
+    monkeypatch.setattr(provider, "fetch_current_sector", missing_sector)
     live = LocalPortfolioWebSession.from_workspace(tmp_path, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider, live.data_source_loader = (
+        provider,
+        development_universe.source_loader,
+    )
     with live:
-        # Four pytest workers share the CPU; the full first-use scope is unchanged.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
         assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 2
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
@@ -72,8 +69,12 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path):
         assert readiness is not None and readiness.active_manifest_revision != parent_revision
         child = market.load_universe_manifest_revision(readiness.active_manifest_revision)
         parent = market.load_universe_manifest_revision(parent_revision)
-        assert len(parent.listings) == len(symbols)
-        assert {v.symbol for v in parent.listings} - {v.symbol for v in child.listings} == {missing}
+        assert {v.symbol for v in parent.listings} == symbols
+        assert {v.symbol for v in parent.listings} - {v.symbol for v in child.listings} == {
+            missing,
+            "DVD",
+            "DVI",
+        }
         assert progress["membership_revision"] == child.revision_sha256
         quarantines = PanelStateRepository(
             market.database, market_data=market

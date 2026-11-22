@@ -669,8 +669,9 @@ def test_a_published_reading_filters_the_exact_review_lineage_without_rewriting_
             "interval": None,
             "evidence_cutoff": _NOW.isoformat(),
         }
-        second = sorted(packet.request.ordered_entity_ids)[1]
-        topic = "LEGAL_REGULATORY"
+        # A cell the reading delivers: the second issuer's first bundle's topic.
+        second = sorted({b["entity_id"] for b in all_reading["bundles"]})[1]
+        topic = next(b for b in all_reading["bundles"] if b["entity_id"] == second)["topics"][0]
         filters = {"view_entity_id": second, "view_topic": topic}
         cell = reading(**filters)
         assert cell["filters"] == {"entity_id": second, "topic": topic, "last_days": None}

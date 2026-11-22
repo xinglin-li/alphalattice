@@ -27,12 +27,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.kernel.data_layer.history import own_root
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
-from .saved_object_readback import probe
+from .saved_object_readback import carry_copy, probe
 
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "BLOCKED", "RECOVERY_REQUIRED"})
 STUDY_SECONDS = 3600.0
@@ -280,11 +281,13 @@ def run_sandbox(
     try:
         folder.mkdir(parents=True)
         _copy(workspace, copy)
-        before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
-        registry = ModelExtensionRegistry.read(copy)
-        registry.model_copy(update={"trial": (*registry.trial, model_id)}).write(copy)
-        task_id, seconds, peak, ran = _run_study(copy, model_id, study)
-        after = _probe(copy, folder / "u0-after", folder / "u0-after.json")
+        carry_copy(workspace, copy)  # the copy opens with what the catalog alone keeps for it
+        with own_root(folder / "data-root"):  # the copy's Tasks stay out of the machine's log
+            before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
+            registry = ModelExtensionRegistry.read(copy)
+            registry.model_copy(update={"trial": (*registry.trial, model_id)}).write(copy)
+            task_id, seconds, peak, ran = _run_study(copy, model_id, study)
+            after = _probe(copy, folder / "u0-after", folder / "u0-after.json")
         changed = sum(1 for key, verdict in before.items() if after.get(key) != verdict)
         changed += sum(
             1

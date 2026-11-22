@@ -1,0 +1,46 @@
+{
+ "tables": {
+  "catalog.results.sector_evaluation": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "sector_index"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "sector_index": "value: the sector's zero-based position in the experiment evaluation"
+   },
+   "up": "artifact_id",
+   "times": {}
+  },
+  "catalog.world.sector": {
+   "home": "world",
+   "key": [
+    "scheme_id",
+    "listing_id",
+    "valid_from",
+    "version_id"
+   ],
+   "id": {
+    "scheme_id": "link",
+    "listing_id": "link",
+    "valid_from": "value: the classification's first valid date",
+    "version_id": "uuid7"
+   },
+   "links": [
+    "scheme_id",
+    "listing_id"
+   ],
+   "times": {
+    "valid_from": "market_date",
+    "valid_to": "market_date",
+    "known_at": "utc_timestamp",
+    "known_asof": "utc_timestamp"
+   },
+   "versions": {
+    "lag_rule_version": "definition"
+   }
+  }
+ },
+ "known": {}
+}

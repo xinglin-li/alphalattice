@@ -1,0 +1,83 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "18515f7bb07a29a32bf29625ecc51e52ea3c1a5a252ad571f8987de729ad2b8f",
+   "successor": "0683466b3689eab9326417b4bb8564667773e1cd0ebd5c0c7a6992fc1473a2a9",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "53e817f4d57acb1ffb3a1ec5df057e5005a08d7247fabda6a6ba62f17633d11b",
+   "successor": "811e733da0583d6362751e47b1d6dd45a20b8028eeea364cd07befa5d6cea98b",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "88a52b401618de869fa32a05da67a43f4a5d8d5877d7928211ac7f99d0bb4ee8",
+   "successor": "627ea61af264b2de57f13eff027a5fc0e4440a94141c5b2ea038db0cdb2ba8ed",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "36399b84680704992f017309e8b652fc05f5aa0b67c4b78f0de07183b0dc5724",
+   "successor": "f2b138a0564fd772c89e4d50236a6cbb9b3ec7711a543de827f594dcdae138d4",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "d0bf2fded2e70a44bd4f752427c9b9bcd8f6f19cb43c1b7be1d8e982b7bf9056",
+   "successor": "07a88340e3bda4f97f91b9450722de503f450a1d842d8b2acf4fdb21b05f2a06",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "212120792640d4661c47f32f28c9eed3102541db11d0096bbd8c771892888cf1",
+   "successor": "5682aa3fc3edc206250fce7b701bad39000ef8e581733f11f6ec8c056e1f02de",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c69fbfc16f148dd1ce1362ea3391e914c52344d25b4f71560e2db1f7b52febaa",
+   "successor": "d0a51b55ef99c48acb56b0761ede8b01aa4570fc315e01548115d2b6ef880ab0",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "2981b19dec5080c40b8784e17e149a48a93757303ced9f3c6c9a694d60b4249e",
+   "successor": "364cc8942994f60405d2ec00c5024d3d09c444edb2f24a44350fa26757eb939e",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "2981b19dec5080c40b8784e17e149a48a93757303ced9f3c6c9a694d60b4249e",
+   "successor": "364cc8942994f60405d2ec00c5024d3d09c444edb2f24a44350fa26757eb939e",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "c5afd84479f6cebe37c0d485025807db96a0ed55b1c084759707a1780e2bcbfe",
+   "successor": "9baa3512927afa4ee9cb6e4f4e5104a66d313f4e161a084a00726687c848cb64",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "231177e890b90dd828bd95183b580ada0ed6d0a3043b7da73ffb0e7a89ffccc8",
+   "successor": "983ddd8052739da143df2148722df554abfc77107b17e8e045b96b645e9fc3cd",
+   "change": "Read Alpha development validation and scores from the data-root catalog",
+   "reason": "The same 11 roles the reviewed head moved; the repair changes only a test holder, the moves come from the code closure and the successor record was regenerated from the composed tree, and all 11 summary measures matched on the development-sized run"
+  }
+ ]
+}

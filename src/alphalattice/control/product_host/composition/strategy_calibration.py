@@ -27,6 +27,9 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
 from alphalattice.control.product_host.composition.strategy_scoring import (
     StrategyScoringApplication,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    STRATEGY_CALIBRATION_TASK_KIND,
+)
 from alphalattice.control.product_host.storage.plan_previews import (
     PLAN_PREVIEWS_DIRECTORY,
     PreviewRegistry,
@@ -92,7 +95,7 @@ PLAN_FIELDS = ("calibration_inputs",)
 the whole manifest, so a publication of fields it does not read leaves it applicable (
 OW10)."""
 
-TASK_KIND = "portfolio_calibration_preparation"
+TASK_KIND = STRATEGY_CALIBRATION_TASK_KIND
 STAGES = (
     "verify_inputs",
     "seal_observations",
@@ -103,7 +106,7 @@ RESULT_CATEGORY = "prepared-component-inputs"
 
 
 IMPLEMENTATION_ROLE = "product_host.strategy_calibration"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
 so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 

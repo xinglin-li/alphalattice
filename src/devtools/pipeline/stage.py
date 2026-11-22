@@ -19,15 +19,14 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-import psutil  # type: ignore[import-untyped]
-
+from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import (
     CostIdentity,
     read_blobs,
@@ -36,7 +35,7 @@ from devtools.architecture.git_inputs import (
     unique_moves,
 )
 from devtools.pipeline.definition import PATH, Definition, DefinitionError, Row, Stage, load
-from devtools.pipeline.facets import FACETS, facet_changed
+from devtools.pipeline.facets import FACETS, PRESENCE_FACETS, WORD_FACETS, facet_changed
 from devtools.pipeline.receipt import Writer, _now, verify
 from devtools.testing.requirements import edited_families, file_holders, layer, selection
 from devtools.testing.sizes import classify
@@ -144,11 +143,23 @@ def _reader_path(value: object) -> bool:
 
 
 def _facet_row(row: dict[str, Any]) -> None:
-    """A facet row names a known facet and the files its census reads."""
-    within = row["within"]
-    if row["facet"] not in FACETS or not isinstance(within, list) or not within:
+    """A facet row names a known facet and the files its census reads; a word facet names its
+    words, and any row may add whole inputs (a registry or the census's own tool)."""
+    within, words, inputs = row["within"], row.get("words"), row.get("inputs", [])
+    worded = row["facet"] in WORD_FACETS
+    known = row["facet"] in FACETS or row["facet"] in PRESENCE_FACETS or worded
+    if not known or not isinstance(within, list) or not within:
         raise ValueError("test_size.required_selection_invalid")
-    if not all(_reader_path(path) for path in within):
+    if worded != (words is not None) or (
+        worded
+        and (
+            not isinstance(words, list)
+            or not words
+            or not all(isinstance(w, str) and w.strip() for w in words)
+        )
+    ):
+        raise ValueError("test_size.required_selection_invalid")
+    if not isinstance(inputs, list) or not all(_reader_path(path) for path in (*within, *inputs)):
         raise ValueError("test_size.required_selection_invalid")
 
 
@@ -164,6 +175,9 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
             {"inputs", "literal_root"},
             {"inputs", "census", "sample", "conditional_inputs"},
             {"facet", "within"},
+            {"facet", "within", "inputs"},
+            {"facet", "within", "words"},
+            {"facet", "within", "words", "inputs"},
         ):
             raise ValueError("test_size.required_selection_invalid")
         if "facet" in row:
@@ -189,14 +203,21 @@ def selection_readers(policy: object) -> dict[str, dict[str, Any]]:
     return cast(dict[str, dict[str, Any]], rows)
 
 
+def _matched(paths: Iterable[str], globs: Iterable[str]) -> bool:
+    """Whether any of these paths is one of the globs (a plain path matches only itself)."""
+    globs = tuple(globs)
+    return any(fnmatchcase(path, glob) for path in paths for glob in globs)
+
+
 def registered_holders(
     paths: set[str], sources: Mapping[str, str], rows: Mapping[str, dict[str, Any]]
 ) -> tuple[str, ...]:
-    """Resolve direct inputs, the paths a reader's own source names under its declared root, and
-    each declared producer census without private path literals."""
+    """Resolve direct inputs (a path, or a glob over paths), the paths a reader's own source
+    names under its declared root, and each declared producer census without private path
+    literals."""
     found = set()
     for node, row in rows.items():
-        if paths.intersection(row.get("inputs", ())):
+        if _matched(paths, row.get("inputs", ())):
             found.add(node)
         if sources and "literal_root" in row:
             own = node.split("::", 1)[0]
@@ -397,7 +418,7 @@ def facet_holders(
     found = set()
     for node, row in rows.items():
         for meta, path in pairs if "facet" in row else ():
-            if not any(fnmatchcase(path, glob) for glob in row["within"]):
+            if not _matched({path}, row["within"]):
                 continue
             if (
                 len(meta) != 5
@@ -405,10 +426,10 @@ def facet_holders(
                 or meta[1] not in {"000000", "100644", "100755"}
             ):
                 raise ValueError(f"a changed census source is not a regular file: {path}")
-            sides = ["" if set(oid) == {"0"} else blobs.get(oid) for oid in meta[2:4]]
-            if None in sides:
+            if any(set(oid) != {"0"} and oid not in blobs for oid in meta[2:4]):
                 raise ValueError(f"a changed census source is unavailable: {path}")
-            if facet_changed(row["facet"], *cast(list[str], sides)):
+            before, after = (None if set(oid) == {"0"} else blobs[oid] for oid in meta[2:4])
+            if facet_changed(row["facet"], before, after, words=row.get("words", ())):
                 found.add(node)
                 break
     return tuple(sorted(found))
@@ -604,9 +625,10 @@ def _cost_configuration(root: Path, name: str, host: str) -> dict[str, str]:
 def _helper_sources(root: Path, head: str) -> dict[str, str]:
     """Read the helper graph from the exact head, never the checkout's loose files."""
     names = [path for path in CostIdentity._files(root, head) if path.endswith(".py")]
-    script_tree = subprocess.run(
+    script_tree = spawn.run(
         ["git", "ls-tree", "-r", "-z", "--full-tree", head, "--", "scripts/"],
         cwd=root,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         check=True,
         timeout=60,
@@ -897,23 +919,29 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
     """Run one row's process within the stage's deadline; its output goes to the row's log."""
     began = time.monotonic()
     stopped = None
+    environment = {**os.environ, **env, "ALPHALATTICE_PIPELINE_STAGE": context.stage}
+    if "ALPHALATTICE_DATA_ROOT" not in env:
+        environment.pop("ALPHALATTICE_DATA_ROOT", None)
     with log.open("w", encoding="utf-8") as stream:
         try:
-            process = subprocess.Popen(
+            process = spawn.run(
                 argv,
                 cwd=context.root,
-                env={**os.environ, **env, "ALPHALATTICE_PIPELINE_STAGE": context.stage},
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
+                timeout=max(1.0, context.deadline - began),
             )
-            code: int | None = process.wait(timeout=max(1.0, context.deadline - began))
+            code: int | None = process.returncode
             status = "PASS" if code == 0 else "FAIL"
-        except subprocess.TimeoutExpired:  # past the stage's bound: the row's whole tree goes
-            _kill(process.pid)
-            process.wait()
+        except subprocess.TimeoutExpired:
+            stopped = "bound"
             stream.write(f"stopped at the stage's bound, {context.deadline - began:.0f} s on\n")
-            status, code, stopped = "ERROR", None, "bound"
+            status, code = "ERROR", None
+        except spawn.TreeNotStopped as error:
+            stream.write(f"pipeline.child_reap_timeout: {error}\n")
+            status, code, stopped = "ERROR", None, "reap"
         except OSError as error:
             stream.write(f"{argv[0]}: {error}\n")
             status, code, stopped = "ERROR", None, "launch"
@@ -924,24 +952,25 @@ def _call(argv: list[str], log: Path, context: Context, env: dict[str, str]) -> 
     return step | ({"stopped": stopped} if stopped else {})
 
 
-def _kill(pid: int) -> None:
-    """A row's process and everything it started, children first."""
-    with contextlib.suppress(psutil.NoSuchProcess):
-        parent = psutil.Process(pid)
-        for process in [*parent.children(recursive=True), parent]:
-            with contextlib.suppress(psutil.NoSuchProcess):
-                process.kill()
-
-
 def _workspace(root: Path, base: str, required_tests: Sequence[str] = ()) -> dict[str, Any]:
     """The checkout's head, the merge base with ``base``, and whether its tree is clean."""
 
     def git(*words: str) -> str:
         try:
-            done = subprocess.run(["git", *words], cwd=root, capture_output=True, text=True)
+            done = spawn.run(
+                ["git", *words],
+                cwd=root,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             why = done.stderr.strip() if done.returncode else ""
-        except OSError as error:
-            why = str(error)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise DefinitionError(
+                "pipeline.workspace_unreadable", f"git {words[0]}: {error}; restore Git and retry"
+            ) from None
         if why or done.returncode:
             raise DefinitionError(
                 "pipeline.workspace_unreadable",

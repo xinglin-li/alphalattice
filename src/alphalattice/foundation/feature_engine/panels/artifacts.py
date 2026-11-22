@@ -9,10 +9,9 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from pathlib import Path
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final, cast
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -33,6 +32,9 @@ from alphalattice.foundation.feature_engine.panels.identity import (
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
 from alphalattice.kernel.quant.sector_history import SectorHistory
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # The columns a finalization and the content identity read from a written
 # partition; every other column is a factor value no step here decodes.
@@ -513,6 +515,8 @@ class PanelCompositionSession:
         materialization_receipt_hash: str,
     ) -> None:
         """Stage ordered factor rows for annual chunk composition."""
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         factors = tuple(sorted(set(str(value) for value in factor_ids)))
         if not factors or not set(factors).issubset(self.binding.factor_ids):
             raise ValueError("Panel composition patch has unknown factor IDs")
@@ -1040,6 +1044,8 @@ class PanelCompositionSession:
         base: PreparedPanelChunk | None,
         fragments: Sequence[_PatchFragment],
     ) -> pa.Table:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         columns = [
             "session_date",
             "listing_id",

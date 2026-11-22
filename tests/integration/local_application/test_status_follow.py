@@ -22,6 +22,10 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    analyst_reads_answer,
+    set_analyst_reads,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
@@ -42,6 +46,8 @@ from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.interface.local_application.review_evidence import REVIEW_DETAIL
+from alphalattice.kernel.shared_kernel import waits
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
@@ -133,11 +139,13 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
             return next(answers)
 
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    begun = time.monotonic()
+    paced: list[float] = []
+    monkeypatch.setattr(waits, "pause", lambda seconds, **_: paced.append(seconds))
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
-    assert len(sent) == 4 and time.monotonic() - begun < 0.2
+    # Only the unchanged read that came back at once waits, out to a second, before the next.
+    assert len(sent) == 4 and len(paced) == 1 and 0.9 < paced[0] <= 1.0
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
     first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
@@ -931,6 +939,7 @@ class _ScriptedHost:
         self.prerequisites = prerequisites
         self.previews = 0
         self.prepares = 0
+        self.second_pending = False
         self.prepared_request: dict[str, Any] | None = None
         self.failure: dict[str, Any] | None = None
         self.empty = False
@@ -1020,6 +1029,7 @@ class _ScriptedHost:
                     }
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
+                    "evidence_as_of": subject["evidence_as_of"],
                     "coverage": {"unit_count": 2},
                     **(
                         {
@@ -1048,6 +1058,15 @@ class _ScriptedHost:
                 self.prepares += 1
                 self.prepared_request = document
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
+            case "EVIDENCE_PREPARE" if self.second_pending and self.prepares == 1:
+                assert document == self.prepared_request
+                self.second_pending = False
+                return {
+                    "status": "JOINED",
+                    "task_id": "t-evidence",
+                    "lifecycle": "RUNNING",
+                    "next_requests": {"resume": {"operation": "STATUS", "task_id": "t-evidence"}},
+                }
             case "EVIDENCE_PREPARE" | "EVIDENCE_CRO":
                 if document["operation"] == "EVIDENCE_PREPARE":
                     assert document == self.prepared_request
@@ -1067,6 +1086,8 @@ class _ScriptedHost:
                 return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
             case "WAKE_REGISTER":
                 return {"status": "WAKE_REGISTERED", "task_id": document["task_id"]}
+            case "ANALYST_READS":
+                return analyst_reads_answer(self.workspace, document["analyst_reads_bundles"])
             case "AGENT_BUNDLE_PREPARE":
                 return {
                     "status": "AGENT_BUNDLE_READY",
@@ -1089,8 +1110,9 @@ def _review_args(root: Path, update: str | None = None) -> SimpleNamespace:
     )
 
 
+@pytest.mark.parametrize("preparation", ["ready", "pending-again", "pending-at-cap"])
 def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_bundle(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preparation: str
 ) -> None:
     """requirement: one call sends the requests the
     answers offer, in their order, following each Task to its end, and returns every Analyst
@@ -1105,15 +1127,49 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
     marker.unlink()
     host = _ScriptedHost(tmp_path / "workspace")
+    host.second_pending = preparation != "ready"
+    if preparation == "pending-at-cap":
+        tick = 0.0
+        request = host.request
+
+        def running_at_cap(document, timeout=None):
+            nonlocal tick
+            body = request(document, timeout=timeout)
+            if document.get("task_id") == "t-evidence" and not host.second_pending:
+                tick = client_module.WAIT_CEILING
+                return {**body, "status": "RUNNING", "lifecycle": "RUNNING", "next_requests": {}}
+            return body
+
+        monkeypatch.setattr(client_module, "time", SimpleNamespace(monotonic=lambda: tick))
+        monkeypatch.setattr(host, "request", running_at_cap)
     host.failure = {
         "unit_id": "u2",
         "detail": "AAPL filing rejected heading_path",
         "next_action": "REPORT_THE_CAUSE_AND_READ_COVERAGE",
     }
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+    if preparation == "pending-at-cap":
+        assert answer["wait_status"] == "MAX_WAIT_TASK_CONTINUES"
+        assert answer["wait_event"]["event"] == "MAX_WAIT_REACHED"
+        words = shlex.split(answer["wait_event"]["read"])
+        task = words.index("task")
+        assert words[task : task + 3] == ["task", "show", "t-evidence"]
+        assert answer["next_requests"] == {
+            "resume": {"operation": "STATUS", "task_id": "t-evidence"}
+        }
+        assert answer["book_review"]["stopped_at"] == "evidence_prepared"
+        assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
+        return
     assert answer["evidence"].get("failed_units") == [host.failure]
+    if preparation == "pending-again":
+        assert answer["evidence"]["evidence_as_of"] == "2026-10-12T12:01:00+00:00"
+        assert answer["evidence"]["coverage"] is None
 
-    assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
+    # regression (a daily asked in its own words): two bundles ask the coded question first.
+    assert (answer["status"], answer["next_action"]) == ("BOOK_REVIEW_READY", "ASK_THE_PERSON_ONCE")
+    assert answer["person_questions"][0]["code"] == "review.analyst_reads"
+    assert "--bundles 2 " in answer["ask_now"][-1]
+    assert answer["detail"] == REVIEW_DETAIL["ASK_THE_PERSON_ONCE"]  # no Analyst starts yet
     assert [step["step"] for step in answer["steps"]] == [
         "controls",
         "book",
@@ -1124,11 +1180,18 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
         "evidence",
         "evidence_task",
         "evidence_prepared",
+        *(
+            ["evidence_prepared_task", "evidence_prepared"]
+            if preparation == "pending-again"
+            else []
+        ),
         "analyst_bundle",
         "analyst_bundle",
+        "analyst_reads",
     ]
-    # Its bundles are the prepared run's own; a later preview would pack other units.
-    assert host.previews == 1
+    # The second pending Task is read by its exact offers, without preparing a third time.
+    assert host.previews == (2 if preparation == "pending-again" else 1)
+    assert sum(d["operation"] == "EVIDENCE_PREPARE" for d in host.sent) == 2
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
     for bundle in answer["analyst_bundles"]:
         folder = Path(bundle["bundle_directory"])
@@ -1145,10 +1208,17 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert answer["next_requests"] == {
         "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
     }
-    for _ in range(2):
+    set_analyst_reads(host.workspace, mode="SUBAGENTS", bundles=2, relayed_by=None)
+    for _ in range(2):  # the person's answer stands for later reviews within its count
         repeated = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+        assert "ask_now" not in repeated and repeated["analyst_reads"] == "SUBAGENTS"
+        assert repeated["next_action"] == "DISPATCH_ANALYSTS"
         assert repeated["evidence"]["prepared_task_id"] == "t-evidence"
         assert host.prepares == 1
+    set_analyst_reads(host.workspace, mode="IN_SESSION", bundles=2, relayed_by=None)
+    here = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+    assert here["detail"] == REVIEW_DETAIL[here["next_action"]]
+    assert here["next_action"] == "READ_EACH_BUNDLE_HERE"
     request, seen = host.request, []
 
     def moved(document, timeout=None):

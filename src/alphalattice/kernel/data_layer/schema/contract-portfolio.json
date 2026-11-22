@@ -1,0 +1,39 @@
+{
+ "tables": {
+  "catalog.results.holding": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "as_of",
+    "listing_id"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "as_of": "value: the as-of date",
+    "listing_id": "link"
+   },
+   "up": "artifact_id",
+   "times": {
+    "as_of": "market_date"
+   }
+  },
+  "catalog.results.series": {
+   "home": "results",
+   "key": [
+    "artifact_id",
+    "name",
+    "session_date"
+   ],
+   "id": {
+    "artifact_id": "link",
+    "name": "value: the series' name within its study's artifact",
+    "session_date": "value: the session"
+   },
+   "up": "artifact_id",
+   "times": {
+    "session_date": "market_date"
+   }
+  }
+ },
+ "known": {}
+}

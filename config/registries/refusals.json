@@ -1,5 +1,106 @@
 {
 "entries": {
+"data_layer.benchmark_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The catalog body or profile differs from the sealed Portfolio result; retain the old artifact and repair the admission."},
+"data_layer.benchmark_missing": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The sealed Portfolio result has no present catalog body; run the verified upgrade or select the legacy reader."},
+"portfolio_application.execution_series_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated series does not match its sealed ledger; restore the complete result before reading."},
+"portfolio_application.report_holdings_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The dated holdings do not match their sealed report; restore the complete result before reading."},
+"portfolio_application.result_identity_reused": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The retained result descriptor differs under the same sealed identity; preserve both and reconcile them."},
+"portfolio_application.upgrade_identity_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "The verified upgrade mapping changed; restore its original mapping before resuming."},
+"portfolio_application.upgrade_path_invalid": {"owner": "alphalattice.investment.portfolio_strategy_lab", "category": "FAILED_PRECONDITION", "classification_note": "A Portfolio artifact lies outside its backed-up workspace; repair its path before resuming."},
+"portfolio_benchmark.catalog_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark's named series have different dates or are incomplete; restore the complete result."},
+"portfolio_benchmark.upgrade_path_invalid": {"owner": "alphalattice.capabilities.portfolio_inputs", "category": "FAILED_PRECONDITION", "classification_note": "The benchmark path lies outside its backed-up workspace; repair the path before resuming."},
+"spawn.encoding_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Use UTF-8 for a text child."},
+"spawn.initial_thread_unavailable": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The suspended child could not be admitted and resumed; inspect process access and retry."},
+"spawn.session_input_closed": {"owner": "alphalattice.kernel.shared_kernel", "category": "FAILED_PRECONDITION", "classification_note": "The child input is closed; start a new owned session."},
+"spawn.session_owns_stdin": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Choose a pipe or a closed input for the owned session."},
+"spawn.session_stop_unconfirmed": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The owned child did not reach its termination barrier; inspect its owner before retrying."},
+"spawn.session_terminal": {"owner": "alphalattice.kernel.shared_kernel", "category": "FAILED_PRECONDITION", "classification_note": "The owned session has ended; start a new session."},
+"spawn.stdin_unfed": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Supply input to the child or close its standard input."},
+"spawn.stop_scope_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Choose the tree or root stop scope."},
+"spawn.timeout_invalid": {"owner": "alphalattice.kernel.shared_kernel", "category": "INVALID_ARGUMENT", "classification_note": "Supply a finite positive child deadline."},
+"spawn.tree_not_stopped": {"owner": "alphalattice.kernel.shared_kernel", "category": "UNAVAILABLE", "classification_note": "The complete child tree was not confirmed stopped; inspect the owner before retrying."},
+"market_data.workspace_identity_ambiguous": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "Multiple active workspace registrations name the same folder; repair the workspace registry before reading world data."},
+"market_data_ops.universe_workspace_unmeasured": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "The admitted universe reader cannot identify its workspace; repair the workspace registry before reading its lineage."},
+"agent_telemetry.signal_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT"},
+"native_bridge.usage_disabled": {"owner": "native_bridge", "category": "FAILED_PRECONDITION"},
+"agent_telemetry.payload_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "The native export is malformed, uses an unsupported encoding or exceeds the existing request body bound; no payload text is logged or stored."},
+"agent_telemetry.host_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "The Host has no writable catalog, so it cannot commit native observations."},
+"task_control.heartbeat_import_unequal": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The copied heartbeat differs from its old signal; preserve the old store and repair the named family before upgrading."},
+"task_control.heartbeat_task_unbound": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The signal has no Task on this log; restore its Task ledger before importing the lease."},
+"task_control.live_lease_present": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The named execution still holds an old live lease; finish or stop its source Task before upgrading."},
+"task_control.runtime_retirement_conflict": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "An old and retired generation both exist; reconcile the named source without replacing either generation."},
+"task_control.telemetry_import_unreadable": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The old telemetry source cannot prove its Task binding or document; preserve it and repair that source before upgrading."},
+"task_control.telemetry_import_conflict": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The logged telemetry prefix differs from the old source; preserve both and reconcile the named family."},
+"task_control.telemetry_import_unequal": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "Telemetry does not read back ALL EQUAL; the old reader remains selected until the mismatch is repaired."},
+"task_control.telemetry_task_unbound": {"owner": "alphalattice.control.task_control", "category": "FAILED_PRECONDITION", "classification_note": "The observation has no Task on the held log; restore its Task binding before recording it."},
+"task_control.telemetry_clock_naive": {"owner": "alphalattice.control.task_control", "category": "INVALID_ARGUMENT", "classification_note": "The observation lacks an aware source clock; repair its producer rather than guessing an import time."},
+"task_control.telemetry_log_unavailable": {"owner": "alphalattice.control.task_control", "category": "UNAVAILABLE", "classification_note": "The optional observation could not be written or read from the log; its reader reports unavailable and retains its last valid observation."},
+"explorer.wall_deadline": {"owner": "devtools.evaluation", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded explorer walk exceeded its wall deadline; inspect the trace before another walk."},
+"causal_outcomes.upgrade_path_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome path leaves its backed-up workspace."},
+"causal_outcomes.upgrade_chunk_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "The old outcome chunk does not match its recorded identity."},
+"causal_outcomes.chunk_identity_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "FAILED_PRECONDITION", "classification_note": "A carried outcome chunk's rows do not rebuild the identity it is named by; carry it again from its workspace."},
+"research_experiment.outcome_body_incomplete": {"owner": "alphalattice.control.product_host", "category": "FAILED_PRECONDITION", "classification_note": "Restore the complete catalog outcome before binding the research input."},
+"data_layer.market_mic_ambiguous": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An outside MIC has named more than one market; bind the source to its market identity rather than guessing from the code."},
+"data_layer.market_unregistered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A listing or session names a market id with no admitted market record; admit that record first."},
+"data_layer.history_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "Open the Host data root before writing or reading its catalog."},
+"data_layer.outcome_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected outcome body cannot be reused as present."},
+"data_layer.return_series_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A trial's return series was not ordered calendar months of finite returns, 1 to 600 of them; nothing was kept."},
+"data_layer.trial_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A return series named a trial the log does not hold; nothing was kept."},
+"data_layer.validation_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Validation receipt or claim history is inconsistent."},
+"data_layer.validation_workspace_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The validation workspace is not registered in this Host log."},
+"data_layer.outcome_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The recorded outcome's catalog body is incomplete."},
+"data_layer.outcome_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested outcome body is not present in the catalog."},
+"data_layer.sector_result_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The requested Sector result has no present catalog body."},
+"data_layer.sector_result_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A Sector result's identity, descriptor or body does not match its recorded profile."},
+"data_layer.array_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "An array is one or more columns of one shape."},
+"data_layer.array_digest_reused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A digest names one array; the same bytes as another dtype or shape are not kept under it."},
+"data_layer.array_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected array body cannot be read or kept as present."},
+"data_layer.array_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No array, or no body for its profile, is held for the digest; restore the data root from its backup."},
+"data_layer.input_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "No research input is kept for the binding, or a file it lists is gone; restore the data root from its backup."},
+"data_layer.input_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A research input folder or file is a link; bind the input again from its source."},
+"data_layer.part_missing": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "The Alpha part relation is absent; restore the workspace and data root from their backup."},
+"data_layer.part_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An Alpha part relation or carried body is invalid; restore the workspace and data root from their backup."},
+"data_layer.array_profile_mismatch": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body's columns, dtype or shape differ from its profile; restore the data root from its backup."},
+"data_layer.array_tampered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An array body does not prove its digest; restore the data root from its backup."},
+"data_layer.artifact_holder_unnamed": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A hold on an artifact names the workspace that keeps it."},
+"data_layer.artifact_held_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A workspace holds an artifact only after its profile is recorded."},
+"causal_outcomes.outcome_store_invalid": {"owner": "alphalattice.foundation.causal_outcomes", "category": "INVALID_ARGUMENT", "classification_note": "Select the catalog or the explicit legacy rollback reader."},
+"upgrade.refused": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Upgrade cannot serve before its backups, declared family order, immutable ID mapping and ALL EQUAL family verification are satisfied."},
+"upgrade.in_progress": {"owner": "alphalattice.control.product_host", "category": "UNAVAILABLE", "classification_note": "The Host serves only its upgrade's plan, progress and acknowledgement until the upgrade completes."},
+"upgrade.acknowledged": {"owner": "alphalattice.control.product_host", "category": "FAILED_PRECONDITION", "classification_note": "The upgrade plan was already acknowledged and runs."},
+"upgrade.plan_changed": {"owner": "alphalattice.control.product_host", "category": "ABORTED", "classification_note": "The acknowledgement names a plan hash other than the plan shown now."},
+"upgrade.backup_space": {"owner": "alphalattice.control.product_host", "category": "RESOURCE_EXHAUSTED", "classification_note": "Writing the plan's backups would leave less than the free-space floor; nothing was written."},
+"workspace_database.runtime_extension_refused": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "Workspace connections use the installed data dependencies and refuse runtime extension installation or loading."},
+"workspace_database.derived_setup_absent": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "A workspace connection would serve a derived view with no data layer setup registered; import the data layer first, or unset the view's setting."},
+"feature_panel.derived_reads_unserved": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "A derived Panel read with no data layer registered to read the data root; import the data layer, or unset ALPHALATTICE_PANEL_READS."},
+"feature_panel.chunk_unserved": {"owner": "alphalattice.control.workspace_runtime", "category": "NOT_FOUND", "classification_note": "A derived Panel read found neither the chunk's kept body nor its stored chunk to refill it from; rebuild the Panel, or restore the workspace from its last backup."},
+"feature_panel.panel_reads_unknown": {"owner": "alphalattice.control.workspace_runtime", "category": "INVALID_ARGUMENT", "classification_note": "ALPHALATTICE_PANEL_READS names neither stored nor derived."},
+"data_layer.derived_files_need_host": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "Only the Host keeps a derived partition held as a file in the data root; open the workspace in the Host."},
+"data_layer.extension_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An installed extension cannot load; restore the engine-matched locked data dependencies before creating the catalog."},
+"experience.trial_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A class read named a trial the Host's history does not hold; nothing was read."},
+"experience.class_width_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A class read named a width other than recipe, method_version or method."},
+"experience.goal_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A brief named a goal the Host's history did not hold at its known time; nothing was read."},
+"experience.brief_budget_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A brief's budget was outside 100 to 32,000 tokens."},
+"experience.known_at_invalid": {"owner": "alphalattice.interface.local_application", "category": "INVALID_ARGUMENT", "classification_note": "A class read's known time was not an ISO-8601 time with its offset."},
+"experience.history_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "The Host's history is not open, so it cannot answer or register the hypothesis."},
+"experience.recall_models_missing": {"owner": "alphalattice.control.product_host.composition", "category": "FAILED_PRECONDITION", "classification_note": "The retrieval-store model packs are not installed, so a recall cannot embed its query; nothing was read."},
+"experience.recall_query_invalid": {"owner": "alphalattice.control.product_host.composition", "category": "INVALID_ARGUMENT", "classification_note": "A recall query was empty or over 512 characters, or its limit was outside 1 to 20; nothing was read."},
+"experience.note_incomplete": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A note did not say its hypothesis, method and conclusion, or held a blank lesson; nothing was recorded."},
+"experience.layer_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A note named something other than a trial, a Task or a goal."},
+"experience.verdict_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A verdict other than success, failure or inconclusive."},
+"experience.unit_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A note on a trial or Task the log does not hold; nothing was recorded."},
+"experience.trials_malformed": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A review named its trials other than as a nonempty list of trial ids; nothing was recorded."},
+"data_layer.review_trials_need_a_review_task": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A note named reviewed trials but is not on a Task of kind review; nothing was recorded."},
+"data_layer.review_trial_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A review named a trial the log does not hold or that has not ended; nothing was recorded."},
+"data_layer.review_workspace_disagrees": {"owner": "alphalattice.kernel.data_layer", "category": "PERMISSION_DENIED", "classification_note": "A note named a trial or Task of another workspace; nothing was recorded or read."},
+"data_layer.review_before_its_end": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A note on a trial or Task that has not ended; nothing was recorded."},
+"data_layer.review_unknown_goal": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A note on a goal its workspace does not hold; nothing was recorded."},
+"experience.hypothesis_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "The selected hypothesis is absent from the Host's log."},
+"experience.hypothesis_workspace": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The selected hypothesis belongs to a different workspace."},
+"experience.hypothesis_goal": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "The selected hypothesis belongs to a different goal."},
+"experience.hypothesis_existing_run": {"owner": "research_experiment", "category": "FAILED_PRECONDITION", "classification_note": "An existing run has a different immutable hypothesis association."},
+"goal.hypothesis_must_be_open": {"owner": "goal", "category": "INVALID_ARGUMENT", "classification_note": "A newly stated hypothesis must be open."},
+"research_experiment.hypothesis_invalid": {"owner": "research_experiment", "category": "INVALID_ARGUMENT", "classification_note": "A retained task has a malformed hypothesis identity."},
 "testing.worker_capture_unavailable": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "A worker fault stream or its attempt record cannot be retained; the result does not prove the missing evidence."},
 "testing.worker_identity_unknown": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "The worker identity is not an admitted xdist worker name; its evidence is not assigned to another process."},
 "agent_bundle.admission_busy": {"owner": "agent_bundle", "category": "RESOURCE_EXHAUSTED", "classification_note": "The bounded workspace admission is occupied; this answer was not filed and can be retried."},
@@ -10,6 +111,7 @@
 "test_size.admission_invalid": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The size admission input is not a valid test and declared size."},
 "test_size.admission_limits": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered size admission limits are missing or malformed."},
 "test_size.growth": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "The registered test growth floor is missing or malformed."},
+"test_size.budget_admission": {"owner": "devtools.testing", "category": "INVALID_ARGUMENT", "classification_note": "A test budget admission is malformed, repeated or names no current budget."},
 "test_size.changed_identity": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "Test-family source identities are duplicated and cannot be compared safely."},
 "test_size.large_contract": {"owner": "devtools.testing", "category": "FAILED_PRECONDITION", "classification_note": "An edited Large test lacks its registered nightly-only contract."},
 "test_size.changed_unmeasured": {"owner": "devtools.testing", "category": "UNAVAILABLE", "classification_note": "The changed test families cannot be derived from pinned source evidence."},
@@ -160,6 +262,15 @@
 "category": "RESOURCE_EXHAUSTED",
 "classification_note": "One complete delivery item exceeds the declared byte budget; raising the delivery budget is an execution choice, not scientific authority."
 },
+"alternative_evidence.first_unit_wait_expired": {
+"owner": "alternative_evidence",
+"category": "DEADLINE_EXCEEDED",
+"classification_note": "A later unit waited out its bound for the book's first unit, which never prepared or failed; the later unit fails by name so the stuck first unit is seen."
+},
+"alternative_evidence.host_history_unavailable": {
+"owner": "alternative_evidence",
+"category": "FAILED_PRECONDITION"
+},
 "alternative_evidence.table_view_correspondence_unproved": {
 "owner": "alternative_evidence",
 "category": "FAILED_PRECONDITION",
@@ -179,6 +290,11 @@
 "owner": "committee",
 "category": "PERMISSION_DENIED",
 "classification_note": "An agent caller attempted to change the person's daily-committee setting without the admitted HUMAN route."
+},
+"evidence_review.analyst_reads_human_only": {
+"owner": "evidence_review",
+"category": "PERMISSION_DENIED",
+"classification_note": "An agent caller attempted to set how a review's Analyst bundles are read without the person's relayed answer."
 },
 "data.maintenance_stale_payload": {
 "owner": "data",
@@ -294,6 +410,11 @@
 "owner": "portfolio_strategy_lab",
 "category": "NOT_FOUND",
 "classification_note": "A sealed study child is missing from content-addressed storage; damaged artifacts remain a separate tampering refusal with backup recovery unchanged."
+},
+"portfolio_strategy_lab.array_store_invalid": {
+"owner": "portfolio_strategy_lab",
+"category": "INVALID_ARGUMENT",
+"classification_note": "ALPHALATTICE_ARRAY_STORE names the lanes' reader: door, the default, or legacy for rollback."
 },
 "portfolio_strategy_lab.eligible_pool_short": {
 "owner": "portfolio_strategy_lab",
@@ -445,6 +566,11 @@
 "activity.accepted_answer_binding_mismatch": {
 "owner": "activity",
 "category": "FAILED_PRECONDITION"
+},
+"activity.observer_failed": {
+"owner": "activity",
+"category": "UNAVAILABLE",
+"classification_note": "The Host's history did not keep an activity record; the observer counts it missing and the operation's answer is unchanged."
 },
 "activity.cursor_invalid": {
 "owner": "activity",
@@ -1099,6 +1225,16 @@
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
 },
+"alpha_research.child_staging_invalid": {
+"owner": "alphalattice.control.product_host",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The retained fold handoff is inconsistent. Restore its parts and documents before retrying the Alpha Task."
+},
+"alpha_research.child_staging_linked": {
+"owner": "alphalattice.control.product_host",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The retained fold handoff is linked. Restore it as ordinary files inside the Alpha Task's workspace before retrying."
+},
 "alpha_research.corrected_target_common_axis_mismatch": {
 "owner": "alpha_research",
 "category": "FAILED_PRECONDITION"
@@ -1122,6 +1258,21 @@
 "alpha_research.dependence_policy_input_invalid": {
 "owner": "alpha_research",
 "category": "INVALID_ARGUMENT"
+},
+"alpha_research.development_breakdown_count_changed": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The recorded chunk row or metric lane count differs from its sealed profile."
+},
+"alpha_research.development_breakdown_profile_invalid": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The catalog profile is collected or describes a different schema or metadata seal."
+},
+"alpha_research.development_breakdown_profile_repeated": {
+"owner": "alpha_research",
+"category": "FAILED_PRECONDITION",
+"classification_note": "More than one catalog profile claims the same sealed development chunk."
 },
 "alpha_research.development_child_estimator_missing": {
 "owner": "alpha_research",
@@ -6377,7 +6528,7 @@
 "data.full_history_audit_approval_required": {
 "owner": "data",
 "category": "PERMISSION_DENIED",
-"classification_note": "The full-history audit stop stays BLOCKED unless a workspace rule supplies a recorded approval. New history scope cannot run without that person/rule authorization."
+"classification_note": "The full-history audit stop stays BLOCKED until its exactly scoped audit is confirmed: the installed agent confirms it, as the person or a workspace rule may (person-stops row 49); nothing wider is admitted."
 },
 "data.invalid_action_payload": {
 "owner": "data",
@@ -6388,6 +6539,11 @@
 "owner": "data",
 "category": "FAILED_PRECONDITION",
 "classification_note": "The provider payload has missing/nonpositive adjusted close; valid acquired price evidence is required."
+},
+"data.local_bars_invalid": {
+"owner": "data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Repair the named local source file to match the workspace profile and bar format."
 },
 "data.listing_attempt_budget_exhausted_after_interruption": {
 "owner": "data",
@@ -6422,6 +6578,166 @@
 "data.universe_spy_return_non_finite": {
 "owner": "data",
 "category": "INVALID_ARGUMENT"
+},
+"data_layer.schema_mismatch": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A data root database was made by another schema version; it is only read and never migrated or rebuilt in place."
+},
+"data_layer.artifact_body_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An inline artifact is appended with its body, in the same unit as its event."
+},
+"data_layer.artifact_trial_unregistered": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A trial's artifact is appended after the trial's registration."
+},
+"data_layer.artifact_body_unexpected": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Only an inline artifact's event carries a body."
+},
+"data_layer.chain_broken": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The log's events no longer fold to its chain head; the Host does not open it, and it is restored from its last backup."
+},
+"data_layer.definition_not_owner": {
+"owner": "data_layer",
+"category": "PERMISSION_DENIED",
+"classification_note": "A definition's status is moved only by its owning node, the person or the host."
+},
+"data_layer.definition_superseded": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "New work never writes under a superseded definition version; it writes under its successor."
+},
+"data_layer.event_attrs_form": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A field readers cast to a number, or an admission's parts, has the wrong form."
+},
+"data_layer.event_attrs_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event lacks an attribute its registered type requires."
+},
+"data_layer.event_secret": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's attributes, text or inline body would make a credential permanent; a keychain reference goes in its place."
+},
+"data_layer.event_text_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event whose type requires a text, or a live event naming a text digest, is appended without its text."
+},
+"data_layer.event_text_unbound": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's text does not match the digest the event names."
+},
+"data_layer.event_text_unexpected": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event names a text its registered type does not carry."
+},
+"data_layer.event_type_unregistered": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An event's type and version are not registered event types."
+},
+"data_layer.admission_column_foreign": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "An admission's rows carry a column their world table does not hold, which a conformed admission would otherwise drop unseen."
+},
+"data_layer.admission_source_time_missing": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A raw_bar or corporate_action row carries its source's own last write of the value, without which it could supersede a value its source wrote later."
+},
+"data_layer.admission_lineage_invalid": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "A world admission names its outside provider; a results admission names none, since its rows are an artifact's body."
+},
+"data_layer.admission_key_repeated": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "One admission carries one version of a world table's key; DuckLake keeps no keys, so StorePort does."
+},
+"data_layer.below_free_floor": {
+"owner": "data_layer",
+"category": "RESOURCE_EXHAUSTED",
+"classification_note": "Below the data root's free-space floor no admission is staged, so the log, the repair and cleanup keep their room."
+},
+"data_layer.data_folder_unreadable": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A folder under the data root's data/ that cannot be listed stops the start, since an empty reading would leave unnamed files unseen."
+},
+"data_layer.handle_outside_root": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "StorePort deletes only a file or folder inside the data root's staging/, data/ or blobs/."
+},
+"data_layer.lag_rule_unknown": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy batch names a lag rule version the log does not hold with a whole lag; the rule is registered first."
+},
+"data_layer.lag_rule_version_moved": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy batch's keys are held under another lag rule version, whose derived known_asof an upgrade step re-derives before rows under the new version are admitted."
+},
+"data_layer.admission_out_of_order": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A key's versions are admitted in their known_asof order, so a row known before a version already admitted is refused, never superseding it backwards."
+},
+"data_layer.legacy_anchor_missing": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A legacy row's known time counts from its market's session close, so its listing, with one market, and its sessions are admitted first; the batch is refused whole."
+},
+"data_layer.legacy_table_unanchored": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Only a world table with a valid date takes legacy rows; a lag rule counts from that date."
+},
+"data_layer.lineage_unregistered": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Admit the named listing or register the definition before writing rows that reference its lineage."
+},
+"data_layer.live_ref_held": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "An artifact body a live reference holds is never collected."
+},
+"data_layer.host_running": {
+"owner": "data_layer",
+"category": "FAILED_PRECONDITION",
+"classification_note": "Another Host holds the data root's lock and is its only writer; other processes attach read-only."
+},
+"data_layer.result_key_present": {
+"owner": "data_layer",
+"category": "ALREADY_EXISTS",
+"classification_note": "A results row is an artifact's body, written once; a key the catalog already holds is refused, never written twice."
+},
+"data_layer.staging_taken": {
+"owner": "data_layer",
+"category": "ABORTED",
+"classification_note": "A starting Host collected this admission's staging before its producer held the lock; the producer stages the rows again."
+},
+"data_layer.world_table_not_admitted": {
+"owner": "data_layer",
+"category": "INVALID_ARGUMENT",
+"classification_note": "StorePort admits the world tables the catalog defines and the results tables on its allow-list; a further results table is added with its first store."
 },
 "data_tradability.adv20_warmup_unavailable": {
 "owner": "data_tradability",
@@ -6806,6 +7122,10 @@
 "evidence_review.model_profile_identity_invalid": {
 "owner": "evidence_review",
 "category": "INVALID_ARGUMENT"
+},
+"evidence_review.model_store_not_the_hosts": {
+"owner": "evidence_review",
+"category": "FAILED_PRECONDITION"
 },
 "evidence_review.package_path_escapes_workspace": {
 "owner": "evidence_review",
@@ -7682,6 +8002,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "This broad saved-state precondition covers a missing or nonunique stored sector map and a copied history that differs on immediate readback after publication. The latter is an owner output invariant under the same reason; no retry is inferred."
 },
+"feature_closure.sector_map_unserved": {
+"owner": "feature_closure",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A sector map selected at a cutoff whose listings world no longer classifies in full, or a process with no world catalog: the map's names are world's at that cutoff, so the read is refused rather than answered from the artifact. Restore the data root from its last backup."
+},
 "feature_closure.store_readback_mismatch": {
 "owner": "feature_closure",
 "category": "INTERNAL",
@@ -8097,6 +8422,10 @@
 "owner": "feature_panel",
 "category": "FAILED_PRECONDITION"
 },
+"feature_panel.market_observation_invalid": {
+"owner": "feature_panel",
+"category": "FAILED_PRECONDITION"
+},
 "feature_panel.source_exclusion_outside_axis": {
 "owner": "feature_panel",
 "category": "FAILED_PRECONDITION"
@@ -8343,6 +8672,11 @@
 "owner": "feature_storage",
 "category": "FAILED_PRECONDITION"
 },
+"feature_storage.workspace_before_0_2_7": {
+"owner": "feature_storage",
+"category": "FAILED_PRECONDITION",
+"classification_note": "The workspace was last opened before 0.2.7 and still holds a table 0.2.7 retired; open it with 0.2.7 first."
+},
 "feature_trial.alpha_candidate_ambiguous": {
 "owner": "feature_trial",
 "category": "FAILED_PRECONDITION"
@@ -8577,6 +8911,18 @@
 "category": "NOT_FOUND"
 },
 "goal.operation_not_supported": {
+"owner": "goal",
+"category": "INVALID_ARGUMENT"
+},
+"goal.declaration_index_invalid": {
+"owner": "goal",
+"category": "FAILED_PRECONDITION"
+},
+"goal.declaration_untyped": {
+"owner": "goal",
+"category": "INVALID_ARGUMENT"
+},
+"goal.id_is_the_hosts": {
 "owner": "goal",
 "category": "INVALID_ARGUMENT"
 },
@@ -9046,6 +9392,11 @@
 "owner": "local_web_session",
 "category": "FAILED_PRECONDITION"
 },
+"market_data.action_kind_unknown": {
+"owner": "market_data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "World names a closed set of action kinds; a 0.2.7 action of another kind waits for the build that names it, and the admission stops whole."
+},
 "market_data.capability_file_invalid": {
 "owner": "market_data",
 "category": "INVALID_ARGUMENT"
@@ -9065,6 +9416,16 @@
 "market_data.execution_return_non_finite": {
 "owner": "market_data",
 "category": "INVALID_ARGUMENT"
+},
+"market_data.market_calendar_ambiguous": {
+"owner": "market_data",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A market's sessions come from the calendars its profiles name; calendars disagreeing on a session leave its closes unknown."
+},
+"market_data.market_reads_unknown": {
+"owner": "market_data",
+"category": "INVALID_ARGUMENT",
+"classification_note": "Market value reads come from world or from the workspace's own tables; a setting naming anything else is refused before any read."
 },
 "market_data.market_profile_invalid": {
 "owner": "market_data",
@@ -9603,7 +9964,7 @@
 "category": "NOT_FOUND"
 },
 "native_usage.read_limit_exceeded": {
-"owner": "native_usage",
+"owner": "scripts.agent_eval",
 "category": "RESOURCE_EXHAUSTED"
 },
 "observation.correlation_ambiguous": {
@@ -13814,6 +14175,10 @@
 "owner": "process_capacity",
 "category": "INVALID_ARGUMENT"
 },
+"process_metrics.cpu_unavailable": {
+"owner": "process_metrics",
+"category": "UNAVAILABLE"
+},
 "process_metrics.monitor_already_started": {
 "owner": "process_metrics",
 "category": "ALREADY_EXISTS"
@@ -14102,6 +14467,30 @@
 "owner": "product_host",
 "category": "FAILED_PRECONDITION",
 "classification_note": "The stored handoff/package/receipt/release graph cannot reopen consistently for activation."
+},
+"protected_validation.claim_receipt_mismatch": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.receipt_identity_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.receipt_index_tampered": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.upgrade_identity_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.upgrade_path_invalid": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
+},
+"protected_validation.upgrade_record_missing": {
+"owner": "protected_validation",
+"category": "FAILED_PRECONDITION"
 },
 "protected_validation.candidate_differs_from_frozen": {
 "owner": "protected_validation",
@@ -15543,6 +15932,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Required installed, stored, or bound evidence state cannot satisfy _step; repair/setup/replan before retry. IF value is not None and (value.plan_hash != plan.content_hash or value.step != step)"
 },
+"research_update.stage_missing": {
+"owner": "research_update",
+"category": "UNAVAILABLE",
+"classification_note": "The requested update stage has yet to be committed. Wait for the update Task, then read again."
+},
 "research_update.stage_unknown": {
 "owner": "research_update",
 "category": "INTERNAL",
@@ -16131,6 +16525,10 @@
 "category": "RESOURCE_EXHAUSTED",
 "classification_note": "The model validates the same publication-capacity count that resolve_development_input_binding checks before binding the requested formation axis. The declaration, not the validator location, establishes its resource-budget meaning."
 },
+"risk_research.development_realized_axis_empty": {
+"owner": "risk_research",
+"category": "FAILED_PRECONDITION"
+},
 "risk_research.development_surface_adapter_route_invalid": {
 "owner": "risk_research",
 "category": "INVALID_ARGUMENT"
@@ -16452,6 +16850,10 @@
 "owner": "risk_research",
 "category": "FAILED_PRECONDITION"
 },
+"risk_research.return_omission_invalid": {
+"owner": "risk_research",
+"category": "INVALID_ARGUMENT"
+},
 "risk_research.return_price_basis_unsupported": {
 "owner": "risk_research",
 "category": "INVALID_ARGUMENT"
@@ -16482,6 +16884,10 @@
 "category": "FAILED_PRECONDITION"
 },
 "risk_research.return_session_axis_invalid": {
+"owner": "risk_research",
+"category": "FAILED_PRECONDITION"
+},
+"risk_research.return_market_observation_unverified": {
 "owner": "risk_research",
 "category": "FAILED_PRECONDITION"
 },
@@ -16552,6 +16958,11 @@
 "risk_research.review_submission_identity_invalid": {
 "owner": "risk_research",
 "category": "INVALID_ARGUMENT"
+},
+"risk_research.risk_store_invalid": {
+"owner": "risk_research",
+"category": "INVALID_ARGUMENT",
+"classification_note": "ALPHALATTICE_RISK_STORE accepts catalog or legacy for rollback."
 },
 "risk_research.selected_method_binding_identity_invalid": {
 "owner": "risk_research",
@@ -16951,6 +17362,11 @@
 "category": "FAILED_PRECONDITION",
 "classification_note": "Required installed, stored, or bound evidence state cannot satisfy _verify_child_lineage; repair/setup/replan before retry. IF experiment.method_id != surface.recipe.method_id"
 },
+"sector_research.evidence_not_published": {
+"owner": "sector_research",
+"category": "NOT_FOUND",
+"classification_note": "The outcome or Sector evidence named by the request has not been published in this workspace."
+},
 "sector_research.evidence_outcome_clock_mismatch": {
 "owner": "sector_research",
 "category": "FAILED_PRECONDITION"
@@ -17099,6 +17515,14 @@
 "category": "INVALID_ARGUMENT"
 },
 "sector_research.recipe_schema_not_installed": {
+"owner": "sector_research",
+"category": "FAILED_PRECONDITION"
+},
+"sector_research.upgrade_identity_invalid": {
+"owner": "sector_research",
+"category": "FAILED_PRECONDITION"
+},
+"sector_research.upgrade_path_invalid": {
 "owner": "sector_research",
 "category": "FAILED_PRECONDITION"
 },
@@ -17400,6 +17824,11 @@
 "storage.human_confirmation_required": {
 "owner": "storage",
 "category": "PERMISSION_DENIED"
+},
+"storage.input_pin_retired": {
+"owner": "storage",
+"category": "FAILED_PRECONDITION",
+"classification_note": "A research input is kept on the data root while a binding names it, so it takes no pin."
 },
 "storage.input_pin_unavailable": {
 "owner": "storage",
@@ -18798,6 +19227,18 @@
 },
 "test_size.declaration_invalid": {
 "owner": "devtools.testing",
+"category": "INVALID_ARGUMENT"
+},
+"local_web.call_context_invalid": {
+"owner": "local_web",
+"category": "INVALID_ARGUMENT"
+},
+"local_web.call_context_missing": {
+"owner": "local_web",
+"category": "FAILED_PRECONDITION"
+},
+"local_web.call_end_invalid": {
+"owner": "local_web",
 "category": "INVALID_ARGUMENT"
 },
 "local_web.child_ownership_unavailable": {

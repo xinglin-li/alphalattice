@@ -15,7 +15,6 @@ retention -- instead of meeting DuckDB's configuration refusal.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 import textwrap
 import threading
@@ -27,18 +26,18 @@ from time import monotonic
 import duckdb
 import pytest
 
-from alphalattice.control.product_host.composition.application_session import (
-    WorkspaceApplicationSession,
-)
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
     WorkspaceDatabase,
     checkpoint_workspace_database,
+    hand_off,
     live_workspace_connections,
     open_workspace_database,
+    release_workspace_database,
     retain_workspace_database,
     retained_workspace_database,
 )
+from alphalattice.kernel.shared_kernel import spawn
 
 
 def _prepared(tmp_path: Path) -> WorkspaceDatabase:
@@ -75,7 +74,11 @@ def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
     with pytest.raises(RuntimeError, match="second unit"), database.retain(read_only=False):
         assert retained_workspace_database(database.path)
         with database.transaction() as first:
-            first.execute("INSERT INTO unit VALUES (2, 'first')")
+            import pyarrow as pa
+
+            first.execute("SELECT id, note FROM unit").fetchone()
+            first.register("incoming", pa.table({"id": [2], "note": ["first"]}))
+            first.execute("INSERT INTO unit SELECT * FROM incoming RETURNING id").fetchone()
         with (
             pytest.raises(RuntimeError, match="second unit"),
             database.transaction() as second,
@@ -91,10 +94,21 @@ def test_retained_unit_keeps_independent_transactions_and_rolls_back_failures(
     assert _rows(database) == [(1, "seed"), (2, "first")]
 
 
+@pytest.mark.proves("workspace_runtime.installed_extensions_only")
 def test_read_only_request_inside_a_writable_retention_cannot_write(tmp_path: Path) -> None:
     """Read only request inside a writable retention cannot write."""
 
     database = _prepared(tmp_path)
+    with database.connect(read_only=False) as writer:
+        absent = (tmp_path / "not-shipped.duckdb_extension").as_posix()
+        for install in (
+            lambda: writer.execute(f"/* offline */ INSTALL '{absent}'"),
+            lambda: writer.install_extension("not_shipped", repository=str(tmp_path)),
+        ):
+            with pytest.raises(
+                RuntimeError, match=r"workspace_database\.runtime_extension_refused"
+            ):
+                install()
     ordinary = database.connect(read_only=True)
     try:
         with pytest.raises(duckdb.Error):
@@ -225,10 +239,14 @@ def test_read_only_retention_refuses_a_write_instead_of_upgrading(tmp_path: Path
 def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it(
     tmp_path: Path,
 ) -> None:
-    """Session read boundary holds each store once and writers queue behind it."""
+    """Session read boundary holds each store once and writers queue behind it; the Task
+    writer queues at the gate too, its Tasks on the log."""
+
+    from alphalattice.control.product_host.composition.application_session import (
+        WorkspaceApplicationSession,
+    )
 
     database = _prepared(tmp_path)
-    task_store = tmp_path / "runtime" / "research-task-control.duckdb"
     done: list[str] = []
     errors: list[BaseException] = []
 
@@ -257,7 +275,6 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
         writers = [threading.Thread(target=market_writer), threading.Thread(target=task_writer)]
         with session.reads():
             assert live_workspace_connections(database.path) == (True, 1, 0)
-            assert live_workspace_connections(task_store) == (True, 1, 0)
             for thread in writers:
                 thread.start()
             # The writers are queued at the gate, not at the engine: neither
@@ -271,12 +288,9 @@ def test_session_read_boundary_holds_each_store_once_and_writers_queue_behind_it
                 assert live_workspace_connections(database.path) == (True, 1, 0)
             finally:
                 connection.close()
-            assert session.task_control_registry.tasks() == ()
-            assert live_workspace_connections(task_store) == (True, 1, 0)
+            assert session.task_control_registry.tasks() == ()  # the log's read is not gated
             with pytest.raises(RuntimeError, match="read_only_retention_cannot_write"):
                 open_workspace_database(database.path, read_only=False)
-            with pytest.raises(RuntimeError, match="access_mode_conflict_on_this_thread"):
-                open_workspace_database(task_store, read_only=False)
             assert done == []
         for thread in writers:
             thread.join(timeout=20)
@@ -539,14 +553,166 @@ def test_guard_holds_through_keyword_and_statement_doors(tmp_path: Path) -> None
                 reader.executemany(query="INSERT INTO unit VALUES (?, ?)", parameters=[(3, "kw")])
             # Valid reads on every door still work after the refusals.
             assert reader.execute(query="SELECT count(*) FROM unit").fetchone() == (1,)
-            assert reader.sql(query="SELECT count(*) FROM unit").fetchone() == (1,)
-            assert reader.from_query("SELECT count(*) FROM unit").fetchone() == (1,)
+            assert reader.sql(query="SELECT count(*) FROM unit").fetchall() == [(1,)]
+            assert reader.from_query("SELECT count(*) FROM unit").fetchall() == [(1,)]
         finally:
             reader.close()
     # Persisted state, read back on a fresh instance after every connection
     # of the writable unit has closed: still the one seed row.
     assert live_workspace_connections(database.path) is None
     assert _rows(database) == [(1, "seed")]
+
+
+def _attachable(database: WorkspaceDatabase) -> bool:
+    """Whether another DuckDB instance of this process may attach the file: never while this
+    process keeps an instance of it open."""
+    other = duckdb.connect(":memory:")
+    try:
+        other.execute(f"ATTACH '{database.path.as_posix()}' AS other (READ_ONLY)").fetchall()
+    except duckdb.ResourceInUseException:
+        return False
+    finally:
+        other.close()
+    return True
+
+
+@pytest.mark.proves("workspace_runtime.a_held_file_is_released_where_another_reader_needs_it")
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "between-connections",
+        "call-in-another-process",
+        "close-cannot-keep",
+        "release-meets-a-close",
+        "hand-off-meets-a-close",
+    ],
+)
+def test_a_held_file_is_released_where_another_reader_needs_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
+) -> None:
+    """A held file keeps one instance between its connections and lets it go wherever another
+    reader needs the file: another instance's attach, a writer, a call in another process, the
+    hold's end, a close that cannot keep it, and a release or hand-off meeting a close in flight."""
+    database = _prepared(tmp_path)
+    if scenario == "between-connections":
+        _kept_between_connections(database)
+    elif scenario == "call-in-another-process":
+        _released_for_a_call_in_another_process(database)
+    elif scenario == "close-cannot-keep":
+        _closed_when_it_cannot_keep_its_instance(database, monkeypatch)
+    else:
+        _letting_go_waits_for_a_last_close(
+            database, monkeypatch, "release" if scenario == "release-meets-a-close" else "hand_off"
+        )
+
+
+def _kept_between_connections(database: WorkspaceDatabase) -> None:
+    """Inside a hold, a closed connection leaves the instance open for the next, which reads what
+    the last wrote; another instance's attach, a writer meeting a kept read-only instance, and the
+    hold's end each close it."""
+    with database.hold():
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (2, 'held')")
+        assert live_workspace_connections(database.path) is None
+        assert not _attachable(database)
+        assert _rows(database) == [(1, "seed"), (2, "held")]
+        release_workspace_database(database.path)
+        assert _attachable(database)
+        assert _rows(database) == [(1, "seed"), (2, "held")]  # kept read-only now
+        with database.transaction() as connection:  # a writer reopens the file writable
+            connection.execute("INSERT INTO unit VALUES (3, 'writer')")
+        assert not _attachable(database)
+    assert _attachable(database)
+    assert _rows(database) == [(1, "seed"), (2, "held"), (3, "writer")]
+
+
+def _released_for_a_call_in_another_process(database: WorkspaceDatabase) -> None:
+    """A call another process runs closes the kept instance and keeps none until it ends."""
+
+    def write(row: int) -> None:
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (?, 'written')", [row])
+
+    with database.hold():
+        write(2)
+        assert not _attachable(database)
+        end = hand_off()
+        assert _attachable(database)
+        write(3)
+        assert _attachable(database)
+        end()
+        end()  # a second end does nothing
+        write(4)
+        assert not _attachable(database)
+    assert _attachable(database)
+    assert [row[0] for row in _rows(database)] == [1, 2, 3, 4]
+
+
+def _closed_when_it_cannot_keep_its_instance(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A held file's last close whose kept connection cannot open still closes its own: the
+    instance goes, and the next opener opens the file again."""
+    from alphalattice.control.workspace_runtime import database as owner
+
+    refused = duckdb.IOException("no connection to keep")
+    with database.hold():
+        connection = database.connect(read_only=False)
+        monkeypatch.setattr(
+            owner, "connect_duckdb", lambda path, *, read_only: (_ for _ in ()).throw(refused)
+        )
+        with pytest.raises(duckdb.IOException, match="no connection to keep"):
+            connection.close()
+        monkeypatch.undo()
+        assert _attachable(database)
+        assert _rows(database) == [(1, "seed")]
+    with pytest.raises(duckdb.ConnectionException):
+        connection.execute("SELECT 1")
+
+
+def _letting_go_waits_for_a_last_close(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch, letting_go: str
+) -> None:
+    """A release, or a call handed to another process, that meets a held file's last close in
+    flight waits for it: no instance is kept once it returns, so another instance may attach the
+    file."""
+    from alphalattice.control.workspace_runtime import database as owner
+
+    entered, gate = threading.Event(), threading.Event()
+    real = owner.connect_duckdb
+
+    def held_open(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+        if not entered.is_set():  # the closing handle's kept connection: held at the gate
+            entered.set()
+            gate.wait(timeout=30.0)
+        return real(path, read_only=read_only)
+
+    with database.hold():
+        connection = database.connect(read_only=False)
+        monkeypatch.setattr(owner, "connect_duckdb", held_open)
+        closer = threading.Thread(target=connection.close, daemon=True)
+        closer.start()
+        assert entered.wait(timeout=30.0)
+        ended: list[Callable[[], None]] = []
+
+        def let_go() -> None:
+            if letting_go == "release":
+                release_workspace_database(database.path)
+            else:
+                ended.append(hand_off())
+
+        releaser = threading.Thread(target=let_go, daemon=True)
+        releaser.start()
+        releaser.join(timeout=0.5)
+        waited = releaser.is_alive()
+        gate.set()
+        closer.join(timeout=30.0)
+        releaser.join(timeout=30.0)
+        monkeypatch.undo()
+        attachable = _attachable(database)
+        for end in ended:
+            end()
+    assert (waited, attachable) == (True, True)
 
 
 def test_child_handles_end_with_their_parent_and_the_instance_is_released(
@@ -998,7 +1164,7 @@ def test_another_process_in_the_other_mode_is_refused_by_name(tmp_path: Path) ->
     )
 
     def other_process(mode: str) -> str:
-        result = subprocess.run(
+        result = spawn.run(
             [sys.executable, "-c", script, mode], capture_output=True, text=True, timeout=120
         )
         assert result.returncode == 0, result.stderr

@@ -1,0 +1,86 @@
+"""A 0.2.7 store's sealed documents, read against the log's, and its retired files set aside."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+
+from alphalattice.control.task_control import upgrade
+from alphalattice.control.task_control.contracts import WorkItemLifecycle, WorkItemState
+from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, sealed_equal
+from tests.workspace_task_runner.task_control_support import digest
+
+TEST_SOURCE = "src/alphalattice/control/task_control/upgrade.py"
+
+
+@pytest.mark.proves("task_control.an_older_spelling_is_the_same_sealed_state")
+def test_an_older_store_spelling_of_a_work_item_is_the_same_sealed_state() -> None:
+    """requirement: a work item an older store spelled without a field added since is the same
+    sealed state, and one whose sealed value differs is not."""
+    now = datetime(2026, 8, 5, 15, tzinfo=UTC)
+    item = WorkItemState.from_identity(
+        task_id=uuid4(),
+        stage_id="resolve_inputs",
+        definition_hash=digest("resolve_inputs"),
+        lifecycle=WorkItemLifecycle.PENDING,
+        attempt_count=0,
+        evidence=(),
+        failure_code=None,
+        started_at=None,
+        updated_at=now,
+        version=1,
+    )
+    logged = item.model_dump_json()
+    older = json.loads(logged)
+    assert older.pop("failure_cause") is None  # the field an older store's spelling lacks
+    table = "workspace_task_work_item"
+    assert sealed_equal(table, logged, json.dumps(older))
+    assert not sealed_equal(table, logged, json.dumps(older | {"attempt_count": 1}))  # its hash
+    fields = item.model_dump(exclude={"state_hash"}) | {"attempt_count": 1, "version": 2}
+    moved = WorkItemState.from_identity(**fields)
+    assert not sealed_equal(table, logged, moved.model_dump_json())
+
+
+class _Killed(BaseException):
+    """The process dying between two moves."""
+
+
+@pytest.mark.proves("task_control.a_set_aside_set_stays_in_one_directory")
+@pytest.mark.parametrize(
+    "moves", [1, 2, 3], ids=["after-the-record", "after-the-database", "after-the-wal"]
+)
+def test_a_set_aside_killed_after_any_move_resumes_into_its_one_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, moves: int
+) -> None:
+    """requirement: a 0.2.7 database, its WAL and shm, set aside beside a set kept before and
+    killed after any single move, resume into the one directory recorded before the first move."""
+    runtime = tmp_path / "runtime"
+    names = ("observations.sqlite", "observations.sqlite-wal", "observations.sqlite-shm")
+    (runtime / RETIRED_DIRECTORY).mkdir(parents=True)
+    for name in names:  # a set kept before: this one goes beside it
+        (runtime / RETIRED_DIRECTORY / name).write_bytes(b"older")
+        (runtime / name).write_bytes(name.encode())
+    real, done = upgrade.os.replace, []
+
+    def killed(source: object, target: object) -> None:
+        if len(done) == moves:
+            raise _Killed
+        real(source, target)
+        done.append(target)
+
+    monkeypatch.setattr(upgrade.os, "replace", killed)
+    with pytest.raises(_Killed):
+        upgrade.set_aside(runtime, (runtime / name for name in names))
+    monkeypatch.undo()
+    upgrade.set_aside(runtime, (runtime / name for name in names))
+    assert not [name for name in names if (runtime / name).exists()]
+    (dated,) = [path for path in (runtime / RETIRED_DIRECTORY).iterdir() if path.is_dir()]
+    assert {path.name: path.read_bytes() for path in dated.iterdir()} == {
+        name: name.encode() for name in names
+    }
+    older = {path.name for path in (runtime / RETIRED_DIRECTORY).iterdir() if path.is_file()}
+    assert older == set(names)  # kept before, untouched; the record is gone

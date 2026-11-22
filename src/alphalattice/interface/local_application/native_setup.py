@@ -26,10 +26,15 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application import client, workbench_assets
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
+    CLIENT_HEADER,
+    INSTANCE_HEADER,
     REQUEST_PROVENANCE,
+    WORKSPACE_HEADER,
     agent_session,
     command,
     command_table,
@@ -62,7 +67,6 @@ from alphalattice.interface.local_application.native_bridge import (
     attachment_preflight,
     autobind_root,
     binding_notice,
-    clear_usage_checkpoints,
     codex_queue_readiness,
     command_readiness,
     declares_product,
@@ -74,9 +78,9 @@ from alphalattice.interface.local_application.native_usage import codex_thread_s
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_WORDS,
     setup_environment,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
     offline,
@@ -185,9 +189,7 @@ HOST_DEPENDENCIES = {
     ),
     "retrieval_runtime": (
         "Read Evidence with its retrieval recipe",
-        LOCKED_SETUP_WORDS + " Then use install_retrieval_pack "
-        "--install hybrid-v2-minilm. Keep packs outside "
-        "the workspace; network acquisition still needs its permission.",
+        str(worded("native_setup.retrieval_runtime")),
         "AGENT",
     ),
     "background_notices": (
@@ -534,7 +536,7 @@ def host_readiness(
     facts = _host_facts(binding)
     # What the agent fills is read from the first use's own source, so the two never disagree.
     fillable = {key: dict(item) for key, item in agent_setup().items()}
-    packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
+    packs = recipe_readiness(default_store_root())
     queue = (
         {"present": True, "scope": "HOST_FEATURE"}
         if host == "claude-code"
@@ -1456,6 +1458,72 @@ def _configuration(host: str = "codex") -> None:
         raise NativeBridgeError("native_bridge.roles_missing")
 
 
+def agent_exporters(
+    project: Path, connection: client.LocalResearchConnection, *, configure_claude: bool = False
+) -> dict[str, Any]:
+    """Preview both exporters; the person's explicit yes writes only Claude's project file.
+
+    Codex's user config is always printed, never opened. Export requests use the current
+    Host's existing credentials; a restart requires running this command again. The Host
+    independently removes content and opt-in attributes before any storage.
+    """
+    endpoint = connection.url.rstrip("/")
+    headers = {
+        CLIENT_HEADER: connection.token,
+        INSTANCE_HEADER: connection.instance,
+        WORKSPACE_HEADER: client.workspace_connection_key(Path(connection.workspace)),
+    }
+    environment = {
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_METRICS_EXPORTER": "otlp",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
+        "OTEL_EXPORTER_OTLP_HEADERS": urlencode(headers),
+        "OTEL_LOG_USER_PROMPTS": "0",
+        "OTEL_LOG_TOOL_DETAILS": "0",
+    }
+    # OTLP uses comma-separated percent-encoded key/value pairs, unlike a URL query.
+    environment["OTEL_EXPORTER_OTLP_HEADERS"] = environment["OTEL_EXPORTER_OTLP_HEADERS"].replace(
+        "&", ","
+    )
+    lines = ["[otel]", "log_user_prompt = false"]
+    for name, signal in (("exporter", "logs"), ("trace_exporter", "traces")):
+        table = f"otel.{name}.otlp-http"
+        lines += [
+            "",
+            f"[{table}]",
+            f"endpoint = {json.dumps(endpoint + '/v1/' + signal)}",
+            'protocol = "binary"',
+            f"[{table}.headers]",
+        ]
+        lines += [f"{json.dumps(key)} = {json.dumps(value)}" for key, value in headers.items()]
+    if configure_claude:
+        path = project / ".claude/settings.local.json"
+        if path.is_symlink() or path.parent.is_symlink():
+            raise NativeBridgeError("native_bridge.configuration_path_invalid")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with WorkspaceLock(path.with_suffix(".lock")):
+            document = json.loads(path.read_text("utf-8")) if path.exists() else {}
+            if not isinstance(document, dict) or not isinstance(document.get("env", {}), dict):
+                raise NativeBridgeError("native_bridge.configuration_path_invalid")
+            document["env"] = document.get("env", {}) | environment
+            staged = path.with_suffix(".json.tmp")
+            try:
+                staged.write_text(
+                    json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
+                )
+                replace_shared_file(staged, path)
+            finally:
+                staged.unlink(missing_ok=True)
+    return {
+        "status": "AGENT_EXPORTERS",
+        "claude_env": environment,
+        "claude_written": configure_claude,
+        "codex_config": "\n".join(lines) + "\n",
+    }
+
+
 def unbind_session(
     project: Path, *, session_id: str | None, host: str | None = None
 ) -> dict[str, object]:
@@ -1500,7 +1568,6 @@ def unbind_session(
     if session_id is not None and binding.session_id != session_id:
         raise NativeBridgeError("native_bridge.session_mismatch")
     binding.record_path(project).unlink()
-    clear_usage_checkpoints(binding.workspace, binding)
     return {
         "status": "DETACHED",
         "project": str(project),
@@ -1657,7 +1724,7 @@ def _install_tool() -> dict[str, Any]:
     """Run the existing locked tool-install steps with subprocess-owned scratch."""
     with setup_environment(ROOT) as environment:
         for command in TOOL_INSTALL:
-            subprocess.run(
+            spawn.run(
                 shlex.split(command),
                 cwd=ROOT,
                 env=environment,
@@ -1689,7 +1756,7 @@ def main() -> int:
         "--usage",
         choices=[value.lower() for value in USAGE_READINGS],
         default="read",
-        help="off: read no native Session file for usage.",
+        help="off: neither receive nor read native telemetry for this Session's usage.",
     )
     unbind = commands.add_parser(
         "unbind", help="Detach only the named session; research is unchanged."

@@ -132,3 +132,31 @@ def waits(argv, process, ready, path, stop, send, lock, log):
     # ruleid: while-true-without-deadline
     while True:  # a clock it only mentions is no bound
         log(time.monotonic())
+
+
+def bulk_reads(con):
+    # A bulk read leaves DuckDB as Arrow; a lookup of a few values is fetchone or an aggregate.
+    # ruleid: fetchall-rows-into-python
+    names = {row[0] for row in con.execute("SELECT name FROM t").fetchall()}
+    # ruleid: fetchall-rows-into-python
+    for listing, value in con.execute("SELECT * FROM bars").fetchall():
+        use(listing, value)
+    rows = con.execute("SELECT * FROM bars").fetchall()
+    # ruleid: fetchall-rows-into-python
+    out = [dict(zip(cols, row)) for row in rows]
+    # ruleid: fetchall-rows-into-python
+    mapping = dict(con.execute("SELECT k, v FROM m").fetchall())
+    pairs = con.execute("SELECT k, v FROM m").fetchall()
+    # ruleid: fetchall-rows-into-python
+    held = dict(pairs)
+    # ruleid: fetchall-rows-into-python
+    kept = {k for k, v in pairs if v}
+    # ruleid: fetchall-rows-into-python
+    kept_map = {k: v for k, v in pairs if v}
+    # ok: fetchall-rows-into-python
+    table = con.execute("SELECT * FROM bars").to_arrow_table()
+    # ok: fetchall-rows-into-python
+    (count,) = con.execute("SELECT count(*) FROM bars").fetchone()
+    # ok: fetchall-rows-into-python
+    first = con.execute("SELECT path FROM duckdb_databases()").fetchall()[0][0]
+    return names, out, mapping, held, kept, kept_map, table, count, first
