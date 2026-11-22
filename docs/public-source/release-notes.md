@@ -5,21 +5,28 @@ Latest released version: [0.2.8](#028). Earlier measurements describe their own 
 
 ## 0.2.8
 
-0.2.8 rebuilds how AlphaLattice keeps its data. Workspaces under one data root now share one append-only event log and one catalog, and each update publishes its market changes there once; a workspace keeps its own tables, features and Panels. A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back. The Daily, Evidence and queries are faster on the same machine.
+**One data layer.** 0.2.8 rebuilds how AlphaLattice keeps its data. Everything the product records, from market data to research results, now lives in one data layer on your machine:
 
-### Changed
+- **One event log.** Every change is appended to one log, in order, and never rewritten.
+- **One catalog of versioned tables.** Market data and research records are columnar tables in a DuckLake catalog on DuckDB. Each update publishes its market changes there once, and every workspace under the data root reads them from there instead of keeping its own copy.
+- **Stored once, checked once.** Market data that several workspaces use is stored once. A sealed file is hashed when it is written and trusted while it is unchanged.
+- **Your 0.2.7 workspace comes along.** The first 0.2.8 start upgrades it in one start, after a verified backup. The upgraded workspace reads equal to the old one on every compared record, and the backup is the way back.
+- **Evidence search in the Host's own store.** Its text index and vectors are updated as documents change, with no separate search service.
 
-- Workspaces under one data root share one append-only event log and one catalog; each update publishes its market changes to the catalog once, and every workspace under the root reads market data there.
-- The first 0.2.8 start upgrades a 0.2.7 workspace in one start, after a verified backup; the upgrade's result reads equal to the 0.2.7 workspace on every compared record, and a restore from that backup reads equal too.
-- Evidence search keeps its text index and vectors in the Host's own store and updates them as documents change, with no separate search service.
-- A sealed file's digest is recorded when it is written and reused on later reads while the file is unchanged; a file with no settled digest is hashed when it is read.
-- Speed on one machine (a Windows 11 desktop, four cores, the same generated data for both versions), measured on a pre-release build as the median of three paired runs: the whole Daily took 190 s against 0.2.7's 333 s, and a cold `study list` 0.7 s against 2.7 s.
+**Faster on the same machine.** On a Windows 11 desktop with four cores and the same generated data for both versions, the whole Daily took 190 s against 0.2.7's 333 s, the median of three paired runs on a pre-release build. A cold `study list` took 0.7 s against 2.7 s.
+
+### Fixed
+
+- A workspace backup restores on another machine, or into another folder, when `backup restore` names its generation by the whole hash. The newest generation and a shortened hash still find only generations taken in the same folder.
 
 ### Known limits
 
-- A data root is moved or copied to another folder by backup and restore. A root moved or copied by hand is refused when it is opened; restore its backup in the new folder instead.
+- A data root moves or copies to another folder by backup and restore. A root moved or copied by hand is refused when it is opened; restore its backup in the new folder instead.
 - The first start after the upgrade from 0.2.7 composes the upgraded workspace once, which adds several seconds to that start only.
-- This release was not run live with Claude Code or Codex at its final commit. First use, the upgrade from 0.2.7 and the Daily are covered by tests and measured replays, not by a live session.
+- This release has not yet been run in a live Claude Code or Codex session at its final commit.
+
+<details>
+<summary>Retired settings and refusal codes, for integrators (earliest removal 0.3.0)</summary>
 
 ### Deprecated
 
@@ -38,9 +45,7 @@ Latest released version: [0.2.8](#028). Earlier measurements describe their own 
 - `refusal:task_control.runtime_retirement_conflict` is no longer raised; use `refusal:task_control.heartbeat_import_unequal`. The upgrade no longer restores old Task runtime files; the pre-upgrade backup is the way back.
 - `refusal:workspace_database.derived_setup_absent` is no longer raised; use `refusal:data_layer.history_unavailable`. The opt-in derived Feature view is retired; Feature values are read from the workspace's table.
 
-### Fixed
-
-- A workspace backup restores on another machine, or into another folder, when `backup restore` names its generation by the whole hash; the newest generation and a shortened hash still find only generations taken in the same folder.
+</details>
 
 ## 0.2.7
 
