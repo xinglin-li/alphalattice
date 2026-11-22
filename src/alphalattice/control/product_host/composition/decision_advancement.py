@@ -2000,6 +2000,12 @@ class DecisionAdvancementApplication:
             )
         if evidence != self._evidence(self._need(plan, work_item.stage_id)):
             raise ValueError("research_update.task_evidence_invalid")
+        if work_item.stage_id == "update_inputs":
+            from ..maintenance.daily_health import (  # lazy: after verifying Daily inputs
+                record_daily_health,
+            )
+
+            record_daily_health(self.session.task_control_registry, task, plan.target, self.clock())
         if work_item.stage_id == STAGES[3]:  # the last stage that reads a Feature step
             self._verified.pop(task.task_id, None)
         return evidence

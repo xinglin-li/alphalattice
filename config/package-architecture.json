@@ -805,6 +805,7 @@
     "alphalattice.control.product_host.composition.retrieval_pack_setup": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
     "alphalattice.control.product_host.composition.rolling_portfolio_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.control.product_host.composition.web_launcher": "Load the Host launcher only for the CLI serve command.",
+    "alphalattice.control.product_host.maintenance.daily_health": "Load the catalog health writer and Task receipt reader when verifying or reading a Daily.",
     "alphalattice.control.product_host.maintenance.data_update": "Defer this numerical or optional implementation until its owner requests it; dependencies: duckdb.",
     "alphalattice.control.product_host.publication.goals": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.control.product_host.research_authoring.execution": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",

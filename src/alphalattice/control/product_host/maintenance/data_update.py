@@ -2312,7 +2312,18 @@ class WorkspaceDataUpdateApplication:
         Returns:
             Unchanged verified evidence.
         """
-        return self.verify_step(self._plan_of(task), work_item.stage_id, evidence)
+        from .daily_health import record_daily_health  # lazy: after verifying the update receipt
+
+        plan = self._plan_of(task)
+        verified = self.verify_step(plan, work_item.stage_id, evidence)
+        if work_item.stage_id == _STAGES[-1]:
+            record_daily_health(
+                self.session.task_control_registry,
+                task,
+                plan.request.target_market_session,
+                self.clock(),
+            )
+        return verified
 
     def verify_step(
         self,

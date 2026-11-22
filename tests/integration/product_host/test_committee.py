@@ -1702,6 +1702,7 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
                     input=SimpleNamespace(input_schema_id=SCHEMA, payload={"plan": {}}),
                 ),
                 work_items=lambda _: (),
+                daily_health=lambda _: None,
             ),
         ),
     )
@@ -1713,7 +1714,10 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
 
     def read(request):
         if request.operation == "RESEARCH_UPDATE_READBACK":
-            return host._positions(app, host._research_update_readback(app, request.task_id))
+            answer = host._research_update_readback(app, request.task_id)
+            assert answer["daily_health"]["task_id"] == str(request.task_id)
+            assert "daily_health" not in books[request.task_id]
+            return host._positions(app, answer)
         assert request.operation == "EVIDENCE_CRO"
         return review_operations.execute(app, request, **caller)
 

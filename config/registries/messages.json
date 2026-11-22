@@ -2,6 +2,15 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "data.health.title": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Daily data health", "zh-CN": "日更数据健康"}},
+    "data.health.passed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Passed", "zh-CN": "通过"}},
+    "data.health.source_freshness": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Source freshness", "zh-CN": "来源新鲜度"}},
+    "data.health.not_null": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Non-null bar keys", "zh-CN": "日线主键非空"}},
+    "data.health.unique": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Unique bar keys", "zh-CN": "日线主键唯一"}},
+    "data.health.accepted_values": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Accepted action kinds", "zh-CN": "公司行动类型有效"}},
+    "data.health.relationships": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Bar listing relationships", "zh-CN": "日线对应上市标的"}},
+    "data.health.check_id": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Check ID", "zh-CN": "检查编号"}},
+    "data.health.failure_count": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Failure count", "zh-CN": "失败数"}},
     "storage.evidence_kept": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "What the evidence data layer keeps, physical bytes each object once; the index and vector files earlier builds left are counted, never released.", "zh-CN": "证据数据层保有的内容，按物理字节计，每个对象只计一次；早先构建留下的索引和向量文件只计入，从不释放。"}

@@ -3767,6 +3767,14 @@
         "default": null
       }
     },
+    "answer:DATA_UPDATE_READBACK.daily_health": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:DATA_UPDATE_READBACK.detail": {
       "required": false,
       "schema": {
@@ -21390,6 +21398,14 @@
       "schema": {
         "default": null,
         "type": "string"
+      }
+    },
+    "answer:RESEARCH_UPDATE_READBACK.daily_health": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_READBACK.detail": {

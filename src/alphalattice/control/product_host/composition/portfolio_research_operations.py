@@ -3418,9 +3418,17 @@ class PortfolioResearchOperations:
     def _data_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A data update's readback; one the provider deferred says why, when, and how it
         resumes, and that the published inputs stand meanwhile."""
+        from ..maintenance.daily_health import (  # lazy: to project a Daily receipt
+            daily_health_body,
+        )
+
         if self.data_update is None:
             raise ValueError("workspace_data_update.not_configured")
         updated = self.data_update.readback(task_id)
+        if updated.get("status") != "REFUSED":
+            updated["daily_health"] = daily_health_body(
+                self.workspace_session.task_control_registry, task_id
+            )
         if updated.get("task_lifecycle") == "BLOCKED" and updated.get("task_id"):
             # A stop its plan's rerun resumes offers that rerun.
             offer = self._resume_offer(UUID(str(updated["task_id"])))
@@ -3456,8 +3464,17 @@ class PortfolioResearchOperations:
 
     def _research_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A research update's readback by its Task, with its way on (STATUS's deferral reader)."""
+        from ..maintenance.daily_health import (  # lazy: to project a Daily receipt
+            daily_health_body,
+        )
+
         assert self.research_updates is not None and task_id is not None
-        return self._research_update_way(task_id, self._advancement_readback(task_id))
+        return {
+            **self._research_update_way(task_id, self._advancement_readback(task_id)),
+            "daily_health": daily_health_body(
+                self.workspace_session.task_control_registry, task_id
+            ),
+        }
 
     def _advancement_readback(
         self, task_id: UUID, *, publication_hash: str | None = None

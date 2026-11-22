@@ -875,6 +875,19 @@
       "layer": "integration",
       "seconds": 5
     },
+    "data_layer.daily_market_health_counts_catalog_failures": {
+      "description": "The Daily records distinct failure counts for freshness, non-null keys, unique versions, action kinds and listing relationships in the world catalog.",
+      "lower_layer": "Actual DuckDB predicates, parameter binding and joins are required to prove the SQL counts.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "integration",
+      "seconds": 3
+    },
+    "data_layer.daily_market_health_names_unavailable_checks": {
+      "description": "An unavailable observation retains every check identity and reports no invented failure counts.",
+      "owner": "alphalattice.kernel.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.data_root_is_set_or_the_application_folder": {
       "description": "The data root is ALPHALATTICE_DATA_ROOT when set, else the platform's application data folder.",
       "owner": "alphalattice.kernel.data_layer",

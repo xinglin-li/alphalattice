@@ -8,8 +8,23 @@ import pytest
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import reading
+from alphalattice.kernel.data_layer.market_health import unavailable_market_health
 
 TEST_SOURCE = "src/alphalattice/kernel/data_layer/reading.py"
+
+
+@pytest.mark.proves("data_layer.daily_market_health_names_unavailable_checks")
+def test_daily_health_keeps_each_check_id_when_the_catalog_is_unavailable():
+    """An unavailable report keeps its five stable IDs and never reports a zero count."""
+    checks = unavailable_market_health()
+    assert [check["id"] for check in checks] == [
+        "source_freshness",
+        "not_null",
+        "unique",
+        "accepted_values",
+        "relationships",
+    ]
+    assert [(check["status"], check["count"]) for check in checks] == [("UNAVAILABLE", None)] * 5
 
 
 class _Silent:

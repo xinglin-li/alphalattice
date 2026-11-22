@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 import duckdb
@@ -556,6 +556,37 @@ class DuckDbTaskControlRegistry:
             "recorded_at": self._db_time(observed_at),
         }
         self._record("task.noted", task_id, attrs, text=self._json(details))
+
+    def daily_health(self, task_id: UUID | None = None) -> dict[str, object] | None:
+        """Read an exact Daily observation or the workspace's latest one."""
+        subject, args = ("", ()) if task_id is None else (" AND e.subject_id = ?", (str(task_id),))
+        rows = held().read(
+            "SELECT x.text FROM event e JOIN event_text x ON x.seq = e.seq"
+            " WHERE e.workspace_id = ? AND e.type = 'task.noted'"
+            " AND json_extract(e.attrs, '$.kind') = 'daily_health'"
+            + subject
+            + " ORDER BY e.seq DESC LIMIT 1",
+            (self.workspace_id, *args),
+        )
+        return cast(dict[str, object], json.loads(rows[0][0])) if rows else None
+
+    def record_daily_health(
+        self, task: TaskRecord, result: dict[str, object], *, observed_at: datetime
+    ) -> None:
+        """Keep the first observation with the Daily, including unavailable checks."""
+
+        def operation(connection) -> None:
+            if self.daily_health(task.task_id) is None:
+                self._event(
+                    connection,
+                    task_id=task.task_id,
+                    execution_id=task.latest_execution_id,
+                    kind="daily_health",
+                    details=result,
+                    observed_at=observed_at,
+                )
+
+        self._write(operation, control_only=True)
 
     def _admitted(
         self,
