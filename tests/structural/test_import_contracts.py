@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
 from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import import_contracts
-from devtools.architecture.structural import PackageArchitectureRegistry
+from devtools.architecture.structural import (
+    PackageArchitectureRegistry,
+    discover_module_dependencies,
+    discover_package_dependencies,
+    import_contract_violations,
+)
 
 
 @pytest.mark.proves("architecture.import_law_refuses_higher_levels_and_retired_names")
@@ -59,6 +65,141 @@ def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
     assert (tmp_path / "evidence/importlinter.ini").is_file() and (
         tmp_path / "evidence/ruff-retired.toml"
     ).is_file()
+
+
+@pytest.mark.proves("architecture.kernel_ports_enforce_import_boundaries")
+def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
+    """Prove all kernel boundaries in one graph from the generated Import Linter contracts."""
+    from alphalattice.kernel.clock import ClockPort
+    from alphalattice.kernel.config import ConfigPort
+    from alphalattice.kernel.door import DoorPort
+    from alphalattice.kernel.egress import EgressPort
+    from alphalattice.kernel.execution import ExecutionPort
+    from alphalattice.kernel.identity import IdentityPort
+    from alphalattice.kernel.layout import LayoutPort
+    from alphalattice.kernel.ledger import LedgerPort
+    from alphalattice.kernel.lifecycle import LifecyclePort
+    from alphalattice.kernel.locks import LocksPort
+    from alphalattice.kernel.resources import ResourcesPort
+    from alphalattice.kernel.storage import StoragePort
+    from alphalattice.kernel.telemetry import TelemetryPort
+    from alphalattice.kernel.types import TypesPort
+
+    ports = (
+        ClockPort,
+        ConfigPort,
+        DoorPort,
+        EgressPort,
+        ExecutionPort,
+        IdentityPort,
+        LayoutPort,
+        LedgerPort,
+        LifecyclePort,
+        LocksPort,
+        ResourcesPort,
+        StoragePort,
+        TelemetryPort,
+        TypesPort,
+    )
+    assert all(Protocol in port.__bases__ and port.__module__.endswith(".port") for port in ports)
+
+    tree = _tree(tmp_path)
+    src = tree / "src/alphalattice"
+    levels = {
+        "clock": -5,
+        "layout": -4,
+        "identity": -4,
+        "ledger": -3,
+        "storage": -2,
+        "execution": -2,
+        "door": -1,
+        "types": -5,
+    }
+    base = _registry()
+    kernel = tuple(
+        base.by_package["low"].model_copy(
+            update={
+                "package_id": name,
+                "dependency_level": level,
+                "physical_namespace_target": f"alphalattice.kernel.{name}",
+            }
+        )
+        for name, level in levels.items()
+    )
+    registry = PackageArchitectureRegistry.model_validate(
+        base.model_dump(by_alias=True)
+        | {
+            "packages": (*base.packages, *kernel),
+            "deferred_imports": {
+                "alphalattice.kernel.identity._digests -> blake3": "Load BLAKE3 on first use.",
+                "alphalattice.kernel.identity._digests -> xxhash": "Load xxHash on first use.",
+                "alphalattice.kernel.identity.eager -> blake3": "Load BLAKE3 on first use.",
+            },
+        }
+    )
+    for row in kernel:
+        directory = src / "kernel" / row.package_id
+        directory.mkdir()
+        (directory / "__init__.py").write_text("", encoding="utf-8")
+    (src / "kernel/storage/impl.py").write_text("", encoding="utf-8")
+
+    lazy = "def digest():\n    from blake3 import blake3\n    import xxhash\n"
+    cases = (
+        ("kernel/clock/up.py", "from ..layout import LayoutPort", "kernel.layout"),
+        ("kernel/storage/peer.py", "from ..execution import ExecutionPort", "kernel.execution"),
+        ("kernel/execution/peer.py", "from ..storage import StoragePort", "kernel.storage"),
+        ("kernel/storage/ext.py", "import duckdb", "duckdb"),
+        (
+            "control/high/impl.py",
+            "from alphalattice.kernel.storage import impl",
+            "kernel.storage.impl",
+        ),
+        ("control/high/port.py", "from alphalattice.kernel.storage import StoragePort", None),
+        ("kernel/door/down.py", "from ..ledger import LedgerPort", None),
+        ("kernel/storage/own.py", "from datetime import datetime\nfrom . import impl", None),
+        ("kernel/identity/_digests.py", lazy, None),
+        ("kernel/identity/eager.py", "import blake3\ndef digest():\n    import blake3", "blake3"),
+        ("kernel/identity/foreign.py", "def digest():\n    import xxhash", "xxhash"),
+        ("kernel/low/stdlib.py", "from types import MappingProxyType", None),
+        ("control/high/types.py", "from alphalattice.kernel import types", None),
+    )
+    expected = set()
+    for module, body, banned in cases:
+        (src / module).write_text(body + "\n", encoding="utf-8")
+        if banned:
+            destination = f"alphalattice.{banned}" if banned.startswith("kernel.") else banned
+            expected.add(f"alphalattice.{module[:-3].replace('/', '.')} -> {destination}")
+    found = import_contracts.check(tree, tmp_path / "evidence", registry)
+    actual = {line.removeprefix("lint-imports: - ").strip().split(" (l.", 1)[0] for line in found}
+    assert actual == expected, {"missing": expected - actual, "unexpected": actual - expected}
+    assert (
+        import_contract_violations(
+            {"alphalattice.kernel.identity._digests": lazy}, registry=registry
+        )
+        == ()
+    )
+    definition = (
+        "from importlib import import_module\n"
+        '@import_module("blake3")\n'
+        'def digest(backend=import_module("xxhash")): pass\n'
+    )
+    assert import_contract_violations(
+        {"alphalattice.kernel.identity._digests": definition}, registry=registry
+    ) == (
+        "alphalattice.kernel.identity._digests:2: undeclared-kernel-backend blake3",
+        "alphalattice.kernel.identity._digests:3: undeclared-kernel-backend xxhash",
+    )
+    modules = tuple(sorted(src.rglob("*.py")))
+    assert {
+        edge
+        for edge in discover_module_dependencies(modules, source_root=tree / "src")
+        if edge[1] == "types"
+    } == {("high.types", "types")}
+    assert {
+        edge
+        for edge in discover_package_dependencies(modules, source_root=tree / "src")
+        if edge[1] == "types"
+    } == {("high", "types")}
 
 
 @pytest.mark.proves("architecture.import_law_refuses_higher_levels_and_retired_names")

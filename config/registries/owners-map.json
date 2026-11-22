@@ -687,9 +687,9 @@
     "product resource data": {
       "description": "Product resource data is the immutable package catalog and reference payloads that verified loaders use for Knowledge articles and supported package arguments.",
       "covers": "immutable package data shipped in the base wheel: the system resource catalog, Knowledge articles, package-argument specifications, and recorded demonstration and evidence payload bytes",
-      "owner": "alphalattice.kernel.resources",
+      "owner": "alphalattice.foundation.resources",
       "defined_by": [
-        "alphalattice.kernel.resources"
+        "alphalattice.foundation.resources"
       ],
       "folds_in": [],
       "note": "This is a data-only package. Its package declaration is at __init__.py:1; catalog.json and the packaged JSON payloads define the bytes. Catalog schema types and verified loading are defined by kernel.knowledge, so this entry claims no Python catalog type or loader.",
@@ -4838,6 +4838,146 @@
       ],
       "folds_in": [],
       "note": "The Host's pre-serve application session calls the ordered family upgrade through the data layer's existing log writer. Family moves supply their own steps, comparisons and reader switches; the mechanism itself registers no real family."
+    },
+    "kernel types port": {
+      "description": "Clock-independent value and type contracts through the kernel types port.",
+      "covers": "the kernel-facing protocol for clock-independent value and type contracts",
+      "owner": "alphalattice.kernel.types",
+      "defined_by": [
+        "alphalattice.kernel.types"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel clock port": {
+      "description": "Wall time and calendar-date access through the kernel clock port.",
+      "covers": "the kernel-facing protocol for wall time and calendar-date access",
+      "owner": "alphalattice.kernel.clock",
+      "defined_by": [
+        "alphalattice.kernel.clock"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel config port": {
+      "description": "Configuration access through the kernel config port.",
+      "covers": "the kernel-facing protocol for configuration access",
+      "owner": "alphalattice.kernel.config",
+      "defined_by": [
+        "alphalattice.kernel.config"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel layout port": {
+      "description": "Data-root and workspace path layout through the kernel layout port.",
+      "covers": "the kernel-facing protocol for data-root and workspace path layout",
+      "owner": "alphalattice.kernel.layout",
+      "defined_by": [
+        "alphalattice.kernel.layout"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel identity port": {
+      "description": "Canonical identity and digest operations through the kernel identity port.",
+      "covers": "the kernel-facing protocol for canonical identity and digest operations",
+      "owner": "alphalattice.kernel.identity",
+      "defined_by": [
+        "alphalattice.kernel.identity"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel locks port": {
+      "description": "Lock and lease primitives through the kernel locks port.",
+      "covers": "the kernel-facing protocol for lock and lease primitives",
+      "owner": "alphalattice.kernel.locks",
+      "defined_by": [
+        "alphalattice.kernel.locks"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel telemetry port": {
+      "description": "Instrumentation and exporter boundary through the kernel telemetry port.",
+      "covers": "the kernel-facing protocol for instrumentation and exporter boundary",
+      "owner": "alphalattice.kernel.telemetry",
+      "defined_by": [
+        "alphalattice.kernel.telemetry"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel resources port": {
+      "description": "Resource budgets and leases through the kernel resources port.",
+      "covers": "the kernel-facing protocol for resource budgets and leases",
+      "owner": "alphalattice.kernel.resources",
+      "defined_by": [
+        "alphalattice.kernel.resources"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel ledger port": {
+      "description": "Ordered durable event records through the kernel ledger port.",
+      "covers": "the kernel-facing protocol for ordered durable event records",
+      "owner": "alphalattice.kernel.ledger",
+      "defined_by": [
+        "alphalattice.kernel.ledger"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel storage port": {
+      "description": "Persistent storage sessions and objects through the kernel storage port.",
+      "covers": "the kernel-facing protocol for persistent storage sessions and objects",
+      "owner": "alphalattice.kernel.storage",
+      "defined_by": [
+        "alphalattice.kernel.storage"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel egress port": {
+      "description": "Outbound access boundary through the kernel egress port.",
+      "covers": "the kernel-facing protocol for outbound access boundary",
+      "owner": "alphalattice.kernel.egress",
+      "defined_by": [
+        "alphalattice.kernel.egress"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel execution port": {
+      "description": "Task execution, scheduling and cancellation through the kernel execution port.",
+      "covers": "the kernel-facing protocol for task execution, scheduling and cancellation",
+      "owner": "alphalattice.kernel.execution",
+      "defined_by": [
+        "alphalattice.kernel.execution"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel door port": {
+      "description": "Operation admission and dispatch boundary through the kernel door port.",
+      "covers": "the kernel-facing protocol for operation admission and dispatch boundary",
+      "owner": "alphalattice.kernel.door",
+      "defined_by": [
+        "alphalattice.kernel.door"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel lifecycle port": {
+      "description": "Host lifetime and supervision through the kernel lifecycle port.",
+      "covers": "the kernel-facing protocol for host lifetime and supervision",
+      "owner": "alphalattice.kernel.lifecycle",
+      "defined_by": [
+        "alphalattice.kernel.lifecycle"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
     }
   }
 }

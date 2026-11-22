@@ -2,8 +2,8 @@
 
 ``config/package-architecture.json`` owns the law: each package's dependency level and declared
 peers, and the owners a cutover retired. ``build`` turns it into
-an import-linter configuration (one ``forbidden`` contract per package, direct imports only, as the
-home-built check had it) and a Ruff configuration that bans every retired name with TID251, which
+an import-linter configuration for package levels, kernel ports and external imports, and a Ruff
+configuration that bans every retired name with TID251, which
 bans an import by name whether or not its module still exists (grimp drops such an import). Both
 are built at run time, never committed; ``check`` writes them into the caller's run as evidence and
 runs both tools over the tracked tree.
@@ -21,6 +21,7 @@ from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.structural import (
     _PHYSICAL_NAMESPACE_GROUPS,
     PackageArchitectureRegistry,
+    _import_sites,
 )
 
 ROOTS = ("alphalattice", "devtools")
@@ -40,10 +41,20 @@ def _physical(registry: PackageArchitectureRegistry, logical: str) -> tuple[str,
     return tuple(sorted(names))
 
 
-def build(registry: PackageArchitectureRegistry) -> tuple[str, str]:
+def build(
+    registry: PackageArchitectureRegistry, *, deferred_backend_edges: tuple[str, ...] = ()
+) -> tuple[str, str]:
     """The import-linter INI and the Ruff TOML for this registry."""
     packages = registry.by_package
-    lines = ["[importlinter]", "root_packages =", *(f"    {root}" for root in ROOTS), ""]
+    kernels = sorted(
+        package.physical_namespace_target
+        for package in packages.values()
+        if package.dependency_level < 0
+    )
+    lines = ["[importlinter]", "root_packages =", *(f"    {root}" for root in ROOTS)]
+    if kernels:
+        lines.append("include_external_packages = true")
+    lines.append("")
     for package_id, package in sorted(packages.items()):
         forbidden = sorted(
             other.physical_namespace_target
@@ -69,6 +80,8 @@ def build(registry: PackageArchitectureRegistry) -> tuple[str, str]:
             "allow_indirect_imports = true",
             "",
         ]
+    if kernels:
+        lines.extend(_kernel_contracts(kernels, deferred_backend_edges))
     banned = {
         name: f"retired: {reason}"
         for prefix, reason in sorted(registry.retired_imports.items())
@@ -85,6 +98,57 @@ def build(registry: PackageArchitectureRegistry) -> tuple[str, str]:
         for name, msg in sorted(banned.items())
     ]
     return "\n".join(lines) + "\n", "\n".join(ruff) + "\n"
+
+
+def _kernel_contracts(packages: list[str], deferred_backend_edges: tuple[str, ...]) -> list[str]:
+    """Allow only standard-library roots and protect every module below the public package port."""
+    lines = [
+        "[importlinter:contract:kernel_stdlib]",
+        "name = Kernel ports import only stdlib and declared first-call backends",
+        "type = forbidden",
+        "source_modules =",
+        *(f"    {name}" for package in packages for name in (package, package + ".**")),
+        "forbidden_modules = *",  # Grimp squashes external modules to their root.
+        "as_packages = false",  # Match roots only, preserving the separate internal layer rules.
+        "allow_indirect_imports = true",
+        "unmatched_ignore_imports_alerting = none",
+        "ignore_imports =",
+        *(f"    alphalattice.kernel.** -> {name}" for name in sorted(sys.stdlib_module_names)),
+        *(f"    {edge}" for edge in deferred_backend_edges),
+        "",
+    ]
+    for package in packages:
+        lines += [
+            f"[importlinter:contract:{package.rsplit('.', 1)[-1]}_internals]",
+            f"name = Only {package} imports its internal modules",
+            "type = protected",
+            f"protected_modules = {package}.**",
+            f"allowed_importers =\n    {package}\n    {package}.**",
+            "as_packages = false",
+            "",
+        ]
+    return lines
+
+
+def _deferred_backend_edges(root: Path, registry: PackageArchitectureRegistry) -> tuple[str, ...]:
+    """Grimp groups sites by edge. Exempt an edge only if all of its sites are deferred."""
+    permitted: list[str] = []
+    for module, backends in registry.kernel_deferred_backends.items():
+        path = (root / "src").joinpath(*module.split("."))
+        package = path / "__init__.py"
+        if package.is_file():
+            path, qualified = package, module + ".__init__"
+        else:
+            path, qualified = path.with_suffix(".py"), module
+        if not path.is_file():
+            continue  # The registry can declare a backend before its owning module lands.
+        source = path.read_bytes()
+        eager: set[str] = set()
+        deferred: set[str] = set()
+        for _, _, _, in_function, _, _, _, targets in _import_sites(source, qualified):
+            (deferred if in_function else eager).update(t.partition(".")[0] for t in targets)
+        permitted.extend(f"{module} -> {backend}" for backend in backends & (deferred - eager))
+    return tuple(sorted(permitted))
 
 
 def run(argv: list[object], root: Path, **env: str) -> subprocess.CompletedProcess[str]:
@@ -162,7 +226,9 @@ def check(root: Path, out: Path, registry: PackageArchitectureRegistry) -> tuple
     that produced them stay in ``out``. A tool that cannot run is a violation named by its output,
     never a pass."""
     out.mkdir(parents=True, exist_ok=True)
-    contracts, bans = build(registry)
+    contracts, bans = build(
+        registry, deferred_backend_edges=_deferred_backend_edges(root, registry)
+    )
     (out / "importlinter.ini").write_text(contracts, encoding="utf-8", newline="\n")
     (out / "ruff-retired.toml").write_text(bans, encoding="utf-8", newline="\n")
     lint = [Path(sys.executable).parent / "lint-imports", "--config", out / "importlinter.ini"]

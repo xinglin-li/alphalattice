@@ -275,6 +275,13 @@
       "layer": "integration",
       "seconds": 5
     },
+    "architecture.kernel_ports_enforce_import_boundaries": {
+      "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals.",
+      "owner": "devtools.architecture",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "Only the real Import Linter graph can resolve relative ports and external packages and prove that the generated contracts refuse them."
+    },
     "architecture.repository_root_is_its_tracked_public_set": {
       "description": "The repository root is judged by the files git tracks at HEAD: its required public files, nothing unexpected, and never a checkout's ignored or untracked local files.",
       "owner": "devtools.architecture",

@@ -21,7 +21,7 @@ regexes = [
   # SHA-256 pins of the retrieval store's tokenizer files: src/alphalattice/kernel/knowledge/model_store.py
   '''^28c5e078e4c52aa37cf0e6de1a212878f3dbd58dd1c70466298efe0b6b86db35$''',
   '''^308823060352e35bf9fff6b42ef343f31cc68fa800e284568cc44e9cc0f70a73$''',
-  # recording keys: src/alphalattice/kernel/resources/recorded_demo_v1/command.json
+  # recording keys: src/alphalattice/foundation/resources/recorded_demo_v1/command.json
   '''^0e46fcc8df7e6780abacf6126ed1f7dc1e22384b6e2e7b1cb62f32874c204d6f$''',
   '''^1d86e24b28087e833beb6b10ab669cb17410095a4abc503ce7cbeb964a47c366$''',
   '''^258e2e7be4367d26aa18bc01b0e662d86a68b6b2f87193ff6c8c80033495833e$''',

@@ -1,6 +1,6 @@
 {
   "schema": "alphalattice.playpen.package-architecture",
-  "note": "The import law: levels, peers and retired owners. devtools.architecture.import_contracts.build turns it into import-linter contracts and a Ruff TID251 ban list at run time; nothing copies it.",
+  "note": "The import law: levels, peers and retired owners. Kernel backend declarations in deferred_imports use 'importer -> external_root' and apply only inside a function. devtools.architecture.import_contracts builds the import-linter and Ruff configuration at run time.",
   "packages": [
     {
       "package_id": "actor_execution",
@@ -71,14 +71,14 @@
     },
     {
       "package_id": "resources",
-      "product_area": "kernel",
+      "product_area": "foundation",
       "capability_owner": "Product Resource Data",
       "role": "CROSS_DOMAIN_PROTOCOL",
       "dependency_level": 0,
       "authority_kind": "PRODUCT_RESOURCE_DATA",
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.resources"
+      "physical_namespace_target": "alphalattice.foundation.resources"
     },
     {
       "package_id": "shared_kernel",
@@ -543,6 +543,160 @@
       ],
       "artifact_writer": false,
       "physical_namespace_target": "devtools.pipeline"
+    },
+    {
+      "package_id": "types",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Types Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -5,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.types"
+    },
+    {
+      "package_id": "clock",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Clock Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -5,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.clock"
+    },
+    {
+      "package_id": "config",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Config Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -5,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.config"
+    },
+    {
+      "package_id": "layout",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Layout Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -4,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.layout"
+    },
+    {
+      "package_id": "identity",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Identity Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -4,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.identity"
+    },
+    {
+      "package_id": "locks",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Locks Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -4,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.locks"
+    },
+    {
+      "package_id": "telemetry",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Telemetry Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -4,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.telemetry"
+    },
+    {
+      "package_id": "kernel_resources",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Resources Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -3,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.resources"
+    },
+    {
+      "package_id": "ledger",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Ledger Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -3,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.ledger"
+    },
+    {
+      "package_id": "storage",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Storage Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -2,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.storage"
+    },
+    {
+      "package_id": "egress",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Egress Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -2,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.egress"
+    },
+    {
+      "package_id": "execution",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Execution Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -2,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.execution"
+    },
+    {
+      "package_id": "door",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Door Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -1,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.door"
+    },
+    {
+      "package_id": "lifecycle",
+      "product_area": "kernel",
+      "capability_owner": "Kernel Lifecycle Port",
+      "role": "CROSS_DOMAIN_PROTOCOL",
+      "dependency_level": -1,
+      "authority_kind": "KERNEL_PORT",
+      "allowed_peer_dependencies": [],
+      "artifact_writer": false,
+      "physical_namespace_target": "alphalattice.kernel.lifecycle"
     }
   ],
   "deferred_imports": {
@@ -557,6 +711,8 @@
     "alphalattice.interface.local_application.portfolio_request_fields.workspace": "Validate workspace requests including activity reads.",
     "alphalattice.investment.portfolio_strategy_lab.application.strategy_package": "Load the frozen catalog only when a workspace binds installed strategy artifacts.",
     "alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research": "Read the lifecycle artifact key only when the workspace declares a research installation.",
+    "alphalattice.kernel.identity._digests -> blake3": "Load BLAKE3 when the identity port first needs its BLAKE3 digest.",
+    "alphalattice.kernel.identity._digests -> xxhash": "Load xxHash when the identity port first needs its in-process lookup digest.",
     "alphalattice.capabilities.portfolio_inputs.benchmark": "Verify a copied benchmark only when a read carries its bounds.",
     "alphalattice.control.product_host.composition.data_operations": "Dispatch only requests that read or prepare workspace data.",
     "alphalattice.control.product_host.composition.decision_advancement": "Read or run decision-advancement Tasks and their saved stages.",

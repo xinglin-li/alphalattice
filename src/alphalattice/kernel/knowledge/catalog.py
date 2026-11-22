@@ -147,7 +147,7 @@ class SystemResourceCatalog:
                 verification.
         """
         try:
-            root = resources.files("alphalattice.kernel.resources")
+            root = resources.files("alphalattice.foundation.resources")
         except Exception as exc:
             raise KnowledgeError(
                 "system resource package is unavailable",
