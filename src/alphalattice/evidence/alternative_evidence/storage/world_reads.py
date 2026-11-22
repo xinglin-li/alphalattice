@@ -16,11 +16,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
-from blake3 import blake3
-
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.root import data_root
+from alphalattice.kernel.identity import identity_blake3, integrity_blake3
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 
 from ..sources.contracts import (
@@ -55,7 +54,7 @@ def locator_body(locator: bytes, root: Path) -> bytes:
         raise ValueError("alternative_evidence.source_object_tampered")
     digest = key.decode("ascii")
     body = _blob(root / "blobs" / digest)
-    if blake3(body).hexdigest() != digest:
+    if integrity_blake3(body).hexdigest() != digest:
         raise ValueError("alternative_evidence.source_object_tampered")
     return body
 
@@ -93,7 +92,7 @@ def visible(port: Any, cutoff_us: int) -> frozenset[tuple[str, str]]:
 
 def identity(port: Any, content: bytes, cutoff_us: int) -> tuple[str, str, int]:
     """Find the world-minted document and version for admitted bytes visible at the cutoff."""
-    body_digest = blake3(content).hexdigest()
+    body_digest = identity_blake3(content).hexdigest()
     with closing(port.lake.cursor()) as cursor:
         rows = cursor.execute(
             "SELECT CAST(doc_id AS VARCHAR), CAST(version_id AS VARCHAR), epoch_us(known_asof)"
@@ -124,7 +123,7 @@ def exact(port: Any, doc_id: str, version_id: str, cutoff_us: int) -> bytes:
         )
     digest, byte_count = row
     content = _blob(port.root / "blobs" / digest)
-    if len(content) != byte_count or blake3(content).hexdigest() != digest:
+    if len(content) != byte_count or integrity_blake3(content).hexdigest() != digest:
         raise DataError(
             f"world evidence body {doc_id}@{version_id} differs from its digest",
             code="alternative_evidence.source_object_tampered",
@@ -174,7 +173,7 @@ def known(port: Any, content: bytes, as_of: datetime) -> bool | None:
         held, knew = cursor.execute(
             f"SELECT count(*) > 0, coalesce(bool_or({KNOWN}), false)"
             " FROM lake.world.evidence_doc d WHERE doc_digest = ?",
-            [as_of, blake3(content).hexdigest()],
+            [as_of, identity_blake3(content).hexdigest()],
         ).fetchone()
     return bool(knew) if held else None
 

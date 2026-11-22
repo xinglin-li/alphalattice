@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 from collections import OrderedDict
@@ -61,6 +60,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     allows_missing_source_rows,
     panel_ordered_members_identity,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
 if TYPE_CHECKING:
@@ -1035,7 +1035,7 @@ def _metadata_hash(path: Path) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def recipe_sector_history(

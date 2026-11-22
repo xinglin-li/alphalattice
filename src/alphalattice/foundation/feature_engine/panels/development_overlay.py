@@ -6,7 +6,6 @@ import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
@@ -51,6 +50,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.adapters imp
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     build_installed_panel_preprocessing_catalog,
 )
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.kernel.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -783,7 +783,7 @@ class DevelopmentFeatureOverlayService:
             listing_ids=listing_ids,
             candidate_ids=axis,
             columns=columns,
-            parquet_sha256=sha256(content).hexdigest(),
+            parquet_sha256=integrity_sha256(content).hexdigest(),
             raw_column_references=raw_column_references,
             preparation_admission_hash=admission.admission_hash,
             row_count=len(transformed),

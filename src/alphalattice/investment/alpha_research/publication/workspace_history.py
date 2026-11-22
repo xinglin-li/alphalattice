@@ -7,7 +7,6 @@ from bisect import bisect_left
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -25,6 +24,7 @@ from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
@@ -746,7 +746,9 @@ class _WorkspaceObservationHistoryStore:
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:
             payload = path.read_bytes()
-            return WorkspaceObservationHistoryFile(path, sha256(payload).hexdigest(), len(payload))
+            return WorkspaceObservationHistoryFile(
+                path, integrity_sha256(payload).hexdigest(), len(payload)
+            )
 
         return WorkspaceObservationHistoryRetention(
             roots=tuple(fact(path) for path in sorted(protected)),

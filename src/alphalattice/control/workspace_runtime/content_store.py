@@ -18,7 +18,6 @@ import base64
 import copy
 import ctypes
 import functools
-import hashlib
 import json
 import marshal
 import os
@@ -49,12 +48,12 @@ from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.verified_facts import (
     _FULL_PROOF,
-    _content_sha256,
     file_fact,
     full_content_proof,
     full_proof,
     record_file_fact,
 )
+from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -706,7 +705,7 @@ def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
     lane keeps its identity across the type change.
     """
     with span("hash", "columns"):
-        digest = hashlib.sha256()
+        digest = integrity_sha256()
         for values in columns.values():
             digest.update(np.ascontiguousarray(values).tobytes())
         return digest.hexdigest()
@@ -748,7 +747,7 @@ def _column_kind(store: ContentAddressedStore) -> str | None:
         columns_digest,
         store._columns,
         store._stable_columns,
-        _content_sha256,
+        integrity_sha256_path,
     )
     if any(
         getattr(getattr(function, "__func__", function), "__closure__", None)
@@ -975,7 +974,7 @@ class ContentAddressedStore:
                 kind,
                 content_hash,
                 written=True,
-                _content=hashlib.sha256(payload).hexdigest(),
+                _content=integrity_sha256(payload).hexdigest(),
             )
         return content_hash
 
@@ -1021,7 +1020,7 @@ class ContentAddressedStore:
             if kind is not None and file_fact(target, kind, _content=content) == content_hash:
                 return payload
         with span("hash", "packed"):
-            if hashlib.sha256(payload).hexdigest() != content_hash:
+            if integrity_sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
         if stat is not None and kind is not None:
             record_file_fact(target, kind, content_hash, stat=stat, _content=content)
@@ -1031,7 +1030,7 @@ class ContentAddressedStore:
         """Write one JSON document or rendered page, named by the digest of its bytes."""
         if extension not in {"json", "html"}:
             raise ContentAddressedStoreError("content_store.document_type_invalid")
-        content_hash = hashlib.sha256(payload).hexdigest()
+        content_hash = integrity_sha256(payload).hexdigest()
         target = self.root / category / f"{content_hash}.{extension}"
         if target.is_file() and target.read_bytes() != payload:
             raise ContentAddressedStoreError("content_store.identity_reused")
@@ -1054,7 +1053,7 @@ class ContentAddressedStore:
         if _FULL_PROOF.get() is None:
             return payload
         with span("hash", "document"):
-            if hashlib.sha256(payload).hexdigest() != content_hash:
+            if integrity_sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
         return payload
 
@@ -1080,9 +1079,9 @@ class ContentAddressedStore:
     def _stable_columns(self, target: Path) -> tuple[dict[str, npt.NDArray[Any]], str]:
         """Bind a decoded table to its bytes without keeping a changed read as a proof."""
         try:
-            before = _content_sha256(target)
+            before = integrity_sha256_path(target)
             columns = self._columns(target)
-            if _content_sha256(target) != before:
+            if integrity_sha256_path(target) != before:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
             return columns, before
         except FileNotFoundError as error:

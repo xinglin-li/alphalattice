@@ -33,7 +33,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from typing import Literal, Self, cast
 
 import numpy as np
@@ -41,6 +40,7 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import sector_positions
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -192,7 +192,7 @@ def _lane_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": sha256(contiguous.tobytes()).hexdigest(),
+                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

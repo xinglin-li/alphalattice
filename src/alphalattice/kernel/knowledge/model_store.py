@@ -22,7 +22,6 @@ step (`fetch`): this module verifies, it never reaches the network itself.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -35,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_MODEL_ARTIFACT_SHA256,
     BGE_MODEL_ID,
@@ -376,7 +376,7 @@ def _staging_directory(store: Path, pack: PackDefinition) -> Path:
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
+    digest = integrity_sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)

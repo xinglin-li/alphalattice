@@ -19,7 +19,6 @@ thread.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -32,6 +31,8 @@ from typing import Any, Final
 
 import numpy as np
 import numpy.typing as npt
+
+from alphalattice.kernel.identity import integrity_sha256
 
 LIGHTGBM_THREAD_CANARIES: Final[dict[str, str]] = {
     # lightgbm version: SHA-256 of the canary's trees, validation curve and predictions,
@@ -172,7 +173,7 @@ def canary_digest(threads: int) -> str:
         ],
     )
     iterations = int(booster.best_iteration)
-    digest = hashlib.sha256()
+    digest = integrity_sha256()
     digest.update(model_trees(str(booster.model_to_string(num_iteration=iterations))).encode())
     digest.update(np.asarray(curve["valid_0"]["l2"], dtype=np.float64).tobytes())
     predictions = booster.predict(valid_x, num_iteration=iterations, num_threads=threads)

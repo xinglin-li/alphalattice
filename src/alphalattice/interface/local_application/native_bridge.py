@@ -19,7 +19,6 @@ import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from hashlib import sha256
 from itertools import islice
 from pathlib import Path
 from typing import Any, Final, cast
@@ -49,6 +48,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
@@ -298,7 +298,7 @@ class NativeResearchBinding:
         if host not in HOSTS:
             raise NativeBridgeError("native_bridge.binding_invalid")
         _text(session_id, CORRELATION_CHARACTERS)
-        key = sha256(f"{host}\0{session_id}".encode()).hexdigest()
+        key = identity_sha256(f"{host}\0{session_id}".encode()).hexdigest()
         return project / ".codex" / BINDING_DIRECTORY / f"{key}.json"
 
     @classmethod
@@ -658,7 +658,7 @@ def pin_differs(pins: dict[str, str], usage: ModelUsage) -> list[str]:
 
 def _digest(event: object) -> str:
     encoded = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256(encoded.encode("utf-8")).hexdigest()
+    return identity_sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _subject_bounded(subject: dict[str, str]) -> dict[str, str]:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from collections.abc import Callable
@@ -74,6 +73,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -527,7 +527,7 @@ class ResearchInputStorage:
         if binding is None:
             return {}
         payload = confined(self.workspace, binding.relative_path).read_bytes()
-        if hashlib.sha256(payload).hexdigest() != binding.file_sha256:
+        if integrity_sha256(payload).hexdigest() != binding.file_sha256:
             return {}
         manifest = EvidenceReviewWorkspaceManifest.model_validate_json(payload)
         root = confined(self.workspace, manifest.semantic_model_relative_path)

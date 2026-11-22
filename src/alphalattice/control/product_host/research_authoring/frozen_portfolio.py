@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from datetime import date, datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -81,6 +80,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import SectorHistory
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -214,7 +214,9 @@ def prepare_frozen_portfolio_authority(
     def lane(values: npt.ArrayLike, dtype: str) -> str:
         checkpoint()
         array = np.ascontiguousarray(values, dtype=dtype)
-        if not store.holds_array(category=LANES, content_hash=sha256(array.tobytes()).hexdigest()):
+        if not store.holds_array(
+            category=LANES, content_hash=identity_sha256(array.tobytes()).hexdigest()
+        ):
             require_storage_capacity(workspace, additional_bytes=array.nbytes)
         return store.publish_array(category=LANES, values=array)
 
@@ -286,7 +288,9 @@ def prepare_frozen_portfolio_authority(
         input_binding_hash=request.input_binding_hash,
         method_recipe_hash=build_one_session_recipe().recipe_hash,
         source_rows_hash=canonical_hash(qa_rows["row_hash"].to_pylist()),
-        returns_hash=sha256(np.ascontiguousarray(qa_returns, dtype="<f8").tobytes()).hexdigest(),
+        returns_hash=identity_sha256(
+            np.ascontiguousarray(qa_returns, dtype="<f8").tobytes()
+        ).hexdigest(),
         formation_sessions=sessions,
         listing_axis_hash=canonical_hash(listings),
         through=bundle.sessions[-1],

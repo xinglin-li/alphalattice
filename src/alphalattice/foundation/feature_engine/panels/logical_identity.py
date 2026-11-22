@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 from collections import Counter
@@ -49,6 +48,7 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -742,7 +742,7 @@ def _column_mask_and_bits(column: pa.ChunkedArray) -> tuple[np.ndarray, np.ndarr
 def _logical_column_digest(
     *, factor_id: str, key_hash: str, valid: np.ndarray, bits: np.ndarray
 ) -> str:
-    digest = hashlib.sha256(b"PanelLogicalValueColumn\0")
+    digest = identity_sha256(b"PanelLogicalValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
@@ -769,13 +769,13 @@ def logical_session_digest(
         raise ValueError("logical Panel session matrix differs from its axes")
     axis = (factor_axis_hash or canonical_hash(factor_ids)).encode("ascii")
     session_text = session.isoformat().encode("ascii")
-    digest = hashlib.sha256(b"FeaturePanelLogicalSession\0")
+    digest = identity_sha256(b"FeaturePanelLogicalSession\0")
     digest.update(session_text)
     digest.update(struct.pack(">I", len(listing_ids)))
     # Each row's hash is the same bytes in the same order as one update per field: its
     # session's prefix hashed once and copied, and its validity and bits sliced from the
     # session's matrices, row by row as they lie.
-    prefix = hashlib.sha256(b"FeaturePanelLogicalRow\0" + session_text)
+    prefix = identity_sha256(b"FeaturePanelLogicalRow\0" + session_text)
     valid_cells = np.ascontiguousarray(valid)
     bits_cells = np.ascontiguousarray(bits)
     valid_width = valid_cells.itemsize * len(factor_ids)

@@ -15,7 +15,6 @@ no longer enter the hash.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, Sequence
 
 import duckdb
@@ -25,6 +24,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_values
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
@@ -271,7 +271,7 @@ def _in_batches(table: pa.Table) -> pa.Table:
 
 def panel_schema_hash(schema: pa.Schema) -> str:
     """Return the unchanged logical schema identity used by snapshots."""
-    return hashlib.sha256(str(schema.remove_metadata()).encode("utf-8")).hexdigest()
+    return identity_sha256(str(schema.remove_metadata()).encode("utf-8")).hexdigest()
 
 
 def panel_chunk_hash(

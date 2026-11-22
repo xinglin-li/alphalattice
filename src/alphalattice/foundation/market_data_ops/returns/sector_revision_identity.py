@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Iterable, Mapping
+
+from alphalattice.kernel.identity import identity_sha256
 
 
 def sector_revision_hash(
@@ -43,7 +44,7 @@ def sector_revision_hash(
         separators=(",", ":"),
         default=str,
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 __all__ = ["sector_revision_hash"]

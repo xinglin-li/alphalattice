@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import errno
-import hashlib
 import json
 import math
 import os
@@ -123,6 +122,7 @@ from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     NEW_BUILD_RECIPE,
@@ -343,7 +343,7 @@ def _publish(
             raise ValueError("evidence_review.immutable_package_conflict")
         return EvidenceReviewArtifactBinding(
             relative_path=path.relative_to(workspace).as_posix(),
-            file_sha256=hashlib.sha256(payload).hexdigest(),
+            file_sha256=integrity_sha256(payload).hexdigest(),
             content_hash=identity,
         )
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", delete=False) as handle:
@@ -358,7 +358,7 @@ def _publish(
             temporary.unlink()
     return EvidenceReviewArtifactBinding(
         relative_path=path.relative_to(workspace).as_posix(),
-        file_sha256=hashlib.sha256(payload).hexdigest(),
+        file_sha256=integrity_sha256(payload).hexdigest(),
         content_hash=identity,
     )
 

@@ -25,49 +25,47 @@ store that predates the year-fact table holds none until its first writer create
 
 from __future__ import annotations
 
-import ctypes
-import hashlib
 import json
 import os
 import time
 import weakref
-from _thread import LockType
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from ctypes import wintypes
 from pathlib import Path
 from threading import Lock
 
 import duckdb
-import xxhash
 
+from alphalattice.kernel.identity import (
+    RACY_SECONDS,
+    FileDigestTrust,
+    change_xxh3_128_hex,
+    file_fact_holds,
+    integrity_sha256_path,
+)
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.spans import span
 
-if os.name == "nt":
-    import msvcrt
-
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 _CONTENT_KIND = "\x00content-v1:"
-_STAMP_KIND = "\x00file-stamp-v1:"
 _SEALED = "sealed-sha256"
 """A sealed file's fact: this path holds the bytes of this SHA-256 while its stat holds."""
 _FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
     "content_store_full_proof", default=None
 )
 """Open inside ``full_content_proof()``: what a proof has shown, shared by its reads."""
-RACY_SECONDS = 2.0
-"""How old the newest modification or change time must be before a digest is kept."""
 
 _Key = tuple[str, str]
 _Entry = tuple[tuple[int, int, int], str]
 _LOCK = Lock()
-_DIGEST_LOCKS: weakref.WeakValueDictionary[str, LockType] = weakref.WeakValueDictionary()
 _KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 """Per workspace whose writer lease this process holds: its file facts by path and kind."""
 _PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
 """File facts outside a kept workspace, by absolute path and kind, for this process."""
+_DIGEST_TRUST = FileDigestTrust(
+    process=lambda: _PROCESS, lock=_LOCK, span=span, time_ns=lambda: time.time_ns()
+)
 _HELD: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, bool] = weakref.WeakKeyDictionary()
 """Connections that have seen the year-fact table: one catalog read each, not one per call."""
 
@@ -228,103 +226,11 @@ def release_file_facts(workspace: Path) -> None:
 
 def _content_kind(kind: str, digest: str) -> str:
     canonical = json.dumps([kind, digest], ensure_ascii=False, separators=(",", ":"))
-    return _CONTENT_KIND + xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")) + ":" + canonical
+    return _CONTENT_KIND + change_xxh3_128_hex(canonical.encode("utf-8")) + ":" + canonical
 
 
 def _content_shared(kind: str) -> bool:
     return kind in {"sha256", "columns"} or kind.startswith("columns-v2:")
-
-
-def _content_sha256(path: Path) -> str:
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
-
-
-def _stamp(path: Path) -> tuple[int, int, int, int, int]:
-    """Read identity, size and both change clocks from the same open file."""
-    with path.open("rb") as handle:
-        stat = os.fstat(handle.fileno())
-        if os.name == "nt":
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel.GetFileInformationByHandleEx.argtypes = [
-                wintypes.HANDLE,
-                ctypes.c_int,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-            ]
-            kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
-            basic = (ctypes.c_longlong * 5)()
-            if not kernel.GetFileInformationByHandleEx(
-                msvcrt.get_osfhandle(handle.fileno()), 0, ctypes.byref(basic), ctypes.sizeof(basic)
-            ):
-                raise ctypes.WinError(ctypes.get_last_error())
-            changed = (basic[3] - 116444736000000000) * 100
-        else:
-            changed = stat.st_ctime_ns
-        if changed <= 0:
-            raise OSError("File change time is unavailable")
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, changed
-
-
-def _stamp_key(path: Path, stamp: tuple[int, ...]) -> _Key:
-    return str(Path(os.path.abspath(path))), _STAMP_KIND + json.dumps(stamp, separators=(",", ":"))
-
-
-def _settled(stamp: tuple[int, ...]) -> bool:
-    return time.time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9
-
-
-def _held_digest(path: Path) -> str | None:
-    try:
-        stamp = _stamp(path)
-    except OSError:
-        return None
-    with _LOCK:
-        held = _PROCESS.get(_stamp_key(path, stamp))
-    return held[1] if held is not None and _settled(stamp) else None
-
-
-def _verified_digest(path: Path) -> tuple[str, bool]:
-    """Return the digest and whether an unchanged, settled stamp lets a reader keep it."""
-    absolute = str(Path(os.path.abspath(path)))
-    with _LOCK:
-        gate = _DIGEST_LOCKS.get(absolute)
-        if gate is None:
-            gate = Lock()
-            _DIGEST_LOCKS[absolute] = gate
-    with gate:
-        return _read_digest(path)
-
-
-def _read_digest(path: Path) -> tuple[str, bool]:
-    try:
-        before = _stamp(path)
-    except OSError:
-        with span("hash", "file_stamp_unavailable"):
-            return _content_sha256(path), False
-    settled = _settled(before)
-    with _LOCK:
-        held = _PROCESS.get(_stamp_key(path, before))
-    if held is not None and settled:
-        return held[1], True
-    digest = _content_sha256(path)
-    try:
-        after = _stamp(path)
-    except OSError:
-        with span("verify", "file_stamp_unavailable"):
-            pass
-        return digest, False
-    if before == after and settled:
-        with _LOCK:
-            _PROCESS[_stamp_key(path, after)] = ((after[2], after[3], after[1]), digest)
-        return digest, True
-    if before != after:
-        with span("verify", "file_stamp_changed"):
-            pass
-    else:
-        with span("verify", "file_stamp_unsettled"):
-            pass
-    return digest, False
 
 
 @contextmanager
@@ -360,23 +266,15 @@ def sealed_file_holds(path: Path, sha256: str) -> bool:
     size within one clock tick would leave it unchanged. False for a missing, unreadable or
     different file.
     """
+    held = None
     if not full_proof():
         entries, key = _place(path, _content_kind(_SEALED, sha256))
         with _LOCK:
             held = entries.get(key)
-        settled = held is not None and time.time_ns() - held[0][1] > RACY_SECONDS * 10**9
-        if settled and held is not None and _holds(path, held):
-            return True
-    try:
-        before = os.stat(path)
-        with span("hash", "sealed_file"):
-            digest = _content_sha256(path)
-    except OSError:
-        return False
-    if digest != sha256:
-        return False
-    record_file_fact(path, _SEALED, sha256, stat=before, _content=sha256)
-    return True
+    equal, before = _DIGEST_TRUST.sealed(path, sha256, held)
+    if equal and before is not None:
+        record_file_fact(path, _SEALED, sha256, stat=before, _content=sha256)
+    return equal
 
 
 def record_sealed_file(path: Path, sha256: str) -> None:
@@ -391,7 +289,7 @@ def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | No
         digest = (
             _content
             if _content is not None
-            else (_held_digest(path) if kind == "sha256" else _verified_digest(path)[0])
+            else (_DIGEST_TRUST.held(path) if kind == "sha256" else _DIGEST_TRUST.verified(path)[0])
         )
     except OSError:
         return None
@@ -404,7 +302,7 @@ def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | No
         if not kept:
             return None
         try:
-            digest, _ = _verified_digest(path)
+            digest, _ = _DIGEST_TRUST.verified(path)
         except OSError:
             return None
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
@@ -426,11 +324,11 @@ def record_file_fact(
     stat = stat if stat is not None else os.stat(path)
     if not written and time.time() - stat.st_mtime <= RACY_SECONDS:
         return
-    digest = _content if _content is not None else _verified_digest(path)[0]
+    digest = _content if _content is not None else _DIGEST_TRUST.verified(path)[0]
     if kind == "sha256" and value != digest:
         return
     entry = ((stat.st_size, stat.st_mtime_ns, stat.st_ino), value)
-    if not _holds(path, entry):
+    if not file_fact_holds(path, entry):
         return
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
     with _LOCK:
@@ -451,21 +349,13 @@ def file_sha256(path: Path, *, written: bool = False) -> str:
     """Hash now, recording the result for a settled file or for its own writer."""
     before = os.stat(path)
     if written:
-        digest = _content_sha256(path)
+        digest = integrity_sha256_path(path)
     else:
-        digest, settled = _verified_digest(path)
+        digest, settled = _DIGEST_TRUST.verified(path)
         if not settled:
             return digest
     record_file_fact(path, "sha256", digest, written=written, stat=before, _content=digest)
     return digest
-
-
-def _holds(path: Path, entry: _Entry) -> bool:
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return False
-    return (stat.st_size, stat.st_mtime_ns, stat.st_ino) == entry[0]
 
 
 def _place(

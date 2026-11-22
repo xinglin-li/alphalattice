@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, get_args
 
@@ -99,6 +98,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import (
@@ -794,7 +794,7 @@ def prepare_portfolio_market_inputs(
     )
     if (
         local_qa is not None
-        and sha256(np.ascontiguousarray(realized, dtype="<f8").tobytes()).hexdigest()
+        and identity_sha256(np.ascontiguousarray(realized, dtype="<f8").tobytes()).hexdigest()
         != local_qa.binding.returns_hash
     ):
         raise AuthoringError("portfolio_research.local_qa_outcome_values_mismatch")

@@ -34,7 +34,6 @@ is proved by its SHA-256 against its name.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import threading
@@ -48,11 +47,11 @@ import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
-from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.identity import identity_blake3, integrity_blake3, integrity_sha256
 
 TYPE: Final = "array"
 """The artifact type of every array the door keeps."""
@@ -94,7 +93,7 @@ def packed_digest(payload: bytes) -> str:
 
 def _cited(buffers: list[memoryview]) -> str:
     """The one SHA-256 the door computes: the digest documents cite, over the bytes in order."""
-    found = hashlib.sha256()
+    found = integrity_sha256()
     for buffer in buffers:
         found.update(buffer)
     return found.hexdigest()
@@ -516,10 +515,10 @@ def _named(described: Mapping[str, Any], cited: str, buffers: list[memoryview]) 
     bytes. The bytes are hashed alone, from offset zero: after a prefix that is not a whole number
     of BLAKE3's 1 KiB chunks, its threads run three times slower."""
     size = sum(buffer.nbytes for buffer in buffers)
-    body = blake3(max_threads=blake3.AUTO if size >= THREADED else 1)
+    body = integrity_blake3(threaded=size >= THREADED)
     for buffer in buffers:
         body.update(buffer)
-    named = blake3(FORM)
+    named = identity_blake3(FORM)
     named.update(canonical({key: described[key] for key in ("kind", "shape", "columns")}))
     named.update(bytes.fromhex(cited))
     named.update(body.digest())

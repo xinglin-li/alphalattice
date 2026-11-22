@@ -790,6 +790,33 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     assert schema_structure(whole.model_json_schema()) == base
     assert schema_structure(TypeAdapter(whole)) == base
 
+    schema = {
+        "title": "Original words",
+        "type": "object",
+        "properties": {"exposure": {"type": "number", "default": 1.0}},
+    }
+    same = "fd386cd7c291dda258a92802aa685ed951a6245cd709c93bb0e928408db072ef"
+    golden = [
+        (schema_structure(schema), same),
+        (schema_structure(schema), same),
+        (schema_structure({**schema, "title": "Other words"}), same),
+        (
+            schema_structure(
+                {
+                    **schema,
+                    "properties": {"exposure": {"type": "number", "default": 2.0}},
+                }
+            ),
+            "204ebfe014853d5dba669f524ff7131e08481e266034c76476c2c11c4ed154b0",
+        ),
+        (
+            {"fees": [float("nan"), -0.0]},
+            "608b43c138fe874c06e8d57d07e21b01ea8e6696fceb1b84d1896abf2614a46a",
+        ),
+    ]
+    for value, expected in golden:
+        assert canonical_hash(value) == expected
+
 
 # Raw schemas below are display-only; hashes use the kernel schema_structure (SH).
 _SCHEMA_DISPLAYS = frozenset(

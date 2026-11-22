@@ -17,11 +17,8 @@ import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
-from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
-
-from blake3 import blake3
 
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
@@ -37,10 +34,15 @@ from alphalattice.kernel.data_layer.root import (
     sqlite_read_only_uri,
 )
 from alphalattice.kernel.data_layer.store import StorePort
+from alphalattice.kernel.identity import integrity_blake3, integrity_sha256
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
 DATABASES: Final = ("log.sqlite", "catalog.sqlite")
-DIGESTS: Final = {"blake3:v1": blake3, "blake3": blake3, "sha256": sha256}
+DIGESTS: Final = {
+    "blake3:v1": integrity_blake3,
+    "blake3": integrity_blake3,
+    "sha256": integrity_sha256,
+}
 
 
 def _valid_digest(value: Any) -> bool:

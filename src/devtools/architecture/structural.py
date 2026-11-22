@@ -268,6 +268,9 @@ class PackageArchitectureRegistry(_Contract):
     deferred_imports: dict[str, str] = Field(default_factory=dict)
     legacy_lazy_imports: dict[str, int] = Field(default_factory=dict)
     private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
+    owned_product_imports: dict[str, str] = Field(default_factory=dict)
+    """A backend's root module and the sole product package ID that may import it."""
+
     retired_imports: dict[str, str] = Field(default_factory=dict)
     """Each logical owner a cutover retired, with its reason; import_contracts.build bans it."""
 
@@ -300,6 +303,9 @@ class PackageArchitectureRegistry(_Contract):
         )
         if unknown:
             raise ValueError(f"package architecture registry has unknown peers: {unknown}")
+        for backend, package_id in self.owned_product_imports.items():
+            if not backend.isidentifier() or package_id not in known:
+                raise ValueError(f"invalid product import owner: {backend} -> {package_id}")
         reasons = [
             *self.deferred_imports.values(),
             *(r for f in self.private_import_fences.values() for r in f.values()),
@@ -1502,7 +1508,7 @@ def import_contract_violations(
     registry: PackageArchitectureRegistry,
     modules: set[str] | None = None,
 ) -> tuple[str, ...]:
-    """Enforce declared lazy modules and exact cross-owner private equality fences."""
+    """Enforce backend ownership, declared lazy modules and cross-owner private fences."""
     modules = {n.removesuffix(".__init__") for n in (sources if modules is None else modules)}
     roots = sorted(registry.packages, key=lambda r: -len(r.physical_namespace_target))
     packages = registry.by_package
@@ -1581,6 +1587,14 @@ def import_contract_violations(
     def check_target(
         module: str, located: str, scope: str, deferred: bool, imported: str, target: str
     ) -> None:
+        backend = target.partition(".")[0]
+        backend_owner = registry.owned_product_imports.get(backend)
+        if (
+            backend_owner
+            and module.partition(".")[0] == "alphalattice"
+            and owner(module) != backend_owner
+        ):
+            out.append(f"{located}: {backend} is owned by {backend_owner}")
         if deferred and imported in eager:
             out.append(f"{located}: repeated-function-import {imported}")
         if not target.startswith(("alphalattice.", "devtools.")):
@@ -1603,7 +1617,7 @@ def import_contract_violations(
 
     with kept_facts("import-sites", this):  # each module's import sites, kept by its bytes
         for qualified, source in sources.items():
-            if qualified.startswith(("alphalattice.", "devtools.")):
+            if qualified == "alphalattice" or qualified.startswith(("alphalattice.", "devtools.")):
                 inspect_module(qualified, source)
     out.extend(
         f"stale-legacy-import {k}"

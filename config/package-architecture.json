@@ -1,6 +1,6 @@
 {
   "schema": "alphalattice.playpen.package-architecture",
-  "note": "The import law: levels, peers and retired owners. Kernel backend declarations in deferred_imports use 'importer -> external_root' and apply only inside a function. devtools.architecture.import_contracts builds the import-linter and Ruff configuration at run time.",
+  "note": "The import law: levels, peers, backend owners and retired owners. Kernel backend declarations in deferred_imports use 'importer -> external_root' and apply only inside a function. devtools.architecture.import_contracts builds the import-linter and Ruff configuration at run time.",
   "packages": [
     {
       "package_id": "actor_execution",
@@ -699,6 +699,11 @@
       "physical_namespace_target": "alphalattice.kernel.lifecycle"
     }
   ],
+  "owned_product_imports": {
+    "blake3": "identity",
+    "hashlib": "identity",
+    "xxhash": "identity"
+  },
   "deferred_imports": {
     "alphalattice.evidence.alternative_evidence.analysis.contracts": "Read the Evidence topic declaration only when a view request names a topic.",
     "alphalattice.interface.local_application.portfolio_request_fields.data": "Validate Data and preparation requests using their declared fields.",
@@ -888,9 +893,6 @@
     "alphalattice.kernel.data_layer.encoders": "Load the retrieval models only when a recall runs; dependencies: onnxruntime, tokenizers and the installed retrieval-store packs."
   },
   "private_import_fences": {
-    "alphalattice.capabilities.portfolio_inputs.tradability.surface::<module>": {
-      "alphalattice.kernel.shared_kernel.identity._CANONICAL_ENCODER": "Streaming canonical bytes remain the same identity fence; no whole-buffer substitute is proved."
-    },
     "alphalattice.control.product_host.composition.decision_advancement::<module>": {
       "alphalattice.control.data_platform.readiness._latest_common_us_session": "The common US session boundary is retained until a public equivalent is proved."
     },

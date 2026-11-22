@@ -41,7 +41,6 @@ or QP use.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import date
 from typing import Final, Literal, Self
@@ -50,6 +49,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -81,7 +81,7 @@ class RiskDecompositionError(ValueError):
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return hashlib.sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
 
 
 def _frozen(values: npt.ArrayLike) -> FloatArray:

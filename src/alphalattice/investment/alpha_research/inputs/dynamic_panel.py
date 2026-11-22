@@ -10,13 +10,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from typing import Literal, Self
 
 import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -56,8 +56,8 @@ def dynamic_panel_array_identity(values: npt.NDArray[np.generic]) -> str:
             {
                 "dtype": array.dtype.str,
                 "shape": list(array.shape),
-                "finite_mask": sha256(finite.tobytes()).hexdigest(),
-                "finite_values": sha256(
+                "finite_mask": identity_sha256(finite.tobytes()).hexdigest(),
+                "finite_values": identity_sha256(
                     np.ascontiguousarray(np.where(finite, array, 0.0), dtype=array.dtype).tobytes()
                 ).hexdigest(),
             }

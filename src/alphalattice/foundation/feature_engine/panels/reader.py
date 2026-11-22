@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
@@ -19,6 +18,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_rows_match_their_hashes,
     panel_schema_hash,
 )
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
 if TYPE_CHECKING:
@@ -482,7 +482,7 @@ class FeaturePanelReader:
             raise ValueError("feature panel chunk logical content hash mismatch")
         # The row hashes are bound; the values must be the ones they were hashed from
         # (LAWS.md EV2), checked once per file content in this process.
-        digest = hashlib.sha256(Path(str(path)).read_bytes()).hexdigest()
+        digest = integrity_sha256(Path(str(path)).read_bytes()).hexdigest()
         if digest not in _VALUES_VERIFIED:
             if not panel_rows_match_their_hashes(
                 parquet.read(), row_hash_factor_ids=row_hash_factor_ids

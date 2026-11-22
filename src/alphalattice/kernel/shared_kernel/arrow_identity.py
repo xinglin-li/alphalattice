@@ -27,14 +27,13 @@ row.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from json.encoder import encode_basestring_ascii
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from alphalattice.kernel.shared_kernel.identity import _CANONICAL_ENCODER, canonical_hash
+from alphalattice.kernel.identity import canonical_hash, canonical_json, identity_sha256
 
 _PLAIN_ASCII = r"^[\x20\x21\x23-\x5b\x5d-\x7e]*$"
 """Printable ASCII without the double quote and the backslash: the strings the
@@ -197,7 +196,7 @@ def _document(payload: Mapping[str, object], key: str, encoded: bytes) -> bytes:
         raise ValueError("arrow_identity.member_names_must_be_strings")
     pieces = []
     for name in sorted(members):
-        value = encoded if name == key else _CANONICAL_ENCODER.encode(payload[name]).encode("utf-8")
+        value = encoded if name == key else canonical_json(payload[name]).encode("utf-8")
         pieces.append(encode_basestring_ascii(name).encode("utf-8") + b":" + value)
     return b"{" + b",".join(pieces) + b"}"
 
@@ -215,7 +214,7 @@ def canonical_hash_with_rows(payload: Mapping[str, object], *, key: str, table: 
     if encoded is None:
         general: str = canonical_hash({**payload, key: table.to_pylist()})
         return general
-    return hashlib.sha256(_document(payload, key, encoded)).hexdigest()
+    return identity_sha256(_document(payload, key, encoded)).hexdigest()
 
 
 def canonical_hash_with_row_lists(
@@ -236,7 +235,7 @@ def canonical_hash_with_row_lists(
             {**payload, key: [tuple(row.values()) for row in table.to_pylist()]}
         )
         return general
-    return hashlib.sha256(_document(payload, key, encoded)).hexdigest()
+    return identity_sha256(_document(payload, key, encoded)).hexdigest()
 
 
 def canonical_hash_with_values(
@@ -253,7 +252,7 @@ def canonical_hash_with_values(
     if encoded is None:
         general: str = canonical_hash({**payload, key: chunked.to_pylist()})
         return general
-    return hashlib.sha256(_document(payload, key, encoded)).hexdigest()
+    return identity_sha256(_document(payload, key, encoded)).hexdigest()
 
 
 def canonical_row_hashes(table: pa.Table) -> list[str]:
@@ -266,7 +265,7 @@ def canonical_row_hashes(table: pa.Table) -> list[str]:
     rows = _row_objects(table)
     if rows is None:
         return [canonical_hash(row) for row in table.to_pylist()]
-    return [hashlib.sha256(text.encode("ascii")).hexdigest() for text in rows.to_pylist()]
+    return [identity_sha256(text.encode("ascii")).hexdigest() for text in rows.to_pylist()]
 
 
 __all__ = [

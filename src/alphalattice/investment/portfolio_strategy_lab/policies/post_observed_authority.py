@@ -9,7 +9,6 @@ score source never reads them while forming a book.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date
@@ -41,6 +40,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import (
     FrozenSleeveWeightRule,
 )
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -258,7 +258,7 @@ class PostObservedStrategyAuthorityManifest(_Contract):
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
+    digest = integrity_sha256()
     try:
         with path.open("rb") as handle:
             for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -514,7 +514,7 @@ def _score_receipt(
                 "strategy_id": strategy_id,
                 "formation_session": session.isoformat(),
                 "component_row_hashes": [
-                    hashlib.sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
+                    identity_sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
                     for row in rows
                 ],
             }

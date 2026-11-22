@@ -22,7 +22,6 @@ for the market store's rebuild to take; the listed entries are named, not writte
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import tempfile
@@ -59,6 +58,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
     carry_risk_covariance,
 )
 from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -256,7 +256,7 @@ def _copy_file(source: Path, destination: Path, *, kind: _ReadKind = "source") -
 
 
 def _digest_file(path: Path, *, kind: _ReadKind = "source") -> str:
-    sha = hashlib.sha256()
+    sha = integrity_sha256()
     try:
         with path.open("rb") as handle:
             for block in iter(lambda: _read_block(handle, kind), b""):
@@ -551,7 +551,7 @@ class WorkspaceBackups:
             if child.is_dir() and len(child.name) == 64 and set(child.name) <= _HEX:
                 yield BackupEntry(kind="LISTED", path=relative, digest=child.name, size=size)
                 continue
-            sha = hashlib.sha256()
+            sha = integrity_sha256()
             for path in _files(child):
                 sha.update(path.relative_to(child).as_posix().encode("utf-8") + b"\0")
                 sha.update(_digest_file(path).encode("ascii"))

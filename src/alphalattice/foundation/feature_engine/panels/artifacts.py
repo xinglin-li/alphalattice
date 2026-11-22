@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -31,6 +30,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import SectorHistory
 
 if TYPE_CHECKING:
@@ -1137,7 +1137,7 @@ def panel_content_identity(
     availability: Sequence[Mapping[str, object]],
 ) -> PanelContentIdentity:
     """Hash ordered Panel chunks and availability into content identity."""
-    digest = hashlib.sha256()
+    digest = identity_sha256()
     digest.update(
         json.dumps(
             {

@@ -19,11 +19,11 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from copy import deepcopy
-from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
 from alphalattice.interface.local_application.cli_contract import schema_request
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 from .cli_contract import error_projection, refusal_words
@@ -490,7 +490,7 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
 
-    digest = sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
+    digest = identity_sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])
     return f"{prefix}:{digest}" if incident else prefix
 

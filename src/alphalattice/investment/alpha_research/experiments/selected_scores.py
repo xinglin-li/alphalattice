@@ -21,7 +21,6 @@ cross-sectional dispersion forecast, which are separate owners.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, Self
@@ -33,6 +32,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -160,7 +160,7 @@ def predicted_z_values_hash(values: FloatArray) -> str:
     """Byte identity of the predicted-Z matrix, NaNs included."""
 
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
-    return hashlib.sha256(contiguous.tobytes()).hexdigest()
+    return identity_sha256(contiguous.tobytes()).hexdigest()
 
 
 def _resolve_selected_folds(

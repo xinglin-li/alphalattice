@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -15,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
@@ -29,7 +29,7 @@ def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return integrity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -269,7 +269,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-manifest",
             content_hash=snapshot_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.feature_panel_manifest_uri(snapshot_hash),
         )
 
@@ -297,7 +297,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-semantic-index",
             content_hash=index_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.feature_panel_semantic_index_uri(index_hash),
         )
 
@@ -357,7 +357,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-preprocessing-binding",
             content_hash=binding_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.panel_preprocessing_binding_uri(binding_hash),
         )
 
@@ -428,7 +428,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clipping-evidence",
             content_hash=evidence_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.panel_clipping_evidence_uri(evidence_hash),
         )
 
@@ -517,7 +517,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clip-observation",
             content_hash=record_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.panel_clip_observation_uri(receipt_hash),
         )
 
@@ -595,7 +595,7 @@ class ArtifactResolver:
             return ArtifactDescriptor(
                 kind="panel-preprocessing-marker",
                 content_hash=str(existing["marker_hash"]),
-                metadata_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
+                metadata_hash=integrity_sha256(target.read_bytes()).hexdigest(),
                 uri=f"playpen://feature-panel/preprocessing-marker/{panel_content_hash}",
             )
         staged.write_bytes(serialized)
@@ -604,7 +604,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-preprocessing-marker",
             content_hash=marker_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=f"playpen://feature-panel/preprocessing-marker/{panel_content_hash}",
         )
 
@@ -728,7 +728,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="adjusted-return-semantic-revision",
             content_hash=chain_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=integrity_sha256(serialized).hexdigest(),
             uri=self.adjusted_return_semantic_revision_uri(chain_hash),
         )
 
@@ -841,7 +841,7 @@ class ArtifactResolver:
         serialized_identity = json.dumps(
             identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
-        projection_hash = hashlib.sha256(serialized_identity).hexdigest()
+        projection_hash = identity_sha256(serialized_identity).hexdigest()
         payload = {**identity, "projection_hash": projection_hash}
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -912,7 +912,7 @@ class ArtifactResolver:
         identity = dict(payload)
         identity.pop("snapshot_hash", None)
         if (
-            hashlib.sha256(
+            identity_sha256(
                 json.dumps(
                     identity,
                     ensure_ascii=False,
@@ -1043,7 +1043,7 @@ class ArtifactResolver:
         claimed_hash = payload.get("projection_hash")
         identity = dict(payload)
         identity.pop("projection_hash", None)
-        actual_hash = hashlib.sha256(
+        actual_hash = identity_sha256(
             json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
                 "utf-8"
             )

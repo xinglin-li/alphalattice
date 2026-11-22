@@ -7,7 +7,6 @@ with deterministic AlphaLattice-owned code.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import time
@@ -29,6 +28,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     SplitAdjustedPriceIntegrityError,
     validate_split_adjusted_history,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.spans import spanned
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
@@ -37,7 +37,7 @@ YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "repair": True,
     "split_integrity": "action-aligned-open-ratio-and-unexplained-fivefold-discontinuity",
 }
-YFINANCE_PRICE_POLICY_HASH = hashlib.sha256(
+YFINANCE_PRICE_POLICY_HASH = identity_sha256(
     json.dumps(YFINANCE_PRICE_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
 
@@ -604,7 +604,7 @@ class YFinanceMarketDataProvider:
             provider_symbol=provider_symbol,
             sector_name=normalized["sector"],
             sector_key=normalized["sectorKey"],
-            payload_hash=hashlib.sha256(
+            payload_hash=identity_sha256(
                 json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest(),
         )

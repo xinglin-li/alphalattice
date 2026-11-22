@@ -16,7 +16,6 @@ from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from blake3 import blake3
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -33,6 +32,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     decision_hash,
 )
 from alphalattice.interface.local_application.questions import person_question, relayed_question
+from alphalattice.kernel.identity import identity_blake3
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
@@ -283,7 +283,7 @@ def declaration_hash(declaration: GoalDeclaration, opener: object) -> str:
     DECLARATION_ENCODING, never JSON text; the digest is BLAKE3's."""
     head = b"alphalattice.goal-declaration" + bytes(1) + DECLARATION_ENCODING.to_bytes(2, "big")
     body = _typed(declaration.model_dump(mode="python")) + _typed(opener)
-    return blake3(head + body).hexdigest()
+    return identity_blake3(head + body).hexdigest()
 
 
 def _typed(value: object) -> bytes:

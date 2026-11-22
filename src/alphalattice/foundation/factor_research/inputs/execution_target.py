@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal, cast
@@ -30,6 +29,7 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
     verify_execution_outcome_method_seal_marker,
 )
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -346,7 +346,7 @@ def _table_content_hash(table: pa.Table) -> str:
     sink = pa.BufferOutputStream()
     with pa.ipc.new_stream(sink, table.schema) as writer:
         writer.write_table(table.combine_chunks())
-    return hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()
+    return integrity_sha256(sink.getvalue().to_pybytes()).hexdigest()
 
 
 def _ordered_source(source: pa.Table) -> pa.Table:

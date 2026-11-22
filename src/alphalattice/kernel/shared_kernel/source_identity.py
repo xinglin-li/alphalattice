@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -11,6 +10,7 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
+from alphalattice.kernel.identity import change_sha256, identity_sha256, integrity_sha256
 from alphalattice.kernel.shared_kernel.project_layout import (
     resolve_playpen_root,
     resource_path,
@@ -390,12 +390,12 @@ def _syntax_digest(tree: ast.Module) -> str:
 
 def _text_digest(text: str) -> str:
     """The SHA-256 of a syntax text: a module's dumped tree, or a canonical module's rendering."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return identity_sha256(text.encode("utf-8")).hexdigest()
 
 
 def _bytes_key(payload: bytes, package: str) -> tuple[str, str]:
     """A parse cache's key: the module's bytes' SHA-256 and the package it resolves in."""
-    return hashlib.sha256(payload).hexdigest(), package
+    return change_sha256(payload).hexdigest(), package
 
 
 def _dumped(tree: ast.Module) -> str:
@@ -1101,7 +1101,7 @@ def source_rule_closure_hash(
 def _resource_sha256(root: Path, relative: str) -> str:
     path = resource_path(root, relative)
     if path.is_file():
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        return integrity_sha256(path.read_bytes()).hexdigest()
     # Development runners are not runtime entries. The wheel carries the
     # accepted tree's byte commitments, preserving the same closure value.
     manifest = root / "config/release/source-hashes.json"
@@ -1172,7 +1172,7 @@ def source_switch_key(
     Returns:
         The key; a changed entry list is a new key.
     """
-    entries = hashlib.sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:16]
+    entries = identity_sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:16]
     return f"{semantic_owner}:{numerical_role}:{entries}"
 
 

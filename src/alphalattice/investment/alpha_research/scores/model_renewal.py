@@ -13,7 +13,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from functools import partial
-from hashlib import sha256
 from io import BytesIO
 from itertools import chain
 from pathlib import Path
@@ -93,6 +92,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
@@ -610,7 +610,7 @@ def prepare_alpha_refit(
         {
             "sessions": plan.training_sessions,
             "listings": plan.ordered_listing_ids,
-            "positions": sha256(rows.tobytes()).hexdigest(),
+            "positions": identity_sha256(rows.tobytes()).hexdigest(),
         }
     )
     with span("hash", "refit_arrays"):

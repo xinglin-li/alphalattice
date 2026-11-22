@@ -44,6 +44,8 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from alphalattice.kernel.identity import file_facts as digests
+from alphalattice.kernel.identity import file_stamp
 from alphalattice.kernel.shared_kernel.spans import collect
 
 
@@ -1152,7 +1154,7 @@ def _aged(target: Path) -> None:
 
 def _advance_file_fact_clock(facts, target: Path, monkeypatch) -> None:
     """Move past both the modification and change clocks without waiting."""
-    now = max(facts._stamp(target)[-2:]) + 10**10
+    now = max(file_stamp(target)[-2:]) + 10**10
     monkeypatch.setattr(facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now))
 
 
@@ -1168,14 +1170,16 @@ def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
 ) -> None:
     """A young reader hashes immediately and rehashes after a rewrite."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
-        young = now = max(facts._stamp(target)[-2:])
+        young = now = max(file_stamp(target)[-2:])
 
         def unexpected_wait(_seconds: float) -> None:
             pytest.fail("a reader must not wait for a file stamp")
 
-        def finish_hash_after_window(handle, algorithm):
+        digest_stream = digests.integrity_sha256_stream
+
+        def finish_hash_after_window(handle):
             nonlocal now
-            digest = hashlib.file_digest(handle, algorithm)
+            digest = digest_stream(handle)
             now += int((facts.RACY_SECONDS + 1) * 10**9)
             return digest
 
@@ -1186,9 +1190,7 @@ def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
         )
         with monkeypatch.context() as hashing:
             if case == "stamp-ages-during-hash":
-                hashing.setattr(
-                    facts, "hashlib", SimpleNamespace(file_digest=finish_hash_after_window)
-                )
+                hashing.setattr(digests, "integrity_sha256_stream", finish_hash_after_window)
             assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
         assert facts.file_fact(target, "sha256") is None
         now = young
@@ -1285,7 +1287,7 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
     rewrite whose stat was put back."""
     with _kept_facts(tmp_path) as (facts, _workspace, target):
         _aged(target)
-        digest = hashlib.file_digest
+        digest = digests.integrity_sha256_stream
         calls = []
 
         def counted(*args, **kwargs):
@@ -1294,7 +1296,7 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
 
         with monkeypatch.context() as counting:
             _advance_file_fact_clock(facts, target, counting)
-            counting.setattr(hashlib, "file_digest", counted)
+            counting.setattr(digests, "integrity_sha256_stream", counted)
             with ThreadPoolExecutor(max_workers=4) as pool:
                 assert (
                     list(pool.map(facts.file_sha256, [target] * 4))
@@ -1339,7 +1341,7 @@ def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None
         target.write_bytes(b"two")
         os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
         # Even a forced index collision cannot match a different full content key.
-        monkeypatch.setattr(facts.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+        monkeypatch.setattr(facts, "change_xxh3_128_hex", lambda _data: "0" * 32)
         facts.record_file_fact(target, "columns", "b" * 64, written=True)
         target.write_bytes(b"one")
         os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))

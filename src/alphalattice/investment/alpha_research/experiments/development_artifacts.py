@@ -13,7 +13,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from dataclasses import field as data_field
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Self, TypeVar, cast
@@ -22,7 +21,6 @@ import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
-from blake3 import blake3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.alpha_modeling.contracts import (
@@ -102,6 +100,7 @@ from alphalattice.investment.alpha_research.targets.total_return import (
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.data_layer.upgrade import Family
+from alphalattice.kernel.identity import identity_sha256, integrity_blake3, integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span, spanned
 
@@ -467,7 +466,7 @@ class AlphaDevelopmentArtifactStore:
 
     def _publish_packed_bytes(self, *, category: str, payload: bytes, durable: bool = True) -> str:
         with span("hash", "alpha_packed"):
-            content_hash = sha256(payload).hexdigest()
+            content_hash = integrity_sha256(payload).hexdigest()
         if category.startswith("current/") and self._packed_is_door(
             category.removeprefix("current/")
         ):
@@ -511,7 +510,7 @@ class AlphaDevelopmentArtifactStore:
                 os.link(origin, staged)
             except OSError:
                 return self._publish_packed_bytes(category="current/" + category, payload=payload)
-            if sha256(staged.read_bytes()).hexdigest() != content_hash:
+            if integrity_sha256(staged.read_bytes()).hexdigest() != content_hash:
                 raise self._packed_readback_error("alpha_research.frozen_input_content_invalid")
             try:
                 # link, not replace: a concurrently present name must be proved.
@@ -634,7 +633,7 @@ class AlphaDevelopmentArtifactStore:
             after = os.fstat(stream.fileno())
         if full_proof():
             with span("hash", "alpha_packed"):
-                observed_hash = sha256(payload).hexdigest()
+                observed_hash = identity_sha256(payload).hexdigest()
         else:
             observed_hash = content_hash
         if (
@@ -1337,7 +1336,7 @@ class AlphaDevelopmentArtifactStore:
         for fold, payload in zip(row_axis_receipt.folds, row_axis_lane_payloads, strict=True):
             if (
                 len(payload) != fold.row_count * np.dtype(fold.listing_position_dtype).itemsize
-                or sha256(payload).hexdigest() != fold.listing_position_lane_hash
+                or identity_sha256(payload).hexdigest() != fold.listing_position_lane_hash
                 or self._publish_lane(
                     category=FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY,
                     columns={
@@ -1506,7 +1505,7 @@ class AlphaDevelopmentArtifactStore:
                     fold_index=fold_index,
                     validation_sessions=sessions,
                     row_count_by_session=tuple(counts[value] for value in sessions),
-                    listing_position_lane_hash=sha256(payload).hexdigest(),
+                    listing_position_lane_hash=identity_sha256(payload).hexdigest(),
                     row_count=identity.row_count,
                     row_axis_hash=identity.row_axis_hash,
                     fixed_score_artifact_hash=fixed.artifact_hash,
@@ -2529,7 +2528,7 @@ class AlphaDevelopmentArtifactStore:
             with pa.OSFile(str(path), "wb") as sink, pa.ipc.new_file(sink, table.schema) as writer:
                 writer.write_table(table)
             with pa.OSFile(str(path), "rb") as source:
-                body_digest = blake3(source.read_buffer()).hexdigest()
+                body_digest = integrity_blake3(source.read_buffer()).hexdigest()
             output.chunks[digest] = seal, body_digest, path
 
     @classmethod
@@ -2539,7 +2538,7 @@ class AlphaDevelopmentArtifactStore:
         for digest, (seal, expected, path) in output.chunks.items():
             with pa.OSFile(str(path), "rb") as source:
                 body = source.read_buffer()
-            if blake3(body).hexdigest() != expected:
+            if integrity_blake3(body).hexdigest() != expected:
                 raise AlphaDevelopmentArtifactReadbackError("staged Alpha catalog rows changed")
             chunks[digest] = seal, pa.ipc.open_file(body).read_all()
         history.write_alpha_development_chunks(chunks, summaries=output.summaries)

@@ -35,14 +35,26 @@ from devtools.architecture.structural import (
         ("tests/untracked.py", "import alphalattice.kernel.low.gone\n", "TID251"),
         ("low/untracked_ignored.py", "import alphalattice.kernel.low.gone\n", "TID251"),
         ("high/down.py", "from alphalattice.kernel.low import keep\n", None),
+        (
+            "high/hashlib.py",
+            "from hashlib import sha256\nsha256(b'file')\n",
+            "hashlib is owned by low",
+        ),
+        ("high/blake3.py", "import blake3\n", "blake3 is owned by low"),
+        (
+            "high/xxhash.py",
+            "import importlib\nimportlib.import_module('xxhash')\n",
+            "xxhash is owned by low",
+        ),
+        ("low/hash_backend.py", "from hashlib import sha256\nsha256(b'file')\n", None),
     ],
 )
 def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
     tmp_path, module, body, found
 ) -> None:
     """A level-0 package importing level 1, or any file importing a retired owner, is refused by the
-    contracts built from the registry; an import downward, or of a name that only looks retired,
-    passes."""
+    contracts built from the registry. Downward imports and names that only look retired pass.
+    The registered owner alone can import its digest backends."""
     tree = _tree(tmp_path)
     group = "kernel" if module.startswith("low/") else "control"
     target = (
@@ -57,7 +69,11 @@ def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
         target.write_text(body, encoding="utf-8")
     if "ignored" in module:  # tracked or not, an ignored file is still the law's
         (tree / ".gitignore").write_text(target.name + "\n", encoding="utf-8")
-    violations = import_contracts.check(tree, tmp_path / "evidence", _registry())
+    registry = _registry()
+    violations = import_contracts.check(tree, tmp_path / "evidence", registry)
+    if target.is_relative_to(tree / "src"):
+        qualified = ".".join(target.relative_to(tree / "src").with_suffix("").parts)
+        violations += import_contract_violations({qualified: body}, registry=registry)
     if found is None:
         assert violations == ()
     else:
@@ -130,6 +146,7 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
         base.model_dump(by_alias=True)
         | {
             "packages": (*base.packages, *kernel),
+            "owned_product_imports": dict.fromkeys(base.owned_product_imports, "identity"),
             "deferred_imports": {
                 "alphalattice.kernel.identity._digests -> blake3": "Load BLAKE3 on first use.",
                 "alphalattice.kernel.identity._digests -> xxhash": "Load xxHash on first use.",
@@ -272,6 +289,7 @@ def _registry() -> PackageArchitectureRegistry:
                 )
                 for name, level, group in (("low", 0, "kernel"), ("high", 1, "control"))
             ],
+            "owned_product_imports": dict.fromkeys(("hashlib", "blake3", "xxhash"), "low"),
             "retired_imports": {"low.gone": "retired by a fixture cutover"},
         }
     )

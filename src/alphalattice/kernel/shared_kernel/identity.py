@@ -14,17 +14,14 @@ where it can drift.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
+from alphalattice.kernel.identity import canonical_hash as canonical_hash
+from alphalattice.kernel.identity import canonical_json as canonical_json
+
 if TYPE_CHECKING:
     from pydantic import BaseModel, TypeAdapter
-
-# ``json.dumps`` with these options builds a new encoder on every call; the
-# encoder is stateless, so one instance encodes every value to the same bytes.
-_CANONICAL_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"), default=str)
 
 # A schema's prose: a model's and an enum's docstring, a field's description, a title
 # (pydantic's own restates a name the structure binds already, a property's key or a
@@ -55,20 +52,6 @@ _SCHEMA_VALUES = frozenset(
         "oneOf",
     }
 )
-
-
-def canonical_json(value: object) -> str:
-    """The canonical text whose UTF-8 SHA-256 is ``canonical_hash``.
-
-    Exposed for an owner that streams a large payload through the digest in
-    pieces; the pieces must concatenate to exactly this text.
-    """
-    return _CANONICAL_ENCODER.encode(value)
-
-
-def canonical_hash(value: object) -> str:
-    """Hash canonical JSON-safe contract content, never a payload or local path."""
-    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def schema_structure(

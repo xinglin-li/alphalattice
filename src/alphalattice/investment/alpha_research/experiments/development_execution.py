@@ -32,7 +32,6 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +112,7 @@ from alphalattice.investment.alpha_research.targets.development import (
     AlphaDevelopmentTargetFoldRecord,
     AlphaDevelopmentTargetMaterializationBinding,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import SectorHistory
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
@@ -137,7 +137,7 @@ def _array_identity(values: npt.NDArray[Any]) -> tuple[str, tuple[int, ...], str
     return (
         str(contiguous.dtype),
         tuple(int(value) for value in contiguous.shape),
-        sha256(contiguous.tobytes()).hexdigest(),
+        identity_sha256(contiguous.tobytes()).hexdigest(),
     )
 
 

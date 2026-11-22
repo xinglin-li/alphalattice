@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 from collections.abc import Callable, Iterable, Mapping
@@ -26,6 +25,7 @@ from alphalattice.foundation.feature_engine.panels.closure_files import (
     FolderFiles,
     closure_files,
 )
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 
 _Model = TypeVar("_Model", bound=BaseModel)
 
@@ -54,7 +54,7 @@ def ordered_key_hash(session_dates: Iterable[object], listing_ids: Iterable[str]
         parts.append(session_bytes)
         parts.append(listing_bytes)
         count += 1
-    digest = hashlib.sha256(b"PanelBaseKeyAxis\0")
+    digest = identity_sha256(b"PanelBaseKeyAxis\0")
     digest.update(b"".join(parts))
     digest.update(struct.pack(">Q", count))
     return digest.hexdigest()
@@ -68,7 +68,7 @@ def ordered_value_hash(
     mask = np.asarray(valid, dtype=np.bool_)
     if floats.ndim != 1 or mask.ndim != 1 or len(floats) != len(mask):
         raise ValueError("Panel value closure arrays must be aligned one-dimensional arrays")
-    digest = hashlib.sha256(b"PanelBaseValueColumn\0")
+    digest = identity_sha256(b"PanelBaseValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
@@ -84,13 +84,13 @@ def arrow_table_logical_hash(table: pa.Table) -> str:
     normalized = table.replace_schema_metadata(None).combine_chunks()
     with ipc.new_stream(sink, normalized.schema) as writer:
         writer.write_table(normalized)
-    return hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()
+    return identity_sha256(sink.getvalue().to_pybytes()).hexdigest()
 
 
 def _physical(data: bytes) -> str:
     """A closure Parquet file's physical digest, as its reference records it: SHA-256 of its
     bytes, taken by the writer and checked again by a reader of the log's copy."""
-    return hashlib.sha256(data).hexdigest()
+    return integrity_sha256(data).hexdigest()
 
 
 class PanelClosureArtifactStore:

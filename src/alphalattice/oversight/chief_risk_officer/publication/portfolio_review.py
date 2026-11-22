@@ -7,7 +7,6 @@ genuinely new one requires a changed input rather than a changed clock.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -22,6 +21,7 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
 )
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
@@ -153,7 +153,7 @@ def _day(moment: datetime) -> date:
 
 def _digest(entry: _Register) -> str:
     content = json.dumps(entry.model_dump(mode="json", exclude={"digest"}), sort_keys=True)
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return integrity_sha256(content.encode("utf-8")).hexdigest()
 
 
 def _fold(

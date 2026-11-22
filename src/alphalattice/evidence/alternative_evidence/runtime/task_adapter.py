@@ -12,7 +12,6 @@ that unit; a previously prepared unit reuses its sealed artifacts.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -38,6 +37,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.identity_successors import is_current
@@ -504,7 +504,7 @@ def _verify_table_view(
     if (
         content_sha256 != binding.parent_source_content_hash
         or media_type != binding.parent_media_type
-        or hashlib.sha256(content).hexdigest() != content_sha256
+        or integrity_sha256(content).hexdigest() != content_sha256
     ):
         raise ValueError("alternative_evidence.brief_table_view_original_mismatch")
     try:

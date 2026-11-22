@@ -31,14 +31,13 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Final
 
-from blake3 import blake3
-
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.arrays import STAGED, _settled, _unplaced, _writing
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import drop as drop_lock
 from alphalattice.kernel.data_layer.log import hold as hold_lock
 from alphalattice.kernel.data_layer.project import uuid7
+from alphalattice.kernel.identity import integrity_blake3
 from alphalattice.kernel.shared_kernel.waits import wait_until
 
 if TYPE_CHECKING:
@@ -59,7 +58,7 @@ _MEANING: Final = {
 
 def file_digest(path: Path) -> str:
     """The BLAKE3 seal of a file's bytes, read once without loading it whole."""
-    return "blake3:" + blake3(max_threads=blake3.AUTO).update_mmap(path).hexdigest()
+    return "blake3:" + integrity_blake3(threaded=True).update_mmap(path).hexdigest()
 
 
 _DIGEST: Final = re.compile(r"blake3:[0-9a-f]{64}")

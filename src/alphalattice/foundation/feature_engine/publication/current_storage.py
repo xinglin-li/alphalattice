@@ -12,13 +12,13 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from hashlib import sha256
 from typing import Literal
 
 import duckdb
 
 from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
 from alphalattice.kernel.data.errors import DataError
+from alphalattice.kernel.identity import change_sha256, identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
@@ -79,7 +79,7 @@ def cutoff_set_hash(canonical_payload: str) -> str:
     keys and writes the mapping exactly as ``payload`` already spells it --
     without encoding the mapping a second time.
     """
-    return sha256(
+    return identity_sha256(
         f'{{"cutoffs":{canonical_payload},"kind":"FeatureInputCutoffSet"}}'.encode()
     ).hexdigest()
 
@@ -248,7 +248,7 @@ def runtime_view_hash(connection: duckdb.DuckDBPyConnection) -> str:
     row = connection.execute(
         "SELECT sql FROM duckdb_views() WHERE view_name = 'feature_daily_runtime' AND NOT internal"
     ).fetchone()
-    return sha256(str(row[0] if row is not None else "").encode()).hexdigest()
+    return change_sha256(str(row[0] if row is not None else "").encode()).hexdigest()
 
 
 def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
@@ -264,7 +264,7 @@ def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
     Returns:
         The composed row's hash.
     """
-    return sha256(
+    return identity_sha256(
         "|".join(("FeatureLayeredRow", catalog_hash, *part_row_hashes)).encode()
     ).hexdigest()
 

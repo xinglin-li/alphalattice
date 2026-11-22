@@ -17,7 +17,6 @@ binding through this module's source closure and the receipt's
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -25,6 +24,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import NamedTuple
 
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import (
@@ -3753,7 +3753,7 @@ def render_evidence_packet(
     def limitation_codes(limitations: Sequence[str]) -> list[str]:
         codes = []
         for sentence in limitations:
-            code = f"L-{hashlib.sha256(sentence.encode('utf-8')).hexdigest()[:8]}"
+            code = f"L-{identity_sha256(sentence.encode('utf-8')).hexdigest()[:8]}"
             limitation_texts[code] = sentence
             codes.append(code)
         return codes

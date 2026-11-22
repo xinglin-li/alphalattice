@@ -9,10 +9,11 @@ import os
 import shutil
 import sys
 from collections.abc import Mapping
-from hashlib import sha256
 from pathlib import Path
 from typing import Final, NamedTuple
 from urllib.parse import urlsplit
+
+from alphalattice.kernel.identity import identity_sha256
 
 CONNECTION_NAME: Final = "local-research-connection.json"
 CLIENT_HEADER: Final = "X-Alphalattice-Client"
@@ -67,7 +68,7 @@ class DeliveryLost(ValueError):
 
 def workspace_connection_key(workspace: Path) -> str:
     """Bind the request to the canonical workspace location."""
-    return sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
+    return identity_sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
 
 
 def connection_path(workspace: Path) -> Path:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-import hashlib
 import json
 import math
 from bisect import bisect_left
@@ -88,6 +87,7 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     _table_exists,
     _utc_aware,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.bounded_memo import stage_digest
 
 
@@ -273,7 +273,7 @@ class _SourcePrefixHashSink(RawIOBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self.digest = hashlib.sha256()
+        self.digest = identity_sha256()
 
     def writable(self) -> bool:
         return True

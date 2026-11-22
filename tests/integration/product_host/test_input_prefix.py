@@ -25,6 +25,7 @@ from alphalattice.investment.alpha_research.publication.artifacts import AlphaCu
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
+from alphalattice.kernel.identity import file_stamp
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
 )
@@ -340,7 +341,7 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
     again only once its size or mtime moves (an edit is then refused, as the test above holds)."""
     market = MarketDataRepository(input_workspace)
     files = [path for path in (market.path, Path(str(market.path) + ".wal")) if path.exists()]
-    now = max(max(verified_facts._stamp(path)[-2:]) for path in files) + 10**10
+    now = max(max(file_stamp(path)[-2:]) for path in files) + 10**10
     monkeypatch.setattr(
         verified_facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now)
     )

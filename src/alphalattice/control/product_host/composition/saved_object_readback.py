@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -30,6 +29,7 @@ from alphalattice.kernel.data_layer.history import (
     data_root,
     own_root,
 )
+from alphalattice.kernel.identity import integrity_sha256
 
 
 def _request(
@@ -133,7 +133,7 @@ def numbers(status: int, body: bytes) -> dict[str, str]:
 
     walk(data, ())
     return {
-        section: hashlib.sha256("\n".join(leaves).encode("utf-8")).hexdigest()[:16]
+        section: integrity_sha256("\n".join(leaves).encode("utf-8")).hexdigest()[:16]
         + f":{len(leaves)}"
         for section, leaves in sorted(sections.items())
     }

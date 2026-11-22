@@ -293,7 +293,7 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
 
     # A collision in the index is not a collision in the full canonical key.
     unavailable.clear()
-    monkeypatch.setattr(context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+    monkeypatch.setattr(context, "change_xxh3_128_hex", lambda _data: "0" * 32)
     for axis in (["one"], ["two"]):
         body["portfolio_source"]["ordered_listing_ids"] = axis
         assert context.book_sectors(tmp_path, body)["by_listing"] == {
@@ -397,7 +397,7 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
     ) == ("Renamed listing")
     assert s.risk() == inside
     request.getfixturevalue("monkeypatch").setattr(
-        context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32
+        context, "change_xxh3_128_hex", lambda _data: "0" * 32
     )
     assert s.risk(renamed) == changed and s.risk() == inside
     s.sessions = s.days[: s.k - 2]

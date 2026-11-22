@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import unicodedata
@@ -14,6 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import DomainValidationError
 
 
@@ -98,7 +98,7 @@ def sha256_hex(value: bytes) -> str:
     Returns:
         Lowercase hexadecimal SHA-256 digest.
     """
-    return hashlib.sha256(value).hexdigest()
+    return integrity_sha256(value).hexdigest()
 
 
 def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

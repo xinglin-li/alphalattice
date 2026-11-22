@@ -40,7 +40,6 @@ supply chain.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import re
@@ -84,6 +83,7 @@ from alphalattice.interface.local_application.failure_codes import (
     public_failure,
 )
 from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
@@ -771,7 +771,9 @@ def report_policy(page: str) -> str:
     `'unsafe-inline'`, which would permit any style anyone later injected.
     """
     digests = [
-        "'sha256-" + base64.b64encode(hashlib.sha256(block.encode("utf-8")).digest()).decode() + "'"
+        "'sha256-"
+        + base64.b64encode(integrity_sha256(block.encode("utf-8")).digest()).decode()
+        + "'"
         for block in re.findall(r"<style[^>]*>(.*?)</style>", page, flags=re.DOTALL)
     ]
     if not digests:

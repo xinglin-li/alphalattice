@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import Any, Literal, Protocol, Self
 
 import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
@@ -28,7 +28,7 @@ def alpha_model_array_content_hash(value: npt.NDArray[np.generic]) -> str:
         SHA-256 identity over dtype spelling, shape representation and contiguous values.
     """
     contiguous = np.ascontiguousarray(value)
-    digest = sha256()
+    digest = integrity_sha256()
     digest.update(contiguous.dtype.str.encode("ascii"))
     digest.update(repr(contiguous.shape).encode("ascii"))
     digest.update(memoryview(contiguous).cast("B"))

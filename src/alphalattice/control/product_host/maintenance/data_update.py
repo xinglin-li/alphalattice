@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
-from hashlib import sha256
 from os.path import lexists
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -139,6 +138,7 @@ from alphalattice.foundation.research_foundation.contracts import (
 )
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
@@ -176,7 +176,7 @@ _RECOVERABLE_BLOCKS = {
 def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDataUpdateBinding:
     """Bind the profile, data policy and workspace's catalog, or the shipped catalog (EX)."""
     return WorkspaceDataUpdateBinding.seal(
-        profile_file_hash=sha256(PROFILE.read_bytes()).hexdigest(),
+        profile_file_hash=integrity_sha256(PROFILE.read_bytes()).hexdigest(),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
         feature_catalog_hash=workspace_feature_catalog(workspace).binding.catalog_hash,
     )

@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self, cast
 from uuid import UUID
@@ -95,6 +94,7 @@ from alphalattice.kernel.data_layer.backup import (
 )
 from alphalattice.kernel.data_layer.inputs import folder_files
 from alphalattice.kernel.data_layer.upgrade import Family
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -149,7 +149,7 @@ def confined(root: Path, relative: str) -> Path:
 def _digest_stream(stream: BinaryIO) -> str:
     """The content digest of one open file object, read whole from its start."""
 
-    digest = sha256()
+    digest = integrity_sha256()
     for block in iter(lambda: stream.read(1024 * 1024), b""):
         digest.update(block)
     return digest.hexdigest()

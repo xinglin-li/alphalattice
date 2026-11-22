@@ -4881,13 +4881,15 @@
     },
     "kernel identity port": {
       "description": "Canonical identity and digest operations through the kernel identity port.",
-      "covers": "the kernel-facing protocol for canonical identity and digest operations",
+      "covers": "canonical identity, integrity and change digests, and stat-trusted file digests",
       "owner": "alphalattice.kernel.identity",
       "defined_by": [
-        "alphalattice.kernel.identity"
+        "alphalattice.kernel.identity",
+        "alphalattice.kernel.identity._digests",
+        "alphalattice.kernel.identity.file_facts"
       ],
       "folds_in": [],
-      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+      "note": "Callers use the public port for the digest kind they need. BLAKE3 and xxHash load on first use."
     },
     "kernel locks port": {
       "description": "Lock and lease primitives through the kernel locks port.",

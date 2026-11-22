@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -28,8 +27,13 @@ from alphalattice.foundation.causal_outcomes.execution.compile import execution_
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.enums import ExecutionSessionStatus
+from alphalattice.kernel.identity import (
+    canonical_hash,
+    canonical_json,
+    identity_sha256,
+    integrity_sha256,
+)
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
-from alphalattice.kernel.shared_kernel.identity import _CANONICAL_ENCODER, canonical_hash
 
 from .contracts import (
     DecisionTradabilityReason,
@@ -282,13 +286,13 @@ class TradabilityArtifactStore:
         buffer = pa.BufferOutputStream()
         pq.write_table(ordered.replace_schema_metadata(metadata), buffer, compression="zstd")
         content = buffer.getvalue().to_pybytes()
-        payload_sha256 = hashlib.sha256(content).hexdigest()
+        payload_sha256 = integrity_sha256(content).hexdigest()
         serialized_metadata = json.dumps(
             {key.decode(): value.decode() for key, value in sorted(metadata.items())},
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        metadata_hash = hashlib.sha256(serialized_metadata).hexdigest()
+        metadata_hash = integrity_sha256(serialized_metadata).hexdigest()
         content_hash = canonical_hash(
             tradability_chunk_identity(
                 surface_kind=surface_kind,
@@ -345,7 +349,7 @@ class TradabilityArtifactStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        if hashlib.sha256(serialized).hexdigest() != chunk.metadata_hash:
+        if integrity_sha256(serialized).hexdigest() != chunk.metadata_hash:
             raise TradabilitySurfaceError("data_tradability.chunk_metadata_tampered")
         if parquet.metadata.num_rows != chunk.row_count:
             raise TradabilitySurfaceError("data_tradability.chunk_row_count_invalid")
@@ -387,7 +391,7 @@ class TradabilityArtifactStore:
         return ArtifactDescriptor(
             kind=f"data-tradability-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=hashlib.sha256(content).hexdigest(),
+            metadata_hash=integrity_sha256(content).hexdigest(),
             uri=self.uri(category, content_hash),
         )
 
@@ -852,13 +856,11 @@ def _history_identity(
         key = (bar.session_date, bar.listing_id)
         text = None if fragments is None else fragments.get(key)
         if text is None:
-            text = _CANONICAL_ENCODER.encode(
-                (bar.session_date, bar.open, bar.close, bar.volume, bar.provider)
-            )
+            text = canonical_json((bar.session_date, bar.open, bar.close, bar.volume, bar.provider))
             if fragments is not None:
                 fragments[key] = text
         parts.append(text)
-    return hashlib.sha256(("[" + ",".join(parts) + "]").encode("utf-8")).hexdigest()
+    return identity_sha256(("[" + ",".join(parts) + "]").encode("utf-8")).hexdigest()
 
 
 def _decision_row(

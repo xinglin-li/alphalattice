@@ -15,7 +15,6 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Protocol
 
 from alphalattice.foundation.market_data_ops.publication.projection import action_set_hash
@@ -72,6 +71,7 @@ from alphalattice.foundation.market_data_ops.storage.rebase import (
     recorded,
     standing,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.spans import span
 
 if TYPE_CHECKING:
@@ -136,7 +136,7 @@ def current_universe_maintenance_id(
             ",".join(sorted(set(authorized_full_history_listing_ids))),
         )
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 _Chunk = list[CurrentUniverseMaintenanceListing]

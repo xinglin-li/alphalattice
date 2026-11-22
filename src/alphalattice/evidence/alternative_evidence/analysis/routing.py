@@ -24,12 +24,13 @@ from what an actor later reports having checked.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Protocol
+
+from alphalattice.kernel.identity import integrity_sha256
 
 from ..documents.comparison import (
     COMPARISON_RULES_ID,
@@ -1034,14 +1035,14 @@ def _compare_pair(
         return compare_filings(entity_id=entity_id, later=later_units, earlier=earlier_units)
     for document in (later, earlier):
         if document.document_key not in digests:
-            digests[document.document_key] = hashlib.sha256(
+            digests[document.document_key] = integrity_sha256(
                 document.text.encode("utf-8")
             ).hexdigest()
 
     def units_hash(units: Sequence[ComparableUnit]) -> str:
         return FilingComparisonRecord.units_hash_of(
             tuple(
-                (u.handle, u.family, hashlib.sha256(u.text.encode("utf-8")).hexdigest())
+                (u.handle, u.family, integrity_sha256(u.text.encode("utf-8")).hexdigest())
                 for u in units
             )
         )

@@ -27,7 +27,6 @@ own absence.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -36,6 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
 CAMPAIGN_LEDGER_ROOT = "sec-campaigns"
@@ -364,7 +364,7 @@ class SecCampaignLedger:
 
 def _line_hash(previous: str, content: dict[str, object]) -> str:
     body = json.dumps({k: v for k, v in content.items() if k != "line_hash"}, sort_keys=True)
-    return hashlib.sha256((previous + body).encode("utf-8")).hexdigest()
+    return integrity_sha256((previous + body).encode("utf-8")).hexdigest()
 
 
 __all__ = [

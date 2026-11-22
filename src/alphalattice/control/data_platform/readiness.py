@@ -12,7 +12,6 @@ from dataclasses import InitVar, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
@@ -63,6 +62,7 @@ from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.identity import identity_sha256
 
 
 class WorkspaceReadinessStatus(StrEnum):
@@ -263,7 +263,7 @@ def _transition_id(
             "workspace-readiness-manifest-transition",
         )
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def daily_source_ready_at(session_close: datetime) -> datetime:

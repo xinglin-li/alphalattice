@@ -13,7 +13,6 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
@@ -164,6 +163,7 @@ from alphalattice.investment.sector_research.inputs.storage import SectorContext
 from alphalattice.investment.sector_research.inputs.surface import (
     compile_sector_context_arrays,
 )
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.quant.sector_history import (
     SectorHistory,
     reclassification_payload,
@@ -578,7 +578,7 @@ def _array_identity(values: npt.NDArray[Any]) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": list(contiguous.shape),
-                "content_sha256": sha256(contiguous.tobytes()).hexdigest(),
+                "content_sha256": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

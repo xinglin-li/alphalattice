@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Mapping
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FactorPipelineArtifactKind = Literal[
@@ -148,7 +148,7 @@ class FactorResearchArtifactStore:
         return ArtifactDescriptor(
             kind=f"factor-research-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=hashlib.sha256(serialized).hexdigest(),
+            metadata_hash=identity_sha256(serialized).hexdigest(),
             uri=self.uri(category, content_hash),
         )
 
@@ -341,7 +341,7 @@ class FactorResearchArtifactStore:
                     ArtifactDescriptor(
                         kind="factor-research-outcomes-manifests",
                         content_hash=path.stem,
-                        metadata_hash=hashlib.sha256(serialized).hexdigest(),
+                        metadata_hash=integrity_sha256(serialized).hexdigest(),
                         uri=uri,
                     ),
                 )

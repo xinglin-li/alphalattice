@@ -15,7 +15,6 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
@@ -92,6 +91,7 @@ from alphalattice.interface.local_application.thin_cli import (
 )
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
 from alphalattice.kernel.shared_kernel.waits import pause, spaced
 
@@ -1724,7 +1724,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
             omitted = {
                 "_omitted": "text",
                 "utf8_bytes": len(encoded),
-                "text_sha256": sha256(encoded).hexdigest(),
+                "text_sha256": integrity_sha256(encoded).hexdigest(),
             }
             if (path == "json" or path.endswith(".json")) and depth < 5 and available:
                 with suppress(ValueError):

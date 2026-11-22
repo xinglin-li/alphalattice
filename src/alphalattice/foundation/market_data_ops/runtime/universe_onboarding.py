@@ -16,7 +16,6 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
@@ -54,6 +53,7 @@ from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
 from alphalattice.kernel.data.table import coerce_daily_records
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.identity import identity_sha256
 
 
 class CurrentUniverseOnboardingStatus(StrEnum):
@@ -198,7 +198,7 @@ def _onboarding_id(
         payload += "|selected-candidates:" + ",".join(requested_listing_ids)
     if retry_of is not None:
         payload += "|retry-of:" + retry_of
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _listing_calendar(bootstrap: CurrentUniverseBootstrap) -> dict[str, str]:
@@ -1076,17 +1076,17 @@ class CurrentUniverseOnboarding:
         )
         if not affected:
             affected = tuple(sorted(item.listing_id for item, _exc in failures))
-        affected_hash = sha256("|".join(affected).encode("utf-8")).hexdigest()
+        affected_hash = identity_sha256("|".join(affected).encode("utf-8")).hexdigest()
         defer_count = self.store.hydration_defer_count(self.onboarding_id)
         backoff_seconds = (300, 900, 2700)[min(defer_count, 2)]
         jitter_seconds = (
             int(
-                sha256(f"{self.onboarding_id}:{defer_count}".encode()).hexdigest()[:8],
+                identity_sha256(f"{self.onboarding_id}:{defer_count}".encode()).hexdigest()[:8],
                 16,
             )
             % 31
         )
-        policy_hash = sha256(
+        policy_hash = identity_sha256(
             json.dumps(
                 {
                     "chunk_size": self.hydration_chunk_size,
@@ -1099,7 +1099,7 @@ class CurrentUniverseOnboarding:
             ).encode("utf-8")
         ).hexdigest()
         retry_after = observed_at + timedelta(seconds=backoff_seconds + jitter_seconds)
-        deferred_id = sha256(
+        deferred_id = identity_sha256(
             "|".join(
                 (
                     self.onboarding_id,
@@ -1612,7 +1612,7 @@ class CurrentUniverseOnboarding:
             sort_keys=True,
             separators=(",", ":"),
         )
-        return sha256(encoded.encode("utf-8")).hexdigest()
+        return identity_sha256(encoded.encode("utf-8")).hexdigest()
 
     def _outcome(
         self,

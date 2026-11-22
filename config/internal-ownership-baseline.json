@@ -10,6 +10,7 @@
     "data_layer",
     "factor_research",
     "feature_engine",
+    "identity",
     "knowledge",
     "market_data_ops",
     "portfolio_backtesting",

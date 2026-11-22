@@ -11,7 +11,6 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 import numpy as np
-import xxhash
 from numpy.typing import NDArray
 
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
@@ -114,6 +113,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     listing_returns,
     listing_sources,
 )
+from alphalattice.kernel.identity import change_xxh3_128_hex
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
@@ -825,7 +825,7 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    key = (xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")), canonical)
+    key = (change_xxh3_128_hex(canonical.encode("utf-8")), canonical)
     try:
         # A sealed identity may be the same in two workspaces; each must still have its bytes.
         read_factor_bundle(workspace, str(binding))
@@ -991,7 +991,7 @@ def _date_risk(
         allow_nan=False,
         separators=(",", ":"),
     )
-    key = (xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")), canonical)
+    key = (change_xxh3_128_hex(canonical.encode("utf-8")), canonical)
     cached = _DATE_RISK.get(key)
     if cached is not None:
         return cached
