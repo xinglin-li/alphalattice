@@ -37,8 +37,8 @@ Run each missing item's returned `facts.commands` (the Workbench's `facts.comman
 For a release wheel, use a separate directory; no checkout is needed. Extract its locked requirements and resolver overrides, then pass both files to the installer:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.7-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
-uv tool install --python 3.12 ./alphalattice-0.2.7-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.8-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
+uv tool install --python 3.12 ./alphalattice-0.2.8-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
 ```
 
 A checkout is its own agent project: configure it from its root, `uv run python -m alphalattice.interface.local_application.native_setup configure --host <codex-or-claude-code>`. On the wheel leg, configure the separate agent folder with the tool environment's own interpreter, beneath `uv tool dir`. In a shell with no agent session, give the doctor the same `--host` choice; otherwise it defaults to Codex:

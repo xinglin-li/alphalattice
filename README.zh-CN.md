@@ -17,20 +17,13 @@
 
 研究计算遵循每项结果声明的信息截止时间。市场名单使用当前上市公司，报告会说明由此带来的幸存者偏差，以及历史行业和价格记录的局限。验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
 
-## 0.2.7：现已提供
+## 0.2.8：现已提供
 
-- CLI 等待有上限：`--max-wait` 最长一小时，worker 随 Host 一起结束。
-- Codex 第一次使用时，会说明项目的信任设置，以及设置它所需的一步操作。
-- 被拒绝的问题转发会说明要修正什么（中英文均可）；因任务停止而中止的重跑会说明原因，以及如何恢复。
-- Evidence 搜索索引不再使用时可以清理，并按需重建；按旧锁文件构建的检索环境会被拒绝，并给出重建它的命令。
+- 同一数据根目录下的工作区共用一份事件日志和一个数据目录，每次更新只把行情变化发布一次。
+- 0.2.7 的工作区在 0.2.8 第一次启动时完成升级；升级前先做一份经过校验的备份，它也是回退的途径。
+- 同一台机器上，Daily、Evidence 和查询都更快了；具体秒数见发行说明。
 
-[0.2.7 发行说明（英文）](docs/public-source/release-notes.md#027)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
-
-使用 Claude Code 或 Codex 作为主导代理。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会显示每位成员使用的模型和 token 数量，并标明缺口。
-
-把本仓库的链接和一句研究意图交给代理：
-
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
+[0.2.8 发行说明（英文）](docs/public-source/release-notes.md#028)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
 
 <a id="two-ways-to-use-alphalattice"></a>
 
@@ -183,7 +176,7 @@
 
 ## 本次发布与后续方向
 
-**当前版本为 0.2.7。** 它为 CLI 等待设定上限，引导 Codex 在第一次使用时完成对项目的信任设置，并修复了若干 Evidence、Host 和检索问题。[发行说明](docs/public-source/release-notes.md#027)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
+**当前版本为 0.2.8。** 它重建了 AlphaLattice 保存数据的方式，一次启动即可升级 0.2.7 的工作区，并让 Daily、Evidence 和查询更快。[发行说明](docs/public-source/release-notes.md#028)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
 
 每个次版本提前规划范围；发行说明列出已运行的检查、已测工作负载和仍未证明的限制，期间的补丁让当前版本更顺畅。各版本借鉴已在其他地方得到验证的方法，并按 AlphaLattice 自身的规则调整：按日期限定的输入、封存的结果，以及你的决定权。
 
@@ -236,7 +229,7 @@
 
 ## 关于
 
-Last checked: 2026-11-14 against 0.2.7
+Last checked: 2026-11-21 against 0.2.8
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 

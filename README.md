@@ -24,22 +24,13 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.7, now
+## 0.2.8, now
 
-- CLI waits are bounded: `--max-wait` is capped at one hour, and workers end with the Host.
-- A first Codex session names the project's trust setting and the one step that sets it.
-- A refused question relay says what to fix, in English or Chinese, and a rerun stopped by its Task's stop explains why, with how to resume it.
-- Evidence search indexes can be retired when no longer in use and rebuilt on demand, and a retrieval environment built against an older lock is refused with the command that rebuilds it.
+- Workspaces under one data root share one event log and one catalog, and each update publishes its market changes there once.
+- A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back.
+- The Daily, Evidence and queries are faster on the same machine; the release notes give the measured seconds.
 
-See the [0.2.7 release notes](docs/public-source/release-notes.md#027) for each change. The versioned notes keep each measured workload and its limits.
-
-Use Claude Code or Codex as the lead. To see what a run used, open a session's
-**Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
-tokens each member used, and marks any gaps.
-
-Give your agent this repository's link and one intent:
-
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
+See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each change. The versioned notes keep each measured workload and its limits.
 
 ## Two ways to use AlphaLattice
 
@@ -262,7 +253,7 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.7 is the current release.** It bounds CLI waits, guides a first Codex session through trusting the project, and fixes several Evidence, Host and retrieval cases. The [release notes](docs/public-source/release-notes.md#027) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
+**0.2.8 is the current release.** It rebuilds how AlphaLattice keeps its data, upgrades a 0.2.7 workspace in one start, and makes the Daily, Evidence and queries faster. The [release notes](docs/public-source/release-notes.md#028) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -341,7 +332,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-11-14 against 0.2.7
+Last checked: 2026-11-21 against 0.2.8
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.
