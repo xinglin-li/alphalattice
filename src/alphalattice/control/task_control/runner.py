@@ -196,7 +196,7 @@ def _spanned[T](
     """
     ledger: SpanLedger | None = None
     try:
-        with stage_digests(digests), collect() as ledger:
+        with stage_digests(digests), collect((str(task_id), stage_id, phase)) as ledger:
             return call()
     finally:
         if ledger is not None and ledger.readout_value is not None:

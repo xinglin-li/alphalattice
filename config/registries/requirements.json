@@ -2646,6 +2646,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "shared_kernel.census_row_names_its_site_and_input": {
+      "description": "If a census row named the wrong site or input, or raised on an input it cannot read, the census would rank work at the wrong file and line or stop the work it measures.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "unit",
+      "seconds": 1
+    },
     "shared_kernel.child_processes_are_bounded_and_isolated": {
       "description": "A child starts quietly with closed input and UTF-8 text, and a timeout ends its process tree.",
       "owner": "alphalattice.kernel.shared_kernel",
@@ -2655,6 +2661,13 @@
     },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
+      "owner": "alphalattice.kernel.shared_kernel",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "shared_kernel.work_census_tags_each_repeat_of_an_input": {
+      "description": "If the work census tagged repeats wrongly, a repeat within one Task, a repeat by another Task, a verification at a process boundary and a write nothing reads would be ranked as the wrong lever.",
+      "lower_layer": "The tags are read from the rows each process writes to its own file, by DuckDB's JSON reader and window queries, so the proof needs a real file and a real query engine.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "integration",
       "seconds": 5

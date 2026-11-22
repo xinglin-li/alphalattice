@@ -28,6 +28,7 @@ from alphalattice.control.task_control.timing import (
     task_timing,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.shared_kernel import spans
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.spans import (
     absorb,
@@ -65,6 +66,8 @@ def test_a_span_counts_its_own_time_apart_from_the_spans_it_holds() -> None:
         with pytest.raises(ZeroDivisionError), span("compute", "outer"):
             _ = 1 / 0
     rows = _rows(readout(ledger))
+    # The work census is off by default: no span names an input, no readout carries its rows.
+    assert spans._CENSUS is None and ledger.census_rows == [] and "census" not in readout(ledger)
     outer = rows["compute", "outer", "host"]
     assert outer["count"] == 2
     held = (

@@ -122,6 +122,10 @@ RULES = [
             "config/performance-baselines.json",
             "config/store-structural-baseline.json",
             "scripts/antipattern-" + "decisions.md",
+            "scripts/work_census.py",
+            "scripts/work_census_site/sitecustomize.py",
+            "src/alphalattice/kernel/shared_kernel/work_census.*",
+            "tests/*/shared_kernel/test_work_census.py",
         ],
         "reason": (
             "OW8 keeps development campaigns, measurement records, probes and private QA "

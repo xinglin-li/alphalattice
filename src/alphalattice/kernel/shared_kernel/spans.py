@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import functools
 import os
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -66,6 +67,9 @@ _OPEN: list[SpanLedger] = []
 """The ledgers open in this process. A thread an owner starts does not inherit the context
 variable, so a span there counts toward the one open ledger, and toward none when several are."""
 _OPEN_LOCK = threading.Lock()
+_CENSUS: Any = None
+"""The work census, set in a process its development switch starts it in (``work_census``);
+None, the default, and every span skips it."""
 
 
 class SpanLedger:
@@ -84,6 +88,8 @@ class SpanLedger:
         self._cache_gaps: set[str] = set()
         self.overlapped = False
         self.readout_value: dict[str, Any] | None = None
+        self.scope: tuple[str, str, str] | None = None
+        self.census_rows: list[dict[str, Any]] = []
 
     def _stack(self) -> list[float]:
         stack: list[float] | None = getattr(self._local, "stack", None)
@@ -150,6 +156,10 @@ class SpanLedger:
 
     def absorb(self, readout: Mapping[str, Any]) -> None:
         """Add a worker call's readout: its spans as the worker's, its resources as workers'."""
+        if _CENSUS is not None:
+            for row in readout.get("census", ()):
+                row["attributes"]["alphalattice.work.origin"] = "worker"
+                self.census_rows.append(row)
         for row in readout.get("spans", ()):
             self.add(
                 str(row["category"]),
@@ -197,7 +207,7 @@ class SpanLedger:
 class span:
     """Count the block's time under ``category`` (and ``detail``) in the open ledger."""
 
-    __slots__ = ("_category", "_detail", "_ledger", "_started")
+    __slots__ = ("_category", "_census", "_detail", "_ledger", "_started")
 
     def __init__(self, category: str, detail: str | None = None) -> None:
         """Name the work; ``category`` is one of ``SPAN_CLASSES``, ``detail`` a short label."""
@@ -205,9 +215,12 @@ class span:
         self._detail = None if detail is None else detail[:MAXIMUM_DETAIL_CHARACTERS]
         self._ledger: SpanLedger | None = None
         self._started = 0.0
+        self._census: Any = None
 
     def __enter__(self) -> None:
         """Start the block's clock when a ledger is open; nothing otherwise."""
+        if _CENSUS is not None:
+            self._census = _CENSUS.opened(self._category, self._detail, sys._getframe(1))
         ledger = _ACTIVE.get() or _sole_open()
         self._ledger = ledger
         if ledger is not None:
@@ -231,6 +244,8 @@ class span:
                 inclusive=elapsed,
                 exclusive=max(0.0, elapsed - held),
             )
+        if self._census is not None:
+            _CENSUS.closed(self._census)
 
 
 def spanned(
@@ -298,13 +313,16 @@ def cpu_seconds_of(process_id: int) -> float | None:
 
 
 @contextmanager
-def collect() -> Iterator[SpanLedger]:
+def collect(scope: tuple[str, str, str] | None = None) -> Iterator[SpanLedger]:
     """Open a ledger for the block; ``readout`` reads it, with the process's own resources.
+
+    ``scope`` names the Task, stage and phase the block runs, for the work census alone.
 
     The process's CPU seconds and read/write bytes are deltas over the block. They are the
     whole process's, so a ledger that ``overlapped`` another open one shares them with it.
     """
     ledger = SpanLedger()
+    ledger.scope = scope
     started_at = datetime.now(UTC)
     cpu, read, written = _resources()
     started = time.perf_counter()
@@ -342,6 +360,8 @@ def collect() -> Iterator[SpanLedger]:
             "dropped_spans": ledger._dropped,
             **ledger.cache_readout(),
         }
+        if _CENSUS is not None:
+            _CENSUS.collected(ledger)
 
 
 def readout(ledger: SpanLedger) -> dict[str, Any]:
