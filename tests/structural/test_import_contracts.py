@@ -128,6 +128,7 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
         "ledger": -3,
         "storage": -2,
         "execution": -2,
+        "egress": -2,
         "door": -1,
         "types": -5,
     }
@@ -151,6 +152,10 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
                 "alphalattice.kernel.identity._digests -> blake3": "Load BLAKE3 on first use.",
                 "alphalattice.kernel.identity._digests -> xxhash": "Load xxHash on first use.",
                 "alphalattice.kernel.identity.eager -> blake3": "Load BLAKE3 on first use.",
+                "alphalattice.kernel.egress.lazy -> httpx": "fixture backend",
+            },
+            "owned_imports": {
+                "alphalattice.kernel.egress": ("httpx", "requests", "urllib.request")
             },
         }
     )
@@ -186,14 +191,48 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
         if banned:
             destination = f"alphalattice.{banned}" if banned.startswith("kernel.") else banned
             expected.add(f"alphalattice.{module[:-3].replace('/', '.')} -> {destination}")
+    outbound = (
+        ("external_httpx", "import httpx\nclient = httpx.Client()", "httpx"),
+        ("external_requests", "from requests import get", "requests"),
+        ("external_urllib", "from urllib.request import urlopen", "urllib.request"),
+        ("local_host", "from http.client import HTTPConnection", None),
+        ("egress_port", "from alphalattice.kernel.egress import EgressPort", None),
+    )
+    for module, body, _ in outbound:
+        (src / "control/high" / f"{module}.py").write_text(body + "\n", encoding="utf-8")
     found = import_contracts.check(tree, tmp_path / "evidence", registry)
-    actual = {line.removeprefix("lint-imports: - ").strip().split(" (l.", 1)[0] for line in found}
+    actual = {
+        line.removeprefix("lint-imports: - ").strip().split(" (l.", 1)[0]
+        for line in found
+        if not line.startswith("ruff:")
+    }
     assert actual == expected, {"missing": expected - actual, "unexpected": actual - expected}
     assert (
         import_contract_violations(
             {"alphalattice.kernel.identity._digests": lazy}, registry=registry
         )
         == ()
+    )
+    for module, _, refusal in outbound:
+        findings = [line for line in found if f"{module}.py" in line or f".{module} ->" in line]
+        if refusal is None:
+            assert not findings, findings
+        else:
+            assert any(refusal in line for line in findings), (module, found)
+    lazy = (
+        "from importlib import import_module\ndef read():\n"
+        '    return import_module("httpx")  # lazy: the source is read on demand.\n'
+    )
+    assert import_contract_violations(
+        {
+            "alphalattice.__init__": lazy,
+            "alphalattice.control.high.lazy": lazy,
+            "alphalattice.kernel.egress.lazy": lazy,
+        },
+        registry=registry,
+    ) == (
+        "alphalattice.control.high.lazy:3: owned-import httpx; use alphalattice.kernel.egress",
+        "alphalattice:3: owned-import httpx; use alphalattice.kernel.egress",
     )
     definition = (
         "from importlib import import_module\n"

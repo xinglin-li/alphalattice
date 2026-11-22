@@ -92,8 +92,11 @@ def _can_escape():
         return False
 
 
-def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(tmp_path: Path) -> None:
-    """Requirement: sandbox readback starts actual product sessions with no harness."""
+def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The direct Host readback still works when outbound requests are disabled."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     harvest = tmp_path / "harvest"
     workspace = harvest / "workspace"
     publish_research_workspace_manifest(workspace, ResearchWorkspaceManifest.research_only("probe"))

@@ -3777,7 +3777,6 @@
     "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "portfolio_strategy_lab.publication.finalization_ledger:PortfolioFinalizationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "model_validation.protected_gate:ProtectedValidationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
-    "product_host.composition.saved_object_readback:_request": "opens an HTTP request with urllib's opener",
     "product_host.composition.web_launcher:main": "opens the person's browser at a URL with webbrowser.open",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",

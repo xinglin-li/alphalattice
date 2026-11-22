@@ -14,6 +14,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -81,6 +82,11 @@ def _replayed_yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(YfData, "get", replay.get)
     YfData().cache_get.cache_clear()
+    monkeypatch.setattr(
+        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
+        lambda _source: None,
+        raising=False,
+    )
 
 
 def _yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
@@ -95,6 +101,136 @@ def _bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scen
         tmp_path / "yahoo-cache", earliest_allowed=REPLAY_START, target=REPLAY_THROUGH
     )
     return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
+
+
+@pytest.mark.proves("egress.market_session_checks_native_requests")
+@pytest.mark.parametrize(
+    ("offline_operation", "proxied", "destination", "refusal", "sent"),
+    [
+        (
+            None,
+            False,
+            "query2.finance.yahoo.com",
+            None,
+            ["query1.finance.yahoo.com", "query2.finance.yahoo.com"],
+        ),
+        (
+            None,
+            True,
+            "query2.finance.yahoo.com",
+            None,
+            ["query1.finance.yahoo.com"],
+        ),
+        (None, False, "other.invalid", "egress.host_not_allowed", ["query1.finance.yahoo.com"]),
+        ("daily", False, "query2.finance.yahoo.com", "egress.network_disabled", []),
+        ("hydration", False, "query2.finance.yahoo.com", "egress.network_disabled", []),
+    ],
+    ids=[
+        "allowed-redirect",
+        "proxy-disabled",
+        "refused-redirect",
+        "disabled",
+        "disabled-hydration",
+    ],
+)
+def test_the_native_market_session_enforces_egress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    offline_operation: str | None,
+    proxied: bool,
+    destination: str,
+    refusal: str | None,
+    sent: list[str],
+) -> None:
+    """Exercise the SDK's native request options without opening a connection."""
+    from urllib.parse import urlsplit
+
+    from curl_cffi import Curl, CurlOpt
+    from yfinance import Ticker, _http
+    from yfinance.config import YfConfig
+
+    from alphalattice.kernel.egress import EgressRefusal
+
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1" if offline_operation else "0")
+    monkeypatch.setitem(
+        YfConfig.network.data, "proxy", "http://configured-proxy.invalid:8080" if proxied else None
+    )
+    if proxied:
+        monkeypatch.setenv("HTTPS_PROXY", "http://inherited-proxy.invalid:8080")
+    cache_root = tmp_path / "yahoo-cache"
+    reset_yfinance_cache(cache_root)
+    urls = []
+
+    def send(_session, method, url, *, timeout, allow_redirects, proxies=None):
+        del proxies
+        urls.append(url)
+        assert method == "GET" and timeout == 8 and allow_redirects is False
+        headers = {"location": f"https://{destination}/data"} if len(urls) == 1 else {}
+        return SimpleNamespace(
+            url=url, headers=headers, status_code=302 if headers else 200, close=lambda: None
+        )
+
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("This case reached the native network or SDK history")
+
+    class ConnectionReady(Exception):
+        """The real libcurl handle is configured and about to connect."""
+
+    if proxied:
+        options = {}
+        setopt = Curl.setopt
+
+        def remember(curl, option, value):
+            options[option] = value
+            return setopt(curl, option, value)
+
+        def stop_at_connect(_curl):
+            urls.append(options[CurlOpt.URL].decode())
+            assert options.get(CurlOpt.PROXY) == ""
+            assert options[CurlOpt.TIMEOUT_MS] == 8000
+            assert options[CurlOpt.FOLLOWLOCATION] == 0
+            raise ConnectionReady("direct connection configured")
+
+        monkeypatch.setattr(Curl, "setopt", remember)
+        monkeypatch.setattr(Curl, "perform", stop_at_connect)
+    else:
+        monkeypatch.setattr(Curl, "perform", unexpected)
+        monkeypatch.setattr(_http.requests.Session, "request", send)
+
+    provider = YFinanceMarketDataProvider(cache_root)
+    try:
+        if offline_operation:
+            monkeypatch.setattr(Ticker, "history", unexpected)
+            window = {"start": REPLAY_START, "end": REPLAY_START}
+            fetch = (
+                partial(provider.fetch_daily, ("AAPL",), **window)
+                if offline_operation == "daily"
+                else partial(
+                    provider.fetch_hydration,
+                    listing_id="listing-aapl",
+                    provider_symbol="AAPL",
+                    **window,
+                )
+            )
+            with pytest.raises(ProviderFetchError, match=r"egress\.network_disabled") as caught:
+                fetch()
+            assert caught.value.code == refusal
+        else:
+            session = provider._ticker(provider._module(), "AAPL").session
+            url = "https://query1.finance.yahoo.com/data"
+            if proxied:
+                with pytest.raises(ConnectionReady, match="direct connection configured"):
+                    session.get(url, timeout=8)
+            elif refusal is None:
+                assert session.get(url, timeout=8).status_code == 200
+            else:
+                with pytest.raises(EgressRefusal) as caught:
+                    session.get(url, timeout=8)
+                assert caught.value.failure_code == refusal
+    finally:
+        if provider._session is not None:
+            provider._session.close()
+    assert [urlsplit(url).hostname for url in urls] == sent
 
 
 def _seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
@@ -157,7 +293,9 @@ def _yahoo_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, S
     provider = YFinanceMarketDataProvider(tmp_path / "yahoo-cache")
     info = {"AAPL": {"sector": " Technology ", "sectorKey": "technology"}}
     provider._runtime_module = SimpleNamespace(
-        Ticker=lambda symbol: SimpleNamespace(get_info=lambda: dict(info.get(symbol, {})))
+        Ticker=lambda symbol, *, session: SimpleNamespace(
+            get_info=lambda: dict(info.get(symbol, {}))
+        )
     )
     return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
 

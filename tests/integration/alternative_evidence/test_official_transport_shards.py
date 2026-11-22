@@ -99,8 +99,11 @@ def _json(payload: object, status: int = 200) -> httpx.Response:
     )
 
 
-def test_the_real_transport_admits_the_official_shard_path_and_nothing_wider() -> None:
+def test_the_real_transport_admits_the_official_shard_path_and_nothing_wider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The real transport admits the official shard path and nothing wider."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
 
     seen: list[httpx.Request] = []
 
@@ -154,6 +157,7 @@ def test_a_setup_refusal_retains_the_official_transport_status_and_sanitizes_its
 ) -> None:
     """regression: direct and retry-exhausted SEC failures preserve the HTTP status through
     the setup entry, without leaking a response body, contact header or exception text."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     from scripts import materialize_evidence_cro_authority as setup
 
     transport = _transport(
@@ -227,8 +231,11 @@ def _registry() -> SecIssuerRegistrySnapshot:
     )
 
 
-def test_campaign_budgets_refuse_before_the_request_and_count_every_byte_read() -> None:
+def test_campaign_budgets_refuse_before_the_request_and_count_every_byte_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Campaign budgets refuse before the request and count every byte read."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
 
     served: list[str] = []
 
@@ -270,10 +277,13 @@ def test_campaign_budgets_refuse_before_the_request_and_count_every_byte_read() 
         transport.close()
 
 
-def test_the_body_resource_budget_refuses_a_new_body_before_any_request() -> None:
+def test_the_body_resource_budget_refuses_a_new_body_before_any_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """requirement (section 4): the source bounds distinct filing bodies; the
     body beyond the bound is refused by name before a request, and the
     refusal is the resource's outcome while its siblings stand."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
 
     from tests.alternative_evidence_desk.incremental_acquisition_support import (
         EIGHT_K,
@@ -318,8 +328,11 @@ def test_the_body_resource_budget_refuses_a_new_body_before_any_request() -> Non
     assert snapshot.acquisition.body_request_count == 2
 
 
-def test_the_product_rate_spaces_official_requests_half_a_second_apart() -> None:
+def test_the_product_rate_spaces_official_requests_half_a_second_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """requirement: the product asks the SEC at most twice a second."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     slept: list[float] = []
     transport = HttpxSecOfficialTransport(
         user_agent=USER_AGENT,

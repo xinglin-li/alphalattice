@@ -7,6 +7,8 @@ AlphaLattice is Apache-2.0. Software, models and data retain their terms; [NOTIC
 
 The [agent guide](../../AGENTS.md) owns first-use authority and [your choices](../../AGENTS.md#what-only-a-person-decides). Acquisition starts closed; `ALPHALATTICE_NETWORK_DISABLED=1` forces it offline; calculations stay offline. Installation's `--network` consent is separate from workspace authority and that override. Local import accepts held pinned files.
 
+Each outbound request has a timeout and a source-specific list of HTTPS hosts. When a request follows a redirect, it checks the new destination before connecting. The list covers the existing Yahoo Finance, Wikipedia, SEC EDGAR, and Hugging Face sources, including the Hub's file-delivery hosts. The product's local Host remains reachable while outbound networking is disabled.
+
 ## Local retrieval models
 
 Evidence retrieval runs on the Host's retrieval store, which uses two packs: a static encoder and an English reranker. Setup (`--install retrieval-store`) fetches their pinned files from `https://huggingface.co/<repository>/resolve/<revision>/<file>` and verifies their hashes. Packs of the earlier recipes that a store already holds stay readable but are no longer installed.

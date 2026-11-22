@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
 import shutil
 import time
-import urllib.error
-import urllib.request
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -17,7 +16,11 @@ from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
-from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
+from alphalattice.interface.local_application.web import (
+    LOOPBACK_HOST,
+    SESSION_COOKIE,
+    SESSION_HEADER,
+)
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
 )
@@ -38,19 +41,21 @@ def _request(
     application = session.web.application
     base = session.url.rstrip("/")
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(f"{base}{path}", data=body, method=method)
-    request.add_header(SESSION_HEADER, application.session_token)
-    request.add_header("Cookie", f"{SESSION_COOKIE}={application.session_token}")
+    headers = {
+        SESSION_HEADER: application.session_token,
+        "Cookie": f"{SESSION_COOKIE}={application.session_token}",
+    }
     if method == "POST":
-        request.add_header("Origin", base)
+        headers["Origin"] = base
     if body is not None:
-        request.add_header("Content-Type", "application/json")
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        headers["Content-Type"] = "application/json"
+    connection = http.client.HTTPConnection(LOOPBACK_HOST, session.web.bound_port, timeout=timeout)
     try:
-        with opener.open(request, timeout=timeout) as response:
-            return response.status, dict(response.headers), response.read()
-    except urllib.error.HTTPError as error:
-        return error.code, dict(error.headers), error.read()
+        connection.request(method, path, body=body, headers=headers)
+        with connection.getresponse() as response:
+            return response.status, dict(response.getheaders()), response.read()
+    finally:
+        connection.close()
 
 
 def verdict(status: int, body: bytes) -> str:

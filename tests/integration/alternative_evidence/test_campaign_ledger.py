@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -61,15 +62,20 @@ def _serve(served: list[str], *, size: int = 500) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-def _transport(ledger: SecCampaignLedger, served: list[str]) -> HttpxSecOfficialTransport:
-    return HttpxSecOfficialTransport(
-        user_agent=USER_AGENT,
-        maximum_attempts=1,
-        transport=_serve(served),
-        monotonic=lambda: 0.0,
-        sleeper=lambda _seconds: None,
-        ledger=ledger,
-    )
+@contextmanager
+def _transport(ledger: SecCampaignLedger, served: list[str]) -> Iterator[HttpxSecOfficialTransport]:
+    """Exercise the campaign through its in-memory HTTP transport."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv(OFFLINE_SWITCH, "0")
+        with HttpxSecOfficialTransport(
+            user_agent=USER_AGENT,
+            maximum_attempts=1,
+            transport=_serve(served),
+            monotonic=lambda: 0.0,
+            sleeper=lambda _seconds: None,
+            ledger=ledger,
+        ) as transport:
+            yield transport
 
 
 def _lines(path: Path) -> list[dict[str, object]]:
@@ -80,7 +86,6 @@ def test_a_resumed_campaign_spends_only_its_remainder_and_refuses_before_exceedi
     tmp_path: Path,
 ) -> None:
     """A resumed campaign spends only its remainder and refuses before exceeding it."""
-
     path = tmp_path / "qa-campaign.jsonl"
     served: list[str] = []
 
@@ -152,8 +157,10 @@ def test_a_resumed_campaign_spends_only_its_remainder_and_refuses_before_exceedi
 
 def test_an_unsettled_reservation_counts_at_its_cap_and_a_partial_transfer_at_what_was_read(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unsettled reservation counts at its cap and a partial transfer at what was read."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
 
     path = tmp_path / "qa-campaign.jsonl"
     ledger = SecCampaignLedger.open(path, declaration=DECLARATION)

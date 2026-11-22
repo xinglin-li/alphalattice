@@ -285,7 +285,10 @@ def test_live_calls_follow_the_admitted_evidence_classes(tmp_path: Path) -> None
     assert any("/companyfacts/" in value for value in facts_transport.calls)
 
 
-def test_http_transport_enforces_retry_size_failure_and_official_boundaries() -> None:
+def test_http_transport_enforces_retry_size_failure_and_official_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
     calls = 0
     clock = [0.0]
     sleeps: list[float] = []

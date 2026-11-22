@@ -147,10 +147,35 @@ def test_an_interrupted_install_is_continued_and_a_bad_file_is_refused(tmp_path:
     )
 
 
+@pytest.mark.proves("egress.outbound_checks_each_destination")
+@pytest.mark.parametrize(
+    "case",
+    [
+        None,
+        ("huggingface.co", None, False, None, ["huggingface.co"]),
+        ("huggingface.co", "/resolved", False, None, ["huggingface.co", "huggingface.co"]),
+        ("other.invalid", None, False, "egress.host_not_allowed", []),
+        (
+            "huggingface.co",
+            "https://other.invalid/resolved",
+            False,
+            "egress.host_not_allowed",
+            ["huggingface.co"],
+        ),
+        ("huggingface.co", None, True, "egress.network_disabled", []),
+    ],
+    ids=["resume", "allowed", "same-host-redirect", "off-list", "off-list-redirect", "disabled"],
+)
 def test_a_broken_download_continues_from_its_last_byte(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, str | None, bool, str | None, list[str]] | None,
 ) -> None:
-    """A broken download continues from its last byte."""
+    """An admitted download can resume; each new destination must be admitted."""
+    if case is not None:
+        _check_egress_destination(monkeypatch, *case)
+        return
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
 
     import httpx
 
@@ -191,8 +216,9 @@ def test_a_broken_download_continues_from_its_last_byte(
         return httpx.Response(206 if start else 200, headers=headers, content=body)
 
     received: list[tuple[str, int, int | None]] = []
-    client = httpx.Client(transport=httpx.MockTransport(serve))
-    fetch = model_store.hub_fetcher(received=lambda *value: received.append(value), client=client)
+    fetch = model_store.hub_fetcher(
+        received=lambda *value: received.append(value), transport=httpx.MockTransport(serve)
+    )
     status = model_store.install_pack(tmp_path / "store", pack, fetch)
     assert status.status == model_store.PACK_INSTALLED
     third = len(payload) // 3
@@ -209,6 +235,45 @@ def test_a_broken_download_continues_from_its_last_byte(
     model_store.install_pack(other, pack, fetch)
     assert ranges == ["bytes=1000-"]
     assert model_store.pack_status(other, pack).status == model_store.PACK_INSTALLED
+
+
+def _check_egress_destination(
+    monkeypatch: pytest.MonkeyPatch,
+    entry: str,
+    redirect: str | None,
+    offline: bool,
+    refusal: str | None,
+    visited: list[str],
+) -> None:
+    """Use the HTTP transport seam to observe which requests reach the wire."""
+    import httpx
+
+    from alphalattice.kernel.egress import EgressRefusal, HttpEgress, HttpSource
+
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1" if offline else "0")
+    sent: list[str] = []
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.host)
+        assert request.extensions["timeout"] == {
+            "connect": 30.0,
+            "read": 60.0,
+            "write": 60.0,
+            "pool": 60.0,
+        }
+        if redirect is not None and request.url.path == "/model":
+            return httpx.Response(302, headers={"location": redirect})
+        return httpx.Response(200, content=b"pinned pack bytes")
+
+    with HttpEgress(HttpSource.MODEL_HUB, transport=httpx.MockTransport(serve)) as egress:
+        url = f"https://{entry}/model"
+        if refusal is None:
+            assert egress.get(url).content == b"pinned pack bytes"
+        else:
+            with pytest.raises(EgressRefusal) as caught:
+                egress.get(url)
+            assert caught.value.failure_code == refusal
+    assert sent == visited
 
 
 def test_a_recipe_binds_only_from_installed_verified_packs(tmp_path: Path) -> None:

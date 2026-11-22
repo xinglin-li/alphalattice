@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.kernel.egress import EgressPort, EgressTransportError, HttpEgress, HttpSource
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge.hybrid_contracts import (
     BGE_MODEL_ARTIFACT_SHA256,
@@ -574,7 +575,7 @@ DOWNLOAD_ATTEMPTS = 5
 def hub_fetcher(
     *,
     received: Received | None = None,
-    client: Any = None,
+    transport: object | None = None,
 ) -> Fetcher:
     """Create the pinned HTTPS fetcher for a caller-admitted model-pack download.
 
@@ -588,38 +589,31 @@ def hub_fetcher(
 
     Args:
         received: Optional observer of file name, received bytes and total.
-        client: Optional HTTPS client supplied by the caller.
+        transport: Optional HTTP transport for a controlled replay.
 
     Returns:
         Pinned-revision fetcher using resumable partial arrivals; network admission is the caller's
         responsibility.
     """
-    import httpx  # lazy: optional download.
 
     def fetch(pack: PackDefinition, name: str, staging: Path) -> Path:
         destination = staging / name
         partial = destination.with_name(destination.name + PARTIAL_SUFFIX)
         destination.parent.mkdir(parents=True, exist_ok=True)
         url = f"{HUB_ENDPOINT}/{pack.repository}/resolve/{pack.revision}/{name}"
-        session = client or httpx.Client(
-            follow_redirects=True, timeout=httpx.Timeout(60.0, connect=30.0)
-        )
-        try:
+        with HttpEgress(HttpSource.MODEL_HUB, transport=transport) as session:
             for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
                 start = partial.stat().st_size if partial.is_file() else 0
                 try:
                     _transfer(session, url, name, partial, start, received)
                     break
-                except (httpx.TransportError, _RetryableStatus) as error:
+                except (EgressTransportError, _RetryableStatus) as error:
                     if attempt == DOWNLOAD_ATTEMPTS:
                         raise ModelStoreError(
                             f"model_store.download_interrupted:{name}; "
                             "installing again continues it"
                         ) from error
                     time.sleep(min(30.0, 2.0**attempt))
-        finally:
-            if client is None:
-                session.close()
         os.replace(partial, destination)
         return destination
 
@@ -631,7 +625,7 @@ class _RetryableStatus(RuntimeError):
 
 
 def _transfer(
-    session: Any,
+    session: EgressPort,
     url: str,
     name: str,
     partial: Path,
@@ -639,7 +633,7 @@ def _transfer(
     received: Received | None,
 ) -> None:
     headers = {"Range": f"bytes={start}-"} if start else {}
-    with session.stream("GET", url, headers=headers) as response:
+    with session.stream(url, headers=headers) as response:
         if response.status_code == 416 and start:
             # The partial already holds every byte the file has: it is whole.
             return

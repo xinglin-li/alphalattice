@@ -1,6 +1,6 @@
 {
   "schema": "alphalattice.playpen.package-architecture",
-  "note": "The import law: levels, peers, backend owners and retired owners. Kernel backend declarations in deferred_imports use 'importer -> external_root' and apply only inside a function. devtools.architecture.import_contracts builds the import-linter and Ruff configuration at run time.",
+  "note": "The import law: levels, peers, owned external imports and retired owners. Kernel backend declarations in deferred_imports use 'importer -> external_root' and apply only inside a function. devtools.architecture.import_contracts builds the import-linter and Ruff configuration at run time.",
   "packages": [
     {
       "package_id": "actor_execution",
@@ -705,6 +705,7 @@
     "xxhash": "identity"
   },
   "deferred_imports": {
+    "alphalattice.kernel.egress.http -> httpx": "Load the outbound HTTP backend only when a source opens or reads its session.",
     "alphalattice.evidence.alternative_evidence.analysis.contracts": "Read the Evidence topic declaration only when a view request names a topic.",
     "alphalattice.interface.local_application.portfolio_request_fields.data": "Validate Data and preparation requests using their declared fields.",
     "alphalattice.interface.local_application.portfolio_request_fields.feature": "Validate Feature and trial requests using their declared fields.",
@@ -938,6 +939,9 @@
     "alphalattice.investment.portfolio_strategy_lab.application.decision_updates::<module>": {
       "alphalattice.foundation.causal_outcomes.execution.compile._ELIGIBLE": "The existing eligible decision states remain the equality fence."
     }
+  },
+  "owned_imports": {
+    "alphalattice.kernel.egress": ["httpx", "requests", "urllib.request"]
   },
   "retired_imports": {
     "agent_runtime.evidence_reading_efficiency": "retired by a cutover; its absence was asserted by test_retired_production_owners_are_absent",

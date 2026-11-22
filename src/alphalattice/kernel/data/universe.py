@@ -7,11 +7,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from importlib import import_module
-from typing import Protocol, cast
+from typing import Protocol
 
 from alphalattice.kernel.data.enums import LicenseClass, UniverseIndex
 from alphalattice.kernel.data.errors import DataProviderError
+from alphalattice.kernel.egress import EgressPort, HttpEgress, HttpSource
 from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 from alphalattice.kernel.shared_kernel.environment import offline
 
@@ -75,15 +75,20 @@ class FetchedUniverseSource:
 class HttpResponse(Protocol):
     """Minimal HTTP response consumed by the universe source fetcher."""
 
-    status_code: int
-    content: bytes
-    headers: Mapping[str, str]
+    @property
+    def status_code(self) -> int:
+        """Return the response's HTTP status."""
+        ...
 
+    @property
+    def content(self) -> bytes:
+        """Return the buffered response body."""
+        ...
 
-class _HttpClient(Protocol):
-    def get(self, url: str) -> HttpResponse: ...
-
-    def close(self) -> None: ...
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """Return the response headers."""
+        ...
 
 
 Fetcher = Callable[[str], HttpResponse]
@@ -134,22 +139,6 @@ def _guard_network() -> None:
         raise DataProviderError("network access is disabled", code="data.network_disabled")
 
 
-def _load_httpx_client() -> tuple[_HttpClient, type[BaseException]]:
-    httpx_module = import_module("httpx")  # lazy: online.
-    timeout_factory = cast(Callable[..., object], httpx_module.Timeout)
-    client_factory = cast(Callable[..., _HttpClient], httpx_module.Client)
-    timeout_exception = cast(
-        type[BaseException],
-        httpx_module.TimeoutException,
-    )
-    client = client_factory(
-        timeout=timeout_factory(connect=10.0, read=30.0, write=30.0, pool=10.0),
-        headers={"User-Agent": "AlphaLattice/0.0 current-universe-research"},
-        follow_redirects=True,
-    )
-    return client, timeout_exception
-
-
 def fetch_universe_source(
     config: UniverseSourceConfig,
     *,
@@ -159,19 +148,21 @@ def fetch_universe_source(
 ) -> FetchedUniverseSource:
     """Fetch and validate a frozen source under bounded retries and network control."""
     _guard_network()
-    owned_client: _HttpClient | None = None
-    timeout_errors: tuple[type[BaseException], ...] = (TimeoutError,)
+    owned_client: EgressPort | None = None
+    active_fetcher: Fetcher
     if fetcher is None:
-        owned_client, httpx_timeout = _load_httpx_client()
-        timeout_errors = (httpx_timeout, TimeoutError)
-        active_fetcher = cast(Fetcher, owned_client.get)
+        owned_client = HttpEgress(
+            HttpSource.UNIVERSE,
+            headers={"User-Agent": "AlphaLattice/0.0 current-universe-research"},
+        )
+        active_fetcher = owned_client.get
     else:
         active_fetcher = fetcher
     try:
         for attempt in range(1, 4):
             try:
                 response = active_fetcher(config.uri)
-            except timeout_errors as exc:
+            except TimeoutError as exc:
                 if attempt == 3:
                     raise DataProviderError(
                         "universe source timed out",

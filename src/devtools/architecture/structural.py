@@ -273,6 +273,8 @@ class PackageArchitectureRegistry(_Contract):
 
     retired_imports: dict[str, str] = Field(default_factory=dict)
     """Each logical owner a cutover retired, with its reason; import_contracts.build bans it."""
+    owned_imports: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    """Product package paths and the external imports each owns."""
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> PackageArchitectureRegistry:
@@ -316,6 +318,17 @@ class PackageArchitectureRegistry(_Contract):
             for name in self.retired_imports
         ):
             raise ValueError("a retired import is a dotted logical module name")
+        owned_names = [name for imports in self.owned_imports.values() for name in imports]
+        if len(owned_names) != len(set(owned_names)):
+            raise ValueError("an external import has more than one declaration")
+        for owner, imports in self.owned_imports.items():
+            if not re.fullmatch(r"alphalattice(?:\.[a-z_][a-z0-9_]*)+", owner):
+                raise ValueError("an import owner is a product package path")
+            if not imports or any(
+                not re.fullmatch(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*", name)
+                for name in imports
+            ):
+                raise ValueError("an owned import is a dotted module name")
         if any(not reason.strip() for reason in reasons):
             raise ValueError("package import declarations require their reason")
         return self
@@ -1526,6 +1539,9 @@ def import_contract_violations(
 
     this = sys.modules[__name__]
 
+    external = {
+        name: owner for owner, imports in registry.owned_imports.items() for name in imports
+    }
     seen: set[tuple[str, str]] = set()  # this module's private imports, per module
     eager: set[str] = set()  # this module's top-level imports, per module
 
@@ -1558,6 +1574,7 @@ def import_contract_violations(
                 )
                 if kind == "call":
                     check_kernel_load(module, located, deferred, target)
+                    check_owned_import(module, located, target)
 
     def check_kernel_load(module: str, located: str, deferred: bool, target: str) -> None:
         # Import Linter sees statements. Apply the same boundaries to literal load calls
@@ -1583,6 +1600,15 @@ def import_contract_violations(
             and target != destination.physical_namespace_target
         ):
             out.append(f"{located}: kernel-port-required {target}")
+
+    def check_owned_import(module: str, located: str, target: str) -> None:
+        if module.partition(".")[0] != "alphalattice":
+            return
+        for name, importer in external.items():
+            if (target == name or target.startswith(name + ".")) and not (
+                module == importer or module.startswith(importer + ".")
+            ):
+                out.append(f"{located}: owned-import {target}; use {importer}")
 
     def check_target(
         module: str, located: str, scope: str, deferred: bool, imported: str, target: str

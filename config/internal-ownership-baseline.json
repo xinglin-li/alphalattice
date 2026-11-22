@@ -8,6 +8,7 @@
     "causal_outcomes",
     "data",
     "data_layer",
+    "egress",
     "factor_research",
     "feature_engine",
     "identity",

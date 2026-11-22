@@ -1396,6 +1396,20 @@
       "layer": "integration",
       "seconds": 2
     },
+    "egress.market_session_checks_native_requests": {
+      "description": "The market SDK's native session checks its timeout, each destination and the process offline switch before native sends.",
+      "owner": "alphalattice.kernel.egress",
+      "layer": "contract",
+      "seconds": 2,
+      "lower_layer": "The contract checks that the installed market SDK actually uses the supplied session and that it runs the destination check on its native request path."
+    },
+    "egress.outbound_checks_each_destination": {
+      "description": "The outbound HTTP reader checks each destination, including redirects and the process offline switch, before the transport sends.",
+      "owner": "alphalattice.kernel.egress",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "The installed client's redirect implementation must call the guard before each native transport request, which a unit test of the guard cannot show."
+    },
     "evaluation.answer_observer_judges_its_own_hosts": {
       "description": "A test's teardown judges the answers of the Hosts it or a wider fixture started and fails naming their Task; another scope's Host neither fails it nor goes unsaid.",
       "owner": "devtools.evaluation",
