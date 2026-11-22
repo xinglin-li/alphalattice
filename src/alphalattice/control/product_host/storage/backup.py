@@ -688,8 +688,11 @@ class WorkspaceBackups:
             except (OSError, ValueError, TypeError):
                 unreadable = True
                 continue
-            if value.workspace_path == str(self.workspace) and value.generation_hash.startswith(
-                generation_hash
+            # A full hash names its body wherever it was taken; a prefix stays this folder's,
+            # since copies of one workspace share its id.
+            if value.generation_hash == generation_hash or (
+                value.workspace_path == str(self.workspace)
+                and value.generation_hash.startswith(generation_hash)
             ):
                 found.append(value)
         exact = [value for value in found if value.generation_hash == generation_hash]
@@ -756,6 +759,9 @@ class WorkspaceBackups:
         if target.is_relative_to(self.root) or target == self.workspace:
             raise WorkspaceBackupError("workspace_backup.restore_target_invalid")
         chosen = self._generation(generation_hash)
+        # A whole hash selects a generation from any folder, so it must still be this workspace's.
+        if chosen.workspace_id != self.workspace_id:
+            raise WorkspaceBackupError("workspace_backup.generation_invalid")
         target.mkdir(parents=True, exist_ok=True)
         files = tables = 0
         task_control: list[BackupEntry] = []
