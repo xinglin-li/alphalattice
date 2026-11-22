@@ -3164,6 +3164,12 @@
       "lower_layer": "The body is kept through the Host's StorePort and its log, which the unit layer cannot open.",
       "retired": "2026-11-20: the opt-in derived Panel bodies are retired; the stored chunk is the one reader"
     },
+    "workspace_runtime.panel_preprocessing_marker_follows_recorded_methods": {
+      "description": "A Panel keeps its sealed preprocessing marker when the incoming method matches or follows recorded fingerprint successors, and refuses other method or policy changes.",
+      "owner": "alphalattice.control.workspace_runtime",
+      "layer": "unit",
+      "seconds": 1
+    },
     "workspace_runtime.panel_reads_key_a_chunk_by_its_binding_year_and_part": {
       "description": "A derived Panel keep is keyed by the chunk's recorded binding, year and part; stored keeps nothing; unknown or unserved settings are refused.",
       "owner": "alphalattice.control.workspace_runtime",
