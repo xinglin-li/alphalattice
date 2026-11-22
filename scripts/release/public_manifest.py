@@ -397,6 +397,8 @@ RULES = [
             ".claude/agents/**",
             ".claude/skills/**",
             ".claude/settings.json",
+            ".claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json",
             "skills/**",
         ],
         "reason": (

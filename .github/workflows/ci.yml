@@ -91,7 +91,7 @@ jobs:
           $wheel = (Get-ChildItem "${{ runner.temp }}/dist/alphalattice-*-py3-none-any.whl").FullName
           $requirements = "${{ runner.temp }}/alphalattice-runtime-requirements.txt"
           $overrides = "${{ runner.temp }}/alphalattice-runtime-overrides.txt"
-          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" $wheel $requirements $overrides
+          uv run --locked python -m scripts.release.install_smoke --wheel $wheel --out "${{ runner.temp }}" --assets-only
           uv tool install --python 3.12 $wheel --with-requirements $requirements --constraints $requirements --overrides $overrides
           "ALPHALATTICE_TEST_WHEEL=$wheel" >> $env:GITHUB_ENV
       - name: Smoke the installed command in fresh PowerShell and Git Bash
@@ -167,16 +167,32 @@ jobs:
           tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
           -n 1 -m "not real_evidence"
           --basetemp "${{ runner.temp }}/alphalattice-first-use"
-      - name: Build and install the wheel; smoke in fresh bash
+      - name: Build the distribution wheel
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+      - name: Check the pinned launcher and Claude Code plugin in fresh folders
+        run: |
+          wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
+          test "${#wheels[@]}" -eq 1
+          claude_dir="${RUNNER_TEMP//\\//}/claude-install"
+          npm install --prefix "$claude_dir" --no-audit --no-fund @anthropic-ai/claude-code@2.1.328
+          package="$claude_dir/node_modules/@anthropic-ai/claude-code"
+          claude_bin=$(node -p 'require(process.argv[1]).bin.claude' "$package/package.json")
+          uv run --locked python -m scripts.release.install_smoke --wheel "${wheels[0]}" \
+            --claude "$package/$claude_bin" --out "$RUNNER_TEMP/fresh-install.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fresh-install-${{ matrix.os }}
+          path: ${{ runner.temp }}/fresh-install.json
+          if-no-files-found: error
+      - name: Install the wheel and smoke in fresh bash
         if: runner.os != 'Windows'
         run: |
-          uv build --wheel --out-dir "$RUNNER_TEMP/dist"
           wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
           test "${#wheels[@]}" -eq 1
           wheel="${wheels[0]}"
           requirements="$RUNNER_TEMP/alphalattice-runtime-requirements.txt"
           overrides="$RUNNER_TEMP/alphalattice-runtime-overrides.txt"
-          uv run python -c "import sys, zipfile, pathlib; wheel = zipfile.ZipFile(sys.argv[1]); pathlib.Path(sys.argv[2]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); pathlib.Path(sys.argv[3]).write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))" "$wheel" "$requirements" "$overrides"
+          uv run --locked python -m scripts.release.install_smoke --wheel "$wheel" --out "$RUNNER_TEMP" --assets-only
           uv tool install --python 3.12 "$wheel" --with-requirements "$requirements" --constraints "$requirements" --overrides "$overrides"
           uv run python scripts/release/wheel_smoke.py --command "$UV_TOOL_BIN_DIR/alphalattice" --output "$RUNNER_TEMP/smoke-bash.json" --fresh-shell bash
 

@@ -46,7 +46,21 @@ inputs request, repair the invalid fields and plan again with the same research 
 
 ## Open the workspace
 
-At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+At first use and any refusal naming a missing dependency, run the doctor for the
+active installation. In a source checkout, run `uv run python -m alphalattice.interface.local_application.native_setup doctor`
+from its root after `uv sync --locked --all-extras`. For a persistent wheel, run the
+same module with the tool environment's Python beneath `uv tool dir`.
+
+From the pinned Claude Code launch folder, keep the launch command's data-root
+setting and `uvx` options. Replace the command from `alphalattice` through
+`--no-browser` with this one, which uses the pinned wheel's Python.
+
+```text
+python -m alphalattice.interface.local_application.native_setup --project . doctor --host claude-code
+```
+
+Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs,
+and relay one question before an outside-lock install.
 
 Data extensions come from the locked DuckLake and SQLite scanner packages. Do not use runtime SQL `INSTALL` to repair them; restore the locked data dependencies and follow the named refusal.
 

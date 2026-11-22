@@ -1,0 +1,23 @@
+{
+  "name": "alphalattice",
+  "version": "0.2.10",
+  "description": "Run AlphaLattice research with its local Host, shared skill and specialist roles.",
+  "author": {
+    "name": "AlphaLattice"
+  },
+  "homepage": "https://github.com/xinglin-li/alphalattice",
+  "license": "Apache-2.0",
+  "skills": [
+    "./.agents/skills/alphalattice-research"
+  ],
+  "agents": [
+    "./.claude/agents/alphalattice_alpha.md",
+    "./.claude/agents/alphalattice_cro.md",
+    "./.claude/agents/alphalattice_data.md",
+    "./.claude/agents/alphalattice_evidence_analyst.md",
+    "./.claude/agents/alphalattice_factor.md",
+    "./.claude/agents/alphalattice_maintainer.md",
+    "./.claude/agents/alphalattice_portfolio.md",
+    "./.claude/agents/alphalattice_risk.md"
+  ]
+}

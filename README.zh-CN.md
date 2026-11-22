@@ -62,6 +62,18 @@
 
 <a id="before-you-start"></a>
 
+## 安装并启动
+
+[0.2.10](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)
+发布后，在选定的目录中执行这条 PowerShell 命令。
+
+```powershell
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+```
+
+[安装并启动](docs/public-source/install.md)提供 macOS 和 Linux 命令及 Claude Code 插件的用法。
+你也可以把本仓库链接和研究意图交给智能体。
+
 ## 开始之前
 
 - **环境：** Windows 是受支持的平台。安装使用 Python 3.12、uv 和锁定的依赖，配合 Claude Code 或 Codex。在 Linux 和 macOS 上，CI 检查安装和离线首次使用；其他使用场景尚无保证。在 macOS 上，请安装 OpenMP 运行库：

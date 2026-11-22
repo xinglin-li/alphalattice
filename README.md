@@ -83,6 +83,19 @@ See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each 
 
 </details>
 
+## Install and start
+
+When [0.2.10](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)
+is available, run this PowerShell command in the folder you want to use.
+
+```powershell
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+```
+
+[Install and start](docs/public-source/install.md) has the macOS and Linux
+command and the Claude Code plugin. You can also give your agent this repository link and your
+research intent.
+
 ## Before you start
 
 - **Environment:** Windows is the supported platform. Setup uses Python 3.12, uv

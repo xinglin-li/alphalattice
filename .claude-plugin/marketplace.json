@@ -1,0 +1,16 @@
+{
+  "name": "alphalattice-tools",
+  "owner": {
+    "name": "AlphaLattice"
+  },
+  "metadata": {
+    "description": "Research with AlphaLattice's local Host."
+  },
+  "plugins": [
+    {
+      "name": "alphalattice",
+      "source": "./",
+      "description": "AlphaLattice research skill, specialist roles and local Host entry."
+    }
+  ]
+}

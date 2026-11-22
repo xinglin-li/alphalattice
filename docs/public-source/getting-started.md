@@ -1,6 +1,9 @@
 # Getting started
 Last checked: 2026-11-04 against 0.2.4
 
+For the versioned wheel command and Claude Code plugin, see
+[Install and start](install.md) / [安装并启动](install.md).
+
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
 [setup procedure](../../.agents/skills/alphalattice-research/references/operating.md)
