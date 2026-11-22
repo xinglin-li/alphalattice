@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Literal, cast
@@ -12,6 +12,7 @@ from typing import Literal, cast
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 WorkProgressStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "REUSED_EXACT"]
@@ -146,7 +147,7 @@ class WorkspaceProgressPublisher:
             The projection written atomically to the workspace.
 
         """
-        now = datetime.now(UTC)
+        now = utc_now()
         with self._lock:
             if update.operation_id != self._operation_id or update.stage_id != self._stage_id:
                 self._operation_id = update.operation_id

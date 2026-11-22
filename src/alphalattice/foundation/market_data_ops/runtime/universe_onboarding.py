@@ -49,6 +49,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     HydrationDeferred,
     MarketDataRepository,
 )
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
 from alphalattice.kernel.data.table import coerce_daily_records
@@ -465,7 +466,7 @@ class CurrentUniverseOnboarding:
         minimum_target_listings: int | None = None,
     ) -> CurrentUniverseOnboardingOutcome:
         """Advance at most ``work_budget`` complete listing units, then return safely."""
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("onboarding observed_at must be timezone-aware")
         if self.as_of_session > now.date():

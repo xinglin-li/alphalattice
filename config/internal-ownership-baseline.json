@@ -6,6 +6,7 @@
     "alpha_research",
     "causal_inputs",
     "causal_outcomes",
+    "clock",
     "data",
     "data_layer",
     "egress",

@@ -18,7 +18,7 @@ import sys
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from itertools import islice
 from pathlib import Path
 from typing import Any, Final, cast
@@ -48,6 +48,7 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
@@ -890,7 +891,7 @@ def observation_request(
             event["usage"],
             None if usage_goal_id is None else str(UUID(usage_goal_id)),
         ]
-        occurred_at = _aware(event["usage"]["last_at"]) or datetime.now(UTC).isoformat()
+        occurred_at = _aware(event["usage"]["last_at"]) or utc_now().isoformat()
     else:
         raise NativeBridgeError("native_bridge.event_source_invalid")
     if len(binding.session_id) > CORRELATION_CHARACTERS:

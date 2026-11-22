@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import struct
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -32,6 +32,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     decision_hash,
 )
 from alphalattice.interface.local_application.questions import person_question, relayed_question
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import identity_blake3
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
@@ -390,7 +391,7 @@ def target_sessions(
     if point is None:
         raise ValueError("first_use.date_outside_calendar")
     ready = information_available_at(point.formation_close_at)
-    available = ready <= (now or datetime.now(UTC))
+    available = ready <= (now or utc_now())
     exchange, mine = ready.astimezone(ZoneInfo("America/New_York")), ready.astimezone(here)
     yours = (
         ""

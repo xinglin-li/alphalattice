@@ -32,7 +32,6 @@ import os
 import secrets
 import sqlite3
 import threading
-import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager, nullcontext
 from datetime import UTC, datetime, timedelta
@@ -45,6 +44,7 @@ import alphalattice.kernel.data_layer.knowledge as knowledge
 import alphalattice.kernel.data_layer.project as project
 import alphalattice.kernel.data_layer.recall as recall
 import alphalattice.kernel.data_layer.return_series as return_series
+from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
@@ -1465,7 +1465,7 @@ def _new_step(name: str, workspace: str | None) -> dict[str, Any]:
         "parent_span": f"{current.span_id:016x}" if current.is_valid else None,
         "workspace": workspace or _open["workspace"],
         "node": "host",
-        "started_us": time.time_ns() // 1000,
+        "started_us": wall_time_ns() // 1000,
     }
 
 

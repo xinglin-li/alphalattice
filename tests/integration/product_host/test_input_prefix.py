@@ -6,7 +6,6 @@ from collections import Counter
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -342,9 +341,8 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
     market = MarketDataRepository(input_workspace)
     files = [path for path in (market.path, Path(str(market.path) + ".wal")) if path.exists()]
     now = max(max(file_stamp(path)[-2:]) for path in files) + 10**10
-    monkeypatch.setattr(
-        verified_facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now)
-    )
+    monkeypatch.setattr(verified_facts, "wall_time", lambda: now / 1e9)
+    monkeypatch.setattr(verified_facts, "wall_time_ns", lambda: now)
     hashed: Counter[Path] = Counter()
     whole = strategy_score_inputs.file_sha256
 

@@ -34,7 +34,6 @@ import secrets
 import sqlite3
 import sys
 import threading
-import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -42,6 +41,7 @@ from pathlib import Path
 from threading import RLock
 from typing import IO, Any, Final
 
+from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import admit
 from alphalattice.kernel.data_layer.chain import (
@@ -107,7 +107,7 @@ def envelope(
             f"a finished {type_} step names when it started",
             code="data_layer.step_unstarted",
         )
-    now = time.time_ns() // 1000
+    now = wall_time_ns() // 1000
     at = now if occurred_us is None else occurred_us
     return {
         "event_id": uuid7(),
@@ -196,7 +196,7 @@ class HostLog:
             if _current(con, "registry.seeded") == 2:
                 text = canonical(_seed_definition_ids(con)).decode()
             log.record("registry.seeded", attrs={"count": count}, text=text)
-        log._checkpoint_month(time.time_ns() // 1000 if now_us is None else now_us)
+        log._checkpoint_month(wall_time_ns() // 1000 if now_us is None else now_us)
         log.flush()
         return log
 
@@ -329,7 +329,7 @@ class HostLog:
         """The log's next moment, in microseconds: the larger of the wall clock, the last moment
         plus one and `at_least`. It never steps back, so neither does anything stamped with it."""
         with self._guard:
-            self._last_us = max(time.time_ns() // 1000, self._last_us + 1, at_least)
+            self._last_us = max(wall_time_ns() // 1000, self._last_us + 1, at_least)
             return self._last_us
 
     def record(

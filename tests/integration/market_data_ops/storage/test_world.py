@@ -27,9 +27,11 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
+from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
+from alphalattice.kernel.clock import task_observation
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.chain import digest as text_digest
 from alphalattice.kernel.data_layer.store import KNOWN
@@ -1261,6 +1263,7 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
 def test_a_first_use_reads_at_its_own_moment_the_mappings_and_members_it_wrote(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A Sunday first use reads as of its own moment every mapping and member it wrote that day,
     and its receipt verifies at once."""
@@ -1268,7 +1271,14 @@ def test_a_first_use_reads_at_its_own_moment_the_mappings_and_members_it_wrote(
     fixture = acquisition_manifest()
     manifest = replace(fixture, profile=replace(fixture.profile, manifest_as_of=now.date()))
     store = MarketDataRepository(tmp_path / "workspace", universe_reader="workspace")
-    store.bootstrap(manifest)
+    monkeypatch.setattr(market_storage, "utc_now", lambda: now)
+    with task_observation(now - timedelta(minutes=1)):
+        store.bootstrap(manifest)
+    with store._connect(read_only=True) as connection:
+        journal_times = connection.execute(
+            "SELECT DISTINCT observed_at FROM market_delta WHERE kind = 'reference'"
+        ).fetchall()
+    assert journal_times == [(now.replace(tzinfo=None),)]
     bars(store, manifest, DAYS, 101.0, 0)
     audit_one(
         store,

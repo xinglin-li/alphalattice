@@ -712,7 +712,6 @@
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
         "alphalattice.kernel.shared_kernel.arrow_identity",
-        "alphalattice.kernel.shared_kernel.clocks",
         "alphalattice.kernel.shared_kernel.domain.base",
         "alphalattice.kernel.shared_kernel.domain.enums",
         "alphalattice.kernel.shared_kernel.domain.errors",
@@ -4851,13 +4850,13 @@
     },
     "kernel clock port": {
       "description": "Wall time and calendar-date access through the kernel clock port.",
-      "covers": "the kernel-facing protocol for wall time and calendar-date access",
+      "covers": "wall-clock reads, Task observations and replay-clock correlation",
       "owner": "alphalattice.kernel.clock",
       "defined_by": [
         "alphalattice.kernel.clock"
       ],
       "folds_in": [],
-      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+      "note": "Elapsed-time measurements still use monotonic clocks at their existing callers."
     },
     "kernel config port": {
       "description": "Configuration access through the kernel config port.",

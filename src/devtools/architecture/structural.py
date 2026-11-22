@@ -273,6 +273,7 @@ class PackageArchitectureRegistry(_Contract):
 
     retired_imports: dict[str, str] = Field(default_factory=dict)
     """Each logical owner a cutover retired, with its reason; import_contracts.build bans it."""
+    wall_clock_reads: dict[str, str] = Field(default_factory=dict)
     owned_imports: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     """Product package paths and the external imports each owns."""
 
@@ -312,12 +313,18 @@ class PackageArchitectureRegistry(_Contract):
             *self.deferred_imports.values(),
             *(r for f in self.private_import_fences.values() for r in f.values()),
             *self.retired_imports.values(),
+            *self.wall_clock_reads.values(),
         ]
         if any(
             not re.fullmatch(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*", name)
             for name in self.retired_imports
         ):
             raise ValueError("a retired import is a dotted logical module name")
+        if any(
+            not all(part.isidentifier() for part in name.split(".")) or "." not in name
+            for name in self.wall_clock_reads
+        ):
+            raise ValueError("a wall-clock ban names a dotted API")
         owned_names = [name for imports in self.owned_imports.values() for name in imports]
         if len(owned_names) != len(set(owned_names)):
             raise ValueError("an external import has more than one declaration")

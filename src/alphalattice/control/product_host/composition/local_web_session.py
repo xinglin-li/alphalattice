@@ -12,7 +12,7 @@ import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
@@ -159,6 +159,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.history import (
     data_root,
@@ -226,7 +227,7 @@ ASSET_ROOT = Path(__file__).resolve().parents[3] / "interface" / "local_applicat
 def _utc_now() -> datetime:
     """The product clock: one function, aware, used by every owner on the path."""
 
-    return datetime.now(tz=UTC)
+    return utc_now()
 
 
 _utc_now.clock_domain = "UTC"  # type: ignore[attr-defined]  # the default Host uses the system wall clock

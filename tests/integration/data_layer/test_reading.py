@@ -114,7 +114,7 @@ def analytics_log(tmp_path_factory):
         return str(uuid.UUID(int=next(minted)))
 
     with (
-        patch.object(log_module, "time", SimpleNamespace(time_ns=lambda: T0 * 1000)),
+        patch.object(log_module, "wall_time_ns", lambda: T0 * 1000),
         patch.object(log_module, "uuid", ids),
         patch.object(project_fixture, "uuid", ids),
         patch.object(project_fixture, "uuid7", uuid7),

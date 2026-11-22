@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.egress import HttpEgress, HttpResponse, HttpSource
 from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -310,7 +311,7 @@ class HttpxSecOfficialTransport:
                     parsed = parsedate_to_datetime(value)
                     if parsed.tzinfo is None:
                         parsed = parsed.replace(tzinfo=UTC)
-                    return min(max((parsed - datetime.now(UTC)).total_seconds(), 0.0), 30.0)
+                    return min(max((parsed - utc_now()).total_seconds(), 0.0), 30.0)
                 except (TypeError, ValueError, OverflowError):
                     pass
         return float(min(0.25 * (2**attempt), 1.0))
@@ -409,7 +410,7 @@ class HttpxSecOfficialTransport:
                     status_code=response.status_code,
                     content_type=content_type,
                     content=content,
-                    retrieved_at=datetime.now(UTC),
+                    retrieved_at=utc_now(),
                 )
             except RuntimeError as caught:
                 error = caught

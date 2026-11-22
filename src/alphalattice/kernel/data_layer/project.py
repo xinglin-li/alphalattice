@@ -16,12 +16,12 @@ import re
 import secrets
 import sqlite3
 import struct
-import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any, Final
 
+from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, canonical, digest
@@ -275,7 +275,7 @@ def _sized(data: bytes) -> bytes:
 
 def uuid7(now_ns: int | None = None) -> str:
     """A UUIDv7 (RFC 9562): 48 bits of Unix milliseconds, then 74 random bits."""
-    ms = (time.time_ns() if now_ns is None else now_ns) // 1_000_000
+    ms = (wall_time_ns() if now_ns is None else now_ns) // 1_000_000
     value = (ms & (1 << 48) - 1) << 80 | 0x7 << 76 | secrets.randbits(12) << 64
     return str(uuid.UUID(int=value | 0b10 << 62 | secrets.randbits(62)))
 

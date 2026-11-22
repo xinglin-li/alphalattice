@@ -71,6 +71,7 @@ from alphalattice.foundation.market_data_ops.storage.rebase import (
     recorded,
     standing,
 )
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -301,7 +302,7 @@ class CurrentUniverseMaintenance:
         the rest of the run and its own epilogue. Neither is called by a run
         that fetches nothing.
         """
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("maintenance observed_at must be timezone-aware")
         if self.as_of_session > now.date():

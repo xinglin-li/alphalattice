@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from runpy import run_path
 from typing import Protocol
 
 import pytest
@@ -15,6 +16,7 @@ from devtools.architecture.structural import (
     discover_module_dependencies,
     discover_package_dependencies,
     import_contract_violations,
+    load_package_architecture_registry,
 )
 
 
@@ -35,6 +37,49 @@ from devtools.architecture.structural import (
         ("tests/untracked.py", "import alphalattice.kernel.low.gone\n", "TID251"),
         ("low/untracked_ignored.py", "import alphalattice.kernel.low.gone\n", "TID251"),
         ("high/down.py", "from alphalattice.kernel.low import keep\n", None),
+        pytest.param(
+            "low/direct_clock.py",
+            "from datetime import datetime as stamp\nobserved = stamp.now()\n",
+            "TID251",
+            id="direct-wall-clock",
+        ),
+        pytest.param(
+            "low/clock_port.py",
+            "from alphalattice.kernel.clock import utc_now\nobserved = utc_now()\n",
+            None,
+            id="clock-port",
+        ),
+        pytest.param(
+            "low/duration_clock.py",
+            "from time import perf_counter\n"
+            "started = perf_counter()\nelapsed = perf_counter() - started\n",
+            None,
+            id="duration-clock",
+        ),
+        pytest.param(
+            "low/row_clock.py",
+            "import time as system\nstamps = [system.time_ns() for row in range(3)]\n",
+            "TID251",
+            id="per-row-wall-clock",
+        ),
+        pytest.param(
+            "low/anchored_clock.py",
+            "from concurrent.futures import ThreadPoolExecutor\n"
+            "from datetime import UTC, datetime\n"
+            "from alphalattice.kernel.clock import ReplayClock, carry_observation\n"
+            "from alphalattice.kernel.clock import observation_time, task_observation\n"
+            "anchor = datetime(2026, 1, 5, tzinfo=UTC)\n"
+            "ticks = iter((1.0, 1.0, 1.5, 2.75))\n"
+            "clock = ReplayClock(anchor, ticks=lambda: next(ticks), wall=lambda: anchor)\n"
+            "with task_observation(clock()):\n"
+            "    read = carry_observation(lambda: tuple(observation_time().isoformat()\n"
+            "                                           for row in range(3)))\n"
+            "with ThreadPoolExecutor(max_workers=1) as pool:\n"
+            "    stamps = pool.submit(read).result()\n"
+            "later = clock().isoformat()\n",
+            None,
+            id="anchored-task-clock",
+        ),
         (
             "high/hashlib.py",
             "from hashlib import sha256\nsha256(b'file')\n",
@@ -76,6 +121,10 @@ def test_the_import_law_refuses_a_higher_level_and_a_retired_name(
         violations += import_contract_violations({qualified: body}, registry=registry)
     if found is None:
         assert violations == ()
+        if module == "low/anchored_clock.py":
+            observed = run_path(str(target))
+            assert observed["stamps"] == ("2026-01-05T00:00:00.500000+00:00",) * 3
+            assert observed["later"] == "2026-01-05T00:00:01.750000+00:00"
     else:
         assert violations and all(found in line for line in violations), violations
     assert (tmp_path / "evidence/importlinter.ini").is_file() and (
@@ -192,11 +241,15 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
             destination = f"alphalattice.{banned}" if banned.startswith("kernel.") else banned
             expected.add(f"alphalattice.{module[:-3].replace('/', '.')} -> {destination}")
     outbound = (
-        ("external_httpx", "import httpx\nclient = httpx.Client()", "httpx"),
-        ("external_requests", "from requests import get", "requests"),
-        ("external_urllib", "from urllib.request import urlopen", "urllib.request"),
-        ("local_host", "from http.client import HTTPConnection", None),
-        ("egress_port", "from alphalattice.kernel.egress import EgressPort", None),
+        (
+            "external_httpx",
+            "import httpx\nfrom time import time\nclient = httpx.Client()\nstamp = time()",
+            ("httpx", "time.time"),
+        ),
+        ("external_requests", "from requests import get", ("requests",)),
+        ("external_urllib", "from urllib.request import urlopen", ("urllib.request",)),
+        ("local_host", "from http.client import HTTPConnection", ()),
+        ("egress_port", "from alphalattice.kernel.egress import EgressPort", ()),
     )
     for module, body, _ in outbound:
         (src / "control/high" / f"{module}.py").write_text(body + "\n", encoding="utf-8")
@@ -213,12 +266,13 @@ def test_the_kernel_import_law_exposes_only_downward_ports(tmp_path) -> None:
         )
         == ()
     )
-    for module, _, refusal in outbound:
+    for module, _, refusals in outbound:
         findings = [line for line in found if f"{module}.py" in line or f".{module} ->" in line]
-        if refusal is None:
+        if not refusals:
             assert not findings, findings
         else:
-            assert any(refusal in line for line in findings), (module, found)
+            for refusal in refusals:
+                assert any(refusal in line for line in findings), (module, found)
     lazy = (
         "from importlib import import_module\ndef read():\n"
         '    return import_module("httpx")  # lazy: the source is read on demand.\n'
@@ -272,7 +326,22 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
         (tree / name).write_text("", encoding="utf-8")
     (tree / names[-1]).write_text("import alphalattice.kernel.low.gone\n", encoding="utf-8")
     spawn.run(["git", "add", "-A"], cwd=tree, check=True)
-    violations = import_contracts.check(tree, tmp_path / "long", _registry())
+    run = import_contracts.run
+    scanned: list[str] = []
+
+    def traced(argv, root, **env):
+        if argv[1:4] == ["-m", "ruff", "check"]:
+            scanned.extend(str(path) for path in argv if str(path).endswith(".py"))
+        return run(argv, root, **env)
+
+    monkeypatch.setattr(import_contracts, "run", traced)
+    registry = _registry().model_copy(
+        update={"owned_imports": {"alphalattice.kernel.egress": ("httpx",)}}
+    )
+    violations = import_contracts.check(tree, tmp_path / "long", registry)
+    assert sorted(scanned) == sorted(
+        path.relative_to(tree).as_posix() for path in tree.rglob("*.py")
+    )
     assert (
         len(violations) == 1 and "TID251" in violations[0] and Path(names[-1]).name in violations[0]
     )
@@ -295,7 +364,6 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
     monkeypatch.setattr(import_contracts, "COMMAND_LINE", 60)
     assert import_contracts.launch_batches(["ruff"], ["a.py", names[0]]) == ([["a.py"]], [names[0]])
     monkeypatch.setattr(import_contracts, "COMMAND_LINE", 32_000)
-    run = import_contracts.run
 
     def partial(argv, root, **env):
         if "ls-files" in map(str, argv):  # a listing that fails part way, its output cut short
@@ -311,8 +379,12 @@ def test_the_import_law_names_a_partial_listing_and_launches_a_long_tree_in_boun
 
 def _registry() -> PackageArchitectureRegistry:
     """Two fixture packages, low at level 0 and high at level 1, and one retired owner."""
+    product = load_package_architecture_registry(
+        Path(__file__).resolve().parents[2] / "config/package-architecture.json"
+    )
     return PackageArchitectureRegistry.model_validate(
         {
+            "wall_clock_reads": product.wall_clock_reads,
             "schema": "alphalattice.playpen.package-architecture",
             "packages": [
                 dict(

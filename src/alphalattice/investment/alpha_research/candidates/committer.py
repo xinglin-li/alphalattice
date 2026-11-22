@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+
+from alphalattice.kernel.clock import utc_now
 
 from ..experiments.mandate import AlphaResearchModelMandate, AlphaResearchModelRecipe
 from ..publication.artifacts import AlphaCurrentArtifactStore
@@ -229,7 +231,7 @@ class AlphaGoalResultCommitter:
                 "updated_at": (
                     existing_projection.updated_at
                     if existing_projection is not None
-                    else clock or datetime.now(UTC)
+                    else clock or utc_now()
                 ),
             },
             "projection_hash",

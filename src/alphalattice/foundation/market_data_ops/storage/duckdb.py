@@ -87,6 +87,7 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     _table_exists,
     _utc_aware,
 )
+from alphalattice.kernel.clock import observation_time, utc_now
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.bounded_memo import stage_digest
 
@@ -771,7 +772,7 @@ class MarketDataRepository(WorkspaceRepository):
         return (
             self._universe_cutoff_us
             if self._universe_cutoff_us is not None
-            else int(datetime.now(UTC).timestamp() * 1_000_000)
+            else int(utc_now().timestamp() * 1_000_000)
         )
 
     @contextmanager
@@ -2052,11 +2053,9 @@ class MarketDataRepository(WorkspaceRepository):
             mapping_rows = _first_by_key(
                 [(listing.listing_id, listing.provider_symbol) for listing in manifest.listings]
             )
+            quality_at = _utc_naive(observation_time())
             quality_rows = _first_by_key(
-                [
-                    (listing.listing_id, _utc_naive(datetime.now(UTC)))
-                    for listing in manifest.listings
-                ]
+                [(listing.listing_id, quality_at) for listing in manifest.listings]
             )
             membership_rows = _first_by_key(
                 [(listing.listing_id,) for listing in manifest.listings]
@@ -2148,24 +2147,23 @@ class MarketDataRepository(WorkspaceRepository):
                         """,
                         [manifest.manifest_id],
                     ).fetchone()[0]
-            # each listing row and mapping it changed is journaled at this write's time, and a
-            # change to the profile, manifest or membership once for the whole profile
-            now = datetime.now(UTC)
+            # The reference rows become known at this write, after the Task's admission.
+            reference_at = utc_now()
             if touched:
                 record_scope(
                     connection,
                     "reference",
                     profile.market_profile_id,
-                    now,
+                    reference_at,
                     sorted(touched, key=str),
                 )
             if changed:
-                record_scope(connection, "reference", profile.market_profile_id, now)
+                record_scope(connection, "reference", profile.market_profile_id, reference_at)
             connection.execute("COMMIT")
             self.readiness.reconcile_incomplete_panel_identity(
                 connection,
                 market_profile_id=profile.market_profile_id,
-                observed_at=datetime.now(UTC),
+                observed_at=reference_at,
             )
             checkpoint_workspace_database(connection)
         finally:
@@ -2216,7 +2214,7 @@ class MarketDataRepository(WorkspaceRepository):
                 ],
             ).fetchone()[0]
             if written:
-                record_scope(connection, "universe", record.market_profile_id, datetime.now(UTC))
+                record_scope(connection, "universe", record.market_profile_id, utc_now())
             connection.execute("COMMIT")
         finally:
             connection.close()
@@ -2372,7 +2370,7 @@ class MarketDataRepository(WorkspaceRepository):
                     ],
                 )
                 next_sequence += 1
-            record_scope(connection, "universe", profile, datetime.now(UTC))
+            record_scope(connection, "universe", profile, utc_now())
             connection.execute("COMMIT")
         except Exception:
             connection.execute("ROLLBACK")

@@ -23,13 +23,13 @@ import os
 import shutil
 import threading
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
 import psutil
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data_layer.history import own_root
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
@@ -275,7 +275,7 @@ def run_sandbox(
         lease = WorkspaceWriterLease.acquire(workspace)
     except (OSError, RuntimeError) as error:  # the lease is held: a Host serves it
         raise ValueError("model_sandbox.host_serving") from error
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    stamp = utc_now().strftime("%Y%m%dT%H%M%S")
     folder = (root or workspace.parent / ".alphalattice-sandboxes") / f"{model_id}-{stamp}"
     copy = folder / "workspace"
     try:
@@ -305,7 +305,7 @@ def run_sandbox(
             peak_memory_bytes=peak,
             u0_reads=len(before),
             u0_changed=changed,
-            recorded_at=datetime.now(UTC),
+            recorded_at=utc_now(),
         )
         held = ModelExtensionRegistry.read(workspace)
         held.model_copy(update={"sandboxes": (*held.sandboxes, record)}).write(workspace)

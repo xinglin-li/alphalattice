@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
 from ctypes.util import find_library
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import cache, partial
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -80,6 +80,7 @@ from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
     setup_environment,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.environment import (
@@ -448,7 +449,7 @@ def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | 
         return "package_changed" if package is not None and package(subject) != at.strip() else None
     if at.strip() != version:
         return "verified_at_another_version"
-    old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
+    old = kind == "method" and (utc_now().date() - day).days > REVIEW_DAYS
     return "verified_over_30_days" if old else None
 
 
@@ -753,7 +754,7 @@ def problem_report(
         "scenario": {
             "id": "reported-problem",
             "sentence": sentence or f"Report the {last} problem to the developers.",
-            "now": datetime.now(UTC).isoformat(),
+            "now": utc_now().isoformat(),
             "injected_faults": [],
             "expected_route": [[op] for op in expected_route],
             "decider": "person",
@@ -1221,7 +1222,7 @@ def bind_session(
     selected = (host, session_id)
     existing = NativeResearchBinding.read(project, session=selected)
     if existing is None:
-        document["observation_started_at"] = datetime.now(UTC).isoformat()
+        document["observation_started_at"] = utc_now().isoformat()
     else:
         if (
             existing.session_id != session_id

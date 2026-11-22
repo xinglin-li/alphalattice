@@ -14,6 +14,7 @@ src/alphalattice/control/product_host/composition/task_operations.py
 src/alphalattice/investment/alpha_research/scores/model_renewal.py
 src/alphalattice/investment/alpha_research/experiments/lifecycle_authoring.py
 src/alphalattice/investment/alpha_research/experiments/family_qualification.py
+src/alphalattice/kernel/clock
 src/alphalattice/kernel/shared_kernel/source_identity.py
 src/alphalattice/kernel/shared_kernel/project_layout.py
 src/alphalattice/kernel/shared_kernel/identity_successors.py

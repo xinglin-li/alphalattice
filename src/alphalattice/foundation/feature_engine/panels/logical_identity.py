@@ -48,6 +48,7 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
 )
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -217,7 +218,7 @@ class PanelLogicalIdentityPublisher:
         existing = self._store.marker_for_snapshot(snapshot_hash)
         if existing is not None:
             return existing
-        observed = published_at or datetime.now(UTC)
+        observed = published_at or observation_time()
         if observed.tzinfo is None or observed.utcoffset() is None:
             raise ValueError("Panel logical publication clock must be timezone-aware")
         built = self._build_logical_authorities(manifest)

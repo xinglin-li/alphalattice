@@ -27,7 +27,7 @@ import os
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, nullcontext
-from datetime import UTC, datetime
+from datetime import datetime
 from itertools import chain
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self
@@ -57,6 +57,7 @@ from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -361,7 +362,7 @@ class WorkspaceBackups:
         *,
         workspace_id: str,
         root: Path | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         """Bind a workspace to its backup root.
 

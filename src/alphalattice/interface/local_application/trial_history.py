@@ -9,11 +9,11 @@ end. Each is a small event through the Host's history; nothing here reads or wri
 from __future__ import annotations
 
 import secrets
-import time
 from dataclasses import dataclass
 from typing import Any
 
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
+from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.log import uuid7
 from alphalattice.kernel.shared_kernel.environment import package_versions
@@ -78,7 +78,7 @@ def started(sealed: SealedSubmission) -> Trial | None:
         "trial.registered", ("trial", trial), registered, actor=actor, trace=trace
     )
     span = secrets.token_hex(8)
-    now = time.time_ns() // 1000
+    now = wall_time_ns() // 1000
     history.record(
         "trial", ("trial", trial), phase="started", span=span, cause=cause, actor=actor, trace=trace
     )

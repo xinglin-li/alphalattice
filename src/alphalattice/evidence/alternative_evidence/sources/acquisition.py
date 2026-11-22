@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
+
+from alphalattice.kernel.clock import utc_now
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -157,7 +159,7 @@ class AlternativeEvidenceAcquisitionService:
         prior_companyfacts: tuple[SecCompanyFactsSnapshot, ...] = (),
         registry: SecIssuerRegistrySnapshot | None = None,
         should_cancel: Callable[[], bool] = lambda: False,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         accession_scopes: Mapping[str, frozenset[str]] | None = None,
         local: LocalSourceLookup | None = None,
         commit: SourceDocumentCommit | None = None,

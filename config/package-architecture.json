@@ -940,10 +940,18 @@
       "alphalattice.foundation.causal_outcomes.execution.compile._ELIGIBLE": "The existing eligible decision states remain the equality fence."
     }
   },
+  "wall_clock_reads": {
+    "datetime.date.today": "read wall time through alphalattice.kernel.clock",
+    "datetime.datetime.now": "read wall time through alphalattice.kernel.clock",
+    "datetime.datetime.utcnow": "read wall time through alphalattice.kernel.clock",
+    "time.time": "read wall time through alphalattice.kernel.clock",
+    "time.time_ns": "read wall time through alphalattice.kernel.clock"
+  },
   "owned_imports": {
     "alphalattice.kernel.egress": ["httpx", "requests", "urllib.request"]
   },
   "retired_imports": {
+    "shared_kernel.clocks": "ReplayClock and clock metadata moved to alphalattice.kernel.clock",
     "agent_runtime.evidence_reading_efficiency": "retired by a cutover; its absence was asserted by test_retired_production_owners_are_absent",
     "agent_runtime.evidence_workspace": "retired by a cutover; its absence was asserted by test_retired_production_owners_are_absent",
     "agent_runtime.evidence_workspace_runtime": "retired by a cutover; its absence was asserted by test_retired_production_owners_are_absent",

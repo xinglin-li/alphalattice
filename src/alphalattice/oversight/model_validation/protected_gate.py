@@ -27,7 +27,7 @@ after a receipt has been sealed.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal, Self, cast
 
@@ -54,6 +54,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
     ProtectedPackageInspection,
     ProtectedPackageInspector,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
@@ -352,7 +353,7 @@ class ProtectedValidationGate:
         store: ProtectedValidationStore,
         registry: FrozenCandidateRegistry,
         inspector: ProtectedPackageInspector,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         """Bind the store, frozen registry, package inspector and clock."""
         self.store = store

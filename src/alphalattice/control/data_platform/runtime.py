@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
@@ -27,6 +27,7 @@ from alphalattice.foundation.market_data_ops.storage.action_audit import ActionA
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
+from alphalattice.kernel.clock import observation_time
 
 DEFAULT_LIVE_SYMBOL_BUDGET = 5
 
@@ -93,7 +94,7 @@ class PreFactorDataOperations:
             ValueError: The supplied observation clock is naive.
         """
         with self.market_data.writing():  # one market data update
-            now = observed_at or datetime.now(UTC)
+            now = observed_at or observation_time()
             if now.tzinfo is None:
                 raise ValueError("observed_at must be timezone-aware")
             if request.manifest_revision != self.manifest.revision_sha256:

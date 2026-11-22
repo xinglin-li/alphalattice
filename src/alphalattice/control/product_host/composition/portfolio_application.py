@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -53,6 +53,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import PortfolioReportContext
+from alphalattice.kernel.clock import utc_now
 
 PUBLIC_REFUSALS: tuple[str, ...] = tuple(
     value.refusal_code for value in INSTALLED_PUBLIC_CONTROL_CATALOG.refusals
@@ -126,7 +127,7 @@ class PortfolioResearchApplication:
         manifest_binding: Callable[[], str],
         session: WorkspaceApplicationSession,
         resolver: PortfolioExecutionResolver,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         report_context: Callable[[PortfolioExecutionProgram, date], PortfolioReportContext]
         | None = None,
         pipeline: PortfolioResearchPipelineStore | None = None,

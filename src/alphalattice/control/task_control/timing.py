@@ -30,7 +30,7 @@ from alphalattice.control.task_control.contracts import (
     WorkItemLifecycle,
     WorkItemState,
 )
-from alphalattice.kernel.shared_kernel.clocks import clock_metadata
+from alphalattice.kernel.clock import clock_metadata
 from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
 
 from .upgrade import import_telemetry

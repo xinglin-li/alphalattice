@@ -5,7 +5,7 @@ peers, owned external imports and retired owners. The generator builds the packa
 kernel contracts for Import Linter and the scoped and retired import bans for Ruff. Ruff also
 bans an import by name whether or not its module still exists (grimp drops such an import). Both
 are built at run time, never committed; ``check`` writes them into the caller's run as evidence and
-runs both tools over the tracked tree.
+runs both tools over the tracked tree. Each Python file is scanned once with its applicable bans.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -82,12 +83,15 @@ def build(
         ]
     if kernels:
         lines.extend(_kernel_contracts(kernels, deferred_backend_edges))
-    banned = {
+    return "\n".join(lines) + "\n", _ruff_bans(_retired_bans(registry))
+
+
+def _retired_bans(registry: PackageArchitectureRegistry) -> dict[str, str]:
+    return {
         name: f"retired: {reason}"
         for prefix, reason in sorted(registry.retired_imports.items())
         for name in _physical(registry, prefix)
     }
-    return "\n".join(lines) + "\n", _ruff_bans(banned)
 
 
 def _ruff_bans(banned: dict[str, str]) -> str:
@@ -227,29 +231,37 @@ def launch_batches(
     return batches + [current] * bool(current), alone
 
 
-def _owned_import_runs(
-    registry: PackageArchitectureRegistry, root: Path, out: Path, files: list[str], ruff: list[str]
-) -> tuple[list[subprocess.CompletedProcess[str]], list[str]]:
-    """Check owned imports on shipped product paths outside their declared owner."""
-    runs: list[subprocess.CompletedProcess[str]] = []
-    unlaunchable: list[str] = []
+def _ruff_partitions(
+    registry: PackageArchitectureRegistry, files: list[str], out: Path
+) -> list[tuple[Path, list[str]]]:
+    scoped: dict[str, dict[str, str]] = defaultdict(dict)
     for owner, names in sorted(registry.owned_imports.items()):
         prefix = f"src/{owner.replace('.', '/')}"
-        selected = [
-            file
-            for file in files
-            if file.startswith("src/alphalattice/")
-            and file != prefix + ".py"
-            and not file.startswith(prefix + "/")
-        ]
-        config = out / f"ruff-owned-{owner}.toml"
-        bans = {name: f"Use {owner} for this import" for name in names}
-        config.write_text(_ruff_bans(bans), encoding="utf-8", newline="\n")
-        command = [*ruff, "--config", str(config)]
-        batches, alone = launch_batches(command, selected)
-        unlaunchable.extend(alone)
-        runs.extend(run([*command, *batch], root) for batch in batches)
-    return runs, unlaunchable
+        scoped[prefix].update((name, f"Use {owner} for this import") for name in names)
+    if registry.wall_clock_reads:
+        scoped["src/alphalattice/kernel/clock"].update(registry.wall_clock_reads)
+
+    groups: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for path in files:
+        applicable = (
+            tuple(
+                owner
+                for owner in scoped
+                if path != owner + ".py" and not path.startswith(owner + "/")
+            )
+            if path.startswith("src/alphalattice/")
+            else ()
+        )
+        groups[applicable].append(path)
+
+    retired = _retired_bans(registry)
+    partitions = [(out / "ruff-retired.toml", groups.pop((), []))]
+    for index, (owners, paths) in enumerate(groups.items(), 1):
+        config = out / f"ruff-scope-{index}.toml"
+        scoped_bans = {name: reason for owner in owners for name, reason in scoped[owner].items()}
+        config.write_text(_ruff_bans(retired | scoped_bans), encoding="utf-8", newline="\n")
+        partitions.append((config, paths))
+    return partitions
 
 
 def check(root: Path, out: Path, registry: PackageArchitectureRegistry) -> tuple[str, ...]:
@@ -264,20 +276,18 @@ def check(root: Path, out: Path, registry: PackageArchitectureRegistry) -> tuple
     (out / "ruff-retired.toml").write_text(bans, encoding="utf-8", newline="\n")
     lint = [Path(sys.executable).parent / "lint-imports", "--config", out / "importlinter.ini"]
     ruff = [sys.executable, "-m", "ruff", "check", "--ignore-noqa", "--no-cache"]
-    retired = [*ruff, "--config", str(out / "ruff-retired.toml")]
     files, unknown = _python_files(root)
-    batches, alone = launch_batches(retired, files)
-    owned_runs, owned_alone = _owned_import_runs(registry, root, out, files, ruff)
     found = [f"ruff: the checked files are unknown: {unknown}"] if unknown else []
-    found += [
-        f"ruff: {path} cannot be launched: its command line is too long"
-        for path in dict.fromkeys(alone + owned_alone)
-    ]
     found += [] if files or unknown else ["ruff: no Python file found to check"]
-    tools = {
-        "lint-imports": [run([*lint, "--no-cache"], root, PYTHONPATH=str(root / "src"))],
-        "ruff": [run([*retired, *batch], root) for batch in batches] + owned_runs,
-    }
+    tools = {"lint-imports": [run([*lint, "--no-cache"], root, PYTHONPATH=str(root / "src"))]}
+    tools["ruff"] = []
+    for config, selected in _ruff_partitions(registry, files, out):
+        command = [*ruff, "--config", config]
+        batches, alone = launch_batches(command, selected)
+        found += [
+            f"ruff: {path} cannot be launched: its command line is too long" for path in alone
+        ]
+        tools["ruff"].extend(run([*command, *batch], root) for batch in batches)
     for tool, runs in tools.items():
         marker = " -> " if tool == "lint-imports" else " TID251 "
         (out / f"{tool}.log").write_text(

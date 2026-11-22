@@ -7,7 +7,7 @@ import sys
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
 from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
 from alphalattice.kernel.data_layer.history import open_history
@@ -333,7 +334,7 @@ class WorkspaceApplicationSession:
             # This process just acquired the exclusive workspace lease: an old
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
-            registry.reconcile_after_writer_acquisition(observed_at=datetime.now(UTC))
+            registry.reconcile_after_writer_acquisition(observed_at=utc_now())
             return cls(
                 workspace=root,
                 writer_lease=lease,

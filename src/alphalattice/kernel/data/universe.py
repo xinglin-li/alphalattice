@@ -5,10 +5,11 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from html.parser import HTMLParser
 from typing import Protocol
 
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.enums import LicenseClass, UniverseIndex
 from alphalattice.kernel.data.errors import DataProviderError
 from alphalattice.kernel.egress import EgressPort, HttpEgress, HttpSource
@@ -143,7 +144,7 @@ def fetch_universe_source(
     config: UniverseSourceConfig,
     *,
     fetcher: Fetcher | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
     sleep: Sleeper = time.sleep,
 ) -> FetchedUniverseSource:
     """Fetch and validate a frozen source under bounded retries and network control."""

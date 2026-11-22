@@ -23,7 +23,6 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -42,6 +41,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     machine_load,
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.kernel.clock import utc_now
 
 MEMORY_INSUFFICIENT = "execution.memory_insufficient"
 _HOLDING_MEMORY = frozenset({TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED})
@@ -165,7 +165,7 @@ class ResourceGate:
         value = {
             "label": "ESTIMATE",
             "cpu_budget": budget.cpu_budget,
-            "cpu_sampled_at": datetime.now(UTC).isoformat(),
+            "cpu_sampled_at": utc_now().isoformat(),
             "cpu_basis": reason,
             "cpu_load": {"processors": load.processors, "busy_processors": load.busy_processors},
             "cpu_selection": "RUN_START",

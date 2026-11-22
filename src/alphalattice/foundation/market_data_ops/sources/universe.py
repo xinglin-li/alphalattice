@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.data.enums import UniverseIndex
 from alphalattice.kernel.data.universe import (
     FROZEN_UNIVERSE_SOURCES,
@@ -355,7 +356,7 @@ def discover_current_universe_candidates(
     and fails closed on source/schema errors. The caller must persist the
     resulting manifest before it is used as a workspace's bootstrap scope.
     """
-    timestamp = observed_at or datetime.now(UTC)
+    timestamp = observed_at or observation_time()
     fetched: dict[UniverseIndex, FetchedUniverseSource] = {
         index: fetch_universe_source(config) for index, config in FROZEN_UNIVERSE_SOURCES.items()
     }

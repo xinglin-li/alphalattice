@@ -23,6 +23,7 @@ from typing import Final, Protocol
 from uuid import UUID, uuid4
 
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.kernel.clock import carry_observation, task_observation, utc_now
 from alphalattice.kernel.data_layer.history import held
 from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
@@ -255,7 +256,9 @@ class _WorkPool:
             self._finished.append((definition, call()))
             self.failed_stage_id = None
         else:
-            self._running[self._executor.submit(carry_background(call))] = definition
+            self._running[self._executor.submit(carry_observation(carry_background(call)))] = (
+                definition
+            )
 
     def next_done(self) -> tuple[WorkItemDefinition, StageExecutionResult]:
         """The next finished item, the earliest in the plan among those that
@@ -414,7 +417,7 @@ class TaskControlRunner:
         registry: DuckDbTaskControlRegistry,
         adapters: Mapping[str, TaskDomainAdapter],
         runtime_path: str,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         heartbeat_seconds: float = 5.0,
         projection_sink: Callable[[TaskSafeProjection], None] | None = None,
         heartbeat_sink: Callable[[TaskHeartbeatSignal], None] | None = None,
@@ -530,7 +533,7 @@ class TaskControlRunner:
         # stage's begin, receipt, projection and the adapter's own reads share
         # the instance opened here rather than each reopening the file.
         try:
-            with self.registry.retain(read_only=False):
+            with task_observation(execution.started_at), self.registry.retain(read_only=False):
                 return self._execute(task, execution, adapter, verify_prefix=verify_prefix)
         finally:
             stop.set()

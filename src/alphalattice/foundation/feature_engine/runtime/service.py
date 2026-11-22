@@ -133,6 +133,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.price_integrity import TradingSessionAuthority
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
@@ -421,7 +422,7 @@ class FeatureFoundationService:
         """
         import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
 
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("feature build observed_at must be timezone-aware")
         if request.manifest_revision != self.manifest.revision_sha256:
@@ -2148,7 +2149,7 @@ class FeatureFoundationService:
             calendar_id=self.manifest.profile.calendar_id,
             history_start=min(window.input_start, observed[0]),
             as_of_session=as_of_session,
-            observed_at=observed_at if observed_at is not None else datetime.now(UTC),
+            observed_at=observed_at if observed_at is not None else observation_time(),
             calendars={},
         )
         frame, _raw_hash, _action_hash = self._base_source_frame(

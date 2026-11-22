@@ -16,10 +16,10 @@ import sqlite3
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
-from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import CHAIN_VERSION, LINKS, fold_segments
 from alphalattice.kernel.data_layer.governance import COPYING
@@ -468,7 +468,7 @@ def backup_data_root(root: Path, repository: Path) -> Path:
                 version=2,
                 databases=list(DATABASES),
                 head=head,
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=utc_now().isoformat(),
                 copied_files=list(copied),
                 files=files,
             )

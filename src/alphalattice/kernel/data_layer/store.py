@@ -33,7 +33,7 @@ import sqlite3
 import threading
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
@@ -44,6 +44,7 @@ from alphalattice.control.workspace_runtime.storage.capacity import (
     FREE_FLOOR_BYTES,
     free_floor_shortfall,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import ENVELOPE, canonical
 from alphalattice.kernel.data_layer.log import HostLog, drop, envelope, hold, uuid7
@@ -903,7 +904,7 @@ class StorePort:
 
     def maintain_idle(self, now: datetime | None = None) -> None:
         """Run the existing maintenance once per age or write interval at an idle opportunity."""
-        now = now or datetime.now(UTC)
+        now = now or utc_now()
         if not governance.COPYING.acquire(blocking=False):
             return  # leave a machine-wide backup alone
         try:
@@ -949,7 +950,7 @@ class StorePort:
         cannot be read, nothing expires. A retained backup holds its own copy of every file
         (backup.py, its files pool); a running one that finds a listed file deleted is refused by
         name (backup_unreadable) and is run again. The snapshots expired and the files deleted."""
-        now = now or datetime.now(UTC)
+        now = now or utc_now()
         run = self.lake.execute
         with self._writer:
             run(

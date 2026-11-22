@@ -36,7 +36,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import partial, wraps
 from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
@@ -48,6 +48,7 @@ from alphalattice.control.task_control.contracts import (
     TaskSafeProjection,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
 
 
@@ -247,7 +248,7 @@ class LocalBackgroundDispatcher:
     """The registry's own stale-version refusal, matched structurally like the others: a
     caller that confirmed a version learns it moved; a versionless caller keeps the old
     `False`."""
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    clock: Callable[[], datetime] = utc_now
     on_idle: Callable[[], None] | None = None
     on_command_returned: Callable[[str, UUID, str | None], None] | None = None
     """Told `(command_kind, task_id, worker_failure)` once a command has returned.

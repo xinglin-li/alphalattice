@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -13,6 +12,7 @@ from alphalattice.interface.local_application.client import (
     workspace_connection_key,
 )
 from alphalattice.interface.local_application.web import LocalWebApplication
+from alphalattice.kernel.clock import utc_now
 
 
 def publish_client_connection(
@@ -50,7 +50,7 @@ def publish_client_connection(
             serving_host.update(
                 instance=connection.instance,
                 pid=os.getpid(),
-                started_at=datetime.now(UTC).isoformat(),
+                started_at=utc_now().isoformat(),
             )
         temporary.replace(path)
     finally:

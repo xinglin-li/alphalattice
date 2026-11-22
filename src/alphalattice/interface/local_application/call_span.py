@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import re
 import secrets
-import time
 from collections.abc import Mapping, MutableMapping
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -29,6 +28,7 @@ from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
     agent_provenance_headers,
 )
+from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 
 CALL_PATH: Final = "/api/client/call"
@@ -69,7 +69,7 @@ def begin(environ: MutableMapping[str, str], command: str) -> None:
     named = _TRACEPARENT.match(environ.get("TRACEPARENT", "").strip())
     trace, parent = (named.group(1), named.group(2)) if named else (secrets.token_hex(16), None)
     form = "".join(c for c in command if " " <= c <= "~")[:200] or "-"
-    call = CallSpan(trace, secrets.token_hex(8), parent, time.time_ns() // 1000, form)
+    call = CallSpan(trace, secrets.token_hex(8), parent, wall_time_ns() // 1000, form)
     CALL.set(call)
     saved = {name: environ.get(name) for name in ("TRACEPARENT", "BAGGAGE")}
     own = zip(_KEYS, (str(call.started_us), parent or "-", quote(form, safe="")), strict=True)
@@ -121,7 +121,7 @@ def _send_end(call: CallSpan, workspace: Path, code: int, environ: Mapping[str, 
         INSTANCE_HEADER: connection.instance,
         **agent_provenance_headers(environ),
     }
-    ended = {"ended_us": max(time.time_ns() // 1000, call.started_us), "exit_code": code}
+    ended = {"ended_us": max(wall_time_ns() // 1000, call.started_us), "exit_code": code}
     exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
     try:
         exchange.request("POST", CALL_PATH, body=client.request_body(ended), headers=headers)

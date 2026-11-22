@@ -29,8 +29,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.interface.local_application import client as local_client
+from alphalattice.kernel.clock import ReplayClock
 from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")

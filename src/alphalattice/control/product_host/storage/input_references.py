@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +72,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge import model_store
@@ -148,7 +149,7 @@ class ResearchInputStorage:
         self.workspace = session.workspace
         self.owner = BoundedStorageRetentionOwner(self.workspace)
         self.evidence = evidence
-        self.clock = clock or (lambda: datetime.now(UTC))
+        self.clock = clock or (utc_now)
         self._capacity_sampled = False
 
     def _all_pins(self) -> dict[str, int]:

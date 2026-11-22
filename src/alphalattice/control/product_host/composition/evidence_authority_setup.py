@@ -122,6 +122,7 @@ from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.knowledge import model_store
 from alphalattice.kernel.knowledge.hybrid_contracts import (
@@ -677,7 +678,7 @@ class _Setup:
         session: WorkspaceApplicationSession,
         *,
         official_source: OfficialSourceAdmission | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         """Read the workspace, its research input, universe and recipe, and the model profile."""
         workspace = arguments.workspace.resolve()
@@ -1050,7 +1051,7 @@ def run_setup(
     session: WorkspaceApplicationSession,
     *,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
 ) -> dict[str, object]:
     """Run the setup on a session the caller holds: its preflight answer or its installation."""
     setup, held = (
@@ -1491,7 +1492,7 @@ def _acquire_sec_sources(
     *,
     recipe: str,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
     cutoff: datetime | None = None,
     accession_scopes: dict[str, frozenset[str]] | None = None,
     cancelled: Callable[[], bool] | None = None,
@@ -1970,7 +1971,7 @@ def main(argv: list[str] | None = None) -> int:
         result = materialize(arguments)
     except Exception as error:
         arguments.legacy_indent = None
-        result = setup_refusal(arguments, error, now=datetime.now(UTC), script=True)
+        result = setup_refusal(arguments, error, now=utc_now(), script=True)
     return emit_owner(arguments, result)
 
 

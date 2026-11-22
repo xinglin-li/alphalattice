@@ -99,6 +99,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     _utc_naive,
     raw_bars_from_table,
 )
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
 if TYPE_CHECKING:
@@ -785,7 +786,7 @@ class FeatureStateRepository(WorkspaceRepository):
             connection,
             catalog_hash=layer.catalog.binding.catalog_hash,
             factor_ids=layer.catalog.factor_ids,
-            activated_at=_utc_naive(datetime.now(UTC)),
+            activated_at=_utc_naive(observation_time()),
             parts=layer.storage_parts(),
         )
 

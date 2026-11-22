@@ -353,7 +353,7 @@
 "schema:alphalattice.clock-correlation.v1": {
 "owner": "schema:alphalattice",
 "readers": [
-"src/alphalattice/kernel/shared_kernel/clocks.py",
+"src/alphalattice/kernel/clock/__init__.py",
 "src/alphalattice/control/observation_runtime/policy.py",
 "src/alphalattice/control/observation_runtime/profile.py",
 "src/alphalattice/control/product_host/composition/workspace_activity.py"

@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import os
-import time
 import weakref
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -37,6 +36,7 @@ from threading import Lock
 
 import duckdb
 
+from alphalattice.kernel.clock import wall_time, wall_time_ns
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
     FileDigestTrust,
@@ -64,7 +64,7 @@ _KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 _PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
 """File facts outside a kept workspace, by absolute path and kind, for this process."""
 _DIGEST_TRUST = FileDigestTrust(
-    process=lambda: _PROCESS, lock=_LOCK, span=span, time_ns=lambda: time.time_ns()
+    process=lambda: _PROCESS, lock=_LOCK, span=span, time_ns=lambda: wall_time_ns()
 )
 _HELD: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, bool] = weakref.WeakKeyDictionary()
 """Connections that have seen the year-fact table: one catalog read each, not one per call."""
@@ -322,7 +322,7 @@ def record_file_fact(
 ) -> None:
     """Remember `path`'s digest of `kind`: verified by a reader, or `written` by its writer."""
     stat = stat if stat is not None else os.stat(path)
-    if not written and time.time() - stat.st_mtime <= RACY_SECONDS:
+    if not written and wall_time() - stat.st_mtime <= RACY_SECONDS:
         return
     digest = _content if _content is not None else _DIGEST_TRUST.verified(path)[0]
     if kind == "sha256" and value != digest:

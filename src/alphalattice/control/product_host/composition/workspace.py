@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -82,6 +82,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta_service import (
     PreResearchDeltaService,
 )
+from alphalattice.kernel.clock import utc_now
 
 
 class WorkspaceApplicationControls(Protocol):
@@ -300,7 +301,7 @@ class WorkspaceRuntime:
         readiness_gate: Any,
         diagnose: Any | None = None,
         agent_budget: AgentExecutionBudget | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None,
     ) -> WorkspaceMaintenanceCoordinator:
         """Compose the concrete task-plane coordinator without another graph."""

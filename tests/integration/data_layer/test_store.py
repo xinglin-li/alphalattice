@@ -756,8 +756,8 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     steps back; the as-of read sees them before their correction and the correction after it."""
     root = root.parent / "o'brien" / "data"
     create_data_root(root)
-    wall = [host.time.time_ns()]
-    monkeypatch.setattr(host, "time", type("Wall", (), {"time_ns": staticmethod(lambda: wall[0])}))
+    wall = [host.wall_time_ns()]
+    monkeypatch.setattr(host, "wall_time_ns", lambda: wall[0])
     with HostLog.open(root) as log:
         key = {"family": "provider", "name": "yf", "version": 1}
         log.record(

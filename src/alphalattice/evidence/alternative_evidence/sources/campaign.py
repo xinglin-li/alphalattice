@@ -31,10 +31,11 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
@@ -165,7 +166,7 @@ class SecCampaignLedger:
                     "maximum_total_response_bytes": declaration.maximum_total_response_bytes,
                     "maximum_body_resources": declaration.maximum_body_resources,
                     "maximum_document_bytes": declaration.maximum_document_bytes,
-                    "admitted_at": (admitted_at or datetime.now(UTC)).isoformat(),
+                    "admitted_at": (admitted_at or utc_now()).isoformat(),
                 }
             )
             return ledger
@@ -322,7 +323,7 @@ class SecCampaignLedger:
                 "url": url,
                 "resource": resource,
                 "reserved_bytes": maximum_bytes,
-                "at": datetime.now(UTC).isoformat(),
+                "at": utc_now().isoformat(),
             }
         )
         return sequence
@@ -337,7 +338,7 @@ class SecCampaignLedger:
                 "sequence": sequence,
                 "actual_bytes": actual_bytes,
                 "outcome": outcome,
-                "at": datetime.now(UTC).isoformat(),
+                "at": utc_now().isoformat(),
             }
         )
 

@@ -131,13 +131,13 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.questions import asked_questions, person_question
+from alphalattice.kernel.clock import clock_metadata, utc_now
 from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.data_layer.admit import SECRET_NAME
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.clocks import clock_metadata
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 """Under `<workspace>/runtime`, the same store the Desk publishers use."""
@@ -227,7 +227,7 @@ class WorkspaceActivity:
     workspace_id: str
     gate: WorkspaceMutationGate
     instance: str
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    clock: Callable[[], datetime] = utc_now
     native_usage_state: Callable[[], dict[str, object]] | None = None
     serving_host: dict[str, object] = field(default_factory=dict, init=False)
     """Optional Host-owned usage health read; only its safe status and reason are exposed."""

@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -22,7 +23,6 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue
 from threading import Barrier, BoundedSemaphore, Event, Lock, Semaphore, Thread, current_thread
-from types import SimpleNamespace
 from typing import ClassVar, Literal
 from uuid import uuid4
 
@@ -1155,7 +1155,8 @@ def _aged(target: Path) -> None:
 def _advance_file_fact_clock(facts, target: Path, monkeypatch) -> None:
     """Move past both the modification and change clocks without waiting."""
     now = max(file_stamp(target)[-2:]) + 10**10
-    monkeypatch.setattr(facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now))
+    monkeypatch.setattr(facts, "wall_time", lambda: now / 1e9)
+    monkeypatch.setattr(facts, "wall_time_ns", lambda: now)
 
 
 def _hashed(timing) -> int:
@@ -1169,7 +1170,10 @@ def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
     tmp_path: Path, monkeypatch, case: str
 ) -> None:
     """A young reader hashes immediately and rehashes after a rewrite."""
-    with _kept_facts(tmp_path) as (facts, _workspace, target):
+    with (
+        _kept_facts(tmp_path) as (facts, _workspace, target),
+        monkeypatch.context() as clock,
+    ):
         young = now = max(file_stamp(target)[-2:])
 
         def unexpected_wait(_seconds: float) -> None:
@@ -1183,11 +1187,9 @@ def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
             now += int((facts.RACY_SECONDS + 1) * 10**9)
             return digest
 
-        monkeypatch.setattr(
-            facts,
-            "time",
-            SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now, sleep=unexpected_wait),
-        )
+        clock.setattr(facts, "wall_time", lambda: now / 1e9)
+        clock.setattr(facts, "wall_time_ns", lambda: now)
+        clock.setattr(time, "sleep", unexpected_wait)
         with monkeypatch.context() as hashing:
             if case == "stamp-ages-during-hash":
                 hashing.setattr(digests, "integrity_sha256_stream", finish_hash_after_window)

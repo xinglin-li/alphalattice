@@ -8,7 +8,7 @@ have published exactly this result, each a refusal of its own.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     CompletedDevelopmentRun,
@@ -26,6 +26,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.clock import observation_time
 
 
 class PortfolioFinalizationCompositionError(ValueError):
@@ -95,7 +96,7 @@ def freeze_candidate(
         report_hash=result.report_hash,
         control_receipt_hash=report.control_receipt.receipt_hash,
         pre_protected_state=SealedPreProtectedState.of(execution),
-        frozen_at=frozen_at or datetime.now(UTC),
+        frozen_at=frozen_at or observation_time(),
     )
     store.publish_freeze(candidate=candidate, receipt=PortfolioCandidateFreezeReceipt.of(candidate))
     return candidate

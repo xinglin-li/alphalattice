@@ -27,8 +27,9 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import UTC, datetime
 from typing import Any, Final, ParamSpec, TypeVar
+
+from alphalattice.kernel.clock import utc_now
 
 SPAN_CLASSES: Final[Mapping[str, str]] = {
     "materialize": "compute",
@@ -323,7 +324,7 @@ def collect(scope: tuple[str, str, str] | None = None) -> Iterator[SpanLedger]:
     """
     ledger = SpanLedger()
     ledger.scope = scope
-    started_at = datetime.now(UTC)
+    started_at = utc_now()
     cpu, read, written = _resources()
     started = time.perf_counter()
     with _OPEN_LOCK:

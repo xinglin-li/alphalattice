@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Self, cast
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
@@ -37,6 +37,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping
 from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
@@ -570,7 +571,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         self.runtime = runtime
         self.registry = registry
         self.resources = resources
-        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self.clock: Callable[[], datetime] = clock or (utc_now)
         """The service's clock, against which a live acquisition's deadline is
         judged while it runs -- the same clock that stamps the Task."""
         self._runs: dict[str, AlternativeEvidenceCoverageRun] = {}
@@ -659,7 +660,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             machine_load(preparations_running=self.preparations_running()),
             units=len(self._run(task).units),
             task_id=task.task_id,
-            planned_at=datetime.now(UTC),
+            planned_at=utc_now(),
         )
         self.runtime.execution.record(plan)
         PREPARATIONS.begin(task.task_id, plan)

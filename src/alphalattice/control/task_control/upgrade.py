@@ -14,12 +14,13 @@ import os
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import closing, contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
 from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data_layer.chain import canonical
 from alphalattice.kernel.data_layer.history import data_root, held, holding
 from alphalattice.kernel.data_layer.log import attach, uuid7
@@ -409,7 +410,7 @@ def set_aside(runtime: Path, paths: Iterable[Path]) -> None:
             return
         retired = kept
         if any((kept / path.name).exists() for path in moved):
-            retired = kept / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            retired = kept / utc_now().strftime("%Y%m%dT%H%M%S%fZ")
         retired.mkdir(parents=True, exist_ok=True)
         chosen = record.with_name(f"{record.name}.tmp")
         where = retired.relative_to(runtime).as_posix()
@@ -529,7 +530,7 @@ def _rebuild_lost(
 ) -> None:
     """A request whose row the store lost is listed again: what it was admitted to do reads
     again and its progress is not claimed; the same request admits it anew."""
-    now = datetime.now(UTC)
+    now = utc_now()
     for request, text in frozen:
         if str(request.task_id) in present:
             continue
@@ -735,7 +736,7 @@ def _set_aside(paths: tuple[Path, ...]) -> None:
     beside it, as `set_aside` keeps a store's.
     """
     held().flush()  # the conversion is durable before the old reader is set aside
-    generation = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    generation = utc_now().strftime("%Y%m%dT%H%M%S%fZ")
     files = tuple(
         file
         for path in paths
