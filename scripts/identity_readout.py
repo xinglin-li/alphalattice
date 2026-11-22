@@ -106,13 +106,15 @@ def record(changes: dict[str, tuple[str, str]], change: str, reason: str) -> lis
 def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str], str]]:
     """Which roles an edit to each area may move, and how each area is reached (GB, ID8).
 
-    Each role's installed value is computed with the rule closure's walk watched: every module
-    the walk reaches is one whose syntax the role hashes. A module's area is its package.
+    Each role's installed value is computed with both rule closures watched (form 1's walk and
+    form 2's): every module either reaches is one whose code the role hashes. A module's area is
+    its package.
     """
 
     from alphalattice.kernel.shared_kernel import source_identity
 
     walk = source_identity.number_deciding_closure
+    canonical = source_identity.canonical_closure
     reached: list[dict[str, str]] = []
 
     def watched(
@@ -122,9 +124,15 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
         reached.append(found)
         return found
 
+    def watched_canonical(entries: tuple[str, ...], *, root: Path, rule: Any) -> dict[str, str]:
+        found = canonical(entries, root=root, rule=rule)
+        reached.append(found)
+        return found
+
     areas: dict[str, set[str]] = {}
     edges: dict[tuple[str, str], str] = {}
     source_identity.number_deciding_closure = watched  # looked up at call time
+    source_identity.canonical_closure = watched_canonical
     try:
         for entry in roles(table):
             reached.clear()
@@ -137,6 +145,7 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
                 edges.setdefault((area, role), _how_reached(module, modules))
     finally:
         source_identity.number_deciding_closure = walk
+        source_identity.canonical_closure = canonical
     return areas, edges
 
 

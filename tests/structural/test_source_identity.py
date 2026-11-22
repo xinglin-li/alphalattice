@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 
@@ -360,10 +361,128 @@ def test_every_factor_value_has_a_readout_role_and_binds_its_recorded_origin() -
     )
 
 
+MODEL = (
+    '"""Fit."""\n'
+    "from typing import TYPE_CHECKING\n\n"
+    "from . import helper\n"
+    "from .storage import reader\n"
+    "from .storage import writer\n"
+    "from .helper import offset\n"
+    "from .helper import offset as step\n"
+    "from .helper import scale as rate\n\n"
+    "if TYPE_CHECKING:\n    from .helper import Y\n\n"
+    "SHIFT = 1\n\n\n"
+    "def fit():\n"
+    "    total: int = SHIFT\n"
+    "    return rate() + total + helper.Y + offset()\n\n\n"
+    "def twice():\n"
+    "    helper.scale()\n"
+    "    return offset() + step()\n\n\n"
+    "READY = twice()\n"
+)
+
+
+class Seen(StrEnum):
+    SAME = "same"
+    ROTATES = "rotates"
+
+
+def _replaced(relative: str, *pairs: tuple[str, str]) -> Callable[[Path], None]:
+    def edit(source: Path) -> None:
+        path = source / relative
+        text = path.read_text(encoding="utf-8")
+        for old, new in pairs:
+            assert old in text
+            text = text.replace(old, new)
+        path.write_text(text, encoding="utf-8")
+
+    return edit
+
+
+def _moved(source: Path) -> None:
+    desk = source / "investment" / "desk"
+    (desk / "model.py").rename(desk / "fitting.py")
+    for relative in ("control/host/entry.py", "investment/desk/__init__.py"):
+        _replaced(relative, (".model import", ".fitting import"))(source)
+
+
+MODEL_PATH = "investment/desk/model.py"
+EDITS: dict[str, tuple[Callable[[Path], None], Seen]] = {
+    "comment": (_replaced(MODEL_PATH, ("SHIFT = 1\n", "SHIFT = 1  # a shift\n")), Seen.SAME),
+    "docstring": (_replaced(MODEL_PATH, ('"""Fit."""', '"""Fit, in other words."""')), Seen.SAME),
+    "import moved into a function": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import scale as rate\n", ""),
+            ("def fit():\n", "def fit():\n    from .helper import scale as rate\n\n"),
+        ),
+        Seen.SAME,
+    ),
+    "import alias renamed": (
+        _replaced(MODEL_PATH, ("scale as rate", "scale as speed"), ("rate()", "speed()")),
+        Seen.SAME,
+    ),
+    "import through a re-export": (
+        _replaced("control/host/entry.py", ("desk.model import fit", "desk import fit")),
+        Seen.ROTATES,
+    ),
+    "module moved, same body": (_moved, Seen.SAME),
+    "constant changed": (_replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")), Seen.ROTATES),
+    "called body changed": (
+        _replaced("investment/desk/helper.py", ("return 2", "return 3")),
+        Seen.ROTATES,
+    ),
+    "operator changed": (_replaced(MODEL_PATH, ("rate() + total", "rate() - total")), Seen.ROTATES),
+    "import moved into one of its two readers": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset\n", ""),
+            ("def fit():\n", "def fit():\n    from .helper import offset\n\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "imports kept for their effect reordered": (
+        _replaced(
+            MODEL_PATH,
+            (
+                "from .storage import reader\nfrom .storage import writer\n",
+                "from .storage import writer\nfrom .storage import reader\n",
+            ),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below a guard": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset\n", ""),
+            ("import Y\n\n", "import Y\nfrom .helper import offset\n\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below an annotation": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import scale as rate\n", ""),
+            ("total: int = SHIFT\n", "total: int = SHIFT\n    from .helper import scale as rate\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below a call": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset as step\n", ""),
+            ("helper.scale()\n", "helper.scale()\n    from .helper import offset as step\n"),
+        ),
+        Seen.ROTATES,
+    ),
+}
+
+
+@pytest.mark.parametrize("edit", EDITS, ids=list(EDITS))
 def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores_prose(
-    tmp_path: Path,
+    tmp_path: Path, edit: str
 ) -> None:
-    """A rule closure follows imports inside the deciding packages and ignores prose."""
+    """A rule closure follows the deciding imports and moves only with the code that runs."""
 
     from alphalattice.kernel.shared_kernel.source_identity import (
         NumberDecidingRule,
@@ -371,29 +490,32 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
         source_rule_closure_hash,
     )
 
-    def write(relative: str, text: str) -> Path:
-        path = tmp_path / "src" / "alphalattice" / relative
+    source = tmp_path / "src" / "alphalattice"
+
+    def write(relative: str, text: str) -> None:
+        path = source / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        return path
 
-    for package in ("investment", "investment/desk", "investment/desk/storage", "control"):
+    for package in ("investment", "investment/desk/storage", "control"):
         write(f"{package}/__init__.py", "")
+    write("investment/desk/__init__.py", "from .model import fit\n")
     write(
         "control/host/entry.py",
         "from typing import TYPE_CHECKING\n"
         "from alphalattice.investment.desk.model import fit\n"
         "from alphalattice.control.host import other\n"
-        "if TYPE_CHECKING:\n    from alphalattice.investment.desk import typing_only\n",
+        "if TYPE_CHECKING:\n    from alphalattice.investment.desk import typing_only\n\n\n"
+        "def run():\n    return fit()\n",
     )
     write("control/host/other.py", "X = 1\n")
-    model = write(
-        "investment/desk/model.py",
-        '"""Fit."""\nfrom . import helper\nfrom .storage import reader\n\n\n'
-        "def fit():\n    return 1\n",
+    write(MODEL_PATH, MODEL)
+    write(
+        "investment/desk/helper.py",
+        "Y = 2\n\n\ndef scale():\n    return 2\n\n\ndef offset():\n    return 1\n",
     )
-    write("investment/desk/helper.py", "Y = 2\n")
     write("investment/desk/storage/reader.py", "W = 4\n")
+    write("investment/desk/storage/writer.py", "V = 5\n")
     write("investment/desk/typing_only.py", "Z = 3\n")
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "identity-roles.json").write_text(
@@ -404,8 +526,7 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     )
     entry = ("alphalattice.control.host.entry",)
     rule = NumberDecidingRule(frozenset({"desk"}), frozenset({"storage"}))
-    closure = number_deciding_closure(entry, root=tmp_path, rule=rule)
-    assert sorted(closure) == [
+    assert sorted(number_deciding_closure(entry, root=tmp_path, rule=rule)) == [
         "alphalattice.control.host.entry",
         "alphalattice.investment.desk",
         "alphalattice.investment.desk.helper",
@@ -421,14 +542,9 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
         )
 
     before = identity()
-    original = model.read_text(encoding="utf-8")
-    model.write_text(
-        original.replace('"""Fit."""', '"""Fit, in other words."""') + "# a comment\n",
-        encoding="utf-8",
-    )
-    assert identity() == before
-    model.write_text(original.replace("return 1", "return 2"), encoding="utf-8")
-    assert identity() != before
+    change, expected = EDITS[edit]
+    change(source)
+    assert (Seen.SAME if identity() == before else Seen.ROTATES) is expected
 
 
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
