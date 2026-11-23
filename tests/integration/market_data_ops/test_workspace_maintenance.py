@@ -2768,9 +2768,21 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
     assert len(audits) == 3 and all(start > sessions[0] for start in audits[:-1])
 
 
+@pytest.mark.parametrize(
+    ("error_type", "full"),
+    [
+        pytest.param(ActionAuditScopeInsufficient, False, id="rolling-needs-approval"),
+        pytest.param(ActionAuditScopeInsufficient, True, id="full-ambiguous"),
+        pytest.param(ValueError, False, id="invalid-audit"),
+    ],
+)
 def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[ValueError],
+    full: bool,
 ) -> None:
+    """Audit refusal records its cause while the original fetch authority holds."""
     manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
     sessions = tuple(date(2026, 5, 1) + timedelta(days=offset) for offset in range(92))
     rows = tuple(
@@ -2827,11 +2839,10 @@ def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
                 ),
             )
 
-    monkeypatch.setattr(
-        market_data,
-        "complete_action_audit",
-        lambda *args, **kwargs: (_ for _ in ()).throw(ActionAuditScopeInsufficient("ambiguous")),
-    )
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise error_type("recorded audit mismatch")
+
+    monkeypatch.setattr(market_data, "complete_action_audit", refuse)
     provider = RecordingProvider()
     outcome = CurrentUniverseMaintenance(
         store=market_data,
@@ -2840,12 +2851,22 @@ def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
         as_of_session=date(2026, 7, 31),
         max_workers=1,
         mutation_gate=WorkspaceMutationGate(),
+        full_audit_listing_ids=frozenset({"listing-aapl"}) if full else frozenset(),
     ).run(observed_at=NOW)
 
     listing = market_data.current_universe_maintenance_listings(outcome.maintenance_id)[0]
     assert outcome.failed == 1
-    assert listing.failure_code == "data.full_history_audit_approval_required"
-    assert provider.starts == [date(2026, 6, 15)]
+    assert provider.starts == [sessions[0] if full else date(2026, 6, 15)]
+    if error_type is ActionAuditScopeInsufficient and not full:
+        assert listing.failure_code == "data.full_history_audit_approval_required"
+    else:
+        assert listing.failure_code == "data.action_audit_invalid"
+        cause = listing.change_document["failure_cause"]
+        assert (cause["exception_type"], cause["detail"], cause["step"]) == (
+            error_type.__name__,
+            "recorded audit mismatch",
+            "Corporate action audit",
+        )
 
 
 def test_turn_signal_is_memory_only_and_background_remains_wakeable() -> None:

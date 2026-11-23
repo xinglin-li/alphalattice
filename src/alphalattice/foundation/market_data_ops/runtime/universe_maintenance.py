@@ -962,11 +962,6 @@ class CurrentUniverseMaintenance:
             receipt, audit_counts = yield self._observation(
                 item, hydration, audit_start, observed_at, write_counts
             )
-            adjusted_revision = self.store.provider_adjusted_revision(
-                receipt.receipt_hash, _connection=connection
-            )
-            if adjusted_revision is not None:
-                adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
         except ProviderFetchError as exc:
             if connection is not None:
                 raise
@@ -987,7 +982,7 @@ class CurrentUniverseMaintenance:
                 return f"DEFERRED:{exc.code}"
             self._record_failure(item, code=exc.code, observed_at=observed_at)
             return "FAILED"
-        except ActionAuditScopeInsufficient:
+        except ActionAuditScopeInsufficient as exc:
             if connection is not None:
                 raise
             # A rolling payload can be internally valid yet insufficient to
@@ -996,17 +991,25 @@ class CurrentUniverseMaintenance:
             # a full payload that remains ambiguous fails closed below.
             if audit_start == bars[0].session_date:
                 self._record_failure(
-                    item, code="data.action_audit_invalid", observed_at=observed_at
+                    item, code="data.action_audit_invalid", observed_at=observed_at, exception=exc
                 )
                 return "FAILED"
             force_full_audit = True
-        except ValueError:
+        except ValueError as exc:
             if connection is not None:
                 raise
             # Programmer errors, unsupported actions, and invalid diagnostics
             # are not authority to spend a full-history Provider budget.
-            self._record_failure(item, code="data.action_audit_invalid", observed_at=observed_at)
+            self._record_failure(
+                item, code="data.action_audit_invalid", observed_at=observed_at, exception=exc
+            )
             return "FAILED"
+        else:
+            adjusted_revision = self.store.provider_adjusted_revision(
+                receipt.receipt_hash, _connection=connection
+            )
+            if adjusted_revision is not None:
+                adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
         historical_adjusted_change = before_adjusted_through is not None and any(
             session <= before_adjusted_through for session in adjusted_return_change_sessions
         )
@@ -1345,6 +1348,11 @@ class CurrentUniverseMaintenance:
             if rejected_history is not None
             else None
         )
+        audit_error = (
+            isinstance(exception, ValueError)
+            and not isinstance(exception, CorruptedPayload)
+            and code in {"data.action_audit_invalid", "data.full_history_audit_failed"}
+        )
         self._mutate(
             self.store.record_failures,
             (
@@ -1380,10 +1388,12 @@ class CurrentUniverseMaintenance:
                     "exception_type": type(exception).__name__ if exception else "UNKNOWN",
                     "detail": "The provider price history could not be read."
                     if isinstance(exception, ProviderFetchError)
+                    else " ".join(str(exception).split())[:400]
+                    if audit_error
                     else "The provider price history failed validation."
                     if exception
                     else "The source failure cause was not recorded.",
-                    "step": "Provider price history",
+                    "step": "Corporate action audit" if audit_error else "Provider price history",
                     "unit": self._listing(item.listing_id).symbol,
                     "row_count": row_count if row_count is not None else "UNKNOWN",
                     "sanitizer_code": exception.code

@@ -449,6 +449,30 @@ def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
     return sorted(found)
 
 
+def _carry_recorded_review(copy: Path, source: Path, target: Path) -> None:
+    """Keep the nested recorded-review originals at the root that will serve the copy."""
+    from alphalattice.evidence.alternative_evidence.storage.world import (
+        keep_original,
+        original_locator_bodies,
+    )
+
+    evidence = copy / "recorded-review/evidence"
+    for _, body in original_locator_bodies(
+        evidence / "artifacts", evidence / "workspace", root=source
+    ):
+        keep_original(target, body)
+
+
+def carry_served_copy(workspace: Path, copy: Path) -> None:
+    """Carry a copied Host workspace and the originals its recorded-review fixture reads."""
+    from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
+
+    source, target = served_root(workspace), served_root(copy)
+    with owning(source, target):
+        carry_copy(workspace, copy, root=source)
+        _carry_recorded_review(copy, source, target)
+
+
 def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
     and catalog-held Risk and Portfolio results carried into `root`, the copy's own served root
@@ -457,10 +481,6 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
     their exact original bodies there too. An in-process Host names its data root explicitly."""
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
-    )
-    from alphalattice.evidence.alternative_evidence.storage.world import (
-        keep_original,
-        original_locator_bodies,
     )
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         committed_outcome_chunks,
@@ -486,10 +506,7 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
         return copy
     target = served_root(copy) if root is None else root
     with owning(source, target):
-        for _, body in original_locator_bodies(
-            evidence / "artifacts", evidence / "workspace", root=source
-        ):
-            keep_original(target, body)
+        _carry_recorded_review(copy, source, target)
         with history.own_root(source):
             bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
             workspace = str(named_workspace_id(copy))
