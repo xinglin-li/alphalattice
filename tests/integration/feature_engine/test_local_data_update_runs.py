@@ -309,6 +309,9 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
     )
     service.start()
     try:
+        # The idle file-trust scrub rightly writes its receipt between this test's requests;
+        # the test is about the data update, so it runs without that background worker.
+        service.operations.stop_file_scrub(None)
         before = _bytes(workspace)
         planned = _json(service, "/api/data-update/plan", method="POST", payload={})
         assert planned["status"] == "PLANNED", planned
