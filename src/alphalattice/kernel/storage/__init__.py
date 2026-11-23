@@ -2,8 +2,9 @@
 
 `port` holds the injected driver, counts each instance open by its target, keeps the process's one
 in-memory instance whose cursors serve the short in-memory computations, keeps each data root's
-table schemas until that root's writer revision changes, and runs the teardowns its owners
-register when the process ends. The kernel imports only the standard library: the product's
+table schemas until that root's writer revision changes, lets its owners give up a file that is
+read or replaced outside the engine, and runs the teardowns its owners register when the process
+ends. The kernel imports only the standard library: the product's
 DuckDB driver is installed from outside it, at each process's entry, and an open with none is
 refused by name.
 """
@@ -18,8 +19,10 @@ from .port import (
     connect,
     install_driver,
     memory,
+    on_outside,
     on_teardown,
     opens,
+    outside,
     schema,
 )
 
@@ -33,7 +36,9 @@ __all__ = [
     "connect",
     "install_driver",
     "memory",
+    "on_outside",
     "on_teardown",
     "opens",
+    "outside",
     "schema",
 ]

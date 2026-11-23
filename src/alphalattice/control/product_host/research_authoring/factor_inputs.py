@@ -39,7 +39,6 @@ from alphalattice.control.research_program.authoring.workflow import ResearchPro
 from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_aside
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
-from alphalattice.control.workspace_runtime.database import release_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
@@ -87,6 +86,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel import storage
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer import history, inputs
 from alphalattice.kernel.data_layer.backup import (
@@ -186,8 +186,9 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     the pooled DuckDB object and the bundle's link to it -- are read once
     and answer the same digest, because one object holds one set of bytes
     while it is held open; a platform that reports no object identity reads
-    every path itself. A workspace database this process keeps open between its
-    connections is let go first: its open instance denies other reads on Windows.
+    every path itself. The paths are read outside the engine (`storage.outside`), so
+    a workspace database instance of this process that would deny the reads is let
+    go first.
     Hashing releases the interpreter lock, so the objects
     of one verification are read in parallel.
 
@@ -200,8 +201,8 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     ordered = tuple(dict.fromkeys(paths))
     with ExitStack() as stack:
         streams: dict[Path, BinaryIO] = {}
+        stack.enter_context(storage.outside(*ordered))
         for path in ordered:
-            release_workspace_database(path)  # an instance of the file this process keeps open
             try:
                 streams[path] = stack.enter_context(path.open("rb"))
             except FileNotFoundError as error:
@@ -431,8 +432,9 @@ def _inputs_root(workspace: Path, binding_hash: str) -> Path:
 
 def _copy_input(workspace: Path, source: Path, target: Path) -> None:
     """Stage one input file: a workspace-owned immutable Parquet linked where the volume allows,
-    anything else (the mutable database first) copied. The binding is then kept on the data root,
-    which keeps equal bytes once (kernel.data_layer.inputs), so the workspace pools nothing."""
+    anything else (the mutable database first) copied, read outside the engine (`storage.outside`).
+    The binding is then kept on the data root, which keeps equal bytes once
+    (kernel.data_layer.inputs), so the workspace pools nothing."""
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix == ".parquet" and source.resolve().is_relative_to(workspace.resolve()):
         try:
@@ -441,7 +443,8 @@ def _copy_input(workspace: Path, source: Path, target: Path) -> None:
         except OSError:  # another volume, or no links: a copy
             pass
     require_storage_capacity(workspace, additional_bytes=source.stat().st_size)
-    shutil.copy2(source, target)
+    with storage.outside(source):
+        shutil.copy2(source, target)
 
 
 def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:

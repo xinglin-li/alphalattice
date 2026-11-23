@@ -1617,7 +1617,8 @@
     "feature_engine.closure_pointer_requires_a_full_content_identity": {
       "description": "Feature closure pointers reject a partial or noncanonical content identity before looking up a head.",
       "owner": "alphalattice.foundation.feature_engine",
-      "layer": "unit",
+      "lower_layer": "Its resolver proves a file's bytes through the storage owner, which may hold a DuckDB instance of it.",
+      "layer": "integration",
       "seconds": 1
     },
     "feature_engine.closure_store_switch_refuses_an_unknown_value": {
@@ -3098,7 +3099,7 @@
       "lower_layer": "It reads through the process-wide request cache every test in the process shares, which a unit test may not reach."
     },
     "workspace_runtime.a_held_file_is_released_where_another_reader_needs_it": {
-      "description": "A held workspace database, or every file while a Host's session lives, keeps one instance between its connections and closes it wherever another reader needs the file, a release naming it by any spelling of its path.",
+      "description": "A held file opens once in its declared mode and is let go only for a reader, replacement or call that needs it, by any spelling; device paths are refused, and a new Host waits out an ended one's workers.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 1,
@@ -3154,19 +3155,22 @@
     "workspace_runtime.feature_panel_chunk_refuses_a_foreign_uri": {
       "description": "A Panel chunk address that names another content hash is refused, so a descriptor can never resolve another chunk's bytes under its own identity.",
       "owner": "alphalattice.control.workspace_runtime",
-      "layer": "unit",
+      "lower_layer": "Its resolver proves a file's bytes through the storage owner, which may hold a DuckDB instance of it.",
+      "layer": "integration",
       "seconds": 1
     },
     "workspace_runtime.feature_panel_chunk_refuses_another_kind": {
       "description": "A descriptor of another artifact kind resolves as no feature panel chunk, so a feature input's file is never served as a Panel chunk.",
       "owner": "alphalattice.control.workspace_runtime",
-      "layer": "unit",
+      "lower_layer": "Its resolver proves a file's bytes through the storage owner, which may hold a DuckDB instance of it.",
+      "layer": "integration",
       "seconds": 1
     },
     "workspace_runtime.feature_panel_chunk_resolves_to_its_stored_file": {
       "description": "A published Panel chunk resolves by its descriptor to the Parquet file stored under its content hash, so the Panel reader finds the bytes it was written with.",
       "owner": "alphalattice.control.workspace_runtime",
-      "layer": "unit",
+      "lower_layer": "Its resolver proves a file's bytes through the storage owner, which may hold a DuckDB instance of it.",
+      "layer": "integration",
       "seconds": 1
     },
     "workspace_runtime.full_proof_refuses_a_changed_sealed_file": {
@@ -3208,7 +3212,8 @@
     "workspace_runtime.panel_preprocessing_marker_follows_recorded_methods": {
       "description": "A Panel keeps its sealed preprocessing marker when the incoming method matches or follows recorded fingerprint successors, and refuses other method or policy changes.",
       "owner": "alphalattice.control.workspace_runtime",
-      "layer": "unit",
+      "lower_layer": "Its resolver proves a file's bytes through the storage owner, which may hold a DuckDB instance of it.",
+      "layer": "integration",
       "seconds": 1
     },
     "workspace_runtime.panel_reads_key_a_chunk_by_its_binding_year_and_part": {

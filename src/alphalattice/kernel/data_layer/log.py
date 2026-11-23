@@ -36,10 +36,10 @@ import sys
 import threading
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from threading import RLock
-from typing import IO, Any, Final
+from typing import IO, Any, Final, cast
 
 from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.data.errors import DataError
@@ -78,6 +78,10 @@ ATTRS_CHARACTERS: Final = 4096
 """The most characters an event's attributes hold (log.sql's CHECK on `attrs`)."""
 LOCK_AT: Final = 1 << 30
 """The byte a Windows Host locks: past any name the lock file holds."""
+WORKERS: Final = "workers"
+"""Beside the lock: one record per Task worker a Host started on the root (`record_worker`)."""
+WORKER_END_SECONDS: Final = 10.0
+"""How long a Host's start waits for the workers of a Host that ended to end with it."""
 
 
 def envelope(
@@ -673,6 +677,79 @@ def lock_byte(handle: IO[bytes]) -> None:
         import fcntl  # lazy: the module exists only on POSIX
 
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def record_worker(root: Path, *, host: int) -> None:
+    """Name this process in `root` as a Task worker of the Host `host` (its pid), by its pid and
+    start time and its Host's, so a Host started after that one ends waits for it to end
+    (`await_workers`). The record is written whole under a temporary name and moved into place,
+    so a scan sees none or all of it."""
+    import psutil  # lazy: a worker records itself once per root
+
+    me = psutil.Process()
+    try:
+        host_created: float | None = psutil.Process(host).create_time()
+    except psutil.Error:  # the Host has ended already
+        host_created = None
+    record = {
+        "pid": me.pid,
+        "created": me.create_time(),
+        "host": host,
+        "host_created": host_created,
+    }
+    folder = root / "machine" / WORKERS
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{me.pid}.json"
+    staged = target.with_name(f".{target.name}.{me.pid}.tmp")
+    staged.write_text(json.dumps(record), encoding="utf-8")
+    os.replace(staged, target)
+
+
+def await_workers(root: Path) -> None:
+    """Before a Host opens `root`: wait for the recorded Task workers whose Host has ended, which
+    may still hold its log for a moment, to end too, and end any still running after
+    `WORKER_END_SECONDS`. Records of ended workers are removed; a running Host's workers are left
+    to it. Only published records are read: one a worker is still writing is its own."""
+    folder = root / "machine" / WORKERS
+    try:
+        records = [record for record in folder.iterdir() if record.suffix == ".json"]
+    except OSError:  # no worker has recorded itself on this root
+        return
+    if not records:
+        return
+    import psutil  # lazy: only a root with worker records reads processes
+
+    def running(pid: object, created: object) -> psutil.Process | None:
+        """The process the record names, unless it has ended (a zombie has) or its pid names
+        another process now."""
+        try:
+            process = psutil.Process(int(cast(int, pid)))
+            if process.create_time() != created or process.status() == psutil.STATUS_ZOMBIE:
+                return None
+        except (psutil.Error, TypeError, ValueError):
+            return None
+        return process
+
+    orphans: dict[Path, psutil.Process] = {}
+    for record in records:
+        try:
+            fields = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            fields = {}
+        worker = running(fields.get("pid"), fields.get("created"))
+        if worker is None:
+            record.unlink(missing_ok=True)
+        elif running(fields.get("host"), fields.get("host_created")) is None:
+            orphans[record] = worker
+    if not orphans:
+        return
+    _, alive = psutil.wait_procs(list(orphans.values()), timeout=WORKER_END_SECONDS)
+    for process in alive:
+        with suppress(psutil.Error):
+            process.kill()
+    psutil.wait_procs(alive, timeout=WORKER_END_SECONDS)
+    for record in orphans:
+        record.unlink(missing_ok=True)
 
 
 def _current(con: sqlite3.Connection, type_: str) -> int:

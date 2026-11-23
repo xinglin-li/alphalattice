@@ -31,7 +31,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent import futures
 from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -175,7 +175,8 @@ class ChildCalls:
     megabytes when the machine runs short of kernel resources (WinError 1450, measured under
     load with a first build's ~10 MB answers), where a file write does not. Use it as a context
     manager (`child_calls`): leaving it withdraws the calls not started, waits for the running
-    ones, told to cancel, and removes the folder.
+    ones, told to cancel, and removes the folder. `opens` names the workspace files the function
+    opens (None, the default: any), and only those are let go while a call runs (`hand_off`).
     """
 
     def __init__(
@@ -185,14 +186,17 @@ class ChildCalls:
         workers: int,
         cancelled: Callable[[], bool] | None = None,
         preload_models: bool = True,
+        opens: Iterable[Path] | None = None,
     ) -> None:
-        """Bind the function and how many kept workers its calls spread over."""
+        """Bind the function, how many kept workers its calls spread over, and the files it
+        opens."""
         if workers < 1:
             raise ValueError("task_control.child_workers_invalid")
         self._target = target
         self._workers = worker_width(workers)
         self._cancelled = cancelled
         self._preload_models = preload_models
+        self._opens = None if opens is None else tuple(opens)
         self._made = 0
         self._pending: deque[_Submitted] = deque()
         self._folder = tempfile.TemporaryDirectory(prefix="alphalattice-calls-")
@@ -234,6 +238,7 @@ class ChildCalls:
                 threads=1,
                 answer=answer,
                 preload_models=self._preload_models,
+                opens=self._opens,
             )
         )
 
@@ -275,6 +280,7 @@ class ChildCalls:
                         self._flag,
                         threads=1,
                         preload_models=self._preload_models,
+                        opens=(),
                     )
         self._folder.cleanup()
 
@@ -286,9 +292,12 @@ def child_calls(
     workers: int,
     cancelled: Callable[[], bool] | None = None,
     preload_models: bool = True,
+    opens: Iterable[Path] | None = None,
 ) -> Iterator[ChildCalls]:
     """`ChildCalls` of ``module:function`` over `workers` kept workers, closed on leaving."""
-    calls = ChildCalls(target, workers=workers, cancelled=cancelled, preload_models=preload_models)
+    calls = ChildCalls(
+        target, workers=workers, cancelled=cancelled, preload_models=preload_models, opens=opens
+    )
     try:
         yield calls
     finally:
@@ -315,14 +324,16 @@ def _submitted(
     threads: int | None,
     answer: Path | None = None,
     preload_models: bool = True,
+    opens: Iterable[Path] | None = None,
 ) -> _Submitted:
     """Hand one call to a kept worker; one that has ended answers as an interruption. The worker
-    may open the files this process holds, so none is kept open until the call ends."""
+    may open the files this process holds that `opens` names (None: any), so none of them is kept
+    open until the call ends."""
     from alphalattice.control.workspace_runtime.database import hand_off  # lazy: DuckDB
     from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
 
     pool = None
-    ended = hand_off()
+    ended = hand_off(opens)
     try:
         pool = _worker(worker)
         future = pool.submit(
@@ -494,11 +505,22 @@ def _worker_started(worker: int = 0) -> None:
     storage.install_driver(reader_threads.DRIVER)
 
 
+_RECORDED: set[Path] = set()
+"""The data roots this worker has recorded itself in (`record_worker`)."""
+
+
 def _follow_root(root: str | None) -> None:
-    """Name the caller's data root in this worker's environment, which `data_root` reads."""
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+    """Name the caller's data root in this worker's environment, which `data_root` reads, and
+    record this worker in it once, so a Host started after this one's Host ends waits for it."""
+    from alphalattice.kernel.data_layer.log import record_worker  # lazy: the data layer
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV, data_root  # lazy: the same
 
     declare(Change("task-worker-data-root", {DATA_ROOT_ENV: root}), native=True)
+    where = data_root()
+    host = multiprocessing.parent_process()
+    if where not in _RECORDED and host is not None and host.pid is not None:
+        record_worker(where, host=host.pid)
+        _RECORDED.add(where)
 
 
 def _call(

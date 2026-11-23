@@ -75,7 +75,10 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
-from alphalattice.control.workspace_runtime.database import keep_workspace_databases
+from alphalattice.control.workspace_runtime.database import (
+    WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
+    keep_workspace_databases,
+)
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
@@ -732,11 +735,15 @@ class LocalPortfolioWebSession:
         already started (the history, a lease, a non-daemon worker) in a healthy stop's order,
         and is re-raised, so no held workspace is left with no URL to stop it through."""
         try:
+            # The session writes the market store (its data updates): it opens writable once, at
+            # its first use, the history's own reads included.
+            self._kept = keep_workspace_databases(
+                writes=(self.workspace / WORKSPACE_MARKET_DATA_DATABASE_FILENAME,)
+            )
             WorkspaceApplicationSession.open_history(
                 self.workspace_manifest.workspace_id, self.workspace, self.clock
             )
             self._history = True
-            self._kept = keep_workspace_databases()
             return self._start()
         except BaseException:
             self._teardown(timeout=None)

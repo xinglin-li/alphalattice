@@ -50,7 +50,7 @@ from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.admit import secrets_in
 from alphalattice.kernel.data_layer.breakdown import goal_trace as traced_goal
-from alphalattice.kernel.data_layer.log import HostLog, attach, envelope, uuid7
+from alphalattice.kernel.data_layer.log import HostLog, attach, await_workers, envelope, uuid7
 from alphalattice.kernel.data_layer.reading import (
     CONDITION_TYPE,
     CatalogReader,
@@ -177,7 +177,9 @@ def held(root: Path | None = None) -> HostLog:
     """This process's log: its data root's, opened at the first call and held until
     `close_history`. Refused by name when another process holds the root
     (`data_layer.host_running`, with the way on), its log does not open, or this process holds
-    another root (`data_layer.root_held`): a process writes one data root's log."""
+    another root (`data_layer.root_held`): a process writes one data root's log. The Task workers
+    of a Host that held the root and ended are waited for first (`await_workers`): they may still
+    hold its log for a moment."""
     _, log = _log_at(root)
     if log is not None:
         return log
@@ -187,6 +189,7 @@ def held(root: Path | None = None) -> HostLog:
             return log
         try:
             create_data_root(where)
+            await_workers(where)
             log = HostLog.open(where)
         except DataError as error:
             if error.failure.code != "data_layer.host_running":

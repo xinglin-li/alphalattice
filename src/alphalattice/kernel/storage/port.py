@@ -15,6 +15,9 @@
   its own connection: what one registers, another does not see.
 - **Table schemas** (`schema`): read once per data root and table, and kept until the root's
   writer revision changes; the root's owner names the revision.
+- **Opens outside the engine** (`outside`): a reader of a file's bytes, or its replacement, names
+  the file first, and the owner holding an instance of it (`on_outside`) lets go of what would
+  refuse that access or keep the replaced file's old contents, until the block ends.
 - **Teardown** (`on_teardown`, `close`): each owner's own, when the process ends or a caller
   closes the sessions, then the in-memory instance.
 """
@@ -25,8 +28,9 @@ import atexit
 import threading
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
+from os import PathLike
 from typing import Any, Protocol, cast
 
 MEMORY = ":memory:"
@@ -52,6 +56,9 @@ _MEMORY: list[Any] = []
 _SCHEMAS: dict[tuple[str, str], tuple[int, object]] = {}
 """Per data root and table: the writer revision a schema was read at, and the schema."""
 _TEARDOWNS: list[Callable[[], None]] = []
+_OUTSIDE: list[Callable[[tuple[PathLike[str], ...], bool], Callable[[], None]]] = []
+"""The owners that hold instances of files: each lets go of what an access outside the engine
+needs, and answers the end it calls when the access is over."""
 _ATTACHING: ContextVar[bool] = ContextVar("storage_attaching", default=False)
 """Inside `attaching`: an open is another connection to an instance already open."""
 
@@ -143,6 +150,29 @@ def schema[T](root: str, table: str, revision: int, read: Callable[[], T]) -> T:
     with _LOCK:
         _SCHEMAS[key] = (revision, value)
     return value
+
+
+def on_outside(
+    callback: Callable[[tuple[PathLike[str], ...], bool], Callable[[], None]],
+) -> None:
+    """Call `callback(paths, replacing)` before each access to `paths` outside the engine
+    (`outside`), each owner's once; the end it returns runs when the access is over."""
+    with _LOCK:
+        if callback not in _OUTSIDE:
+            _OUTSIDE.append(callback)
+
+
+@contextmanager
+def outside(*paths: PathLike[str], replacing: bool = False) -> Iterator[None]:
+    """A block that reads `paths`' bytes, or replaces them (`replacing`), outside the engine:
+    each owner holding an instance of one lets go of what would refuse the access, or would keep
+    serving a replaced file's old contents, and keeps none of it until the block ends."""
+    with _LOCK:
+        owners = list(_OUTSIDE)
+    with ExitStack() as ends:
+        for owner in owners:
+            ends.callback(owner(paths, replacing))
+        yield
 
 
 def on_teardown(callback: Callable[[], None]) -> None:

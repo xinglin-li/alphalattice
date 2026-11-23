@@ -39,6 +39,7 @@ from typing import BinaryIO, cast
 import duckdb
 
 from alphalattice.control.workspace_runtime.database import table_columns
+from alphalattice.kernel import storage
 from alphalattice.kernel.clock import wall_time, wall_time_ns
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
@@ -327,9 +328,9 @@ def sealed_file_holds(path: Path, sha256: str) -> bool:
     """
     try:
         if full_proof():
-            with span("hash", "full_proof"):
+            with span("hash", "full_proof"), storage.outside(path):
                 return integrity_sha256_path(path) == sha256
-        return _DIGEST_TRUST.verified(path)[0] == sha256
+        return _verified(path) == sha256
     except OSError:
         return False
 
@@ -347,7 +348,7 @@ def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | No
         digest = (
             _content
             if _content is not None
-            else (_DIGEST_TRUST.held(path) if kind == "sha256" else _DIGEST_TRUST.verified(path)[0])
+            else (_DIGEST_TRUST.held(path) if kind == "sha256" else _verified(path))
         )
     except OSError:
         return None
@@ -373,7 +374,7 @@ def record_file_fact(
     stat = stat if stat is not None else os.stat(path)
     if not written and wall_time() - stat.st_mtime <= RACY_SECONDS:
         return
-    digest = _content if _content is not None else _DIGEST_TRUST.verified(path)[0]
+    digest = _content if _content is not None else _verified(path)
     entry = ((stat.st_size, stat.st_mtime_ns, stat.st_ino), value)
     try:
         now = os.stat(path)
@@ -400,10 +401,18 @@ def file_sha256(path: Path, *, written: bool = False, handle: BinaryIO | None = 
     if full_proof():
         with span("hash", "full_proof"):
             if handle is None:
-                return integrity_sha256_path(path)
+                with storage.outside(path):
+                    return integrity_sha256_path(path)
             handle.seek(0)
             return integrity_sha256_stream(cast(BufferedReader, handle)).hexdigest()
-    return _DIGEST_TRUST.verified(path, handle)[0]
+    return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle)[0]
+
+
+def _verified(path: Path) -> str:
+    """The trust record's digest of `path`, its bytes read outside the engine
+    (`storage.outside`): a workspace database instance that would refuse the read is let go."""
+    with storage.outside(path):
+        return _DIGEST_TRUST.verified(path)[0]
 
 
 def _place(
