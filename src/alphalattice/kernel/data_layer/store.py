@@ -386,7 +386,7 @@ class StorePort:
             return 0
         import pyarrow as pa  # lazy: the Host's existing data extra
 
-        with self._writer:
+        with self._writer, self.lake.cursor() as lake:
             received_us = self.log.clock()
             batch = pa.Table.from_pylist(
                 [
@@ -394,32 +394,30 @@ class StorePort:
                     for i, row in enumerate(rows)
                 ]
             )
-            self.lake.register("agent_batch", batch)
+            lake.register("agent_batch", batch)
             try:
-                self.lake.execute("BEGIN TRANSACTION").complete()
-                before = self.lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchone()[
-                    0
-                ]
-                self.lake.execute(
+                lake.execute("BEGIN TRANSACTION").complete()
+                ((before,),) = lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchall()
+                lake.execute(
                     "INSERT INTO lake.telemetry.event BY NAME"
                     " SELECT DISTINCT b.* FROM agent_batch b WHERE NOT EXISTS"
                     " (SELECT 1 FROM lake.telemetry.event e WHERE e.event_id = b.event_id)"
                 ).complete()
-                after = self.lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchone()[0]
-                self.lake.execute("COMMIT").complete()
+                ((after,),) = lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchall()
+                lake.execute("COMMIT").complete()
                 return int(after - before)
             except BaseException:
-                self.lake.execute("ROLLBACK").complete()
+                lake.execute("ROLLBACK").complete()
                 raise
             finally:
-                self.lake.unregister("agent_batch")
+                lake.unregister("agent_batch")
 
     def agent_telemetry(
         self, host: str, session: str, *, workspace_id: str
     ) -> list[dict[str, Any]]:
         """Read this workspace's exact vendor and conversation/session, in event order."""
-        with self._writer:
-            result = self.lake.execute(
+        with self._writer, self.lake.cursor() as lake:
+            result = lake.execute(
                 "SELECT * FROM agent_telemetry WHERE workspace_id = ? AND vendor = ?"
                 " AND (conversation_id = ? OR session_id = ? OR parent_agent_id = ?)"
                 " ORDER BY received_us, record_index",
@@ -430,8 +428,8 @@ class StorePort:
 
     def unplaced_telemetry(self, *, workspace_id: str) -> int:
         """Count only this workspace's observations without a conversation or session."""
-        with self._writer:
-            ((count,),) = self.lake.execute(
+        with self._writer, self.lake.cursor() as lake:
+            ((count,),) = lake.execute(
                 "SELECT count(*) FROM agent_telemetry WHERE workspace_id = ? AND unplaced",
                 [workspace_id],
             ).fetchall()
@@ -439,8 +437,8 @@ class StorePort:
 
     def trial_agent_usage(self, trial: str, *, workspace_id: str) -> dict[str, Any]:
         """The observed native sums a trial closes with, with no invented zero on absence."""
-        with self._writer:
-            result = self.lake.execute(
+        with self._writer, self.lake.cursor() as lake:
+            result = lake.execute(
                 "SELECT * FROM agent_telemetry WHERE workspace_id = ? AND trial_id = ?"
                 " ORDER BY received_us, record_index",
                 [workspace_id, trial],

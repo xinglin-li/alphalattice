@@ -139,7 +139,7 @@ def owe(port: StorePort) -> dict:
 
 
 @pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
-@pytest.mark.parametrize("case", ("conversation", "workspace", "stopping"))
+@pytest.mark.parametrize("case", ("conversation", "workspace", "stopping", "unfinished-result"))
 def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
     """One sanitized export survives restart, without duplicate delivery or invented scope, and
     a Host stop that meets a batch in the catalog's session waits for it to commit."""
@@ -206,6 +206,23 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
         try:
+            if case == "unfinished-result":
+                pending = port.lake.execute("SELECT i FROM range(2) AS test_rows(i) ORDER BY i")
+                assert pending.fetchone() == (0,)
+                try:
+                    assert port.telemetry_batch(batch("conversation-1")) == 1
+                    (row,) = port.agent_telemetry("codex", "conversation-1", workspace_id="w1")
+                    assert row["output_tokens"] == 3
+                    assert port.unplaced_telemetry(workspace_id="w1") == 0
+                    assert (
+                        port.trial_agent_usage("trial-1", workspace_id="w1")["output_tokens"] == 3
+                    )
+                    assert pending.fetchall() == [(1,)]
+                except duckdb.ResourceInUseException as error:
+                    pytest.fail(f"telemetry used a connection with an unfinished result: {error}")
+                finally:
+                    pending.complete()
+                return
             if case == "workspace":
                 first, second = batch("conversation-1"), batch("conversation-1", "w2")
                 # The catalog's idle check can precede an incoming observation.
