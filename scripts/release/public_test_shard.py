@@ -18,6 +18,11 @@ import pytest
 import pytest_timeout
 from _pytest.junitxml import bin_xml_escape, mangle_test_address
 
+# The shard's own clock, bound at import: a test that fakes time.monotonic or time.time on
+# the shared time module never reaches the events and deadlines a worker writes from its
+# hooks (an exhausted fake ended an xdist worker, 11-23).
+_monotonic, _wall = time.monotonic, time.time
+
 _stream = None
 _owner = "controller"
 # Public runs stop hangs. The commit stage judges ordinary test size budgets.
@@ -47,9 +52,7 @@ def _event(kind, **fields):
     if _stream is not None:
         try:
             _stream.write(
-                json.dumps(
-                    {"event": kind, "at": round(time.time(), 3), "tick": time.monotonic(), **fields}
-                )
+                json.dumps({"event": kind, "at": round(_wall(), 3), "tick": _monotonic(), **fields})
                 + "\n"
             )
             _stream.flush()
@@ -182,7 +185,7 @@ def _watch(phase, *, seconds=HANG_SECONDS, node=None, owner=None, pid=None):
         owner=owner or _owner,
         phase=phase,
         node=node,
-        until=None if seconds is None else time.monotonic() + seconds,
+        until=None if seconds is None else _monotonic() + seconds,
         pid=os.getpid() if owner is None else pid,
     )
 
@@ -412,12 +415,14 @@ def run_shard(args, junit, diagnostics, budget):
         reason = None
         try:
             with (
-                spawn.reap_detached_sessions(),
+                spawn.reap_detached_sessions() as keep,
                 spawn.InteractiveSession(timeout=cutoff - began + 1, stop_scope="tree") as session,
             ):
                 child = session.start(
                     command, env=env, stdout=None, stderr=None, stdin=subprocess.DEVNULL
                 )
+                # an orphan its tests leave is reaped as it ends, never a zombie a wait outlasts
+                keep(child.pid)
                 while child.poll() is None:
                     watch.read(diagnostics)
                     now = waits.clock()

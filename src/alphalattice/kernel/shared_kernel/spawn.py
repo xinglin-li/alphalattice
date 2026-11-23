@@ -17,7 +17,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack, closing, contextmanager, suppress
 from ctypes import wintypes
 from typing import Any, Literal, overload
@@ -176,10 +176,14 @@ def stop_tree(pid: int) -> None:
 
 
 @contextmanager
-def reap_detached_sessions() -> Iterator[None]:
-    """A dedicated Linux launcher adopts and reaps descendants across session boundaries."""
+def reap_detached_sessions() -> Iterator[Callable[[int], None]]:
+    """A dedicated Linux launcher adopts and reaps descendants across session boundaries.
+
+    It yields `keep`: given the launcher's own child once started, an adopted orphan is reaped the
+    moment it exits, as init reaps one, so a process that ended is gone to every reader rather than
+    a zombie of the launcher until its close (a timed-out descendant, a stopped Host, 11-23)."""
     if sys.platform != "linux":
-        yield
+        yield lambda _pid: None
         return
     owner = psutil.Process()
     if owner.children():
@@ -190,7 +194,9 @@ def reap_detached_sessions() -> Iterator[None]:
     if prctl(set_child_subreaper, 1, 0, 0, 0) != 0:
         raise TreeNotStopped("spawn.child_subreaper_unavailable")
     try:
-        yield
+        yield lambda kept: threading.Thread(
+            target=_reap_adopted, args=(kept,), name="spawn-reap-adopted", daemon=True
+        ).start()
     finally:
         # The caller closes its ordinary process group first. A detached Host
         # whose launcher has exited is still a child of this subreaper.
@@ -205,6 +211,25 @@ def reap_detached_sessions() -> Iterator[None]:
                 with suppress(psutil.NoSuchProcess):
                     member.kill()
             psutil.wait_procs(members, timeout=min(remaining, 0.1))
+
+
+def _reap_adopted(kept: int) -> None:
+    """Reap each child of this subreaper as it exits, except `kept`, the launcher's own child,
+    whose status its owner reads; the watch ends when `kept` exits or no child is left, and the
+    launcher's close then stops and reaps what remains. waitid blocks, so it never spins."""
+    for pid in iter(lambda: _next_exited(kept), kept):
+        with suppress(ChildProcessError):
+            os.waitpid(pid, 0)
+
+
+def _next_exited(kept: int) -> int:
+    """The pid of a child that has exited, left unreaped (WNOWAIT); `kept` when none is left."""
+    linux = vars(os)  # Linux names, read where the platform has them, as getpgid is
+    try:
+        ended = linux["waitid"](linux["P_ALL"], 0, linux["WEXITED"] | linux["WNOWAIT"])
+    except ChildProcessError:
+        return kept
+    return kept if ended is None else int(ended.si_pid)
 
 
 def _in_group(member: Any, pid: int) -> bool:

@@ -337,3 +337,51 @@ def test_concurrent_stops_wait_for_the_same_termination_barrier():
     first.join(timeout=2)
     second.join(timeout=2)
     assert second_finished.is_set() and not failures
+
+
+LAUNCHER = """
+import subprocess, sys, psutil
+from alphalattice.kernel.shared_kernel import spawn, waits
+
+with spawn.reap_detached_sessions() as keep:
+    own = subprocess.Popen(
+        [sys.executable, "-c", "import threading; threading.Event().wait(30)"],
+        stdin=subprocess.DEVNULL,
+    )
+    keep(own.pid)
+    parent = subprocess.run(
+        [sys.executable, "-c", "import subprocess, sys; "
+         "print(subprocess.Popen([sys.executable, '-c', "
+         "'import threading; threading.Event().wait(30)'], stdin=subprocess.DEVNULL, "
+         "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid)"],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, check=True)
+    orphan = psutil.Process(int(parent.stdout))
+    adopted = orphan.ppid() == psutil.Process().pid
+    orphan.kill()
+    try:
+        waits.wait_until(
+            lambda _left: not psutil.pid_exists(orphan.pid), timeout=5, what="the orphan reaped"
+        )
+        print("adopted" if adopted else "not-adopted", "gone")
+    except waits.WaitTimeout:
+        state = "zombie" if orphan.status() == psutil.STATUS_ZOMBIE else "alive"
+        print("adopted" if adopted else "not-adopted", state)
+    own.kill()
+    own.wait(timeout=5)
+"""
+
+
+@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.skipif(sys.platform != "linux", reason="a child subreaper is Linux's alone")
+def test_a_subreaper_launcher_reaps_an_adopted_orphan_as_it_ends():
+    """Under a subreaper launcher, an adopted orphan is gone to every reader once it ends."""
+    done = subprocess.run(
+        [sys.executable, "-c", LAUNCHER],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    assert (done.returncode, done.stdout.strip()) == (0, "adopted gone"), done.stderr
