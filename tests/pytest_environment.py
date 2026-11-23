@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (
         ResearchWorkspaceManifest,
     )
+    from alphalattice.interface.local_application.client import LocalResearchClient
 
 PROJECT_ROOT: ContextVar[Path | None] = ContextVar("pytest_project_root", default=None)
 # The running test, set by the root conftest: the session seeds it copies read their market data
@@ -333,6 +334,16 @@ def served_root(workspace: Path) -> Path:
     """The data root of a Host served from `workspace` in another process: its own, beside the
     workspace, since a process holds one data root and this one may hold its own."""
     return workspace.parent / f"{workspace.name}.data-root"
+
+
+def served_client(workspace: Path) -> LocalResearchClient:
+    """A client of the Host served apart from `workspace`: the product's own reader finds that
+    Host's endpoint record where it writes it, on its data root, never on this process's."""
+    from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.kernel.data_layer import history
+
+    with history.own_root(served_root(workspace)):  # the client reads its record once, here
+        return LocalResearchClient(workspace)
 
 
 def serve_apart(workspace: Path) -> Path:
