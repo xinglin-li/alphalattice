@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from threading import Event
@@ -33,15 +34,13 @@ class IdleFileTrustScrub:
         self.host = MaintenanceBackgroundHost(wake=self.wake, run_once=self._run, clock=self.clock)
 
     def start(self) -> None:
-        """Arm the cadence and start the scrub's dedicated worker."""
-        self.idle()
+        """Start the worker. The first dispatcher idle handoff arms its cadence."""
         self.host.start()
 
     def idle(self) -> None:
         """Signal this Host's existing idle handoff."""
         if not self._stopping.is_set() and file_trust():
-            self.wake.set_next_due(self.scrub.next_due)
-            self.wake.signal_due_work(self.clock())
+            self.wake.arm_if_disarmed(self.scrub.next_due)
 
     def close(self, timeout: float | None) -> bool:
         """Stop at a file boundary while the workspace's writer lease still holds."""
@@ -53,7 +52,10 @@ class IdleFileTrustScrub:
         return quiet
 
     def _available(self) -> bool:
-        return not self._stopping.is_set() and self.dispatcher.tasks_idle()
+        return not self._stopping.is_set() and self.dispatcher.foreground_idle()
+
+    def _publish(self, action: Callable[[], None]) -> bool:
+        return not self._stopping.is_set() and self.dispatcher.publish_when_idle(action)
 
     def _run(self) -> None:
         if not self._prioritized:
@@ -62,9 +64,11 @@ class IdleFileTrustScrub:
         # Disarm before checking work so the next idle callback can always resume a yield.
         self.wake.set_next_due(None)
         try:
-            complete = self.scrub.run(self._available)
+            complete = self.scrub.run(self._available, publish=self._publish)
         except Exception:
             self.idle()  # leave the cycle due for the maintenance worker's bounded retry
             raise
-        if complete or self._available():
+        if complete:
+            self.wake.set_next_due(self.scrub.next_due)
+        elif self._available():
             self.idle()

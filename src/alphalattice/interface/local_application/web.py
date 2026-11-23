@@ -47,7 +47,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Collection, Iterator, Mapping
-from contextlib import contextmanager, suppress
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from functools import partial
 from http import HTTPStatus
@@ -325,6 +325,9 @@ class LocalWebApplication:
     served: int = 0
     admission: Callable[[Callable[[], object], bool], object] | None = field(
         default=None, repr=False
+    )
+    request_scope: Callable[[], AbstractContextManager[None]] = field(
+        default=nullcontext, repr=False
     )
     withheld: Callable[[], dict[str, object]] | None = field(default=None, repr=False)
     """While set, every path with no route or asset is refused with this refusal, not as
@@ -928,8 +931,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond(outcome, set_session=False)
             self._discard_announced_body()
             return
-        body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
-        self._respond(self.application.dispatch(outcome, body), set_session=outcome.issues_session)
+        application = self.application
+        with application.request_scope():
+            body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
+            self._respond(application.dispatch(outcome, body), set_session=outcome.issues_session)
 
     def do_GET(self) -> None:
         self._serve("GET")

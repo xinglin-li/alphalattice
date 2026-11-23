@@ -1382,8 +1382,12 @@ def _scrub_yields_between_files(facts, target, clock, tmp_path, monkeypatch) -> 
     assert not scrub.run(lambda: idle)
     assert len(seen) == 1
     idle = True
-    assert scrub.run(lambda: idle)
+    assert not scrub.run(lambda: idle)  # a request during the last file also defers publication
+    assert not (workspace / facts.FILE_TRUST_SCRUB).exists()
+    assert not (workspace / facts.FILE_TRUST_SCRUB.with_suffix(".partial")).exists()
     assert set(seen) == {str(target), str(other)}
+    idle = True
+    assert scrub.run(lambda: idle)
     facts.release_file_facts(workspace)
     facts.keep_file_facts(workspace)
     assert facts.file_sha256(target) == _ONE

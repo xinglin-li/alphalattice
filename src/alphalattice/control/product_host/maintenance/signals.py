@@ -60,6 +60,15 @@ class MaintenanceWakeController:
                 else max(0.0, (self._next_due_at - now.astimezone(UTC)).total_seconds())
             )
 
+    def arm_if_disarmed(self, due: datetime) -> None:
+        """Set a deadline on an idle handoff without resetting a scheduled retry."""
+        if due.tzinfo is None:
+            raise ValueError("maintenance due time must be timezone-aware")
+        with self._lock:
+            if self._next_due_at is None:
+                self._next_due_at = due.astimezone(UTC)
+                self._wake.set()
+
     def signal_due_work(self, now: datetime) -> bool:
         """Signal the wake event only when the declared due time has been reached.
 

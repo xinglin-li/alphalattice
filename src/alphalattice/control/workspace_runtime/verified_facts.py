@@ -31,13 +31,13 @@ import os
 import re
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
 from io import BufferedReader
 from pathlib import Path
 from threading import Lock
-from typing import BinaryIO, cast
+from typing import BinaryIO, TextIO, cast
 
 import duckdb
 
@@ -74,6 +74,7 @@ _FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = Contex
 _Key = tuple[str, str]
 _Entry = tuple[tuple[int, int, int], str]
 _LOCK = Lock()
+_Publish = Callable[[Callable[[], None]], bool]
 _KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 """Per workspace whose writer lease this process holds: its file facts by path and kind."""
 _PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
@@ -111,14 +112,23 @@ class _TrustJournal:
         if acquired:
             self._flush()
 
-    def mark_scrub(self, workspace: Path, marker: str) -> None:
+    def mark_scrub(self, workspace: Path, marker: str, publish: _Publish) -> bool:
         """Seal the scan's journal boundary before hashing or advancing its cadence."""
-        if not self._writer.acquire(blocking=False):
-            raise BlockingIOError(errno.EBUSY, os.strerror(errno.EBUSY))
-        try:
-            _append(workspace / FILE_TRUST, "\n" + marker + "\n", durable=True)
-        finally:
-            self._flush()
+
+        def publish_marker(append: Callable[[], None]) -> bool:
+            def write() -> None:
+                if not self._writer.acquire(blocking=False):
+                    raise BlockingIOError(errno.EBUSY, os.strerror(errno.EBUSY))
+                try:
+                    append()
+                finally:
+                    self._writer.release()
+
+            return publish(write)
+
+        # Only kept() drains queued facts. The marker's bytes are published before
+        # fsync, so foreground writers can persist their own facts during the sync.
+        return _append(workspace / FILE_TRUST, "\n" + marker + "\n", publish=publish_marker)
 
     def _flush(self) -> None:
         # Write one batch. New arrivals stay queued for the next journal advance.
@@ -334,18 +344,33 @@ def _trust_entry(row: list[object]) -> tuple[str, TrustEntry]:
     return str(path), (stamp, digest)
 
 
-def _append(journal: Path, line: str, *, durable: bool = False) -> None:
+def _append(journal: Path, line: str, *, publish: _Publish | None = None) -> bool:
+    """Append a fact, or publish a durable scrub marker and sync it outside admission."""
     try:
-        journal.parent.mkdir(parents=True, exist_ok=True)
-        with journal.open("a", encoding="utf-8") as log:
-            log.write(line)
-            if durable:
-                log.flush()
+        with ExitStack() as opened:
+            log: TextIO | None = None
+
+            def append() -> None:
+                nonlocal log
+                journal.parent.mkdir(parents=True, exist_ok=True)
+                log = opened.enter_context(journal.open("a", encoding="utf-8"))
+                log.write(line)
+                if publish is not None:
+                    log.flush()
+
+            if publish is None:
+                append()
+            elif not publish(append):
+                return False
+            else:
+                assert log is not None
                 os.fsync(log.fileno())
     except OSError:
-        if durable:
+        if publish is not None:
             raise
         # Rebuildable facts stay in this process if the journal cannot take them.
+        return False
+    return True
 
 
 def _content_kind(kind: str, digest: str) -> str:
@@ -426,8 +451,22 @@ class FileTrustScrub:
         self._checked = self._skipped = self._mismatches = 0
         self._first_mismatch: str | None = None
 
-    def run(self, available: Callable[[], bool]) -> bool:
+    def run(
+        self,
+        available: Callable[[], bool],
+        *,
+        publish: _Publish | None = None,
+    ) -> bool:
         """Perform a due scrub, returning False if it yields to foreground work."""
+
+        def write(action: Callable[[], None]) -> bool:
+            if publish is not None:
+                return publish(action)
+            if not available():
+                return False
+            action()
+            return True
+
         if not file_trust() or self.clock() < self.next_due:
             return True
         if not available():
@@ -435,7 +474,8 @@ class FileTrustScrub:
         if self._remaining is None:
             with _LOCK:
                 remaining = deque(_TRUSTED.get(self.workspace, ()))
-            _TRUST_JOURNAL.mark_scrub(self.workspace, _SCRUB_STARTED)
+            if not _TRUST_JOURNAL.mark_scrub(self.workspace, _SCRUB_STARTED, write):
+                return False
             self._journal_open = True
             self._remaining = remaining
             self._checked = self._skipped = self._mismatches = 0
@@ -456,14 +496,14 @@ class FileTrustScrub:
                 self._mismatches += 1
                 if self._first_mismatch is None:
                     self._first_mismatch = relative
-        self._finish()
-        return True
+        return self._finish(write)
 
-    def _finish(self) -> None:
+    def _finish(self, publish: _Publish) -> bool:
         if self._journal_open:
             # A detected mismatch makes the old durable cache unusable on restart.
             marker = _SCRUB_DISCARDED if self._mismatches else _SCRUB_CHECKED
-            _TRUST_JOURNAL.mark_scrub(self.workspace, marker)
+            if not _TRUST_JOURNAL.mark_scrub(self.workspace, marker, publish):
+                return False
             self._journal_open = False
         finished = self.clock()
         receipt = {
@@ -474,14 +514,21 @@ class FileTrustScrub:
             "first_mismatch": self._first_mismatch,
         }
         target = resolve_confined(self.workspace, FILE_TRUST_SCRUB.as_posix())
-        target.parent.mkdir(parents=True, exist_ok=True)
         staged = resolve_confined(
             self.workspace, FILE_TRUST_SCRUB.with_suffix(".partial").as_posix()
         )
-        staged.write_text(json.dumps(receipt, separators=(",", ":")) + "\n", encoding="utf-8")
-        os.replace(staged, target)
+        payload = json.dumps(receipt, separators=(",", ":")) + "\n"
+
+        def replace() -> None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_text(payload, encoding="utf-8")
+            os.replace(staged, target)
+
+        if not publish(replace):
+            return False
         self._remaining = None
         self.next_due = finished + self.period
+        return True
 
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:

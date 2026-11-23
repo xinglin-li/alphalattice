@@ -1180,8 +1180,6 @@ class PortfolioResearchOperations:
         self.sweep_if_due()
         self._take_backup()
         self._maintain_catalog()
-        if self._file_scrub is not None:
-            self._file_scrub.idle()
 
     def start_file_scrub(self) -> None:
         """Start the proof worker only when the workspace uses retained file trust."""
@@ -1193,8 +1191,7 @@ class PortfolioResearchOperations:
             scrub = IdleFileTrustScrub(self.workspace_session.workspace, self.dispatcher)
             scrub.start()
             self._file_scrub = scrub
-            # The last resumed Task can return as the worker starts.
-            scrub.idle()
+            self.dispatcher.watch_foreground_idle(scrub.idle)
 
     def stop_file_scrub(self, timeout: float | None) -> bool:
         """Finish the current proof slice before the Host releases its workspace."""
@@ -1318,14 +1315,15 @@ class PortfolioResearchOperations:
         run = partial(
             self._execute_request, request, caller=caller, agent_execution=agent_execution
         )
-        if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
-            return run()
-        from .host_answer_submission import (  # lazy: keyed answer
-            answer_deadline,
-        )
+        with self.dispatcher.serving_request():
+            if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
+                return run()
+            from .host_answer_submission import (  # lazy: keyed answer
+                answer_deadline,
+            )
 
-        with request_deadline(answer_deadline()):
-            return run()
+            with request_deadline(answer_deadline()):
+                return run()
 
     def _execute_request(
         self,

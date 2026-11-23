@@ -1014,6 +1014,7 @@ class LocalPortfolioWebSession:
             ),
             data_update_factory=open_data_update,
         )
+        self.operations.start_file_scrub()
         # The activity observer is composed after every owner it reads and before the socket opens,
         # so the first request is already observed. Activity is optional infrastructure: a store
         # that cannot open leaves the observer UNAVAILABLE on every read and the product usable.
@@ -1037,6 +1038,7 @@ class LocalPortfolioWebSession:
         attach_native_usage(self, self.operations, activity)
         web_application = build_local_web_application(operations=self.operations, activity=activity)
         web_application.admission = self.dispatcher._admit
+        web_application.request_scope = self.dispatcher.serving_request
         _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
         self.operations.stop_host = self.stop_host
         with self.operations.recover_after_connection():
@@ -1055,7 +1057,6 @@ class LocalPortfolioWebSession:
         if not self.resumed_task_ids:
             # A Host that starts idle sweeps as one that went idle would.
             self.operations.sweep_if_due()
-        self.operations.start_file_scrub()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
         # A note a stopped Host left unrendered, or one a changed renderer rewrites, is rendered

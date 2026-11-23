@@ -34,7 +34,8 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial, wraps
@@ -285,6 +286,8 @@ class LocalBackgroundDispatcher:
     _lock: threading.Condition = field(default_factory=threading.Condition, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _admitting: int = field(default=0, init=False, repr=False)
+    _serving: int = field(default=0, init=False, repr=False)
+    _foreground_wake: Callable[[], None] | None = field(default=None, init=False, repr=False)
     _generation: int = field(default=0, init=False, repr=False)
     _depth: threading.local = field(default_factory=threading.local, init=False, repr=False)
     _last_needed: float = field(default_factory=lambda: monotonic(), init=False, repr=False)
@@ -313,11 +316,37 @@ class LocalBackgroundDispatcher:
             return action()
         finally:
             self._depth.value = depth
+            self._release_admission(activity)
+
+    @contextmanager
+    def serving_request(self) -> Iterator[None]:
+        """Keep idle work out of the whole served request, including its response."""
+        with self._lock:
+            self._serving += 1
+        try:
+            yield
+        finally:
             with self._lock:
-                self._admitting -= 1
-                if activity:
-                    self._last_needed = monotonic()
-                self._lock.notify_all()
+                self._serving -= 1
+                self._wake_if_idle()
+
+    def _release_admission(self, activity: bool) -> None:
+        with self._lock:
+            self._admitting -= 1
+            if activity:
+                self._last_needed = monotonic()
+            self._lock.notify_all()
+            self._wake_if_idle()
+
+    def watch_foreground_idle(self, wake: Callable[[], None]) -> None:
+        """Install the idle signal and offer the same handoff at startup."""
+        with self._lock:
+            self._foreground_wake = wake
+            self._wake_if_idle()
+
+    def _wake_if_idle(self) -> None:
+        if self._foreground_wake is not None and self._foreground_idle():
+            self._foreground_wake()
 
     def _begin_drain(self) -> None:
         """Refuse new top-level work while admitted handoffs finish."""
@@ -339,10 +368,23 @@ class LocalBackgroundDispatcher:
         with self._lock:
             return sorted(str(task_id) for task_id in self._executing)
 
-    def tasks_idle(self) -> bool:
-        """Observe an idle turn without reserving a worker or its admission lock."""
+    def _foreground_idle(self) -> bool:
+        return not (
+            self._closed or self._running or self._waiting or self._admitting or self._serving
+        )
+
+    def foreground_idle(self) -> bool:
+        """Observe an idle turn before beginning a non-writing slice."""
         with self._lock:
-            return not (self._closed or self._running or self._waiting)
+            return self._foreground_idle()
+
+    def publish_when_idle(self, action: Callable[[], None]) -> bool:
+        """Reserve the small visible write of an otherwise separately prepared publication."""
+        with self._lock:
+            if not self._foreground_idle():
+                return False
+            action()
+            return True
 
     def _idle_busy(self) -> bool:
         """Read the current busy facts while the caller holds the admission lock."""
