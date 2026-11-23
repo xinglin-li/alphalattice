@@ -111,34 +111,12 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
     its package.
     """
 
-    from alphalattice.kernel.shared_kernel import source_identity
+    from alphalattice.kernel.shared_kernel.source_identity import observe_source_closures
 
-    walk = source_identity.number_deciding_closure
-    canonical = source_identity.canonical_closure
     reached: list[dict[str, str]] = []
-
-    def watched(
-        entries: tuple[str, ...], *, root: Path, rule: Any, excluded: frozenset[str] = frozenset()
-    ) -> dict[str, str]:
-        found = walk(entries, root=root, rule=rule, excluded=excluded)
-        reached.append(
-            {
-                source_identity.current_module_name(module, rule): digest
-                for module, digest in found.items()
-            }
-        )
-        return found
-
-    def watched_canonical(entries: tuple[str, ...], *, root: Path, rule: Any) -> dict[str, str]:
-        found = canonical(entries, root=root, rule=rule)
-        reached.append(found)
-        return found
-
     areas: dict[str, set[str]] = {}
     edges: dict[tuple[str, str], str] = {}
-    source_identity.number_deciding_closure = watched  # looked up at call time
-    source_identity.canonical_closure = watched_canonical
-    try:
+    with observe_source_closures(reached.append):
         for entry in roles(table):
             reached.clear()
             installed(entry)
@@ -148,9 +126,6 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
                 area = _area(module)
                 areas.setdefault(area, set()).add(role)
                 edges.setdefault((area, role), _how_reached(module, modules))
-    finally:
-        source_identity.number_deciding_closure = walk
-        source_identity.canonical_closure = canonical
     return areas, edges
 
 

@@ -662,25 +662,45 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches recorded identity moves for each checkout root until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule::module-number-deciding-rule": {
+    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._ROLE_CLOSURES::source-role-closures": {
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/source_identity.py::number_deciding_rule"
+        "src/alphalattice/kernel/shared_kernel/source_identity.py::_ROLE_CLOSURES"
       ],
-      "definition_line": 415,
-      "key": "root",
-      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
-      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
-      "size_bound": "unbounded",
-      "bound_scope": "unbounded",
-      "eviction": "none; process/closure end",
-      "safe_to_drop": "Yes: recompute from identical retained inputs; close users before clearing",
+      "definition_line": 1176,
+      "key": "Checkout, tracked entries, owner, role and parsed rules",
+      "dependency_coverage": "Resolved module candidates and tracked resources, including absent files examined in resolution",
+      "invalidation_rule": "Presence or trusted file stamp changes, or a different role input",
+      "size_bound": "128 entries",
+      "bound_scope": "128 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: recompute the role from its source",
       "location": {
         "scope": "process",
-        "path_expression": "In-memory number_deciding_rule in its module, instance, or call namespace"
+        "path_expression": "In-memory _ROLE_CLOSURES in source_identity"
       },
-      "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
-      "description": "Caches each checkout root's rules for identifying number-deciding code until process restart."
+      "source_commit": "a31a8dfb41cccaaea75de370781874053b6b488e",
+      "description": "Carries a role's closure hash while every file fact used to compute it holds."
+    },
+    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._MODULE_STAMPS::source-module-stamps": {
+      "owner": "alphalattice.kernel.shared_kernel",
+      "defined_by": [
+        "src/alphalattice/kernel/shared_kernel/source_identity.py::_MODULE_STAMPS"
+      ],
+      "definition_line": 1177,
+      "key": "Module file path and relative import package",
+      "dependency_coverage": "File identity, size and both source change clocks",
+      "invalidation_rule": "A different stamp, or an unsettled or unavailable stamp",
+      "size_bound": "2048 entries",
+      "bound_scope": "2048 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: parse the module from its source",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _MODULE_STAMPS in source_identity"
+      },
+      "source_commit": "a31a8dfb41cccaaea75de370781874053b6b488e",
+      "description": "Reuses the canonical module input across roles that reach the same file."
     },
     "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch::module-identity-switch": {
       "owner": "alphalattice.kernel.shared_kernel",

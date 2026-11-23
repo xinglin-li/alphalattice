@@ -792,16 +792,33 @@ def test_shutdown_joins_a_slow_authenticated_handler(
 
     live.web.application.route("GET", "/api/qa-slow")(slow_handler)
     if held == "source":
+        from stat import S_IFREG, S_ISREG
+
+        from alphalattice.control.product_host.composition import portfolio_research_operations
         from alphalattice.kernel.shared_kernel import source_identity
 
         source_package = Path(source_identity.__file__).resolve().parents[2]
-        is_file = Path.is_file
+        windows = source_identity.os_name == "nt"
+        source_stat = source_identity.file_stamp if windows else Path.stat
+        reading_source = False
 
-        def finish_one_source_read(path):
-            present = is_file(path)
+        def watch_source_admission(check):
+            entered_scope = False
+
+            def mark_source_read():
+                nonlocal entered_scope, reading_source
+                check()
+                reading_source = entered_scope
+                entered_scope = True
+
+            return source_identity.source_read_admission(mark_source_read)
+
+        def finish_one_source_read(path, **kwargs):
+            facts = source_stat(path, **kwargs)
             if (
-                present
+                reading_source
                 and threading.current_thread().name == "local-web-request"
+                and S_ISREG(getattr(facts, "st_mode", S_IFREG))
                 and path.suffix == ".py"
                 and path.is_relative_to(source_package)
             ):
@@ -809,9 +826,15 @@ def test_shutdown_joins_a_slow_authenticated_handler(
                     raise ValueError("qa.source_read_continued")
                 entered.set()
                 assert release.wait(10)
-            return present
+            return facts
 
-        monkeypatch.setattr(Path, "is_file", finish_one_source_read)
+        monkeypatch.setattr(
+            portfolio_research_operations, "source_read_admission", watch_source_admission
+        )
+        if windows:
+            monkeypatch.setattr(source_identity, "file_stamp", finish_one_source_read)
+        else:
+            monkeypatch.setattr(Path, "stat", finish_one_source_read)
 
     dispatcher = live.dispatcher
     before = dispatcher.admissions

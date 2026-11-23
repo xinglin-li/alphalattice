@@ -408,6 +408,13 @@ def _moved(source: Path) -> None:
 
 MODEL_PATH = "investment/desk/model.py"
 EDITS: dict[str, tuple[Callable[[Path], None], Seen]] = {
+    "unchanged": (lambda _source: None, Seen.SAME),
+    "module shared by two roles": (lambda _source: None, Seen.ROTATES),
+    "same-tick rewrite": (_replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")), Seen.ROTATES),
+    "rewrite with restored mtime": (
+        _replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")),
+        Seen.ROTATES,
+    ),
     "comment": (_replaced(MODEL_PATH, ("SHIFT = 1\n", "SHIFT = 1  # a shift\n")), Seen.SAME),
     "docstring": (_replaced(MODEL_PATH, ('"""Fit."""', '"""Fit, in other words."""')), Seen.SAME),
     "import moved into a function": (
@@ -480,7 +487,7 @@ EDITS: dict[str, tuple[Callable[[Path], None], Seen]] = {
 
 @pytest.mark.parametrize("edit", EDITS, ids=list(EDITS))
 def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores_prose(
-    tmp_path: Path, edit: str
+    tmp_path: Path, edit: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A rule closure follows the deciding imports and moves only with the code that runs."""
 
@@ -526,25 +533,83 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     )
     entry = ("alphalattice.control.host.entry",)
     rule = NumberDecidingRule(frozenset({"desk"}), frozenset({"storage"}))
-    assert sorted(number_deciding_closure(entry, root=tmp_path, rule=rule)) == [
+    modules = [
         "alphalattice.control.host.entry",
         "alphalattice.investment.desk",
         "alphalattice.investment.desk.helper",
         "alphalattice.investment.desk.model",
     ]
+    assert sorted(number_deciding_closure(entry, root=tmp_path, rule=rule)) == modules
 
-    def identity() -> str:
+    from alphalattice.kernel.clock import wall_time_ns
+    from alphalattice.kernel.shared_kernel import source_identity
+
+    clock = wall_time_ns() + 10_000_000_000  # a settled scratch tree without waiting on its clock
+    monkeypatch.setattr(source_identity, "wall_time_ns", lambda: clock, raising=False)
+    if edit == "same-tick rewrite":
+        model = source / MODEL_PATH
+        # A same-size rewrite sees the exact same stamp on a coarse filesystem within its tick.
+        file_stamp = source_identity.file_stamp
+        racy = (*file_stamp(model)[:3], clock, clock)
+        monkeypatch.setattr(source_identity, "os_name", "nt")
+        monkeypatch.setattr(
+            source_identity,
+            "file_stamp",
+            lambda path: racy if path == model else file_stamp(path),
+        )
+
+    closures: list[object] = []
+    source_reads: list[Path] = []
+    hash_closure = source_identity.canonical_hash
+    read_file = Path.read_bytes
+
+    def hashed(payload):
+        closures.append(payload)
+        return hash_closure(payload)
+
+    def read(path):
+        if path.is_relative_to(source):
+            source_reads.append(path)
+        return read_file(path)
+
+    monkeypatch.setattr(source_identity, "canonical_hash", hashed)
+    monkeypatch.setattr(Path, "read_bytes", read)
+
+    def identity(role="EXAMPLE") -> str:
         return source_rule_closure_hash(
             root=tmp_path,
             tracked_paths=("src/alphalattice/control/host/entry.py",),
             semantic_owner="host",
-            numerical_role="EXAMPLE",
+            numerical_role=role,
         )
 
     before = identity()
+    if edit != "same-tick rewrite":
+        assert identity() == before
+        assert len(closures) == 1
+    initial_reads = source_reads.copy()
     change, expected = EDITS[edit]
-    change(source)
-    assert (Seen.SAME if identity() == before else Seen.ROTATES) is expected
+    if edit == "rewrite with restored mtime":
+        from os import utime
+
+        model = source / MODEL_PATH
+        before_edit = model.stat()
+        change(source)
+        utime(model, ns=(before_edit.st_atime_ns, before_edit.st_mtime_ns))
+    else:
+        change(source)
+    role = "ALSO_EXAMPLE" if edit == "module shared by two roles" else "EXAMPLE"
+    assert (Seen.SAME if identity(role) == before else Seen.ROTATES) is expected
+    if edit == "unchanged":
+        assert len(closures) == 1 and source_reads == initial_reads
+        reached: list[dict[str, str]] = []
+        with source_identity.observe_source_closures(reached.append):
+            assert identity() == before
+        assert [sorted(closure) for closure in reached] == [modules]
+    elif edit == "module shared by two roles":
+        assert len(closures) == 2 and source_reads == initial_reads
+    elif edit in ("constant changed", "same-tick rewrite", "rewrite with restored mtime"):
+        assert len(closures) == 2 and source_reads[len(initial_reads) :] == [source / MODEL_PATH]
 
 
 @pytest.mark.proves("shared_kernel.source_identity_survives_relocation")

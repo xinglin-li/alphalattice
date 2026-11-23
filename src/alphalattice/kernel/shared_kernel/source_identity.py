@@ -4,15 +4,27 @@ from __future__ import annotations
 
 import ast
 import json
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cache
+from os import name as os_name
 from pathlib import Path, PurePosixPath
+from stat import S_ISREG
+from threading import Lock
 from typing import Any, cast
 
-from alphalattice.kernel.identity import change_sha256, identity_sha256, integrity_sha256
+from alphalattice.kernel.clock import wall_time_ns
+from alphalattice.kernel.identity import (
+    RACY_SECONDS,
+    Stamp,
+    change_sha256,
+    file_stamp,
+    identity_sha256,
+    integrity_sha256,
+)
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 from alphalattice.kernel.shared_kernel.project_layout import (
     resolve_playpen_root,
     resource_path,
@@ -40,6 +52,9 @@ _PHYSICAL_NAMESPACE_GROUPS = frozenset(
 _SOURCE_ADMISSION: ContextVar[Callable[[], None] | None] = ContextVar(
     "source_read_admission", default=None
 )
+_SOURCE_OBSERVER: ContextVar[Callable[[dict[str, str]], None] | None] = ContextVar(
+    "source_closure_observer", default=None
+)
 
 
 @contextmanager
@@ -52,6 +67,16 @@ def source_read_admission(check: Callable[[], None]) -> Iterator[None]:
     finally:
         _SOURCE_ADMISSION.reset(token)
     check()
+
+
+@contextmanager
+def observe_source_closures(observe: Callable[[dict[str, str]], None]) -> Iterator[None]:
+    """Read the modules reached by each closure for the identity reach check."""
+    token = _SOURCE_OBSERVER.set(observe)
+    try:
+        yield
+    finally:
+        _SOURCE_OBSERVER.reset(token)
 
 
 def source_component_id(*, package_id: str, source_path: Path) -> str:
@@ -223,12 +248,10 @@ def number_deciding_closure(
     def read(path: Path, package: str) -> tuple[str, tuple[str, ...]]:
         return _parsed(path, package, bindings=moved)
 
-    return dict(
-        sorted(
-            (_bound_name(module, bindings), digest)
-            for module, digest in _walked(entries, root, rule, excluded, read).items()
-        )
-    )
+    found = _walked(entries, root, rule, excluded, read)
+    if (observe := _SOURCE_OBSERVER.get()) is not None:
+        observe(found)
+    return dict(sorted((_bound_name(module, bindings), digest) for module, digest in found.items()))
 
 
 def _walked[T](
@@ -237,6 +260,8 @@ def _walked[T](
     rule: NumberDecidingRule,
     excluded: frozenset[str],
     read: Callable[[Path, str], tuple[T, tuple[str, ...]]],
+    *,
+    is_file: Callable[[Path], bool] = Path.is_file,
 ) -> dict[str, T]:
     """The closure's walk (``number_deciding_closure``), each module read by ``read``."""
     source = source_root(root)
@@ -266,7 +291,7 @@ def _walked[T](
         visited.add(module)
         if check_admission is not None:
             check_admission()
-        path = _module_file(source, module)
+        path = _module_file(source, module, is_file=is_file)
         if path is None:
             if module in entries:
                 raise ValueError("shared_kernel.source_closure_entry_missing")
@@ -281,10 +306,12 @@ def _walked[T](
     return found
 
 
-def _module_file(source: Path, module: str) -> Path | None:
+def _module_file(
+    source: Path, module: str, *, is_file: Callable[[Path], bool] = Path.is_file
+) -> Path | None:
     base = source.joinpath(*module.split("."))
     for candidate in (base.with_suffix(".py"), base / "__init__.py"):
-        if candidate.is_file():
+        if is_file(candidate):
             return candidate
     return None
 
@@ -601,9 +628,10 @@ def canonical_closure(
     Returns:
         Each closure module's digest, by module name.
     """
-    parsed: dict[str, _Canonical | None] = dict(
-        _walked(entries, root, rule, frozenset(), _canonical_walk)
-    )
+    return _canonical_digests(_walked(entries, root, rule, frozenset(), _canonical_walk), rule)
+
+
+def _canonical_digests(parsed: dict[str, _Canonical], rule: NumberDecidingRule) -> dict[str, str]:
     found = sorted(parsed)
     members = set(found)
     resolved: dict[_Reference, tuple[str, str]] = {}  # a name is used many times, resolved once
@@ -619,12 +647,10 @@ def canonical_closure(
         return resolved[reference]
 
     targets = {
-        module: [target(reference) for reference in cast(_Canonical, parsed[module]).references]
-        for module in found
+        module: [target(reference) for reference in parsed[module].references] for module in found
     }
     imported = {
-        module: [target(reference) for reference in cast(_Canonical, parsed[module]).imports]
-        for module in found
+        module: [target(reference) for reference in parsed[module].imports] for module in found
     }
     deep: dict[str, str] = {}
     bindings = {module: stable for module, stable in rule.module_bindings if module != stable}
@@ -641,7 +667,7 @@ def canonical_closure(
         return f"@{head}:{name}" if name else f"@{head}"
 
     def rendered(module: str, ring: Mapping[str, str]) -> str:
-        held = cast(_Canonical, parsed[module])
+        held = parsed[module]
         names = tuple(marker(target, ring) for target in targets[module])
         imports = tuple(sorted({marker(target, ring) for target in imported[module]}))
         key = (held.key, names, imports)
@@ -676,7 +702,10 @@ def canonical_closure(
             for module in component
         }
         deep.update(digests)
-    return {module: deep[module] for module in found}
+    digests = {module: deep[module] for module in found}
+    if (observe := _SOURCE_OBSERVER.get()) is not None:
+        observe(digests)
+    return digests
 
 
 def _components(edges: Mapping[str, tuple[str, ...]]) -> list[list[str]]:
@@ -1112,7 +1141,6 @@ IDENTITY_ROLES_PATH = Path("config") / "identity-roles.json"
 """The identity-roles table: each Host role, and which code can move a number."""
 
 
-@cache
 def number_deciding_rule(root: Path) -> NumberDecidingRule:
     """Which code can move a result, as the identity-roles table names it."""
     try:
@@ -1141,6 +1169,80 @@ def number_deciding_rule(root: Path) -> NumberDecidingRule:
     return rule
 
 
+type _FileVersion = tuple[bool, Stamp | None]
+type _RoleInput = tuple[Path, tuple[str, ...], str, str, NumberDecidingRule]
+type _RoleClosure = tuple[tuple[tuple[Path, _FileVersion], ...], str]
+
+_ROLE_CLOSURES = BoundedMemo[_RoleInput, _RoleClosure](capacity=128)
+_MODULE_STAMPS = BoundedMemo[tuple[Path, str], tuple[Stamp, _Canonical]](capacity=2048)
+_ROLE_READ = Lock()
+
+
+def _file_version(path: Path) -> _FileVersion:
+    if os_name == "nt":
+        # Python's path stat reports creation time as st_ctime on Windows.
+        try:
+            stamp = file_stamp(path)
+        except (FileNotFoundError, NotADirectoryError):
+            return False, None
+        except OSError:
+            return path.is_file(), None
+        return True, stamp if stamp[1] else None
+    try:
+        facts = path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return False, None
+    if not S_ISREG(facts.st_mode):
+        return False, None
+    if not facts.st_ino:
+        return True, None  # without an identity this file cannot support a kept proof
+    return True, (facts.st_dev, facts.st_ino, facts.st_size, facts.st_mtime_ns, facts.st_ctime_ns)
+
+
+def _settled_stamp(stamp: Stamp | None, recorded_at: int) -> bool:
+    return stamp is not None and recorded_at - max(stamp[-2:]) > RACY_SECONDS * 10**9
+
+
+class _ClosureInputs:
+    """Files and absent import candidates encountered while resolving a role."""
+
+    def __init__(self) -> None:
+        self.recorded_at = wall_time_ns()
+        self.versions: dict[Path, _FileVersion] = {}
+
+    def is_file(self, path: Path) -> bool:
+        if path not in self.versions:
+            self.versions[path] = _file_version(path)
+        return self.versions[path][0]
+
+    def canonical(self, path: Path, package: str) -> tuple[_Canonical, tuple[str, ...]]:
+        stamp = self.versions[path][1]
+        identity = path, package
+        settled = _settled_stamp(stamp, self.recorded_at)
+        held = _MODULE_STAMPS.get(identity) if settled else None
+        if held is not None and held[0] == stamp:
+            parsed = held[1]
+        else:
+            parsed = _canonical(path, package)
+            if settled and stamp is not None and _file_version(path) == (True, stamp):
+                _MODULE_STAMPS[identity] = stamp, parsed
+        return parsed, parsed.walked
+
+    def stable(self) -> bool:
+        return _matches_role(self.versions.items(), self.recorded_at)
+
+
+def _matches_role(files: Iterable[tuple[Path, _FileVersion]], recorded_at: int) -> bool:
+    check = _SOURCE_ADMISSION.get()
+    for path, version in files:
+        if check is not None:
+            check()
+        present, stamp = version
+        if (present and not _settled_stamp(stamp, recorded_at)) or _file_version(path) != version:
+            return False
+    return True
+
+
 def source_rule_closure_hash(
     *,
     root: Path,
@@ -1165,40 +1267,52 @@ def source_rule_closure_hash(
     Returns:
         Canonical identity of the role, owner, numerical module closure and other tracked files.
     """
-    python = {path: path.startswith("src/") and path.endswith(".py") for path in tracked_paths}
-    modules = tuple(
-        ".".join(PurePosixPath(path).with_suffix("").parts[1:])
-        for path, module in python.items()
-        if module
-    )
-    others = tuple(path for path, module in python.items() if not module)
-    return cast(
-        str,
-        canonical_hash(
-            {
-                "semantic_owner": semantic_owner,
-                "numerical_role": numerical_role,
-                "form": CLOSURE_FORM,
-                "modules": sorted(
-                    canonical_closure(modules, root=root, rule=number_deciding_rule(root)).values()
-                ),
-                "files": {
-                    source_component_id_from_tracked_path(path): _resource_sha256(root, path)
-                    for path in others
-                },
-            }
-        ),
-    )
+    with _ROLE_READ:
+        rule = number_deciding_rule(root)
+        key = root, tracked_paths, semantic_owner, numerical_role, rule
+        inputs = _ClosureInputs()
+        observing = _SOURCE_OBSERVER.get() is not None
+        held = None if observing else _ROLE_CLOSURES.get(key)
+        if held is not None and _matches_role(held[0], inputs.recorded_at):
+            return held[1]
+        python = {path: path.startswith("src/") and path.endswith(".py") for path in tracked_paths}
+        modules = tuple(
+            ".".join(PurePosixPath(path).with_suffix("").parts[1:])
+            for path, module in python.items()
+            if module
+        )
+        others = tuple(path for path, module in python.items() if not module)
+        parsed = _walked(modules, root, rule, frozenset(), inputs.canonical, is_file=inputs.is_file)
+        digest = cast(
+            str,
+            canonical_hash(
+                {
+                    "semantic_owner": semantic_owner,
+                    "numerical_role": numerical_role,
+                    "form": CLOSURE_FORM,
+                    "modules": sorted(_canonical_digests(parsed, rule).values()),
+                    "files": {
+                        source_component_id_from_tracked_path(path): _resource_sha256(
+                            root, path, inputs
+                        )
+                        for path in others
+                    },
+                }
+            ),
+        )
+        if not observing and inputs.stable():
+            _ROLE_CLOSURES[key] = tuple(inputs.versions.items()), digest
+        return digest
 
 
-def _resource_sha256(root: Path, relative: str) -> str:
+def _resource_sha256(root: Path, relative: str, inputs: _ClosureInputs) -> str:
     path = resource_path(root, relative)
-    if path.is_file():
+    if inputs.is_file(path):
         return integrity_sha256(path.read_bytes()).hexdigest()
     # Development runners are not runtime entries. The wheel carries the
     # accepted tree's byte commitments, preserving the same closure value.
     manifest = root / "config/release/source-hashes.json"
-    if manifest.is_file():
+    if inputs.is_file(manifest):
         hashes = json.loads(manifest.read_text(encoding="utf-8"))
         value = hashes.get(relative)
         if isinstance(value, str) and len(value) == 64:
@@ -1338,6 +1452,7 @@ __all__ = [
     "identity_switch",
     "number_deciding_closure",
     "number_deciding_rule",
+    "observe_source_closures",
     "source_bytes_syntax_sha256",
     "source_component_id",
     "source_component_id_from_tracked_path",
