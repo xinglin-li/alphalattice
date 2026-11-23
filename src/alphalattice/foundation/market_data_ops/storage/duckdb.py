@@ -787,6 +787,37 @@ class ActivationStep(Protocol):
 _Method = TypeVar("_Method", bound=Callable[..., Any])
 
 
+def create_market_profile(connection: Any) -> None:
+    """The market store's profile table, marked as this writer's format: the mark an upgrade
+    reads (`market_format`), and a restore writes back for the current workspace it restores."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_profile (
+            market_profile_id VARCHAR PRIMARY KEY,
+            display_name VARCHAR NOT NULL,
+            market VARCHAR NOT NULL,
+            currency VARCHAR NOT NULL,
+            calendar_id VARCHAR NOT NULL,
+            provider VARCHAR NOT NULL,
+            daily_price_basis VARCHAR NOT NULL,
+            data_validity_class VARCHAR NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        f"COMMENT ON TABLE market_profile IS '{world_tables.WORKSPACE_MARKET_FORMAT}'"
+    )
+
+
+def market_format(connection: Any) -> str | None:
+    """The format mark on a market store's profile table; None for a store with none."""
+    row = connection.execute(
+        "SELECT comment FROM duckdb_tables() WHERE database_name = current_database()"
+        " AND schema_name = 'main' AND table_name = 'market_profile'"
+    ).fetchone()
+    return None if row is None or row[0] is None else str(row[0])
+
+
 def market_update(store: Callable[[Any], MarketDataRepository]) -> Callable[[_Method], _Method]:
     """Run a method as one market data update of the repository ``store`` names on its instance
     (``MarketDataRepository.writing``): an update owner's loop reads its own writes from the
@@ -942,24 +973,7 @@ class MarketDataRepository(WorkspaceRepository):
             ).fetchone()
             if existing is None:
                 with self.database.transaction() as schema:
-                    schema.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS market_profile (
-                            market_profile_id VARCHAR PRIMARY KEY,
-                            display_name VARCHAR NOT NULL,
-                            market VARCHAR NOT NULL,
-                            currency VARCHAR NOT NULL,
-                            calendar_id VARCHAR NOT NULL,
-                            provider VARCHAR NOT NULL,
-                            daily_price_basis VARCHAR NOT NULL,
-                            data_validity_class VARCHAR NOT NULL
-                        )
-                        """
-                    )
-                    schema.execute(
-                        "COMMENT ON TABLE market_profile IS "
-                        f"'{world_tables.WORKSPACE_MARKET_FORMAT}'"
-                    )
+                    create_market_profile(schema)
             connection.execute(
                 """
                 ALTER TABLE market_profile

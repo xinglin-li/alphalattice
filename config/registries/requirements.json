@@ -2607,6 +2607,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "product_host.restored_workspace_starts": {
+      "description": "A restored current workspace, once opened, holds no upgrade at a later start; an older workspace's restore stays refused.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "The proof restores a backup onto disk, opens its market store through the maintenance registry and reads it through the upgrade family."
+    },
     "product_host.saved_object_probe_reads_carried_results_equal": {
       "description": "The saved-object probe, through its own entry, opens a published Portfolio path's copy by the product's opener and reads every carried result back ALL EQUAL to the publishing root.",
       "owner": "alphalattice.control.product_host",

@@ -38,6 +38,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.control.data_platform.maintenance.registry import (
+    DuckDbWorkspaceMaintenanceRegistry,
+)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     read_research_workspace_manifest,
@@ -55,6 +58,10 @@ from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutati
 from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
+from alphalattice.foundation.market_data_ops.storage.duckdb import (
+    create_market_profile,
+    market_format,
+)
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     carry_risk_covariance,
@@ -194,6 +201,11 @@ class BackupGeneration(BaseModel):  # type: ignore[misc]
     absent: tuple[str, ...] = Field(
         description="Held items this workspace does not hold: a table or a path."
     )
+    market_format: str | None = Field(
+        default=None,
+        description="The market store's format mark when backed up; none in a generation "
+        "written before the mark was kept, and absent from its sealed body.",
+    )
     generation_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @classmethod
@@ -206,14 +218,20 @@ class BackupGeneration(BaseModel):  # type: ignore[misc]
         Returns:
             The sealed generation.
         """
-        draft = cls.model_construct(**values, generation_hash="0" * 64)
-        body = draft.model_dump(mode="json", exclude={"generation_hash"})
-        return cls(**values, generation_hash=canonical_hash(body))
+        draft = cls.model_construct(**{"market_format": None, **values}, generation_hash="0" * 64)
+        return cls(**values, generation_hash=canonical_hash(draft._body()))
+
+    def _body(self) -> dict[str, Any]:
+        """What the hash seals: every field but the hash, and no market format a generation
+        written before it was kept does not hold, so such a generation verifies as written."""
+        unsealed = {"generation_hash"} | (
+            {"market_format"} if self.market_format is None else set()
+        )
+        return dict(self.model_dump(mode="json", exclude=unsealed))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def _sealed(self) -> Self:
-        body = self.model_dump(mode="json", exclude={"generation_hash"})
-        if canonical_hash(body) != self.generation_hash:
+        if canonical_hash(self._body()) != self.generation_hash:
             raise WorkspaceBackupError("workspace_backup.generation_invalid")
         return self
 
@@ -337,6 +355,36 @@ class _Objects:
         return digest, target.stat().st_size
 
 
+def _market_format(database: Path) -> str | None:
+    """The market store's format mark, read under its hold; None with no store."""
+    if not database.is_file():
+        return None
+    with hold_workspace_database(database):
+        connection = open_workspace_database(database, read_only=True)
+        try:
+            found: str | None = market_format(connection)
+        finally:
+            connection.close()
+    return found
+
+
+def _restore_market_store(target: Path) -> None:
+    """Write the restored workspace's market store as the current writer creates it, with its
+    format mark. A restore never writes the backed-up market tables into the store (they stay
+    Parquet under `held-state/market`), so the store it writes holds only what this product
+    writes, whatever format the generation records, a generation written before marks were kept
+    among them. An older product's own store is not this one; its upgrade stays as
+    strict as ever."""
+    connection = open_workspace_database(target / MARKET_DATABASE, read_only=False)
+    try:
+        create_market_profile(connection)
+    finally:
+        connection.close()
+    # The store's first composition: its maintenance tables, which an open under a read
+    # boundary cannot create in a store that exists.
+    DuckDbWorkspaceMaintenanceRegistry(target / MARKET_DATABASE, gate=WorkspaceMutationGate())
+
+
 def _existing_tables(database: Path) -> set[str]:
     connection = open_workspace_database(database, read_only=True)
     try:
@@ -437,6 +485,7 @@ class WorkspaceBackups:
             reason=reason,
             entries=tuple(entries),
             absent=tuple(absent),
+            market_format=_market_format(self.workspace / MARKET_DATABASE),
         )
         generations = self.root / "generations"
         generations.mkdir(parents=True, exist_ok=True)
@@ -808,6 +857,7 @@ class WorkspaceBackups:
             tables += 1
         if task_control:
             self._restore_task_control(target, task_control)
+        _restore_market_store(target)
         (target / "held-state").mkdir(exist_ok=True)
         (target / "held-state" / "generation.json").write_text(
             chosen.model_dump_json(indent=1), encoding="utf-8"
