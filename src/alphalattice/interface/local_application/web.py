@@ -82,8 +82,14 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
-from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
 from alphalattice.kernel.config import consume_secret
+from alphalattice.kernel.door import (
+    CLI_OPERATION,
+    OPERATIONS_PATH,
+    DoorRefusal,
+    answer_bytes,
+    refusal_fields,
+)
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
@@ -705,7 +711,11 @@ class LocalWebApplication:
             # Refusal identity belongs to the owner, not to ValueError's inheritance.
             code = owner_failure_code(error)
             if code is not None:
-                return self._refuse(HTTPStatus.BAD_REQUEST, code)
+                return self._refuse(
+                    HTTPStatus.BAD_REQUEST,
+                    code,
+                    door=error if isinstance(error, DoorRefusal) else None,
+                )
             if isinstance(error, (ValueError, KeyError)):
                 return self._refuse(
                     HTTPStatus.BAD_REQUEST,
@@ -732,14 +742,23 @@ class LocalWebApplication:
             answer = {**answer, "yaml": rewrite_in_declaration_dialect(answer["yaml"])}
         return LocalWebResponse(
             HTTPStatus.OK,
-            json.dumps(answer, default=str, sort_keys=True).encode("utf-8"),
+            answer_bytes(answer),
             "application/json; charset=utf-8",
         )
 
     def _refuse(
-        self, status: HTTPStatus, reason: str, *, next_action: str | None = None
+        self,
+        status: HTTPStatus,
+        reason: str,
+        *,
+        next_action: str | None = None,
+        door: DoorRefusal | None = None,
     ) -> LocalWebResponse:
-        body: dict[str, object] = {"refused": reason}
+        body = refusal_fields(reason)
+        if door is not None:
+            body["operation"] = door.operation
+            if door.module is not None:
+                body["family_module"] = door.module
         # A raised refusal carries its code's words and way on, as a returned one does (OP4).
         words = refusal_words(reason)
         if next_action is not None or words:

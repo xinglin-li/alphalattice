@@ -28,6 +28,7 @@ import pytest
 
 from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel.data_layer import arrays
+from alphalattice.kernel.door import Door, FamilyRoute
 from alphalattice.kernel.execution import process_execution
 from alphalattice.kernel.execution.events import Events
 from alphalattice.kernel.identity import FileDigestTrust, TrustEntry
@@ -98,6 +99,16 @@ def _thin_command(request: pytest.FixtureRequest) -> Callable[[], object]:
     return partial(thin_cli.invoke, argv)
 
 
+def _door_echo(value: object) -> object:
+    return value
+
+
+def _door_call() -> Callable[[], object]:
+    """One operation selection and return through the resident Door."""
+    door: Door[object, object] = Door((FamilyRoute(("ECHO",), __name__, "_door_echo"),))
+    return partial(door.dispatch, "ECHO", None)
+
+
 def _event_delivered(request: pytest.FixtureRequest) -> Callable[[], object]:
     """One event delivered to a waiting subscriber, timed with its reply: a subscriber thread
     blocks on "ping" and publishes "pong" when it hears one; a call publishes ping and waits on
@@ -144,6 +155,8 @@ OPERATIONS = (
     # About 25 ms on the workshop's machine (11-22, 33 rounds, 99% interval 20 to 31 ms); the budget
     # holds 2x.
     Operation("a thin-CLI command to a running Host", _thin_command, 0.05),
+    # Seven warm samples of 100,000 calls here gave a median of 0.089 us (11-22).
+    Operation("Door dispatch", _door_call(), 0.0000002),
     # A delivery and its reply: 34 us mean on the workshop's machine (11-23, 539 rounds); the
     # budget holds 2x.
     Operation("one event delivered to a waiting subscriber", _event_delivered, 0.00007),

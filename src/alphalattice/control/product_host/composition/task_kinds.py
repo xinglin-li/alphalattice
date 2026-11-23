@@ -8,3 +8,6 @@ RESEARCH_EXPERIMENT_TASK_KIND = "research_experiment"
 STRATEGY_CALIBRATION_TASK_KIND = "portfolio_calibration_preparation"
 STRATEGY_SCORE_TASK_KIND = "strategy_score_preparation"
 STUDY_VERIFICATION_TASK_KIND = "study_verification_sweep"
+
+
+VERIFICATION_LEDGER_DIRECTORY = "verification-ledger"

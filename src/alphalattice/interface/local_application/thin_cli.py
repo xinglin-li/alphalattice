@@ -28,6 +28,15 @@ from urllib.parse import urlsplit
 
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.config import data_root
+from alphalattice.kernel.door import (
+    CLI_OPERATION as CLI_OPERATION,
+)
+from alphalattice.kernel.door import (
+    OPERATIONS_PATH as OPERATIONS_PATH,
+)
+from alphalattice.kernel.door import (
+    request_bytes,
+)
 from alphalattice.kernel.identity import identity_sha256
 
 ENDPOINT_FOLDER: Final = "host-endpoints"
@@ -39,8 +48,6 @@ START_SECONDS: Final = 330.0
 CLIENT_HEADER: Final = "X-Alphalattice-Client"
 WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
 INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
-OPERATIONS_PATH: Final = "/api/client/operations"
-CLI_OPERATION: Final = "CLI_INVOKE"
 AGENT_SESSION_VARIABLES: Final = (
     ("claude-code", "CLAUDE_CODE_SESSION_ID"),
     ("codex", "CODEX_THREAD_ID"),
@@ -363,7 +370,7 @@ def send(
 ) -> int | None:
     """Send one command to the Host `record` names over `exchange`, print its bytes and return
     its exit code; None when the Host refused it before dispatch (the full CLI answers)."""
-    body = json.dumps(
+    body = request_bytes(
         {
             "operation": CLI_OPERATION,
             "argv": argv,
@@ -372,7 +379,7 @@ def send(
             "streams": _styles(),
             "environment": _settings(),
         }
-    ).encode("ascii")
+    )
     if len(body) > MAXIMUM_REQUEST_BODY_BYTES:
         exchange.close()
         return None

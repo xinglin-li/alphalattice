@@ -1020,7 +1020,7 @@ class GoalApplication:
             "agent_session": session.session_id,
             "nonce": token_hex(16),
         }
-        used = self.store.reserve_relay(key, record)
+        used = self.store.reserve_relay(key, record, operation=request.operation)
         if used is not None:
             raise ValueError(f"person_confirmation.already_used:{used['nonce']}")
         return {**record, "key": key}

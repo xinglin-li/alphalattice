@@ -1,5 +1,15 @@
 {
 "entries": {
+"door.operation_unknown": {"owner": "alphalattice.kernel.door", "category": "NOT_FOUND", "classification_note": "Choose a registered operation from operation list."},
+"door.operation_duplicate": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "Two families registered the same operation. Repair the Host installation."},
+"door.operation_unregistered": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "The Host is missing a registered operation. Repair the Host installation."},
+"door.operation_unrecognized": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "The Host registered an operation outside the installed vocabulary. Repair the Host installation."},
+"door.family_import_failed": {"owner": "alphalattice.kernel.door", "category": "UNAVAILABLE", "classification_note": "The operation's family could not load. Check the named family and repair the Host installation."},
+"door.person_unavailable": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "This request needs a person's decision. Ask them before continuing."},
+"door.person_required": {"owner": "alphalattice.kernel.door", "category": "PERMISSION_DENIED", "classification_note": "Only the person can answer this decision."},
+"door.paid_run_approval_required": {"owner": "alphalattice.kernel.door", "category": "PERMISSION_DENIED", "classification_note": "The person must approve this paid run before it can start."},
+"door.decision_not_pending": {"owner": "alphalattice.kernel.door", "category": "FAILED_PRECONDITION", "classification_note": "This decision is no longer pending. Read the current decision before answering."},
+"door.decisions_unavailable": {"owner": "alphalattice.kernel.door", "category": "UNAVAILABLE", "classification_note": "The workspace's decision file could not be opened or written. Check the workspace before retrying."},
 "execution.timeout": {"owner": "alphalattice.kernel.execution", "category": "DEADLINE_EXCEEDED", "classification_note": "The execution reached its deadline and left its verified work available for recovery."},
 "resources.capacity_exceeded": {"owner": "alphalattice.kernel.resources", "category": "RESOURCE_EXHAUSTED", "classification_note": "The requested quantity exceeds available capacity. Reduce the request or wait for the work holding the resource to finish."},
 "resources.holder_already_leased": {"owner": "alphalattice.kernel.resources", "category": "FAILED_PRECONDITION", "classification_note": "The holder already has a grant. Finish that work and release its grant before admitting the holder again."},

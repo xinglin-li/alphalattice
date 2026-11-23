@@ -2,6 +2,16 @@
   "schema": "alphalattice.playpen.storage-authority-registry",
   "groups": [
     {
+      "tables": ["decision"],
+      "database": "decisions.sqlite3",
+      "semantic_role": "workspace decision questions, scoped person answers, and one-use approvals",
+      "generation_model": "OPERATIONAL_PROJECTION",
+      "authority_owner": "door.decisions.Decisions",
+      "retention_owner": "door; retains decisions with the workspace",
+      "rebuildability": "AUDIT_LEDGER_REQUIRED",
+      "artifact_relationship": "PROVENANCE_ONLY"
+    },
+    {
       "tables": [
         "onboarding_raw_stage",
         "onboarding_action_stage"

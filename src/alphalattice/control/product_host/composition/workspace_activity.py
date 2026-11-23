@@ -76,7 +76,6 @@ from alphalattice.control.observation_runtime.policy import (
     default_observation_policies,
 )
 from alphalattice.control.observation_runtime.profile import align_clock_inputs, stage_profile
-from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.native_usage_reader import UNVERIFIED_LIMIT
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
@@ -1276,6 +1275,8 @@ class WorkspaceActivity:
                         observations += checked
                     else:  # a hook's, or a review thread's acceptance: its Task from the thread
                         if subject.get("input_channel") == "PRODUCT_REVIEW":
+                            from . import committee  # lazy: research review on the activity feed
+
                             task = committee.accepted_task(
                                 operations.goals.store, str(subject.get("reference"))
                             )

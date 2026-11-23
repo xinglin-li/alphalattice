@@ -16,6 +16,7 @@ import pytest
 from alphalattice.kernel.shared_kernel import spawn
 from devtools.pipeline import definition
 from release.public_manifest import (
+    _HOST_ROUTES,
     INTERNAL_ID_BASELINE,
     RULES,
     _carry_refusal,
@@ -171,14 +172,21 @@ def test_public_manifest_rejects_unsafe_paths(path):
         validate_path(path)
 
 
+def _runtime_census(*roots: str) -> dict[str, bytes]:
+    """Build the synthetic entry inventory for the release scanner fixtures."""
+    census = {"base": "b" * 40, "modules": [{"path": root, "class": "LIVE"} for root in roots]}
+    return {
+        "census/entry_reach.json": json.dumps(census).encode(),
+    }
+
+
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     sha = "a" * 40
-    census = {"base": "b" * 40, "modules": [{"path": "src/alphalattice/main.py", "class": "LIVE"}]}
     blobs = {
         "LICENSE": b"license\n",
         "AGENTS.override.md": b"internal instructions\n",
-        "census/entry_reach.json": json.dumps(census).encode(),
+        **_runtime_census("src/alphalattice/main.py"),
         "src/alphalattice/main.py": b"from alphalattice.new import calculate\n",
         "src/alphalattice/new.py": b"def calculate():\n    return 1\n",
         "unexamined.bin": b"unknown\x00payload",
@@ -822,6 +830,60 @@ def test_candidate_script_needs_a_consumer_outside_release_policy():
     blobs["README.md"] = script.encode()
     manifest, _ = generate("a" * 40, blobs, dict.fromkeys(blobs, "100644"))
     assert script in {row["path"] for row in manifest["public"]}
+
+
+@pytest.mark.proves("pipeline.public_manifest_follows_registered_host_routes")
+@pytest.mark.parametrize(
+    ("module", "target_mode", "private", "refusal"),
+    [
+        pytest.param('"handler"', "100644", False, None, id="public-handler-and-imports"),
+        pytest.param('"handler"', "100644", True, "door_route_private", id="private-handler"),
+        pytest.param("module_name", "100644", False, "door_route_nonliteral", id="nonliteral"),
+        pytest.param(
+            '"alphalattice.kernel.handler"',
+            "100644",
+            False,
+            "door_route_outside_package",
+            id="outside-package",
+        ),
+        pytest.param('"handler"', None, False, "door_route_untracked", id="untracked"),
+    ],
+)
+def test_public_runtime_closure_follows_the_registered_door_routes(
+    monkeypatch, module, target_mode, private, refusal
+):
+    """The real scanner follows literal public routes and refuses invalid targets by name."""
+    registry = _HOST_ROUTES
+    package = registry.rsplit("/", 1)[0]
+    handler, dependency = f"{package}/handler.py", f"{package}/dependency.py"
+    blobs = {
+        **_runtime_census(registry),
+        registry: f'_ROUTES = (FamilyRoute(("SHOW",), {module}),)\n'.encode(),
+        dependency: b"answer = 1\n",
+    }
+    if target_mode is not None:
+        blobs[handler] = b"from .dependency import answer\n"
+    modes = dict.fromkeys(blobs, "100644")
+    if private:
+        monkeypatch.setattr(
+            "release.public_manifest.RULES",
+            [
+                {
+                    "rule": "PRIVATE_FIXTURE",
+                    "kind": "PRIVATE",
+                    "patterns": [handler],
+                    "reason": "private fixture",
+                },
+                *RULES,
+            ],
+        )
+    if refusal:
+        with pytest.raises(ValueError, match=f"public_release\\.{refusal}:"):
+            generate("a" * 40, blobs, modes)
+    else:
+        manifest, _ = generate("a" * 40, blobs, modes)
+        public = {row["path"]: row["rule"] for row in manifest["public"]}
+        assert public[handler] == public[dependency] == "PUBLIC_RUNTIME"
 
 
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")

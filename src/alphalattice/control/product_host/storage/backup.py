@@ -25,9 +25,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 import tempfile
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, closing, nullcontext
 from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
@@ -69,6 +70,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.door import DECISIONS_DATABASE
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -572,6 +574,28 @@ class WorkspaceBackups:
                 digest, size = read_file(path)
                 relative = path.relative_to(staging).as_posix()
                 entries.append(BackupEntry(kind="FILE", path=relative, digest=digest, size=size))
+        decisions = self.workspace / DECISIONS_DATABASE
+        if decisions.exists():
+            if stop():
+                raise _Stopped
+            # In rollback journal mode, the SQLite read transaction keeps the main file
+            # stable through hashing and copying. A pending writer cannot commit over it.
+            try:
+                with closing(
+                    sqlite3.connect(decisions.as_uri() + "?mode=ro", uri=True, timeout=1)
+                ) as reader:
+                    reader.execute("BEGIN")
+                    reader.execute("SELECT id FROM decision LIMIT 1").fetchone()
+                    if reader.execute("PRAGMA journal_mode").fetchone() != ("delete",):
+                        raise _unreadable("source")
+                    digest, size = read_file(decisions)
+            except sqlite3.Error as error:
+                raise _unreadable("source") from error
+            entries.append(
+                BackupEntry(
+                    kind="FILE", path=DECISIONS_DATABASE.as_posix(), digest=digest, size=size
+                )
+            )
         for relative in COPIED:
             if stop():
                 raise _Stopped

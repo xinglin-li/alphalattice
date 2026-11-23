@@ -27,11 +27,14 @@ if TYPE_CHECKING:
     from alphalattice.interface.local_application import portfolio_research as requests
 
     from . import portfolio_research_operations as host
+    from .operation_route_families import WorkspaceOperationCall
 
 
-def execute(call: host.WorkspaceOperationCall) -> dict[str, object] | None:
+def execute(
+    call: WorkspaceOperationCall[host.PortfolioResearchOperations],
+) -> dict[str, object] | None:
     """Dispatch a workspace research, preparation or experiment operation."""
-    operations, request, caller = call
+    operations, request, caller = call.operations, call.request, call.caller
     match request.operation:
         case "RESEARCH_STRATEGY_CONTROLS":
             return operations.research_strategies.controls()
@@ -236,3 +239,10 @@ def _prepare_confirm(
             },
         }.get(sent.refusal_detail, {}),
     }
+
+
+def route(call: WorkspaceOperationCall[host.PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a research family operation."""
+    result = execute(call)
+    assert result is not None
+    return result

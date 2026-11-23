@@ -264,6 +264,7 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         "evidence_as_of": datetime(2026, 1, 1, tzinfo=UTC),
         "entities": (),
         "failed": 0,
+        "operation": "WORKSPACE_SHOW",
         "option": "source_artifact_root",
         "type_name": "RuntimeError",
         "failure_class": None,

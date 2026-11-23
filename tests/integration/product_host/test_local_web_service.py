@@ -1938,6 +1938,7 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
 
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.portfolio_strategy_lab.node_runner import read_in_chinese
 
     with LocalPortfolioWebSession.from_workspace(tmp_path) as live:
@@ -1957,6 +1958,21 @@ def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
             payload={key: value for key, value in continued.items() if key != "operation"},
         )
         assert applied["status"] == "COMPLETED" and applied["plan_hash"] == plan["plan_hash"]
+
+        pending = tmp_path / "artifacts/storage-governance/input-cleanup-started"
+        pending.mkdir(parents=True, exist_ok=True)
+        intent = {"plan_hash": plan["plan_hash"]}
+        (pending / f"{canonical_hash(intent)}.json").write_text(
+            json.dumps(intent), encoding="utf-8"
+        )
+        blocked = _json(
+            live,
+            "/api/workspace/storage/pin",
+            method="POST",
+            payload={"input_binding_hash": "a" * 64, "input_pinned": True},
+        )
+        assert blocked["status"] == "REFUSED"
+        assert blocked["failure_code"] == "storage.cleanup_recovery_required"
 
 
 def test_history_and_discovery_keep_peers_without_advancing_unreadable_authority(
@@ -2044,6 +2060,20 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
             assert refusal["next_requests"]["backups"] == {"operation": "WORKSPACE_BACKUPS"}
         assert str(alien.task_id) not in json.dumps(answer)
     assert any(row["task_id"] == str(peer.task_id) for row in answers["TASKS"]["tasks"])
+
+    from alphalattice.control.product_host.composition import task_operations
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        WorkspaceOperationCall,
+    )
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    operations = data.live.operations
+    request = PortfolioResearchOperationRequest(operation="TASKS")
+    named_route = task_operations.route(WorkspaceOperationCall(operations, request, "HUMAN"))
+    assert named_route["tasks"] == answers["TASKS"]["tasks"]
+    assert named_route["refusals"] == answers["TASKS"]["refusals"]
 
 
 def test_unreadable_task_authority_refuses_recovery_and_writes(unreadable_task_records) -> None:
@@ -2235,6 +2265,19 @@ def test_a_feature_listing_page_is_read_as_its_number(tmp_path: Path) -> None:
     # Pagination reads the extension records, not market rows or a bound study.
     publish_research_workspace_manifest(root, _manifest("feature-page"))
     with _session(root) as live:
+        from alphalattice.control.product_host.composition import feature_operations
+        from alphalattice.control.product_host.composition.operation_route_families import (
+            WorkspaceOperationCall,
+        )
+        from alphalattice.interface.local_application.portfolio_research import (
+            PortfolioResearchOperationRequest,
+        )
+
+        request = PortfolioResearchOperationRequest(operation="FEATURE_TRIALS")
+        owned = feature_operations.route(WorkspaceOperationCall(live.operations, request, "HUMAN"))
+        assert _json(live, "/api/feature-trials") == owned
+        assert owned["trials"] == []
+
         first = _json(live, "/api/feature-research?extensions_page=1")
         assert (first["status"], first["page"]) == ("FEATURE_EXTENSIONS", 1)
         past = first["page_count"] + 1

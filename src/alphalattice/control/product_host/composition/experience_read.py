@@ -1,5 +1,7 @@
 """Experience read and the research run's explicit hypothesis."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
@@ -16,6 +18,8 @@ if TYPE_CHECKING:
     )
     from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 
+    from .operation_route_families import WorkspaceOperationCall
+
 
 class _ExperimentRunner(Protocol):
     """The existing research admission boundary used by this route."""
@@ -25,7 +29,7 @@ class _ExperimentRunner(Protocol):
         plan_hash: str,
         *,
         caller: str,
-        agent_execution: "AgentExecutionBinding | None",
+        agent_execution: AgentExecutionBinding | None,
         hypothesis_id: str | None,
         expected_goal: str | None,
     ) -> dict[str, object]:
@@ -33,7 +37,7 @@ class _ExperimentRunner(Protocol):
         ...
 
 
-def read_experience(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+def read_experience(request: PortfolioResearchOperationRequest) -> dict[str, object]:
     """Read bounded trials from the recorded experience view."""
     experience = history.read_experience(
         goal=str(request.goal_id) if request.goal_id else None,
@@ -52,7 +56,7 @@ def read_experience(request: "PortfolioResearchOperationRequest") -> dict[str, o
     }
 
 
-def read_experience_class(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+def read_experience_class(request: PortfolioResearchOperationRequest) -> dict[str, object]:
     """Every trial of the named trial's class, at its width, as the history knew it at the
     request's known time (`history.read_experience_class`); refused by name for a trial the
     history does not hold."""
@@ -77,7 +81,7 @@ _RECALL_REFUSALS = {
 }
 
 
-def recall_experience(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+def recall_experience(request: PortfolioResearchOperationRequest) -> dict[str, object]:
     """The experiences most like the request's query in its workspace (the Host's when none is
     named), as known at its known time, each with its trials' classes
     (`history.recall_experiences`); refused by name when the retrieval models are not installed
@@ -106,7 +110,7 @@ def recall_experience(request: "PortfolioResearchOperationRequest") -> dict[str,
     return refused("experience.history_unavailable") if found is None else found
 
 
-def read_experience_brief(request: "PortfolioResearchOperationRequest") -> dict[str, object]:
+def read_experience_brief(request: PortfolioResearchOperationRequest) -> dict[str, object]:
     """What to know before new work on the request's goal, as known at its known time, in its
     budget (`history.read_experience_brief`); refused by name for a goal the history did not
     hold then."""
@@ -125,9 +129,7 @@ def read_experience_brief(request: "PortfolioResearchOperationRequest") -> dict[
     return refused("experience.history_unavailable") if found is None else found
 
 
-def record_experience(
-    request: "PortfolioResearchOperationRequest", caller: str
-) -> dict[str, object]:
+def record_experience(request: PortfolioResearchOperationRequest, caller: str) -> dict[str, object]:
     """Record a review's note on what it names, with its verdict and its run's aggregates; the
     Host renders the experience after the reply. A note missing a part, or one on a trial or Task
     not yet ended, is refused by name and nothing is recorded."""
@@ -157,9 +159,9 @@ def record_experience(
 
 def run_with_hypothesis(
     application: _ExperimentRunner,
-    request: "PortfolioResearchOperationRequest",
+    request: PortfolioResearchOperationRequest,
     caller: str,
-    agent_execution: "AgentExecutionBinding | None",
+    agent_execution: AgentExecutionBinding | None,
 ) -> dict[str, object]:
     """Admit the requested trial with its stated hypothesis and goal."""
     assert request.experiment_plan_hash is not None
@@ -171,3 +173,16 @@ def run_with_hypothesis(
         hypothesis_id=request.experience_hypothesis,
         expected_goal=provenance.goal_id if provenance else None,
     )
+
+
+def route(call: WorkspaceOperationCall[object]) -> dict[str, object]:
+    """Serve a experience operation."""
+    handlers = {
+        "EXPERIENCE_READ": read_experience,
+        "EXPERIENCE_BRIEF": read_experience_brief,
+        "EXPERIENCE_CLASS": read_experience_class,
+        "EXPERIENCE_RECALL": recall_experience,
+    }
+    if call.request.operation == "EXPERIENCE_RECORD":
+        return record_experience(call.request, call.caller)
+    return handlers[call.request.operation](call.request)

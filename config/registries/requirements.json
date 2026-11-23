@@ -1402,6 +1402,13 @@
       "layer": "integration",
       "seconds": 2
     },
+    "door.named_operations_preserve_bytes_and_person_authority": {
+      "description": "The Door routes registered names without changing request or answer bytes, loads a family on first use, refuses invalid registrations and requests by name, and persists decisions that require a person.",
+      "owner": "alphalattice.kernel.door",
+      "layer": "integration",
+      "lower_layer": "Reopening the real decision file proves that SQLite commits the answer and consumes a paid approval once.",
+      "seconds": 1
+    },
     "egress.market_session_checks_native_requests": {
       "description": "The market SDK's native session checks its timeout, each destination and the process offline switch before native sends.",
       "owner": "alphalattice.kernel.egress",
@@ -1965,6 +1972,12 @@
       "seconds": 1,
       "lower_layer": "The smoke module starts its commands through subprocess, which the unit layer refuses; this case calls only its pure diagnostic."
     },
+    "local_application.strategy_readback_requests_keep_their_scope": {
+      "description": "Work planned per strategy retains the strategy package and task selectors on its readback request.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
       "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2291,6 +2304,13 @@
       "owner": "devtools.pipeline",
       "layer": "integration",
       "seconds": 5
+    },
+    "pipeline.public_manifest_follows_registered_host_routes": {
+      "description": "Public reach follows the Host's registered literal routes and refuses private, missing and invalid route targets.",
+      "owner": "devtools.pipeline",
+      "layer": "integration",
+      "lower_layer": "The end-to-end scanner combines the installed verification inventory, import closure, private classification and final manifest projection, so checking the route parser alone cannot prove publication or refusal.",
+      "seconds": 1
     },
     "pipeline.public_manifest_settles_every_file_by_rule": {
       "description": "If the manifest guessed, skipped a file or let a public consumer pull private tools out, private work would escape in the next export.",

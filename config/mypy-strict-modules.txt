@@ -5,6 +5,7 @@ src/alphalattice/control/product_host/composition/portfolio_research_operations.
 src/alphalattice/control/product_host/composition/data_operations.py
 src/alphalattice/control/product_host/composition/feature_operations.py
 src/alphalattice/control/product_host/composition/host_answer_submission.py
+src/alphalattice/control/product_host/composition/operation_route_families.py
 src/alphalattice/control/product_host/composition/portfolio_operations.py
 src/alphalattice/control/product_host/composition/research_operations.py
 src/alphalattice/control/product_host/composition/research_read_scopes.py
@@ -16,6 +17,7 @@ src/alphalattice/investment/alpha_research/experiments/lifecycle_authoring.py
 src/alphalattice/investment/alpha_research/experiments/family_qualification.py
 src/alphalattice/kernel/clock
 src/alphalattice/kernel/config
+src/alphalattice/kernel/door
 src/alphalattice/kernel/shared_kernel/source_identity.py
 src/alphalattice/kernel/shared_kernel/project_layout.py
 src/alphalattice/kernel/shared_kernel/identity_successors.py

@@ -153,3 +153,10 @@ def invoke(
             }
         finally:
             CLI_CALL.reset(scope)
+
+
+class ForwardedCli(NamedTuple):
+    """The admitted CLI transport request and the Host workspace it reached."""
+
+    document: dict[str, object]
+    workspace: Path

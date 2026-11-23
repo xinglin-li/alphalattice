@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -1380,29 +1381,87 @@ def _import_names(path: str, raw: bytes) -> frozenset[str]:
     return known
 
 
-def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
-    """Follow absolute and relative Python imports by parsing, never importing product code."""
+_HOST_ROUTES = "src/alphalattice/control/product_host/composition/operation_route_families.py"
+
+
+def _host_route_names(raw: bytes) -> set[str]:
+    """Read the Host's package-relative FamilyRoute registrations without executing them."""
+    package = _HOST_ROUTES[4:].rpartition("/")[0].replace("/", ".")
+    tree = ast.parse(raw.decode("utf-8-sig"), filename=_HOST_ROUTES)
+    tables = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_ROUTES" for target in node.targets)
+    ]
+    if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
+        raise ValueError(
+            f"public_release.door_route_nonliteral: {_HOST_ROUTES} needs one _ROUTES tuple"
+        )
+    names = set()
+    for route in tables[0].elts:
+        location = f"{_HOST_ROUTES}:{route.lineno}"
+        if not (
+            isinstance(route, ast.Call)
+            and isinstance(route.func, ast.Name)
+            and route.func.id == "FamilyRoute"
+            and 2 <= len(route.args) <= 3
+            and not route.keywords
+            and isinstance(module := route.args[1], ast.Constant)
+            and isinstance(value := module.value, str)
+        ):
+            raise ValueError(f"public_release.door_route_nonliteral: {location}")
+        parts = value.split(".")
+        if parts[0] == "alphalattice" or not all(part.isidentifier() for part in parts):
+            raise ValueError(f"public_release.door_route_outside_package: {location}")
+        names.add(f"{package}.{value}")
+    return names
+
+
+def import_closure(
+    blobs: dict[str, bytes],
+    roots: set[str],
+    *,
+    runtime_modes: dict[str, str] | None = None,
+    declared: frozenset[str] = frozenset(),
+) -> set[str]:
+    """Follow parsed imports, including the registered Door targets in the runtime closure."""
     modules = {
         p[4:-3].replace("/", ".").removesuffix(".__init__"): p
         for p in blobs
         if p.startswith("src/") and p.endswith(".py")
     }
-    edges = {}
-    for path, raw in blobs.items():
-        if not path.endswith(".py"):
-            continue
-        # A module is reached when it is a dotted prefix of an imported name (or the name itself):
-        # each prefix is looked up, not every module tested against every name.
-        edges[path] = {
+
+    def imported_paths(names: Iterable[str]) -> set[str]:
+        # Lookup the imported name and its dotted prefixes without scanning every module.
+        return {
             modules[prefix]
-            for name in _import_names(path, raw)
+            for name in names
             for prefix in (".".join(name.split(".")[:end]) for end in range(1, name.count(".") + 2))
             if prefix in modules
         }
+
+    edges = {
+        path: imported_paths(_import_names(path, raw))
+        for path, raw in blobs.items()
+        if path.endswith(".py")
+    }
     reached = set(roots)
     todo = list(roots)
     while todo:
-        for target in edges.get(todo.pop(), set()) - reached:
+        path = todo.pop()
+        next_paths = edges.get(path, set())
+        if path == _HOST_ROUTES and runtime_modes is not None and path not in declared:
+            names = _host_route_names(blobs[path])
+            for name in sorted(names):
+                if runtime_modes.get(modules.get(name, "")) not in {"100644", "100755"}:
+                    raise ValueError(f"public_release.door_route_untracked: {name}")
+            routed = imported_paths(names)
+            for target in sorted(routed):
+                if classify(target, {target}, set(), set(), declared=declared)[0] != "PUBLIC":
+                    raise ValueError(f"public_release.door_route_private: {target}")
+            next_paths = next_paths | routed
+        for target in next_paths - reached:
             reached.add(target)
             todo.append(target)
     return reached
@@ -1899,7 +1958,10 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         raise ValueError("the source commit must contain the entry reachability census")
     er3 = json.loads(census_raw)
     runtime = import_closure(
-        blobs, {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs}
+        blobs,
+        {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs},
+        runtime_modes=modes,
+        declared=declared,
     )
     tests = import_closure(
         blobs,

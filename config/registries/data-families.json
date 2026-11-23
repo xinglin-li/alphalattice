@@ -2415,6 +2415,26 @@
       "store_step": "Portfolio research pipeline log store",
       "placement_reason": "The Host writes research pipeline and update transitions for Portfolio operations and history; their registered home is log task and event."
     },
+    "workspace-decisions": {
+      "summary": "pending questions, scoped person decisions and one-use approvals",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "workspace runtime decisions.sqlite3, table decision",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "table:decision"
+      ],
+      "authority_owners": [
+        "door.decisions.Decisions"
+      ],
+      "persistence_owner": "door.decisions:Decisions",
+      "writers": [],
+      "readers": [
+        "product_host.composition.portfolio_research_operations",
+        "product_host.publication.goals"
+      ]
+    },
     "goals": {
       "summary": "the Host's Goals",
       "class": "event-log",

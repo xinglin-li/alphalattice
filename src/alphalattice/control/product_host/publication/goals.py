@@ -34,6 +34,8 @@ from alphalattice.interface.local_application.goals import (
     declaration_hash,
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
+from alphalattice.kernel.data_layer.project import uuid7
+from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
 
 EXPERIENCE_RECORD_WORDS = (
     "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), "
@@ -185,6 +187,7 @@ class GoalStore:
             uri_prefix="playpen://product-host/goals",
         )
         self.workspace_id = workspace_id
+        self.decisions = Decisions(artifact_root.parent / DECISIONS_DATABASE, lambda: UUID(uuid7()))
         # HTTP handlers share this one store under the existing process writer lease.
         self.lock = RLock()
 
@@ -363,27 +366,26 @@ class GoalStore:
             except (KeyError, TypeError, ValueError, OSError) as error:
                 raise ValueError("goal.event_filing_invalid") from error
 
-    def reserve_relay(self, key: str, record: Mapping[str, object]) -> dict[str, object] | None:
-        """Hold one relayed yes by its spend key before its decision runs, atomically.
-
-        Returns None when this request holds it now, else the record of the use that holds it,
-        whose `nonce` lets the person's next yes to the same decision be told apart.
-        """
+    def reserve_relay(
+        self, key: str, record: Mapping[str, object], *, operation: str
+    ) -> dict[str, object] | None:
+        """Read legacy reservations and reserve new relays through the Door."""
         path = self.content.root / "relays" / f"{key}.json"
-        with self.lock:
-            if path.is_file():
-                held: dict[str, object] = json.loads(path.read_bytes())
-                return held
-            self.content.atomic_write(path, json.dumps(dict(record), sort_keys=True).encode())
-            return None
+        if path.is_file():  # contract: retained relays still refuse reuse after upgrade
+            held: dict[str, object] = json.loads(path.read_bytes())
+            return held
+        return self.decisions.hold_relay(
+            key, operation, record, activation=operation.endswith(("_ACTIVATE", "_DEACTIVATE"))
+        )
 
     def release_relay(self, key: str) -> None:
-        """Give back a held yes whose decision was refused: it was not used."""
-        with self.lock:
-            (self.content.root / "relays" / f"{key}.json").unlink(missing_ok=True)
+        """Give back a held yes whose decision was refused."""
+        self.decisions.release_relay(key)
 
     def relay_nonce(self, nonce: str) -> dict[str, object] | None:
-        """The used yes that issued this nonce, if the Host issued it."""
+        """The used yes that issued this nonce, including retained pre-Door answers."""
+        if (held := self.decisions.relay_nonce(nonce)) is not None:
+            return held
         folder = self.content.root / "relays"
         for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
             record: dict[str, object] = json.loads(path.read_bytes())

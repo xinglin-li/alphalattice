@@ -1407,6 +1407,17 @@ def _offline(args: argparse.Namespace, started: float) -> int:
     return 0
 
 
+def execute_forwarded(call: cli_invocation.ForwardedCli) -> dict[str, object]:
+    """Run the forwarded command in the serving process."""
+
+    def refuse_serve(_arguments: list[str]) -> int:
+        raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
+
+    return cli_invocation.invoke(
+        call.document, call.workspace, lambda argv: main(argv, serve=refuse_serve)
+    )
+
+
 def main(
     argv: list[str] | None = None,
     *,

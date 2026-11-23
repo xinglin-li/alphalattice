@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 from alphalattice.control.product_host.composition import committee
@@ -45,6 +46,8 @@ if TYPE_CHECKING:
     from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
     from . import portfolio_research_operations as host
+    from .operation_route_families import WorkspaceOperationCall
+    from .portfolio_research_operations import PortfolioResearchOperations
 
 
 def execute(
@@ -372,3 +375,19 @@ def _review_bundle_refusal(
     if unit is None:
         return None
     return unit
+
+
+def route(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a Review operation, keeping direct submissions' original error handling."""
+    run = partial(
+        execute,
+        call.operations,
+        call.request,
+        caller=call.caller,
+        read_files=call.read_files,
+        agent_run=call.agent_run,
+        accepted_bundle=call.accepted_bundle,
+    )
+    if call.raw_review:
+        return run()
+    return call.operations._execute_review(call.request, run)

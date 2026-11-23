@@ -2152,7 +2152,8 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         class Owners(PortfolioResearchOperations):
             """The operations entry over a real plan answer and a recording admission."""
 
-            def _execute(self, request, *, caller, agent_execution):
+            def _execute(self, request, *, caller, agent_execution, direct_person):
+                assert not direct_person
                 reached.append(request.operation)
                 if request.operation == "WORKSPACE_PREPARE_PLAN":
                     return app.plan()
@@ -2164,6 +2165,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_PLAN"),
             caller="EXTERNAL_AUTOMATION",
             agent_execution=None,
+            direct_person=False,
         )
         estimate = plan["resource_estimate"]
         assert estimate["label"] == "ESTIMATE" and estimate["peak_memory_bytes"] > 0
@@ -2188,7 +2190,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         peak = estimate["peak_memory_bytes"]
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak - 1)
         refused = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
         )
         assert refused["status"] == "REFUSED"
         assert refused["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT
@@ -2201,7 +2203,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
 
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak)
         admitted = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
         )
         assert admitted["status"] == "ADMITTED" and reached[-1] == "WORKSPACE_PREPARE_CONFIRM"
 

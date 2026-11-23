@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime
 from typing import Any
 
 from alphalattice.interface.local_application.failure_codes import LocalResearchClientError
+from alphalattice.kernel.door import request_bytes
 
 
 def _json_value(value: object) -> str:
@@ -17,4 +17,4 @@ def _json_value(value: object) -> str:
 
 def request_body(document: dict[str, Any]) -> bytes:
     """Use UTF-8 JSON: escapes could make admitted Unicode fields exceed the body limit."""
-    return json.dumps(document, default=_json_value, ensure_ascii=False).encode("utf-8")
+    return request_bytes(document, default=_json_value, ensure_ascii=False)

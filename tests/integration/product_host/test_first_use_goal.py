@@ -26,9 +26,6 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     source_ways,
 )
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.composition.portfolio_research_operations import (
-    PortfolioResearchOperations,
-)
 from alphalattice.control.product_host.composition.research_update_automation import (
     first_update,
 )
@@ -784,9 +781,14 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
 
 
 def test_a_delegated_activation_runs_forward_without_the_history_review(
+    live: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Delegated activation also admits the date's update without requiring historical review."""
+    """Delegated activation admits its update and leaves direct-person approval to the person."""
+
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
 
     owner = SimpleNamespace(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
@@ -805,6 +807,30 @@ def test_a_delegated_activation_runs_forward_without_the_history_review(
     finally:
         REQUEST_PROVENANCE.reset(scope)
     assert answer["status"] == "ACTIVATED" and answer["update"] == {"run": {"task_id": "u"}}
+
+    operations = live.operations
+    code = "strategy_activation.research_strategy_required"
+
+    def refuse_activation(_task: UUID) -> None:
+        raise ValueError(code)
+
+    monkeypatch.setattr(operations, "activations", SimpleNamespace(activate=refuse_activation))
+    scope = REQUEST_PROVENANCE.set(
+        RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
+    )
+    try:
+        delegated = operations._execute_observed(request, caller="EXTERNAL_AUTOMATION")
+    finally:
+        REQUEST_PROVENANCE.reset(scope)
+    assert delegated["status"] == "REFUSED" and delegated["failure_code"] == code
+    decisions = operations.goals.store.decisions.path
+    assert not decisions.exists()
+    direct = operations.execute(request, caller="HUMAN")
+    assert direct["status"] == "REFUSED" and direct["failure_code"] == code
+    with closing(sqlite3.connect(decisions)) as ledger:
+        assert ledger.execute(
+            "SELECT kind, operation, answer, consumed FROM decision"
+        ).fetchall() == [("activation", "STRATEGY_ACTIVATE", "approve", 1)]
 
 
 def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_path: Path) -> None:

@@ -100,7 +100,7 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     refusal_words,
 )
-from alphalattice.interface.local_application.cli_invocation import invoke as invoke_cli
+from alphalattice.interface.local_application.cli_invocation import ForwardedCli
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
 )
@@ -524,13 +524,16 @@ class PortfolioForwardPrewarm:
     @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def _read_once(self) -> None:
-        if self._stopping.is_set() or self.operations.activations is None:
+        if self._stopping.is_set():
             return
         manifests = self.operations.manifests
         assert manifests is not None
+        bindings = manifests.current.decision_updates
+        if not bindings or (activations := self.operations.activations) is None:
+            return
         candidates: list[tuple[datetime, str, UUID]] = []
-        for binding in manifests.current.decision_updates or ():
-            state = self.operations.activations.summary(binding.strategy_package_id)
+        for binding in bindings:
+            state = activations.summary(binding.strategy_package_id)
             if state.get("status") != "ACTIVE":
                 continue
             book = state.get("book_task_id")
@@ -867,7 +870,7 @@ class LocalPortfolioWebSession:
 
     def _compose(self) -> str:
         from .native_usage_reader import attach_native_usage  # lazy: full Host only
-        from .operation_route_families import HostRouteFamilies  # lazy: full Host only
+        from .operation_route_families import host_door  # lazy: full Host only
         from .portfolio_research_operations import (  # lazy: full Host only
             PortfolioResearchOperations,
         )
@@ -995,7 +998,7 @@ class LocalPortfolioWebSession:
         self.operations = PortfolioResearchOperations(
             dispatcher=self.dispatcher,
             workspace_manifest=self.workspace_manifest,
-            route_families=HostRouteFamilies(),
+            door=host_door(),
             portfolio_factory=open_portfolio,
             portfolio_pipeline=pipeline,
             installed_packages=None if resolver is None else resolver.installed_packages,
@@ -1836,17 +1839,10 @@ def build_local_web_application(
     # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)
 
-    def refuse_forwarded_serve(_arguments: list[str]) -> int:
-        raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
-
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
     def external_operation(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         if payload.get("operation") == CLI_OPERATION:
-            from alphalattice.interface.local_application.cli import main  # lazy: CLI dispatch
-
-            return invoke_cli(
-                payload, session.workspace, lambda argv: main(argv, serve=refuse_forwarded_serve)
-            )
+            return operations.door.dispatch(CLI_OPERATION, ForwardedCli(payload, session.workspace))
         try:
             document = validate_request_document(payload)
         except ValidationError as error:

@@ -45,8 +45,6 @@
     "src/alphalattice/control/product_host/composition/model_sandbox.py::run_sandbox::from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease": 1,
     "src/alphalattice/control/product_host/composition/plain_refusals.py::explain::from alphalattice.control.product_host.maintenance.data_update import NETWORK_WORK_WORDS": 1,
     "src/alphalattice/control/product_host/composition/portfolio_research_operations.py::PortfolioResearchOperations._delivery_export::from .research_delivery import export_research_delivery, export_update_delivery": 1,
-    "src/alphalattice/control/product_host/composition/portfolio_research_operations.py::PortfolioResearchOperations._execute::from .foundation_summary import read_foundation_summary": 1,
-    "src/alphalattice/control/product_host/composition/portfolio_research_operations.py::PortfolioResearchOperations._execute::from .research_delivery import refused_document": 1,
     "src/alphalattice/control/product_host/composition/portfolio_research_operations.py::PortfolioResearchOperations._feature_extension_operation::from alphalattice.control.product_host.research_authoring.feature_extensions import FeatureExtensions": 1,
     "src/alphalattice/control/product_host/composition/portfolio_result_context.py::read_portfolio.with_forward_performance::from alphalattice.control.product_host.composition.rolling_portfolio_report import read_rolling_report": 1,
     "src/alphalattice/control/product_host/composition/portfolio_updates.py::PortfolioUpdateApplication.execute_stage::from alphalattice.control.product_host.composition.rolling_portfolio_report import publish_rolling_report_heads": 1,

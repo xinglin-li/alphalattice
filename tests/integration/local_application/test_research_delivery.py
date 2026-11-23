@@ -589,7 +589,7 @@ def test_an_invalid_document_in_a_delivery_export_is_the_products_fault() -> Non
     asks the agent to correct a declaration; elsewhere the declaration is still the agent's."""
     from pydantic import TypeAdapter, ValidationError
 
-    from alphalattice.control.product_host.composition.research_delivery import refused_document
+    from alphalattice.control.product_host.composition.research_experiments import refused_document
 
     with pytest.raises(ValidationError) as caught:
         TypeAdapter(int).validate_python("not a number")

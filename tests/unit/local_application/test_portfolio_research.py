@@ -11,6 +11,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
+from tests.portfolio_strategy_lab.cli_support import strategy_readback_operations
 
 TEST_SOURCE = "src/alphalattice/interface/local_application/portfolio_research.py"
 
@@ -36,3 +37,14 @@ def test_a_recall_request_is_bounded_and_its_answer_is_exact() -> None:
     answer = {"score_type": "LINEAR_FUSION", "hits": [], "unnamed": 1}
     with pytest.raises(ValidationError):
         ExperienceRecallAnswer.model_validate(answer)
+
+
+@pytest.mark.proves("local_application.strategy_readback_requests_keep_their_scope")
+def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> None:
+    """Control: Every read of work planned per strategy is keyed by its strategy."""
+
+    contract = PortfolioResearchOperationRequest.field_contract
+    readbacks = strategy_readback_operations()
+    for operation in readbacks:
+        required, allowed = contract(operation)
+        assert not required and {"task_id", "strategy_package_id"} <= allowed, operation
