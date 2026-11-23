@@ -907,9 +907,10 @@ def _acquire(
     - no live instance: open one in the requested mode, or writable for a file a
       keeping session declares it writes, whose reads then take the guard (unless
       a writer is waiting for the file, which a new reader lets go first);
-    - a kept writable instance and a read-only unit (`retain_workspace_database`) where
-      a writable instance shares nothing (`_WRITABLE_SHARES_READS`): let it go and open
-      read-only, since the unit's byte proofs read the file under its connection;
+    - a kept writable instance and a read-only unit proving the file's bytes
+      (`retain_workspace_database`) where a writable instance shares nothing
+      (`_WRITABLE_SHARES_READS`): let it go and open read-only, since the unit's byte
+      proofs read the file under its connection;
     - a live instance of the same mode: attach to it;
     - a writable instance and a read-only request: attach with the guard;
     - a read-only instance and a writable request: wait, bounded, for its
@@ -1065,9 +1066,18 @@ def open_workspace_database(
 
 @contextmanager
 def retain_workspace_database(
-    path: Path, *, read_only: bool, wait_seconds: float = RETENTION_WAIT_SECONDS
+    path: Path,
+    *,
+    read_only: bool,
+    wait_seconds: float = RETENTION_WAIT_SECONDS,
+    proves_bytes: bool = True,
 ) -> Iterator[None]:
     """Keep one workspace database instance open for a bounded unit of work.
+
+    A read-only unit is taken to prove the file's own bytes under its connection: where a writable
+    instance shares nothing (`_WRITABLE_SHARES_READS`), it lets a kept writable instance go and
+    opens read-only. A unit whose byte proofs read other files only says so (`proves_bytes=False`)
+    and attaches to the kept instance, so the writer after it opens nothing.
 
     A retention is per thread and per file, re-entrant for the same thread
     with the innermost declared access mode governing what the unit may open
@@ -1088,7 +1098,7 @@ def retain_workspace_database(
     with _STATE:
         retention = _RETENTIONS.get(key)
     if retention is None:
-        root = _acquire(resolved, read_only=read_only, wait_seconds=wait_seconds, unit=True)
+        root = _acquire(resolved, read_only=read_only, wait_seconds=wait_seconds, unit=proves_bytes)
         with _STATE:
             retention = _Retention(root, [(scope, read_only)])
             _RETENTIONS[key] = retention
@@ -1383,10 +1393,16 @@ class WorkspaceDatabase:
 
     @contextmanager
     def retain(
-        self, *, read_only: bool, wait_seconds: float = RETENTION_WAIT_SECONDS
+        self,
+        *,
+        read_only: bool,
+        wait_seconds: float = RETENTION_WAIT_SECONDS,
+        proves_bytes: bool = True,
     ) -> Iterator[None]:
         """Retain this database for a bounded unit of work on the calling thread."""
-        with retain_workspace_database(self.path, read_only=read_only, wait_seconds=wait_seconds):
+        with retain_workspace_database(
+            self.path, read_only=read_only, wait_seconds=wait_seconds, proves_bytes=proves_bytes
+        ):
             yield
 
     def hold(self) -> AbstractContextManager[None]:

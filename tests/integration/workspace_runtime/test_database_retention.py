@@ -641,6 +641,14 @@ def _kept_for_the_session(
                 connection.execute("INSERT INTO unit VALUES (2, 'written')")
             with database.retain(read_only=True):  # the score inputs' read with its byte proof
                 seen = (len(file_sha256(database.path)), _rows(database))
+        elif case == "session-a-read-unit-of-other-files-between-writes":
+            seen = []
+            for note in ("written", "again"):
+                with database.transaction() as connection:
+                    connection.execute(f"INSERT INTO unit VALUES ({len(seen) + 2}, '{note}')")
+                # the data update's input read: its byte proofs read the Panel's files, not this one
+                with database.retain(read_only=True, proves_bytes=False):
+                    seen.append(_rows(database))
         elif case == "session-a-digest-of-a-written-file":
             with database.transaction() as connection:
                 connection.execute("INSERT INTO unit VALUES (2, 'written')")
@@ -842,6 +850,12 @@ SESSION_CASES = {
         {"first": WRITE_THEN_READ, "second": 0},
         (64, [(1, "seed"), (2, "written")]),
     ),
+    # a read unit whose proofs read other files attaches to the writer's instance: the writer after
+    # it opens nothing, on every platform
+    "session-a-read-unit-of-other-files-between-writes": (
+        {"first": 1, "second": 0},
+        [[(1, "seed"), (2, "written")], [(1, "seed"), (2, "written"), (3, "again")]],
+    ),
     # read-only first, so the writer reopens the file writable: the access-mode rule's one reopen
     "session-a-schema-change-by-the-writer": (
         {"first": 2, "second": 0},
@@ -931,6 +945,7 @@ DECLARED = frozenset(
         "session-a-hand-off-of-this-file",
         "session-a-digest-of-a-written-file",
         "session-a-read-unit-proves-a-written-file",
+        "session-a-read-unit-of-other-files-between-writes",
         "session-a-replaced-file",
         "session-a-replacement-meets-live-connections",
         pytest.param(

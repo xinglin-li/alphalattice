@@ -226,8 +226,9 @@ def read_workspace_inputs(
         raise ValueError("workspace_data_update.installed_binding_mismatch")
     market = MarketDataRepository(root)
     # Dozens of small reads over one database: one retained read-only instance serves them all;
-    # a write inside is refused, not upgraded.
-    with market.database.retain(read_only=True):
+    # a write inside is refused, not upgraded. Its byte proofs read the Panel's chunk files, never
+    # the store's, so it attaches to a kept writable instance and the update's writer reuses it.
+    with market.database.retain(read_only=True, proves_bytes=False):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
             with market.market_reads() as (connection, tables):

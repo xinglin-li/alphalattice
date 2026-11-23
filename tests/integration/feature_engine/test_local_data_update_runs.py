@@ -37,6 +37,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from alphalattice.kernel import storage
 from tests._support import development_universe, sufficient_universe
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
@@ -87,15 +88,18 @@ def quarantine_scale_seed(tmp_path_factory):
 def _bytes(root: Path):
     """Every workspace file's bytes, except the writer lease and the sealed plan previews
     (`runtime/plan-previews`): a plan seals its preview, planning included, so those files move
-    with the request itself and say nothing about what the update wrote."""
+    with the request itself and say nothing about what the update wrote. A live Host keeps its
+    stores open, so they are read outside the engine (`storage.outside`), as any byte reader is."""
     previews = root / "runtime" / "plan-previews"
-    return {
-        str(path.relative_to(root)): sha256(path.read_bytes()).hexdigest()
+    files = [
+        path
         for path in root.rglob("*")
         if path.is_file()
         and path.name != ".alphalattice-writer.lock"
         and previews not in path.parents
-    }
+    ]
+    with storage.outside(*files):
+        return {str(p.relative_to(root)): sha256(p.read_bytes()).hexdigest() for p in files}
 
 
 @pytest.mark.parametrize(
