@@ -15,7 +15,8 @@
     "config/release/runtime-resources.json": "The distribution's explicit resource and development exception contract.",
     "skills/alternative-evidence/governed-evidence-analysis/SKILL.md": "Evidence Analyst's task procedure.",
     "skills/chief-risk-officer/review-portfolio-evidence/SKILL.md": "CRO's task procedure.",
-    "config/registries/refusals.json": "The shared refusal categories and their owning domains for structured error answers."
+    "config/registries/refusals.json": "The shared refusal categories and their owning domains for structured error answers.",
+    "config/registries/host-capabilities.json": "The desktop hosts' declared capabilities, read when a detached Host start is refused."
   },
   "directories": {
     "config/identity-successors": "Read newly recorded successor sets on installed readback.",

@@ -18,10 +18,11 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 from markdown_it import MarkdownIt
-from scripts.release import wheel_smoke
+from scripts.release import install_smoke, wheel_smoke
 from scripts.release.wheel_build import resource_files, runtime_requirements
 
 from alphalattice.control.product_host.composition import (
+    entry,
     evidence_authority_setup,
     retrieval_pack_setup,
 )
@@ -37,6 +38,8 @@ from alphalattice.kernel.shared_kernel import project_layout, spawn
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "config/release/runtime-resources.json"
+REACHED_BY = (entry,)
+"""The console entry the repo-link case runs in a child, imported so a change to it reaches here."""
 CHECKOUT_ONLY = {
     "scripts/build_local_web_ui.py",
     "scripts/create_gpu_environment.py",
@@ -282,14 +285,54 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
             )
             for case in RESIDENT
         ),
+        pytest.param(
+            "repo-link-first-use",
+            marks=pytest.mark.proves(
+                "local_application.repo_link_first_use_passes_the_install_smoke"
+            ),
+        ),
+        pytest.param(
+            "smoke-diagnostics",
+            marks=pytest.mark.proves("local_application.smoke_diagnostics_keep_no_command_output"),
+        ),
     ],
     ids=str,
 )
 def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch, tmp_path) -> None:
     """requirement: one packaged console entry, existing backend, named development exceptions;
-    one Host per data root, which the first command none answers starts."""
+    one Host per data root, which the first command none answers starts; the release install
+    smoke's repo-link leg passes wherever product tests run, and its failures keep no output."""
     if case in RESIDENT:
         _resident(tmp_path, monkeypatch, case)
+        return
+    if case == "smoke-diagnostics":
+        key = "workbench-session-key"
+        said = {
+            "started": (
+                0,
+                f"STARTED\nPortfolio Research workspace: http://127.0.0.1:1/#key={key}",
+                "",
+            ),
+            "refused": (2, json.dumps({"failure_code": "local_web.x", "detail": key}), ""),
+            "crashed": (1, "", f"Traceback (most recent call last):\nFileNotFoundError: {key}"),
+        }
+        assert {
+            name: wheel_smoke.outcome(subprocess.CompletedProcess([], *answer))
+            for name, answer in said.items()
+        } == {
+            "started": (0, None, None),
+            "refused": (2, "local_web.x", None),
+            "crashed": (1, None, "FileNotFoundError"),
+        }
+        return
+    if case == "repo-link-first-use":
+        folder = tmp_path / "Repo link workspace"
+        folder.mkdir()
+        wheel_smoke.smoke(
+            ["uv", "run", "--project", str(ROOT), "--locked", "alphalattice"],
+            cwd=folder,
+            launch_workspace=install_smoke.documented_launcher()[0][-3],
+        )
         return
     if case == "client-imports":
         probe = """
@@ -342,6 +385,12 @@ print(json.dumps({
     assert set(manifest["development_source_hashes"]) == SOURCE_HASHES
     assert all(manifest["checkout_only"].values())
     assert all(manifest["development_source_hashes"].values())
+    named = {
+        name
+        for path in (ROOT / "src").rglob("*.py")
+        for name in re.findall(r'runtime_json\(\s*"([^"]+)"', path.read_text(encoding="utf-8"))
+    }
+    assert {name for name in named if not name.startswith("src/")} <= set(resource_files())
 
 
 def test_both_guides_start_with_the_editable_leg_and_name_the_installed_leg() -> None:

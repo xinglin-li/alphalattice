@@ -8,6 +8,7 @@ import http.cookiejar
 import json
 import os
 import queue
+import re
 import shlex
 import shutil
 import subprocess
@@ -25,6 +26,8 @@ from alphalattice.kernel.shared_kernel import spawn
 
 HOST_MODULE = "alphalattice.control.product_host.composition.web_launcher"
 """The module a detached Host runs as (web_launcher._detach's command)."""
+RAISED = re.compile(r"([A-Z]\w*(?:Error|Exception|Exit|Interrupt))(?::|$)")
+"""An error line's exception name, the one part of a command's stderr a diagnostic keeps."""
 
 
 def shell_command(
@@ -64,6 +67,20 @@ def git_bash() -> str:
             "Git Bash, or put Git Bash's bin first on PATH"
         )
     return bash
+
+
+def outcome(done: subprocess.CompletedProcess[str]) -> tuple[int, str | None, str | None]:
+    """What a failed expectation reports of a command: its exit, its answer's failure code and
+    the exception its last error line names. Never its output, which can hold a session key."""
+    try:
+        answer = json.loads(done.stdout)
+    except ValueError:
+        answer = None
+    code = answer.get("failure_code") if isinstance(answer, dict) else None
+    lines = done.stderr.strip().splitlines()
+    raised = RAISED.match(lines[-1]) if lines else None
+    name = raised.group(1) if raised else None
+    return done.returncode, code if isinstance(code, str) else None, name
 
 
 def read_launch(lines: queue.Queue[str | None], *, timeout: float = 60) -> str:
@@ -207,7 +224,7 @@ def smoke(
                     return
                 try:
                     stopped = line("host", "stop")
-                    refusal = None if stopped.returncode == 0 else stopped.stdout
+                    refusal = None if stopped.returncode == 0 else outcome(stopped)
                 except (OSError, subprocess.SubprocessError) as error:
                     refusal = repr(error)
                 _, alive = psutil.wait_procs(hosts, timeout=120)
@@ -235,9 +252,11 @@ def smoke(
                     return read.returncode, answer["outcome"]
                 assert read.returncode == 4
                 assert answer["failure_code"] == "local_client.service_not_running"
-                refused = json.loads(line("serve", "--detach", "--no-browser").stdout)
-                assert refused["failure_code"] == "local_web.detached_breakaway_denied"
-                return read.returncode, refused["failure_code"]
+                detached = line("serve", "--detach", "--no-browser")
+                code = "local_web.detached_breakaway_denied"
+                said = detached.stdout + detached.stderr
+                assert detached.returncode == 2 and code in said, outcome(detached)
+                return read.returncode, code
             finally:
                 stop_detached()
 

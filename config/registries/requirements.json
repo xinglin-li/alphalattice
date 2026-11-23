@@ -1911,6 +1911,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "local_application.repo_link_first_use_passes_the_install_smoke": {
+      "description": "If the install smoke's repo-link leg ran only on the public Verify, a change to the thin CLI or the smokes could ship a red offline first use that no private stage ran.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 30,
+      "lower_layer": "The smoke runs the checkout's real command, its Host and the Host's loopback in child processes, which the unit layer refuses."
+    },
     "local_application.research_runs_are_recorded_as_trials": {
       "description": "A sealed research run is a trial with its selection, recipe, evidence artifact and optional running Task; attribution preserves content identity, a direct rerun has no Task, and the history replays ALL EQUAL.",
       "lower_layer": "The run is the real workflow over a real workspace, and the history a real SQLite log.",
@@ -1923,6 +1930,13 @@
       "owner": "alphalattice.interface.local_application",
       "layer": "integration",
       "seconds": 10
+    },
+    "local_application.smoke_diagnostics_keep_no_command_output": {
+      "description": "If a release smoke's failed expectation printed a command's output, a detached start that succeeded would put its Workbench session key into retained test and Verify logs.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The smoke module starts its commands through subprocess, which the unit layer refuses; this case calls only its pure diagnostic."
     },
     "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
       "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
