@@ -2174,6 +2174,9 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             "EXECUTION_ONLY",
         )
         assert datetime.fromisoformat(estimate["cpu_sampled_at"]).utcoffset().total_seconds() == 0
+        assert (
+            estimate["cpu_load"]["busy_processors"] is not None
+        )  # automatic sizing reads the load
         assert estimate["basis_details"]["reference_units"] == 520
         assert estimate["basis_details"]["reference_wall_seconds"] == 390
         assert estimate["basis_details"]["plan_units"] is None
@@ -2231,6 +2234,8 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
                 gate.plan_answered("EXPERIMENT_PLAN", alpha)
                 assert alpha["resource_estimate"]["wall_seconds"] == expected
                 assert alpha["resource_estimate"]["cpu_budget"] == budget
+                # A fixed budget never waits for a load sample it does not use (each stage checks).
+                assert alpha["resource_estimate"]["cpu_load"]["busy_processors"] is None
                 assert alpha["plan_hash"] == component
                 assert alpha["resource_estimate"]["basis_details"]["cpu_scaling_cap"] == 1.5
             assert alpha["resource_estimate"]["peak_memory_bytes"] == int(3.3 * 2**30)

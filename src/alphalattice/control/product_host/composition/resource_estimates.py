@@ -160,7 +160,8 @@ class ResourceGate:
         )
         estimated_units = units if units is not None else calibration.reference_units
         budget = CpuBudgetStore(self.workspace / "runtime").read()
-        load = machine_load()
+        # Only automatic sizing reads the load; sampling it waits a quarter second (budget_cores).
+        load = machine_load(sample_busy=budget.cpu_budget == "auto")
         cores, reason = budget_cores(budget, load)
         value = {
             "label": "ESTIMATE",
