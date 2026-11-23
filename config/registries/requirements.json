@@ -2572,6 +2572,13 @@
       "seconds": 18,
       "lower_layer": "The proof reads a real workspace's store, Feature rows and world; the unit layer's contract refuses its database."
     },
+    "product_host.removed_workspace_backups_go_after_their_grace": {
+      "description": "A live workspace keeps its backups, a removed one through thirty days, and after them they go with a receipt.",
+      "lower_layer": "The removal is read from a real data root's log over a real backup root on disk; only both together show the grace.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 2
+    },
     "product_host.research_input_copies_listed_as_kept": {
       "description": "Each 0.2.7 binding copy is listed as the door keeps it, and a copy whose manifest names another binding is refused.",
       "owner": "alphalattice.control.product_host",

@@ -29,7 +29,9 @@ alphalattice backup restore --dir workspaces/restored-research
 
 Backups hold market revisions and history, audits, Tasks, research programs and evidence, Evidence and CRO records, manifest and Host records outside the workspace. Rebuildable projections are not full duplicates; listed inputs and authority packages carry digests for recapture or reinstall.
 
-On Windows, the default root is `%LOCALAPPDATA%/AlphaLattice/backups/<workspace-id>`; `ALPHALATTICE_BACKUP_ROOT` changes it. Seven generations are retained by default; `backup run --keep <count>` selects another count. Protect this root alongside the workspace.
+On Windows, the default root is `%LOCALAPPDATA%/AlphaLattice/backups/<workspace-id>`; `ALPHALATTICE_BACKUP_ROOT` changes it. Seven generations are retained by default; `backup run --keep <count>` selects another count. Protect this root alongside the workspace. `backup list` and the Workbench's Backups panel show the bytes it holds.
+
+When a workspace's folder is gone, the Host records the workspace as missing at its next start; once the folder is back (a reconnected drive) or opened again, the workspace is active, with its backups. Thirty days after a workspace went missing or was deleted, the Host records how many generations and bytes its backups hold and then removes them; a removal interrupted is finished at a later start. Until then a restore works as before. A backup folder for a workspace this data root does not know is never touched.
 
 Restore targets a new or empty directory and can run without a Host. The restored workspace's Tasks move onto the log when a Host first opens it. It uses the newest generation unless `--generation <hash>` selects a whole or unique hash from `backup list`. On another machine, or from another folder, name the generation by its whole hash: the newest and a shortened hash only find generations taken in the same folder. If the original manifest is lost, name its recorded identity with `--workspace-id <id>` and backup root with `--root <path>`.
 

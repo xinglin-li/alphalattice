@@ -11195,6 +11195,12 @@
     "meaning": "The directory outside the workspace that holds the backups."
    },
    {
+    "name": "bytes",
+    "kind": "integer",
+    "required": true,
+    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
+   },
+   {
     "name": "last_automatic_attempt",
     "kind": "object|null",
     "required": true,
@@ -11233,6 +11239,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The directory outside the workspace that holds the backups."
+   },
+   {
+    "name": "bytes",
+    "kind": "integer",
+    "required": true,
+    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
    },
    {
     "name": "last_automatic_attempt",

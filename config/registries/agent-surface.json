@@ -26129,6 +26129,12 @@
         "type": "string"
       }
     },
+    "answer:WORKSPACE_BACKUP.bytes": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
     "answer:WORKSPACE_BACKUP.error_info": {
       "required": false,
       "schema": {
@@ -26220,6 +26226,12 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:WORKSPACE_BACKUPS.bytes": {
+      "required": true,
+      "schema": {
+        "type": "integer"
       }
     },
     "answer:WORKSPACE_BACKUPS.error_info": {

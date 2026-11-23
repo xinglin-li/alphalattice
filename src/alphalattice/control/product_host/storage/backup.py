@@ -24,10 +24,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, nullcontext
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import chain
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self
@@ -51,6 +52,7 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.control.workspace_runtime.lock import LOCK_SUFFIX
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -61,6 +63,7 @@ from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.spans import span
 
@@ -143,6 +146,19 @@ re-hash it on every read. A backup that already holds that object records the fi
 without reading it again; one it does not hold yet is read and stored as any other file."""
 GENERATIONS_KEPT: Final = 7
 """How many generations a backup keeps unless a request keeps another count."""
+REMOVED_GRACE: Final = timedelta(days=30)
+"""How long a removed workspace's backups stay: a missing workspace's folder may come back (an
+unplugged drive, a moved folder opened again), and a restore needs them meanwhile."""
+PRUNED: Final = "workspace.backups_pruned"
+"""The receipt of a removed workspace's pruned backups: how many generations and bytes went, and
+the backup root they went from; a retry resumes only that root."""
+_PRUNED_SPEC: Final = {
+    "work": False,
+    "subject": "workspace",
+    "required": ["generations", "bytes", "root"],
+    "text": "none",
+    "durable": True,
+}
 _HEX: Final = frozenset("0123456789abcdef")
 
 
@@ -211,18 +227,21 @@ def default_backup_root(workspace_id: str) -> Path:
     Returns:
         `<root>/<workspace_id>`.
     """
+    if workspace_id in ("", ".") or any(part in workspace_id for part in ("/", "\\", "..")):
+        raise WorkspaceBackupError("workspace_backup.workspace_id_invalid")
+    return _backup_base() / workspace_id
+
+
+def _backup_base() -> Path:
+    """The folder every workspace's backup root is a child of."""
     override = process_config().get("ALPHALATTICE_BACKUP_ROOT", "").strip()
     if override:
-        base = Path(override)
-    elif os.name == "nt":
+        return Path(override)
+    if os.name == "nt":
         local = process_config().get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        base = Path(local) / "AlphaLattice" / "backups"
-    else:
-        data = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-        base = Path(data) / "alphalattice" / "backups"
-    if not workspace_id or any(part in workspace_id for part in ("/", "\\", "..")):
-        raise WorkspaceBackupError("workspace_backup.workspace_id_invalid")
-    return base / workspace_id
+        return Path(local) / "AlphaLattice" / "backups"
+    data = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(data) / "alphalattice" / "backups"
 
 
 type _ReadKind = Literal["source", "object"]
@@ -886,6 +905,67 @@ def restore_from_root(
     )
 
 
+def root_bytes(root: Path) -> int:
+    """The bytes a backup root holds: its generations and the objects they name."""
+    return sum(path.stat().st_size for path in _files(root)) if root.is_dir() else 0
+
+
+def collect_removed_backups(*, now_us: int | None = None) -> list[str]:
+    """The backup owner's collection, in the Host's idle time: each workspace whose last folder
+    is gone is recorded missing, and one whose folder is back active (`history.mark_missing`);
+    then the backups of every workspace missing or deleted for longer than REMOVED_GRACE go.
+    Each try is admitted in the log unit that re-reads the workspace's status and folder, before
+    any file goes; a first try records its `workspace.backups_pruned` receipt there, durably, with
+    the generations and bytes it removes and the backup root they are in. A removal that fails
+    stops the collection; a later one resumes each root under that root's own receipt from the
+    same removal, and a root without one is a removal of its own. Only workspaces this data
+    root's log knows are read, each as one confined folder of the backup root: a backup folder of
+    another data root's workspace, or a file at a backup path, is never touched.
+
+    Args:
+        now_us: The log time to measure the grace at; the log's clock by default.
+
+    Returns:
+        The workspaces whose backups went.
+    """
+    history.mark_missing()
+    pruned = []
+    for workspace_id, receipts in history.removed_since(REMOVED_GRACE, PRUNED, now_us=now_us):
+        root = _removal_root(workspace_id)
+        if root is None or not root.is_dir():
+            continue  # an id that names no folder of the backup root, or nothing left to remove
+        receipt = next((each for each in receipts if each.get("root") == str(root)), None)
+        resumed = receipt is not None  # this removal's receipt for this root keeps its counts
+        if receipt is None:  # a first try at this root
+            files = list(_files(root))
+            generations = sum(1 for path in files if path.parent.name == "generations")
+            size = sum(f.stat().st_size for f in files)
+            receipt = {"generations": generations, "bytes": size, "root": str(root)}
+            history.define(
+                "event_type", PRUNED, "A removed workspace's backups went.", _PRUNED_SPEC
+            )
+        if not history.admit_removal(workspace_id, PRUNED, receipt, resumed=resumed):
+            continue  # opened again, or its folder is back: at this try, as at the first
+        try:
+            shutil.rmtree(root)
+        except OSError:
+            break  # the collection stops; the next one finishes this admitted removal
+        pruned.append(workspace_id)
+    return pruned
+
+
+def _removal_root(workspace_id: str) -> Path | None:
+    """A removed workspace's backup root as one confined child of the backup root, through the
+    workspace path authority (no `.`, `..`, separator or link); None for an id that names none."""
+    if len(Path(workspace_id).parts) != 1:
+        return None
+    try:
+        root: Path = resolve_confined(_backup_base(), workspace_id, reject_existing_hardlink=False)
+    except (WorkspaceSecurityError, ValueError, OSError):
+        return None
+    return root
+
+
 def record_backup_failure(workspace: Path, error: BaseException | None, *, at: datetime) -> None:
     """Record the last automatic backup's outcome in the workspace.
 
@@ -924,7 +1004,8 @@ def take_automatic_backup(
     gate: WorkspaceMutationGate,
     stop: Callable[[], bool],
 ) -> None:
-    """Take a waiting automatic backup in the Host's idle time, at below-normal priority.
+    """Take a waiting automatic backup in the Host's idle time, at below-normal priority, after
+    the collection of removed workspaces' backups (`collect_removed_backups`).
 
     It holds the workspace's write gate, and leaves the backup waiting whenever ``stop`` says a
     Task waits or the Host closes (checked between tables and folders) or the gate stays busy.
@@ -935,10 +1016,12 @@ def take_automatic_backup(
         gate: The workspace's mutation gate.
         stop: Whether to leave the backup waiting now.
     """
-    if (last_automatic_attempt(workspace) or {}).get("status") != "PENDING" or stop():
+    if stop():
         return
     with below_normal_thread():
-        _take(workspace, clock=clock, gate=gate, stop=stop, wait_seconds=1.0)
+        collect_removed_backups()
+        if (last_automatic_attempt(workspace) or {}).get("status") == "PENDING":
+            _take(workspace, clock=clock, gate=gate, stop=stop, wait_seconds=1.0)
 
 
 def settle_automatic_backup(
@@ -1042,6 +1125,7 @@ def backup_answer(backups: WorkspaceBackups, generation: BackupGeneration | None
     body = {
         "status": "BACKED_UP" if generation is not None else "READ",
         "backup_root": str(backups.root),
+        "bytes": root_bytes(backups.root),
         "last_automatic_attempt": automatic,
         "generation_hash": None if generation is None else generation.generation_hash,
         "generations": [
@@ -1085,16 +1169,20 @@ __all__ = [
     "GENERATIONS_KEPT",
     "LISTED",
     "MARKET_TABLES",
+    "PRUNED",
+    "REMOVED_GRACE",
     "TASK_CONTROL_TABLES",
     "BackupEntry",
     "BackupGeneration",
     "WorkspaceBackupError",
     "WorkspaceBackups",
     "backup_answer",
+    "collect_removed_backups",
     "default_backup_root",
     "defer_automatic_backup",
     "last_automatic_attempt",
     "record_backup_failure",
+    "root_bytes",
     "settle_automatic_backup",
     "take_automatic_backup",
 ]

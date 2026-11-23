@@ -101,7 +101,7 @@ c.objectRow=publicBuilders.objectRow;
     const inventoryMessage='task_control.database_authority_unreadable: Part of the Task Control authority could not be read.';
     const backupMessage='research_workspace.manifest_unreadable: the backup owner could not read its manifest';
     const oldBackup=bodies['/api/workspace/backup'];let backupRefused=false;
-    bodies['/api/workspace/backup']={status:'READ',backup_root:root,last_automatic_attempt:null,generations:[{generation_hash:generation,created_at:'2026-09-29T20:00:00+00:00',reason:'REQUEST',files:12,tables:9,listed:3,absent:[]}]};
+    bodies['/api/workspace/backup']={status:'READ',backup_root:root,bytes:20480,last_automatic_attempt:null,generations:[{generation_hash:generation,created_at:'2026-09-29T20:00:00+00:00',reason:'REQUEST',files:12,tables:9,listed:3,absent:[]}]};
     c.table=(_headers,rows)=>'<table>'+rows.join('')+'</table>';c.tr=cells=>'<tr>'+cells.map(x=>String(x ?? '')).join(' | ')+'</tr>';
     c.panel=(a,b,content,action='')=>a+b+content+action;c.app.page='storage';c.app.workspace='cold-storage';
     c.Data.read=async p=>{
@@ -116,6 +116,7 @@ c.objectRow=publicBuilders.objectRow;
       let page=String(w.page()).replace(/\s+/g,' ');
       assert.ok(page.includes(inventoryMessage),'the exact inventory refusal remains beside Backups');
       assert.ok(page.includes(root)&&page.includes(generation),'the readable Backups owner retains its exact root and generation');
+      assert.match(page,/storage\.backup_bytes.{0,40}20\.00.{0,60}KiB/,'the Backups owner shows the bytes its root holds');
       assert.ok(!/Managed on disk|What is kept where|Retained input versions|Cleanup preview|No eligible files to clean/.test(page),'no inventory figures, retained-version list or cleanup result is fabricated');
       assert.ok(page.includes('Back up now:workspace-preview:backup:')&&!page.includes('Back up now:workspace-preview:backup:The backups could not be read'),'the readable owner still offers its backup action');
       const restoreAt=page.indexOf('Restore command'),start=page.indexOf('<template>',restoreAt),end=page.indexOf('</template>',start);

@@ -1263,7 +1263,7 @@ const LiveWorkspace = (() => {
     // a restore is the client's own command onto a new directory, with no Host: named in its code dialog, never run here
     const restore=[t('Restore'),html`${t('A command of the client, onto a new or empty directory, with no Host')}${codeRef(t('Restore command'),command,'text')}`];
     // MA2, MA4: the generations are a table's box; a warning or a refusal stands on the ground above it
-    return html`${refused}${refusedGenerations}${failed}${panel(t('Backups'),caption,html`${kv([[t('Backup root'),locatorCell(bk.backup_root)],[t('Last automatic backup'),last],restore],'kv-columns')}${list}${notHeld}${detail(bk,'Exact backup listing')}`,make,gens.length ? 'data-storage="backups" data-box="table"' : 'data-storage="backups"')}`;
+    return html`${refused}${refusedGenerations}${failed}${panel(t('Backups'),caption,html`${kv([[t('Backup root'),locatorCell(bk.backup_root)],[t('storage.backup_bytes'),bytesText(bk.bytes)],[t('Last automatic backup'),last],restore],'kv-columns')}${list}${notHeld}${detail(bk,'Exact backup listing')}`,make,gens.length ? 'data-storage="backups" data-box="table"' : 'data-storage="backups"')}`;
   }
   const turnBackups=(way)=>{S.backupPage=Math.max(0,(S.backupPage || 0)+(way==='next' ? 1 : -1));patchMain();};
   function storage(b) {
