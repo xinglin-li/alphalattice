@@ -20,7 +20,7 @@ from contextlib import nullcontext
 from functools import partial
 from inspect import signature
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread
 
 import numpy as np
 import pyarrow as pa
@@ -29,6 +29,7 @@ import pytest
 from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel.data_layer import arrays
 from alphalattice.kernel.execution import process_execution
+from alphalattice.kernel.execution.events import Events
 from alphalattice.kernel.identity import FileDigestTrust, TrustEntry
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
 from devtools.testing.performance import (
@@ -97,6 +98,41 @@ def _thin_command(request: pytest.FixtureRequest) -> Callable[[], object]:
     return partial(thin_cli.invoke, argv)
 
 
+def _event_delivered(request: pytest.FixtureRequest) -> Callable[[], object]:
+    """One event delivered to a waiting subscriber, timed with its reply: a subscriber thread
+    blocks on "ping" and publishes "pong" when it hears one; a call publishes ping and waits on
+    pong, so each call is two deliveries to a blocked waiter."""
+    hub, stopping, ready, seen = Events(), Event(), Event(), [0]
+
+    def answer() -> None:
+        with hub.subscribed("ping") as ping:
+            ready.set()
+            heard = 0
+            while not stopping.is_set():
+                heard = ping.wait(heard, timeout=60, what="a ping")
+                hub.publish("pong")
+
+    replies = hub.subscribed("pong")
+    pong = replies.__enter__()
+    thread = Thread(target=answer, name="event-answer", daemon=True)
+    thread.start()
+    assert ready.wait(5)
+
+    def ended() -> None:
+        stopping.set()
+        hub.publish("ping")
+        thread.join(5)
+        replies.__exit__(None, None, None)
+
+    request.addfinalizer(ended)
+
+    def call() -> None:
+        hub.publish("ping")
+        seen[0] = pong.wait(seen[0], timeout=5, what="the reply")
+
+    return call
+
+
 OPERATIONS = (
     # 1 MiB over two lanes: about 0.4 ms on the workshop's machine (11-22); the budget holds 2x.
     Operation("trusted digest", lambda: arrays.digest(_LANE), 0.001),
@@ -108,6 +144,9 @@ OPERATIONS = (
     # About 25 ms on the workshop's machine (11-22, 33 rounds, 99% interval 20 to 31 ms); the budget
     # holds 2x.
     Operation("a thin-CLI command to a running Host", _thin_command, 0.05),
+    # A delivery and its reply: 34 us mean on the workshop's machine (11-23, 539 rounds); the
+    # budget holds 2x.
+    Operation("one event delivered to a waiting subscriber", _event_delivered, 0.00007),
 )
 
 KERNEL_OWNERS: tuple[Callable[[pa.RecordBatch], object], ...] = ()

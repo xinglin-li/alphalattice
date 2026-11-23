@@ -63,6 +63,7 @@ from alphalattice.kernel.data_layer.project import (
 )
 from alphalattice.kernel.data_layer.project import uuid7 as uuid7
 from alphalattice.kernel.data_layer.root import build_log, seed_rows, sqlite_read_only_uri
+from alphalattice.kernel.execution import EVENTS
 
 BATCH_SIZE: Final = 64
 """Events per batch commit: appends per second level off from 64 (12.7k at 64, 13.1k at 256).
@@ -264,6 +265,9 @@ class HostLog:
                     self._end("ROLLBACK")
                 raise
             con.execute("RELEASE event")
+            # Its subscribers read it at once: the Host's reads see the open batch. A unit that
+            # later rolls back woke a reader that reads nothing new and waits again.
+            EVENTS.publish((row.get("subject_kind"), row.get("subject_id")))
             self._pending += 1
             self._durable = self._durable or durable
             if committed is not None:

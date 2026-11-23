@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
-from time import monotonic, sleep
+from time import monotonic
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -280,6 +280,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
+from alphalattice.kernel.execution import EVENTS, EventDeadline
 from alphalattice.kernel.shared_kernel.environment import file_trust
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.source_identity import source_read_admission
@@ -3677,21 +3678,30 @@ class PortfolioResearchOperations:
         self, task_id: UUID, seen: TaskSafeProjection, wait_seconds: float
     ) -> TaskSafeProjection:
         """The Task's status once it moves on from ``seen`` (its lifecycle or a verified
-        stage), or after ``wait_seconds``: a follow learns of a change when it happens
-        instead of at its next poll. Read every tenth of a second, and
-        nothing is held between reads, so the Task's own writes never wait on a follower."""
+        stage), or after ``wait_seconds``: a follow learns of a change when it happens.
+        It reads again only on its Task's events (a Task Control row, or its command
+        returning), and nothing is held between reads, so the Task's own writes never wait
+        on a follower."""
 
+        if seen.lifecycle not in _LIVE_LIFECYCLES:
+            return seen
         deadline = monotonic() + wait_seconds
         mark = (seen.lifecycle, seen.verified_stage_count)
-        current = seen
-        while current.lifecycle in _LIVE_LIFECYCLES:
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                break
-            sleep(min(_FOLLOW_READ_SECONDS, remaining))
-            current = self.dispatcher.status(task_id)
-            if (current.lifecycle, current.verified_stage_count) != mark:
-                break
+        with EVENTS.subscribed(("task", str(task_id))) as moved:
+            heard = 0
+            current = self.dispatcher.status(task_id)  # what moved before the subscription
+            while (
+                current.lifecycle in _LIVE_LIFECYCLES
+                and (current.lifecycle, current.verified_stage_count) == mark
+            ):
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    heard = moved.wait(heard, timeout=remaining, what=f"Task {task_id}")
+                except EventDeadline:
+                    break
+                current = self.dispatcher.status(task_id)
         return current
 
     def pending_decisions(self, *, caller: OperationCaller = "HUMAN") -> dict[str, object]:
@@ -6082,9 +6092,6 @@ def _citation_page(
         },
     }
 
-
-_FOLLOW_READ_SECONDS = 0.1
-"""How often a waiting status reads the Task again."""
 
 _TASK_PAGE_ROWS = 50
 """How many Tasks one page of an agent session's listing holds at most, and by default."""

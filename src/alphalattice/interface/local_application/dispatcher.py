@@ -49,7 +49,7 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.execution import ExecutionLane, ExecutionPool, prefer_task
+from alphalattice.kernel.execution import EVENTS, ExecutionLane, ExecutionPool, prefer_task
 from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
 
 
@@ -910,6 +910,8 @@ class LocalBackgroundDispatcher:
                             self._finalize_idle_cancel(task_id)
                         except Exception as error:
                             self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
+            # The command's return ends the operation a status reads (`masked`): an event.
+            EVENTS.publish(("task", str(task_id)))
             self._notify_returned(command.command_kind, task_id)
             self.drive_waiting()
         finally:

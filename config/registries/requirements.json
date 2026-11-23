@@ -1570,6 +1570,13 @@
       "layer": "integration",
       "seconds": 10
     },
+    "execution.a_wait_ends_on_its_owners_event": {
+      "description": "If a wait polled its owner's state, a follow would answer late, and a Host asleep past a due time could run a job more than once.",
+      "lower_layer": "The follow, the process's one timer and a maintenance worker are threads that meet on real events and a real deadline, which no single function holds.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "integration",
+      "seconds": 5
+    },
     "execution.cancellation_matches_one_execution": {
       "description": "A live cancellation reaches only the named execution and is scoped to that execution's lifetime.",
       "owner": "alphalattice.kernel.execution",

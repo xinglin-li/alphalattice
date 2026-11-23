@@ -4961,7 +4961,7 @@
     },
     "kernel execution port": {
       "description": "Task execution, scheduling and cancellation through the kernel execution port.",
-      "covers": "the kernel-facing protocol for task execution, scheduling and cancellation",
+      "covers": "the kernel-facing protocol for task execution, scheduling and cancellation; the process's one timer for periodic jobs and the in-process events a wait blocks on",
       "owner": "alphalattice.kernel.execution",
       "defined_by": [
         "alphalattice.kernel.execution"

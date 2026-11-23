@@ -12,17 +12,26 @@ from .cancel import (
     stop_reason,
     worker_cancellation,
 )
+from .events import EVENTS, EventDeadline, Events, Subscription
 from .pool import ExecutionPool, execution_port, process_execution
 from .port import ExecutionHeartbeat, ExecutionLane, ExecutionPort, prefer_task, preferred_task
+from .timers import TIMERS, Timer, Timers
 
 __all__ = [
     "CANCELLED",
+    "EVENTS",
     "TIMED_OUT",
+    "TIMERS",
+    "EventDeadline",
+    "Events",
     "ExecutionHeartbeat",
     "ExecutionLane",
     "ExecutionPool",
     "ExecutionPort",
     "ExecutionStopped",
+    "Subscription",
+    "Timer",
+    "Timers",
     "cancel_execution",
     "carry_cancellation",
     "child_process",

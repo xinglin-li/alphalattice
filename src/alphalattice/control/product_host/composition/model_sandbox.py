@@ -31,7 +31,6 @@ import yaml  # type: ignore[import-untyped]
 
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.data_layer.history import own_root
-from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
 from .saved_object_readback import carry_copy, probe
 
@@ -193,20 +192,18 @@ def _run_study(copy: Path, model_id: str, study: Path | None) -> tuple[str, floa
             )
             task_id = str(sent.get("task_id") or sent.get("publication_task_id"))
 
-            def ended(_left: float) -> str | None:
-                state = _operate(session, {"operation": "STATUS", "task_id": task_id})
-                return state.get("lifecycle") if state.get("lifecycle") in _TERMINAL else None
-
-            try:
-                lifecycle = wait_until(  # read each second, as the recorded run time assumes
-                    ended,
-                    timeout=STUDY_SECONDS,
-                    what=f"study Task {task_id}",
-                    interval=1.0,
-                    max_interval=1.0,
-                )
-            except WaitTimeout as error:
-                raise ValueError(f"model_sandbox.study_timeout:{task_id}") from error
+            deadline, lifecycle = time.monotonic() + STUDY_SECONDS, None
+            while lifecycle not in _TERMINAL:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise ValueError(f"model_sandbox.study_timeout:{task_id}")
+                # The Host's status waits on the study Task's own events, for up to its 20 s.
+                request = {
+                    "operation": "STATUS",
+                    "task_id": task_id,
+                    "wait_seconds": min(20.0, left),
+                }
+                lifecycle = _operate(session, request).get("lifecycle")
         seconds = time.perf_counter() - started
         body = _operate(session, {"operation": "EXPERIMENT_READBACK", "task_id": task_id})
         if body.get("status") != "EXPERIMENT_PUBLISHED":

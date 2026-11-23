@@ -1,10 +1,18 @@
-"""Non-blocking in-memory wake signal for Front Desk turns."""
+"""Non-blocking in-memory wake signal for Front Desk turns, and the job's place on the one timer.
+
+A controller's due time arms the process's timer (`kernel.execution.timers.TIMERS`) once its host
+names the clock owner; the timer sets the wake event at that time, and the host's worker blocks on
+the event alone.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
+
+from alphalattice.kernel.execution import TIMERS, Timer, Timers
+from alphalattice.kernel.shared_kernel.waits import CEILING
 
 
 class MaintenanceWakeController:
@@ -15,6 +23,14 @@ class MaintenanceWakeController:
         self._lock = Lock()
         self._wake = Event()
         self._next_due_at: datetime | None = None
+        self._timer: Timer | None = None
+
+    def bind(self, name: str, clock: Callable[[], datetime], timers: Timers = TIMERS) -> None:
+        """Declare this job on the one timer, read by ``clock``: each due time set from now on
+        arms it, and the timer sets the wake event when that time comes."""
+        with self._lock:
+            self._timer = timers.job(name, clock, self._wake.set)
+            self._timer.arm(self._next_due_at)
 
     @property
     def event(self) -> Event:
@@ -38,6 +54,8 @@ class MaintenanceWakeController:
             raise ValueError("maintenance due time must be timezone-aware")
         with self._lock:
             self._next_due_at = value.astimezone(UTC) if value is not None else None
+            if self._timer is not None:
+                self._timer.arm(self._next_due_at)
 
     def seconds_until_due(self, now: datetime) -> float | None:
         """Read the non-negative delay until due work using an explicit aware clock.
@@ -67,7 +85,10 @@ class MaintenanceWakeController:
         with self._lock:
             if self._next_due_at is None:
                 self._next_due_at = due.astimezone(UTC)
-                self._wake.set()
+                if self._timer is not None:
+                    self._timer.arm(self._next_due_at)
+                else:  # no clock owner: the worker reads it as due at once
+                    self._wake.set()
 
     def signal_due_work(self, now: datetime) -> bool:
         """Signal the wake event only when the declared due time has been reached.
@@ -89,16 +110,6 @@ class MaintenanceWakeController:
                 self._wake.set()
             return due
 
-    def consume(self) -> bool:
-        """Read and clear the pending wake signal.
-
-        Returns:
-            Whether a signal was present before clearing.
-        """
-        observed = self._wake.is_set()
-        self._wake.clear()
-        return observed
-
 
 class MaintenanceBackgroundHost:
     """One coalescing wake event around a durable coordinator callback."""
@@ -109,6 +120,7 @@ class MaintenanceBackgroundHost:
         wake: MaintenanceWakeController,
         run_once: Callable[[], None],
         clock: Callable[[], datetime] | None = None,
+        timers: Timers = TIMERS,
     ) -> None:
         """Create a bounded maintenance worker with explicit wake and run-once owners.
 
@@ -116,10 +128,13 @@ class MaintenanceBackgroundHost:
             wake: Retained due-time/wake controller.
             run_once: Deterministic single-cycle callback.
             clock: Optional explicit observed-time source.
+            timers: The timer that wakes it at each due time: the process's own.
         """
         self.wake = wake
         self.run_once = run_once
         self.clock = clock
+        if clock is not None:
+            wake.bind("workspace-maintenance-coordinator", clock, timers)
         self._stop = Event()
         self._last_error_code: str | None = None
         self._failures = 0
@@ -160,14 +175,18 @@ class MaintenanceBackgroundHost:
 
     def _worker(self) -> None:
         while not self._stop.is_set():
-            self.wake.event.wait(
-                None if self.clock is None else self.wake.seconds_until_due(self.clock())
-            )
+            # The one timer sets the event at the due time, a signal at once, close to stop; an
+            # hour with none of them runs nothing and blocks again.
+            if not self.wake.event.wait(CEILING):
+                continue  # no signal within the hour: nothing is read, nothing cleared
             if self._stop.is_set():
                 return
-            due = self.clock is None or self.wake.signal_due_work(self.clock())
-            signalled = self.wake.consume()
-            if due and signalled:
+            # Cleared only after the wait returned a signal, and before the due read: a timer
+            # signal that lands while the clock is read stays set for the next pass.
+            self.wake.event.clear()
+            left = None if self.clock is None else self.wake.seconds_until_due(self.clock())
+            due = self.clock is None or left == 0
+            if due:
                 try:
                     self.run_once()
                     self._last_error_code, self._failures = None, 0

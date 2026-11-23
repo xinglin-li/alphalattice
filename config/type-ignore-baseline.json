@@ -542,7 +542,7 @@
     "tests/integration/local_application/test_guanyin_supervision.py::type-ignore[arg-type]": 3,
     "tests/integration/local_application/test_guanyin_supervision.py::type-ignore[assignment]": 1,
     "tests/integration/local_application/test_guanyin_supervision.py::type-ignore[type-arg]": 1,
-    "tests/integration/local_application/test_status_follow.py::type-ignore[arg-type]": 49,
+    "tests/integration/local_application/test_status_follow.py::type-ignore[arg-type]": 46,
     "tests/integration/local_application/test_status_follow.py::type-ignore[assignment]": 3,
     "tests/integration/local_application/test_status_follow.py::type-ignore[attr-defined]": 1,
     "tests/integration/local_application/test_task_wakes.py::type-ignore[no-untyped-def]": 8,
