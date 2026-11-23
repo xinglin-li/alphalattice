@@ -733,8 +733,8 @@ def test_the_bash_smoke_starts_the_git_bash_that_path_names(
         calls.append((command, options))
         if "--help" in command:
             return SimpleNamespace(returncode=0, stdout="workspace serve")
-        if len(calls) == 2:
-            refusal = {
+        if "show" in command and not any("serve" in called for called, _ in calls):
+            refusal = {  # the fresh workspace's read, before the Host serves
                 "failure_code": "local_client.service_not_running",
                 "detail": "d",
                 "next_action": "n",

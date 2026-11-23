@@ -19,7 +19,12 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
+import psutil
+
 from alphalattice.kernel.shared_kernel import spawn
+
+HOST_MODULE = "alphalattice.control.product_host.composition.web_launcher"
+"""The module a detached Host runs as (web_launcher._detach's command)."""
 
 
 def shell_command(
@@ -115,7 +120,7 @@ def smoke(
         )
         prefix = [*command, "--workspace", launch_workspace or str(workspace)]
 
-        def read_without_host() -> tuple[int, str]:
+        def read_help() -> int:
             help_run = spawn.run(
                 shell_command([*command, "--help"], fresh_shell, launcher=launcher),
                 cwd=cwd,
@@ -128,6 +133,9 @@ def smoke(
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             assert "workspace" in help_run.stdout and "serve" in help_run.stdout
+            return help_run.returncode
+
+        def read_without_host() -> tuple[int, str]:
             before = spawn.run(
                 shell_command([*prefix, "workspace", "show"], fresh_shell, launcher=launcher),
                 cwd=cwd,
@@ -146,6 +154,92 @@ def smoke(
             )
             assert response["detail"] and response["next_action"]
             return before.returncode, response["failure_code"]
+
+        def hosted_workspace(process: psutil.Process, words: list[str]) -> Path | None:
+            """The workspace a detached Host's command line names; None for any other process,
+            and for one that ended or hides its folder while it is read."""
+            if HOST_MODULE not in words or "--workspace" not in words[:-1]:
+                return None
+            named = Path(words[words.index("--workspace") + 1])
+            try:
+                return (named if named.is_absolute() else Path(process.cwd()) / named).resolve()
+            except psutil.Error:
+                return None
+
+        def read_after_stop() -> tuple[int, str]:
+            """The stopped workspace's next read starts its Host detached and answers. Where the
+            platform refuses a detached Host (a Windows job that denies breakaway), the read
+            answers NO_HOST and `serve --detach` names the refusal. Whatever the answers, a Host
+            either started is stopped and its process ended before the smoke leaves its root."""
+
+            def line(*words: str, check: bool = False) -> subprocess.CompletedProcess[str]:
+                return spawn.run(
+                    shell_command([*prefix, *words], fresh_shell, launcher=launcher),
+                    cwd=cwd,
+                    env=environment,
+                    text=True,
+                    capture_output=True,
+                    stdin=subprocess.DEVNULL,
+                    timeout=360,  # a Host start's own ready wait
+                    check=check,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+
+            def owned_hosts() -> list[psutil.Process]:
+                """The detached Hosts serving this workspace, found by their command line, so
+                on whatever data root a launcher sets and whatever they answer."""
+                target = (cwd / (launch_workspace or ".")).resolve()
+                return [
+                    process
+                    for process in psutil.process_iter(["cmdline"])
+                    if hosted_workspace(process, process.info["cmdline"] or []) == target
+                ]
+
+            def stop_detached() -> None:
+                """Stop each detached Host the reads started and wait for its process to end:
+                `host stop` answers before the Host joins its workers and releases the
+                workspace. No such process proves none started. The stop's own failure is kept,
+                a Host the stop itself started (one ended between the scan and the stop) is
+                waited for as well, and every survivor is ended; the smoke fails by name unless
+                the stop answered and a final scan finds no Host left on the workspace."""
+                hosts = owned_hosts()
+                if not hosts:
+                    return
+                try:
+                    stopped = line("host", "stop")
+                    refusal = None if stopped.returncode == 0 else stopped.stdout
+                except (OSError, subprocess.SubprocessError) as error:
+                    refusal = repr(error)
+                _, alive = psutil.wait_procs(hosts, timeout=120)
+                started = [process for process in owned_hosts() if process not in alive]
+                _, late = psutil.wait_procs(started, timeout=120)
+                survivors = [*alive, *late]
+                for process in survivors:
+                    process.terminate()
+                psutil.wait_procs(survivors, timeout=30)
+                left = owned_hosts()
+                for process in left:
+                    process.kill()
+                psutil.wait_procs(left, timeout=30)
+                assert refusal is None and not survivors and not left, (
+                    refusal,
+                    [process.pid for process in survivors],
+                    [process.pid for process in left],
+                )
+
+            try:
+                read = line("workspace", "show")
+                answer = json.loads(read.stdout)
+                if read.returncode == 0:
+                    assert answer["outcome"] == "OK"
+                    return read.returncode, answer["outcome"]
+                assert read.returncode == 4
+                assert answer["failure_code"] == "local_client.service_not_running"
+                refused = json.loads(line("serve", "--detach", "--no-browser").stdout)
+                assert refused["failure_code"] == "local_web.detached_breakaway_denied"
+                return read.returncode, refused["failure_code"]
+            finally:
+                stop_detached()
 
         if not launch_workspace:
             refusal_exit, refusal_code = read_without_host()
@@ -211,12 +305,22 @@ def smoke(
                 raise
             reader.join(timeout=10)
         assert exit_code == 0
+        help_exit = read_help()
         if launch_workspace:
-            refusal_exit, refusal_code = read_without_host()
+            stopped_exit, stopped_answer = read_after_stop()
         return {
-            "help_exit": 0,
-            "fresh_workspace_show_exit": refusal_exit,
-            "fresh_workspace_show": refusal_code,
+            "help_exit": help_exit,
+            **(
+                {
+                    "stopped_workspace_show_exit": stopped_exit,
+                    "stopped_workspace_show": stopped_answer,
+                }
+                if launch_workspace
+                else {
+                    "fresh_workspace_show_exit": refusal_exit,
+                    "fresh_workspace_show": refusal_code,
+                }
+            ),
             "session_route_status": 200,
             "served_workspace_show_exit": shown.returncode,
             "host_stop_exit": exit_code,

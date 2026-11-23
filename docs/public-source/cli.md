@@ -4,7 +4,8 @@ Last checked: 2026-11-04 against 0.2.4
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most
 operations need the workspace's Host; an agent session binds itself by working
-on that workspace. [Getting started](getting-started.md) covers installation;
+on that workspace. A command that needs the Host starts an initialized
+workspace's Host when none answers; later commands reuse it. [Getting started](getting-started.md) covers installation;
 the [agent guide](../../AGENTS.md) owns procedures and person decisions.
 
 ```powershell
@@ -34,7 +35,7 @@ references and follow that continuation.
 | `INVALID_INPUT` | 1 | Correct the named request or declaration. |
 | `REFUSED` | 2 | Read the allowed continuation or person decision. |
 | `PENDING` | 3 | Follow admitted work or its decision. |
-| `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
+| `NO_HOST` | 4 | No Host answers and none could start; follow the named connection route. |
 
 An accepted `bundle submit` exits `OK` (0). Its `task_lifecycle` and offered Task
 read report the review's continuing work; `--wait` can follow that Task.
