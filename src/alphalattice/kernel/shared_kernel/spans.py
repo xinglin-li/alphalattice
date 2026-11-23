@@ -42,6 +42,7 @@ SPAN_CLASSES: Final[Mapping[str, str]] = {
     "write": "io",
     "serialize": "io",
     "copy": "io",
+    "schema": "io",
     "verify": "verify",
     "hash": "verify",
     "network": "network",
@@ -52,8 +53,9 @@ SPAN_CLASSES: Final[Mapping[str, str]] = {
 ``materialize`` builds a stage's input arrays from sealed sources; ``features`` computes
 Feature values; ``fit``, ``predict`` and ``score`` are model work; ``read`` and ``write`` move
 bytes to and from storage, ``serialize`` turns values into bytes or back and ``copy``
-duplicates stored bytes; ``verify`` re-checks sealed content and ``hash`` digests it;
-``network`` waits on a provider and ``wait`` on another process or a lock."""
+duplicates stored bytes; ``schema`` reads or installs catalog declarations; ``verify`` re-checks
+sealed content and ``hash`` digests it; ``network`` waits on a provider and ``wait`` on another
+process or a lock."""
 
 SPAN_READOUT_SCHEMA: Final = "alphalattice.stage-spans.v1"
 MAXIMUM_SPAN_KEYS: Final = 256
