@@ -88,6 +88,8 @@ An execution parameter: an idle Host keeps no workers the person would see for i
 
 _WORKERS: dict[int, ProcessPoolExecutor] = {}
 """The kept workers by position; 0 is the Task's."""
+_TASK_WORKERS: dict[ResourceLease, dict[int, ProcessPoolExecutor]] = {}
+"""Workers started ahead for a Task, owned by its exact grant until it ends."""
 _WORKER_LOCK = threading.Lock()
 _BUSY: dict[ProcessPoolExecutor, int] = {}
 """Each kept worker's calls in flight; one with none retires after `KEPT_WORKER_IDLE_SECONDS`."""
@@ -275,7 +277,7 @@ class ChildCalls:
                 _retire_worker(item.worker, item.pool, wait_for_exit=True)
         # Each worker these calls shipped to forgets them, after their calls, in its own order.
         for worker in {worker for worker, _key in self._shipped}:
-            if _WORKERS.get(worker) in self._shipped.values():
+            if _kept_workers().get(worker) in self._shipped.values():
                 # A worker that has ended took its holding with it.
                 with suppress(ChildInterrupted):
                     _submitted(
@@ -373,6 +375,8 @@ def _submitted(
 def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
     """Count a call in flight on a kept worker; its last call's end starts the idle wait."""
     with _WORKER_LOCK:
+        if _WORKERS.get(worker) is not pool:
+            return  # The Task owns its ahead workers through the end of its grant.
         _BUSY[pool] = _BUSY.get(pool, 0) + 1
 
     def ended(_done: Future[Any]) -> None:
@@ -440,12 +444,18 @@ def _cpu_seconds(pool: ProcessPoolExecutor) -> float | None:
 
 def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
     """End a wedged worker's process and retire its pool; its call is interrupted by name."""
-    for process in list(getattr(submitted.pool, "_processes", {}).values()):
-        process.terminate()
+    _terminate_processes(submitted.pool)
     _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
     return ChildInterrupted(
         "task_control.child_wedged", type_name="ChildWedged", failure_class=None
     )
+
+
+def _terminate_processes(pool: ProcessPoolExecutor) -> None:
+    """Signal the processes this exact pool still owns before joining its manager."""
+    for process in list((getattr(pool, "_processes", None) or {}).values()):
+        with suppress(ProcessLookupError):
+            process.terminate()
 
 
 def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:
@@ -467,16 +477,54 @@ def _answered(answer: dict[str, Any]) -> Any:
     )
 
 
-def _worker(worker: int) -> ProcessPoolExecutor:
+def _kept_workers() -> dict[int, ProcessPoolExecutor]:
+    lease = current_resource_lease()
+    return _WORKERS if lease is None else _TASK_WORKERS.get(lease, _WORKERS)
+
+
+@contextmanager
+def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Callable[[], None]]:
+    """Hold a Task's kept workers and give its runner the startup after claim."""
+    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+
+    lease = current_resource_lease()
+    assert lease is not None
     with _WORKER_LOCK:
-        kept = _WORKERS.get(worker)
+        _TASK_WORKERS[lease] = {}
+
+    def start() -> None:
+        warm = (modules, process_config().get(DATA_ROOT_ENV), worker_resource_lease(1))
+        try:
+            for worker in range(worker_width(workers)):
+                _worker(worker, warm=warm).submit(os.getpid)
+        except (OSError, MemoryError) as error:
+            raise ChildStartFailed(error) from error
+
+    try:
+        yield start
+    finally:
+        with _WORKER_LOCK:
+            owned = _TASK_WORKERS.pop(lease)
+        for pool in owned.values():
+            _terminate_processes(pool)
+        for pool in owned.values():
+            pool.shutdown(wait=True, cancel_futures=True)
+
+
+type _WarmImports = tuple[tuple[str, ...], str | None, ResourceLease | None]
+
+
+def _worker(worker: int, *, warm: _WarmImports | None = None) -> ProcessPoolExecutor:
+    with _WORKER_LOCK:
+        workers = _kept_workers()
+        kept = workers.get(worker)
         if kept is None:
-            kept = _WORKERS[worker] = execution_port().register_pool(
+            kept = workers[worker] = execution_port().register_pool(
                 ProcessPoolExecutor(
                     max_workers=worker_width(1),
                     mp_context=multiprocessing.get_context("spawn"),
                     initializer=_worker_started,
-                    initargs=(worker,),
+                    initargs=(worker,) if warm is None else (worker, warm),
                 ),
                 name="task-child",
             )
@@ -490,8 +538,9 @@ def _retire_worker(worker: int, pool: ProcessPoolExecutor, *, wait_for_exit: boo
     if wait_for_exit:
         pool.shutdown(wait=True, cancel_futures=False)
     with _WORKER_LOCK:
-        if _WORKERS.get(worker) is pool:
-            del _WORKERS[worker]
+        workers = _kept_workers()
+        if workers.get(worker) is pool:
+            del workers[worker]
         _BUSY.pop(pool, None)
     if not wait_for_exit:
         pool.shutdown(wait=False, cancel_futures=False)
@@ -501,7 +550,7 @@ ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THRE
 """The numerical libraries' thread variables, each read once, when its library loads."""
 
 
-def _worker_started(worker: int = 0) -> None:
+def _worker_started(worker: int = 0, warm: _WarmImports | None = None) -> None:
     # A spread worker runs every call on one thread (`threads=1`): its libraries are told so
     # before they load, and reserve one thread's buffers rather than one per processor, about
     # 1.5 GB of commit a worker. The Task's own worker keeps the default its calls run
@@ -513,6 +562,14 @@ def _worker_started(worker: int = 0) -> None:
     from alphalattice.control.workspace_runtime import reader_threads  # lazy: the worker's own
 
     storage.install_driver(reader_threads.DRIVER)
+    if warm is not None:
+        modules, root, grant = warm
+        with use_resource_lease(grant), held_offline():
+            _follow_root(root)
+            for module in modules:
+                importlib.import_module(module)
+            with _numerical_threads(1, preload_models=False):
+                pass
 
 
 _RECORDED: set[Path] = set()
@@ -678,4 +735,5 @@ __all__ = [
     "ChildStartFailed",
     "child_calls",
     "run_in_child",
+    "warm_child_workers",
 ]

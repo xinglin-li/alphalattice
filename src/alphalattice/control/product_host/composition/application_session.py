@@ -12,10 +12,12 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
+from alphalattice.control.task_control.child import warm_child_workers
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
 from alphalattice.control.task_control.queue import read_queue_setting, running_places
@@ -50,7 +52,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.backup import verify_data_root
 from alphalattice.kernel.data_layer.history import open_history
 from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
-from alphalattice.kernel.data_layer.history_runtime import set_host_duckdb_threads
+from alphalattice.kernel.data_layer.history_runtime import set_host_duckdb_threads, start_log_reader
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
@@ -215,13 +217,31 @@ class WorkspaceApplicationSession:
         """Run or recover one admitted Host task with this session's runner."""
         if task.lifecycle not in {TaskLifecycle.QUEUED, TaskLifecycle.RECOVERY_REQUIRED}:
             return None
+        gate = gate_for(self.workspace)
+        start: Callable[[], None] | None = None
+
+        @contextmanager
+        def resources(record: TaskRecord) -> Iterator[None]:
+            nonlocal start
+            with self.task_resources(record, clock) as start:
+                yield
+
+        def stage_gate(record: TaskRecord) -> str | None:
+            nonlocal start
+            refused = gate.stage_refusal(record)
+            if refused is None and start is not None:
+                # The runner has claimed the Task and owns child-start recovery here.
+                launch, start = start, None
+                launch()
+            return refused
+
         runner = TaskControlRunner(
             registry=self.task_control_registry,
             adapters={adapter.task_kind: adapter},
             runtime_path=str(self.runtime_path),
             clock=clock,
-            task_scope=lambda record: self.task_resources(record, clock),
-            stage_gate=gate_for(self.workspace).stage_refusal,
+            task_scope=resources,
+            stage_gate=stage_gate,
             stage_scope=storage_capacity_scope,
         )
         try:
@@ -234,7 +254,9 @@ class WorkspaceApplicationSession:
             runner.close()
 
     @contextmanager
-    def task_resources(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[None]:
+    def task_resources(
+        self, task: TaskRecord, clock: Callable[[], datetime]
+    ) -> Iterator[Callable[[], None] | None]:
         """The CPU budget's cores this Task holds while it runs: its reads' threads and the work
         items it runs at once.
 
@@ -283,7 +305,16 @@ class WorkspaceApplicationSession:
                     priority=f"{process_priority()}{', thread below_normal' if lowered else ''}",
                 )
             )
-            yield
+            start_log_reader()
+            with (
+                warm_child_workers(
+                    worker_processes(cores),
+                    modules=("alphalattice.foundation.feature_engine.runtime.service", "pandas"),
+                )
+                if task.task_kind == "workspace_preparation"
+                else nullcontext()
+            ) as start_workers:
+                yield start_workers
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.

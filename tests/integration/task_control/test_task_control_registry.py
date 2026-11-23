@@ -6,6 +6,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from threading import Event, Lock, get_ident
 from types import SimpleNamespace
@@ -2028,6 +2029,7 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
 ):
     """TE12: the shared runner holds the stop for the complete registered Task-kind class."""
 
+    from alphalattice.control.product_host.composition import application_session
     from alphalattice.control.task_control import child
     from alphalattice.control.task_control.child import run_in_child
 
@@ -2037,26 +2039,35 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
         child._retire_worker(worker, pool)
     assert not child._WORKERS
     now = datetime(2026, 10, 3, 12, tzinfo=UTC)
-    original, _, original_plan = task_contract(salt=task_kind)
-    envelope = TaskInputEnvelope.create(
-        task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
-    )
-    goal = ResearchGoal.create(
-        goal_kind="RUN_FACTOR_RESEARCH",
-        input_hash=envelope.input_hash,
-        deliverable_kind="ResearchDeskFactorInput",
-        summary="Exercise the common child start seam.",
-    )
-    plan = ResearchPlan.create(
-        goal_hash=goal.goal_hash,
-        workflow_definition_hash=original_plan.workflow_definition_hash,
-        verifier_catalog_hash=original_plan.verifier_catalog_hash,
-        work_items=original_plan.work_items,
-    )
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
-    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+
+    def admit(salt, observed_at):
+        original, _, original_plan = task_contract(salt=salt)
+        envelope = TaskInputEnvelope.create(
+            task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
+        )
+        goal = ResearchGoal.create(
+            goal_kind="RUN_FACTOR_RESEARCH",
+            input_hash=envelope.input_hash,
+            deliverable_kind="ResearchDeskFactorInput",
+            summary="Exercise the common child start seam.",
+        )
+        plan = ResearchPlan.create(
+            goal_hash=goal.goal_hash,
+            workflow_definition_hash=original_plan.workflow_definition_hash,
+            verifier_catalog_hash=original_plan.verifier_catalog_hash,
+            work_items=original_plan.work_items,
+        )
+        return registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=observed_at
+        ).record
+
+    admitted = admit(task_kind, now)
+    # Only the installed preparation Task starts a worker before its first work item.
+    ahead = task_kind == "workspace_preparation"
+    successor = admit("after-preparation", now + timedelta(seconds=1)) if ahead else None
 
     class ChildStartAdapter(_FixtureTaskAdapter):
         needs_child = True
@@ -2069,11 +2080,20 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     adapter = ChildStartAdapter()
     adapter.task_kind = task_kind
     projections = []
+    runtime = tmp_path / "runtime.sqlite"
+    session = SimpleNamespace(
+        workspace=tmp_path, task_control_registry=registry, runtime_path=runtime, processor="test"
+    )
+    session.task_resources = partial(WorkspaceApplicationSession.task_resources, session)
+
+    def clock():
+        return now + timedelta(seconds=2)
+
     runner = TaskControlRunner(
         registry=registry,
         adapters={task_kind: adapter},
-        runtime_path=str(tmp_path / "runtime.sqlite"),
-        clock=lambda: now + timedelta(seconds=1),
+        runtime_path=str(runtime),
+        clock=clock,
         projection_sink=projections.append,
         heartbeat_seconds=0.01,
     )
@@ -2084,13 +2104,25 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     try:
         with monkeypatch.context() as patch:
             patch.setattr(multiprocessing.get_context("spawn").Process, "start", cannot_start)
-            stopped = runner.run_next()
+            if ahead:
+                patch.setattr(
+                    application_session,
+                    "TaskControlRunner",
+                    partial(TaskControlRunner, projection_sink=projections.append),
+                )
+                stopped = WorkspaceApplicationSession.execute_admitted(
+                    session, admitted, adapter, clock
+                )
+            else:
+                stopped = runner.run_next()
         assert stopped is not None and stopped.task_id == admitted.task_id
         assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
         assert stopped.failure_code == "task_control.child_start_failed"
         assert registry.task(admitted.task_id) == stopped
         assert projections[-1].latest_failure_code == stopped.failure_code
         assert adapter.executed == []  # first attempt; no repeated untyped interruption
+        if successor is not None:
+            assert registry.queued_task().task_id == successor.task_id
         adapter.needs_child = False
         recovered = runner.recover(admitted.task_id, expected_task_hash=stopped.record_hash)
         assert (

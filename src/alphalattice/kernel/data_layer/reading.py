@@ -21,7 +21,7 @@ import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, suppress
 from pathlib import Path
 from threading import Lock
 from typing import IO, Any
@@ -46,7 +46,7 @@ READING_DEFERRED = "reading views: deferred (DuckDB's sqlite extension absent)"
 READ_SECONDS = 60
 """How long a read of the views waits for the reader's answer: a stuck reader is ended past it,
 so its caller, which holds the history's lock, never waits on it for ever. The experience read
-of a 200,000-event log answers in 0.2 s and a cold reader starts in 0.4 s."""
+of a 200,000-event log answers in 0.2 s after the reader starts."""
 
 
 def reading_session(root: Path, *, log: bool = True, owner: Any = None) -> Any | None:
@@ -58,38 +58,43 @@ def reading_session(root: Path, *, log: bool = True, owner: Any = None) -> Any |
     connection = duckdb_session(root) if owner is None else owner.cursor()
     if connection is None:
         return None
-    machine = root / "machine"
-    alias = "lake" if owner is None else "read_lake"
     try:
-        configure_read_cache(connection)
-        connection.execute("SET TimeZone = 'UTC'").complete()
-        if log:
-            path = sql_path(machine / "log.sqlite")
-            connection.execute(f"ATTACH '{path}' AS log (TYPE SQLITE, READ_ONLY)").complete()
-        lake = (machine / "catalog.sqlite").exists()
-        if lake:
-            data, catalog = sql_path(root / "data"), sql_path(machine / "catalog.sqlite")
-            connection.execute(
-                f"ATTACH 'ducklake:sqlite:{catalog}' AS {alias} (DATA_PATH '{data}/', READ_ONLY)"
-            ).complete()
-            catalog_matches(connection, name=alias)
-        table_ids = {}
-        if lake and log:
-            table_ids = world_table_ids(connection, attached=True)
-        elif lake:
-            with closing(attach(root)) as con:
-                table_ids = world_table_ids(con)
-        if owner is not None:
-            # The read-only views and writer macros have their own in-memory namespaces.
-            connection.execute("ATTACH ':memory:' AS read_views").complete()
-            connection.execute("USE read_views").complete()
-        for statement in view_statements(table_ids):
-            if (lake or "lake." not in statement) and (log or "log." not in statement):
-                connection.execute(statement.replace("lake.", f"{alias}.")).complete()
+        _configure_reading(connection, root, log=log, shared=owner is not None)
     except BaseException:
         connection.close()
         raise
     return connection
+
+
+def _configure_reading(connection: Any, root: Path, *, log: bool, shared: bool) -> None:
+    """Attach the log and catalog as they stand when the reader first needs their views."""
+    machine = root / "machine"
+    alias = "read_lake" if shared else "lake"
+    configure_read_cache(connection)
+    connection.execute("SET TimeZone = 'UTC'").complete()
+    if log:
+        path = sql_path(machine / "log.sqlite")
+        connection.execute(f"ATTACH '{path}' AS log (TYPE SQLITE, READ_ONLY)").complete()
+    lake = (machine / "catalog.sqlite").exists()
+    if lake:
+        data, catalog = sql_path(root / "data"), sql_path(machine / "catalog.sqlite")
+        connection.execute(
+            f"ATTACH 'ducklake:sqlite:{catalog}' AS {alias} (DATA_PATH '{data}/', READ_ONLY)"
+        ).complete()
+        catalog_matches(connection, name=alias)
+    table_ids = {}
+    if lake and log:
+        table_ids = world_table_ids(connection, attached=True)
+    elif lake:
+        with closing(attach(root)) as con:
+            table_ids = world_table_ids(con)
+    if shared:
+        # The read-only views and writer macros have their own in-memory namespaces.
+        connection.execute("ATTACH ':memory:' AS read_views").complete()
+        connection.execute("USE read_views").complete()
+    for statement in view_statements(table_ids):
+        if (lake or "lake." not in statement) and (log or "log." not in statement):
+            connection.execute(statement.replace("lake.", f"{alias}.")).complete()
 
 
 class CatalogReader:
@@ -133,30 +138,39 @@ class CatalogReader:
 
 class LogReader:
     """The reading views of the data root's log, read in a process of their own (`serve`) that
-    alone opens the log in DuckDB: started at the first read, restarted when it has ended, and
+    alone opens the log in DuckDB: started ahead by the Host, restarted when it has ended, and
     ended by `close`. A read takes `experience` or `goal_notes` by name with their filters and
     returns their rows as those functions do. The history serializes its calls under the log's
     guard."""
 
     def __init__(self, root: Path) -> None:
-        """A reader of `root`'s log views; its process starts at the first read."""
+        """A reader of `root`'s log views and the executor for its request pipe."""
         self.root = root
         self._child: subprocess.Popen[bytes] | None = None
+        self._used = False
         self._answers = execution_port().register_pool(
             ThreadPoolExecutor(max_workers=worker_width(1), thread_name_prefix="log-reader"),
             name="log-reader",
         )
+
+    def start_ahead(self) -> None:
+        """Launch once ahead of the first read, without waiting for the child to import."""
+        if self._child is None:
+            with suppress(OSError, MemoryError):
+                self._child = self._launch()  # a refused spawn is still retried on read
+
+    def _launch(self) -> subprocess.Popen[bytes]:
+        return child_process.start_piped([sys.executable, "-m", __name__, str(self.root)])
 
     def read(self, name: str, **filters: Any) -> Any:
         """The answer of the view read `name` (`serve`'s reads) with `filters`, as that read
         returns it; a read's own refusal by its code; refused as `data_layer.history_unavailable`
         when the reader cannot answer, or has not within READ_SECONDS, when its process is ended
         and the next read starts another."""
+        self._used = True
         child = self._child
         if child is None or child.poll() is not None:
-            child = self._child = child_process.start_piped(
-                [sys.executable, "-m", __name__, str(self.root)]
-            )
+            child = self._child = self._launch()
         return _ask(child, (name, filters), self._answers, self.root)
 
     def close(self) -> None:
@@ -164,7 +178,7 @@ class LogReader:
         seconds is ended."""
         child, self._child = self._child, None
         if child is not None:
-            _end(child, kill=False)
+            _end(child, kill=not self._used)
         self._answers.shutdown(wait=False)
 
 
@@ -240,7 +254,8 @@ def serve(root: Path, requests: IO[bytes], answers: IO[bytes]) -> None:
     """Answer each read `LogReader` sends, by name with its filters, from `reading_session` over
     `root` until the requests end. This process holds no HostLog, so its DuckDB is the only SQLite
     library that opens the log here."""
-    session = reading_session(root)
+    session = duckdb_session(root)
+    views_pending = session is not None
     reads = {
         "experience": experience,
         "goal_notes": goal_notes,
@@ -250,6 +265,10 @@ def serve(root: Path, requests: IO[bytes], answers: IO[bytes]) -> None:
     }
     try:
         for name, filters in _requests(requests):
+            if views_pending:
+                # A first-use Task may create the catalog after the Host starts this child.
+                _configure_reading(session, root, log=True, shared=False)
+                views_pending = False
             try:
                 _send(answers, (True, reads[name](session, **filters)))
             except DataError as error:  # a read's own refusal, by its code

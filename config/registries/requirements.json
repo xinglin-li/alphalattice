@@ -2845,6 +2845,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "task_control.ahead_children_follow_their_owner": {
+      "description": "Task workers and the Host log reader start ahead, with leased workers reaped at Task end and failed starts replaced through their existing call paths.",
+      "lower_layer": "The worker pool and reader tests reach the process owners, and the idle row joins real spawned workers.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 15
+    },
     "task_control.alpha_child_returns_parts_to_host": {
       "description": "A real Alpha child returns each part to the Host, which keeps and reads it under its own log lock; a kept child reads the data root its caller names, not the one it was started under.",
       "owner": "alphalattice.control.task_control",

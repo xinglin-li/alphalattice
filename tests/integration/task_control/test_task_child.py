@@ -7,10 +7,11 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -23,6 +24,15 @@ from alphalattice.control.task_control.child import (
     child_calls,
     run_in_child,
 )
+from alphalattice.kernel.data_layer import create_data_root, reading
+from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.kernel.execution import (
+    CANCELLED,
+    cancel_execution,
+    execution_cancellation,
+    stop_reason,
+)
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 from alphalattice.kernel.shared_kernel import spawn
 
 HERE = __spec__.name if __spec__ else __name__
@@ -678,7 +688,7 @@ def shared_length(value: int, payload: _Counted, cancelled) -> dict[str, int]:
     return {"value": value, "length": len(payload.data)}
 
 
-def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypatch) -> None:
+def _check_idle_worker_retirement(monkeypatch) -> None:
     """Kept workers are capped however many cores, and one idle past its wait ends; the next
     call starts it again with the same answer."""
     from alphalattice.control.observation_runtime.telemetry.process_metrics import (
@@ -700,6 +710,87 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypat
     with child_calls(f"{HERE}:doubled", workers=1) as calls:
         calls.make({"value": 5})
         assert calls.answer()["value"] == 10
+
+
+@pytest.mark.proves("task_control.ahead_children_follow_their_owner")
+@pytest.mark.parametrize(
+    "case", ["idle", "used", "unused", "cancelled-during-start", "worker-dies", "reader-dies"]
+)
+def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path, monkeypatch, case):
+    """Start ahead, use the same leased worker, and join or replace at the owner's boundary."""
+    if case == "idle":
+        _check_idle_worker_retirement(monkeypatch)
+        return
+    if case == "reader-dies":
+        create_data_root(tmp_path)
+        with HostLog.open(tmp_path):
+            reader = reading.LogReader(tmp_path)
+            try:
+                reader.start_ahead()
+                first = reader._child
+                assert first is not None
+                first.kill()
+                first.wait(timeout=10)
+                reader.start_ahead()
+                assert reader._child is first
+                assert reader.read("goal_notes") == []
+                replacement = reader._child
+                assert replacement is not None and replacement is not first
+            finally:
+                reader.close()
+        assert replacement.poll() is not None
+        return
+
+    pools = []
+
+    class Pool:
+        def __init__(self, **_):
+            self._processes = {1: self}
+            self.broken = False
+            self.started = False
+            self.stopped = False
+            self.joined = False
+            pools.append(self)
+
+        def submit(self, call, *_):
+            future = Future()
+            if call is child.os.getpid:
+                self.started = True
+                return future  # the start can still be in flight when the Task ends
+            if self.broken:
+                raise child.BrokenProcessPool
+            future.set_result({"status": "OK", "result": self})
+            return future
+
+        def terminate(self):
+            self.stopped = True
+
+        def shutdown(self, *, wait, cancel_futures):
+            self.joined = wait
+            self._processes.clear()
+
+    monkeypatch.setattr(child, "ProcessPoolExecutor", Pool)
+    execution = UUID(int=3)
+    lease = ResourceLease(execution, ResourceAmounts(cpu=4, workers=3))
+    with use_resource_lease(lease), execution_cancellation(execution):
+        with child.warm_child_workers(4, modules=("fixture",)) as start:
+            start()
+            assert len(pools) == 3 and all(pool.started for pool in pools)
+            if case == "cancelled-during-start":
+                cancel_execution(execution)
+                assert stop_reason() == CANCELLED
+            elif case == "worker-dies":
+                pools[0].broken = True
+                with pytest.raises(
+                    child.ChildInterrupted, match=r"^task_control\.child_process_ended$"
+                ):
+                    child.run_in_child("fixture:work", {})
+                assert child.run_in_child("fixture:work", {}) is pools[3]
+            elif case == "used":
+                assert child.run_in_child("fixture:work", {}) is pools[0]
+                assert len(pools) == 3
+        assert all(pool.joined and not pool._processes for pool in pools)
+        assert all(pool.stopped for pool in pools[1:])
 
 
 def test_a_shared_argument_ships_once_to_each_worker_of_a_call_set() -> None:

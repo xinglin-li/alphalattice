@@ -1022,6 +1022,13 @@ def _held_log() -> Iterator[tuple[HostLog, str | None, Path] | None]:
         yield (log, workspace, Path(root)) if current else None
 
 
+def start_log_reader() -> None:
+    """Start the held Host's one reader before a Task needs its first view."""
+    with _held_log() as opened:
+        if opened is not None and (reader := _open.get("reading")) is not None:
+            reader.start_ahead()
+
+
 def record_review(
     layer: str,
     unit: str,
