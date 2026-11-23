@@ -83,6 +83,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 )
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.node_runner import run_node
 
@@ -169,6 +170,7 @@ def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str
         text=True,
         encoding="utf-8",
         timeout=60,
+        env=cli_environment(),
     )
     assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
     return result.returncode, json.loads(result.stdout)

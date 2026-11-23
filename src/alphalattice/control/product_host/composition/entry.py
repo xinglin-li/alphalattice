@@ -160,7 +160,13 @@ def _install_storage_driver() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the declared command and return its exit status."""
+    """Run the declared command and return its exit status: one command, which makes one Host
+    start attempt whichever path reaches it (`thin_cli.one_command`)."""
+    with thin_cli.one_command():
+        return _run(argv)
+
+
+def _run(argv: list[str] | None) -> int:
     process_config()
     arguments = sys.argv[1:] if argv is None else argv
     try:

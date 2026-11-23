@@ -1891,6 +1891,13 @@
       "layer": "integration",
       "seconds": 1.313
     },
+    "local_application.one_host_serves_its_data_root": {
+      "description": "If a command no Host answers did not start one, or one started a Host where another answers, each command would pay a Host start or meet the data root's lock.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "The thin path starts its Host through subprocess, a dependency the unit layer refuses; the start and the loopback are faked, so no process or socket runs."
+    },
     "local_application.only_reconnects_named_host_failures": {
       "description": "A waiter propagates an unrelated client refusal instead of treating it as a restart.",
       "owner": "alphalattice.interface.local_application",

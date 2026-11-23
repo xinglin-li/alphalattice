@@ -1132,7 +1132,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "REFUSED",
             _REOPEN,
-            "The connection record is not a plain file inside this workspace, so it is not used.",
+            "local_client.connection_path_escapes_workspace",
         ),
     ),
     (
@@ -1140,9 +1140,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "NO_HOST",
             "STOP_THE_HOST_THAT_WROTE_IT",
-            "This workspace's connection record names another workspace's Host, so this Host "
-            "does not replace it: stop that Host, or, when none runs, remove "
-            "`runtime/local-research-connection.json` and start again.",
+            "local_client.connection_owner_mismatch",
         ),
     ),
     (

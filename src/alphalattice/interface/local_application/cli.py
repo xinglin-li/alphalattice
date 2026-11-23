@@ -1932,7 +1932,7 @@ def _bind(args: argparse.Namespace, started: float) -> int:
     # This door now belongs to the served Host. Check its connection before
     # inspecting session/project declarations, like every other Host command.
     try:
-        transport = client.LocalResearchClient(Path(args.workspace), timeout=args.request_timeout)
+        transport = client.attached(Path(args.workspace), timeout=args.request_timeout)
     except client.LocalResearchClientError as error:
         return _refused(str(error), started, workspace=Path(args.workspace))
     session = agent_session(cli_invocation.environment())

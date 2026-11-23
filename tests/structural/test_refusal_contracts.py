@@ -149,6 +149,9 @@ def test_every_product_text_naming_the_workspace_flag_is_a_kept_full_form() -> N
         ("interface/local_application/thin_cli.py", "<module>"): (
             "the console selector uses one spelling for the caller workspace option"
         ),
+        ("interface/local_application/thin_cli.py", "start_host"): (
+            "the resident Host's detached start for the caller's workspace"
+        ),
         ("interface/local_application/client.py", "_write_bundle"): (
             "where an entry's workspace ends, never printed"
         ),

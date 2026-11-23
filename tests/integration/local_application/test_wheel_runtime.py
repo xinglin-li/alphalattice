@@ -25,7 +25,14 @@ from alphalattice.control.product_host.composition import (
     evidence_authority_setup,
     retrieval_pack_setup,
 )
-from alphalattice.interface.local_application import cli_contract, native_bridge, native_setup
+from alphalattice.interface.local_application import (
+    cli_contract,
+    client,
+    native_bridge,
+    native_setup,
+    thin_cli,
+)
+from alphalattice.kernel.config import DATA_ROOT_ENV, Change, override
 from alphalattice.kernel.shared_kernel import project_layout, spawn
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -128,6 +135,136 @@ def test_runtime_setup_owners_expose_the_checkout_flags(owner, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
+class _Loopback:
+    """The loopback ports a Host answers on, and the connections made to them: no socket."""
+
+    def __init__(self) -> None:
+        self.live: set[int] = set()
+        self.holders: dict[Path, int] = {}  # each data root's lock: the port of its Host
+        self.next_port = 41000
+
+    def connection(self, host: str, port: int, timeout: float) -> SimpleNamespace:
+        def connect() -> None:
+            if port not in self.live:
+                raise ConnectionRefusedError(port)
+
+        return SimpleNamespace(connect=connect, close=lambda: None, port=port)
+
+
+def _record(root: Path, workspace: Path, port: int) -> None:
+    path = thin_cli.endpoint_path(root, workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_id": "local-research-connection",
+                "workspace": str(workspace),
+                "workspace_id": workspace.name,
+                "url": f"http://127.0.0.1:{port}",
+                "instance": "i" * 16,
+                "token": "t" * 32,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _workspace(path: Path) -> Path:
+    path.mkdir(parents=True)
+    (path / thin_cli.MANIFEST_NAME).write_text("{}", encoding="utf-8")
+    return path.resolve()
+
+
+RESIDENT = {
+    "no-host-running": (1, ["thin:a"]),
+    "a-host-running": (0, ["thin:a"]),
+    "two-data-roots": (2, ["thin:a", "thin:b"]),
+    "one-data-root-twice": (1, ["thin:a", "thin:a"]),
+    "idle-past-its-bound": (1, ["thin:a"]),
+    "a-crashed-hosts-record": (1, ["thin:a"]),
+    "the-root-serves-another-workspace": (1, [None]),
+    "help-starts-nothing": (0, [None]),
+    "a-bound-sessions-first-command": (1, ["cli:a"]),
+}
+"""Each resident-Host case: the Host starts its commands asked for, and the path and workspace
+each reached. A Host past its idle bound stays while a Task runs
+(test_local_web_service.py:464-471), so it is the running Host's case here."""
+
+
+def _command(argv: list[str], cwd: Path, *, thin: bool = True, hosted: bool = True) -> str | None:
+    """The path and workspace a command reached, as the console entry decides: the thin path,
+    which starts the Host when none answers, else (a bound session goes there first) the full
+    CLI's Host-backed operation, which takes the same start; `--help` starts none."""
+    selected = thin_cli.select(argv, cwd) if thin else None
+    serving = None if selected is None else thin_cli._serving(selected)
+    if serving is not None:
+        return "thin:" + Path(serving[0]["workspace"]).name
+    if not hosted:
+        return None
+    try:
+        return "cli:" + Path(client.attached(cwd).connection.workspace).name
+    except client.LocalResearchClientError:  # the full CLI's NO_HOST answer
+        return None
+
+
+def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    """A command none answers starts its data root's Host once, through the CLI's own detached
+    `serve`, and later commands on that root reach it; each root has its own Host."""
+    starts, served = RESIDENT[case]
+    loopback, started = _Loopback(), []
+    workspaces = {name: _workspace(tmp_path / name) for name in ("a", "b", "other")}
+    roots = {"a": tmp_path / "root-1", "b": tmp_path / "root-2", "other": tmp_path / "root-1"}
+
+    def serve_detached(command: list[str], **options: object) -> SimpleNamespace:
+        assert command[2:4] == ["alphalattice.control.product_host.composition.entry", "serve"]
+        assert command[-2:] == ["--detach", "--no-browser"]
+        workspace = Path(command[command.index("--workspace") + 1])
+        started.append(workspace.name)
+        if loopback.holders.get(thin_cli.data_root()) in loopback.live:
+            return SimpleNamespace(returncode=2)  # the root's lock is held: the launcher refuses
+        loopback.next_port += 1
+        loopback.live.add(loopback.next_port)
+        loopback.holders[thin_cli.data_root()] = loopback.next_port
+        _record(thin_cli.data_root(), workspace, loopback.next_port)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(thin_cli.http.client, "HTTPConnection", loopback.connection)
+    monkeypatch.setattr(thin_cli.subprocess, "run", serve_detached)
+    if case == "a-host-running":
+        _record(roots["a"], workspaces["a"], 40001)
+        loopback.live.add(40001)
+        loopback.holders[roots["a"]] = 40001
+    elif case == "idle-past-its-bound":
+        _record(roots["a"], workspaces["a"], 40001)  # it retired; its port no longer answers
+    elif case == "a-crashed-hosts-record":
+        _record(roots["a"], workspaces["other"], 40001)  # its lock went with its process
+    elif case == "the-root-serves-another-workspace":
+        _record(roots["a"], workspaces["other"], 40001)
+        loopback.live.add(40001)
+        loopback.holders[roots["a"]] = 40001
+    names = {
+        "two-data-roots": ["a", "b"],
+        "one-data-root-twice": ["a", "a"],
+    }.get(case, ["a"])
+    seen = []
+    for name in names:
+        with override(Change("data-root", {DATA_ROOT_ENV: str(roots[name])})):
+            help_only = case == "help-starts-nothing"
+            argv = (
+                ["--help"] if help_only else ["--workspace", str(workspaces[name]), "study", "list"]
+            )
+            with thin_cli.one_command():  # one console command, as the entry holds it
+                seen.append(
+                    _command(
+                        argv,
+                        workspaces[name],
+                        thin=case != "a-bound-sessions-first-command",
+                        hosted=not help_only,
+                    )
+                )
+    assert (len(started), seen) == (starts, served)
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -139,10 +276,21 @@ def test_runtime_setup_owners_expose_the_checkout_flags(owner, capsys):
                 "local_application.console_entry_imports_only_the_standard_library"
             ),
         ),
+        *(
+            pytest.param(
+                case, marks=pytest.mark.proves("local_application.one_host_serves_its_data_root")
+            )
+            for case in RESIDENT
+        ),
     ],
+    ids=str,
 )
-def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch) -> None:
-    """requirement: one packaged console entry, existing backend, named development exceptions."""
+def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch, tmp_path) -> None:
+    """requirement: one packaged console entry, existing backend, named development exceptions;
+    one Host per data root, which the first command none answers starts."""
+    if case in RESIDENT:
+        _resident(tmp_path, monkeypatch, case)
+        return
     if case == "client-imports":
         probe = """
 import json

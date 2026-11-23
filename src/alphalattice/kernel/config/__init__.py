@@ -1,6 +1,7 @@
 """Configuration access."""
 
 from .port import (
+    DATA_ROOT_ENV,
     Change,
     Config,
     ConfigEvent,
@@ -9,6 +10,7 @@ from .port import (
     Settings,
     consume_secret,
     current,
+    data_root,
     declare,
     override,
     process_override,
@@ -16,6 +18,7 @@ from .port import (
 )
 
 __all__ = [
+    "DATA_ROOT_ENV",
     "Change",
     "Config",
     "ConfigEvent",
@@ -24,6 +27,7 @@ __all__ = [
     "Settings",
     "consume_secret",
     "current",
+    "data_root",
     "declare",
     "override",
     "process_override",

@@ -30,10 +30,12 @@ BUDGETS = "ALPHALATTICE_PERFORMANCE_BUDGETS"
 
 @dataclass(frozen=True)
 class Operation:
-    """One kernel operation, its call and its budget: the mean seconds a call may take."""
+    """One kernel operation, its call and its budget: the mean seconds a call may take. A call that
+    needs a test's fixtures (a running Host) takes pytest's request and returns the call measured.
+    """
 
     name: str
-    call: Callable[[], object]
+    call: Callable[..., object]
     budget: float
 
 

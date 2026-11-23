@@ -24,12 +24,21 @@ from alphalattice.kernel.shared_kernel import spawn
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
 
+def cli_environment() -> dict[str, str]:
+    """A CLI child's environment on this process's data root, where a Host it serves writes its
+    endpoint record: `spawn` keeps the data root only in an environment it is given."""
+    from alphalattice.kernel.config import current
+
+    return dict(current().child_environment())
+
+
 def _cli(workspace: Path, *arguments: str) -> tuple[int, dict[str, Any], str]:
     result = spawn.run(
         [sys.executable, str(SCRIPT), "--workspace", str(workspace), "--view", "full", *arguments],
         capture_output=True,
         text=True,
         timeout=120,
+        env=cli_environment(),
     )
     return (result.returncode, json.loads(result.stdout.strip().splitlines()[-1]), result.stdout)
 

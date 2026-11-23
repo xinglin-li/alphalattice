@@ -18,7 +18,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -59,8 +59,13 @@ def _files(root: Path) -> dict[str, str]:
 def _closed_seed(workspace: Path) -> Iterator[None]:
     """The golden owner seals only after its Host and writer have stopped."""
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.interface.local_application.client import (
+        LocalResearchClientError,
+        LocalResearchConnection,
+    )
 
-    if (workspace / "runtime/local-research-connection.json").exists():
+    with suppress(LocalResearchClientError):  # a Host still serving it holds the record
+        LocalResearchConnection.read(workspace)
         raise RuntimeError("session workspace still names a Host")
     lease = WorkspaceWriterLease.acquire(workspace)
     try:

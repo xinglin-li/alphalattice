@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from pathlib import Path
 from threading import Lock
 from types import MappingProxyType
 from typing import Protocol, overload
@@ -198,6 +199,26 @@ def current() -> Config:
         return _startup
     with _startup_lock:
         return _start()
+
+
+DATA_ROOT_ENV = "ALPHALATTICE_DATA_ROOT"
+"""Names the folder of this process's data root; unset, the application data folder."""
+
+
+def data_root() -> Path:
+    """The process's data root: `ALPHALATTICE_DATA_ROOT`, else the application data folder.
+
+    It is read here, with the standard library alone, so the console's thin path can find the
+    data root's Host (kernel.data_layer.root re-exports it for the data layer)."""
+    values = current()
+    override = values.get(DATA_ROOT_ENV, "").strip()
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        local = values.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "AlphaLattice"
+    data = values.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(data) / "alphalattice"
 
 
 def _start() -> Config:

@@ -778,12 +778,12 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_web.service_not_started"
         assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not spawns.flags
-    # A folder with a Host's connection record is the launch's to read: that Host may serve it.
+    # A folder whose Host left its connection record is the launch's to read: it may serve it.
     record = local_client.LocalResearchConnection.path(taken)
-    record.parent.mkdir()
+    record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text("{}", encoding="utf-8")
     assert web_launcher._workspace_refusal(taken) is None
-    shutil.rmtree(record.parent)
+    record.unlink()
     with monkeypatch.context() as escaping:
         escaping.setattr(
             local_client.LocalResearchConnection,

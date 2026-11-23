@@ -984,6 +984,10 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
             == "local_web.serving_host_unverified"
         )
         assert type(original).read(live.workspace) == altered
+    # A workspace recreated at its path: its Host retires the stopped one's record.
+    recreated = replace(original, workspace_id="recreated-at-this-path")
+    local_web_connection.publish_client_connection(recreated)
+    assert type(original).read(live.workspace) == recreated
     local_web_connection.publish_client_connection(original)
     assert serve_conflict(live.workspace, monkeypatch) == 0
     reused = json.loads(capsys.readouterr().out)

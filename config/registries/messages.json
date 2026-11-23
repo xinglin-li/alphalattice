@@ -23,6 +23,14 @@
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The selected observation must be named by the exact observation id the activity page returns. Read the activity page and use that id as it is.", "zh-CN": "所选观察必须使用活动页返回的准确观察标识来指定。请读取活动页，并原样使用该标识。"}
     },
+    "local_client.connection_path_escapes_workspace": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The Host's endpoint record is not a plain file in the data root's machine/host-endpoints folder, so it is not used.", "zh-CN": "Host 的端点记录不是数据根目录 machine/host-endpoints 文件夹中的普通文件，因此不予使用。"}
+    },
+    "local_client.connection_owner_mismatch": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "This workspace's endpoint record names another workspace's Host: stop that Host, then start this workspace's Host, which replaces the record.", "zh-CN": "此工作区的端点记录指向另一个工作区的 Host：请先停止那个 Host，再启动此工作区的 Host，新 Host 会替换该记录。"}
+    },
     "activity.storage_unavailable": {
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "This Host's history is not recording, so it records no events and answers no activity; the Host that alphalattice serve starts records its history or refuses to start.", "zh-CN": "这个 Host 的历史没有在记录，因此不记录事件，也不回答活动；alphalattice serve 启动的 Host 会记录它的历史，否则拒绝启动。"}

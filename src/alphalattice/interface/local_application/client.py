@@ -75,16 +75,19 @@ from alphalattice.interface.local_application.review_evidence import (
     select_preparation,
 )
 from alphalattice.interface.local_application.thin_cli import (
-    CONNECTION_NAME as CONNECTION_NAME,
+    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
 )
 from alphalattice.interface.local_application.thin_cli import (
-    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
+    ENDPOINT_FOLDER as ENDPOINT_FOLDER,
 )
 from alphalattice.interface.local_application.thin_cli import (
     OPERATIONS_PATH,
     agent_session_values,
+    answers,
     connection_path,
     connection_port,
+    endpoint_path,
+    start_host,
 )
 from alphalattice.interface.local_application.thin_cli import (
     workspace_connection_key as workspace_connection_key,
@@ -147,31 +150,33 @@ class LocalResearchConnection:
         )
 
     @staticmethod
-    def path(workspace: Path) -> Path:
-        """Locate the connection descriptor within the workspace runtime.
+    def path(workspace: Path, *, root: Path | None = None) -> Path:
+        """Locate the endpoint record of `workspace`'s Host, beside its data root's lock.
 
         Args:
-            workspace: The served workspace root.
+            workspace: The workspace whose Host's record is read.
+            root: The Host's data root when it is not this process's (a Host served apart).
 
         Returns:
-            The contained connection-file path.
+            The record's path in the data root's machine folder.
 
         Raises:
-            LocalResearchClientError: If the path is a symlink or escapes the root.
+            LocalResearchClientError: If the path is a symlink or leaves that folder.
         """
         try:
-            return connection_path(workspace)
+            return connection_path(workspace) if root is None else endpoint_path(root, workspace)
         except ValueError as error:
             raise LocalResearchClientError(
                 "local_client.connection_path_escapes_workspace"
             ) from error
 
     @classmethod
-    def read(cls, workspace: Path) -> Self:
+    def read(cls, workspace: Path, *, root: Path | None = None) -> Self:
         """Read a bounded descriptor for this exact workspace.
 
         Args:
             workspace: The workspace expected by the client.
+            root: The Host's data root when it is not this process's (a Host served apart).
 
         Returns:
             A validated connection to its running Host.
@@ -179,7 +184,7 @@ class LocalResearchConnection:
         Raises:
             LocalResearchClientError: If the Host or descriptor is unavailable or unsafe.
         """
-        path = cls.path(workspace)
+        path = cls.path(workspace, root=root)
         try:
             if path.stat().st_size > 4096:
                 raise ValueError("oversized connection")
@@ -196,6 +201,21 @@ class LocalResearchConnection:
         return value
 
 
+def attached(workspace: Path, **options: Any) -> LocalResearchClient:
+    """A client of `workspace`'s Host for a Host-backed command, starting its data root's Host
+    once when none answers for it (`thin_cli.start_host`): a bound session's commands, and every
+    command the thin path leaves to this client. No record, or a record no Host answers at (a
+    crashed one's), starts it; the root's lock decides whether the start is this workspace's."""
+    try:
+        return LocalResearchClient(workspace, answering=True, **options)
+    except LocalResearchClientError as error:
+        if str(error) != "local_client.service_not_running":
+            raise
+    if not start_host(Path(workspace).resolve()):
+        raise LocalResearchClientError("local_client.service_not_running")
+    return LocalResearchClient(workspace, **options)
+
+
 class LocalResearchClient:
     """Read the connection anew per invocation; never keep a last spec or result."""
 
@@ -205,11 +225,17 @@ class LocalResearchClient:
         *,
         timeout: float = DEFAULT_HTTP_WAIT_SECONDS,
         goal: str | None = None,
+        answering: bool = False,
     ):
-        """Bind a client to one served workspace, its HTTP wait limit and a named goal."""
+        """Bind a client to one served workspace, its HTTP wait limit and a named goal.
+
+        `answering` refuses `service_not_running` at once when no Host answers at the record,
+        which a crashed Host leaves behind, so a caller can start one before its request."""
         self.workspace = workspace.resolve()
         self.connection = LocalResearchConnection.read(workspace)
         self.timeout = timeout
+        if answering and not answers(self.connection.url, timeout):
+            raise LocalResearchClientError("local_client.service_not_running")
         named = {"goal_id": goal}
         whole_references(named, self.workspace)  # `--goal` as the compact view shows it
         self.goal = named["goal_id"]
@@ -3419,7 +3445,7 @@ def run(
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
         replaced_output = output_replacement(output, line=getattr(args, "command_line", ()))
-        client = LocalResearchClient(
+        client = attached(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
         args._follow_receipt = partial(

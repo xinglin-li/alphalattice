@@ -3233,7 +3233,7 @@
       "location": "workspace-runtime",
       "bytes": null,
       "writers": [
-        "product_host.composition.entry:main",
+        "product_host.composition.entry:_run",
         "product_host.composition.web_launcher:_detach",
         "task_control.child:_call"
       ],

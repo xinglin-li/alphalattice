@@ -28,7 +28,8 @@ from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
 from alphalattice.kernel import storage
-from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.config import DATA_ROOT_ENV as DATA_ROOT_ENV
+from alphalattice.kernel.config import data_root as data_root
 from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.project import register, uuid7
 from alphalattice.kernel.resources import cpu_width
@@ -42,8 +43,6 @@ any schema file, or to how world derives the rows a root holds, takes the next n
 an earlier build made is refused by name."""
 FOLDERS: Final = ("machine", "data", "blobs", "staging", "extensions")
 CATALOG_DEFERRED: Final = "catalog: deferred (ducklake extension absent)"
-DATA_ROOT_ENV: Final = "ALPHALATTICE_DATA_ROOT"
-"""Names the folder of this process's data root; unset, the application data folder."""
 SPEC_FIELDS: Final = {
     "event_types": ("event_type", ("work", "subject", "required", "text", "durable")),
     "metrics": ("metric", ("unit", "direction", "params")),
@@ -68,18 +67,6 @@ class DataRoot:
 
     path: Path
     created: tuple[str, ...]
-
-
-def data_root() -> Path:
-    """The machine's data root: `ALPHALATTICE_DATA_ROOT`, else the application data folder."""
-    override = process_config().get(DATA_ROOT_ENV, "").strip()
-    if override:
-        return Path(override)
-    if os.name == "nt":
-        local = process_config().get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(local) / "AlphaLattice"
-    data = process_config().get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(data) / "alphalattice"
 
 
 def schema_text(name: str) -> str:

@@ -23,6 +23,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
@@ -96,7 +97,7 @@ def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,t
         text=True,
         encoding="utf-8",
         timeout=120,
-        env=env,
+        env=cli_environment() if env is None else env,
     )
     assert done.returncode == 0, done.stdout + done.stderr
     answer = json.loads(done.stdout)["data"]

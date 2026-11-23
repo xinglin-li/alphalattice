@@ -1,6 +1,6 @@
 """The Host's one write path into log.sqlite, and the lock that makes it the only one.
 
-One Host per machine holds the data root's lock (machine/host.lock) and is the only writer; any
+One Host per data root holds its lock (machine/host.lock) and is the only writer; any
 other process reads through `attach`, read-only, and a second `HostLog.open` is refused by name
 with the holder it found. Every row of log.sqlite comes from `HostLog.append`: it admits the event
 (admit.py), then writes the event, its text, the chain's new head, its projection and an inline

@@ -1,4 +1,13 @@
-"""The console's standard-library client for finite, caller-independent Host commands."""
+"""The console's standard-library client for finite, caller-independent Host commands.
+
+One Host stays resident per data root: it holds the root's lock (machine/host.lock) and writes
+its endpoint record beside it (machine/host-endpoints/<workspace key>.json), so every checkout's
+CLI on that root finds it. A command none answers starts the Host detached here (`start_host`,
+the CLI's own `serve --detach`, which returns once the Host serves) and then sends, so a cold
+command loads no product module either; a command this client declines (a bound session's) takes
+the same start in the full CLI's Host-backed operation. The Host retires after its idle bound
+(web.DEFAULT_IDLE_TIMEOUT_SECONDS), never while a Task runs, and the next command starts it.
+"""
 
 from __future__ import annotations
 
@@ -7,16 +16,26 @@ import http.client
 import json
 import os
 import shutil
+import socket
+import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Final, NamedTuple
 from urllib.parse import urlsplit
 
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.config import data_root
 from alphalattice.kernel.identity import identity_sha256
 
-CONNECTION_NAME: Final = "local-research-connection.json"
+ENDPOINT_FOLDER: Final = "host-endpoints"
+"""The data root's endpoint records, one per served workspace, beside its lock."""
+MANIFEST_NAME: Final = "research-workspace.json"
+"""A workspace's manifest: only an initialized workspace starts a Host from a read."""
+START_SECONDS: Final = 330.0
+"""The detached start's own ready wait (web_launcher.READY_SECONDS, 300 s) and its exit."""
 CLIENT_HEADER: Final = "X-Alphalattice-Client"
 WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
 INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
@@ -61,6 +80,8 @@ class Invocation(NamedTuple):
 
     workspace: Path
     timeout: float
+    starts: bool
+    """Whether no answer starts the Host: a named workspace's command, never `--help`."""
 
 
 class DeliveryLost(ValueError):
@@ -73,10 +94,17 @@ def workspace_connection_key(workspace: Path) -> str:
 
 
 def connection_path(workspace: Path) -> Path:
-    """Locate the descriptor without following a link outside the workspace."""
-    root = workspace.resolve()
-    path = root / "runtime" / CONNECTION_NAME
-    if path.is_symlink() or not path.resolve().is_relative_to(root):
+    """Locate the endpoint record of `workspace`'s Host on this process's data root without
+    following a link out of its folder."""
+    return endpoint_path(data_root(), workspace)
+
+
+def endpoint_path(root: Path, workspace: Path) -> Path:
+    """The endpoint record a Host serving `workspace` on data root `root` writes, beside the
+    root's lock under the workspace's key; the record names the workspace it serves."""
+    folder = root.resolve() / "machine" / ENDPOINT_FOLDER
+    path = folder / f"{workspace_connection_key(workspace)}.json"
+    if path.is_symlink() or not path.resolve().is_relative_to(folder):
         raise ValueError("local_client.connection_path_escapes_workspace")
     return path
 
@@ -151,7 +179,7 @@ def select(argv: list[str], cwd: Path) -> Invocation | None:
         return None
     if not 0 < timeout <= 600:
         return None
-    return Invocation(workspace, timeout)
+    return Invocation(workspace, timeout, starts=not help_only)
 
 
 def agent_session_values(environ: Mapping[str, str]) -> dict[str, str]:
@@ -167,6 +195,131 @@ def _settings() -> dict[str, str]:
 def _styles() -> list[list[str | None]]:
     streams = (sys.stdout, sys.stderr)  # noqa: TID251  # match the console encoding
     return [[stream.encoding, stream.errors] for stream in streams]
+
+
+def _endpoint(path: Path) -> dict[str, str] | None:
+    """An endpoint record, validated; None when no Host has written it."""
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(4097)
+    except FileNotFoundError:
+        return None
+    if len(raw) > 4096:
+        raise ValueError("local_client.connection_unreadable")
+    record = json.loads(raw)
+    connection_port(
+        record.get("schema_id", "local-research-connection"),
+        record["workspace"],
+        record["workspace_id"],
+        record["url"],
+        record["instance"],
+        record["token"],
+    )
+    return dict(record)
+
+
+def _connect(record: Mapping[str, str], timeout: float) -> http.client.HTTPConnection | None:
+    """A connection to the record's Host, or None when nothing answers at its port."""
+    port = urlsplit(record["url"]).port
+    exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        exchange.connect()
+    except OSError:
+        exchange.close()
+        return None
+    return exchange
+
+
+def answers(url: str, timeout: float) -> bool:
+    """Whether a Host listens at an endpoint record's `url`: a crashed Host's record outlives it.
+    A TCP connect, opened and closed, asks it; the request keeps its own connection."""
+    port = urlsplit(url).port
+    if port is None:
+        return False
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+_ATTEMPTS: ContextVar[set[tuple[Path, Path]] | None] = ContextVar("host_starts", default=None)
+"""The (data root, workspace) pairs the running console command has started a Host for."""
+
+
+@contextmanager
+def one_command() -> Iterator[None]:
+    """One console command's scope, which the entry holds: it makes one Host start attempt per
+    workspace, whichever of its paths (this one, or the full CLI's) reaches the start first."""
+    scope = _ATTEMPTS.set(set())
+    try:
+        yield
+    finally:
+        _ATTEMPTS.reset(scope)
+
+
+def start_host(workspace: Path) -> bool:
+    """Start the data root's Host detached for `workspace`, and return once it serves.
+
+    It runs the CLI's own `serve --detach` as a child, so this process loads no product module;
+    that start returns when the Host serves (its ready signal) or refuses, the root's lock
+    deciding whether this workspace may have it. Only an initialized workspace starts a Host
+    from a command, once in a console command's scope (`one_command`).
+    """
+    attempts, attempt = _ATTEMPTS.get(), (data_root().resolve(), workspace)
+    if not (workspace / MANIFEST_NAME).is_file():
+        return False
+    if attempts is not None:
+        if attempt in attempts:
+            return False
+        attempts.add(attempt)
+    command = [
+        sys.executable,
+        "-m",
+        "alphalattice.control.product_host.composition.entry",
+        "serve",
+        "--workspace",
+        str(workspace),
+        "--detach",
+        "--no-browser",
+    ]
+    try:
+        started = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,  # the launch line carries the session's key
+            stderr=subprocess.DEVNULL,
+            timeout=START_SECONDS,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return started.returncode == 0
+
+
+def _serving(selected: Invocation) -> tuple[dict[str, str], http.client.HTTPConnection] | None:
+    """The record and a connection to the Host serving the selected workspace, starting the data
+    root's Host when none answers and the command starts one; None when no Host serves it, and
+    the full CLI answers."""
+    found = _answering(selected.workspace, selected.timeout)
+    if found is None and selected.starts and start_host(selected.workspace):
+        found = _answering(selected.workspace, selected.timeout)
+    return found
+
+
+def _answering(
+    workspace: Path, timeout: float
+) -> tuple[dict[str, str], http.client.HTTPConnection] | None:
+    """The record and a connection to the Host serving `workspace` on this data root, or None."""
+    record = _endpoint(connection_path(workspace))
+    exchange = None if record is None else _connect(record, timeout)
+    if record is None or exchange is None:
+        return None
+    if Path(record["workspace"]).resolve() != workspace:
+        exchange.close()  # a record under this key naming another workspace is not this one's
+        return None
+    return record, exchange
 
 
 def _refused_before_dispatch(status: int, response: dict[str, object]) -> bool:
@@ -193,24 +346,23 @@ def invoke(argv: list[str]) -> int | None:
         selected = select(argv, cwd)
         if selected is None:
             return None
-        with connection_path(selected.workspace).open("rb") as stream:
-            raw = stream.read(4097)
-        if len(raw) > 4096:
-            return None
-        record = json.loads(raw)
-        port = connection_port(
-            record.get("schema_id", "local-research-connection"),
-            record["workspace"],
-            record["workspace_id"],
-            record["url"],
-            record["instance"],
-            record["token"],
-        )
-        if Path(record["workspace"]).resolve() != selected.workspace:
-            return None
+        serving = _serving(selected)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError):
         return None
+    if serving is None:
+        return None
+    return send(*serving, argv, cwd, selected.workspace)
 
+
+def send(
+    record: Mapping[str, str],
+    exchange: http.client.HTTPConnection,
+    argv: list[str],
+    cwd: Path,
+    workspace: Path,
+) -> int | None:
+    """Send one command to the Host `record` names over `exchange`, print its bytes and return
+    its exit code; None when the Host refused it before dispatch (the full CLI answers)."""
     body = json.dumps(
         {
             "operation": CLI_OPERATION,
@@ -222,19 +374,14 @@ def invoke(argv: list[str]) -> int | None:
         }
     ).encode("ascii")
     if len(body) > MAXIMUM_REQUEST_BODY_BYTES:
+        exchange.close()
         return None
     headers = {
         "Content-Type": "application/json",
         CLIENT_HEADER: record["token"],
-        WORKSPACE_HEADER: workspace_connection_key(selected.workspace),
+        WORKSPACE_HEADER: workspace_connection_key(workspace),
         INSTANCE_HEADER: record["instance"],
     }
-    exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=selected.timeout)
-    try:
-        exchange.connect()
-    except OSError:
-        exchange.close()
-        return None
     try:
         exchange.request("POST", OPERATIONS_PATH, body=body, headers=headers)
         response = exchange.getresponse()
