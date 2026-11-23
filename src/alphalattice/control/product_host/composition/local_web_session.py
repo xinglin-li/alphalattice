@@ -1037,7 +1037,7 @@ class LocalPortfolioWebSession:
         self.forward_prewarm.attach(self.dispatcher)
         attach_native_usage(self, self.operations, activity)
         web_application = build_local_web_application(operations=self.operations, activity=activity)
-        web_application.admission = self.dispatcher._admit
+        web_application.admission = self.dispatcher.admit_request
         web_application.request_scope = self.dispatcher.serving_request
         _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
         self.operations.stop_host = self.stop_host

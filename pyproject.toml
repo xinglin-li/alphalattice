@@ -284,6 +284,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+    "alphalattice.kernel.execution",
+    "alphalattice.kernel.execution.*",
     "alphalattice.kernel.identity",
     "alphalattice.kernel.identity.*",
     "alphalattice.kernel.shared_kernel.spawn",

@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import psutil
 import pytest
 
+from alphalattice.kernel.execution import child_process as execution_spawn
+
 TEST_SOURCE = "src/alphalattice/kernel/shared_kernel/spawn.py"
 
 
@@ -21,11 +23,11 @@ def test_ambient_job_probe_adds_no_job(monkeypatch, tmp_path):
 
     calls = []
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "person-root"))
-    monkeypatch.setattr(spawn.subprocess, "CREATE_NO_WINDOW", 8, raising=False)
+    monkeypatch.setattr(execution_spawn.subprocess, "CREATE_NO_WINDOW", 8, raising=False)
     monkeypatch.setattr(
-        spawn.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs))
+        execution_spawn.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs))
     )
-    monkeypatch.setattr(spawn, "ChildJob", lambda: pytest.fail("probe added a Job"))
+    monkeypatch.setattr(execution_spawn, "ChildJob", lambda: pytest.fail("probe added a Job"))
     spawn.ambient_job_probe([sys.executable, "probe.py", "--child"], creationflags=16)
     args, options = calls[0]
     assert args[1:] == ["probe.py", "--child"]
@@ -53,23 +55,23 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
 
     member = Member()
     monkeypatch.setattr(
-        spawn.os, "killpg", lambda pid, sig: events.append(("kill", pid)), raising=False
+        execution_spawn.os, "killpg", lambda pid, sig: events.append(("kill", pid)), raising=False
     )
-    monkeypatch.setattr(spawn.os, "getpgid", lambda pid: 123, raising=False)
-    monkeypatch.setattr(spawn.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(execution_spawn.os, "getpgid", lambda pid: 123, raising=False)
+    monkeypatch.setattr(execution_spawn.signal, "SIGKILL", 9, raising=False)
 
     def members():
         events.append(("scan",))
         return [] if ("kill", 123) in events else [member]
 
-    monkeypatch.setattr(spawn.psutil, "process_iter", members)
+    monkeypatch.setattr(psutil, "process_iter", members)
 
     def wait(members, *, timeout):
         events.append(("wait", members[0].pid))
         return ([], members) if events.count(("wait", 456)) == 1 else (members, [])
 
-    monkeypatch.setattr(spawn.psutil, "wait_procs", wait)
-    spawn._stop_group(123)
+    monkeypatch.setattr(psutil, "wait_procs", wait)
+    execution_spawn._stop_group(123, processes=psutil)
     assert events == [("scan",), ("kill", 123), ("scan",), ("wait", 456), ("wait", 456)]
 
     # A timeout stops the owned group once, even when final cleanup follows.
@@ -93,10 +95,12 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
         if len(stops) > 1:
             raise PermissionError("group no longer belongs to this child")
 
-    monkeypatch.setattr(spawn, "sys", SimpleNamespace(platform="linux", executable=sys.executable))
-    monkeypatch.setattr(spawn.subprocess, "Popen", lambda *args, **kwargs: Child())
-    monkeypatch.setattr(spawn.os, "killpg", stop)
-    monkeypatch.setattr(spawn.psutil, "process_iter", lambda: [])
+    monkeypatch.setattr(
+        execution_spawn, "sys", SimpleNamespace(platform="linux", executable=sys.executable)
+    )
+    monkeypatch.setattr(execution_spawn.subprocess, "Popen", lambda *args, **kwargs: Child())
+    monkeypatch.setattr(execution_spawn.os, "killpg", stop)
+    monkeypatch.setattr(psutil, "process_iter", lambda: [])
     with pytest.raises(subprocess.TimeoutExpired):
         spawn.run([sys.executable, "-c", "pass"], timeout=1)
     assert stops == [123]
@@ -275,10 +279,10 @@ def test_an_interactive_session_names_its_stop_scope(monkeypatch):
             self.stopped = True
 
     monkeypatch.setattr(
-        spawn.os, "killpg", lambda pid, sig: calls.append(("group", pid)), raising=False
+        execution_spawn.os, "killpg", lambda pid, sig: calls.append(("group", pid)), raising=False
     )
-    monkeypatch.setattr(spawn.signal, "SIGKILL", 9, raising=False)
-    monkeypatch.setattr(spawn.psutil, "process_iter", lambda: [])
+    monkeypatch.setattr(execution_spawn.signal, "SIGKILL", 9, raising=False)
+    monkeypatch.setattr(psutil, "process_iter", lambda: [])
     root = spawn.InteractiveSession(timeout=1, stop_scope="root")
     root.child = Child()
     root.stop()

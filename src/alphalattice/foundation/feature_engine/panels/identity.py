@@ -24,6 +24,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
 )
 from alphalattice.kernel import storage
+from alphalattice.kernel.execution import interruptible
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_values
 from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
@@ -156,10 +157,11 @@ def panel_rows_match_their_hashes(
     row_hash = _row_hash_sql(identity_basis=identity_basis, factors=factors, stamped=False)
     with storage.memory(duckdb_thread_config()) as connection:
         connection.register("panel_partition", _in_batches(table))
-        found = connection.execute(
-            f"SELECT count(*) FILTER (WHERE {row_hash} IS DISTINCT FROM row_hash) "
-            "FROM panel_partition"
-        ).fetchone()
+        with interruptible(connection.interrupt):
+            found = connection.execute(
+                f"SELECT count(*) FILTER (WHERE {row_hash} IS DISTINCT FROM row_hash) "
+                "FROM panel_partition"
+            ).fetchone()
     return found is not None and found[0] == 0
 
 
@@ -253,7 +255,8 @@ def _hash_panel_rows(
             parameters.extend([manifest_revision, sector_revision, catalog_hash, policy_hash])
         else:
             parameters.extend([catalog_hash, policy_hash])
-        return connection.execute(sql, parameters).to_arrow_table()
+        with interruptible(connection.interrupt):
+            return connection.execute(sql, parameters).to_arrow_table()
 
 
 def _in_batches(table: pa.Table) -> pa.Table:

@@ -65,6 +65,7 @@ from alphalattice.kernel.data_layer.root import (
     world_table_ids,
 )
 from alphalattice.kernel.data_layer.telemetry import usage
+from alphalattice.kernel.execution import interruptible
 
 _GROUPING = threading.Lock()
 _grouping: list[threading.Thread] = []
@@ -484,7 +485,8 @@ class StorePort:
             self.lake.execute("BEGIN").complete()
             self._block = block  # published once its transaction is open
             try:
-                yield
+                with interruptible(self.lake.interrupt):
+                    yield
             except Exception:
                 self._block = None
                 if block.writing:

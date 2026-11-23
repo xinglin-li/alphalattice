@@ -27,6 +27,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.validation.enums import RebalanceFrequency
@@ -483,10 +484,13 @@ class CausalExecutionOutcomePublisher:
             if parallel:
                 workers = min(workers, len(listings))
                 try:
-                    pool = ProcessPoolExecutor(
-                        max_workers=workers,
-                        initializer=_initialize_derivation_worker,
-                        initargs=(derivation,),
+                    pool = execution_port().register_pool(
+                        ProcessPoolExecutor(
+                            max_workers=workers,
+                            initializer=_initialize_derivation_worker,
+                            initargs=(derivation,),
+                        ),
+                        name="causal-derivation",
                     )
                 except (OSError, MemoryError) as error:
                     raise ChildStartFailed(error) from error

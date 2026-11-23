@@ -45,6 +45,7 @@ import duckdb
 
 from alphalattice.control.workspace_runtime.reader_threads import configure_duckdb, connect_duckdb
 from alphalattice.kernel import storage
+from alphalattice.kernel.execution import interruptible
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 from alphalattice.kernel.shared_kernel.persistence import (
     DURABLE_REPLACE_DELAYS,
@@ -361,7 +362,8 @@ class WorkspaceConnection:
         # DuckDB 2.0 keeps execute()'s result until exhaustion, complete() or abort().
         # Complete before new work: abort() can fail a transaction whose statement writes.
         if name not in _RESULT_METHODS:
-            self._raw.complete()
+            with interruptible(self._raw.interrupt):
+                self._raw.complete()
         kinds: set[duckdb.StatementType] = set()
         if name in _SQL_DOORS:
             kinds = self._refuse_unguardable(args[0] if args else kwargs.get("query"))
@@ -376,7 +378,8 @@ class WorkspaceConnection:
             if name in _SQL_DOORS or name in _STATEMENT_DOORS:
                 self._arm()
         try:
-            result = attribute(*args, **kwargs)
+            with interruptible(self._raw.interrupt):
+                result = attribute(*args, **kwargs)
         except duckdb.TransactionException as error:
             # A relation used on this handle may have aborted the transaction
             # outside any door; re-arm and try once more, as the statement
@@ -385,7 +388,8 @@ class WorkspaceConnection:
                 self._recover()
                 raise
             self._arm()
-            result = attribute(*args, **kwargs)
+            with interruptible(self._raw.interrupt):
+                result = attribute(*args, **kwargs)
         except duckdb.Error:
             self._recover()
             raise

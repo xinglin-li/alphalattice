@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NamedTuple
 
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 from alphalattice.kernel.live_evidence.online_sources import not_carried_tables
 from alphalattice.kernel.resources import worker_width
@@ -326,9 +327,12 @@ class AlternativeEvidenceRetrievalSession:
         Chinese query or a rerank past its deadline."""
         self.read_handles: list[str] = []
         self._references = {value.workspace_document_id: value for value in document_set.documents}
-        self._worker = ThreadPoolExecutor(
-            max_workers=worker_width(1),
-            thread_name_prefix="alternative-evidence-retrieval",
+        self._worker = execution_port().register_pool(
+            ThreadPoolExecutor(
+                max_workers=worker_width(1),
+                thread_name_prefix="alternative-evidence-retrieval",
+            ),
+            name="evidence-retrieval",
         )
         self._closed = False
 

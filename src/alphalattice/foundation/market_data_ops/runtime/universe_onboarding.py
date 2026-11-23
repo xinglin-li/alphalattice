@@ -54,6 +54,7 @@ from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.data.quality import diagnose_daily_table
 from alphalattice.kernel.data.table import coerce_daily_records
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.resources import worker_width
 
@@ -681,7 +682,9 @@ class CurrentUniverseOnboarding:
         provider_wide: list[tuple[CurrentUniverseOnboardingListing, ProviderFetchError]] = []
         if addition_pending and isinstance(self.provider, HistoricalHydrationProvider):
             width = worker_width(min(workers, len(addition_pending)))
-            with ThreadPoolExecutor(max_workers=width) as executor:
+            with execution_port().register_pool(
+                ThreadPoolExecutor(max_workers=width), name="universe-onboarding"
+            ) as executor:
                 futures: dict[
                     Future[tuple[HydrationEvidence, float]], CurrentUniverseOnboardingListing
                 ] = {

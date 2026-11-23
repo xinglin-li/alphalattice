@@ -38,6 +38,7 @@ from alphalattice.kernel.data_layer.root import (
     view_statements,
     world_table_ids,
 )
+from alphalattice.kernel.execution import child_process, execution_port, interruptible
 from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.waits import WaitTimeout, wait_until
 
@@ -112,7 +113,7 @@ class CatalogReader:
         """Execute on a fresh statement snapshot and consume it before sharing the cursor."""
         from duckdb import ConstantExpression  # lazy: the catalog needs the optional data extra
 
-        with self._lock:
+        with self._lock, interruptible(self._connection.interrupt):
             previous, name = self._plans.get(stage, ("", f"result_{len(self._plans)}"))
             if previous != query:
                 statement = query.replace("lake.", f"{self._catalog}.")
@@ -141,8 +142,9 @@ class LogReader:
         """A reader of `root`'s log views; its process starts at the first read."""
         self.root = root
         self._child: subprocess.Popen[bytes] | None = None
-        self._answers = ThreadPoolExecutor(
-            max_workers=worker_width(1), thread_name_prefix="log-reader"
+        self._answers = execution_port().register_pool(
+            ThreadPoolExecutor(max_workers=worker_width(1), thread_name_prefix="log-reader"),
+            name="log-reader",
         )
 
     def read(self, name: str, **filters: Any) -> Any:
@@ -152,11 +154,8 @@ class LogReader:
         and the next read starts another."""
         child = self._child
         if child is None or child.poll() is not None:
-            child = self._child = subprocess.Popen(
-                [sys.executable, "-m", __name__, str(self.root)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            child = self._child = child_process.start_piped(
+                [sys.executable, "-m", __name__, str(self.root)]
             )
         return _ask(child, (name, filters), self._answers, self.root)
 

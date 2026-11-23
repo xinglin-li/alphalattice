@@ -21,6 +21,7 @@ from alphalattice.control.workspace_runtime.database import (
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.kernel.data_layer.history import held, workspace_on_log
 from alphalattice.kernel.data_layer.log import uuid7
+from alphalattice.kernel.execution import execution_port, preferred_task
 from alphalattice.kernel.shared_kernel.environment import package_versions
 
 from .contracts import (
@@ -98,6 +99,19 @@ _QUEUE_HEAD = """
     SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ? AND lifecycle = 'QUEUED'
     ORDER BY admission_sequence NULLS FIRST, admitted_us, task_id LIMIT 1
 """
+_QUEUED_TASK = """
+    SELECT task_id, record_json FROM workspace_task
+    WHERE workspace_id = ? AND lifecycle = 'QUEUED' AND task_id = ?
+"""
+
+
+def _queued(connection: sqlite3.Connection, workspace_id: str) -> tuple[str, str] | None:
+    chosen = preferred_task()
+    if chosen is not None:
+        row = connection.execute(_QUEUED_TASK, [workspace_id, str(chosen)]).fetchone()
+    else:
+        row = connection.execute(_QUEUE_HEAD, [workspace_id]).fetchone()
+    return cast("tuple[str, str] | None", row)
 
 
 def task_is_unrecoverable(task: TaskRecord) -> bool:
@@ -830,7 +844,7 @@ class DuckDbTaskControlRegistry:
 
         def operation(connection):
             # The queue's head in admission order, the order the dispatcher runs them in.
-            row = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
+            row = _queued(connection, self.workspace_id)
             if row is None:
                 return None
             current = self._verified_record(str(row[0]), row[1])
@@ -888,7 +902,7 @@ class DuckDbTaskControlRegistry:
         def operation(connection) -> bool:  # type: ignore[no-untyped-def]
             current = self._task_row(connection, task_id)
             if current.lifecycle is TaskLifecycle.QUEUED:
-                head = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
+                head = _queued(connection, self.workspace_id)
                 if head is None or str(head[0]) != str(task_id):
                     return False
             elif current.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED:
@@ -1433,7 +1447,10 @@ class DuckDbTaskControlRegistry:
             )
             return task, command
 
-        return self._write(operation, control_only=True)
+        task, command = self._write(operation, control_only=True)
+        if task.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+            execution_port().cancel(task.latest_execution_id)
+        return task, command
 
     def finalize_cancel_after_writer_stopped(
         self, *, task_id: UUID, expected_task_hash: str, observed_at: datetime
@@ -2300,10 +2317,10 @@ class DuckDbTaskControlRegistry:
         return active if active is not None and active.lifecycle in _RUNNING_PLACE else None
 
     def queued_task(self) -> TaskRecord | None:
-        """The queue's head: the first Task waiting, in admission order."""
+        """The selected interactive Task or the first Task waiting in admission order."""
 
         def head(connection) -> TaskRecord | None:  # type: ignore[no-untyped-def]
-            row = connection.execute(_QUEUE_HEAD, [self.workspace_id]).fetchone()
+            row = _queued(connection, self.workspace_id)
             if row is None:
                 return None
             stored_task_id = str(row[0])
@@ -2315,6 +2332,8 @@ class DuckDbTaskControlRegistry:
                 raise TaskQueueHeadAuthorityError(stored_task_id)
             return task
 
+        if preferred_task() is not None:
+            return self._read(head)
         return self._answered("queued_task", lambda: self._read(head))
 
     def stage_receipts(self, task_id: UUID) -> tuple[TaskStageReceipt, ...]:

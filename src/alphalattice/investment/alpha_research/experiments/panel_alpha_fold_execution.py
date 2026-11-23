@@ -90,6 +90,7 @@ class PanelFeatureSourcePayload:
         )
 
     def restore(self) -> PanelFeatureSourceArrays:
+        """Restore the source with read-only arrays regardless of worker transport."""
         # Small arrays may cross the process boundary by pickle rather than
         # read-only memmap. Restore the input contract in either transport.
         for values in (

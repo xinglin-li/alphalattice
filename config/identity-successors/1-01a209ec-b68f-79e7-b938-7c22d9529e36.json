@@ -1,0 +1,167 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "6e7b10955e80fe447ea40bfbb5d0d6b44a7e412b3b9b73b55546234c44e9d752",
+   "successor": "e1409b0b25eea991d25a5f30ec83b87020655f4e6eb73588d115d5dfcef89263",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "4824b259753ec7419a39fcad9af713848aaf6483b2535236a341ab5b62b38a17",
+   "successor": "86ab4eb47b5e043196be955f57cf198e79621cee718903a943c2ce743ab0e8fd",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "53ec21bb57f8c35b7fed624e847e53d2f1a12e02b671cd6269929860eb6c8b14",
+   "successor": "8659c72d1f404cd61bee2032d7eddb928e44380422b2f3c65aff78ea71913b32",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "d036a253e4aee8554908f4f8b4ae7e46b96e3a4d42bec26ba42e6473670c3e81",
+   "successor": "5c5c6866dda6d846f8f0621b479adc19f1f7c84a78d140afcd17bef31b3e5b1c",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "be1283d831d679f654fadf60bfa2091c917804171b5a9b7e59e8547a4caad689",
+   "successor": "5fba9bab9b829426cb7cbf8041b30121324834bf374eae6a8a42a76dfbf001c5",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "f2f97712d4b1c8d28d4aaec9c6733a0a94db7b4532fb094f294e25273cbd2911",
+   "successor": "5cb8ba444af4b0c12728a3602036f887d807c82c8a963e5d5b1aa98b0c93dd4f",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b86e79f47aca20d7abbf012c76db47e56d8a085fe861710ab556ff3253e077e2",
+   "successor": "2ba74f9bc2aec5f9a69bc1620cfc7faa05184be6b3098dcb1e365bb4f346345b",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "3a6a3afb8e23809b1eb6386cc0e57b318c6a5ff5b31ed022e582dfa48077ad98",
+   "successor": "94cb8208eb86264118a4f6b9d825826fc09391f3a5996fa7495f52da632e19bb",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "13dcdf6e6e3ba3a2d1452ca0d95e23c53fc121e8b39e4128c8a9eefd10d746af",
+   "successor": "39e4b838a6792b6d3895b1d77bae8fb3b65b0c8d573bc71e8f4c8c8a3aaefd89",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "c862370fd0d832d846f8070110d6e38f16620870983ed57f8f628d801fe4562a",
+   "successor": "5b2d8b1cc8115ca4d098137bca2d8e759e3a0a1d867262f0188de87f061893aa",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "b7b9bd27d5f9eaf6fab1f1a4d5b6ad06f38c870a58521616b6f71266702ff7b0",
+   "successor": "f1b2b22d9089343e514fbaa3a0d3bf5b8c1282d7b5658038879895c05d45a55c",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "ca1178bb3fe885a34cdd738d25b0a4fd790237d14f52dd019538b582debda18e",
+   "successor": "48d7a2ac3ba70c4d7519d0b33cbaf8388d9e242e0711639d893324a792f1222f",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "478e8ad43c60083117995ec8a6e75800148b5695b32edf9bee2849c019812aa7",
+   "successor": "14f34c874d0d28364509487cb2c21a2857877e835407eaaf8de9a47a989996c8",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "c00cee854eb09f70aa2e3198af95628426f401a9d99bd767e74f7414691b5d57",
+   "successor": "23e04ae098f61cfc94b5cd75af22839b7f95f4baa95ac6f29327ac54882e67fc",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "4f05bc69ec8fc1157ff65fb1692abdbcd470cb33214345a38d9f2530d380d829",
+   "successor": "3146e1164ce52d36c69c211d589a4cdc09af6c3c2a998eb2305c5898276409ba",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "f4e81076999f3d0db60e541437de122a66ec45b2f2b27e6de041adcdd9e5fada",
+   "successor": "179e01cb9249bb0d17da4b3f735df32326fefa73d7568546940a247dbe5091c2",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "b8e2816f0d05568035f78cde9373fc69f9c33807a5583544981f43a1a7ac3a13",
+   "successor": "56ac2301835a4d9aa42cf1b4f36b3573ad1fd01e9cc56b9938468227db4fc537",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f5e4e91105c246d78d0d3910a83ce38e7c133538738214de1e2020fbb037d517",
+   "successor": "74b272670d11a19e8b4ace91a4a7249d90de52bfa3f24126b2a0a0ddff0ba3b8",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f5e4e91105c246d78d0d3910a83ce38e7c133538738214de1e2020fbb037d517",
+   "successor": "74b272670d11a19e8b4ace91a4a7249d90de52bfa3f24126b2a0a0ddff0ba3b8",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "90b9da6af24aa90ea930a6332e41c6b197f85bba83377ee5987efe582296ab02",
+   "successor": "1f972ec3c3a34e49919498ce21657f55868e88eccc6ddaa39fa39c2d6c97550e",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "8301bd01b4eb623fe73a7d15c95e0ed61c0945ea711df71d9adbf876ff2021da",
+   "successor": "89c6636c643fcf1b06280a2ebe339a4e86896919d0bb0e202dfa598182fcbaa3",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "fcf5b2593a64f04727be5c4f3b5deddc6557c747a067379e82eaa05e4d13a25f",
+   "successor": "6c8b95ccb3958cf80b4a6f050fca7e3972102d31ddb455aa40f2528560895528",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "94e126c8d81c0e56cafcd4b03352076571c6eba5d4aaa7125653d6a0e5f11baf",
+   "successor": "3f1b25337b666a73b6befa77dc4717a570da44b77b9b52fa75a186e6c13f1699",
+   "change": "Prioritize interactive Tasks and interrupt queries on cancellation",
+   "reason": "Task dispatch, cancellation and deadlines moved under one execution owner, with a running query cancelled when its task is; the development replay's first use and Daily outputs are all equal at base and head, and the restore replay matched every generated record, so these roles change fingerprint only"
+  }
+ ]
+}

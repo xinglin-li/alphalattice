@@ -604,7 +604,7 @@
       "execution_controls": [
         {
           "name": "Windows parent-owned anonymous Job",
-          "source": "src/alphalattice/kernel/shared_kernel/spawn.py::ChildJob",
+          "source": "src/alphalattice/kernel/execution/spawn.py::ChildJob",
           "expression": "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; suspended child assigned before resume",
           "scope": "lifetime ownership, not a resource quota; parent is the only Job handle owner"
         }

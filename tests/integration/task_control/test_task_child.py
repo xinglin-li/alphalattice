@@ -223,7 +223,7 @@ def _no_kept_workers():
 
 @pytest.mark.parametrize("spread", [False, True])
 @pytest.mark.parametrize("at", ["constructor", "start"])
-@pytest.mark.parametrize("error_type", [OSError, MemoryError])
+@pytest.mark.parametrize("error_type", [OSError, MemoryError], ids=lambda error: error.__name__)
 def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
     monkeypatch, spread, at, error_type
 ):

@@ -1570,6 +1570,25 @@
       "layer": "integration",
       "seconds": 10
     },
+    "execution.cancellation_matches_one_execution": {
+      "description": "A live cancellation reaches only the named execution and is scoped to that execution's lifetime.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "execution.orders_tasks_within_the_grant": {
+      "description": "Execution starts interactive work before queued background work, starts only the granted width, and terminates a cancelled, timed out or broken execution by name.",
+      "lower_layer": "The assertion coordinates actual Task work and saturation in the existing Task Control holder across concurrent executions.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "integration",
+      "seconds": 5
+    },
+    "execution.registered_pools_keep_their_workers": {
+      "description": "The execution owner lists independently registered pools, and closing one leaves the other able to run work.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "unit",
+      "seconds": 1
+    },
     "factor_research.curation_and_handoff_are_durable_without_execution": {
       "description": "If Factor curation or Alpha handoff trained a model or depended on its actor, a recorded decision would not reopen safely.",
       "owner": "alphalattice.foundation.factor_research",

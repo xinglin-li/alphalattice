@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import importlib
 import multiprocessing
-import multiprocessing.connection
 import os
 import pickle
 import sys
@@ -44,6 +43,12 @@ from typing import TYPE_CHECKING, Any
 from alphalattice.kernel import storage
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.execution import (
+    child_process,
+    execution_port,
+    stop_reason,
+    worker_cancellation,
+)
 from alphalattice.kernel.resources import (
     ResourceLease,
     cpu_width,
@@ -404,7 +409,9 @@ def _waited(
             try:
                 return submitted.future.result(timeout=POLL_SECONDS)
             except FutureTimeout:
-                if cancelled is not None and not flag.exists() and cancelled():
+                if not flag.exists() and (
+                    stop_reason() is not None or (cancelled is not None and cancelled())
+                ):
                     flag.touch()
                 progress = _progressed(submitted.pool, progress)
                 if time.monotonic() - progress[1] > WEDGED_SECONDS:
@@ -464,11 +471,14 @@ def _worker(worker: int) -> ProcessPoolExecutor:
     with _WORKER_LOCK:
         kept = _WORKERS.get(worker)
         if kept is None:
-            kept = _WORKERS[worker] = ProcessPoolExecutor(
-                max_workers=worker_width(1),
-                mp_context=multiprocessing.get_context("spawn"),
-                initializer=_worker_started,
-                initargs=(worker,),
+            kept = _WORKERS[worker] = execution_port().register_pool(
+                ProcessPoolExecutor(
+                    max_workers=worker_width(1),
+                    mp_context=multiprocessing.get_context("spawn"),
+                    initializer=_worker_started,
+                    initargs=(worker,),
+                ),
+                name="task-child",
             )
         return kept
 
@@ -498,7 +508,7 @@ def _worker_started(worker: int = 0) -> None:
     # under (`threads=None`), on which a Risk number can depend (LAWS PA3).
     if worker > 0:
         declare(Change("task-worker-start", dict.fromkeys(ONE_THREAD_VARIABLES, "1")), native=True)
-    threading.Thread(target=_watch_parent, name="parent-watch", daemon=True).start()
+    threading.Thread(target=child_process.watch_parent, name="parent-watch", daemon=True).start()
     # The worker's DuckDB driver, installed in the storage port before any call opens a file.
     from alphalattice.control.workspace_runtime import reader_threads  # lazy: the worker's own
 
@@ -549,7 +559,7 @@ def _call(
     ledger: SpanLedger | None = None
     rows: list[dict[str, Any]] = []
     try:
-        with use_resource_lease(grant):
+        with use_resource_lease(grant), worker_cancellation(flag):
             _follow_root(root)
             arguments = _held(arguments)
             module_name, _, name = target.partition(":")
@@ -659,15 +669,6 @@ def _numerical_threads(threads: int | None, *, preload_models: bool) -> Iterator
         return
     with numerical_thread_limit(threads, preload_models=preload_models):
         yield
-
-
-def _watch_parent() -> None:
-    """End this worker when its parent ends: block on the parent's sentinel, the standard
-    library's portable wait for a process to end, so no loop watches."""
-    parent = multiprocessing.parent_process()
-    if parent is not None:
-        multiprocessing.connection.wait([parent.sentinel])
-    os._exit(3)
 
 
 __all__ = [

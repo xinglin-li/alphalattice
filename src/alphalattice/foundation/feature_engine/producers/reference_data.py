@@ -37,6 +37,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     MarketDataRepository,
 )
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
 
 _REFERENCE_NAMESPACE = UUID("15bf0e17-4d4f-4a5e-8aae-026a01aa7f0d")
@@ -674,7 +675,10 @@ class SectorRefreshStager:
         if workers == 1:
             return [(listing, self._fetch_one(listing.provider_symbol)) for listing in chunk]
         by_future = {}
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sector-fetch") as pool:
+        with execution_port().register_pool(
+            ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sector-fetch"),
+            name="sector-fetch",
+        ) as pool:
             for listing in chunk:
                 by_future[pool.submit(self._fetch_one, listing.provider_symbol)] = listing
             completed = {

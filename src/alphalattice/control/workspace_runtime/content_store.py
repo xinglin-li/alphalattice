@@ -53,6 +53,7 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     full_proof,
     record_file_fact,
 )
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
 from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.environment import recorded_environment
@@ -253,9 +254,12 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
     global _VERIFIED_SOURCE_CHECK_POOL
     with _VERIFIED_SOURCE_CHECK_POOL_LOCK:
         if _VERIFIED_SOURCE_CHECK_POOL is None:
-            _VERIFIED_SOURCE_CHECK_POOL = ThreadPoolExecutor(
-                max_workers=_VERIFIED_SOURCE_CHECK_WORKERS,
-                thread_name_prefix="content-source-check",
+            _VERIFIED_SOURCE_CHECK_POOL = execution_port().register_pool(
+                ThreadPoolExecutor(
+                    max_workers=_VERIFIED_SOURCE_CHECK_WORKERS,
+                    thread_name_prefix="content-source-check",
+                ),
+                name="content-source-check",
             )
         pool = _VERIFIED_SOURCE_CHECK_POOL
     pending: list[Future[None]] = []

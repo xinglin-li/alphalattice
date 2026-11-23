@@ -63,6 +63,7 @@ from alphalattice.kernel.data_layer.root import (
     create_data_root,
     data_root,
 )
+from alphalattice.kernel.execution import interruptible
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import offline, set_duckdb_pool_width
 
@@ -291,11 +292,14 @@ def catalog_session(root: Path | None = None) -> Iterator[Any | None]:
         with _catalog_lock:
             surface = _catalog_surface(where)
             cursor = None if surface is None else surface.cursor()
+    if cursor is None:
+        yield None
+        return
     try:
-        yield cursor
+        with interruptible(cursor.interrupt):
+            yield cursor
     finally:
-        if cursor is not None:
-            cursor.close()
+        cursor.close()
 
 
 def _catalog_surface(root: Path) -> CatalogReader | None:

@@ -5,9 +5,9 @@ its record, and a hot data loop's cost with the kernel's owners plugged in.
 The rows run only in a serial run of their own (pytest-benchmark measures nothing under xdist):
     ALPHALATTICE_PERFORMANCE_RUN=1 uv run --group performance pytest -p no:xdist -m performance
         tests/integration/testing/test_performance.py --benchmark-precision=0.02
-A change that adds a kernel operation adds its row to OPERATIONS and its per-batch owner call to
-KERNEL_OWNERS as part of its own proof. Still to come with their implementations: a resource
-grant, a Task submit, a dispatch through the door, a clock read and an open through storage.
+A change that adds a kernel operation adds its row to OPERATIONS. Operations a data loop
+calls once per batch also join KERNEL_OWNERS. Still to come with their implementations:
+a resource grant, a clock read and an open through storage.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ import pytest
 
 from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel.data_layer import arrays
+from alphalattice.kernel.execution import process_execution
 from alphalattice.kernel.identity import FileDigestTrust, TrustEntry
 from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
 from devtools.testing.performance import (
@@ -72,6 +73,10 @@ def _held_check() -> Callable[[], object]:
     return lambda: trust.verified(source)
 
 
+def _dispatch_interactive() -> None:
+    process_execution().submit(lambda: None, lane="interactive").result()
+
+
 def _thin_command(request: pytest.FixtureRequest) -> Callable[[], object]:
     """`study list` through the console's own entry (`thin_cli.invoke`) as an installed console
     runs it, against a running Host: its launcher checks, the endpoint record's lookup, the request
@@ -98,6 +103,8 @@ OPERATIONS = (
     # One open, its stamp and a held entry: about 52 us on the workshop's machine (11-22, three runs
     # of 5,000); the budget holds 2x.
     Operation("a holding stat-gated fact check", _held_check(), 0.0001),
+    # The serial nightly row averaged 66 us over 9,681 rounds on this machine (11-22).
+    Operation("fast Task dispatch", _dispatch_interactive, 0.0001),
     # About 25 ms on the workshop's machine (11-22, 33 rounds, 99% interval 20 to 31 ms); the budget
     # holds 2x.
     Operation("a thin-CLI command to a running Host", _thin_command, 0.05),

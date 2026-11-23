@@ -96,6 +96,7 @@ from alphalattice.kernel.data_layer.backup import (
 )
 from alphalattice.kernel.data_layer.inputs import folder_files
 from alphalattice.kernel.data_layer.upgrade import Family
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
@@ -217,8 +218,9 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
         if len(distinct) <= 1:
             digests = {path: file_sha256(path, handle=streams[path]) for path in distinct}
         else:
-            with ThreadPoolExecutor(
-                max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))
+            with execution_port().register_pool(
+                ThreadPoolExecutor(max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))),
+                name="factor-inputs",
             ) as pool:
                 digests = dict(
                     zip(

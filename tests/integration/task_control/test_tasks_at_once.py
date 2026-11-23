@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import sys
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from threading import Barrier, Event, Thread
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Never
 from uuid import uuid4
 
 import pytest
@@ -407,3 +408,233 @@ def test_thread_limits_closing_out_of_order_never_leave_an_open_scope_unlimited(
         assert set(counts()) == {1}
         second.__exit__(None, None, None)
         assert counts() == before
+
+
+def _dispatch_case(tmp_path: Path, *, width, extra, expected) -> None:
+    runtime = tmp_path / "runtime"
+    _places(runtime, str(width))
+    execution.CpuBudgetStore(runtime).write(width, chosen_by="HUMAN", chosen_at=NOW)
+    begun = Barrier(width + 1, timeout=20)
+    release, queued_started = Event(), Event()
+    order: list[str] = []
+
+    class Held(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            if work_item.stage_id == "resolve_inputs":
+                begun.wait()
+                assert release.wait(20)
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    class Remembered(FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            if work_item.stage_id == "resolve_inputs":
+                queued_started.set()
+                order.append(task.input.payload["salt"])
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        registry.overlapping = lambda _task: True
+        dispatcher = LocalBackgroundDispatcher(
+            registry, version_moved_error=TaskTransitionRejected, workers=lambda: width
+        )
+        registry.started = dispatcher.drive_waiting
+        try:
+            active = [
+                dispatcher.submit(_Study(session, f"held-{index}", Held())).task_id
+                for index in range(width)
+            ]
+            try:
+                begun.wait()
+                queued = []
+                for lane in extra:
+                    command = _Study(session, lane, Remembered())
+                    submission = (
+                        dispatcher.admit_request(partial(dispatcher.submit, command))
+                        if lane == "interactive"
+                        else dispatcher.submit(command)
+                    )
+                    queued.append(submission.task_id)
+                assert not queued_started.is_set()
+                assert {
+                    task.task_id
+                    for task in registry.tasks()
+                    if task.lifecycle is TaskLifecycle.RUNNING
+                } == set(active)
+                assert set(TASK_LEASES.holders()) == set(active)
+            finally:
+                release.set()
+            dispatcher.drain_for_tests(timeout=20)
+            remaining = {}
+            for task_id in (*active, *queued):
+                task = registry.task(task_id)
+                if task.lifecycle is not TaskLifecycle.SUCCEEDED:
+                    remaining[task.input.payload["salt"]] = (
+                        task.lifecycle,
+                        task.failure_code,
+                        dispatcher.failure(task_id),
+                    )
+            assert remaining == {}, (remaining, order)
+        finally:
+            dispatcher.close(timeout=5)
+    assert tuple(order) == expected
+
+
+def _query_stop_case(tmp_path: Path, *, deadline: bool) -> None:
+    from concurrent.futures import Future
+    from contextlib import closing, suppress
+    from threading import Timer
+
+    import duckdb
+
+    import alphalattice.kernel.execution.cancel as cancellation
+    from alphalattice.control.workspace_runtime.database import open_workspace_database
+
+    entered, interrupted = Event(), Event()
+    raw = []
+    finished = Future()
+
+    def announce(_index: int) -> bool:
+        entered.set()
+        return True
+
+    class Query(FixtureTaskAdapter):
+        def execute_stage(self, **_arguments: Any) -> Never:
+            with closing(open_workspace_database(tmp_path / "query.duckdb", read_only=False)) as db:
+                db.execute("SET threads = 1")
+                db.create_function("announce", announce, ["BIGINT"], "BOOLEAN", side_effects=True)
+                raw.append(db._raw)
+                try:
+                    db.execute(
+                        "SELECT sum(hash(i)) FROM range(1000000000) AS work(i)"
+                        " WHERE i <> 0 OR announce(i)"
+                    ).fetchall()
+                except duckdb.InterruptException:
+                    interrupted.set()
+                    raise
+            raise AssertionError("the live query completed before its execution was stopped")
+
+    def short_timer(seconds, action, args):
+        assert 0 < seconds < float("inf")
+        return Timer(3, action, args)
+
+    with (
+        WorkspaceApplicationSession.acquire(tmp_path) as session,
+        pytest.MonkeyPatch.context() as patch,
+    ):
+        if deadline:
+            patch.setattr(cancellation, "Timer", short_timer)
+        registry = session.task_control_registry
+        envelope, goal, plan = task_contract(salt="execution-query-stop")
+        task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW).record
+        adapter = Query()
+
+        def clock():
+            return NOW + timedelta(seconds=1)
+
+        def drive() -> None:
+            try:
+                finished.set_result(session.execute_admitted(task, adapter, clock))
+            except BaseException as error:
+                finished.set_exception(error)
+
+        work = Thread(target=drive)
+        work.start()
+        try:
+            assert entered.wait(8), (
+                finished.exception() if finished.done() else "query never entered"
+            )
+            if not deadline:
+                current = registry.task(task.task_id)
+                registry.request_cancel(
+                    task_id=task.task_id,
+                    expected_task_hash=current.record_hash,
+                    observed_at=NOW + timedelta(seconds=1),
+                )
+            assert interrupted.wait(5 if deadline else 1), "DuckDB did not receive its interrupt"
+            stopped = finished.result(timeout=5)
+            assert stopped is not None
+            if deadline:
+                assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+                assert stopped.failure_code == "execution.timeout"
+            else:
+                assert stopped.lifecycle is TaskLifecycle.CANCELLED
+        finally:
+            if work.is_alive() and raw and not interrupted.is_set():
+                # A failing mutation must still release its test-owned raw query.
+                with suppress(duckdb.Error):
+                    raw[0].interrupt()
+            work.join(5)
+            assert not work.is_alive()
+
+
+def _crash_case(tmp_path: Path) -> None:
+    from alphalattice.control.task_control import child
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from tests.integration.task_control.test_task_child import HERE
+
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="execution-crashed-worker")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW).record
+
+    class CrashingStage(FixtureTaskAdapter):
+        def execute_stage(self, **_arguments: Any) -> Never:
+            child.run_in_child(f"{HERE}:ended", {})
+            raise AssertionError("the exited child returned to its stage")
+
+    adapter = CrashingStage()
+    runner = TaskControlRunner(
+        registry=registry,
+        adapters={adapter.task_kind: adapter},
+        runtime_path=str(tmp_path / "task-runtime.sqlite"),
+        clock=lambda: NOW + timedelta(seconds=1),
+    )
+    try:
+        first = child.run_in_child(f"{HERE}:doubled", {"value": 1})
+        (generation,) = child._WORKERS[0]._processes.values()
+        with pytest.raises(child.ChildInterrupted, match=r"^task_control\.child_process_ended$"):
+            runner.run_next()
+        stopped = registry.task(task.task_id)
+        assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert stopped.failure_code == "TASK_EXECUTION_INTERRUPTED"
+        interrupted = next(
+            item for item in registry.work_items(task.task_id) if item.stage_id == "resolve_inputs"
+        )
+        assert interrupted.failure_cause is not None
+        assert interrupted.failure_cause.detail == "task_control.child_process_ended"
+        assert generation.exitcode == 7 and 0 not in child._WORKERS
+
+        second = child.run_in_child(f"{HERE}:doubled", {"value": 2})
+        assert second["value"] == 4 and second["pid"] != first["pid"]
+    finally:
+        runner.close()
+        if (worker := child._WORKERS.get(0)) is not None:
+            child._retire_worker(0, worker, wait_for_exit=True)
+
+
+@pytest.mark.proves("execution.orders_tasks_within_the_grant")
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            partial(
+                _dispatch_case,
+                width=1,
+                extra=("background", "interactive"),
+                expected=("interactive", "background"),
+            ),
+            id="interactive ahead of queued background",
+        ),
+        pytest.param(
+            partial(_dispatch_case, width=4, extra=("background",), expected=("background",)),
+            id="five background Tasks on four cores",
+        ),
+        pytest.param(partial(_query_stop_case, deadline=False), id="cancel a running DuckDB query"),
+        pytest.param(partial(_query_stop_case, deadline=True), id="Task execution timeout"),
+        pytest.param(_crash_case, id="a crashed worker is replaced"),
+    ],
+)
+def test_execution_admits_tasks_in_their_lane_within_the_grant(tmp_path: Path, case) -> None:
+    case(tmp_path)

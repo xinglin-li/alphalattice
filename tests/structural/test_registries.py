@@ -855,7 +855,7 @@ def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path:
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     }
-    assert job_owners == {"src/alphalattice/kernel/shared_kernel/spawn.py"}
+    assert job_owners == {"src/alphalattice/kernel/execution/spawn.py"}
 
 
 def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(

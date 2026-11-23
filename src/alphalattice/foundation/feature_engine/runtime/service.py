@@ -134,6 +134,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import Trad
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import (
     carry_resource_lease,
     cpu_width,
@@ -533,9 +534,12 @@ class FeatureFoundationService:
                 transport_policy=self.sector_transport_policy,
                 activation_coordinator=self.sector_activation,
             )
-            sector_executor = ThreadPoolExecutor(
-                max_workers=worker_width(1),
-                thread_name_prefix="sector-refresh-coordinator",
+            sector_executor = execution_port().register_pool(
+                ThreadPoolExecutor(
+                    max_workers=worker_width(1),
+                    thread_name_prefix="sector-refresh-coordinator",
+                ),
+                name="feature-sector",
             )
             sector_future = sector_executor.submit(
                 carry_resource_lease(partial(sector_stager.acquire, observed_at=now)),

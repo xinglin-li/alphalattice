@@ -1,5 +1,6 @@
 {
 "entries": {
+"execution.timeout": {"owner": "alphalattice.kernel.execution", "category": "DEADLINE_EXCEEDED", "classification_note": "The execution reached its deadline and left its verified work available for recovery."},
 "resources.capacity_exceeded": {"owner": "alphalattice.kernel.resources", "category": "RESOURCE_EXHAUSTED", "classification_note": "The requested quantity exceeds available capacity. Reduce the request or wait for the work holding the resource to finish."},
 "resources.holder_already_leased": {"owner": "alphalattice.kernel.resources", "category": "FAILED_PRECONDITION", "classification_note": "The holder already has a grant. Finish that work and release its grant before admitting the holder again."},
 "resources.idle_thread_priority_unavailable": {"owner": "alphalattice.kernel.resources", "category": "UNAVAILABLE", "classification_note": "The platform lacks a supported idle thread priority for periodic file verification."},

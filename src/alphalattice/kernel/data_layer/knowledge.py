@@ -29,6 +29,7 @@ from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.data_layer.chain import canonical, digest
 from alphalattice.kernel.data_layer.encoders import DEADLINE_SECONDS, SHORTLIST
 from alphalattice.kernel.data_layer.log import HostLog, uuid7
+from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import carry_resource_lease, cpu_width, worker_width
 
 type Precision = Literal["float16", "int8"]
@@ -1300,7 +1301,9 @@ class NumpyVectorIndex:
     ) -> tuple[tuple[SearchHit, ...], tuple[SearchHit, ...]]:
         """Overlap FTS with matrix ranking while the caller owns both SQLite reads."""
         with self._guard:
-            with ThreadPoolExecutor(max_workers=worker_width(1)) as pool:
+            with execution_port().register_pool(
+                ThreadPoolExecutor(max_workers=worker_width(1)), name="knowledge-evidence"
+            ) as pool:
                 selected = pool.submit(
                     carry_resource_lease(partial(self._search, query, scope, limit, per_source))
                 )
