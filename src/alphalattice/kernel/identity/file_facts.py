@@ -221,6 +221,42 @@ class FileDigestTrust:
         self._keep(path, entries, key, (stamp, held))
         return held
 
+    def scrub(self, path: Path) -> bool | None:
+        """Re-prove a trusted stamp without taking the foreground reader's per-file lock.
+
+        Return whether the bytes still agree with the held digest, or None when there is
+        no stable trust fact to check. A mismatch replaces the cached digest with the actual
+        bytes' digest so that readers checking a seal refuse it. A concurrent writer's newer
+        fact wins over the scrub.
+        """
+        if not self._trusting():
+            return None
+        entries, key = self._store.place(path)
+        with self._lock:
+            expected = entries.get(key)
+        if expected is None:
+            return None
+        held_stamp, sealed_digest = expected
+        try:
+            with path.open("rb") as handle:
+                stamp = handle_stamp(handle)
+                if not self._settled(stamp):
+                    return None
+                with self._span("hash", "file_scrub"):
+                    actual = _whole(handle)
+                if handle_stamp(handle) != stamp:
+                    return None
+            if file_stamp(path) != stamp:
+                return None
+        except OSError:
+            return None
+        with self._lock:
+            if entries.get(key) != expected:
+                return None
+            if stamp == held_stamp and actual != sealed_digest:
+                entries[key] = (stamp, actual)
+        return actual == sealed_digest
+
     def _keep(
         self, path: Path, entries: MutableMapping[str, TrustEntry], key: str, entry: TrustEntry
     ) -> None:

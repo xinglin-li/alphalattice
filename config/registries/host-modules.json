@@ -92,6 +92,7 @@
     "src/alphalattice/control/product_host/maintenance/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/maintenance/daily_health.py": {"kind": "COMPOSITION", "description": "Binds the world catalog's advisory readings to the Daily Task that verified its data."},
     "src/alphalattice/control/product_host/maintenance/data_update.py": "COMPOSITION",
+    "src/alphalattice/control/product_host/maintenance/file_trust_scrub.py": {"kind": "COMPOSITION", "description": "Connects the Host idle wake to the workspace file trust verifier."},
     "src/alphalattice/control/product_host/maintenance/signals.py": "COMPOSITION",
     "src/alphalattice/control/product_host/publication/__init__.py": "COMPOSITION",
     "src/alphalattice/control/product_host/publication/goals.py": "COMPOSITION",

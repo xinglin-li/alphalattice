@@ -1206,6 +1206,77 @@ def _racy_rewrite(facts, target, clock, tmp_path, monkeypatch) -> str:
     return facts.file_sha256(target)
 
 
+def _file_scrub(facts, workspace):
+    from datetime import UTC, datetime, timedelta
+
+    return facts.FileTrustScrub(
+        workspace, clock=lambda: datetime(2026, 11, 22, tzinfo=UTC), period=timedelta(days=7)
+    )
+
+
+def _scrubbed_rewrite(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    target.write_bytes(b"two")
+    clock.settle(target)
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    receipt = json.loads((workspace / facts.FILE_TRUST_SCRUB).read_bytes())
+    assert (receipt["checked"], receipt["mismatches"]) == (1, 1)
+    assert not facts.sealed_file_holds(target, _ONE)
+    return facts.file_sha256(target)
+
+
+def _scrub_interrupted_append(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    captured = Event()
+    release = Event()
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    clock.settle(other)
+    stamp = file_stamp(target)
+    real_stamp = digests.handle_stamp
+    monkeypatch.setattr(
+        digests,
+        "handle_stamp",
+        lambda handle: stamp if Path(handle.name) == target else real_stamp(handle),
+    )
+    target.write_bytes(b"two")
+    assert facts.file_sha256(target) == _ONE
+    open_path = Path.open
+    journal = workspace / facts.FILE_TRUST
+    appends = 0
+
+    def interrupt(path, mode="r", **kwargs):
+        nonlocal appends
+        if path == journal and mode == "a":
+            appends += 1
+            if appends == 2:  # the mismatch invalidation after the scan's opening record
+                captured.set()
+                assert release.wait(5)
+                raise OSError("trust journal unavailable")
+        return open_path(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "open", interrupt)
+    scrub = _file_scrub(facts, workspace)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        interrupted = pool.submit(scrub.run, lambda: True)
+        try:
+            assert captured.wait(5)
+            assert pool.submit(facts.file_sha256, other).result(timeout=2) == _ONE
+        finally:
+            release.set()
+        with pytest.raises(OSError, match="trust journal unavailable"):
+            interrupted.result(timeout=5)
+    assert not facts.sealed_file_holds(target, _ONE)
+    assert not (workspace / facts.FILE_TRUST_SCRUB).exists()
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert not facts.sealed_file_holds(target, _ONE)
+    return facts.file_sha256(target)
+
+
 def _mtime_changed(facts, target, clock, tmp_path, monkeypatch) -> str:
     facts.record_sealed_file(target, _ONE)
     stat = target.stat()
@@ -1279,6 +1350,58 @@ def _backup(facts, target, clock, tmp_path, monkeypatch) -> str:
     return backup._file_digest(target, "sha256").removeprefix("sha256:")
 
 
+def _scrub_yields_between_files(facts, target, clock, tmp_path, monkeypatch) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    workspace = target.parent.parent
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    for path in (target, other):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+
+    today = datetime(2026, 11, 22, tzinfo=UTC)
+    period = timedelta(days=7)
+    scrub = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    hash_bytes = digests.integrity_sha256_stream
+    seen = []
+    idle = False
+
+    def task_arrives(handle):
+        nonlocal idle
+        seen.append(handle.name)
+        idle = False
+        return hash_bytes(handle)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", task_arrives)
+    assert not scrub.run(lambda: idle)
+    with override(Change("file-trust-off", {"ALPHALATTICE_FILE_TRUST": "0"})):
+        assert scrub.run(lambda: True)
+    assert seen == []
+    idle = True
+    assert not scrub.run(lambda: idle)
+    assert len(seen) == 1
+    idle = True
+    assert scrub.run(lambda: idle)
+    assert set(seen) == {str(target), str(other)}
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert facts.file_sha256(target) == _ONE
+
+    restarted = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    assert restarted.run(lambda: True)
+    assert len(seen) == 2
+    today += period
+    idle = True
+    assert not restarted.run(lambda: idle)
+    assert len(seen) == 3
+    restarted = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    assert restarted.run(lambda: True)
+    assert len(seen) == 5
+    assert set(seen[-2:]) == {str(target), str(other)}
+    return facts.file_sha256(target)
+
+
 # Each input, the trust record's hashes it costs (a writer's hash of the file it renamed into
 # place included, backup's own hashlib digest not) and the digest its last read gives.
 _TRUST_TABLE = {
@@ -1292,6 +1415,9 @@ _TRUST_TABLE = {
     "a writer's digest of bytes the path does not hold": (_foreign_write, 2, _ONE),
     "edited in place while its writer hashes it": (_edited_while_hashed, 2, _TWO),
     "backup": (_backup, 3, _TWO),
+    "scrub detects a settled changed stamp": (_scrubbed_rewrite, 3, _TWO),
+    "scrub interruption leaves no stale journal on restart": (_scrub_interrupted_append, 4, _TWO),
+    "scrub yields between files and keeps its period": (_scrub_yields_between_files, 7, _ONE),
 }
 
 

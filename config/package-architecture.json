@@ -759,6 +759,7 @@
     "alphalattice.control.product_host.data_preparation.model_training": "Read, prepare or recover model training inputs.",
     "alphalattice.control.product_host.data_preparation.remediation": "Read or act on a workspace data issue.",
     "alphalattice.control.product_host.data_preparation.research_strategy": "Read, prepare or recover the workspace Strategy.",
+    "alphalattice.control.product_host.maintenance.file_trust_scrub": "Start periodic file verification when the Host enables retained file trust.",
     "alphalattice.control.product_host.publication.portfolio_research": "Open the ledger of saved Portfolio studies when the workspace holds one.",
     "alphalattice.control.product_host.research_authoring.input_revisions": "Resolve the exact research input when an Evidence setup selects one.",
     "alphalattice.control.product_host.research_authoring.risk_reports": "Link Risk reports when a research reader asks for them.",

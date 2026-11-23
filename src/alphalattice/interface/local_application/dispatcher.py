@@ -339,6 +339,11 @@ class LocalBackgroundDispatcher:
         with self._lock:
             return sorted(str(task_id) for task_id in self._executing)
 
+    def tasks_idle(self) -> bool:
+        """Observe an idle turn without reserving a worker or its admission lock."""
+        with self._lock:
+            return not (self._closed or self._running or self._waiting)
+
     def _idle_busy(self) -> bool:
         """Read the current busy facts while the caller holds the admission lock."""
         return any(

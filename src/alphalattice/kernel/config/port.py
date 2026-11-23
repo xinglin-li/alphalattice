@@ -15,10 +15,12 @@ from typing import Protocol, overload
 CPU_SHARE = "OMP_NUM_THREADS"
 NETWORK_DISABLED = "ALPHALATTICE_NETWORK_DISABLED"
 RETENTION_DAYS = "ALPHALATTICE_RETENTION_DAYS"
+FILE_SCRUB_DAYS = "ALPHALATTICE_FILE_SCRUB_DAYS"
 
 _PUBLIC_NAMES = frozenset(
     {
         CPU_SHARE,
+        FILE_SCRUB_DAYS,
         NETWORK_DISABLED,
         RETENTION_DAYS,
         "ALPHALATTICE_BACKUP_ROOT",
@@ -62,6 +64,7 @@ class Settings:
     cpu_cores: int | None
     retention_days: int | None
     network_disabled: bool
+    file_scrub_days: int = 7
 
     @classmethod
     def from_values(cls, values: Mapping[str, str]) -> Settings:
@@ -70,6 +73,7 @@ class Settings:
             cpu_cores=_count(values.get(CPU_SHARE, "")),
             retention_days=_count(values.get(RETENTION_DAYS, "")),
             network_disabled=values.get(NETWORK_DISABLED) == "1",
+            file_scrub_days=_count(values.get(FILE_SCRUB_DAYS, "")) or 7,
         )
 
 

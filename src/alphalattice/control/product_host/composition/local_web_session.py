@@ -1055,6 +1055,7 @@ class LocalPortfolioWebSession:
         if not self.resumed_task_ids:
             # A Host that starts idle sweeps as one that went idle would.
             self.operations.sweep_if_due()
+        self.operations.start_file_scrub()
         self.operations.supervisor.start()
         self.forward_prewarm.start()
         # A note a stopped Host left unrendered, or one a changed renderer rewrites, is rendered
@@ -1344,6 +1345,7 @@ class LocalPortfolioWebSession:
             quiet = self.forward_prewarm.close(timeout=timeout) and quiet
         if self.operations is not None:
             self.operations.supervisor.stop()
+            quiet = self.operations.stop_file_scrub(timeout) and quiet
         if self.operations is not None and (automation := self.operations._automation) is not None:
             quiet = automation.close(timeout=timeout) and quiet
         if self.dispatcher is not None:

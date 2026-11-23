@@ -280,6 +280,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
+from alphalattice.kernel.shared_kernel.environment import file_trust
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
@@ -349,6 +350,7 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.maintenance.data_update import (
         WorkspaceDataUpdateApplication,
     )
+    from alphalattice.control.product_host.maintenance.file_trust_scrub import IdleFileTrustScrub
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineStore,
     )
@@ -651,6 +653,7 @@ class PortfolioResearchOperations:
     _sweep: StudyVerificationSweep | None = field(
         init=False, default=None, repr=False, metadata={"owner": "sweep"}
     )
+    _file_scrub: IdleFileTrustScrub | None = field(init=False, default=None, repr=False)
     _evidence_install: EvidenceInstall | None = field(
         init=False, default=None, repr=False, metadata={"owner": "evidence_install"}
     )
@@ -1177,6 +1180,25 @@ class PortfolioResearchOperations:
         self.sweep_if_due()
         self._take_backup()
         self._maintain_catalog()
+        if self._file_scrub is not None:
+            self._file_scrub.idle()
+
+    def start_file_scrub(self) -> None:
+        """Start the proof worker only when the workspace uses retained file trust."""
+        if self._file_scrub is None and file_trust():
+            from ..maintenance.file_trust_scrub import (  # lazy: retained trust enabled.
+                IdleFileTrustScrub,
+            )
+
+            scrub = IdleFileTrustScrub(self.workspace_session.workspace, self.dispatcher)
+            scrub.start()
+            self._file_scrub = scrub
+            # The last resumed Task can return as the worker starts.
+            scrub.idle()
+
+    def stop_file_scrub(self, timeout: float | None) -> bool:
+        """Finish the current proof slice before the Host releases its workspace."""
+        return self._file_scrub is None or self._file_scrub.close(timeout)
 
     def _maintain_catalog(self) -> None:
         """Use the writer and backup holds after Tasks and automatic backup."""

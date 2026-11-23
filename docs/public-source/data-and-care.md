@@ -17,6 +17,8 @@ Maintenance follows exchange sessions and settlement policy; recent provider bar
 
 An older workspace's sessions generated from the pinned calendar rules remain reference data for historical reads. Their rule origin and version are retained. Recorded source observations keep their own times, and later calendar corrections become visible from their later knowledge time.
 
+The Host periodically rechecks the file digests it keeps for the workspace. It works between Tasks and yields after the current file when a Task arrives. The last completed check records how many files it checked, skipped and found different in `runtime/file-trust-scrub.json`. The period defaults to seven days. Set `ALPHALATTICE_FILE_SCRUB_DAYS` to a positive whole number of days to change it. With `ALPHALATTICE_FILE_TRUST=0`, reads hash the files they need and the idle check stays off. After an interrupted scrub or a mismatch, the next Host rechecks file bytes before trusting earlier digests.
+
 ## Backup and restore
 
 ```powershell

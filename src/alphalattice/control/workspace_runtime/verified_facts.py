@@ -25,12 +25,15 @@ store that predates the year-fact table holds none until its first writer create
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import datetime, timedelta
 from io import BufferedReader
 from pathlib import Path
 from threading import Lock
@@ -39,6 +42,7 @@ from typing import BinaryIO, cast
 import duckdb
 
 from alphalattice.control.workspace_runtime.database import table_columns
+from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.kernel import storage
 from alphalattice.kernel.clock import wall_time, wall_time_ns
 from alphalattice.kernel.identity import (
@@ -50,11 +54,16 @@ from alphalattice.kernel.identity import (
     integrity_sha256_stream,
 )
 from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
 from alphalattice.kernel.shared_kernel.environment import file_trust
 from alphalattice.kernel.shared_kernel.spans import span
 
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 FILE_TRUST = Path("runtime") / "file-trust.jsonl"
+FILE_TRUST_SCRUB = Path("runtime") / "file-trust-scrub.json"
+_SCRUB_STARTED = '"scrub-start-v1"'
+_SCRUB_CHECKED = '"scrub-checked-v1"'
+_SCRUB_DISCARDED = '"scrub-discard-v1"'
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_KIND = "\x00content-v1:"
 _FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
@@ -78,6 +87,11 @@ _TRUSTED_PROCESS: BoundedMemo[str, TrustEntry] = BoundedMemo()
 class _TrustJournal:
     """The trust record's store: a kept workspace's map and journal, else the process map."""
 
+    def __init__(self) -> None:
+        """Serialize durable writes separately from the in-memory trust lookup."""
+        self._writer = Lock()
+        self._pending: dict[tuple[Path, str], TrustEntry] = {}
+
     def place(self, path: Path) -> tuple[MutableMapping[str, TrustEntry], str]:
         absolute = Path(os.path.abspath(path))
         with _LOCK:
@@ -90,12 +104,41 @@ class _TrustJournal:
         absolute = Path(os.path.abspath(path))
         with _LOCK:
             root = next((root for root in _TRUSTED if absolute.is_relative_to(root)), None)
-            if root is not None:
+            if root is None or _TRUSTED[root].get(key) != entry:
+                return
+            self._pending[root, key] = entry
+            acquired = self._writer.acquire(blocking=False)
+        if acquired:
+            self._flush()
+
+    def mark_scrub(self, workspace: Path, marker: str) -> None:
+        """Seal the scan's journal boundary before hashing or advancing its cadence."""
+        if not self._writer.acquire(blocking=False):
+            raise BlockingIOError(errno.EBUSY, os.strerror(errno.EBUSY))
+        try:
+            _append(workspace / FILE_TRUST, "\n" + marker + "\n", durable=True)
+        finally:
+            self._flush()
+
+    def _flush(self) -> None:
+        # Write one batch. New arrivals stay queued for the next journal advance.
+        try:
+            with _LOCK:
+                pending = {
+                    (root, key): entry
+                    for (root, key), entry in self._pending.items()
+                    if (kept := _TRUSTED.get(root)) is not None and kept.get(key) == entry
+                }
+                self._pending.clear()
+            for (root, key), entry in pending.items():
                 _append(root / FILE_TRUST, _trust_line((key, entry)))
+        finally:
+            self._writer.release()
 
 
+_TRUST_JOURNAL = _TrustJournal()
 _DIGEST_TRUST = FileDigestTrust(
-    store=_TrustJournal(),
+    store=_TRUST_JOURNAL,
     lock=_LOCK,
     span=span,
     time_ns=lambda: wall_time_ns(),
@@ -240,13 +283,27 @@ def _journal(
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         lines = []
+    trust_journal = path.name == FILE_TRUST.name
+    incomplete = False
     for text in lines:
+        if trust_journal and text == _SCRUB_STARTED:
+            if incomplete:
+                entries.clear()  # an earlier process did not seal its scan
+            incomplete = True
+            continue
+        if trust_journal and text in {_SCRUB_CHECKED, _SCRUB_DISCARDED}:
+            if text == _SCRUB_DISCARDED:
+                entries.clear()
+            incomplete = False
+            continue
         try:
             key, value = entry(json.loads(text))
         except (ValueError, TypeError):
             continue  # a damaged or older line costs that file one full digest
         entries.pop(key, None)
         entries[key] = value
+    if incomplete:
+        entries.clear()
     # A changing file must not leave an unbounded series of keys in the journal.
     capacity = _PROCESS.capacity
     if len(lines) > 2 * min(len(entries), capacity) + 1024:
@@ -277,13 +334,18 @@ def _trust_entry(row: list[object]) -> tuple[str, TrustEntry]:
     return str(path), (stamp, digest)
 
 
-def _append(journal: Path, line: str) -> None:
+def _append(journal: Path, line: str, *, durable: bool = False) -> None:
     try:
         journal.parent.mkdir(parents=True, exist_ok=True)
         with journal.open("a", encoding="utf-8") as log:
             log.write(line)
+            if durable:
+                log.flush()
+                os.fsync(log.fileno())
     except OSError:
-        pass  # kept for this process; the next one digests the file again
+        if durable:
+            raise
+        # Rebuildable facts stay in this process if the journal cannot take them.
 
 
 def _content_kind(kind: str, digest: str) -> str:
@@ -339,6 +401,87 @@ def record_sealed_file(path: Path, sha256: str) -> None:
     """Record, as its writer after the atomic rename, that `path` now holds the bytes it wrote,
     whose SHA-256 is `sha256`, so no read hashes them again while the file's stamp holds."""
     _DIGEST_TRUST.written(path, sha256)
+
+
+class FileTrustScrub:
+    """Re-prove a kept workspace's trust records one file at a time."""
+
+    def __init__(
+        self, workspace: Path, *, clock: Callable[[], datetime], period: timedelta
+    ) -> None:
+        """Restore the workspace's completed cadence and start with no in-flight scan."""
+        self.workspace = Path(os.path.abspath(workspace))
+        self.clock, self.period = clock, period
+        now = clock()
+        self.next_due = now
+        try:
+            receipt = resolve_confined(self.workspace, FILE_TRUST_SCRUB.as_posix())
+            finished = datetime.fromisoformat(json.loads(receipt.read_bytes())["finished_at"])
+            if finished.tzinfo is not None and finished <= now:
+                self.next_due = finished + period
+        except (OSError, ValueError, KeyError, TypeError, WorkspaceSecurityError):
+            pass  # absent or unreadable cadence evidence makes a scrub due
+        self._remaining: deque[str] | None = None
+        self._journal_open = False
+        self._checked = self._skipped = self._mismatches = 0
+        self._first_mismatch: str | None = None
+
+    def run(self, available: Callable[[], bool]) -> bool:
+        """Perform a due scrub, returning False if it yields to foreground work."""
+        if not file_trust() or self.clock() < self.next_due:
+            return True
+        if not available():
+            return False
+        if self._remaining is None:
+            with _LOCK:
+                remaining = deque(_TRUSTED.get(self.workspace, ()))
+            _TRUST_JOURNAL.mark_scrub(self.workspace, _SCRUB_STARTED)
+            self._journal_open = True
+            self._remaining = remaining
+            self._checked = self._skipped = self._mismatches = 0
+            self._first_mismatch = None
+        while self._remaining:
+            if not available():
+                return False
+            relative = self._remaining.popleft()
+            try:
+                result = _DIGEST_TRUST.scrub(resolve_confined(self.workspace, relative))
+            except (OSError, WorkspaceSecurityError):
+                result = None
+            if result is None:
+                self._skipped += 1
+                continue
+            self._checked += 1
+            if not result:
+                self._mismatches += 1
+                if self._first_mismatch is None:
+                    self._first_mismatch = relative
+        self._finish()
+        return True
+
+    def _finish(self) -> None:
+        if self._journal_open:
+            # A detected mismatch makes the old durable cache unusable on restart.
+            marker = _SCRUB_DISCARDED if self._mismatches else _SCRUB_CHECKED
+            _TRUST_JOURNAL.mark_scrub(self.workspace, marker)
+            self._journal_open = False
+        finished = self.clock()
+        receipt = {
+            "finished_at": finished.isoformat(),
+            "checked": self._checked,
+            "skipped": self._skipped,
+            "mismatches": self._mismatches,
+            "first_mismatch": self._first_mismatch,
+        }
+        target = resolve_confined(self.workspace, FILE_TRUST_SCRUB.as_posix())
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staged = resolve_confined(
+            self.workspace, FILE_TRUST_SCRUB.with_suffix(".partial").as_posix()
+        )
+        staged.write_text(json.dumps(receipt, separators=(",", ":")) + "\n", encoding="utf-8")
+        os.replace(staged, target)
+        self._remaining = None
+        self.next_due = finished + self.period
 
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:

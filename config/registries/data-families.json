@@ -3129,6 +3129,7 @@
       "bytes": null,
       "writers": [
         "identity.file_facts:FileDigestTrust",
+        "workspace_runtime.verified_facts:FileTrustScrub",
         "workspace_runtime.verified_facts:_append",
         "workspace_runtime.verified_facts:_journal"
       ],
@@ -3140,6 +3141,7 @@
         "feature_engine.storage.repositories",
         "market_data_ops.storage.duckdb",
         "product_host.composition.strategy_score_inputs",
+        "product_host.composition.verification_sweep",
         "workspace_runtime.content_store",
         "workspace_runtime.writer_lease"
       ]
