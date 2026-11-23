@@ -316,7 +316,10 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
                     reads.clear()
                 _session(monkeypatch, "codex", session)
                 cli.main(_research(live, tmp_path), serve=lambda _: 99)
-                notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+                answer = json.loads(capsys.readouterr().out)
+                data = answer["data"]
+                assert isinstance(data, dict), answer
+                notice = data["session_binding"]
                 assert notice["status"] == "BOUND_IN_WORKSPACE", notice
                 assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
         key = ("codex", "sandboxed")
@@ -326,7 +329,9 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
         for block_read in (True, False):
             read_blocked = block_read
             cli.main(_research(live, tmp_path), serve=lambda _: 99)
-            recovered = json.loads(capsys.readouterr().out)["data"]
+            answer = json.loads(capsys.readouterr().out)
+            recovered = answer["data"]
+            assert isinstance(recovered, dict), answer
         assert recovered.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
     finally:
         native_setup.configure_binding_memo()

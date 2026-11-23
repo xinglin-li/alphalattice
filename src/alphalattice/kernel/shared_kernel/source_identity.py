@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import ast
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path, PurePosixPath
@@ -33,6 +35,23 @@ _PHYSICAL_NAMESPACE_GROUPS = frozenset(
         "protocols",
     }
 )
+
+
+_SOURCE_ADMISSION: ContextVar[Callable[[], None] | None] = ContextVar(
+    "source_read_admission", default=None
+)
+
+
+@contextmanager
+def source_read_admission(check: Callable[[], None]) -> Iterator[None]:
+    """Check admission before, between and after the source reads."""
+    check()
+    token = _SOURCE_ADMISSION.set(check)
+    try:
+        yield
+    finally:
+        _SOURCE_ADMISSION.reset(token)
+    check()
 
 
 def source_component_id(*, package_id: str, source_path: Path) -> str:
@@ -239,11 +258,14 @@ def _walked[T](
     found: dict[str, T] = {}
     visited = set(excluded)
     pending = list(entries)
+    check_admission = _SOURCE_ADMISSION.get()
     while pending:
         module = pending.pop()
         if module in visited:
             continue
         visited.add(module)
+        if check_admission is not None:
+            check_admission()
         path = _module_file(source, module)
         if path is None:
             if module in entries:

@@ -282,6 +282,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 )
 from alphalattice.kernel.shared_kernel.environment import file_trust
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.source_identity import source_read_admission
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
@@ -3313,7 +3314,8 @@ class PortfolioResearchOperations:
         # A preview's cache state can change after publication (or tamper).
         # Revalidate through the existing read-only owner once per RUN; pass the
         # resulting authorities to admission rather than resolving them again.
-        planned = self.application.plan(spec)
+        with source_read_admission(self.dispatcher.check_task_admission):
+            planned = self.application.plan(spec)
         # The one reuse rule, which the standalone script's run keeps too.
         reused = self.application.reused(spec, planned)
         if reused is not None:

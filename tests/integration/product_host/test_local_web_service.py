@@ -765,37 +765,81 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
         log.close()
 
 
-def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSession) -> None:
-    "A request thread is a writer, so stopping waits for it rather than past it."
-    entered = threading.Event()
-    release = threading.Event()
+@pytest.mark.parametrize("held", ["handler", "source"])
+def test_shutdown_joins_a_slow_authenticated_handler(
+    live: LocalPortfolioWebSession, monkeypatch, held: str
+) -> None:
+    """The Host waits for a live request and can refuse a RUN still reading its sources."""
+    entered, release = threading.Event(), threading.Event()
     order: list[str] = []
+    answers: list[tuple[int, dict[str, str], bytes]] = []
 
-    def _slow(_query: object, _payload: object) -> object:
+    def slow_handler(_query: object, _payload: object) -> object:
         entered.set()
-        release.wait(timeout=20.0)
+        assert release.wait(10)
         order.append("handler")
         return {"slow": True}
 
-    live.web.application.route("GET", "/api/qa-slow")(_slow)
-    caller = threading.Thread(target=lambda: _request(live, "/api/qa-slow"), daemon=True)
-    caller.start()
-    assert entered.wait(timeout=20.0)
+    def call():
+        if held == "handler":
+            answers.append(_request(live, "/api/qa-slow"))
+        else:
+            answers.append(_request(live, "/api/run", method="POST", payload={"spec": {}}))
 
-    def _stop() -> None:
+    def stop() -> None:
         live.stop()
         order.append("stop")
 
-    stopper = threading.Thread(target=_stop, daemon=True)
-    stopper.start()
-    time.sleep(0.4)
-    assert stopper.is_alive()
-    assert live.session is not None
-    release.set()
-    stopper.join(timeout=30.0)
-    caller.join(timeout=30.0)
-    assert not stopper.is_alive()
-    assert order == ["handler", "stop"], order
+    live.web.application.route("GET", "/api/qa-slow")(slow_handler)
+    if held == "source":
+        from alphalattice.kernel.shared_kernel import source_identity
+
+        source_package = Path(source_identity.__file__).resolve().parents[2]
+        is_file = Path.is_file
+
+        def finish_one_source_read(path):
+            present = is_file(path)
+            if (
+                present
+                and threading.current_thread().name == "local-web-request"
+                and path.suffix == ".py"
+                and path.is_relative_to(source_package)
+            ):
+                if entered.is_set():
+                    raise ValueError("qa.source_read_continued")
+                entered.set()
+                assert release.wait(10)
+            return present
+
+        monkeypatch.setattr(Path, "is_file", finish_one_source_read)
+
+    dispatcher = live.dispatcher
+    before = dispatcher.admissions
+    caller = threading.Thread(target=call, daemon=True)
+    stopper = threading.Thread(target=stop, daemon=True)
+    caller.start()
+    try:
+        assert entered.wait(10)
+        dispatcher._begin_drain()
+        stopper.start()
+        stopper.join(0.1)
+        assert stopper.is_alive() and live.session is not None
+    finally:
+        release.set()
+        caller.join(15)
+        if stopper.ident is not None:
+            stopper.join(15)
+    assert not caller.is_alive() and not stopper.is_alive()
+    status, _, raw = answers[0]
+    if held == "source":
+        answer = json.loads(raw)
+        assert answer.get("failure_code") == "local_application.dispatcher_closed", answer
+        assert status == 400 and answer["status"] == "REFUSED"
+        assert dispatcher.admissions == before
+        assert order == ["stop"]
+    else:
+        assert status == 200
+        assert order == ["handler", "stop"]
     assert live.web is None
     assert live.session is None
 

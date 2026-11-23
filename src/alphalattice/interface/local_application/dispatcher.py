@@ -348,6 +348,11 @@ class LocalBackgroundDispatcher:
         if self._foreground_wake is not None and self._foreground_idle():
             self._foreground_wake()
 
+    def check_task_admission(self) -> None:
+        """Refuse read-only preparation while stopping, before a Task has its lease."""
+        if self.closing:
+            raise _DispatcherClosed("local_application.dispatcher_closed")
+
     def _begin_drain(self) -> None:
         """Refuse new top-level work while admitted handoffs finish."""
         with self._lock:
