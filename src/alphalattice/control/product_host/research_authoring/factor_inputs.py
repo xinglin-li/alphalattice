@@ -39,6 +39,7 @@ from alphalattice.control.research_program.authoring.workflow import ResearchPro
 from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_aside
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
+from alphalattice.control.workspace_runtime.database import release_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
@@ -185,7 +186,9 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     the pooled DuckDB object and the bundle's link to it -- are read once
     and answer the same digest, because one object holds one set of bytes
     while it is held open; a platform that reports no object identity reads
-    every path itself. Hashing releases the interpreter lock, so the objects
+    every path itself. A workspace database this process keeps open between its
+    connections is let go first: its open instance denies other reads on Windows.
+    Hashing releases the interpreter lock, so the objects
     of one verification are read in parallel.
 
     The boundary of what a returned digest states: at the end of the call
@@ -198,6 +201,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     with ExitStack() as stack:
         streams: dict[Path, BinaryIO] = {}
         for path in ordered:
+            release_workspace_database(path)  # an instance of the file this process keeps open
             try:
                 streams[path] = stack.enter_context(path.open("rb"))
             except FileNotFoundError as error:

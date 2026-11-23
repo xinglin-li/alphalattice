@@ -115,7 +115,7 @@ def seal_epoch(path: Path) -> str:
     again. A read-only open records nothing; one that finds the file moved holds a token of its
     own. With no instance open, no seal vouches.
     """
-    held = _EPOCHS.get(Path(path).resolve())
+    held = _EPOCHS.get(_book_key(Path(path)))
     return held[0] if held is not None else secrets.token_hex(16)
 
 
@@ -739,6 +739,19 @@ handles closing at once may do so in either order -- the first to leave the book
 the last to let go of the file, after the other's mark would have been lifted."""
 
 
+def _book_key(path: Path) -> Path:
+    """The file's one key in these books, which is also the path the engine opens: resolved, a
+    Windows extended drive-letter or UNC path (``\\\\?\\D:\\``, ``\\\\?\\UNC\\``) in its ordinary
+    spelling, so it names the instance an ordinary one opened. Any other device path (a volume
+    GUID's) has no ordinary spelling and stays as it resolved."""
+    text = str(path.resolve())
+    if text.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + text[8:])
+    if text.startswith("\\\\?\\") and text[4:5].isalpha() and text[5:7] == ":\\":
+        return Path(text[4:])
+    return Path(text)
+
+
 def _held(path: Path) -> bool:
     """Whether the file's instance is kept between its connections: a hold on it, or a session
     keeping every file. Must be called under `_STATE`."""
@@ -979,7 +992,7 @@ def open_workspace_database(
     and a writable request inside a read-only unit is refused by name.
     Outside a retention the request is served as ``_acquire`` describes.
     """
-    resolved = path.resolve()
+    resolved = _book_key(path)
     me = threading.get_ident()
     with _STATE:
         retention = _RETENTIONS.get((resolved, me))
@@ -1016,7 +1029,7 @@ def retain_workspace_database(
     without waiting, so a stage may keep one across its network edges while
     its units still release the write gate at each edge.
     """
-    resolved = path.resolve()
+    resolved = _book_key(path)
     key = (resolved, threading.get_ident())
     scope = object()
     with _STATE:
@@ -1054,7 +1067,7 @@ def hold_workspace_database(path: Path) -> Iterator[None]:
     process (`hand_off`); and when a writer meets a kept read-only instance. While a Host's
     session keeps every file (`keep_workspace_databases`), the last scope's end leaves the
     instance kept."""
-    resolved = path.resolve()
+    resolved = _book_key(path)
     with _STATE:
         _HOLDS[resolved] = _HOLDS.get(resolved, 0) + 1
     try:
@@ -1074,7 +1087,7 @@ def hold_workspace_database(path: Path) -> Iterator[None]:
 def release_workspace_database(path: Path) -> None:
     """Close the file's kept instance (`hold_workspace_database`), as another DuckDB instance of
     this process must before it attaches the file; the next opener opens it again."""
-    _let_go(path.resolve())
+    _let_go(_book_key(path))
 
 
 def hand_off() -> Callable[[], None]:
@@ -1165,7 +1178,7 @@ def table_columns(connection: duckdb.DuckDBPyConnection, table: str) -> tuple[tu
 def retained_workspace_database(path: Path) -> bool:
     """Whether the calling thread currently retains this file (for tests and probes)."""
     with _STATE:
-        return (path.resolve(), threading.get_ident()) in _RETENTIONS
+        return (_book_key(path), threading.get_ident()) in _RETENTIONS
 
 
 class LiveConnections(NamedTuple):
@@ -1178,7 +1191,7 @@ class LiveConnections(NamedTuple):
 
 def live_workspace_connections(path: Path) -> LiveConnections | None:
     """The tracked instance's mode, top-level connection count and waiting writers."""
-    resolved = path.resolve()
+    resolved = _book_key(path)
     with _STATE:
         instance = _INSTANCES.get(resolved)
         if instance is None:

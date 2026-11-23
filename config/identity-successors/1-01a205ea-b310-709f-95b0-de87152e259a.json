@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "781a6395cf07ff7abbfe4246fa58d671639611fb1fa16005f703a3c6ec69e93c",
+   "successor": "dc3554d0dc2786f34e9b689cfef2a4b037ca4fde324acb2bd267c2b794028158",
+   "change": "On Windows, research inputs no longer fail on an open market database",
+   "reason": "Two product-host roles move only through the factor-input source, which now reads market data through the workspace session's file handoff on Windows; their answered values are unchanged and the development replay reads all 185,251 records equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "976203f9519848d2f53bce15b8d6b03b7aab4a4e03de958e3329f9168a0c0076",
+   "successor": "586325193af22dc1f7518f67ffa2800b2d63337e69c16434dbd135d7ddffcbc8",
+   "change": "On Windows, research inputs no longer fail on an open market database",
+   "reason": "Two product-host roles move only through the factor-input source, which now reads market data through the workspace session's file handoff on Windows; their answered values are unchanged and the development replay reads all 185,251 records equal."
+  }
+ ]
+}

@@ -595,7 +595,10 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             ),
         )
         return
-    seconds = sum(phases.values())
+    # A library's first import, paid by whichever test triggers it first, is no test's own cost.
+    imported = item.stash[CONTRACT].library_import_seconds
+    seconds = max(0.0, sum(phases.values()) - imported)
+    item.user_properties.append(("library_import_seconds", imported))
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
     held = dict(item.user_properties)  # a unit test's own phases keep to its size's speed budget,

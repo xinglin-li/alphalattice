@@ -769,6 +769,7 @@ SESSION_CASES = {
         "close-cannot-keep",
         "release-meets-a-close",
         "hand-off-meets-a-close",
+        "release-by-another-spelling",
         "session-reads-in-one-task",
         "session-a-second-data-root",
         "session-a-reader-after-a-writer",
@@ -790,8 +791,8 @@ def test_a_held_file_is_released_where_another_reader_needs_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
 ) -> None:
     """A held file keeps one instance between its connections and lets it go wherever another
-    reader needs the file: another instance's attach, a writer, a call in another process, the
-    hold's end, a close that cannot keep it, and a release or hand-off meeting a close in flight."""
+    reader needs the file: an attach, a writer, another process's call, the hold's end, a close
+    that cannot keep it, a release or hand-off meeting a close, a release by another spelling."""
     database = _prepared(tmp_path)
     if scenario.startswith("session-"):
         _kept_for_the_session(database, _prepared(tmp_path / "second"), scenario)
@@ -799,6 +800,8 @@ def test_a_held_file_is_released_where_another_reader_needs_it(
         _kept_between_connections(database)
     elif scenario == "call-in-another-process":
         _released_for_a_call_in_another_process(database)
+    elif scenario == "release-by-another-spelling":
+        _released_by_another_spelling(database, monkeypatch)
     elif scenario == "close-cannot-keep":
         _closed_when_it_cannot_keep_its_instance(database, monkeypatch)
     else:
@@ -825,6 +828,32 @@ def _kept_between_connections(database: WorkspaceDatabase) -> None:
         assert not _attachable(database)
     assert _attachable(database)
     assert _rows(database) == [(1, "seed"), (2, "held"), (3, "writer")]
+
+
+def _released_by_another_spelling(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A release names the file by any spelling of its path: a Windows extended path lets go of
+    the instance an ordinary one opened, and the file's bytes can then be read. A volume GUID's
+    device path has no ordinary spelling and is opened as it is, never as a relative path."""
+    with database.hold():
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (2, 'held')")
+        assert not _attachable(database)
+        spelling = Path("\\\\?\\" + str(database.path)) if os.name == "nt" else database.path
+        release_workspace_database(spelling)
+        assert _attachable(database)
+        assert database.path.read_bytes()
+    if os.name == "nt":
+        # The same name exists relative to the working directory: the owner keeps the device path
+        # absolute, so its own seal write meets the absent volume and the open is refused, where
+        # a respelled relative path would be opened and sealed there.
+        relative = database.path.parent / "Volume{00000000-0000-0000-0000-000000000000}"
+        relative.mkdir()
+        monkeypatch.chdir(database.path.parent)
+        device = Path("\\\\?\\" + relative.name + "\\unit.duckdb")
+        with pytest.raises((OSError, duckdb.Error)):
+            open_workspace_database(device, read_only=False)
 
 
 def _released_for_a_call_in_another_process(database: WorkspaceDatabase) -> None:

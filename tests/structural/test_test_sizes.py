@@ -34,7 +34,16 @@ PLAIN_LAYER_EXPECTED = {
     "numpy-save": "file outside temporary root",
 }
 # The cases needing their own session: a checkout, plugin, lane, timing probe or in-process check.
-OWN_SESSION = ("fd-provenance", "network-caught", "observe", "own-", "primary-", "root-", "shape")
+OWN_SESSION = (
+    "fd-provenance",
+    "load-",
+    "network-caught",
+    "observe",
+    "own-",
+    "primary-",
+    "root-",
+    "shape",
+)
 OWN_SESSION += ("size-live-", "slow")
 
 
@@ -120,6 +129,90 @@ def plain_layer_run(tmp_path_factory):
     return {"nodes": nodes, "output": result.stdout + result.stderr}
 
 
+def import_clock_threads(tmp_path: Path, monkeypatch) -> None:
+    """A library's first import is left out of a unit test's own phases only when the measured
+    phase's thread pays it: a helper thread's first import is not credited."""
+    import importlib
+    import threading
+
+    from devtools.testing.contracts import LayerContract
+
+    def first_import() -> None:  # an installed module, imported anew
+        monkeypatch.delitem(sys.modules, "colorsys", raising=False)
+        importlib.import_module("colorsys")
+
+    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
+    with guard.active():
+        helper = threading.Thread(target=first_import)
+        helper.start()
+        helper.join()
+        assert guard.library_import_seconds == 0
+        first_import()
+        assert guard.library_import_seconds > 0
+
+
+def native_loads(tmp_path: Path, monkeypatch, case: str, refused: bool) -> None:
+    """A unit test's native loads: the identity owner's file stamp and what a library's import
+    loads or imports are admitted; a product module's import load and a load outside any import
+    are refused."""
+    import ctypes
+    import importlib.machinery
+    import importlib.util
+    import sysconfig
+
+    import devtools
+    from alphalattice.kernel.identity import handle_stamp
+    from devtools.testing.contracts import LayerContract
+
+    source = tmp_path / "loads_natively.py"
+    source.write_text(
+        "import ctypes, os\nctypes.WinDLL('kernel32') if os.name == 'nt' else ctypes.CDLL(None)\n"
+        "import refused_backend\n"  # a dependency the unit layer refuses to the test itself
+    )
+    (tmp_path / "refused_backend.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "refused_backend", raising=False)
+
+    class ReadFromTemporary(importlib.machinery.SourceFileLoader):
+        """The temporary module, compiled as a file at another place: installed, or under src/."""
+
+        def get_data(self, path: str) -> bytes:
+            return source.read_bytes()
+
+        def path_stats(self, path: str) -> dict:
+            raise OSError(path)
+
+    def imported(location: Path) -> None:
+        loader = ReadFromTemporary("loads_natively", str(location))
+        spec = importlib.util.spec_from_file_location("loads_natively", location, loader=loader)
+        assert spec is not None
+        loader.exec_module(importlib.util.module_from_spec(spec))
+
+    stamped = tmp_path / "stamped"
+    stamped.write_bytes(b"one")
+    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
+    with stamped.open("rb") as handle, guard.active():
+        load = {
+            "load-file-stamp": lambda: handle_stamp(handle),
+            "load-library-import": lambda: imported(
+                Path(sysconfig.get_paths()["purelib"]) / source.name
+            ),
+            "load-product-import": lambda: imported(
+                Path(devtools.__file__).resolve().parents[1] / "alphalattice" / source.name
+            ),
+            "load-outside-an-import": lambda: (
+                ctypes.WinDLL("kernel32") if os.name == "nt" else ctypes.CDLL(None)
+            ),
+        }[case]
+        if refused:
+            with pytest.raises(
+                AssertionError, match=r"testing\.layer_contract: unit ctypes\.dlopen"
+            ):
+                load()
+        else:
+            load()
+
+
 @pytest.mark.proves("testing.layer_contract")
 @pytest.mark.parametrize(
     "case,layer,header,body,refused",
@@ -149,6 +242,12 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
         return
+    if case == "load-import-clock-threads":
+        import_clock_threads(tmp_path, monkeypatch)
+        return
+    if case.startswith("load-"):
+        native_loads(tmp_path, monkeypatch, case, refused)
+        return
     if not case.startswith(OWN_SESSION):
         nodes = plain_layer_run["nodes"].get("test_" + case.replace("-", "_"), [])
         assert len(nodes) == 1, plain_layer_run["output"]
@@ -159,6 +258,18 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
             assert PLAIN_LAYER_EXPECTED.get(case, "testing.layer_contract") in text, text
         if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
             assert len(failures) == 1, text
+        if case == "first-library-import":  # its first import is left out of its own phases
+            names = ("setup_seconds", "call_seconds", "teardown_seconds", "library_import_seconds")
+            held = {
+                row.get("name"): float(row.get("value"))
+                for row in nodes[0].iter("property")
+                if row.get("name") in (*names, "unit_own_seconds")
+            }
+            phases = sum(held[when + "_seconds"] for when in ("setup", "call", "teardown"))
+            assert 0 < held["library_import_seconds"] <= phases, held
+            assert held["unit_own_seconds"] == pytest.approx(
+                phases - held["library_import_seconds"], abs=1e-3
+            ), held
         return
     if case in {"temporary", "root-pure"}:
         monkeypatch.setenv(

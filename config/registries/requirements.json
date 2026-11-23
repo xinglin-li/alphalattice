@@ -3077,7 +3077,7 @@
       "lower_layer": "It reads through the process-wide request cache every test in the process shares, which a unit test may not reach."
     },
     "workspace_runtime.a_held_file_is_released_where_another_reader_needs_it": {
-      "description": "A held workspace database, or every file while a Host's session lives, keeps one instance between its connections and closes it before another instance attaches the file, during another process's call, for a writer, and at the hold's end.",
+      "description": "A held workspace database, or every file while a Host's session lives, keeps one instance between its connections and closes it wherever another reader needs the file, a release naming it by any spelling of its path.",
       "owner": "alphalattice.control.workspace_runtime",
       "layer": "integration",
       "seconds": 1,
