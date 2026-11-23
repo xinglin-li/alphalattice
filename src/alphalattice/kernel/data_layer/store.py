@@ -314,7 +314,7 @@ class StorePort:
         # What this session read of the catalog's world tables, read once: a table's columns
         # (`_declared`). This session is the catalog's one writer (a second Host is refused), so
         # they change only by its own work: its DDL clears the columns (`_feature_set`).
-        self._columns: dict[str, dict[str, str]] = {}
+        self._columns: dict[tuple[str, tuple[str, ...]], dict[str, str]] = {}
         self._block: _Block | None = None  # the open `admitting` block, on the writer's thread
         self._maintained: tuple[int, datetime] | None = None
 
@@ -589,16 +589,17 @@ class StorePort:
         registers."""
         with self._writer:
             tables = staged.tables if isinstance(staged, StagedSet) else (staged,)
-            for table in tables:
-                self._registered(table, _staged_rows(self.root, table))
             if isinstance(staged, StagedSet) or staged.table in RESULTS_KEYS:
+                for table in tables:
+                    self._registered(table, _staged_rows(self.root, table))
                 count = self._catalog_results(staged, tables, self.log.clock())
                 dropped, rewritten = {}, 0
             else:
-                lag = None if staged.lag is None else self._lag(*staged.lag)
                 source = _staged_rows(self.root, staged)
+                columns = self._registered(staged, source)
+                lag = None if staged.lag is None else self._lag(*staged.lag)
                 count, dropped, rewritten = self._catalog_commit(
-                    staged, self.log.clock(), lag, source
+                    staged, self.log.clock(), lag, source, columns
                 )
             if self._block is not None:  # the block's one commit repairs and collects
                 self._block.staging.append(staged.admission_id)
@@ -618,10 +619,10 @@ class StorePort:
             staged = Staged(uuid7(), table, provider_id, data.num_rows, lag)
             self.lake.register(PUBLISHED, data)
             try:
-                self._registered(staged, PUBLISHED)
+                columns = self._registered(staged, PUBLISHED)
                 rule = None if lag is None else self._lag(*lag)
                 count, dropped, rewritten = self._catalog_commit(
-                    staged, self.log.clock(), rule, PUBLISHED
+                    staged, self.log.clock(), rule, PUBLISHED, columns
                 )
             finally:
                 self.lake.unregister(PUBLISHED)
@@ -869,7 +870,7 @@ class StorePort:
             " AND table_name = ?",
             (table,),
         ).fetchall()
-        held = {row[0] for row in run(f"DESCRIBE {target}").fetchall()} if made else set()
+        held = set(self._catalog_columns(target)) if made else set()
         added = [
             (column, kind)
             for column, kind in run(
@@ -998,9 +999,8 @@ class StorePort:
         with self._writer:
             self.lake.close()
 
-    def _registered(self, staged: Staged, source: str) -> None:
-        """Refuse an admission naming a lineage the log does not register in its family; its rows
-        are read from `source`, a relation."""
+    def _registered(self, staged: Staged, source: str) -> set[str]:
+        """Read the staging relation's columns and refuse any unregistered lineage."""
         columns = {
             row[0] for row in self.lake.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
         }
@@ -1030,6 +1030,8 @@ class StorePort:
                     code="data_layer.market_unregistered",
                 )
 
+        return columns
+
     def _lag(self, name: str, version: int) -> tuple[int, str]:
         """The registered lag_rule version's lag and what it counts from (`lag_rule`)."""
         found = self.log.read(
@@ -1039,7 +1041,12 @@ class StorePort:
         return lag_rule(json.loads(found[0][0]) if found else {}, name, version)
 
     def _catalog_commit(
-        self, staged: Staged, known: int, lag: tuple[int, str] | None, source: str
+        self,
+        staged: Staged,
+        known: int,
+        lag: tuple[int, str] | None,
+        source: str,
+        source_columns: set[str],
     ) -> tuple[int, dict[str, int], int]:
         """One snapshot: the supersession of each world version the rows replace, then the rows and
         the later writes of held values, carrying the event it owes; the rows admitted, those
@@ -1049,9 +1056,8 @@ class StorePort:
         table, admission = staged.table, staged.admission_id
         key = WORLD_KEYS[table]
         same = " AND ".join(f"t.{k} = n.{k}" for k in key)
-        described = self.lake.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()
-        columns = {row[0] for row in described} - {KNOWN}
-        carried = KNOWN if len(described) > len(columns) else ""
+        columns = source_columns - {KNOWN}
+        carried = KNOWN if KNOWN in source_columns else ""
         target = f"lake.world.{table}"
         run = self.lake.execute
         rule = None if staged.lag is None or lag is None else (*staged.lag, *lag)
@@ -1354,18 +1360,21 @@ class StorePort:
             f" ON a.market_id = {market} AND coalesce({valid}) <= a.session_date{held}"
         )
 
-    def _declared(self, table: str, columns: set[str]) -> dict[str, str]:
-        """A world table's content and SOURCE columns with their catalog types, as the engine
-        holds them, described once a session; refused by name when the rows carry a column the
-        table does not hold."""
-        declared = self._columns.get(table)
+    def _catalog_columns(self, target: str, omit: tuple[str, ...] = ()) -> dict[str, str]:
+        """The attached table's committed columns until the writer changes its catalog."""
+        key = (target, omit)
+        declared = self._columns.get(key)
         if declared is None:
             (described,) = self.lake.execute(
-                "SELECT map(list(column_name), list(column_type))"
-                f" FROM (DESCRIBE lake.world.{table})"
+                f"SELECT map(list(column_name), list(column_type)) FROM (DESCRIBE {target})"
             ).fetchone()
-            declared = {name: kind for name, kind in described.items() if name not in ADMITTED}
-            self._columns[table] = declared
+            declared = {name: kind for name, kind in described.items() if name not in omit}
+            self._columns[key] = declared
+        return declared
+
+    def _declared(self, table: str, columns: set[str]) -> dict[str, str]:
+        """Read a world table's content and SOURCE columns and refuse unknown input columns."""
+        declared = self._catalog_columns(f"lake.world.{table}", ADMITTED)
         foreign = sorted(columns - set(declared))
         if foreign:
             raise DataError(

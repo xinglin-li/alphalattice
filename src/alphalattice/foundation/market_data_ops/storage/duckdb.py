@@ -22,6 +22,8 @@ from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
     WorkspaceRepository,
     checkpoint_workspace_database,
+    install_workspace_schema,
+    table_info,
 )
 from alphalattice.control.workspace_runtime.storage.readiness import (
     WorkspaceReadinessRecord,
@@ -186,6 +188,77 @@ written in bulk."""
 
 COLUMNS: Final = "seq, kind, listing_id, provider, day, scope, observed_at, revision_id"
 
+_BOOTSTRAP_TABLES: Final = (
+    "market_profile",
+    "universe_manifest",
+    "universe_manifest_listing",
+    "universe_bootstrap",
+    "universe_membership_event",
+    "listing",
+    "provider_symbol_mapping",
+    "raw_daily_bar_current",
+    "bar_revision",
+    "corporate_action_current",
+    "corporate_action_revision",
+    "onboarding_raw_stage",
+    "onboarding_action_stage",
+    "action_audit_receipt",
+    "provider_adjusted_close_current",
+    "provider_adjusted_series_revision",
+    "verified_year_fact",
+    "data_quality",
+    "provider_attempt",
+    "remediation_execution",
+    "feature_input_admission",
+    "listing_quarantine",
+    "feature_input_agent_case",
+    "feature_input_provider_deferred",
+    "current_universe_onboarding",
+    "current_universe_onboarding_listing",
+    "current_universe_hydration_deferred",
+    "current_universe_quality_admission",
+    "current_universe_maintenance",
+    "current_universe_maintenance_listing",
+    "workspace_readiness",
+    "manifest_transition",
+    "feature_universe_rebuild_requirement",
+    "feature_daily_revision",
+    "feature_ineligibility_run",
+    "feature_materialization_receipt",
+    "market_reference_current",
+    "sector_classification_current",
+    "sector_classification_revision",
+    "sector_reference_receipt",
+    "sector_reference_progress",
+    "sector_reference_staging",
+    "workspace_token_bucket",
+    "sector_panel_rebuild_requirement",
+    "panel_factor_availability",
+    "panel_factor_availability_revision",
+    "panel_cross_section_availability",
+    "panel_cross_section_availability_revision",
+    "panel_materialization_receipt",
+    "active_feature_panel_binding",
+    "feature_panel_snapshot_manifest",
+    "market_delta",
+)
+"""The tables bootstrap declares itself or through its three schema installers."""
+
+
+def _ensure_market_journal(connection: duckdb.DuckDBPyConnection) -> None:
+    """Initialize the existing journal and sequence only when the write can see them missing."""
+    ready = connection.execute(
+        "SELECT EXISTS (SELECT 1 FROM duckdb_tables()"
+        " WHERE database_name = current_database() AND schema_name = 'main'"
+        " AND table_name = 'market_delta') AND EXISTS (SELECT 1 FROM duckdb_sequences()"
+        " WHERE database_name = current_database() AND schema_name = 'main'"
+        " AND sequence_name = 'market_delta_seq')"
+    ).fetchone()
+    if ready is not None and ready[0]:
+        return
+    for statement in MARKET_DELTA:
+        connection.execute(statement)
+
 
 def record_delta(
     connection: duckdb.DuckDBPyConnection,
@@ -197,8 +270,7 @@ def record_delta(
     """Journal (MARKET_DELTA) the market rows a write changed, in the write's open transaction:
     `rows`, a relation of their listing_id, provider and `date_column`, one journal row per
     distinct key."""
-    for statement in MARKET_DELTA:
-        connection.execute(statement)
+    _ensure_market_journal(connection)
     connection.execute(
         f"INSERT INTO market_delta ({COLUMNS}) SELECT nextval('market_delta_seq'), ?, listing_id,"
         f" provider, day, NULL, ?, NULL FROM (SELECT DISTINCT listing_id, provider,"
@@ -218,8 +290,7 @@ def record_scope(
     write's open transaction: one row per key it changed, a listing's own row (listing, None,
     None) or a provider symbol mapping (listing, provider, effective date), or one profile-wide
     row without `keys`."""
-    for statement in MARKET_DELTA:
-        connection.execute(statement)
+    _ensure_market_journal(connection)
     connection.executemany(
         f"INSERT INTO market_delta ({COLUMNS})"
         " VALUES (nextval('market_delta_seq'), ?, ?, ?, ?, ?, ?, NULL)",
@@ -239,8 +310,7 @@ def record_revisions(
     correction repeated after its revert names again."""
     if not revision_ids:
         return
-    for statement in MARKET_DELTA:
-        connection.execute(statement)
+    _ensure_market_journal(connection)
     connection.executemany(
         f"INSERT INTO market_delta ({COLUMNS})"
         " VALUES (nextval('market_delta_seq'), ?, NULL, NULL, NULL, NULL, ?, ?)",
@@ -863,7 +933,9 @@ class MarketDataRepository(WorkspaceRepository):
 
         """
         connection = self._connect()
-        try:
+
+        def install() -> None:
+            """Install the market and linked workspace table definitions."""
             existing = connection.execute(
                 "SELECT 1 FROM duckdb_tables() WHERE database_name = current_database()"
                 " AND schema_name = 'main' AND table_name = 'market_profile'"
@@ -1910,6 +1982,16 @@ class MarketDataRepository(WorkspaceRepository):
                     "ALTER TABLE feature_panel_snapshot_manifest "
                     f"ADD COLUMN IF NOT EXISTS {definition}"
                 )
+            _ensure_market_journal(connection)
+
+        try:
+            install_workspace_schema(
+                connection,
+                "market",
+                install,
+                tables=_BOOTSTRAP_TABLES,
+                sequences=("market_delta_seq",),
+            )
             connection.execute(
                 """
                 UPDATE feature_panel_snapshot_manifest
@@ -3714,10 +3796,7 @@ class MarketDataRepository(WorkspaceRepository):
     @staticmethod
     def _maintenance_listing_columns(connection: duckdb.DuckDBPyConnection) -> set[str]:
         return {
-            str(row[1])
-            for row in connection.execute(
-                "PRAGMA table_info('current_universe_maintenance_listing')"
-            ).fetchall()
+            name for _, name, *_ in table_info(connection, "current_universe_maintenance_listing")
         }
 
     def seed_current_universe_maintenance_verified_prefix(

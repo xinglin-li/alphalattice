@@ -45,6 +45,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
+from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, table_columns
 from alphalattice.kernel.config import Change, override
 from alphalattice.kernel.data_layer import backup
 from alphalattice.kernel.identity import file_facts as digests
@@ -572,18 +573,88 @@ def _proved(read):
 
 
 @pytest.mark.proves("workspace_runtime.sealed_value_built_once_per_process")
-def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(tmp_path, kept_here):
-    """requirement: a value built from sealed sources answers every later read in the process;
-    full proof (an export, a stage's check, the scrub) builds it from the bytes again."""
-    read, calls = _reader(tmp_path / "sealed.bin")
-    first = read()
-    assert (first is read()) is kept_here  # where nothing is kept, every read builds
-    assert first == b"sealed"
-    assert len(calls) == (1 if kept_here else 2)
-    assert _proved(read) == b"sealed"
-    assert len(calls) == (2 if kept_here else 3)
-    read()
-    assert len(calls) == (2 if kept_here else 4)
+@pytest.mark.parametrize(
+    "case",
+    [
+        "full-proof",
+        "same-task",
+        "replaced-file",
+        "replaced-file-request-proof",
+        "replaced-file-request-value",
+        "open-writer-transaction",
+    ],
+)
+def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(
+    tmp_path, kept_here, case
+):
+    """Verify source versions and committed schemas, including full proof and private writes."""
+    if case == "full-proof":
+        read, calls = _reader(tmp_path / "sealed.bin")
+        first = read()  # Each read opens and closes its own Task's read scope.
+        assert (first is read()) is kept_here  # where nothing is kept, every read builds
+        assert first == b"sealed"
+        assert len(calls) == (1 if kept_here else 2)
+        assert _proved(read) == b"sealed"
+        assert len(calls) == (2 if kept_here else 3)
+        read()
+        assert len(calls) == (2 if kept_here else 4)
+        return
+
+    if case in {"same-task", "replaced-file"}:
+        path = tmp_path / "sealed.bin"
+        read, calls = _reader(path)
+        if case == "same-task":
+            with verified_model_read_scope():
+                assert read() == read() == b"sealed"
+        else:
+            assert read() == b"sealed"
+            replacement = path.with_suffix(".new")
+            replacement.write_bytes(b"changed")
+            replacement.replace(path)
+            with pytest.raises(ValueError, match="sealed bytes changed"):
+                read()
+        assert len(calls) == (2 if case == "replaced-file" or not kept_here else 1)
+        return
+
+    if case in {"replaced-file-request-proof", "replaced-file-request-value"}:
+        path = tmp_path / "nested.bin"
+        path.write_bytes(b"sealed")
+        identity = (_RUN[0], case, path)
+
+        def verify():
+            value = path.read_bytes()
+            if value != b"sealed":
+                raise ValueError("sealed bytes changed")
+            return value
+
+        def build():
+            if case == "replaced-file-request-proof":
+                verified_request_proof(identity, verify)
+                return b"sealed"
+            return verified_request_value(identity, verify, nbytes=6)
+
+        with verified_model_read_scope():
+            assert verified_source_value(identity, (path,), build, nbytes=6) == b"sealed"
+            replacement = path.with_suffix(".new")
+            replacement.write_bytes(b"broken")
+            replacement.replace(path)
+            with pytest.raises(ValueError, match="sealed bytes changed"):
+                verified_source_value(identity, (path,), build, nbytes=6)
+        return
+
+    database = WorkspaceDatabase(tmp_path / "catalog")
+    with database.hold():
+        with database.transaction() as writer:
+            writer.execute("CREATE TABLE content_check (prior INTEGER)")
+        with database.connect(read_only=True) as reader:
+            before = (("prior", "INTEGER"),)
+            after = (*before, ("next_value", "VARCHAR"))
+            assert table_columns(reader, "content_check") == before
+            with database.transaction() as writer:
+                writer.execute("ALTER TABLE content_check ADD COLUMN next_value VARCHAR")
+                assert table_columns(writer, "content_check") == after
+                assert table_columns(reader, "content_check") == before
+            assert table_columns(reader, "content_check") == after
 
 
 @pytest.mark.proves("workspace_runtime.full_proof_refuses_a_changed_sealed_file")

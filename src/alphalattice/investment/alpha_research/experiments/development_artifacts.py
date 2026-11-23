@@ -809,11 +809,11 @@ class AlphaDevelopmentArtifactStore:
                 content_hash,
                 model,
                 identity_field,
-                *file_identity,
             ),
             verify,
             nbytes=int(file_identity[3]),
             copy_mutable=copy_mutable,
+            file_snapshot=file_identity,
         )
 
     def _publish(self, category: str, value: BaseModel, identity_field: str) -> str:

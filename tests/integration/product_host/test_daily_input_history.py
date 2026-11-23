@@ -344,7 +344,10 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
     assert same != workspace_observation_history_selection(binding, implementation="b" * 64)
 
 
-def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(monkeypatch):
+@pytest.mark.parametrize("selection", ("installed", "predecessor", "unrecorded"))
+def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(
+    monkeypatch, selection
+):
     """regression (the person's D2, 2026-10-15): a kept history held only that day's columns, so
     the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
     from contextlib import nullcontext
@@ -353,6 +356,7 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AdmittedRenewingInference as Renewing,
     )
+    from alphalattice.kernel.shared_kernel import identity_successors
 
     inference, captured = object.__new__(Renewing), {}
     inference.authority = SimpleNamespace(
@@ -365,19 +369,39 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
         raise ValueError("causal execution split is invalid")  # the owner's own early return
 
     monkeypatch.setattr(scoring, "prepare_workspace_component_inputs", capture)
+    previous, unrelated = "a" * 64, "c" * 64
+    installed = scoring._implementation_hash()
+    move = identity_successors.IdentityMove(
+        scoring.IMPLEMENTATION_ROLE, previous, installed, "Read reuse", "Equal captured values"
+    )
+    monkeypatch.setattr(identity_successors, "effective_moves", lambda root: (move,))
+    binding = SimpleNamespace(
+        strategy_package_id="p",
+        component_id="c",
+        source_kind="WORKSPACE_DATA_FEATURE",
+        strategy_package_hash="3" * 64,
+    )
+    implementation = {"installed": installed, "predecessor": previous, "unrecorded": unrelated}[
+        selection
+    ]
+    held = (
+        SimpleNamespace(
+            selection_hash=scoring.workspace_observation_history_selection(
+                binding, implementation=implementation
+            )
+        ),
+        {},
+    )
     owner = SimpleNamespace(
         _authority=lambda _: inference,
-        store=SimpleNamespace(load_workspace_observation_history=lambda _: None),
+        store=SimpleNamespace(load_workspace_observation_history=lambda _: held),
         session=SimpleNamespace(reads=nullcontext, workspace=None),
         clock=lambda: OBSERVED_AT,
     )
-    binding = SimpleNamespace(
-        strategy_package_id="p", component_id="c", source_kind="WORKSPACE_DATA_FEATURE"
-    )
-    binding.strategy_package_hash = "3" * 64
     prepare = scoring.StrategyScoringApplication.prepare_inputs
     assert prepare(owner, binding, through=LAST, expected_source_hash="4" * 64) is None
     assert captured["training_factor_ids"] == ("amihud_21",)
+    assert captured["history"] is (None if selection == "unrecorded" else held)
 
 
 def test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm(daily_workspace):

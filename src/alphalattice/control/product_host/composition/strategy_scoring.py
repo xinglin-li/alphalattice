@@ -93,7 +93,7 @@ from alphalattice.kernel.shared_kernel.identity import (
     canonical_hash,
     schema_structure,
 )
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.identity_successors import is_current, predecessors
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
 from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
@@ -803,16 +803,22 @@ class StrategyScoringApplication:
             else ()
         )
         scope_hash = workspace_observation_history_scope(binding)
+        implementation = _implementation_hash()
         selection_hash = workspace_observation_history_selection(
-            binding, implementation=_implementation_hash()
+            binding, implementation=implementation
         )
         with self.session.reads():
             candidate = self.store.load_workspace_observation_history(scope_hash)
-            history = (
-                candidate
-                if candidate is not None and candidate[0].selection_hash == selection_hash
-                else None
-            )
+            history = None
+            if candidate is not None:
+                saved = candidate[0].selection_hash
+                if saved == selection_hash or any(
+                    saved == workspace_observation_history_selection(binding, implementation=prior)
+                    for prior in predecessors(IMPLEMENTATION_ROLE, implementation)[1:]
+                ):
+                    history = candidate
+                    # Keep the selection under which the verified history parts were sealed.
+                    selection_hash = saved
             try:
                 prepared = prepare_workspace_component_inputs(
                     self.session.workspace,

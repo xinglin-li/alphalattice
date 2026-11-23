@@ -53,7 +53,7 @@ _DRIVER: list[Driver] = []
 _OPENS: Counter[str] = Counter()
 _MEMORY: list[Any] = []
 """The process's in-memory instance's root connection, once opened."""
-_SCHEMAS: dict[tuple[str, str], tuple[int, object]] = {}
+_SCHEMAS: dict[tuple[str, str | tuple[str, str]], tuple[int, object]] = {}
 """Per data root and table: the writer revision a schema was read at, and the schema."""
 _TEARDOWNS: list[Callable[[], None]] = []
 _OUTSIDE: list[Callable[[tuple[PathLike[str], ...], bool], Callable[[], None]]] = []
@@ -138,15 +138,28 @@ def memory(config: Mapping[str, object] | None = None) -> Iterator[Any]:
         cursor.close()
 
 
-def schema[T](root: str, table: str, revision: int, read: Callable[[], T]) -> T:
-    """`table`'s schema in the data root `root`: read once at `revision`, the root writer's
-    revision its owner names, and kept until that revision changes."""
+def schema[T](
+    root: str,
+    table: str | tuple[str, str],
+    revision: int,
+    read: Callable[[], T],
+    *,
+    installed_revision: Callable[[], int] | None = None,
+    recheck: Callable[[T], T] | None = None,
+) -> T:
+    """Keep the schema at the revision its owner names.
+
+    An installer uses the committed revision after its writes and can recheck the last
+    installed shape after an unrelated DDL. Failed checks leave no new entry.
+    """
     key = (root, table)
     with _LOCK:
         held = _SCHEMAS.get(key)
     if held is not None and held[0] == revision:
         return cast(T, held[1])
-    value = read()
+    value = recheck(cast(T, held[1])) if held is not None and recheck is not None else read()
+    if installed_revision is not None:
+        revision = installed_revision()
     with _LOCK:
         _SCHEMAS[key] = (revision, value)
     return value

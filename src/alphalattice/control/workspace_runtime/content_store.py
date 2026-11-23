@@ -152,7 +152,7 @@ def verified_source_value[T](
     read of the same sealed bytes in this process. Inside ``full_content_proof()`` the builder
     runs once per proof and its value replaces what was kept. Concurrent readers of one key share
     one producer; waiting never holds the cache lock. A builder owns every source it declares:
-    helpers nested in it build in full and keep nothing of their own.
+    nested source builders read in full and leave retention to the enclosing builder.
     """
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
@@ -330,7 +330,8 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
             check()
         proved["request-proof", identity] = None
         return
-    scope = _VERIFIED_PROOF_SCOPE.get()
+    # An enclosing source build owns the version check and stores the complete proof.
+    scope = None if _VERIFIED_SOURCE_BUILD.get() else _VERIFIED_PROOF_SCOPE.get()
     if scope is not None:
         if identity in scope:
             return
@@ -369,6 +370,7 @@ def verified_request_value[T](
     *,
     nbytes: int | Callable[[T], int],
     copy_mutable: bool = False,
+    file_snapshot: tuple[str, ...] | None = None,
 ) -> T:
     """Memoize one immutable, validated value under local and optional process byte bounds.
 
@@ -377,16 +379,22 @@ def verified_request_value[T](
     Values larger than either cache's byte limit are returned uncached. The two limits apply
     separately; active requests and caller-held references can keep evicted bytes alive.
 
+    A descriptor snapshot from the owner's verified read binds the parsed value to that read.
+    It can share validation with another reader even inside a composite source build.
+
     A value that is not deeply immutable is returned uncached, unless the owner passes
     ``copy_mutable``: then it is kept too, and every caller, the first included, receives
     its own deep copy, so no caller can change what another reads. An owner opts in only
     where that copy is cheap against rebuilding the value.
     """
-    key = tuple(identity)
+    key = tuple(identity) if file_snapshot is None else (*identity, file_snapshot)
     proved = _FULL_PROOF.get()
     if proved is not None:
         return _proved_request_value(proved, key, builder, nbytes, copy_mutable=copy_mutable)
+    # A nested key cannot reuse a value from before the enclosing source changed.
     scope = _VERIFIED_ARRAY_SCOPE.get()
+    if _VERIFIED_SOURCE_BUILD.get() and file_snapshot is None:
+        scope = None
     if scope is not None and key in scope:
         value, _ = scope[key]
         scope.move_to_end(key)
@@ -421,7 +429,7 @@ def verified_request_value[T](
         return value
     if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         _remember_request_value(scope, key, kept, size)
-    if not _VERIFIED_SOURCE_BUILD.get() and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
+    if size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
         _remember_process_value(key, kept, size)
     return cast(T, _handed(kept))
 
@@ -896,13 +904,12 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.json"
-        scope = _VERIFIED_MODEL_SCOPE.get()
-        fact = _file_identity(target) if scope is not None else None
-        cacheable = fact is not None and model.model_config.get("frozen")
-
-        key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
 
         def verify() -> ContractT:
+            scope = _VERIFIED_MODEL_SCOPE.get()
+            fact = _file_identity(target) if scope is not None else None
+            cacheable = fact is not None and model.model_config.get("frozen")
+            key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
             if cacheable:
                 kept = _verified_model_get(key)
                 if kept is not None:

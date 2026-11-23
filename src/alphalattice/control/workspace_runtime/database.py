@@ -313,7 +313,7 @@ class WorkspaceConnection:
         """After a statement ran: a schema change moves the file's schema revision at once, and
         again when its transaction ends, so a schema read between the two is not kept."""
         if kinds & _SCHEMA_STATEMENTS:
-            self._ddl = True
+            self._ddl = self._transacted or duckdb.StatementType.TRANSACTION in kinds
             _changed(self._path)
         elif self._ddl and duckdb.StatementType.TRANSACTION in kinds:
             self._ddl = False
@@ -1294,6 +1294,102 @@ def _let_go_every_file() -> None:
 storage.on_teardown(_let_go_every_file)
 
 
+def install_workspace_schema(
+    connection: duckdb.DuckDBPyConnection,
+    owner: str,
+    install: Callable[[], None],
+    *,
+    tables: tuple[str, ...],
+    sequences: tuple[str, ...],
+) -> None:
+    """Install a repository's own declarations once at the committed revision."""
+    if not isinstance(connection, WorkspaceConnection) or connection.in_transaction():
+        install()
+        return
+
+    def revision() -> int:
+        with _STATE:
+            return _REVISIONS.get(connection._path, 0)
+
+    catalog_input = (connection._path, owner, revision())
+
+    def shape(
+        catalog_input: tuple[Path, str, int] = catalog_input,
+    ) -> frozenset[tuple[str, str | None]]:
+        with span("schema", "installed_workspace_shape"):
+            rows = connection.execute(
+                "SELECT table_name, column_name FROM duckdb_columns()"
+                " WHERE database_name = current_database() AND schema_name = 'main'"
+                " AND table_name = ANY(?)"
+                " AND table_name IN (SELECT table_name FROM duckdb_tables()"
+                " WHERE database_name = current_database() AND schema_name = 'main')"
+                " UNION ALL SELECT sequence_name, NULL FROM duckdb_sequences()"
+                " WHERE database_name = current_database() AND schema_name = 'main'"
+                " AND sequence_name = ANY(?)",
+                [list(tables), list(sequences)],
+            ).fetchall()
+        return frozenset(rows)
+
+    def measured(
+        catalog_input: tuple[Path, str, int] = catalog_input,
+    ) -> frozenset[tuple[str, str | None]]:
+        with span("schema", "install_workspace"):
+            install()
+        return shape()
+
+    def recheck(installed: frozenset[tuple[str, str | None]]) -> frozenset[tuple[str, str | None]]:
+        return installed if installed <= shape() else measured()
+
+    storage.schema(
+        str(connection._path),
+        ("install", owner),
+        catalog_input[2],
+        measured,
+        installed_revision=revision,
+        recheck=recheck,
+    )
+
+
+def _workspace_catalog_read[T](
+    connection: duckdb.DuckDBPyConnection,
+    key: str | tuple[str, str],
+    read: Callable[[], T],
+) -> T:
+    """Share reads of the latest committed workspace catalog at its schema revision."""
+    if not isinstance(connection, WorkspaceConnection):
+        return read()
+    with _STATE:
+        revision = _REVISIONS.get(connection._path, 0)
+    private = connection.in_transaction() or connection._view not in (None, revision)
+    catalog_input = (
+        connection._path,
+        key,
+        revision,
+        connection._view,
+        id(connection) if private else None,
+    )
+
+    def measured(catalog_input: tuple[object, ...] = catalog_input) -> T:
+        with span("schema", "workspace_catalog"):
+            # The census uses the catalog identity, including the private writer or pinned view.
+            return read()
+
+    if private:
+        return measured()
+    return storage.schema(str(catalog_input[0]), key, revision, measured)
+
+
+def table_info(
+    connection: duckdb.DuckDBPyConnection, table: str
+) -> tuple[tuple[int, str, str, bool, str | None, bool], ...]:
+    """Read the engine's table_info rows. A missing relation retains the engine's refusal."""
+
+    def read() -> tuple[tuple[int, str, str, bool, str | None, bool], ...]:
+        return tuple(connection.execute("SELECT * FROM pragma_table_info(?)", [table]).fetchall())
+
+    return _workspace_catalog_read(connection, ("table_info", table), read)
+
+
 def table_columns(connection: duckdb.DuckDBPyConnection, table: str) -> tuple[tuple[str, str], ...]:
     """`table`'s columns in the connection's database, as (name, type) in their order; empty when
     it holds no such table. A workspace file's are read once and kept until a schema change moves
@@ -1311,13 +1407,7 @@ def table_columns(connection: duckdb.DuckDBPyConnection, table: str) -> tuple[tu
         ).fetchall()
         return tuple((str(name), str(kind)) for name, kind in rows)
 
-    if not isinstance(connection, WorkspaceConnection) or connection.in_transaction():
-        return read()
-    with _STATE:
-        revision = _REVISIONS.get(connection._path, 0)
-    if connection._view not in (None, revision):
-        return read()
-    return storage.schema(str(connection._path), table, revision, read)
+    return _workspace_catalog_read(connection, table, read)
 
 
 def retained_workspace_database(path: Path) -> bool:
@@ -1491,6 +1581,7 @@ __all__ = [
     "checkpoint_workspace_database",
     "hand_off",
     "hold_workspace_database",
+    "install_workspace_schema",
     "keep_workspace_databases",
     "live_workspace_connections",
     "open_workspace_database",
@@ -1498,4 +1589,5 @@ __all__ = [
     "retain_workspace_database",
     "retained_workspace_database",
     "table_columns",
+    "table_info",
 ]
