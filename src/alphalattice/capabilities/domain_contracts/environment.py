@@ -164,16 +164,17 @@ def _loaded_module_handles() -> tuple[int, ...] | None:
     process = kernel.GetCurrentProcess()
     width = ctypes.sizeof(wintypes.HMODULE)
     count = 1024
-    while True:
+    needed: wintypes.DWORD | None = None
+    while needed is None or needed.value > count * width:
+        if needed is not None:
+            count = needed.value // width + 64
         handles = (wintypes.HMODULE * count)()
         needed = wintypes.DWORD()
         if not kernel.K32EnumProcessModulesEx(
             process, handles, count * width, ctypes.byref(needed), 3
         ):
             return None
-        if needed.value <= count * width:
-            return tuple(int(handle or 0) for handle in handles[: needed.value // width])
-        count = needed.value // width + 64
+    return tuple(int(handle or 0) for handle in handles[: needed.value // width])
 
 
 def _thread_pool_controller() -> Any:

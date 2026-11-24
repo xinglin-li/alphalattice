@@ -67,7 +67,9 @@ def asked(rows: Iterable[dict[str, Any]]) -> str | None:
 
 class ScenarioPerson:
     """One run's person; ``sheet`` is the scenario's ``person`` block, ``out`` the run's folder, and
-    ``ask`` posts a question's record (its path and text) and says whether the post was taken."""
+    ``ask`` posts a question's record (its path and text) and says whether the post was taken;
+    ``sleep`` is the caller's pause between looks for an answer (a runner passes the wait
+    owner's)."""
 
     def __init__(
         self,
@@ -76,7 +78,7 @@ class ScenarioPerson:
         *,
         ask: Callable[[Path, str], bool] | None = None,
         clock: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], object],
     ) -> None:
         self.facts = list(sheet.get("facts") or [])
         self.nonblocking = set(sheet.get("nonblocking") or [])

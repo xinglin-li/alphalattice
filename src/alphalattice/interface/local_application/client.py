@@ -2094,8 +2094,9 @@ def _read_through_restarts(
 
     Each request waits no longer than the time left, beyond a long poll's own wait.
     """
-    delay = 1.0
-    while True:
+
+    def read() -> dict[str, Any] | None:
+        """The Host's answer, or None while it stops or restarts."""
         remaining = deadline - time.monotonic()
         request = document
         if "wait_seconds" in document:
@@ -2105,11 +2106,13 @@ def _read_through_restarts(
         except LocalResearchClientError as error:
             if str(error) not in RECONNECT:
                 raise
-        else:
-            if str(body.get("refused") or body.get("failure_code") or "") not in RECONNECT:
-                return client, body
-        if not _sleep_before_read(delay, deadline):
-            return client, None
+            return None
+        if str(body.get("refused") or body.get("failure_code") or "") in RECONNECT:
+            return None
+        return body
+
+    delay = 1.0
+    while (body := read()) is None and _sleep_before_read(delay, deadline):
         delay = min(delay * 2, 30.0)
         with suppress(LocalResearchClientError):
             client = LocalResearchClient(
@@ -2117,6 +2120,7 @@ def _read_through_restarts(
                 timeout=getattr(client, "timeout", DEFAULT_HTTP_WAIT_SECONDS),
                 goal=getattr(client, "goal", None),
             )
+    return client, body
 
 
 _POLL_MARGIN = 5.0
@@ -2249,10 +2253,13 @@ def _follow(
     held = int(body.get("verified_stage_count") or 0)
     # Say once: this call is the wait, never poll.
     receipt(client, body, document)
-    delay, last, current = 0.25, None, body
+    delay, last, current, began, moved = 0.25, None, body, 0.0, False
     # An incident open when the follow began is not news; a new one wakes it (GY2, WK).
     known = (body.get("incident") or {}).get("key")
-    while True:
+
+    def follow_once() -> dict[str, Any] | None:
+        """One read and its verdict: the follow's last answer, or None while it goes on."""
+        nonlocal client, current, last, began, moved
         # A Task's status waits on the Host for the Task to move on (N8); a trial is polled.
         remaining = deadline - time.monotonic()
         request = (
@@ -2290,15 +2297,17 @@ def _follow(
             return final(current, "ENDED" if outcome_of(current) == "OK" else "STOPPED")
         if each_stage and int(current.get("verified_stage_count") or 0) > held:
             return final(current, "STAGE_VERIFIED")
-        if deadline - time.monotonic() <= 0:
-            return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
+        return None
+
+    while (ended := follow_once()) is None and deadline - time.monotonic() > 0:
         if trial:
             _sleep_before_read(delay, deadline)
             delay = min(delay * 2, 1.0)
-        elif (
-            not moved
-        ):  # a Host that answers at once, not after its wait, is not read again at once
+        elif not moved:  # a Host that answers at once, not after its wait, is not read again
             spaced(began, deadline)
+    if ended is not None:
+        return ended
+    return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
 
 
 def _said(document: dict[str, Any], state: object, stage: object, last: object) -> bool:
@@ -2386,12 +2395,7 @@ def _wait_for_goal(
     seen = {t["task_id"]: t["state"] for t in current["record"]["tasks"]}
     heard = {m["observation_id"] for m in current["record"]["conversation"] if _filed(m)}
     delay = 2.0
-    while True:
-        if current.get("state") != "OPEN":
-            return {
-                **current,
-                "wait_event": wait_event("GOAL_CLOSED", read, prefix=prefix, goal_id=goal_id),
-            }
+    while current.get("state") == "OPEN":
         conversation = current["record"]["conversation"]
         mine = {str(m.get("message_id")) for m in conversation if me and m.get("agent_id") == me}
         for message in conversation:
@@ -2443,6 +2447,10 @@ def _wait_for_goal(
         client, again = _read_through_restarts(client, document, deadline)
         if again is not None:
             current = again
+    return {
+        **current,
+        "wait_event": wait_event("GOAL_CLOSED", read, prefix=prefix, goal_id=goal_id),
+    }
 
 
 def _codex_thread() -> str:
@@ -3279,20 +3287,22 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         "committee_seen": int(args.committee_seen or 0),
     }
     deadline = _deadline(args.max_wait)
-    delay, body = 1.0, dict[str, Any]()
-    while True:
+
+    def answered(read: dict[str, Any] | None) -> bool:
+        return read is not None and bool(
+            outcome_of(read) != "OK"
+            or read.get("for_you")
+            or read.get("settled")
+            or read.get("stage") == "CLOSED"
+        )
+
+    client, read = _read_through_restarts(client, document, deadline)
+    delay, body = 1.0, read or {}
+    while read is not None and not answered(read) and _sleep_before_read(delay, deadline):
+        delay = min(delay * 1.5, 10.0)
         client, read = _read_through_restarts(client, document, deadline)
         body = body if read is None else read
-        if read is not None and (
-            outcome_of(body) != "OK"
-            or body.get("for_you")
-            or body.get("settled")
-            or body.get("stage") == "CLOSED"
-        ):
-            return body
-        if read is None or not _sleep_before_read(delay, deadline):
-            return {**body, "wait_status": "MAX_WAIT_REACHED"}
-        delay = min(delay * 1.5, 10.0)
+    return body if answered(read) else {**body, "wait_status": "MAX_WAIT_REACHED"}
 
 
 class _Verb(NamedTuple):

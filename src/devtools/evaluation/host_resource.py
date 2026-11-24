@@ -3,14 +3,15 @@
 import re
 import socket
 from pathlib import Path
-from time import sleep, time
+from time import time
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
 
 def settle_host_read(read, facts, alive, liveness):
-    """Keep failed Host reads through liveness retries, including the last unproved read."""
+    """Keep failed Host reads through liveness retries, including the last unproved read; each
+    retry pauses through ``liveness["sleep"]``, its caller's pause."""
     gaps, failures = [], []
     if str(facts.get("unavailable")).startswith("fresh_folder."):
         return facts, gaps
@@ -20,7 +21,7 @@ def settle_host_read(read, facts, alive, liveness):
         gaps = ["HOST_READ_FAILED"]
         if detail := facts.get("host_read_failure"):
             failures.append(detail)
-        liveness.get("sleep", sleep)(liveness["period"] * 2**attempt)
+        liveness["sleep"](liveness["period"] * 2**attempt)
         facts = read()
     if gaps and facts.get("unavailable") and (detail := facts.get("host_read_failure")):
         failures.append(detail)
@@ -202,13 +203,14 @@ def _host_members(parents, pinned, previous, unknown):
     for pid, (_, prior_parent) in previous.items():
         if pid not in parents or parents[pid] not in members:
             parents[pid] = prior_parent
-    while True:
+    changed = True
+    while changed:
         expanded = members | {
             pid for pid, ppid in parents.items() if ppid in members and pid != ppid
         }
-        if expanded == members:
-            return members
+        changed = expanded != members
         members = expanded
+    return members
 
 
 def _live_members(
@@ -631,10 +633,10 @@ def _workspace_endpoints(workspaces, explicit, connection_type, connection_error
 
 def _host_tree(processes, hosts):
     members = set(hosts)
-    while True:
+    changed = True
+    while changed:
         expanded = members | {p["pid"] for p in processes if p["parent"] in members}
-        if expanded == members:
-            break
+        changed = expanded != members
         members = expanded
     private = [p["private"] for p in processes if p["pid"] in members]
     errors = [

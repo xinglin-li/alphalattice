@@ -384,10 +384,7 @@ class ResearchInputRevisions:
         )
         ordered = []
         previous, binding = None, anchor.binding_hash
-        while True:
-            children = [v for v in rows if v.previous_publication_hash == previous]
-            if not children:
-                break
+        while children := [v for v in rows if v.previous_publication_hash == previous]:
             if len(children) != 1 or children[0] in ordered:
                 raise ValueError("research_input.publication_ambiguous")
             child = children[0]

@@ -646,21 +646,35 @@ class CurrentUniverseMaintenance:
 
     def _drive(self, steps: _Steps, connection: DuckDBPyConnection | None) -> str:
         """Run one listing's hydration, its audit a one-observation call; an error goes back in."""
+        pending = self._step(steps, None, connection)
+        while not isinstance(pending, str):
+            pending = self._step(steps, pending, connection)
+        return pending
+
+    def _step(
+        self,
+        steps: _Steps,
+        observation: ActionAuditObservation | None,
+        connection: DuckDBPyConnection | None,
+    ) -> ActionAuditObservation | str:
+        """Start the steps (no observation) or audit one and send its receipt back.
+
+        Returns the next observation, or the steps' return value once they finish.
+        """
         try:
-            observation = next(steps)
-            while True:
-                try:
-                    with span("verify", "listing_action_audit"):
-                        audited = self._mutate(
-                            self.store.complete_action_audit,
-                            self.manifest,
-                            observation,
-                            _connection=connection,
-                        )
-                except Exception as exc:
-                    observation = steps.throw(exc)
-                else:
-                    observation = steps.send(audited[0])
+            if observation is None:
+                return next(steps)
+            try:
+                with span("verify", "listing_action_audit"):
+                    audited = self._mutate(
+                        self.store.complete_action_audit,
+                        self.manifest,
+                        observation,
+                        _connection=connection,
+                    )
+            except Exception as exc:
+                return steps.throw(exc)
+            return steps.send(audited[0])
         except StopIteration as stop:
             return str(stop.value)
 

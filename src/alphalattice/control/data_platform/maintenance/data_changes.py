@@ -335,12 +335,11 @@ class WorkspaceDataChanges:
         if scope is None:
             return None
         runner = self._quote_runner(plan, scope, provider)
-        while True:
+        outcome = None
+        while outcome is None or outcome.status is CurrentUniverseMaintenanceStatus.RUNNING:
             if cancelled():
                 return "workspace_data_update.formation_cancelled", None
             outcome = runner.run(observed_at=observed_at, work_budget=1)
-            if outcome.status is not CurrentUniverseMaintenanceStatus.RUNNING:
-                break
         if outcome.status is CurrentUniverseMaintenanceStatus.DEFERRED:
             return outcome.failure_code or "workspace_data_update.formation_source_deferred", None
         failures = tuple(
@@ -574,12 +573,11 @@ class WorkspaceDataChanges:
         receipts = []
         for manifest in self.valuation_scopes(plan):
             runner = self._quote_runner(plan, manifest, provider)
-            while True:
+            outcome = None
+            while outcome is None or outcome.status is CurrentUniverseMaintenanceStatus.RUNNING:
                 if cancelled():
                     raise ValueError("workspace_data_update.valuation_cancelled")
                 outcome = runner.run(observed_at=observed_at, work_budget=1)
-                if outcome.status is not CurrentUniverseMaintenanceStatus.RUNNING:
-                    break
             if outcome.status is not CurrentUniverseMaintenanceStatus.COMPLETED or outcome.failed:
                 rows = market.current_universe_maintenance_listings(runner.maintenance_id)
                 raise ValueError(

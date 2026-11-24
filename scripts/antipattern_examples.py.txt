@@ -95,6 +95,14 @@ def waits(argv, process, ready, path, stop, send, lock, log):
     # ok: poll-without-deadline
     while not stop.wait(1):  # the stop-event form ends when stopped
         ready()
+    # ok: poll-without-deadline
+    while not stop.is_set():  # so does a loop that tests its stop event
+        wake.wait(1)
+    # ok: poll-without-deadline
+    while not done():  # perf_counter is a monotonic clock too
+        if time.perf_counter() > late:
+            raise TimeoutError
+        stop.wait(1)
     # ruleid: busy-wait
     while not path.exists():
         pass

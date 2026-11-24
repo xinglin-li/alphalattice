@@ -913,10 +913,12 @@ class FeatureFoundationService:
                 listings = planned_in_chunks()
                 queue: deque[_ListingWork] = deque()
                 computing = 0
-                while True:
+
+                def read_ahead() -> None:
                     # Read ahead while a worker is free: listings compute while the
                     # writer writes and seals the ones before them, and are still
                     # written one by one, in listing order.
+                    nonlocal computing
                     while computing < workers:
                         entry = next(listings, None)
                         if entry is None:
@@ -926,8 +928,9 @@ class FeatureFoundationService:
                             planned_work if plan is None else read_listing(planned_work, plan, held)
                         )
                         computing += queue[-1].computed
-                    if not queue:
-                        break
+
+                read_ahead()
+                while queue:
                     work = queue.popleft()
                     computing -= work.computed
                     listing = work.listing
@@ -1019,6 +1022,7 @@ class FeatureFoundationService:
                             counters={"materialization_receipts": len(receipts)},
                         )
                     completed_listing_count = work.index
+                    read_ahead()
                 for catalog_hash in pending_writes:
                     flush_feature_writes(base_connection, catalog_hash)
                 with span("write", "feature_finalize"):

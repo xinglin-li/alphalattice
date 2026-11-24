@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,10 +12,11 @@ from alphalattice.capabilities.data.enums import LicenseClass, UniverseIndex
 from alphalattice.capabilities.data.errors import DataProviderError
 from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.environment import offline
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.egress import EgressPort, HttpEgress, HttpSource
 
-Sleeper = Callable[[float], None]
+Sleeper = Callable[[float], object]
 
 
 @dataclass(frozen=True)
@@ -145,7 +145,7 @@ def fetch_universe_source(
     *,
     fetcher: Fetcher | None = None,
     clock: Callable[[], datetime] = utc_now,
-    sleep: Sleeper = time.sleep,
+    sleep: Sleeper = pause,
 ) -> FetchedUniverseSource:
     """Fetch and validate a frozen source under bounded retries and network control."""
     _guard_network()

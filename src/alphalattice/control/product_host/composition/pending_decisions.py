@@ -98,16 +98,16 @@ def all_data_issues(read_page: Callable[[str | None], Mapping[str, Any]]) -> dic
         One readback whose `next_requests` hold every page's.
     """
     offered: dict[str, Any] = {}
-    cursor: str | None = None
     seen: set[str] = set()
-    while True:
-        page = read_page(cursor)
+    page = read_page(None)
+    offered.update(page.get("next_requests") or {})
+    following = page.get("next_cursor")
+    while isinstance(following, str) and following not in seen:
+        seen.add(following)
+        page = read_page(following)
         offered.update(page.get("next_requests") or {})
         following = page.get("next_cursor")
-        if not isinstance(following, str) or following in seen:
-            return {"next_requests": offered}
-        seen.add(following)
-        cursor = following
+    return {"next_requests": offered}
 
 
 def _upgrade(overview: Mapping[str, Any]) -> list[dict[str, Any]]:

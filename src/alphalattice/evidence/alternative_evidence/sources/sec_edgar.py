@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.egress import HttpEgress, HttpResponse, HttpSource
@@ -218,7 +219,7 @@ class HttpxSecOfficialTransport:
         transport: object | None = None,
         requests_per_second: float = 5.0,
         monotonic: Callable[[], float] = time.monotonic,
-        sleeper: Callable[[float], None] = time.sleep,
+        sleeper: Callable[[float], object] = pause,
         maximum_total_attempts: int | None = None,
         maximum_total_response_bytes: int | None = None,
         ledger: SecCampaignLedger | None = None,
@@ -421,7 +422,8 @@ class HttpxSecOfficialTransport:
                         if response is not None
                         else min(0.25 * (2**attempt), 1.0)
                     )
-                    self._sleeper(delay)
+                    if delay > 0.0:  # a Retry-After of 0 retries at once
+                        self._sleeper(delay)
             finally:
                 if reservation is not None and self._ledger is not None:
                     # Settled with what was actually read, complete or not.

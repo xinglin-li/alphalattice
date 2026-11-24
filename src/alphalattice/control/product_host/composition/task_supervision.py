@@ -139,7 +139,7 @@ class TaskSupervisor:
         self._timer.arm(utc_now() + timedelta(seconds=self.interval))
 
     def _run(self) -> None:
-        while True:
+        while not self._stop.is_set():
             # The timer at the next pass, or `stop`; an hour with neither blocks again.
             if not self._wake.wait(CEILING):
                 continue

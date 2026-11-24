@@ -783,7 +783,7 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
     recipe = ledger.recipe_for_root(root)
     receipt = partial(_sector_activation_receipt, recipe)
-    monkeypatch.setattr(persistence.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(persistence, "pause", lambda _seconds: None)
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
     pointer = artifact_store.root / ledger._pointer_name("sector-maps", recipe.sector_revision)
@@ -857,7 +857,7 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
         ledger.publish_sector_activation(receipt(_hash("third-map")))
     assert refusals["pointer_calls"] == 1
     monkeypatch.undo()
-    monkeypatch.setattr(persistence.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(persistence, "pause", lambda _seconds: None)
 
     # The next legitimate attempt converges: the receipt and marker the store
     # already holds are not rewritten, only the pointer moves.
@@ -896,7 +896,7 @@ def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
             raise PermissionError("fixture sharing violation")
 
         fault.setattr(persistence.os, "replace", blocked)
-        fault.setattr(persistence.time, "sleep", lambda _: None)
+        fault.setattr(persistence, "pause", lambda _: None)
         with pytest.raises(WorkspaceConflictError):
             publish()
     assert not target.exists()
@@ -918,7 +918,7 @@ def test_shared_replace_preserves_the_default_catalog_bound(tmp_path, monkeypatc
         raise PermissionError("fixture")
 
     monkeypatch.setattr(persistence.os, "replace", blocked)
-    monkeypatch.setattr(persistence.time, "sleep", waits.append)
+    monkeypatch.setattr(persistence, "pause", waits.append)
     with pytest.raises(WorkspaceConflictError) as failure:
         persistence.replace_with_retry(tmp_path / "staged", tmp_path / "catalog")
     assert waits == [0.01, 0.025, 0.05, 0.1]

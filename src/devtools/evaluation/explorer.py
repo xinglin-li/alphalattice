@@ -1034,24 +1034,32 @@ class Explorer:
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
-        while True:
-            remaining = self._deadline - time.perf_counter()
-            if remaining <= 0:
-                raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
-            waited = [
-                "activity",
-                "wait",
-                "--task",
-                str(task),
-                "--max-wait",
-                str(min(self.time_box, remaining)),
-            ]
-            ended = self._send(waited, where + " > wait")
-            if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
-                return ended
-            event = (_data(ended).get("wait_event") or {}).get("event")
-            if event != "MAX_WAIT_REACHED" or self._spent():
-                return None
+        ended = self._wait(task, where)
+        while (
+            ended.get("outcome") == "PENDING"
+            and not ended.get("failure_code")
+            and (_data(ended).get("wait_event") or {}).get("event") == "MAX_WAIT_REACHED"
+            and not self._spent()
+        ):
+            ended = self._wait(task, where)
+        if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
+            return ended
+        return None
+
+    def _wait(self, task: Any, where: str) -> dict[str, Any]:
+        """One wait on the admitted Task, its time box cut to the walk's time left."""
+        remaining = self._deadline - time.perf_counter()
+        if remaining <= 0:
+            raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
+        waited = [
+            "activity",
+            "wait",
+            "--task",
+            str(task),
+            "--max-wait",
+            str(min(self.time_box, remaining)),
+        ]
+        return self._send(waited, where + " > wait")
 
     def _grade(self, answer: dict[str, Any], where: str, code: str) -> bool:
         """Grade one answer as an agent reads it; whether it is a stop."""

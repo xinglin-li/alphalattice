@@ -36,6 +36,7 @@ from alphalattice.control.task_control.registry import (
 from alphalattice.control.workspace_runtime import database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.data_layer import history
+from alphalattice.kernel.execution import EVENTS
 from tests.workspace_task_runner.lock_order import LockOrder, lock_order, record_lock_order
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -356,7 +357,9 @@ def test_host_stop_reaches_a_concurrent_task_and_keeps_it_recoverable(tmp_path: 
             task_id = dispatcher.submit(Command()).task_id
             assert entered.wait(10)
             stopping.set()
-            dispatcher._begin_drain()
+            with EVENTS.subscribed(("task", str(task_id))) as moved:
+                dispatcher._begin_drain()
+                assert moved.heard  # the drain is the executing Task's event: its waits read it
             release.set()
             assert dispatcher.close(timeout=10)
             assert registry.task(task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED

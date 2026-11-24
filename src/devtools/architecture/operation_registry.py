@@ -534,7 +534,8 @@ def _provenance_aliases(tree: ast.Module) -> set[str]:
         for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
     ]
     raw: set[str] = set()
-    while True:
+    changed = True
+    while changed:
         expanded = raw | {
             ast.unparse(target)
             for target, value in assignments
@@ -544,9 +545,9 @@ def _provenance_aliases(tree: ast.Module) -> set[str]:
                 and any(ast.unparse(part) in raw for part in ast.walk(value))
             )
         }
-        if expanded == raw:
-            return raw
+        changed = expanded != raw
         raw = expanded
+    return raw
 
 
 def _raw_provenance_checks(name: str, tree: ast.Module) -> list[str]:

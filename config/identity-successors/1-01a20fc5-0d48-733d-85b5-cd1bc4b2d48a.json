@@ -1,0 +1,174 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "8e11fc6168476f9c88f6ccd4b809b35526249f4ccc4cd27a0b94fa672966a75f",
+   "successor": "11d8b98122d79dbd6bef2a6af9e15b88de246e7c83c99e209891623b54db232f",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "b9222ee607be8d9c9aa729c32526e0e70628ef9e8e6534de4208e335a4cf430b",
+   "successor": "dd2651119832cbfc92cc3dac5f71bedea30ceb02752751dbfba3d84b3bdc36cc",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "122cc2df709f06f79b68f741bb82a0dca07684932c129340472a282a34a6dfd7",
+   "successor": "15a3740a7beaf7687b14a0f3ecc3a19327d53160039de870609707639a766209",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "8659c72d1f404cd61bee2032d7eddb928e44380422b2f3c65aff78ea71913b32",
+   "successor": "ba4db670b421174907aa5bd6abcf0abf1e7253ec77623102136d7feacc7ec5f5",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "5fba9bab9b829426cb7cbf8041b30121324834bf374eae6a8a42a76dfbf001c5",
+   "successor": "5cf8ff620ce6a9bc40fee177723b7990f5f629f860ca0bf4b49e03f1cb714ece",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "54431fc9ad73e4189c30e397fb7148edee62570d0847553de2276d9b6a2324d2",
+   "successor": "e3f529c0c0b3d8378bb0344dc1f64c4cb2a941ac1117752c396aa62e3099d9a6",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "beed09270d88729007c1237cefe812e76d1100c880efaaeae660dfb85b803a17",
+   "successor": "7ea2f021ba1338a0ae277e0a87b3c1d65571147e6ee94fb947c4a58979eb8793",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "456568f9af0199cd07a2a646fbf83353ca6e7459679e26e4b0c04b742bf6e9cb",
+   "successor": "883d4b6c46a955539f659fbac97d72519643470d36810197286d5ef461c0b3a6",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "24fce0a98ad3873da1cdc0008df9dceaa0802ee52141a82a581921459a715258",
+   "successor": "911fda2d3c2cd60437352ee0e5a4d995dc161722db8f4ed5321daf3af8bd528e",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "5b2d8b1cc8115ca4d098137bca2d8e759e3a0a1d867262f0188de87f061893aa",
+   "successor": "d767855f5c6cfdbe3662dfc36fa9c7bf6677f7c2987863a526df0045c0b83b68",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "86585640e6ca6fa5796bfecb95b735de8171fa1dfc94ace1dd02acbcd401247b",
+   "successor": "4ca8de4a352e693ff95ac7f0c3cf65bb43d1b5b4ef048eb857d725daa5a1e159",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "48d7a2ac3ba70c4d7519d0b33cbaf8388d9e242e0711639d893324a792f1222f",
+   "successor": "6c54315df575a18bbffc4b3390314b799010e943b00d06c4982aad7578a5516f",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "3d26c8e14cd177379d39a749c4bee0d1a9bec993d6543e7fbc6cc3c1321f93e4",
+   "successor": "2e0010b30dc77584c447efa933776c0be47586bc55b81a646e76478ea423282f",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "df4586471f6e3dcc9bec4e556dc442a4a128db2c7ca5bb158dde9a42ea2d01bd",
+   "successor": "e7fd372954240d712cfa9d66be23bcdce8a3df406d7346c35e8b6e6e7d8a117d",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "7a2d97bcbd00eb15d6a60957eb7c41e56ad0cbdb25598b194e23cf71e860d569",
+   "successor": "db0f1f1f0af9d66329e4afc7b1d4b153619356dd56f71cf2581fd3e7793d41de",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "e53f901b2bb16296d3e268865d5432cbb0467dbecd040481c3b689a2d806f65d",
+   "successor": "605698ee9e84c866123042d87d5e46b942b47dcbd6a2544c12f9081ccc022950",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "0f13644ba54ef5cd4736036eaff28541a9ecd4f696de8c1e8c008be85979917d",
+   "successor": "e77879e0edd39abb1c4cb8654222e4b92563e9ca174e1c5309322884a95e5108",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "7ea002a7bc6b762617ff639bb3980bcf62407792f2081da9514af44534f86a62",
+   "successor": "8fa677c13133f2f7c29bb1869a46009bb70a67632c1222872a0fd96d1e421aa6",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "7ea002a7bc6b762617ff639bb3980bcf62407792f2081da9514af44534f86a62",
+   "successor": "8fa677c13133f2f7c29bb1869a46009bb70a67632c1222872a0fd96d1e421aa6",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3df5e4d992d158547c3622135433d2a57f5d7c9006651ef12145f5e61d67f628",
+   "successor": "9a87be0d73a42b7d5e7b0f17fcb9b3d97cc80d9d8bf47f450bb235070db4d81f",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "89c6636c643fcf1b06280a2ebe339a4e86896919d0bb0e202dfa598182fcbaa3",
+   "successor": "a03c442c68727c08fa1ac56b8134807256e9a1de31d48dee6c13b259678efca7",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "23533429571966676838abfef9ee3953dd6c974a708b857bafc8f9bdba5814e3",
+   "successor": "3866dc68c8cc69f7d8f4aee6930969a03257ed48792ca6fc64c70bb72f1295ba",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "3f1b25337b666a73b6befa77dc4717a570da44b77b9b52fa75a186e6c13f1699",
+   "successor": "804ddc1857e2c9a4ae184cd764f41d6ab2697851563f3e42c7f8ebd5151659a0",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "487224cd94d3af580edf30ef41f87c065c4a7c5b6a57acdd6a48a22fd09d39ca",
+   "successor": "d4a3ffc7485a0094160e91478fab6916b6fec3f68277fb8e558003a66f18d927",
+   "change": "Every product loop states its end; every pause uses the one wait owner",
+   "reason": "Every product loop and pause now waits through the one wait owner; the code that runs changed, so these implementations take new identities while every result is unchanged"
+  }
+ ]
+}

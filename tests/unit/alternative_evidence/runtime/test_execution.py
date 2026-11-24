@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from alphalattice.evidence.alternative_evidence.runtime import execution
@@ -8,15 +10,26 @@ TEST_SOURCE = "src/alphalattice/evidence/alternative_evidence/runtime/execution.
 @pytest.mark.proves("alternative_evidence.a_later_unit_wait_ends_at_its_bound")
 def test_a_later_unit_never_waits_without_end_on_the_first(monkeypatch):
     """A later unit's wait for the book's first unit fails by name when the first unit is still
-    pending at the deadline, and ends at once, unsettled, on a Task that ended or failed."""
-    clock = iter([0.0, 0.0, 1.0, execution.FIRST_UNIT_WAIT_SECONDS + 1.0])
-    monkeypatch.setattr(execution.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(execution, "pause", lambda _seconds: False)
+    pending at the deadline, ends at once, unsettled, on a Task that ended or failed, and reads
+    again on the Task's event rather than on a poll."""
+    subject = ("task", "first-unit")
     monkeypatch.setattr(execution, "checkpoint", lambda: None)
+    monkeypatch.setattr(execution, "FIRST_UNIT_WAIT_SECONDS", 0.05)
     with pytest.raises(RuntimeError, match=r"^alternative_evidence\.first_unit_wait_expired$"):
-        execution.first_unit_settled(lambda: "PENDING")
-    clock = iter([0.0, 0.0])
-    assert execution.first_unit_settled(lambda: None) is False
+        execution.first_unit_settled(lambda: "PENDING", subject)
+    assert execution.first_unit_settled(lambda: None, subject) is False
+    monkeypatch.setattr(execution, "FIRST_UNIT_WAIT_SECONDS", 60.0)
+    reads = []
+
+    def state():  # the first unit's stage row lands just after the first read
+        reads.append(time.monotonic())
+        if len(reads) == 1:
+            execution.EVENTS.publish(subject)
+            return "PENDING"
+        return "PREPARED"
+
+    assert execution.first_unit_settled(state, subject) is True
+    assert reads[1] - reads[0] < 0.5  # read again on the event, inside the old 0.5 s poll
 
 
 @pytest.mark.proves("resources.task_grants_obey_the_budget")

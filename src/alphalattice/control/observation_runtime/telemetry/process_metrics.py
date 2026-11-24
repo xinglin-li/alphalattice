@@ -28,6 +28,7 @@ import psutil
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.resources import logical_cpu_count
 
@@ -182,14 +183,14 @@ def _windows_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str
         children: dict[int, list[int]] = {}
         entry = _ProcessEntry()
         entry.dwSize = ctypes.sizeof(entry)
-        if not first(snapshot, ctypes.byref(entry)):
+        found = first(snapshot, ctypes.byref(entry))
+        if not found:
             return (root_pid,), "PROCESS_TREE_ENUMERATION_UNAVAILABLE"
-        while True:
+        while found:
             children.setdefault(int(entry.th32ParentProcessID), []).append(int(entry.th32ProcessID))
             entry = _ProcessEntry()
             entry.dwSize = ctypes.sizeof(entry)
-            if not next_entry(snapshot, ctypes.byref(entry)):
-                break
+            found = next_entry(snapshot, ctypes.byref(entry))
         return _descendants(root_pid, children), None
     finally:
         kernel32.CloseHandle(snapshot)
@@ -1238,7 +1239,7 @@ def busy_logical_processors(
     if first is None:
         getter = getattr(os, "getloadavg", None)
         return None if getter is None else min(float(detected), float(getter()[0]))
-    time.sleep(interval_seconds)
+    pause(interval_seconds)
     second = _system_times()
     if second is None or second[1] <= first[1]:
         return None

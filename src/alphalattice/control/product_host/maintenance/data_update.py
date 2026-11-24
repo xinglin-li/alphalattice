@@ -2104,15 +2104,16 @@ class WorkspaceDataUpdateApplication:
                 if onboarding is not None:
                     # New members hydrate a chunk per run, as in first use; a cancel is honoured at
                     # the chunk boundary and each listing commits alone.
-                    while True:
+                    outcome = None
+                    while (
+                        outcome is None or outcome.status is CurrentUniverseOnboardingStatus.RUNNING
+                    ):
                         if cancelled():
                             return self._cancelled(plan)
                         outcome = onboarding.runner.run(
                             observed_at=self.clock(),
                             work_budget=onboarding.runner.hydration_chunk_size,
                         )
-                        if outcome.status is not CurrentUniverseOnboardingStatus.RUNNING:
-                            break
                     if outcome.status is not CurrentUniverseOnboardingStatus.COMPLETED:
                         return StageExecutionResult(
                             StageDisposition.DEFERRED
@@ -2193,7 +2194,8 @@ class WorkspaceDataUpdateApplication:
                     recorded_data_confirmation=self.recorded_data_confirmation,
                     diagnose=diagnose,
                 )
-                while True:
+                outcome = None
+                while outcome is None or outcome.status is MaintenanceStatus.RUNNING:
                     if cancelled():
                         return self._cancelled(plan)
                     require_storage_capacity(
@@ -2205,8 +2207,6 @@ class WorkspaceDataUpdateApplication:
                         observed_at=self.clock(),
                         maintenance_work_budget=_MAINTENANCE_CYCLE_LISTINGS,
                     )
-                    if outcome.status is not MaintenanceStatus.RUNNING:
-                        break
                 if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
                     return StageExecutionResult(
                         StageDisposition.DEFERRED

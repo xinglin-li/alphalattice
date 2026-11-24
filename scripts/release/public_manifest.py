@@ -882,13 +882,11 @@ def internal_id_ratchet(
     aliases = {}
     ordinal = 0
     for label in sorted(sensitive_labels):
-        while True:
+        ordinal += 1
+        while f"<NO_SECRET:{ordinal}>" in occupied:
             ordinal += 1
-            alias = f"<NO_SECRET:{ordinal}>"
-            if alias not in occupied:
-                aliases[label] = alias
-                occupied.add(alias)
-                break
+        aliases[label] = alias = f"<NO_SECRET:{ordinal}>"
+        occupied.add(alias)
     current_occurrences = {
         path: dict(sorted((aliases.get(label, label), count) for label, count in seen.items()))
         for path, seen in current_occurrences.items()

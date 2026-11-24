@@ -458,11 +458,11 @@ def _earliest_entry(formation: date) -> str | None:
     if history_floor(formation) >= floor:
         return None
     named = date(floor.year + 10, floor.month, min(floor.day, 28))
-    while True:
-        reading = target_sessions(named)
-        if history_floor(date.fromisoformat(str(reading["formation_session"]))) >= floor:
-            return str(reading["entry_session"])
+    reading = target_sessions(named)
+    while history_floor(date.fromisoformat(str(reading["formation_session"]))) < floor:
         named += timedelta(days=1)
+        reading = target_sessions(named)
+    return str(reading["entry_session"])
 
 
 class GoalReferenceRequest(GoalContract):

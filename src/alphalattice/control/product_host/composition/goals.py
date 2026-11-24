@@ -2102,8 +2102,8 @@ class GoalApplication:
         """
         head = head if head is not None else self.store.head(goal.goal_id)
         statement_context = {}
-        ancestor = goal
-        while True:
+        ancestor: Goal | None = goal
+        while ancestor is not None:
             for statement in ancestor.statements:
                 statement_context[statement.statement_id] = {
                     "goal_hash": ancestor.goal_hash,
@@ -2112,11 +2112,11 @@ class GoalApplication:
                     if ancestor.declaration.intent() == goal.declaration.intent()
                     else "PRIOR_DESIGN",
                 }
-            if ancestor.parent_hash is None:
-                break
-            parent = self.store.load(ancestor.parent_hash)
-            if parent.goal_id != goal.goal_id or parent.revision != ancestor.revision - 1:
-                raise ValueError("goal.revision_chain_invalid")
+            parent = None
+            if ancestor.parent_hash is not None:
+                parent = self.store.load(ancestor.parent_hash)
+                if parent.goal_id != goal.goal_id or parent.revision != ancestor.revision - 1:
+                    raise ValueError("goal.revision_chain_invalid")
             ancestor = parent
         return {
             "goal_id": str(goal.goal_id),

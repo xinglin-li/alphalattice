@@ -191,15 +191,16 @@ class ResearchUpdateAutomation:
         """
         current = None
         seen: set[str] = set()
-        while True:
-            parent = None if current is None else current.content_hash
-            value = self.index.open(_AUTOMATION_SETTINGS, canonical_hash(["SETTINGS", parent]))
-            if value is None:
-                return current
+        parent = None
+        while (
+            value := self.index.open(_AUTOMATION_SETTINGS, canonical_hash(["SETTINGS", parent]))
+        ) is not None:
             if value.previous_hash != parent or value.content_hash in seen:
                 raise ValueError("research_update.automation_lineage_invalid")
             seen.add(value.content_hash)
             current = value
+            parent = value.content_hash
+        return current
 
     def readback(self) -> dict[str, object]:
         """Read scheduling status, admission, last attempt and maintenance failure.

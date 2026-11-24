@@ -984,15 +984,15 @@ def bind_browser_safe[B: _Bound](bind: Callable[[], B], *, assigned: bool) -> B:
     """
     refused: list[B] = []
     try:
-        while True:
-            server = bind()
-            if (
-                not assigned
-                or int(server.server_address[1]) not in BROWSER_REFUSED_PORTS
-                or len(refused) >= BROWSER_SAFE_REBINDS
-            ):
-                return server
+        server = bind()
+        while (
+            assigned
+            and int(server.server_address[1]) in BROWSER_REFUSED_PORTS
+            and len(refused) < BROWSER_SAFE_REBINDS
+        ):
             refused.append(server)
+            server = bind()
+        return server
     finally:
         for held in refused:
             held.server_close()

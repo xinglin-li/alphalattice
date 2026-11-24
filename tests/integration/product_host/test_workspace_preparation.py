@@ -286,7 +286,7 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
             real_replace(source, destination)
 
         monkeypatch.setattr(persistence.os, "replace", flaky)
-        monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
+        monkeypatch.setattr(persistence, "pause", lambda _: None)
         values = app._save(task, "progress", {"completed": 1}, progress=True)
         assert len(calls) == 3
         assert app._load(task.task_id, "progress") == values
@@ -560,7 +560,7 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
             real_replace(source, destination)
 
         monkeypatch.setattr(persistence.os, "replace", refused)
-        monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
+        monkeypatch.setattr(persistence, "pause", lambda _: None)
         confirmed = agent.request(continuation)
         assert confirmed["task_id"] == str(stopped.task_id), confirmed
         live.dispatcher.drain_for_tests(timeout=900)
@@ -1172,7 +1172,7 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
         real_record(path, data)
 
     monkeypatch.setattr(TaskTelemetry, "record_json", staticmethod(record))
-    monkeypatch.setattr(persistence.time, "sleep", sleeps.append)
+    monkeypatch.setattr(persistence, "pause", sleeps.append)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,

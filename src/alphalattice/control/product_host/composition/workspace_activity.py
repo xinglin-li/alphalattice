@@ -907,12 +907,16 @@ class WorkspaceActivity:
         if ledger is None:
             return rows, [{"code": "LEDGER_UNAVAILABLE"}], head, clocks
         cursor = ObservationReadCursor(store_epoch=ledger.store_epoch, ordinal=0)
-        while True:
+
+        def page_at(at: ObservationReadCursor) -> ObservationReadPage | None:
             try:
-                page = ledger.observations_after(cursor, limit=MAXIMUM_READ_PAGE)
+                return ledger.observations_after(at, limit=MAXIMUM_READ_PAGE)
             except ObservationStorageError:
                 gaps.append({"code": "LEDGER_ROWS_UNREADABLE"})
-                break
+                return None
+
+        page = page_at(cursor)
+        while page is not None:
             head = head or page.head_ordinal
             for item in page.items:
                 record, payload = item.record, item.record.inline_safe_payload
@@ -941,6 +945,7 @@ class WorkspaceActivity:
                 gaps.append({"code": "LEDGER_CURSOR_STALLED"})
                 break
             cursor = page.next_cursor
+            page = page_at(cursor)
         owned = {
             (r["source"], r.get("operation_ref"))
             for r in rows

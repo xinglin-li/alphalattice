@@ -822,7 +822,8 @@ def _fixture_users(
     except (OSError, SyntaxError, UnicodeError):
         return None
     names = {name for path in reached for name in registered[path]}
-    while True:
+    changed = True
+    while changed:
         expanded = names | {
             name
             for name, function in functions.items()
@@ -836,8 +837,7 @@ def _fixture_users(
                 )
             }
         }
-        if expanded == names:
-            break
+        changed = expanded != names
         names = expanded
     if names & automatic:
         return None

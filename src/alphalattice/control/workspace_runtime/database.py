@@ -938,7 +938,8 @@ def _acquire(
 
     with _STATE:
         try:
-            while True:
+            connection: WorkspaceConnection | None = None
+            while connection is None:
                 instance = _INSTANCES.get(path)
                 idle = _IDLE.get(path)
                 if instance is None and idle is not None:
@@ -952,7 +953,10 @@ def _acquire(
                     _INSTANCES[path] = idle
                     # the instance takes the threads applied now, as a fresh open would
                     raw = configure_duckdb(cast(duckdb.DuckDBPyConnection, idle.root).cursor())
-                    return _register(idle, raw, path, guarded=read_only and not idle.read_only)
+                    connection = _register(
+                        idle, raw, path, guarded=read_only and not idle.read_only
+                    )
+                    break
                 if instance is None:
                     if read_only and _WRITERS_WAITING.get(path, 0):
                         wait(_HELD)
@@ -963,9 +967,10 @@ def _acquire(
                         continue
                     instance = _Instance(read_only=opened_read_only)
                     _INSTANCES[path] = instance
-                    return _register(
+                    connection = _register(
                         instance, raw, path, guarded=read_only and not opened_read_only
                     )
+                    break
                 if instance.read_only == read_only:
                     if read_only and _WRITERS_WAITING.get(path, 0) and not instance.held_by(me):
                         wait(_HELD)
@@ -973,18 +978,21 @@ def _acquire(
                     raw = _open(path, read_only=read_only, wait=wait)
                     if raw is None:
                         continue
-                    return _register(instance, raw, path, guarded=False)
+                    connection = _register(instance, raw, path, guarded=False)
+                    break
                 if not instance.read_only:
                     raw = _open(path, read_only=False, wait=wait)
                     if raw is None:
                         continue
-                    return _register(instance, raw, path, guarded=True)
+                    connection = _register(instance, raw, path, guarded=True)
+                    break
                 if instance.held_by(me):
                     raise RuntimeError("workspace_database.access_mode_conflict_on_this_thread")
                 if not waiting_as_writer:
                     _WRITERS_WAITING[path] = _WRITERS_WAITING.get(path, 0) + 1
                     waiting_as_writer = True
                 wait(_HELD)
+            return connection
         finally:
             if waiting_as_writer:
                 _WRITERS_WAITING[path] -= 1

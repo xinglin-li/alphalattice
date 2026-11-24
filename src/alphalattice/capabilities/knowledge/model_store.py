@@ -28,13 +28,13 @@ import shutil
 import sys
 import tempfile
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.capabilities.knowledge.hybrid_contracts import (
     BGE_MODEL_ARTIFACT_SHA256,
     BGE_MODEL_ID,
@@ -614,7 +614,7 @@ def hub_fetcher(
                             f"model_store.download_interrupted:{name}; "
                             "installing again continues it"
                         ) from error
-                    time.sleep(min(30.0, 2.0**attempt))
+                    pause(min(30.0, 2.0**attempt))
         os.replace(partial, destination)
         return destination
 

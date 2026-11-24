@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import math
-import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -21,6 +20,7 @@ from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
 from alphalattice.capabilities.domain_contracts.spans import spanned
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -60,7 +60,7 @@ class ProviderFetchError(RuntimeError):
         self.retryable = retryable
 
     def backed_off(
-        self, attempt: int, attempts: int, sleep: Callable[[float], None] = time.sleep
+        self, attempt: int, attempts: int, sleep: Callable[[float], object] = pause
     ) -> ProviderFetchError:
         """This failure of attempt `attempt` of `attempts`, after the wait its retry owes: a rate
         limit waits `RATE_LIMIT_BACKOFF_SECONDS`, doubling up to `RATE_LIMIT_BACKOFF_CAP_SECONDS`,

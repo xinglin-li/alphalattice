@@ -362,9 +362,13 @@ class LocalBackgroundDispatcher:
             raise _DispatcherClosed("local_application.dispatcher_closed")
 
     def _begin_drain(self) -> None:
-        """Refuse new top-level work while admitted handoffs finish."""
+        """Refuse new top-level work while admitted handoffs finish. The drain is an event for each
+        executing Task: a work item waiting on its Task's events reads the Host's stop at once."""
         with self._lock:
             self._closed = True
+            executing = tuple(self._executing)
+        for task_id in executing:
+            EVENTS.publish(("task", str(task_id)))
 
     def run_between_tasks(self, action: Callable[[], None]) -> None:
         """Try for an exclusive idle slice while the caller holds its owner's guards."""
@@ -744,8 +748,7 @@ class LocalBackgroundDispatcher:
         refused at the transaction and the run completed as if never asked).
         """
         with self._lock:
-            attempts = 0
-            while True:
+            for attempt in range(CANCEL_REAIM_LIMIT):
                 projection = self.status_port.safe_projection(task_id)
                 confirmed = (
                     expected_task_hash
@@ -767,8 +770,7 @@ class LocalBackgroundDispatcher:
                                 "task_control.cancel_version_stale"
                             ) from error
                         return False
-                    attempts += 1
-                    if not stale or attempts >= CANCEL_REAIM_LIMIT:
+                    if not stale or attempt + 1 >= CANCEL_REAIM_LIMIT:
                         return False
             finalized = task_id in self._owned_tasks and task_id not in self._running
             if finalized:

@@ -509,9 +509,7 @@ class _PosixMemoryWatch:
 
     def _watch(self) -> None:
         try:
-            while True:
-                if self._ending.is_set():
-                    return
+            while not self._ending.is_set():
                 amount, reached = (
                     self.scope.sample()
                     if self.scope is not None and self._wake is not None
@@ -523,6 +521,8 @@ class _PosixMemoryWatch:
                     self.scope.wait(self._wake[0])
                 else:
                     self._ending.wait(1.0)
+            else:  # _ending is set: leave without the enforcement below
+                return
         except Exception as error:
             self._failure = error
         if (
@@ -1624,7 +1624,8 @@ class ChildJob:
                 raise ctypes.WinError(ctypes.get_last_error())
             if not self.kernel.TerminateJobObject(self.handle, exit_code):
                 raise ctypes.WinError(ctypes.get_last_error())
-            while True:
+
+            def wait_held() -> None:
                 handles = list(held.values())
                 for start in range(0, len(handles), 64):
                     remaining = deadline - time.monotonic()
@@ -1639,14 +1640,15 @@ class ChildJob:
                     )
                     if result != 0:
                         raise TreeNotStopped(f"spawn.tree_not_stopped: Job wait {result}")
-                # The Job's active count proves the stop. A member that joined after the first
-                # capture and already exited (or one the active-process limit refused) is counted
-                # in TotalProcesses but never captured, so only an active member is waited for.
-                after = accounting()
-                if not after.ActiveProcesses:
-                    break
+
+            wait_held()
+            # The Job's active count proves the stop. A member that joined after the first
+            # capture and already exited (or one the active-process limit refused) is counted in
+            # TotalProcesses but never captured, so only an active member is waited for.
+            while (after := accounting()).ActiveProcesses:
                 if not capture(after.ActiveProcesses) and time.monotonic() >= deadline:
                     raise TreeNotStopped("spawn.tree_not_stopped: uncaptured Job members")
+                wait_held()
         finally:
             for handle in held.values():
                 _winapi.CloseHandle(handle)

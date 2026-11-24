@@ -333,10 +333,10 @@ def _helper_selected(
     seeds: set[str],
 ) -> tuple[str, ...]:
     reached = set(seeds)
-    while True:
+    changed = True
+    while changed:
         expanded = reached | {name for name, refs in edges.items() if refs & reached}
-        if expanded == reached:
-            break
+        changed = expanded != reached
         reached = expanded
 
     def selector(path: str, name: str) -> str:

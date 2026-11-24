@@ -71,7 +71,7 @@ def test_the_person_answers_by_source(
 
 def test_asking_is_graded_and_an_unset_ask_asks_no_one(tmp_path_factory):
     out = tmp_path_factory.mktemp("person")  # each call's own rows
-    made = ScenarioPerson(SHEET, out)
+    made = ScenarioPerson(SHEET, out, sleep=lambda s: None)
     made.scripted("Keep the network on?", "Yes.", code="network.daily_updates", session="s")
     made.answer("Which universe should I use?")
     made.answer("Write in English?")

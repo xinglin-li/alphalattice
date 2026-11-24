@@ -179,7 +179,7 @@ def test_a_broken_download_continues_from_its_last_byte(
 
     import httpx
 
-    monkeypatch.setattr(model_store.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(model_store, "pause", lambda _seconds: None)
     payload = bytes(range(256)) * 64
     pack = model_store.PackDefinition(
         "test-pack",

@@ -1864,7 +1864,8 @@ class WorkspacePreparationApplication:
                 self._save(task, "progress", self._progress_values(stage, retained), progress=True)
             minimum_target_listings = FeatureInputPolicy().minimum_sector_size
             deferred: StageExecutionResult | None = None
-            while True:
+            outcome = None
+            while outcome is None or outcome.status is CurrentUniverseOnboardingStatus.RUNNING:
                 if cancelled():
                     return StageExecutionResult(StageDisposition.CANCELLED)
                 self._capacity(task)
@@ -1891,8 +1892,6 @@ class WorkspacePreparationApplication:
                 self._save(task, "progress", self._progress_values(stage, outcome), progress=True)
                 if deferred is not None:
                     return deferred
-                if outcome.status is not CurrentUniverseOnboardingStatus.RUNNING:
-                    break
             if outcome.status is not CurrentUniverseOnboardingStatus.COMPLETED:
                 return StageExecutionResult(
                     StageDisposition.DEFERRED
@@ -2022,7 +2021,8 @@ class WorkspacePreparationApplication:
                     }
                 ),
             )
-            while True:
+            outcome = None
+            while outcome is None or outcome.status is MaintenanceStatus.RUNNING:
                 if cancelled():
                     return StageExecutionResult(StageDisposition.CANCELLED)
                 self._capacity(task)
@@ -2062,8 +2062,6 @@ class WorkspacePreparationApplication:
                     },
                     progress=True,
                 )
-                if outcome.status is not MaintenanceStatus.RUNNING:
-                    break
             if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
                 return StageExecutionResult(
                     StageDisposition.DEFERRED

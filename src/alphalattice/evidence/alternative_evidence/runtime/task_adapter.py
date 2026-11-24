@@ -712,7 +712,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 return None
             return self.unit_states(current)[first]["state"]
 
-        first_unit_settled(state)
+        first_unit_settled(state, ("task", str(task.task_id)))
 
     def _rank(self, task: TaskRecord, stage_id: str) -> int:
         """A unit's place in its run (heaviest first): who goes first at the writer."""

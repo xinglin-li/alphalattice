@@ -145,7 +145,7 @@ def _wait_for_stop_on_stdin() -> None:
             waiting, pending = wintypes.DWORD(), b""
             while kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(waiting), None):
                 if not waiting.value:
-                    time.sleep(0.2)
+                    pause(0.2)
                     continue
                 chunk = os.read(descriptor, waiting.value)
                 if not chunk:

@@ -86,11 +86,8 @@ def build_research_split(
     validation_start = spec.train_sessions + spec.purge_sessions
     windows: list[SplitWindow] = []
     fold_index = 0
-    while True:
-        validation_end = validation_start + spec.validation_sessions
-        embargo_end = validation_end + spec.embargo_sessions
-        if embargo_end > final_development_boundary:
-            break
+    validation_end = validation_start + spec.validation_sessions
+    while (embargo_end := validation_end + spec.embargo_sessions) <= final_development_boundary:
         train_end = validation_start - spec.purge_sessions
         train_start = 0
         if spec.mode is SplitMode.ROLLING:
@@ -108,6 +105,7 @@ def build_research_split(
         )
         fold_index += 1
         validation_start += spec.step_sessions
+        validation_end = validation_start + spec.validation_sessions
     if len(windows) < spec.minimum_folds:
         raise _error(
             "timeline cannot provide the requested complete walk-forward folds",

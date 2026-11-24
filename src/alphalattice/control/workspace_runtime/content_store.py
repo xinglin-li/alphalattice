@@ -35,7 +35,6 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
-from time import sleep
 from types import CodeType
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -48,6 +47,7 @@ from pydantic import BaseModel
 
 from alphalattice.capabilities.domain_contracts.environment import recorded_environment
 from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.control.workspace_runtime.verified_facts import (
     _FULL_PROOF,
     file_fact,
@@ -126,13 +126,8 @@ def staging_directory(parent: Path, prefix: str = ".staging-") -> Iterator[Path]
     Yields:
         The staging folder, absent again once the block leaves.
     """
-    while True:
-        folder = parent / f"{prefix}{uuid4().hex}"
-        try:
-            folder.mkdir()
-            break
-        except FileExistsError:
-            continue
+    folder = parent / f"{prefix}{uuid4().hex}"
+    folder.mkdir()  # 122 random bits: no name already there is ever drawn
     try:
         yield folder
     finally:
@@ -171,7 +166,8 @@ def verified_source_value[T](
         *((os.fspath(path.absolute()), fact) for path, fact in zip(sources, facts, strict=True)),
     )
     proved = _FULL_PROOF.get()
-    while True:
+    mine: Future[None] | None = None  # this reader's build, once no other reader holds one
+    while mine is None:
         with _VERIFIED_ARRAY_CACHE_LOCK:
             held = proved.get(key, _ABSENT) if proved is not None else _ABSENT
             if held is not _ABSENT:
@@ -184,10 +180,10 @@ def verified_source_value[T](
             pending = _VERIFIED_SOURCE_BUILDS.get(key)
             if pending is None:
                 _VERIFIED_ARRAY_PROCESS_CACHE_MISSES += 1
-                pending = Future()
-                _VERIFIED_SOURCE_BUILDS[key] = pending
-                break
+                mine = _VERIFIED_SOURCE_BUILDS[key] = Future()
+                continue
         pending.result()
+    pending = mine
     token = _VERIFIED_SOURCE_BUILD.set(True)
     try:
         with span("verify", "source_value"):
@@ -712,7 +708,7 @@ def replace_shared_file(staged: Path, destination: Path) -> None:
         except PermissionError:
             if os.name != "nt" or attempt + 1 == _WINDOWS_REPLACE_ATTEMPTS:
                 raise
-            sleep(0.01 * (2**attempt))
+            pause(0.01 * (2**attempt))
 
 
 class ContentAddressedStoreError(ValueError):

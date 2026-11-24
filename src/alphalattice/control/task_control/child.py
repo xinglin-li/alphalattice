@@ -424,23 +424,32 @@ def _waited(
     """Wait for a call's answer, relaying the Task's cancellation while it runs."""
     progress: tuple[float | None, float] = (None, time.monotonic())
     try:
-        while True:
-            try:
-                return submitted.future.result(timeout=POLL_SECONDS)
-            except FutureTimeout:
-                reason = stop_reason()
-                if reason is not None or (cancelled is not None and cancelled()):
-                    if not flag.exists():
-                        flag.touch()
-                    if _task_owns_pool(submitted.pool):
-                        spawn.stop_pool(submitted.pool)
-                        _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
-                        raise ExecutionStopped(reason or CANCELLED) from None
-                progress = _progressed(submitted.pool, progress)
-                if time.monotonic() - progress[1] > WEDGED_SECONDS:
-                    raise _ended_wedged(submitted) from None
+        # The answer ends the wait at once; each POLL_SECONDS without one relays the Task's
+        # cancellation and samples the worker's CPU for the wedge.
+        while (answer := _answer(submitted.future)) is None:
+            reason = stop_reason()
+            if reason is not None or (cancelled is not None and cancelled()):
+                if not flag.exists():
+                    flag.touch()
+                if _task_owns_pool(submitted.pool):
+                    spawn.stop_pool(submitted.pool)
+                    _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
+                    raise ExecutionStopped(reason or CANCELLED) from None
+            progress = _progressed(submitted.pool, progress)
+            if time.monotonic() - progress[1] > WEDGED_SECONDS:
+                raise _ended_wedged(submitted) from None
+        return answer
     except BrokenProcessPool:
         raise _ended(submitted.worker, submitted.pool) from None
+
+
+def _answer(future: Future[Any]) -> dict[str, Any] | None:
+    """The call's answer, or None while it has none after POLL_SECONDS."""
+    try:
+        answer: dict[str, Any] = future.result(timeout=POLL_SECONDS)
+    except FutureTimeout:
+        return None
+    return answer
 
 
 def _progressed(

@@ -12,40 +12,48 @@ from devtools.architecture import type_ignores, waits
 
 TEST_SCOPE = "whole-tree"
 
-CASES = {  # rule: (a refused form, its repair)
-    "while-true-without-deadline": (
-        "while True:\n    log(time.monotonic())\n",
-        "while True:\n    if time.monotonic() > deadline:\n        break\n",
-    ),
-    "retry-without-bound": (
-        "while True:\n    try:\n        send()\n    except OSError:\n        log()\n",
-        "while True:\n    left = deadline - time.monotonic()\n    if left <= 0:\n        raise X\n"
-        "    try:\n        send(left)\n    except OSError:\n        log()\n",
+CASES = {  # rule: (a refused form, the lines the rule refuses in it, its repair)
+    "while-true": (
+        "while True:\n    if time.monotonic() > deadline:\n        break\n"
+        "while 1:\n    page = fetch(cursor)\n    if not page:\n        break\n",
+        [1, 4],  # even a loop that ends on its data states that end in its test
+        "while time.monotonic() <= deadline:\n    step()\n"
+        "for attempt in range(3):\n    try:\n        send()\n        break\n    except OSError:\n"
+        "        log()\nwhile page := fetch(cursor):\n    keep(page)\n",
     ),
     "busy-wait": (
         "while not ready:\n    pass\nwhile not ready():\n    counter += 1\n",
+        [1, 3],  # an idle poll and a busy one
         "while not stop.wait(0.5):\n    counter += 1\nwhile step():\n    pass\n"
         "while i < end and ready(i):\n    i += 1\n",
     ),
-    "sleep-outside-wait": ("time.sleep(period)\n", "waits.pause(1, stop=stop)\n"),
+    "sleep-outside-wait": (
+        "def wait(pause=time.sleep):\n    pause(period)\ntime.sleep(period)\n",
+        [1, 3],  # a seam's sleep default is the sleep it later calls
+        "def wait(pause=waits.pause):\n    pause(1, stop=stop)\n",
+    ),
     "swallowed-in-loop": (
         "for row in rows:\n    try:\n        f(row)\n    except ValueError:\n        continue\n",
+        [4],
         "for row in rows:\n    try:\n        f(row)\n    except ValueError:\n        n += 1\n",
     ),
     "call-without-timeout": (
         "subprocess.run(argv)\nthread.join()\nq.put(x)\njobs_queue.get()\nf(timeout=None)\n"
         "async def pull():\n    await subscription.fetch(1)\n",
+        [1, 2, 4, 5, 7],
         "subprocess.run(argv, timeout=60)\nthread.join(5)\nlock.acquire(blocking=False)\n"
         "token.get()\nfuture.result(timeout=3)\n"
         "async def pull():\n    await subscription.fetch(1, timeout=5)\n",
     ),
-    "wall-clock-deadline": ("end = time.time() + 30\n", "end = time.monotonic() + 30\n"),
+    "wall-clock-deadline": ("end = time.time() + 30\n", [1], "end = time.monotonic() + 30\n"),
     "deadline-reset-in-loop": (
         "while x < deadline:\n    deadline = time.monotonic() + 5\n",
+        [2],
         "deadline = time.monotonic() + 5\nwhile time.monotonic() < deadline:\n    step()\n",
     ),
     "blocking-under-lock": (
         "with self._lock:\n    time.sleep(period)\n",
+        [2],
         "with self._lock:\n    value = cache.get(key)\n",
     ),
 }
@@ -55,19 +63,14 @@ CASES = {  # rule: (a refused form, its repair)
 @pytest.mark.parametrize("rule", CASES, ids=list(CASES))
 def test_each_wait_rule_refuses_its_case_and_passes_its_repair(rule):
     """requirement: each wait rule refuses its anti-pattern by name and passes its repair."""
-    refused, repaired = CASES[rule]
-    found = {f.rule for f in waits.findings("src/x.py", refused)}
-    assert rule in found and waits.RULES[rule]
+    refused, lines, repaired = CASES[rule]
+    found = waits.findings("src/x.py", refused)
+    assert [f.line for f in found if f.rule == rule] == lines and waits.RULES[rule]
     rules = {f.rule for f in waits.findings("src/x.py", repaired)}
     assert rule not in rules, rules
-    assert waits.findings(waits.PRIMITIVE, "time.sleep(period)\n") == []  # the one way to wait
-    pages = "while True:\n    page = fetch(cursor)\n    if not page:\n        break\n"
-    assert waits.findings("src/x.py", pages) == []  # a loop that ends on its data waits for nothing
-    polls = "while not ready():\n    pass\nwhile not ready():\n    n += 1\n"
-    assert [f.line for f in waits.findings("src/x.py", polls)] == [
-        1,
-        3,
-    ]  # an idle poll and a busy one
+    if rule == "while-true":  # the one way to wait holds the loop and sleep no one else may write
+        owner = "while True:\n    time.sleep(period)\n"
+        assert waits.findings(waits.PRIMITIVE, owner) == []
 
 
 @pytest.mark.proves("architecture.wait_baseline_only_falls")

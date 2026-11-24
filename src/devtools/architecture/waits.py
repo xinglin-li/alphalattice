@@ -2,9 +2,10 @@
 
 Each rule names a classic loop or wait anti-pattern and its repair through the one way to wait,
 ``alphalattice.capabilities.domain_contracts.waits``. The rules read Python source with the standard
-library's ``ast`` alone, so they run alike on every platform. A thread target's endless loop is a
-``while True`` loop and is caught by that rule; a poison item retried ahead of the rest cannot be
-seen statically and stays a review question.
+library's ``ast`` alone, so they run alike on every platform. Only the wait primitive writes
+``while True`` or sleeps: every other loop states its end in its test or bounds its passes with a
+``for``, so a service's or monitor's endless loop cannot be written outside it. A poison item
+retried ahead of the rest cannot be seen statically and stays a review question.
 """
 
 from __future__ import annotations
@@ -17,10 +18,8 @@ from dataclasses import dataclass
 PRIMITIVE = "src/alphalattice/capabilities/domain_contracts/waits.py"
 WAIT = "alphalattice.capabilities.domain_contracts.waits"
 RULES = {
-    "while-true-without-deadline": f"a while True loop no deadline or stop check ends: "
-    f"bound it with {WAIT}.wait_until, or break on a monotonic deadline or a stop event",
-    "retry-without-bound": f"a retry loop with no attempt or time bound: retry through "
-    f"{WAIT}.wait_until, or count attempts and raise past the limit",
+    "while-true": f"a while True loop outside the wait primitive: state its end in the loop's "
+    f"test, bound its passes or attempts with a for, or wait through {WAIT}.wait_until",
     "busy-wait": f"a loop that spins without blocking or sleeping: wait with {WAIT}.wait_until",
     "sleep-outside-wait": f"a bare sleep: pause through {WAIT}.pause or poll with "
     f"{WAIT}.wait_until",
@@ -87,37 +86,9 @@ def _is_wall(node: ast.AST) -> bool:
     return isinstance(node, ast.Call) and _name(node.func) == "time" and _owner(node.func) == "time"
 
 
-def _bounds(node: ast.AST, names: set[str]) -> bool:
-    """Whether ``node`` reads a deadline, a monotonic clock or a stop event."""
-    for part in ast.walk(node):
-        if _is_clock(part) or (
-            isinstance(part, ast.Call) and _name(part.func) in {"is_set", "wait"}
-        ):
-            return True
-        word = _name(part).lower()
-        if isinstance(part, ast.Name | ast.Attribute) and ("deadline" in word or word in names):
-            return True
-    return False
-
-
 def _exits(nodes: list[ast.stmt]) -> bool:
     """Whether a statement under ``nodes`` leaves the loop: break, return or raise."""
     return any(isinstance(n, ast.Break | ast.Return | ast.Raise) for n in _walk(nodes))
-
-
-def _endless(loop: ast.While) -> bool:
-    """A ``while True`` loop that no if on a deadline, clock or stop event leaves."""
-    if not (isinstance(loop.test, ast.Constant) and loop.test.value):
-        return False
-    names: set[str] = set()
-    for _ in range(2):  # a name set from a bound is a bound: ``left = deadline - monotonic()``
-        for node in _walk(loop.body):
-            if isinstance(node, ast.Assign) and _bounds(node.value, names):
-                names |= {t.id.lower() for t in node.targets if isinstance(t, ast.Name)}
-    return not any(
-        isinstance(n, ast.If) and _bounds(n.test, names) and _exits(n.body)
-        for n in _walk(loop.body)
-    )
 
 
 def _without_timeout(call: ast.Call, subprocesses: set[str]) -> bool:
@@ -191,25 +162,10 @@ def _spins(loop: ast.While) -> bool:
     )
 
 
-def _waits(nodes: list[ast.stmt], subprocesses: set[str]) -> bool:
-    """Whether a statement under ``nodes`` sleeps, polls or blocks."""
-    return any(
-        isinstance(n, ast.Call)
-        and (
-            _name(n.func) in {"sleep", "pause", "wait", "poll"} or _without_timeout(n, subprocesses)
-        )
-        for n in _walk(nodes)
-    )
-
-
-def _loop_rules(loop: ast.While, subprocesses: set[str]) -> Iterator[tuple[ast.AST, str]]:
-    """An unbounded ``while True`` retries (holds a try), never ends, or ends on its data alone
-    while it waits; one that only computes and ends on its data is no wait."""
-    if _endless(loop):
-        if any(isinstance(n, ast.Try) for n in _walk(loop.body)):
-            yield loop, "retry-without-bound"
-        elif not _exits(loop.body) or _waits(loop.body, subprocesses):
-            yield loop, "while-true-without-deadline"
+def _loop_rules(loop: ast.While) -> Iterator[tuple[ast.AST, str]]:
+    """A constant test (``while True``, ``while 1``) hides the loop's end in its body."""
+    if isinstance(loop.test, ast.Constant) and loop.test.value:
+        yield loop, "while-true"
     if _spins(loop):
         yield loop, "busy-wait"
     for reset in _deadline_resets(loop):
@@ -220,6 +176,13 @@ def _swallowed(loop: ast.For | ast.While) -> Iterator[tuple[ast.AST, str]]:
     for node in _walk(loop.body):
         if isinstance(node, ast.ExceptHandler) and all(isinstance(s, SPIN) for s in node.body):
             yield node, "swallowed-in-loop"
+
+
+def _sleep_named(node: ast.AST, sleeps: set[str]) -> bool:
+    """``time.sleep``, or a name ``from time import sleep`` bound, read as a value."""
+    if isinstance(node, ast.Name):
+        return node.id in sleeps and isinstance(node.ctx, ast.Load)
+    return _name(node) == "sleep" and _owner(node) == "time"
 
 
 def _call_rule(call: ast.Call, sleeps: set[str], subprocesses: set[str]) -> str | None:
@@ -268,9 +231,12 @@ def findings(path: str, text: str) -> list[Finding]:
     tree = ast.parse(text, filename=path)
     sleeps, subprocesses = _imported(tree)
     hits: list[tuple[ast.AST, str]] = []
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     for node in ast.walk(tree):
+        if id(node) not in called and _sleep_named(node, sleeps):  # a seam's default or a handle
+            hits.append((node, "sleep-outside-wait"))
         if isinstance(node, ast.While):
-            hits += _loop_rules(node, subprocesses)
+            hits += _loop_rules(node)
         if isinstance(node, ast.For | ast.While):
             hits += _swallowed(node)
         if isinstance(node, ast.Call) and (rule := _call_rule(node, sleeps, subprocesses)):

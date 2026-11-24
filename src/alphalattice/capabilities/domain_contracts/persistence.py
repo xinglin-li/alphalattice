@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-import time
 from collections.abc import Sequence
 from pathlib import Path
 
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.waits import pause
 
 
 def fsync_directory(path: Path) -> None:
@@ -60,4 +60,4 @@ def replace_with_retry(
                     f"replacement of {target.name} is blocked by an open handle",
                     code="catalog.replace_blocked",
                 ) from exc
-            time.sleep(delay)
+            pause(delay)

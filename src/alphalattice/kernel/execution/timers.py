@@ -93,9 +93,9 @@ class Timers:
             self._condition.notify_all()
 
     def _run(self) -> None:
-        while True:
+        while not self._stop.is_set():
             with self._condition:
-                if self._stop.is_set():
+                if self._stop.is_set():  # under the lock: an arming after close fires nothing
                     return
                 due, left = [], self._recheck
                 for timer in self._armed:

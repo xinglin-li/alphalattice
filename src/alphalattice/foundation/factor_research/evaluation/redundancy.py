@@ -281,14 +281,11 @@ def _average_linkage_clusters(
         values = [base[pair_key(a, b)] for a in left for b in right]
         return float(np.mean(np.asarray(values, dtype=np.float64)))
 
-    while True:
-        candidates = [
-            (distance(left, right), left, right)
-            for left_index, left in enumerate(clusters)
-            for right in clusters[left_index + 1 :]
-        ]
-        if not candidates:
-            break
+    while candidates := [
+        (distance(left, right), left, right)
+        for left_index, left in enumerate(clusters)
+        for right in clusters[left_index + 1 :]
+    ]:
         best_distance, left, right = min(candidates, key=lambda item: item)
         if best_distance > distance_cut:
             break
