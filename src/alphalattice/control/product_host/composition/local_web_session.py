@@ -174,6 +174,7 @@ from alphalattice.kernel.data_layer.history import (
 )
 from alphalattice.kernel.data_layer.store import preload_grouping
 from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+from alphalattice.kernel.execution import Timers
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 if TYPE_CHECKING:
@@ -650,6 +651,8 @@ class LocalPortfolioWebSession:
     stop_host: Callable[[], dict[str, object]] | None = field(default=None, kw_only=True)
     """How `host stop` stops this Host, given to its operations when they compose."""
     _upgrading: Thread | None = field(default=None, init=False, repr=False)
+    _timers: Timers | None = field(default=None, init=False, repr=False)
+    """This Host's one timer, made with its operations and closed by its teardown."""
     _admitting: Lock = field(default_factory=Lock, init=False, repr=False)
 
     review_authority: EvidenceReviewAuthority | None = None
@@ -995,6 +998,7 @@ class LocalPortfolioWebSession:
                 source_loader=data_source_loader,
             )
 
+        self._timers = Timers()
         self.operations = PortfolioResearchOperations(
             dispatcher=self.dispatcher,
             workspace_manifest=self.workspace_manifest,
@@ -1016,6 +1020,7 @@ class LocalPortfolioWebSession:
                 self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE,
             ),
             data_update_factory=open_data_update,
+            timers=self._timers,
         )
         self.operations.start_file_scrub()
         # The activity observer is composed after every owner it reads and before the socket opens,
@@ -1352,6 +1357,9 @@ class LocalPortfolioWebSession:
             quiet = self.operations.stop_file_scrub(timeout) and quiet
         if self.operations is not None and (automation := self.operations._automation) is not None:
             quiet = automation.close(timeout=timeout) and quiet
+        if self._timers is not None:
+            # After its jobs' owners, a failed start's as well: the thread they armed ends here.
+            quiet = self._timers.close(timeout=timeout) and quiet
         if self.dispatcher is not None:
             quiet = self.dispatcher.close(timeout=timeout) and quiet
         if self.web is not None and quiet:
@@ -1391,6 +1399,7 @@ class LocalPortfolioWebSession:
         self.operations = None
         self.forward_prewarm = None
         self.native_usage_reader = None
+        self._timers = None
         return True
 
     def __enter__(self) -> LocalPortfolioWebSession:

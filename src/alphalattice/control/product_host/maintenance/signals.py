@@ -1,8 +1,8 @@
 """Non-blocking in-memory wake signal for Front Desk turns, and the job's place on the one timer.
 
-A controller's due time arms the process's timer (`kernel.execution.timers.TIMERS`) once its host
-names the clock owner; the timer sets the wake event at that time, and the host's worker blocks on
-the event alone.
+A controller's due time arms the timer its host was given (its Host's own, or
+`kernel.execution.timers.TIMERS` outside a Host) once the host names the clock owner; the timer
+sets the wake event at that time, and the host's worker blocks on the event alone.
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ class MaintenanceBackgroundHost:
             wake: Retained due-time/wake controller.
             run_once: Deterministic single-cycle callback.
             clock: Optional explicit observed-time source.
-            timers: The timer that wakes it at each due time: the process's own.
+            timers: The timer that wakes it at each due time: its Host's own, else the process's.
         """
         self.wake = wake
         self.run_once = run_once

@@ -1,4 +1,5 @@
-"""The process's one timer: every periodic job's next due time, and the wake at it.
+"""One timer: every periodic job's next due time, and the wake at it. A Host owns one for its
+jobs and closes it at its stop and on a failed start; `TIMERS` serves jobs no Host owns.
 
 A job is declared once (`Timers.job`) with its clock owner, a timezone-aware wall clock, and the
 call that wakes its worker. Its owner arms it with the next due time it computed; one thread waits
@@ -62,9 +63,10 @@ class Timers:
         """Declare a job: ``clock`` is its clock owner, ``fire`` wakes its worker."""
         return Timer(self, name, clock, fire)
 
-    def close(self, *, timeout: float = 5.0) -> bool:
-        """Stop the thread; armed jobs no longer fire. Whether it stopped within ``timeout``: a
-        fire in hand (a job's wake call) finishes first."""
+    def close(self, *, timeout: float | None = 5.0) -> bool:
+        """Stop the thread; armed jobs no longer fire, and a later arming starts none. Whether it
+        stopped within ``timeout`` (None: until it has): a fire in hand (a job's wake call)
+        finishes first. Closing again answers the same."""
         with self._condition:
             self._stop.set()
             self._armed.clear()
@@ -83,8 +85,11 @@ class Timers:
             else:
                 self._armed.add(timer)
                 if self._thread is None and not self._stop.is_set():
-                    self._thread = Thread(target=self._run, name="timers", daemon=True)
-                    self._thread.start()
+                    thread = Thread(target=self._run, name="timers", daemon=True)
+                    # Published once started: a start the system refuses raises here and leaves
+                    # no thread for `close` to join, so the caller's own cleanup still runs.
+                    thread.start()
+                    self._thread = thread
             self._condition.notify_all()
 
     def _run(self) -> None:
@@ -113,4 +118,5 @@ class Timers:
 
 
 TIMERS = Timers()
-"""This process's timer: the Host's maintenance, update and supervision jobs arm it."""
+"""The timer of jobs no Host owns. A Host owns its own, which its stop and every failed start
+close: its maintenance, update and supervision jobs arm that one."""

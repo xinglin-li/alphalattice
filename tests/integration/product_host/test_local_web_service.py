@@ -681,11 +681,13 @@ def test_cancellation_is_requested_not_enacted(
     )
 
 
-@pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup"])
+@pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup", "timer-start"])
 def test_a_failed_start_leaves_no_lease_worker_or_socket(
     tmp_path: Path, failure: str, monkeypatch
 ) -> None:
-    "A stopped upgrade never serves; a completed one is reused after a later bind failure."
+    """A stopped upgrade never serves; a completed one is reused after a later bind failure. A
+    start that fails before its timer starts (an upgrade), after (the socket) or as the system
+    refuses the timer's thread leaves no thread, and a stop called twice answers as the first."""
     from alphalattice.kernel.data_layer import history_runtime
 
     # An experience render runs only once the failed start's check has run, as a slow one on a
@@ -723,7 +725,8 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
             {"fixture": "verified backup"} if checks["backup"] else {}
         ),
     )
-    before = {thread.name for thread in threading.enumerate()}
+    # The threads themselves, not their names: one an earlier test left running is not this one's.
+    before = set(threading.enumerate())
     session = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=_manifest("qa-failed-start"),
@@ -731,17 +734,28 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
         port=taken,
         upgrade=upgrade,
     )
+    if failure == "timer-start":  # the system refuses the timer's thread at its first arming
+
+        class Refused(threading.Thread):
+            def start(self) -> None:
+                raise RuntimeError("can't start new thread")
+
+        monkeypatch.setattr("alphalattice.kernel.execution.timers.Thread", Refused)
     try:
-        expected = OSError if failure == "socket" else DataError
+        expected = {"socket": OSError, "timer-start": RuntimeError}.get(failure, DataError)
         with pytest.raises(
-            expected, match=r"[Aa]ddress|socket|port|Upgrade family|pre-upgrade backup"
+            expected,
+            match=r"[Aa]ddress|socket|port|Upgrade family|pre-upgrade backup|can't start new",
         ):
             session.start()
+        monkeypatch.setattr("alphalattice.kernel.execution.timers.Thread", threading.Thread)
         assert session.session is None
         assert session.dispatcher is None
         assert session.web is None
         # A Host a wider fixture serves may share this process's log, whose batch timer is its own.
-        assert {thread.name for thread in threading.enumerate()} - before <= {COMMIT_TIMER}
+        assert {thread.name for thread in set(threading.enumerate()) - before} <= {COMMIT_TIMER}
+        session.stop()
+        session.stop()
         checked.set()
         assert steps == ([] if failure == "upgrade-backup" else ["step"])
         checks.update(backup=True, verify=True)
@@ -759,6 +773,8 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
             assert steps == (["step", "step"] if failure == "upgrade-verify" else ["step"])
         finally:
             second.stop()
+        second.stop()
+        assert "timers" not in {thread.name for thread in set(threading.enumerate()) - before}
     finally:
         checked.set()
         blocker.close()

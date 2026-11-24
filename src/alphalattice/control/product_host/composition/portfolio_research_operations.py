@@ -275,7 +275,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_weight,
 )
 from alphalattice.kernel.door import DoorPort, DoorRefusal, question_key
-from alphalattice.kernel.execution import EVENTS, EventDeadline
+from alphalattice.kernel.execution import EVENTS, TIMERS, EventDeadline, Timers
 from alphalattice.kernel.shared_kernel.environment import file_trust
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.source_identity import source_read_admission
@@ -526,6 +526,9 @@ class PortfolioResearchOperations:
     data_update_factory: Callable[[], WorkspaceDataUpdateApplication] | None = field(
         default=None, kw_only=True, repr=False
     )
+    timers: Timers = field(default=TIMERS, kw_only=True, repr=False)
+    """The Host's timer: its supervision, update and file-trust jobs arm it, and the Host closes it
+    at its stop and on a failed start."""
     manifests: ResearchWorkspaceManifestHolder | None = None
     """The one holder of the workspace manifest the applications read; made from
     `workspace_manifest` when the composition passes none."""
@@ -637,7 +640,7 @@ class PortfolioResearchOperations:
         if self.manifests is None:
             self.manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
         self.readbacks = VerifiedReadbacks()
-        self.supervisor = TaskSupervisor(self)
+        self.supervisor = TaskSupervisor(self, timers=self.timers)
         self.goals = GoalApplication(
             GoalStore(
                 self.workspace_session.workspace / "artifacts", self.workspace_manifest.workspace_id
@@ -1113,6 +1116,7 @@ class PortfolioResearchOperations:
                     execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
                     resume=partial(research_update_automation.resume_held, self),
                     admit=self.dispatcher._admit,
+                    timers=self.timers,
                 )
             return self._automation
 
@@ -1156,7 +1160,9 @@ class PortfolioResearchOperations:
                 IdleFileTrustScrub,
             )
 
-            scrub = IdleFileTrustScrub(self.workspace_session.workspace, self.dispatcher)
+            scrub = IdleFileTrustScrub(
+                self.workspace_session.workspace, self.dispatcher, self.timers
+            )
             scrub.start()
             self._file_scrub = scrub
             self.dispatcher.watch_foreground_idle(scrub.idle)

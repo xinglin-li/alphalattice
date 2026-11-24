@@ -10,6 +10,7 @@ from threading import Event
 from alphalattice.control.workspace_runtime.verified_facts import FileTrustScrub
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.execution import TIMERS, Timers
 from alphalattice.kernel.resources import set_idle_thread_priority
 from alphalattice.kernel.shared_kernel.environment import file_trust
 
@@ -19,8 +20,10 @@ from .signals import MaintenanceBackgroundHost, MaintenanceWakeController
 class IdleFileTrustScrub:
     """Let the verifier re-prove files on the Host's idle wake without taking a Task worker."""
 
-    def __init__(self, workspace: Path, dispatcher: LocalBackgroundDispatcher) -> None:
-        """Bind the workspace's trust record to the dispatcher clock and idle wake."""
+    def __init__(
+        self, workspace: Path, dispatcher: LocalBackgroundDispatcher, timers: Timers = TIMERS
+    ) -> None:
+        """Bind the workspace's trust record to the dispatcher clock, idle wake and timer."""
         self.dispatcher = dispatcher
         self.clock = dispatcher.clock
         self.scrub = FileTrustScrub(
@@ -31,7 +34,9 @@ class IdleFileTrustScrub:
         self.wake = MaintenanceWakeController()
         self._stopping = Event()
         self._prioritized = False
-        self.host = MaintenanceBackgroundHost(wake=self.wake, run_once=self._run, clock=self.clock)
+        self.host = MaintenanceBackgroundHost(
+            wake=self.wake, run_once=self._run, clock=self.clock, timers=timers
+        )
 
     def start(self) -> None:
         """Start the worker. The first dispatcher idle handoff arms its cadence."""

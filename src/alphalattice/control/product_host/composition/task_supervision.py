@@ -58,7 +58,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.execution import TIMERS
+from alphalattice.kernel.execution import TIMERS, Timers
 from alphalattice.kernel.shared_kernel.waits import CEILING
 
 
@@ -95,17 +95,23 @@ Remedy = Literal["CANCEL", "RECOVER", "REPLAN"]
 class TaskSupervisor:
     """Guanyin's Supervisor thread and Recovery Center for one Host's workspace."""
 
-    def __init__(self, operations: _Host, *, interval: float = SUPERVISION_SECONDS) -> None:
-        """Supervise the Tasks this Host's operations serve."""
+    def __init__(
+        self,
+        operations: _Host,
+        *,
+        interval: float = SUPERVISION_SECONDS,
+        timers: Timers = TIMERS,
+    ) -> None:
+        """Supervise the Tasks this Host's operations serve, woken by its Host's timer."""
         self.operations = operations
         self.store = IncidentStore(operations.workspace_session.workspace)
         self.interval = interval
         self._stop = Event()
         self._wake = Event()
-        # Each pass is woken by the process's one timer, armed `interval` after the last on the
+        # Each pass is woken by the Host's one timer, armed `interval` after the last on the
         # clock owner's time: a Host whose dispatcher clock is held (an as-of Host) is still
         # supervised every `interval` that passes.
-        self._timer = TIMERS.job("guanyin-supervisor", utc_now, self._wake.set)
+        self._timer = timers.job("guanyin-supervisor", utc_now, self._wake.set)
         self._thread: Thread | None = None
         self._lock = Lock()
 
