@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
+from time import perf_counter
 
 from devtools.evaluation.forms import admit_replay_measurement
 from devtools.evaluation.receipts import number, write
@@ -129,7 +131,7 @@ def cost(out: Path):
     return values[-1] if session and values and number(values[-1]) else None
 
 
-def peak(out: Path, *, rows: list | None = None):
+def _memory_samples(out: Path, rows: list | None) -> list:
     legs = (
         [
             [row for path in leg.glob("native-*-memory.json") for row in read(path, [{}])]
@@ -142,7 +144,7 @@ def peak(out: Path, *, rows: list | None = None):
         not any(isinstance(row, dict) and row.get("host_tree_observed") for row in leg)
         for leg in legs
     ):
-        return None
+        return []
     samples = [row for leg in legs for row in leg]
     if not samples or not all(
         isinstance(row, dict)
@@ -150,8 +152,107 @@ def peak(out: Path, *, rows: list | None = None):
         and number(row.get("host_private_commit_bytes"))
         for row in samples
     ):
-        return None
-    return max(row["host_private_commit_bytes"] for row in samples)
+        return []
+    return samples
+
+
+def peak(out: Path, *, rows: list | None = None):
+    return max(
+        (row["host_private_commit_bytes"] for row in _memory_samples(out, rows)), default=None
+    )
+
+
+def _commit_by_kind(row: dict) -> dict:
+    unclassified = {"unclassified": row["host_private_commit_bytes"]}
+    members = row.get("host_tree_members")
+    processes = row.get("processes")
+    if not isinstance(members, list) or not isinstance(processes, list):
+        return unclassified
+    live = set(members)
+    totals: dict[str, int] = {}
+    measured = [p for p in processes if isinstance(p, dict) and p.get("pid") in live]
+    for process in measured:
+        size = process.get("private")
+        if type(size) is not int or size < 0:
+            return unclassified
+        kind = process.get("kind")
+        kind = kind if isinstance(kind, str) and kind else "unclassified"
+        totals[kind] = totals.get(kind, 0) + size
+    if not measured or sum(totals.values()) != row["host_private_commit_bytes"]:
+        return unclassified
+    return totals
+
+
+def memory_peaks(out: Path, *, rows: list | None = None, kinds: Iterable[str] = ()) -> dict:
+    """Keep the tree peak and each kind's independent peak in the same sampled window."""
+    result: dict = dict(tree=None, kinds=dict.fromkeys(kinds))
+    for row in _memory_samples(out, rows):
+        at = dict(at=row.get("at"), stage=row.get("stage"))
+        at.update(
+            {name: row[name] for name in ("run_label", "command") if row.get(name) is not None}
+        )
+        total, shares = row["host_private_commit_bytes"], _commit_by_kind(row)
+        if result["tree"] is None or total > result["tree"]["bytes"]:
+            result["tree"] = dict(bytes=total, **at, by_kind=shares)
+        for kind, size in shares.items():
+            high = result["kinds"].get(kind)
+            if high is None or size > high["bytes"]:
+                result["kinds"][kind] = dict(bytes=size, **at)
+    return result
+
+
+def declared_process_kinds() -> Iterable[str]:
+    """The Host tree budget covers only the product's declared process kinds."""
+    root = Path(__file__).resolve().parents[3]
+    return read(root / "config/registries/process-budgets.json")["kinds"]
+
+
+def timed_memory_operations(call, windows, operations):
+    """Bind the resolved CLI operation to the measured call's monotonic window."""
+
+    def timed(argv, session=None):
+        start = perf_counter()
+        answer = None
+        try:
+            answer = call(argv, session)
+            return answer
+        finally:
+            if argv:
+                end = perf_counter()
+                name = answer.get("operation") if isinstance(answer, dict) else None
+                operation = name if isinstance(name, str) and name in operations else None
+                windows.append((start, end, argv[0], operation))
+
+    return timed
+
+
+def memory_sample_stage(sample: dict, instant: float, windows, label: str) -> dict:
+    """Bind one sample to an observed operation only inside its unique clock window."""
+    matches = [window for window in windows if window[0] <= instant < window[1]]
+    command, stage = None, None
+    if len(matches) == 1:
+        _, _, command, *operation = matches[0]
+        # Earlier replay producers recorded only the command in their windows.
+        if len(operation) == 1:
+            stage = operation[0]
+    return sample | dict(run_label=label, command=command, stage=stage)
+
+
+def replay_memory_meter(
+    out: Path, rows: list, kinds: Iterable[str], *, covered: bool, aligned: bool
+) -> dict:
+    memory = memory_peaks(out, rows=rows, kinds=kinds)
+    maximum = memory["tree"]["bytes"] if memory["tree"] else None
+    complete = covered and maximum is not None and all(row["host_tree_observed"] for row in rows)
+    return dict(
+        host_tree_observed=any(row["host_tree_observed"] for row in rows),
+        peak_host_private_commit_bytes=maximum,
+        host_private_commit=memory,
+        gaps=[]
+        if complete
+        else ["LISTENER_COVERAGE_INCOMPLETE" if aligned else "METER_CLOCK_UNOBSERVED"],
+        sampling_seconds=2,
+    )
 
 
 def profile_rows(leg: str, receipt: dict, *, admitted: bool) -> tuple:
@@ -229,6 +330,9 @@ def publish(out: Path, result: dict, legs: dict, *, admitted: bool = False) -> d
     for leg, receipt in legs.items():
         kept, failed, phase_rows, union_rows = profile_rows(leg, receipt, admitted=admitted)
         projected.update(kept)
+        meter = receipt.get("meter", {})
+        if leg in projected and "host_private_commit" in meter:
+            projected[leg]["host_private_commit"] = meter["host_private_commit"]
         failures.update(failed)
         stages.extend(phase_rows)
         coverage.extend(union_rows)
@@ -385,13 +489,14 @@ def _native_budget(out, scenario):
     limits = scenario["budgets"]
     first, daily = read(out / "summary.json", {}), read(out / "daily/summary.json", {})
     writers, size, written, year, error = _storage(out, scenario)
+    memory = memory_peaks(out, kinds=declared_process_kinds())
     result = dict(
         first_use_wall_seconds=first.get("wall_seconds"),
         first_use_cost_usd=cost(out),
         daily_wall_seconds=daily.get("wall_seconds"),
         daily_bytes=written,
         daily_by_writer=writers,
-        peak_host_private_commit_bytes=peak(out),
+        peak_host_private_commit_bytes=memory["tree"]["bytes"] if memory["tree"] else None,
         first_use_footprint_bytes=size,
         year_bytes=year,
     )
@@ -402,6 +507,7 @@ def _native_budget(out, scenario):
     checks, lines = _budget_table(result, limits, codex, host_conflict, writers)
     result.update(
         held=all(checks.values()),
+        host_private_commit=memory,
         checks=checks,
         table="\n".join(lines) + "\n",
         basis=(
