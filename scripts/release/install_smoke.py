@@ -112,8 +112,8 @@ def wheel_launcher(command: list[str], wheel: str, requirements: str, overrides:
     return prefix
 
 
-def first_use(wheel: Path, output: Path) -> None:
-    """Time the offline path to a labelled trial in the pinned wheel environment."""
+def first_use(wheel: Path, output: Path, *, prepare_only: bool = False) -> None:
+    """Warm the pinned wheel's test requirements or time its offline labelled trial."""
     bound = FIRST_USE_WALL_SECONDS
     command, _ = documented_launcher()
     with tempfile.TemporaryDirectory(dir=output.parent, prefix="alphalattice-first-use-") as tmp:
@@ -149,7 +149,6 @@ def first_use(wheel: Path, output: Path) -> None:
         )
         argv = wheel_launcher(command, wheel.as_uri(), requirements.as_uri(), overrides.as_uri())
         argv[1:1] = [
-            "--offline",
             "--constraints",
             test_requirements.as_uri(),
             "--with",
@@ -163,6 +162,15 @@ def first_use(wheel: Path, output: Path) -> None:
             "--with",
             "portalocker",
         ]
+        env = os.environ | {"PYTHONPATH": ""}
+        for key in ("VIRTUAL_ENV", "CONDA_PREFIX", "UV_RUN_RECURSION_DEPTH"):
+            env.pop(key, None)
+        if prepare_only:
+            # Resolve the same isolated tool environment while the index is reachable.
+            run([*argv[:-1], "python", "-I", "-c", "pass"], folder, env=env)
+            return
+        argv.insert(1, "--offline")
+        env.update(ALPHALATTICE_NETWORK_DISABLED="1", ALPHALATTICE_TEST_FIRST_USE_WHEEL="1")
         junit = folder / "first-use.xml"
         # Load the installed package before exposing the checkout's test and devtools modules.
         pytest_entry = """
@@ -202,13 +210,6 @@ raise SystemExit(pytest.main(sys.argv[2:]))
             str(junit),
             str(ROOT / FIRST_USE_NODE),
         ]
-        env = os.environ | {
-            "ALPHALATTICE_NETWORK_DISABLED": "1",
-            "ALPHALATTICE_TEST_FIRST_USE_WHEEL": "1",
-            "PYTHONPATH": "",
-        }
-        for key in ("VIRTUAL_ENV", "CONDA_PREFIX", "UV_RUN_RECURSION_DEPTH"):
-            env.pop(key, None)
         trial = label = None
         start = time.monotonic()
         try:
@@ -489,18 +490,22 @@ def main() -> None:
     parser.add_argument("--wheel", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--assets-only", action="store_true")
-    parser.add_argument("--first-use", action="store_true")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--first-use", action="store_true")
+    modes.add_argument(
+        "--prepare-first-use", action="store_true", help="Cache the trial's locked dependencies."
+    )
     parser.add_argument("--claude")
     args = parser.parse_args()
     if args.assets_only:
         write_sidecars(args.wheel, args.out)
         return
-    if args.first_use:
-        first_use(args.wheel.resolve(), args.out.resolve())
-        return
-    if not args.claude:
-        parser.error("--claude is required for the install check")
     try:
+        if args.first_use or args.prepare_first_use:
+            first_use(args.wheel.resolve(), args.out.resolve(), prepare_only=args.prepare_first_use)
+            return
+        if not args.claude:
+            parser.error("--claude is required for the install check")
         result = verify(args.wheel.resolve(), args.out.resolve(), args.claude)
     except subprocess.CalledProcessError as error:
         raise SystemExit(

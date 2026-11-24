@@ -178,8 +178,16 @@ jobs:
           name: fresh-install-${{ matrix.os }}
           path: ${{ runner.temp }}/fresh-install.json
           if-no-files-found: error
-      # The pinned install above caches wheel runtime dependencies for the offline trial.
+      - name: Cache the locked dependencies for offline first use
+        run: |
+          wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --locked python -m scripts.release.install_smoke --prepare-first-use \
+            --wheel "${wheels[0]}" --out "$RUNNER_TEMP/first-use.json"
       - name: Complete offline first use from the pinned wheel
+        env:
+          UV_OFFLINE: "1"
+          ALPHALATTICE_NETWORK_DISABLED: "1"
         run: |
           wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
           test "${#wheels[@]}" -eq 1
