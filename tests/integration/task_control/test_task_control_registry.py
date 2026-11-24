@@ -2111,7 +2111,11 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     projections = []
     runtime = tmp_path / "runtime.sqlite"
     session = SimpleNamespace(
-        workspace=tmp_path, task_control_registry=registry, runtime_path=runtime, processor="test"
+        workspace=tmp_path,
+        task_control_registry=registry,
+        runtime_path=runtime,
+        processor="test",
+        scratch_epoch=str(uuid4()),
     )
     session.task_resources = partial(WorkspaceApplicationSession.task_resources, session)
 

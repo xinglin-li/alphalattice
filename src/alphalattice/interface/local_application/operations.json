@@ -735,6 +735,7 @@
   "score_snapshot_hash": "The scores a calibration reads, by their snapshot hash.",
   "session_limit": "The most reading sessions the continued chain may hold.",
   "spec": "The Portfolio book's controls (`strategy-book controls` lists them); those left out keep their defaults.",
+  "status_section": "The optional Task status section to compute on an explicit read.",
   "storage_cap_bytes": "`auto`, or a positive whole byte cap for managed writes; changes no result identity.",
   "storage_plan_hash": "The storage clean-up plan to confirm, by the hash its PLAN answered.",
   "strategy_package_id": "The installed strategy package, by its id.",
@@ -2208,6 +2209,7 @@
   },
   "STATUS": {
    "allowed": [
+    "status_section",
     "task_id",
     "wait_seconds"
    ],
@@ -2603,6 +2605,7 @@
   "score_snapshot_hash": "snapshot",
   "session_limit": "session-limit",
   "spec": "file",
+  "status_section": "section",
   "storage_cap_bytes": "cap-bytes",
   "storage_plan_hash": "plan",
   "strategy_package_id": "package",
@@ -3766,6 +3769,9 @@
   ],
   "spec": [
    "object"
+  ],
+  "status_section": [
+   "string"
   ],
   "storage_cap_bytes": [
    "string"

@@ -27,6 +27,7 @@ from pydantic import (
     create_model,
     model_validator,
 )
+from pydantic.main import BaseModel as _SchemaModel
 
 from .cli_contract import (
     STOPPED_STATES,
@@ -67,6 +68,30 @@ class _Answer(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="allow", frozen=True, use_attribute_docstrings=True)
     error_info: ErrorInfo | None = None
     """Optional registered error metadata, independent of Task state and exit code."""
+
+
+class TaskScratchCleanup(_SchemaModel):
+    """The workspace Host's startup read of proved Task scratch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
+    removed: list[str]
+    """Task ids whose ended scratch was removed."""
+    unproved: dict[str, str]
+    """Scratch names that need attention, with the reason removal could not be proved."""
+
+
+class TaskStorageStatus(_SchemaModel):
+    """The data root's physical usage and this workspace's current cleanup estimate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
+    bytes_by_category: dict[str, int] | None
+    """Allocated bytes by the footprint registry's category, including unclaimed files."""
+    reclaimable_bytes: int | None
+    """Estimated bytes the workspace's current cleanup plan can reclaim."""
+    scratch_cleanup: TaskScratchCleanup
+    """What this Host found in the workspace's Task scratch at startup."""
+    unavailable: dict[str, str] | None = None
+    """Named reasons for usage or reclaim estimates that could not be measured."""
 
 
 class TaskStatusAnswer(_Answer):
@@ -119,6 +144,9 @@ class TaskStatusAnswer(_Answer):
     its owner's readback."""
     timing: dict[str, Any] | None = None
     """Task Control's recorded queued/running spans and stage timings at this read."""
+
+    storage: TaskStorageStatus | None = None
+    """The allocated data-root bytes by category, workspace reclaim estimate and startup cleanup."""
 
 
 class TaskArtifact(_Answer):

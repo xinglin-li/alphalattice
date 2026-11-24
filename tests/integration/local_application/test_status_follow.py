@@ -292,17 +292,50 @@ def test_a_wait_on_each_stage_returns_as_a_stage_is_verified(monkeypatch) -> Non
         client_module._wait(stub, SimpleNamespace(**vars(goal), each_stage=True))  # type: ignore[arg-type]
 
 
-def test_max_wait_is_the_waiters_only_timer(monkeypatch) -> None:
+def test_max_wait_is_the_waiters_only_timer(monkeypatch, tmp_path, capsys) -> None:
     """requirement (WK): --max-wait, set just under a command cap, ends the wait as pending;
     it is refused when not above zero."""
 
     task_id = str(uuid4())
     running = {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id}
-    stub = _Stub(itertools.repeat(running))  # type: ignore[arg-type]
+    storage = {"reclaimable_bytes": 7}
+    stub = _Admitting(
+        {},
+        [
+            running,
+            running,
+            dict(running, status="SUCCEEDED", lifecycle="SUCCEEDED", storage=storage),
+        ],
+        tmp_path,
+    )
+    now = 0.0
+    read = stub.request
+
+    def request(document, timeout=None):
+        nonlocal now
+        if document.get("wait_seconds"):
+            now += 1.0
+        return read(document, timeout)
+
+    monkeypatch.setattr(stub, "request", request)
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: stub)
+    output = tmp_path / "answer.json"
+    command = ["--workspace", str(tmp_path), "task", "show", task_id, "--wait", "--max-wait", "1"]
+    exit_code = main(
+        [*command, "--section", "storage", "--output", str(output)],
+        serve=lambda _: pytest.fail("no serve"),
+    )
+    final = json.loads(output.read_text("utf-8"))
+    assert final.get("wait_status") == "MAX_WAIT_TASK_CONTINUES"
+    event = final["wait_event"]
+    assert event["event"] == "MAX_WAIT_REACHED" and task_id in event["read"]
+    assert final["lifecycle"] == "RUNNING" and outcome_of(final) == "PENDING"
+    assert final["storage"] == storage and exit_code == 3
+    assert json.loads(capsys.readouterr().out)["data"]["value"] == storage
+    assert [d.get("status_section") for d in stub.sent] == [None, None, "storage"]
+
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    final = client_module._follow(stub, admitted, 0.05)  # type: ignore[arg-type]
-    assert final["wait_event"]["event"] == "MAX_WAIT_REACHED"
-    assert final["wait_status"] == "MAX_WAIT_TASK_CONTINUES" and outcome_of(final) == "PENDING"
     with pytest.raises(client_module.LocalResearchClientError, match="max_wait_invalid"):
         client_module._follow(stub, admitted, 0)  # type: ignore[arg-type]
     # A chain's omitted --max-wait is the hour. Read where its deadline less the clock rounds

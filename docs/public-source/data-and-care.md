@@ -114,4 +114,13 @@ A workspace's acquired evidence documents enter world too: when the Host opens t
 
 The data dependencies include engine-matched DuckLake and SQLite scanner binaries. The data-root catalog loads these installed packages without downloading extensions. Workspace connections refuse runtime extension installation or loading. If an installed binary cannot load, restore the locked data dependencies with `uv sync --locked --extra data`.
 
-`storage show` describes storage; `storage plan` estimates retention and bytes before deletion. Current and rollback Panels and explicit pins are protected. A person decides whether to confirm the exact plan. They can confirm it in Local Web or answer the agent's one-line question; the agent then relays their words through `storage confirm` with `person_confirmation`. Review its scope and recovery status through the product controls. File bindings determine what can be rebuilt.
+`storage show` describes workspace storage. `task show <task> --section storage`
+reports allocated bytes by category for the whole data root, the workspace's
+reclaimable bytes, and the startup cleanup of ended Tasks' scratch. Scratch
+whose ownership cannot be proved is kept and reported.
+
+`storage reclaim` shows the exact plan and asks for confirmation in a terminal.
+Current and rollback Panels and explicitly pinned objects are protected. See the
+[CLI reference](cli.md#inspect-and-reclaim-storage) for delegated confirmation.
+Local Web and the separate `storage plan` and `storage confirm` commands also
+review and apply the exact plan. File bindings determine what can be rebuilt.

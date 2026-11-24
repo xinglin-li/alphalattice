@@ -1149,6 +1149,25 @@
         "task_control.runner"
       ]
     },
+    "task-scratch": {
+      "summary": "temporary child calls and their directory ownership record for one workspace Task",
+      "class": "cache-scratch",
+      "tier": 4,
+      "home": "staging/task-scratch/<task-id>",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "retire": "released when the Task closes or when the workspace writer proves its recorded lease ended",
+      "authority_owners": [
+        "task_control.scratch.own_task_scratch"
+      ],
+      "writers": [
+        "task_control.scratch:own_task_scratch"
+      ],
+      "readers": [
+        "product_host.composition.application_session",
+        "task_control.child"
+      ]
+    },
     "task-heartbeats": {
       "summary": "a running Task's lease and deadline on the held log; old sidecars are verified and set aside",
       "class": "cache-scratch",

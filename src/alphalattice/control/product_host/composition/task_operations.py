@@ -29,7 +29,10 @@ def execute(
     match request.operation:
         case "STATUS":
             assert request.task_id is not None
-            return operations.status(request.task_id, wait_seconds=request.wait_seconds)
+            result = operations.status(request.task_id, wait_seconds=request.wait_seconds)
+            if request.status_section == "storage":
+                return {**result, "storage": operations.storage.status()}
+            return result
         case "TASK_RECOVERY":
             assert request.task_id is not None
             return operations.recovery_view(request.task_id)

@@ -376,6 +376,8 @@ class PortfolioResearchOperationRequest:
     wait_seconds: float | None = None
     """How long a Task's status may wait for the Task to move on (a stage, a lifecycle)
     before it answers; at most 20 seconds. A follow asks with it instead of polling."""
+    status_section: Literal["storage"] | None = None
+    """The optional Task status section to compute on an explicit read."""
     after: str | None = None
     limit: int | None = None
     watch: tuple[UUID, ...] | None = None

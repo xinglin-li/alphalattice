@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from uuid import uuid4
 
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.environment import recorded_environment
@@ -29,6 +30,7 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.task_control.runner import TaskControlRunner, TaskDomainAdapter
+from alphalattice.control.task_control.scratch import own_task_scratch, reclaim_task_scratch
 from alphalattice.control.workspace_runtime.database import (
     WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
     retain_workspace_database,
@@ -198,6 +200,8 @@ class WorkspaceApplicationSession:
     task_control_registry: DuckDbTaskControlRegistry
     runtime_path: Path
     processor: str
+    scratch_epoch: str
+    scratch_cleanup: dict[str, object]
 
     @staticmethod
     def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
@@ -286,6 +290,7 @@ class WorkspaceApplicationSession:
             reason += f"; its share of {places} running places"
         with (
             ExitStack() as after_release,
+            own_task_scratch(self.workspace, task.task_id, self.scratch_epoch),
             TASK_LEASES.lease(task.task_id, cores, ceiling) as beside,
             below_normal_thread() if beside else nullcontext(False) as lowered,
         ):
@@ -384,6 +389,7 @@ class WorkspaceApplicationSession:
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
             registry.reconcile_after_writer_acquisition(observed_at=utc_now())
+            scratch_epoch = str(uuid4())
             return cls(
                 workspace=root,
                 writer_lease=lease,
@@ -391,6 +397,8 @@ class WorkspaceApplicationSession:
                 task_control_registry=registry,
                 runtime_path=runtime / PORTFOLIO_PUBLIC_RUNTIME_FILENAME,
                 processor=processor,
+                scratch_epoch=scratch_epoch,
+                scratch_cleanup=reclaim_task_scratch(root, scratch_epoch),
             )
         except Exception:
             lease.close()

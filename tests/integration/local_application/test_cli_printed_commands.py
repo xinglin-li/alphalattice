@@ -25,6 +25,7 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     entry,
 )
+from alphalattice.interface.local_application.portfolio_research import full_request_document
 from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 from tests.structural.refusal_support import door_words, fill_subject
 
@@ -351,6 +352,13 @@ def test_every_printed_command_reads_back_as_the_request_it_came_from(
         for operation, groups in table["alternatives"].items()
         for group in groups
     }
+    status = {"operation": "STATUS", "task_id": "T"}
+    task = ["task", "show", "T", "--section"]
+    assert request_of([*task, "storage.reclaimable_bytes"]) == {
+        **status,
+        "status_section": "storage",
+    }
+    assert request_of([*task, "lifecycle"]) == status
 
     workspace = tmp_path / "a book's workspace 中"
     request = {"operation": "ACTIVITY_LIST", "after": "@file"}
@@ -514,6 +522,13 @@ def _limited(limits: dict[str, str], name: str) -> object | None:
 def _offered_shapes() -> Iterator[dict[str, Any]]:
     """Every alternative and admitted value kind round-trips through the printed grammar."""
     table = command_table()
+    properties = full_request_document().model_json_schema()["properties"]
+    constants = {
+        name: option["const"]
+        for name, spec in properties.items()
+        for option in spec.get("anyOf", [spec])
+        if "const" in option
+    }
     plain = {"string": "plain", "integer": 2, "number": 1.5, "boolean": True}
     plain |= {"object": {"a": 1}, "array": ["a"]}
     for operation in sorted({op for ops in table["commands"].values() for op in ops}):
@@ -522,10 +537,10 @@ def _offered_shapes() -> Iterator[dict[str, Any]]:
         for group in groups or [()]:
             base: dict[str, Any] = {"operation": operation}
             for name in [*contract["required"], *group]:
-                fixed = _limited(table["limits"], name)
+                fixed = constants.get(name, _limited(table["limits"], name))
                 base[name] = plain[table["types"][name][0]] if fixed is None else fixed
             for name in contract["allowed"]:
-                fixed = _limited(table["limits"], name)
+                fixed = constants.get(name, _limited(table["limits"], name))
                 kinds = table["types"][name]
                 values = [fixed] if fixed is not None else [v for k in kinds for v in _SAMPLES[k]]
                 for value in values:

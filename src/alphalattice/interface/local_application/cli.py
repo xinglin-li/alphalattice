@@ -94,6 +94,7 @@ CLIENT_COMMANDS: Final[dict[tuple[str, str], str]] = {
     ("schema", "show"): "A command's request schema (each branch of a two-operation command), "
     "its answer's and a YAML template.",
     ("activity", "wait"): "Wait, with no timer, for a Task or a goal's work to end or need you.",
+    ("storage", "reclaim"): "Show the exact storage cleanup plan and ask before applying it.",
     ("committee", "wait"): "Wait, as one committee member, for what its floor addresses to it: "
     "the revealed stances, a challenge, a reply or ruling on its message, or the close.",
     ("first-use", "prepare"): "Open the first use from the person's sentence and named date "
@@ -452,6 +453,15 @@ def _client_command(child: argparse.ArgumentParser, noun: str, verb: str) -> Non
     )
     if (noun, verb) == ("answer", "show"):
         _saved_read_arguments(child)
+    elif (noun, verb) == ("storage", "reclaim"):
+        child.add_argument(
+            "--confirm",
+            dest="storage_reclaim_confirmation",
+            metavar="PLAN_HASH",
+            help="Apply this exact plan if it still matches. Use only with the person's approval.",
+        )
+        child.add_argument("--person-said", help="With --confirm, the person's own approval.")
+        child.add_argument("--asked", help="With --confirm, the question as asked to the person.")
     elif noun == "problem":
         child.add_argument(
             "--sentence", help="Safe template: Report the <OPERATION> problem to the developers."
@@ -649,7 +659,7 @@ def _operation_fields(
         (table["positional"][op] for op in operations if op in table["positional"]), None
     )
     documents = [name for name in table["primary"] if name in allowed]
-    others = [name for name in allowed if name != positional and name not in documents]
+    others = [name for name in allowed if name not in {positional, "status_section", *documents}]
     line = " ".join(
         [
             *(["<id>"] if positional else []),
@@ -918,9 +928,21 @@ def _field_help(name: str, required: set[str] | frozenset[str]) -> str | None:
     return " ".join(part for part in parts if part) or None
 
 
-def _client_fields(args: argparse.Namespace) -> dict[str, Any]:
+def _client_fields(parser: argparse.ArgumentParser, args: argparse.Namespace) -> dict[str, Any]:
     """The client's own waiter or agent verb, in the fields the research client's `run`
     reads."""
+    if args.client_command == ("storage", "reclaim"):
+        plan = args.storage_reclaim_confirmation
+        if plan is None and (args.asked is not None or args.person_said is not None):
+            parser.error("--asked and --person-said require --confirm")
+        if plan is not None and not (
+            (args.asked or "").strip() and (args.person_said or "").strip()
+        ):
+            parser.error("--confirm requires --asked and --person-said")
+        return {
+            "command": "storage-reclaim",
+            "storage_reclaim_confirmation": (plan, args.asked, args.person_said) if plan else None,
+        }
     if args.client_command in AGENT_VERBS:
         name = AGENT_VERBS[args.client_command]
         fields = (*(field for _flag, field in client.AGENT_VERBS[name].fields), "max_wait")
@@ -2136,7 +2158,9 @@ def _command(
     if getattr(args, "client_command", None) in OFFLINE_COMMANDS:
         return _offline(args, started)
     if hasattr(args, "client_command"):
-        return client.run(argparse.Namespace(**common, format="json", **_client_fields(args)))
+        return client.run(
+            argparse.Namespace(**common, format="json", **_client_fields(parser, args))
+        )
     whole = args.noun == "request"
     request = argparse.Namespace(
         **common,
@@ -2243,6 +2267,11 @@ def _line_document(parser: _Parser, args: argparse.Namespace) -> Callable[[], di
         for name in sorted(allowed)
         if getattr(args, name, None) is not None
     }
+    if (
+        operation == "STATUS"
+        and (getattr(args, "section", None) or "").partition(".")[0] == "storage"
+    ):
+        given["status_section"] = "storage"
     shown = command_table()["positional"].get(operation)
     missing = sorted(
         "<id>" if name == shown else "--file" if name in documents else flag(name)

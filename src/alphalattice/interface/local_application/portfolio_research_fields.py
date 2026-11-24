@@ -451,7 +451,7 @@ requirements = {
     "CONTROLS": (frozenset(), frozenset({"strategy_package_id"})),
     "PLAN": (frozenset({"spec"}), frozenset({"spec"})),
     "RUN": (frozenset({"spec"}), frozenset({"spec"})),
-    "STATUS": (frozenset({"task_id"}), frozenset({"task_id", "wait_seconds"})),
+    "STATUS": (frozenset({"task_id"}), frozenset({"task_id", "wait_seconds", "status_section"})),
     "TASK_RECOVERY": (frozenset({"task_id"}), frozenset({"task_id"})),
     "TASK_REMEDIATE": (
         frozenset({"task_id", "incident_key", "remedy"}),

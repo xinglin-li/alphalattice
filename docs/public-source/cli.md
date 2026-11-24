@@ -110,6 +110,22 @@ within 32 KiB, with whole offers and a `full_answer` pointer; full stdout from
 `--view full` is deprecated in favour of the summary and a saved answer
 ([0.2.4 notes](release-notes.md#024)).
 
+## Inspect and reclaim storage
+
+`alphalattice task show <task> --section storage` shows the data root's
+allocated bytes by category and how many bytes the current workspace can
+reclaim. It also reports which Task scratch directories the Host removed at
+startup and which it kept because it could not prove their ownership or removal.
+
+Run `alphalattice storage reclaim` in a terminal to review the workspace's
+exact cleanup plan and confirm it once. In a non-interactive session, save the
+plan with `alphalattice storage reclaim --output cleanup.json`. After the
+person approves that plan, apply it with
+`alphalattice storage reclaim --confirm <plan-hash> --asked "QUESTION_AS_ASKED" --person-said "YES_AS_SAID"`
+using the full saved `plan_hash`, the question as asked, and the person's own
+words. The Host checks that the plan is still eligible before removing
+anything. See [storage and workspace care](data-and-care.md#storage).
+
 ## Dates and network permission
 
 ```powershell

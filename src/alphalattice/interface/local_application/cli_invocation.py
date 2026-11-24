@@ -81,6 +81,11 @@ def stream(file: TextIO | None = None, *, error: bool = False) -> TextIO:
     return chosen
 
 
+def interactive() -> bool:
+    """A local terminal can answer a prompt from this invocation."""
+    return CLI_CALL.get() is None and sys.stdin.isatty()
+
+
 def cli_print(
     *values: object,
     sep: str | None = " ",

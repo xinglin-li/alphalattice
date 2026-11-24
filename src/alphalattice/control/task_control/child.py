@@ -73,6 +73,8 @@ from alphalattice.kernel.resources import (
     worker_width,
 )
 
+from .scratch import task_scratch_directory
+
 if TYPE_CHECKING:  # the SDK is imported by a traced call alone
     from opentelemetry.sdk.trace import TracerProvider
 
@@ -169,7 +171,9 @@ def run_in_child(
         ChildStartFailed: The OS refused the worker's creation.
         ChildInterrupted: The call raised anything else, or the worker ended without answering.
     """
-    with tempfile.TemporaryDirectory(prefix="alphalattice-call-") as folder:
+    with tempfile.TemporaryDirectory(
+        prefix="alphalattice-call-", dir=task_scratch_directory()
+    ) as folder:
         flag = Path(folder) / "cancel"
         with span("wait", "worker"):
             answer = _waited(_submitted(0, target, arguments, flag, threads=None), flag, cancelled)
@@ -212,7 +216,9 @@ class ChildCalls:
         self._opens = None if opens is None else tuple(opens)
         self._made = 0
         self._pending: deque[_Submitted] = deque()
-        self._folder = tempfile.TemporaryDirectory(prefix="alphalattice-calls-")
+        self._folder = tempfile.TemporaryDirectory(
+            prefix="alphalattice-calls-", dir=task_scratch_directory()
+        )
         self._shipped: dict[tuple[int, str], ProcessPoolExecutor] = {}
         self._flag = Path(self._folder.name) / "cancel"
 

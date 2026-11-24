@@ -1697,6 +1697,7 @@ _IMPORTANT: Final = frozenset(
         "execution_preview",
         "progress",
         "stage_timing",
+        "storage",
         "stage_updated_at",
         "activity_timing",
         "work_progress",
@@ -3340,6 +3341,68 @@ AGENT_VERBS: Final[dict[str, _Verb]] = {
 come from here alone."""
 
 
+def reclaim_storage(
+    client: LocalResearchClient, confirmation: tuple[str, str, str] | None
+) -> dict[str, Any]:
+    """Present the Host's exact plan and relay consent only for that offered request."""
+    from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
+        decision_hash,
+    )
+
+    def confirm(plan_hash: str, question: str, words: str) -> dict[str, Any]:
+        offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
+        return client.request(
+            {
+                **offer,
+                "person_confirmation": {
+                    "question": question,
+                    "words": words,
+                    "decision_hash": decision_hash(offer),
+                },
+            }
+        )
+
+    if confirmation is not None:
+        # The person already saw this retained plan. Confirming it lets the Host
+        # recheck eligibility without replacing the approved plan with a new one.
+        return confirm(*confirmation)
+    plan = client.request({"operation": "STORAGE_PLAN"})
+    plan_hash = plan.get("plan_hash")
+    if plan.get("status") != "CONFIRMATION_REQUIRED" or not isinstance(plan_hash, str):
+        return plan
+    if not plan.get("targets") and not plan.get("relinks"):
+        return {"status": "COMPLETED", "plan_hash": plan_hash, "deleted_paths": 0}
+    offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
+    question = plan.get("ask_now")
+    if offered_requests(plan).get("confirm") != offer or not isinstance(question, str):
+        return plan
+    if not cli_invocation.interactive():
+        return plan
+    stderr = cli_invocation.stream(error=True)
+    print(
+        answer_json(
+            {
+                field: plan[field]
+                for field in (
+                    "plan_hash",
+                    "targets",
+                    "relinks",
+                    "reclaimable_bytes",
+                    "retained_bytes",
+                )
+                if field in plan
+            },
+            default=_json_value,
+        ),
+        file=stderr,
+    )
+    print(f"{question} [y/N] ", end="", file=stderr, flush=True)
+    words = sys.stdin.readline().rstrip("\r\n")
+    if words.strip().casefold() not in {"y", "yes", "是", "同意"}:
+        return {"status": "DECLINED", "plan_hash": plan_hash, "deleted_paths": 0}
+    return confirm(plan_hash, question, words)
+
+
 def run(
     args: argparse.Namespace,
     *,
@@ -3459,11 +3522,23 @@ def run(
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
+        elif args.command == "storage-reclaim":
+            body = reclaim_storage(client, args.storage_reclaim_confirmation)
         elif args.command in AGENT_VERBS:
             body = AGENT_VERBS[args.command].steps(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)
+            storage_read = document.get("operation") == "STATUS" and (
+                document.get("status_section") == "storage"
+                or (getattr(args, "section", None) or "").partition(".")[0] == "storage"
+            )
+            if storage_read:
+                document = dict(document)
+                if args.wait:
+                    document.pop("status_section", None)
+                else:
+                    document["status_section"] = "storage"
             if (
                 document.get("operation") == "REPORT"
                 and document.get("portfolio_session")
@@ -3497,6 +3572,11 @@ def run(
                     receipt=partial(args._follow_receipt, raw=raw_body),
                 )
                 raw_body = None  # The answer is the final read, not the transport bytes.
+                if storage_read:
+                    document = {**document, "status_section": "storage"}
+                    storage_answer, _ = client.exchange(document)
+                    if "storage" in storage_answer:
+                        body = {**body, "storage": storage_answer["storage"]}
             if (
                 document.get("operation") == "AGENT_BUNDLE_PREPARE"
                 and directory is not None

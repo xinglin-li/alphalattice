@@ -60,6 +60,7 @@ from .contracts import (
     WorkItemLifecycle,
 )
 from .registry import DuckDbTaskControlRegistry, TaskTransitionRejected
+from .scratch import carry_task_scratch
 from .timing import record_stage_spans
 from .upgrade import import_heartbeats, read_heartbeat, write_heartbeat
 
@@ -279,7 +280,11 @@ class _WorkPool:
             self.failed_stage_id = None
         else:
             future = self._executor.submit(
-                carry_cancellation(carry_resource_lease(carry_observation(carry_background(call))))
+                carry_task_scratch(
+                    carry_cancellation(
+                        carry_resource_lease(carry_observation(carry_background(call)))
+                    )
+                )
             )
             self._running[future] = definition
 

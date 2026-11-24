@@ -156,6 +156,7 @@ FIELD_OWNER: dict[str, RequestFamily] = {
     "extensions_page": "feature",
     "agent_session": "goals",
     "wait_seconds": "task",
+    "status_section": "task",
     "after": "workspace",
     "limit": "workspace",
     "watch": "workspace",

@@ -475,25 +475,7 @@ class ResearchInputStorage:
         """
         with self.session.mutation_gate.hold():
             require_no_pending_cleanup(self.workspace)
-            evidence = self._references()
-            files = managed_file_inventory(self.workspace)
-            targets = {
-                p: h
-                for p, h in evidence["source"]["targets"].items()
-                if confined(self.workspace, p).is_file()
-            }
-            retained = tuple(v for v in files if v[0] not in targets)
-            relinks = self._model_relinks()
-            values: dict[str, object] = {
-                "references_hash": canonical_hash(evidence),
-                "targets": dict(sorted(targets.items())),
-                "bindings": [],  # deprecated in 0.2.8: no input is a cleanup target
-                "retained_bytes": unique_managed_bytes(retained) - sum(relinks.values()),
-                "reclaimable_bytes": unique_managed_bytes(files)
-                - unique_managed_bytes(retained)
-                + sum(relinks.values()),
-                **({"relinks": relinks} if relinks else {}),
-            }
+            values = self._cleanup_values()
             identity = self.owner.publish_input_plan(values)
             return {
                 "status": "CONFIRMATION_REQUIRED",
@@ -516,6 +498,50 @@ class ResearchInputStorage:
                     "A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES",
                 ],
             }
+
+    def status(self) -> dict[str, object]:
+        """Measure the data root and estimate the current plan without publishing it."""
+        from alphalattice.control.workspace_runtime.storage.footprint import (  # lazy: status
+            allocated_by_category,
+        )
+
+        unavailable: dict[str, str] = {}
+        try:
+            categories = allocated_by_category(history.data_root())
+        except OSError:
+            categories = None
+            unavailable["bytes_by_category"] = "storage.footprint_unreadable"
+        try:
+            reclaimable = self._cleanup_values()["reclaimable_bytes"]
+        except (OSError, ValueError, StorageRetentionError):
+            reclaimable = None
+            unavailable["reclaimable_bytes"] = "storage.cleanup_estimate_unavailable"
+        return {
+            "bytes_by_category": categories,
+            "reclaimable_bytes": reclaimable,
+            "scratch_cleanup": self.session.scratch_cleanup,
+            **({"unavailable": unavailable} if unavailable else {}),
+        }
+
+    def _cleanup_values(self) -> dict[str, object]:
+        evidence = self._references()
+        files = managed_file_inventory(self.workspace)
+        targets = {
+            path: digest
+            for path, digest in evidence["source"]["targets"].items()
+            if confined(self.workspace, path).is_file()
+        }
+        retained = tuple(row for row in files if row[0] not in targets)
+        relinks = self._model_relinks()
+        retained_bytes = unique_managed_bytes(retained) - sum(relinks.values())
+        return {
+            "references_hash": canonical_hash(evidence),
+            "targets": dict(sorted(targets.items())),
+            "bindings": [],  # deprecated in 0.2.8: no input is a cleanup target
+            "retained_bytes": retained_bytes,
+            "reclaimable_bytes": unique_managed_bytes(files) - retained_bytes,
+            **({"relinks": relinks} if relinks else {}),
+        }
 
     def _model_relinks(self) -> dict[str, int]:
         """The retained retrieval recipe's own model copy, when the machine's store holds its
