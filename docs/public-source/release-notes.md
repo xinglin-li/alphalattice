@@ -5,17 +5,38 @@ Latest released version: [0.2.9](#029). Earlier measurements describe their own 
 
 ## 0.2.9
 
-**One resident Host and a thin command line.** 0.2.9 gives each job in the program's core one owner, and the owner keeps the work it has done for the next request:
+**AlphaLattice 0.2.9 starts faster, runs Tasks more reliably, frees unused storage, and makes research results easier to check.**
 
-- **One resident Host per data root.** When none answers, a supported workspace command starts the Host in the background; help does not, and `serve` runs its Host in its own terminal. The background Host stays up between commands and sessions, holds the data root's lock as its only writer, and stops by itself once it has been idle with no work owed. `alphalattice host stop` starts an orderly shutdown: the Host finishes its running Tasks and requests before it releases the data root. A second Host on the same data root is refused by name.
-- **A thin command line.** While the Host runs, a supported command hands its request to it without loading the program, so it skips the program's start. Other commands run through the full command line, and a command that waits for its Task still waits for it.
-- **Checked once, trusted until changed.** A file's digest is computed once, by its writer or its first reader, and trusted while the file's size, times and identity hold. While the Host is idle it re-checks the files it trusts on a schedule, and at the end of each scheduled re-check its record drops the files the workspace no longer holds. `ALPHALATTICE_FILE_TRUST=0` turns the trust off.
-- **Daily data health checks.** Each Daily runs five checks on its market data: `source_freshness`, `not_null`, `unique`, `accepted_values` and `relationships`. The Workbench's Data page and the update's readback show each check's verdict and failure count. The results are advisory.
-- **Your 0.2.8 data root as it is.** 0.2.9 moves no data. A workspace from before 0.2.8 is upgraded at its first start, as in 0.2.8. A workspace last opened by a release before 0.2.7 still holds tables 0.2.7 retired and is refused with `feature_storage.workspace_before_0_2_7`: open it with 0.2.7 first.
+### Faster
 
 **Faster on the same machine.** On a Windows desktop with four cores, each version freshly installed and started cold, a first use took 34.9 s against 0.2.8's 42.9 s, the median of three alternating runs on a pre-release build. A second command, answered by the resident Host, took 0.20 s against 0.61 s, and starting the Host on an existing data root took 4.2 s against 8.4 s.
 
-**For integrators.** Every operation goes through one registered door: an operation outside the registry is refused by name (`door.operation_unknown`), and a request that needs a person's decision says so (`door.person_required`). Resources are granted by lease within the four-core budget.
+- Supported commands from you or a bound agent go straight to the resident Host. It keeps databases open and loads handlers as needed. Earlier worker and log-reader startup saved 3.13 s in a paired first-use test on generated data. Reusing unchanged source checks saved 1.97 s in a separate pair. Fixed CPU budgets skip sampling, and eligible Windows child processes start directly.
+- Daily reuses verified history, inputs and table layouts and scores only eligible listings. Feature scoring took 2.79 s versus 3.00 s on 0.2.7 in a generated Daily benchmark, with the same results.
+- On generated data, preparing three review bundles took 2.156 s versus 5.968 s. With one million chunks, Chinese search’s 95th-percentile latency fell from 267 to 173 ms by default and from 242 to 154 ms with a search scope. The bundles and search results matched.
+
+### Steadier
+
+- Start with a version-pinned command or the Claude Code plugin. Each data root has one background Host that starts on demand, restarts after a stop, and stops when idle with no work due. `alphalattice host stop` finishes active work, including strategy reads. Failed background starts report the reason and clean up their timers. Help leaves the Host alone and `serve` runs it in the terminal.
+- Interactive Tasks get priority over queued background work. Background waits wake on events. Cancellation interrupts queries and cleans up child processes. Host reports include memory limits. On Linux, observation mode can work without a memory monitor or a cgroup manager.
+- On Windows, Daily updates and research-input preparation work with the market database open. Restored workspaces can start again on the same system. Upgrades reuse verified work, report their duration, and preserve Panel preprocessing records. Existing 0.2.8 data roots open without moving data. Older workspaces upgrade on opening. Those last opened before 0.2.7 must first be opened in 0.2.7.
+
+### Lighter on disk
+
+- `alphalattice task show <task> --section storage` shows bytes by category and the amount reclaimable. `alphalattice storage reclaim` shows the plan and asks for confirmation. On startup, the Host clears scratch it can attribute to ended Tasks.
+- Backup sizes are visible. The Host prunes backups and collects eligible unshared data after a workspace has been missing for 30 days. Data held by another workspace is kept. The idle file check drops verification records for files no longer held.
+
+### Results you can trust
+
+- Each Daily shows five advisory market-data checks with verdicts and failure counts. Corporate action audits explain why they stop, and sealed Factor inputs stay free of verification journals.
+- Verified files are trusted until their size, timestamps or file identity changes and are rechecked while the Host is idle. `ALPHALATTICE_FILE_TRUST=0` checks file contents on read instead. Code identities track executable changes and survive moves of unchanged code.
+
+### For integrators
+
+- Requests enter through one registered operation interface. Unknown operations are refused by name, and decisions that belong to a person are requested and recorded. Resource leases share the configured CPU budget. Caches have declared bounds. Outbound requests use approved hosts and timeouts per source.
+- Startup captures configuration once. Runtime timestamps and digests use shared rules. Telemetry can commit during catalog reads, and the timing ledger counts schema work.
+- Source verification checks an offline first trial within ten minutes and identifies stalled test phases or locations. Performance checks use per-operation budgets and a 2% hot-loop tolerance. Resource reports show the operation observed at peak Host memory.
+- Seven packages moved out of `alphalattice.kernel`. Update imports for `data`, `knowledge`, `quant` and `validation` to `alphalattice.capabilities`, `shared_kernel` to `alphalattice.capabilities.domain_contracts`, `data_layer` to `alphalattice.foundation.data_layer`, and `live_evidence` to `alphalattice.evidence.live_evidence`. The old import paths are gone.
 
 ## 0.2.8
 

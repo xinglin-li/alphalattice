@@ -26,11 +26,13 @@ locally and is open source.
 
 ## 0.2.9, now
 
-- One resident Host per data root. When none answers, a supported workspace command starts one in the background; help does not, and `serve` runs its Host in its own terminal. The background Host stays up between commands and sessions and stops by itself once it has been idle with no work owed. `alphalattice host stop` starts an orderly shutdown: the Host finishes its running Tasks and requests before it releases the data root.
-- A thin command line: while the Host runs, a supported command hands its request to it without loading the program, so it skips the program's start. Other commands run through the full command line, and a command that waits for its Task still waits for it.
-- A file checked once is trusted until it changes, and the Host re-checks the files it trusts while it is idle. `ALPHALATTICE_FILE_TRUST=0` turns the trust off.
-- Daily data health checks: five checks on each Daily's market data, shown on the Workbench's Data page and in the update's readback.
-- A 0.2.8 data root is used as it is: 0.2.9 moves no data.
+**AlphaLattice 0.2.9 starts faster, runs Tasks more reliably, frees unused storage, and makes research results easier to check.**
+
+- **Faster.** Supported commands reuse the resident Host. Daily scoring, review preparation and Chinese Evidence search take less time.
+- **Steadier.** Interactive Tasks get priority, cancellation interrupts active queries and cleans up child processes, Windows Daily updates can use an open market database, and restored workspaces can start again.
+- **Lighter on disk.** See storage by category, confirm a cleanup, and have the Host clear owned Task scratch and expired backups.
+- **Results you can trust.** Each Daily reports five market-data checks, and files are checked again when they change or during idle verification.
+- **For integrators.** Operations share a registered interface, caches and outbound requests have bounds, and seven packages have new import paths.
 
 See the [0.2.9 release notes](docs/public-source/release-notes.md#029) for each change. The versioned notes keep each measured workload and its limits.
 
