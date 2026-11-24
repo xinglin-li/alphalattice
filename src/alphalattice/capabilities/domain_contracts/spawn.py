@@ -259,7 +259,7 @@ def check_output(args: Any, **kwargs: Any) -> Any:
 
 
 class ChildJob(child_process.ChildJob):
-    """Create a kernel Job backed by the product's process observations."""
+    """Create a kernel Job for the product's process owner."""
 
     def __init__(
         self,
@@ -269,4 +269,4 @@ class ChildJob(child_process.ChildJob):
         memory: child_process.TreeMemory | None = None,
     ) -> None:
         """Create this parent's Job with its caller's optional affinity and priority."""
-        super().__init__(processes=psutil, affinity=affinity, priority=priority, memory=memory)
+        super().__init__(affinity=affinity, priority=priority, memory=memory)

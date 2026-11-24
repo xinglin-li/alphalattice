@@ -1355,7 +1355,7 @@ def _select() -> int:
     global _PARENT_REVISION
     _PARENT_REVISION = args.base or "HEAD"
     all_changed = _changed_paths(base=args.base, staged=args.staged)
-    previous = git_previous(PLAYPEN_ROOT, _PARENT_REVISION)
+    previous = git_previous(PLAYPEN_ROOT, _PARENT_REVISION, all_changed)
     neutral = tuple(
         verdict.path
         for verdict in neutral_verdicts(PLAYPEN_ROOT, all_changed, previous)

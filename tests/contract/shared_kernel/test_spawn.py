@@ -405,6 +405,9 @@ def test_a_child_gets_closed_input_utf8_and_no_inherited_data_root(monkeypatch, 
     from alphalattice.capabilities.domain_contracts import spawn
 
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "person-root"))
+    monkeypatch.setattr(
+        psutil.Process, "threads", lambda _: pytest.fail("child startup listed its threads")
+    )
     script = (
         "import os,sys; "
         "sys.stdout.buffer.write((str(len(sys.stdin.read()))+'|'+"
@@ -507,10 +510,13 @@ def test_a_timed_out_child_and_its_descendant_are_stopped(parent, tmp_path):
 
 
 @pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
-def test_an_interactive_session_feeds_turns_and_captures_streams():
+def test_an_interactive_session_feeds_turns_and_captures_streams(monkeypatch):
     """A real child consumes two turns before EOF and the owner closes both pipes."""
     from alphalattice.capabilities.domain_contracts import spawn
 
+    monkeypatch.setattr(
+        psutil.Process, "threads", lambda _: pytest.fail("child startup listed its threads")
+    )
     code = (
         "import sys; a=sys.stdin.readline(); b=sys.stdin.readline(); "
         "print(a.strip()+'|'+b.strip()); print('error',file=sys.stderr)"

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import ExitStack, closing, contextmanager, suppress
 from ctypes import wintypes
@@ -40,6 +41,7 @@ if sys.platform == "win32":
 
 DEFAULT_TIMEOUT = 300.0
 REAP_TIMEOUT = 5.0
+_CREATE_SUSPENDED = 0x4
 _LOG = logging.getLogger(__name__)
 
 
@@ -202,7 +204,7 @@ def attached(
             None,
             None,
             bool(handles),
-            0x4,
+            _CREATE_SUSPENDED,
             {**env, "GIT_TERMINAL_PROMPT": "0"},
             None,
             startup,
@@ -702,7 +704,7 @@ def _start_posix(
 def current_tree(processes: ProcessObservations, memory: TreeMemory) -> Iterator[None]:
     """Own a real serving process throughout its operating-system lifetime."""
     if sys.platform == "win32":
-        job = ChildJob(processes=processes, memory=memory)
+        job = ChildJob(memory=memory)
         try:
             job.assign(_winapi.GetCurrentProcess())
         except BaseException:
@@ -805,6 +807,132 @@ def _supervised_linux_host(memory: TreeMemory) -> Iterator[None]:
                 raise TreeNotStopped("spawn.tree_not_stopped: Host observer failed")
 
 
+class _JobProcess(subprocess.Popen[Any]):
+    """Keep Popen's pipe and wait ownership while admitting its primary thread to a Job."""
+
+    def __init__(
+        self,
+        job: ChildJob,
+        default_environment: Callable[[], dict[str, str]],
+        args: Any,
+        *,
+        creationflags: int,
+        **kwargs: Any,
+    ) -> None:
+        self._job = job
+        self._default_environment = default_environment
+        super().__init__(args, creationflags=creationflags | _CREATE_SUSPENDED, **kwargs)
+
+    if sys.platform == "win32":
+
+        def _execute_child(
+            self,
+            args: Any,
+            executable: str | bytes | os.PathLike[str] | None,
+            _preexec_fn: Any,
+            close_fds: bool,
+            pass_fds: tuple[int, ...],
+            cwd: str | bytes | os.PathLike[str] | None,
+            env: Any,
+            startupinfo: subprocess.STARTUPINFO | None,
+            creationflags: int,
+            shell: bool,
+            p2cread: Any,
+            p2cwrite: Any,
+            c2pread: Any,
+            c2pwrite: Any,
+            errread: Any,
+            errwrite: Any,
+            *_posix_options: Any,
+        ) -> None:
+            # CPython 3.12 Popen supplies the prepared pipe handles here. Its Windows
+            # implementation closes the primary thread handle before returning.
+            if pass_fds:
+                raise AssertionError("pass_fds not supported on Windows.")
+            if not isinstance(args, str):
+                if shell and isinstance(args, (bytes, os.PathLike)):
+                    raise TypeError("bytes and path-like args cannot be used with shell on Windows")
+                args = subprocess.list2cmdline(
+                    [args] if isinstance(args, (bytes, os.PathLike)) else args
+                )
+            program = None if executable is None else os.fsdecode(executable)
+            directory = None if cwd is None else os.fsdecode(cwd)
+            startup = subprocess.STARTUPINFO() if startupinfo is None else startupinfo.copy()
+            stream_handles = (p2cread, c2pwrite, errwrite)
+            redirected = -1 not in stream_handles
+            if redirected:
+                startup.dwFlags |= _winapi.STARTF_USESTDHANDLES
+                startup.hStdInput, startup.hStdOutput, startup.hStdError = stream_handles
+            native: Any = self
+            attributes = startup.lpAttributeList or {}
+            handles = list(attributes.get("handle_list", []))
+            if handles or (redirected and close_fds):
+                if redirected:
+                    handles.extend(map(int, stream_handles))
+                handles = native._filter_handle_list(handles)
+                startup.lpAttributeList = {**attributes, "handle_list": handles}
+                if handles and not close_fds:
+                    warnings.warn(
+                        "startupinfo.lpAttributeList['handle_list'] overriding close_fds",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+            if shell:
+                startup.dwFlags |= _winapi.STARTF_USESHOWWINDOW
+                startup.wShowWindow = _winapi.SW_HIDE
+                parent_env = self._default_environment() if not program else {}
+                command_shell = program or parent_env.get("COMSPEC")
+                if not command_shell:
+                    command_shell = os.path.join(
+                        parent_env.get("SYSTEMROOT", ""), "System32", "cmd.exe"
+                    )
+                    if not os.path.isabs(command_shell):
+                        raise FileNotFoundError(
+                            "shell not found: neither %ComSpec% nor %SystemRoot% is set"
+                        )
+                if not program and os.path.isabs(command_shell):
+                    program = command_shell
+                args = f'{command_shell} /c "{args}"'
+            sys.audit("subprocess.Popen", program, args, directory, env)
+
+            process = thread = None
+            try:
+                try:
+                    process, thread, pid, _ = _winapi.CreateProcess(
+                        program,
+                        args,
+                        None,
+                        None,
+                        bool(handles) or not close_fds,
+                        creationflags,
+                        env,
+                        directory,
+                        startup,
+                    )
+                finally:
+                    native._close_pipe_fds(p2cread, p2cwrite, c2pread, c2pwrite, errread, errwrite)
+                self._job.assign_and_resume(process, thread)
+                native._handle = vars(subprocess)["Handle"](process)
+                self.pid = pid
+                native._child_created = True
+            except BaseException:
+                if process is not None:
+                    try:
+                        if _winapi.WaitForSingleObject(process, 0) == _winapi.WAIT_TIMEOUT:
+                            _winapi.TerminateProcess(process, 1)
+                            if (
+                                _winapi.WaitForSingleObject(process, int(REAP_TIMEOUT * 1000))
+                                == _winapi.WAIT_TIMEOUT
+                            ):
+                                raise TreeNotStopped("spawn.tree_not_stopped: Job admission failed")
+                    finally:
+                        _winapi.CloseHandle(process)
+                raise
+            finally:
+                if thread is not None:
+                    _winapi.CloseHandle(thread)
+
+
 def run(
     processes: ProcessObservations,
     default_environment: Callable[[], dict[str, str]],
@@ -861,10 +989,8 @@ def run(
         if "stdout" in kwargs or "stderr" in kwargs:
             raise ValueError("stdout and stderr arguments may not be used with capture_output")
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    job = ChildJob(processes=processes, memory=memory) if sys.platform == "win32" else None
-    if job is not None:
-        creationflags |= 0x4  # CREATE_SUSPENDED: admit before any child code runs
-    else:
+    job = ChildJob(memory=memory) if sys.platform == "win32" else None
+    if job is None:
         kwargs["start_new_session"] = True
     watch = None
     try:
@@ -873,7 +999,9 @@ def run(
                 args, processes, memory, creationflags=creationflags, **kwargs
             )
         else:
-            process = subprocess.Popen(args, creationflags=creationflags, **kwargs)
+            process = _JobProcess(
+                job, default_environment, args, creationflags=creationflags, **kwargs
+            )
     except BaseException:
         if job is not None:
             job.close()
@@ -907,10 +1035,6 @@ def run(
 
     ended_normally = False
     try:
-        if job is not None:
-            native: Any = process
-            job.assign(int(native._handle))
-            job.resume_pid(process.pid)
         with interruptible(request_stop):
             if (reason := stop_reason()) is not None:
                 raise ExecutionStopped(reason)
@@ -1021,17 +1145,23 @@ class InteractiveSession:
             if sys.platform == "win32":
                 if self.job is None:
                     self.job = ChildJob(
-                        processes=self._processes,
                         affinity=self.affinity,
                         priority=self.priority,
                         memory=self.memory,
                     )
-                creationflags |= 0x4
             else:
                 kwargs["start_new_session"] = True
         try:
             command = _command(args)
-            if self.stop_scope == "tree" and self.job is None:
+            if self.job is not None:
+                self.child = _JobProcess(
+                    self.job,
+                    self._default_environment,
+                    command,
+                    creationflags=creationflags,
+                    **kwargs,
+                )
+            elif self.stop_scope == "tree":
                 self.child, self._memory_watch = _start_posix(
                     command,
                     self._processes,
@@ -1041,10 +1171,6 @@ class InteractiveSession:
                 )
             else:
                 self.child = subprocess.Popen(command, creationflags=creationflags, **kwargs)
-            if self.job is not None:
-                native: Any = self.child
-                self.job.assign(int(native._handle))
-                self.job.resume_pid(self.child.pid)
         except BaseException:
             if self.job is not None:
                 ChildJob.close(self.job)
@@ -1281,7 +1407,6 @@ class ChildJob:
     def __init__(
         self,
         *,
-        processes: ProcessObservations,
         affinity: int | None = None,
         priority: int | None = None,
         memory: TreeMemory | None = None,
@@ -1289,7 +1414,6 @@ class ChildJob:
         """Create this parent's Job with its caller's optional affinity and priority."""
         if sys.platform != "win32":
             raise OSError("Windows Jobs are unavailable")
-        self._processes = processes
         self._lock = threading.Lock()
         self.memory = memory
         self._memory_port: int | None = None
@@ -1439,22 +1563,6 @@ class ChildJob:
         self.assign(process)
         if self.kernel.ResumeThread(thread) == 0xFFFFFFFF:
             raise ctypes.WinError(ctypes.get_last_error())
-
-    def resume_pid(self, pid: int) -> None:
-        """Resume the sole initial thread of an already assigned suspended child."""
-        threads = self._processes.Process(pid).threads()
-        if len(threads) != 1:
-            raise OSError("spawn.initial_thread_unavailable")
-        self.kernel.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        self.kernel.OpenThread.restype = wintypes.HANDLE
-        thread = self.kernel.OpenThread(0x0002, False, threads[0].id)  # THREAD_SUSPEND_RESUME
-        if not thread:
-            raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            if self.kernel.ResumeThread(thread) == 0xFFFFFFFF:
-                raise ctypes.WinError(ctypes.get_last_error())
-        finally:
-            _winapi.CloseHandle(thread)
 
     def terminate(self, *, exit_code: int = 1) -> None:
         """Stop this Job and prove each captured member exited, keeping the Job readable."""
