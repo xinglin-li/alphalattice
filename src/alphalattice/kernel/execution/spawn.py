@@ -1624,7 +1624,6 @@ class ChildJob:
                 raise ctypes.WinError(ctypes.get_last_error())
             if not self.kernel.TerminateJobObject(self.handle, exit_code):
                 raise ctypes.WinError(ctypes.get_last_error())
-            total = before.TotalProcesses
             while True:
                 handles = list(held.values())
                 for start in range(0, len(handles), 64):
@@ -1640,15 +1639,14 @@ class ChildJob:
                     )
                     if result != 0:
                         raise TreeNotStopped(f"spawn.tree_not_stopped: Job wait {result}")
+                # The Job's active count proves the stop. A member that joined after the first
+                # capture and already exited (or one the active-process limit refused) is counted
+                # in TotalProcesses but never captured, so only an active member is waited for.
                 after = accounting()
-                if after.TotalProcesses == total:
+                if not after.ActiveProcesses:
                     break
-                new = capture(after.ActiveProcesses)
-                if len(new) < after.TotalProcesses - total:
+                if not capture(after.ActiveProcesses) and time.monotonic() >= deadline:
                     raise TreeNotStopped("spawn.tree_not_stopped: uncaptured Job members")
-                total = after.TotalProcesses
-                if time.monotonic() >= deadline:
-                    raise TreeNotStopped("spawn.tree_not_stopped: Job deadline")
         finally:
             for handle in held.values():
                 _winapi.CloseHandle(handle)

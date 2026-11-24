@@ -592,6 +592,52 @@ def test_an_interactive_session_names_its_stop_scope(monkeypatch):
 
 
 @pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job accounting")
+def test_a_job_stop_is_proved_when_a_member_joined_and_exited_after_its_capture():
+    """A member that joins after the stop's first capture and exits before the next is counted
+    in the Job's TotalProcesses but never captured; the Job's active count proves the stop."""
+    job = execution_spawn.ChildJob()
+    kernel = job.kernel
+    wait = "import threading; threading.Event().wait({})"
+    quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    quiet["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    held = subprocess.Popen(
+        [sys.executable, "-c", wait.format(60)], stdin=subprocess.DEVNULL, **quiet
+    )
+    late = []
+
+    class LateMember:  # the real kernel; a member joins between the first capture and the stop
+        def __getattr__(self, name):
+            return getattr(kernel, name)
+
+        def SetInformationJobObject(self, *arguments):
+            # The member waits on its stdin, so it is alive when the checked assignment admits
+            # it, and exits only once released.
+            member = subprocess.Popen(
+                [sys.executable, "-c", "import sys; sys.stdin.read()"],
+                stdin=subprocess.PIPE,
+                **quiet,
+            )
+            try:
+                job.assign(int(member._handle))
+            finally:
+                member.communicate(input=b"", timeout=10)
+            late.append(member.returncode)
+            return kernel.SetInformationJobObject(*arguments)
+
+    try:
+        job.assign(int(held._handle))
+        job.kernel = LateMember()
+        job.terminate()
+        assert late == [0] and held.wait(timeout=10) is not None
+    finally:
+        job.kernel = kernel
+        if held.poll() is None:
+            held.kill()
+        execution_spawn.ChildJob.close(job)
+
+
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_concurrent_stops_wait_for_the_same_termination_barrier():
     """Concurrent callers return only after the owned child has stopped."""
     from alphalattice.capabilities.domain_contracts import spawn
