@@ -1,5 +1,5 @@
 # Privacy and native usage reading
-Last checked: 2026-11-17 against 0.2.8 development
+Last checked: 2026-11-24 against 0.2.9
 
 The workspace Host accepts native agent OTLP on its existing authenticated loopback
 socket. Before storage it discards prompt and tool text, bodies, opt-in attributes and

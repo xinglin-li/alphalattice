@@ -13,6 +13,8 @@ Latest released version: [0.2.9](#029). Earlier measurements describe their own 
 - **Daily data health checks.** Each Daily runs five checks on its market data: `source_freshness`, `not_null`, `unique`, `accepted_values` and `relationships`. The Workbench's Data page and the update's readback show each check's verdict and failure count. The results are advisory.
 - **Your 0.2.8 data root as it is.** 0.2.9 moves no data. A workspace from before 0.2.8 is upgraded at its first start, as in 0.2.8. A workspace last opened by a release before 0.2.7 still holds tables 0.2.7 retired and is refused with `feature_storage.workspace_before_0_2_7`: open it with 0.2.7 first.
 
+**Faster on the same machine.** On a Windows desktop with four cores, each version freshly installed and started cold, a first use took 34.9 s against 0.2.8's 42.9 s, the median of three alternating runs on a pre-release build. A second command, answered by the resident Host, took 0.20 s against 0.61 s, and starting the Host on an existing data root took 4.2 s against 8.4 s.
+
 **For integrators.** Every operation goes through one registered door: an operation outside the registry is refused by name (`door.operation_unknown`), and a request that needs a person's decision says so (`door.person_required`). Resources are granted by lease within the four-core budget.
 
 ## 0.2.8
@@ -778,6 +780,6 @@ The incomplete daily increased retained workspace files by 144.27 MB net. New or
 
 - Host memory remains above the 8 GB budget: 8.66 GB in the first use and at least 9.39 GB in the incomplete daily. Memory limits and controls are planned for 0.2.6.
 - The 20-minute daily wall-time budget remains unproven by this run: the daily was still open when its measurement deadline arrived after 464.2 seconds. Smaller readbacks and fewer finishing steps remain planned for 0.2.4.
-- The incomplete first daily after a first use grew the workspace by 144.27 MB at the measurement deadline, exceeding the 50 MB ordinary-day budget. The five-day scenario through the actual daily data and book writers, and the storage work it informs, are planned for 0.2.9.
+- The incomplete first daily after a first use grew the workspace by 144.27 MB at the measurement deadline, exceeding the 50 MB ordinary-day budget. The five-day scenario ran before 0.2.8 shipped: five consecutive daily updates through the Host, each after the first growing the workspace within the ordinary-day budget scaled to its data.
 - An update with no end date, including an activation's first update or an undated daily update, can be refused when it resumes if its data step re-admitted quarantined candidates before waiting: that step changed the update's own inputs. The answer offers to cancel the update and plan it again; this route completes the update. A fix is planned for 0.2.4. The same limit applies to 0.2.2.
 - The other limits recorded in [0.2.2](#022), including explicit input captures, split-day writes and unproven native browser parity, still apply. Idle shutdown and authenticated reuse of an existing local Host are also later work.
