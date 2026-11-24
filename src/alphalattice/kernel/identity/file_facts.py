@@ -14,6 +14,22 @@ from typing import BinaryIO, Protocol, cast
 
 from ._digests import integrity_sha256_stream
 
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    # Bind the Windows function once. Each stamp still queries the same open file.
+    _file_information = ctypes.WinDLL("kernel32", use_last_error=True).GetFileInformationByHandleEx
+    _file_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    _file_information.restype = wintypes.BOOL
+    _FILE_BASIC_INFO = ctypes.c_longlong * 5
+
 RACY_SECONDS = 2.0
 """How old the newest modification or change time must be before a digest is kept."""
 
@@ -37,23 +53,12 @@ def file_stamp(path: Path) -> tuple[int, int, int, int, int]:
 
 def handle_stamp(handle: BinaryIO) -> tuple[int, int, int, int, int]:
     """Read identity, size and both change clocks of the file an open handle names."""
-    stat = os.fstat(handle.fileno())
+    fd = handle.fileno()
+    stat = os.fstat(fd)
     if os.name == "nt":
-        import ctypes  # lazy: the Windows file change clock needs a kernel handle.
-        import msvcrt  # lazy: resolve the Windows file handle only for a stamp.
-        from ctypes import wintypes  # lazy: the Windows file change clock's argument types.
-
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.GetFileInformationByHandleEx.argtypes = [
-            wintypes.HANDLE,
-            ctypes.c_int,
-            ctypes.c_void_p,
-            wintypes.DWORD,
-        ]
-        kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
-        basic = (ctypes.c_longlong * 5)()
-        if not kernel.GetFileInformationByHandleEx(
-            msvcrt.get_osfhandle(handle.fileno()), 0, ctypes.byref(basic), ctypes.sizeof(basic)
+        basic = _FILE_BASIC_INFO()
+        if not _file_information(
+            msvcrt.get_osfhandle(fd), 0, ctypes.byref(basic), ctypes.sizeof(basic)
         ):
             raise ctypes.WinError(ctypes.get_last_error())
         changed = (basic[3] - 116444736000000000) * 100
