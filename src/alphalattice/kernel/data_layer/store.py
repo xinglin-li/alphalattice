@@ -56,6 +56,7 @@ from alphalattice.kernel.data_layer.root import (
     catalog,
     catalog_matches,
     configure_read_cache,
+    enable_catalog_wal,
     lake_thread_config,
     load_extensions,
     schema_text,
@@ -341,6 +342,8 @@ class StorePort:
             load_extensions(lake)
             bound_reads(lake)
         if not catalog(root, owner=lake, keep_attached=True):
+            if owner is None:
+                enable_catalog_wal(root)
             attach_catalog(lake, root)
         lake.execute("SET TimeZone = 'UTC'").complete()
         catalog_matches(lake)  # before the views, which name its columns
@@ -407,10 +410,8 @@ class StorePort:
                 ((after,),) = lake.execute("SELECT count(*) FROM lake.telemetry.event").fetchall()
                 lake.execute("COMMIT").complete()
                 return int(after - before)
-            except BaseException:
-                lake.execute("ROLLBACK").complete()
-                raise
             finally:
+                # The private cursor closes and rolls back any transaction left open.
                 lake.unregister("agent_batch")
 
     def agent_telemetry(

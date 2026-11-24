@@ -259,6 +259,17 @@ def duckdb_session(root: Path) -> Any | None:
     return connection
 
 
+def enable_catalog_wal(root: Path) -> None:
+    """Set the local catalog's journal mode before opening any DuckLake attachment."""
+    path = root / "machine" / "catalog.sqlite"
+    with closing(sqlite3.connect(path)) as connection:
+        if connection.execute("PRAGMA journal_mode = WAL").fetchone() != ("wal",):
+            raise DataError(
+                f"the local catalog at {path} could not enable WAL",
+                code="data_layer.history_unavailable",
+            )
+
+
 def attach_catalog(connection: Any, root: Path) -> None:
     """Attach the writable catalog to an instance whose extensions are already loaded."""
     catalog_path = sql_path(root / "machine" / "catalog.sqlite")
@@ -283,6 +294,7 @@ def catalog(root: Path, *, owner: Any = None, keep_attached: bool = False) -> bo
         return None
     attached = created = False
     try:
+        enable_catalog_wal(root)
         attach_catalog(connection, root)
         attached = True
         connection.execute("USE lake").complete()

@@ -3757,6 +3757,7 @@
         "data_layer.log:record_worker",
         "data_layer.log:replay",
         "data_layer.root:_database",
+        "data_layer.root:enable_catalog_wal",
         "data_layer.store:stage",
         "data_layer.backup:restore_data_root",
         "data_layer.backup:_relocate_catalog",

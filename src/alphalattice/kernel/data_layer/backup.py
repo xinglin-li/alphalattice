@@ -190,12 +190,16 @@ def copy_files(
 
 
 def _snapshot(source: Path, target: Path) -> None:
-    """Copy one committed SQLite state in bounded page steps, without a long source lock."""
+    """Copy one committed SQLite state. A published catalog is one self-contained file."""
     with (
         closing(sqlite3.connect(sqlite_read_only_uri(_real(source)), uri=True)) as src,
         closing(sqlite3.connect(_real(target))) as dst,
     ):
         src.backup(dst, pages=128)
+        if target.name == "catalog.sqlite":
+            mode = dst.execute("PRAGMA journal_mode = DELETE").fetchone()
+            if mode != ("delete",):
+                raise _refuse("backup_unreadable", f"could not finalize catalog snapshot {target}")
 
 
 def _head(path: Path) -> dict[str, Any]:

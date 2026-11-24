@@ -47,6 +47,7 @@ from alphalattice.kernel.data_layer.reading import (
 from alphalattice.kernel.data_layer.root import (
     data_root,
     duckdb_session,
+    enable_catalog_wal,
 )
 
 
@@ -76,8 +77,11 @@ def open_history(
                 if owner is not None:
                     with _lock:
                         _open["duckdb"] = owner
+                    has_catalog = (where / "machine" / "catalog.sqlite").is_file()
+                    if has_catalog:
+                        enable_catalog_wal(where)
                     session = reading_session(where, log=False, owner=owner)
-                    if (where / "machine" / "catalog.sqlite").is_file():
+                    if has_catalog:
                         catalog_reader = CatalogReader(session, catalog="read_lake")
                     else:
                         session.close()

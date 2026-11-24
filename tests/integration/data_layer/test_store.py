@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -139,7 +140,19 @@ def owe(port: StorePort) -> dict:
 
 
 @pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
-@pytest.mark.parametrize("case", ("conversation", "workspace", "stopping", "unfinished-result"))
+@pytest.mark.parametrize(
+    "case",
+    (
+        "conversation",
+        "workspace",
+        "stopping",
+        "unfinished-result",
+        "held-reader-on-reopen",
+        "failed-commit",
+        "concurrent-batches",
+        "daily-admission",
+    ),
+)
 def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
     """One sanitized export survives restart, without duplicate delivery or invented scope, and
     a Host stop that meets a batch in the catalog's session waits for it to commit."""
@@ -178,6 +191,81 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
             workspace_id=workspace,
         )
 
+    if case in {"held-reader-on-reopen", "failed-commit"}:
+        from alphalattice.kernel.data_layer import history, history_runtime, reading
+        from alphalattice.kernel.data_layer import root as catalog_owner
+
+        if case == "held-reader-on-reopen":
+            catalog_owner.catalog(root)
+            with closing(sqlite3.connect(root / "machine/catalog.sqlite")) as catalog:
+                assert catalog.execute("PRAGMA journal_mode = DELETE").fetchone() == ("delete",)
+        else:
+            monkeypatch.setattr(
+                catalog_owner, "enable_catalog_wal", lambda root: None, raising=False
+            )
+        driver = """
+import sys
+from pathlib import Path
+import alphalattice.control.workspace_runtime.reader_threads
+from alphalattice.kernel.data_layer import reading
+
+requests, answers = sys.stdin.buffer, sys.stdout.buffer
+matches = reading.catalog_matches
+
+def hold_after_attach(connection, *, name):
+    connection.execute("BEGIN").complete()
+    matches(connection, name=name)
+    count = f"SELECT count(*) FROM {name}.telemetry.event"
+    assert connection.execute(count).fetchall() == [(0,)]
+    reading._send(answers, "holding the catalog snapshot")
+    assert requests.read(1) == b"r"
+    assert connection.execute(count).fetchall() == [(0,)]
+    connection.execute("ROLLBACK").complete()
+
+reading.catalog_matches = hold_after_attach
+reading.serve(Path(sys.argv[1]), requests, answers)
+"""
+        start = reading.child_process.start_piped
+
+        def hold_reader(args):
+            if args == [sys.executable, "-m", reading.__name__, str(root)]:
+                args = [sys.executable, "-c", driver, str(root)]
+            return start(args)
+
+        monkeypatch.setattr(reading.child_process, "start_piped", hold_reader)
+        workspace = root.parent / "workspace"
+        workspace.mkdir()
+        history.open_history("w1", "workspace", workspace, root=root)
+        try:
+            history_runtime.start_log_reader()
+            port = history.store()
+            assert port is not None
+            reader = history_runtime._open["reading"]
+            child = reader._child
+            assert child is not None and child.stdin is not None and child.stdout is not None
+            reading._send(child.stdin, ("experience", {}))
+            held = reader._answers.submit(reading._receive, child.stdout)
+            assert held.result(timeout=20) == "holding the catalog snapshot"
+            if case == "failed-commit":
+                with pytest.raises(
+                    duckdb.TransactionException, match='"COMMIT": database is locked'
+                ):
+                    port.telemetry_batch(batch("c"))
+            else:
+                try:
+                    assert port.telemetry_batch(batch("c")) == 1
+                except duckdb.TransactionException as error:
+                    pytest.fail(f"the ahead reader blocked telemetry: {error}")
+            child.stdin.write(b"r")
+            child.stdin.flush()
+            answer = reader._answers.submit(reading._receive, child.stdout)
+            assert answer.result(timeout=20) == (True, [])
+            rows = port.agent_telemetry("codex", "c", workspace_id="w1")
+            assert len(rows) == (0 if case == "failed-commit" else 1)
+        finally:
+            history.close_history()
+        return
+
     if case == "stopping":  # the batch holds the session's writer at its clock, then commits
         entered, release, done = threading.Event(), threading.Event(), {}
         with HostLog.open(root) as log:
@@ -206,6 +294,43 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
         try:
+            if case == "concurrent-batches":
+                starting = threading.Barrier(2)
+
+                def send(session):
+                    starting.wait(timeout=10)
+                    return port.telemetry_batch(batch(session))
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    assert list(pool.map(send, ("c1", "c2"))) == [1, 1]
+                for session in ("c1", "c2"):
+                    assert len(port.agent_telemetry("codex", session, workspace_id="w1")) == 1
+                return
+            if case == "daily-admission":
+                entered = threading.Event()
+
+                def send():
+                    entered.set()
+                    return port.telemetry_batch(batch("c"))
+
+                with (
+                    ThreadPoolExecutor(max_workers=1) as pool,
+                    stage(
+                        root, "raw_bar", log.require_lineage("provider", "yf"), bars(1)
+                    ) as staged,
+                ):
+                    with port.admitting():
+                        port.commit(staged)
+                        pending = pool.submit(send)
+                        assert entered.wait(10)
+                        with pytest.raises(TimeoutError):
+                            pending.result(timeout=0.2)
+                    assert pending.result(timeout=10) == 1
+                assert port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchall() == [
+                    (1,)
+                ]
+                assert len(port.agent_telemetry("codex", "c", workspace_id="w1")) == 1
+                return
             if case == "unfinished-result":
                 pending = port.lake.execute("SELECT i FROM range(2) AS test_rows(i) ORDER BY i")
                 assert pending.fetchone() == (0,)
