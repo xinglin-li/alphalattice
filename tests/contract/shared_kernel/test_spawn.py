@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import suppress
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import psutil
@@ -250,6 +251,24 @@ def _assert_pool_retains_escaped_child(ready):
         (None, "cancel-pool-admission", (), False, True, ""),
         (100, "darwin-aggregate", (70, 60), False, True, ""),
         pytest.param(
+            100,
+            "host-observer-observe",
+            (),
+            False,
+            False,
+            "spawn.host_observer_unavailable",
+            marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux Host cgroup observer"),
+        ),
+        pytest.param(
+            100,
+            "host-observer-enforce",
+            (),
+            False,
+            True,
+            "spawn.cgroup_admission_unproved",
+            marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux Host cgroup observer"),
+        ),
+        pytest.param(
             None,
             "cancel-retired-pool",
             (),
@@ -271,6 +290,8 @@ def _assert_pool_retains_escaped_child(ready):
         "cancel",
         "cancel-pool-admission",
         "darwin-aggregate",
+        "host-observer-timeout-observe",
+        "host-observer-timeout-enforce",
         "cancel-retired-pool",
     ),
 )
@@ -326,6 +347,34 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
             monkeypatch.setattr(execution_spawn, "linux_scope_available", lambda: False)
             monkeypatch.setattr(psutil.Process, "children", lambda self, recursive=False: [])
         _assert_pool_retains_escaped_child(tmp_path / "descendant")
+        return
+    if mode.startswith("host-observer-"):
+        owner = MagicMock()
+        owner.poll.return_value = False
+        observer = MagicMock()
+        observer.is_alive.return_value = False
+        observer.exitcode = 0
+        context = SimpleNamespace(Pipe=lambda: (owner, MagicMock()), Process=lambda **_: observer)
+        monkeypatch.setattr(execution_spawn, "linux_scope_available", lambda: True)
+        monkeypatch.setattr(execution_spawn.multiprocessing, "get_context", lambda _: context)
+        memory = execution_spawn.TreeMemory("host", budget, mode.removeprefix("host-observer-"))
+        if stops:
+            with (
+                pytest.raises(
+                    OSError, match=r"spawn\.cgroup_admission_unproved: missing Host observer"
+                ),
+                execution_spawn.current_tree(psutil, memory),
+            ):
+                pytest.fail("enforce admitted a Host without the observer")
+        else:
+
+            def unavailable(_thread: threading.Thread) -> None:
+                raise RuntimeError("fixture process-tree sampler is unavailable")
+
+            monkeypatch.setattr(threading.Thread, "start", unavailable)
+            with execution_spawn.current_tree(psutil, memory):
+                observer.start.assert_not_called()
+                assert f"{report}: kind=host phase=start" in caplog.text
         return
     with caplog.at_level(logging.INFO):
         memory = execution_spawn.TreeMemory("host", budget, mode)

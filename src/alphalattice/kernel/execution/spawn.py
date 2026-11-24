@@ -716,18 +716,33 @@ def current_tree(processes: ProcessObservations, memory: TreeMemory) -> Iterator
             job.finish_memory()
             # The serving process is in its own Job. Windows releases its last
             # handle, and kills any remaining member, when this process ends.
-    elif memory.budget_bytes is not None and linux_scope_available():
+    elif memory.enforce and linux_scope_available():
         with _supervised_linux_host(memory):
             yield
     else:
+        # Observe a Linux Host in place. Only enforce can move it into a cgroup
+        # since an attach must finish before the serving code starts children.
+        optional = sys.platform == "linux" and memory.mode == "observe"
         lineage = DarwinTree(os.getpid()) if sys.platform == "darwin" else None
-        watch = _PosixMemoryWatch(
-            os.getpid(), processes, memory, None, current=True, lineage=lineage
-        )
+        try:
+            watch = _PosixMemoryWatch(
+                os.getpid(), processes, memory, None, current=True, lineage=lineage
+            )
+        except (OSError, RuntimeError):
+            if not optional:
+                raise
+            _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=start", memory.kind)
+            yield
+            return
         try:
             yield
         finally:
-            watch.close()
+            try:
+                watch.close()
+            except TreeNotStopped:
+                if not optional:
+                    raise
+                _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=finish", memory.kind)
 
 
 def _observe_linux_host(
