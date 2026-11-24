@@ -2091,9 +2091,11 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
             input_envelope=envelope, goal=goal, plan=plan, observed_at=observed_at
         ).record
 
-    admitted = admit(task_kind, now)
     # Only the installed preparation Task starts a worker before its first work item.
     ahead = task_kind == "workspace_preparation"
+    if ahead:
+        set_tasks_waiting(tmp_path, 2, now)
+    admitted = admit(task_kind, now)
     successor = admit("after-preparation", now + timedelta(seconds=1)) if ahead else None
 
     class ChildStartAdapter(_FixtureTaskAdapter):

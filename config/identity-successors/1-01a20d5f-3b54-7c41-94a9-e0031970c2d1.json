@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "14f34c874d0d28364509487cb2c21a2857877e835407eaaf8de9a47a989996c8",
+   "successor": "3d26c8e14cd177379d39a749c4bee0d1a9bec993d6543e7fbc6cc3c1321f93e4",
+   "change": "Keep sealed Factor inputs free of verification journals",
+   "reason": "No result changes for users: the research input materializer and workspace preparation changed only their code, so their source fingerprints move; the development replay reads every record equal, and the other identities agree"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "56ac2301835a4d9aa42cf1b4f36b3573ad1fd01e9cc56b9938468227db4fc537",
+   "successor": "e4e86c80ebec5bc6fd47fe1c0a0a83dd927479dad728279a30eca8d150ddaa33",
+   "change": "Keep sealed Factor inputs free of verification journals",
+   "reason": "No result changes for users: the research input materializer and workspace preparation changed only their code, so their source fingerprints move; the development replay reads every record equal, and the other identities agree"
+  }
+ ]
+}

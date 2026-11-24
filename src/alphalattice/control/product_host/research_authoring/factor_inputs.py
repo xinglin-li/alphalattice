@@ -559,7 +559,7 @@ def bind_factor_inputs(
     workspace, source = workspace.resolve(), source.resolve()
     with ExitStack() as stack:
         for root in sorted({workspace, source}):
-            lease = WorkspaceWriterLease.acquire(root)
+            lease = WorkspaceWriterLease.acquire(root, keep_facts=root == workspace)
             stack.callback(lease.close)
         return _bind_factor_inputs(
             workspace=_windows_long_path(workspace),
