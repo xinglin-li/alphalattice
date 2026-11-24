@@ -204,6 +204,8 @@ class _Log:
         yield None
 
     def read(self, sql, args=()):
+        if "FROM workspace w" in sql:
+            return []
         return self.queued if "deletion_queue" in sql else self.found
 
     def record(self, type_, subject, attrs):

@@ -64,6 +64,7 @@
 "data_layer.market_mic_ambiguous": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "An outside MIC has named more than one market; bind the source to its market identity rather than guessing from the code."},
 "data_layer.market_unregistered": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A listing or session names a market id with no admitted market record; admit that record first."},
 "data_layer.history_unavailable": {"owner": "alphalattice.kernel.data_layer", "category": "UNAVAILABLE", "classification_note": "Open the Host data root before writing or reading its catalog."},
+"data_layer.workspace_deleted": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A deleted workspace id cannot be reopened; create a new workspace to continue."},
 "data_layer.outcome_collected": {"owner": "alphalattice.kernel.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A collected outcome body cannot be reused as present."},
 "data_layer.return_series_invalid": {"owner": "alphalattice.kernel.data_layer", "category": "INVALID_ARGUMENT", "classification_note": "A trial's return series was not ordered calendar months of finite returns, 1 to 600 of them; nothing was kept."},
 "data_layer.trial_unknown": {"owner": "alphalattice.kernel.data_layer", "category": "NOT_FOUND", "classification_note": "A return series named a trial the log does not hold; nothing was kept."},

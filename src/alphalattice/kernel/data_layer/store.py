@@ -1768,6 +1768,7 @@ def collect_unheld(
     crash over-retains and the next start finishes it; an inline body goes with the event. The
     artifacts collected."""
     with governance.COPYING, writer:
+        governance.reconcile_workspaces(log, expire=True)
         days = process_config().settings.retention_days
         tick = timedelta(microseconds=1)
         age = governance.UNHELD // tick if days is None else days * (timedelta(days=1) // tick)

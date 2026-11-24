@@ -1867,11 +1867,115 @@ def _holds(log: HostLog, holder: str) -> None:
         log.record("workspace.status_changed", ("workspace", "w1"), {"status": "deleted"})
 
 
+_REMOVAL = {
+    "missing within grace": "missing",
+    "missing after grace": "deleted",
+    "unreadable after grace": "missing",
+    "returned within grace": "active",
+    "returned after deletion": "deleted",
+    "collection twice": "deleted",
+    "interrupted after deletion": "deleted",
+}
+
+
+def _removed_workspace(root, monkeypatch, case, kept):
+    from alphalattice.control.product_host.storage.backup import REMOVED_GRACE
+    from alphalattice.kernel.data_layer import history_runtime
+
+    folder, other = root.parent / "removed", root.parent / "shared"
+    unreadable = case == "unreadable after grace"
+    status_sql = "SELECT status FROM workspace WHERE workspace_id = 'w1'"
+    other.mkdir()
+    folders = {"w1": folder, "w2": other}
+    owners = {"a": "w1", "b": "w1"}
+    if unreadable:
+        folders["w3"] = root.parent / "also-removed"
+        owners["c"] = "w3"
+    with HostLog.open(root) as log, closing(StorePort.open(root, log)) as port:
+        for workspace, path in folders.items():
+            log.record(
+                "workspace.created",
+                ("workspace", workspace),
+                {"name": workspace, "folder": str(path)},
+            )
+        for artifact, workspace in owners.items():
+            _produced(log, artifact, "blob")
+            (root / "blobs" / artifact).write_bytes(b"model")
+            log.record("artifact.held", ("artifact", artifact), {}, workspace=workspace)
+        log.record("artifact.held", ("artifact", "b"), {}, workspace="w2")
+        monkeypatch.setattr(history_runtime, "opened_log", lambda: (log, "w2"))
+        assert history_runtime.mark_missing() == (["w1", "w3"] if unreadable else ["w1"])
+        if case == "returned within grace":
+            folder.mkdir()
+        wall = host.wall_time_ns()
+        days = -1 if kept and not unreadable else 1
+        elapsed = (REMOVED_GRACE + timedelta(days=days)) // timedelta(microseconds=1)
+        monkeypatch.setattr(host, "wall_time_ns", lambda: wall + elapsed * 1000)
+        if unreadable:
+            stat = Path.stat
+
+            def deny_traversal(path, **kwargs):
+                if path == folder:
+                    raise PermissionError("fixture workspace cannot be traversed")
+                return stat(path, **kwargs)
+
+            monkeypatch.setattr(Path, "stat", deny_traversal)
+        if case == "interrupted after deletion":
+
+            def interrupted(*_):
+                raise RuntimeError("before collecting bodies")
+
+            with monkeypatch.context() as scoped:
+                scoped.setattr(governance, "unheld", interrupted)
+                with pytest.raises(RuntimeError, match="before collecting bodies"):
+                    port.collect_unheld()
+            with closing(host.attach(root)) as reader:
+                assert reader.execute(status_sql).fetchone()[0] == "deleted"
+            assert (root / "blobs" / "a").is_file()
+
+        try:
+            collected = port.collect_unheld()
+        except PermissionError as error:
+            pytest.fail(f"workspace collection stopped at an unreadable folder: {error}")
+        assert collected == (["c"] if unreadable else ([] if kept else ["a"]))
+        assert log.read(status_sql)[0][0] == _REMOVAL[case]
+        refs = log.read("SELECT artifact_id, root_id FROM live_ref ORDER BY artifact_id, root_id")
+        assert [tuple(row) for row in refs] == (
+            [("a", "w1"), ("b", "w1"), ("b", "w2")] if kept else [("b", "w2")]
+        )
+        assert (root / "blobs" / "a").is_file() is kept
+        assert (root / "blobs" / "b").is_file()
+        if unreadable:
+            assert (
+                log.read("SELECT status FROM workspace WHERE workspace_id = 'w3'")[0][0]
+                == "deleted"
+            )
+            assert not (root / "blobs" / "c").exists()
+            assert not history_runtime.admit_removal("w1", "workspace.backups_pruned", {})
+        if not kept:
+            eligible = history_runtime.removed_since(REMOVED_GRACE, "workspace.backups_pruned")
+            assert eligible == [("w1", [])]
+        if case == "returned after deletion":
+            folder.mkdir()
+            monkeypatch.setattr(history_runtime, "held", lambda *_: log)
+            with pytest.raises(DataError) as refused:
+                history_runtime.workspace_on_log(folder, folder.name, "w1")
+            assert refused.value.failure.code == "data_layer.workspace_deleted"
+        if case in ("collection twice", "returned after deletion"):
+            tip = log.read("SELECT max(seq) FROM event")[0][0]
+            assert port.collect_unheld() == []
+            assert log.read("SELECT max(seq) FROM event")[0][0] == tip
+
+
 @pytest.mark.proves("data_layer.a_body_goes_only_when_nothing_holds_it")
 @pytest.mark.parametrize(
     ("holder", "unheld", "retention_days", "kept"),
     [
         pytest.param("workspace", timedelta(0), None, True, id="held by its workspace"),
+        *(
+            pytest.param(case, timedelta(0), None, status != "deleted", id=case)
+            for case, status in _REMOVAL.items()
+        ),
         pytest.param("pin", timedelta(0), None, True, id="held by a pin"),
         pytest.param("none", timedelta(days=7), None, True, id="held by the window"),
         pytest.param("none", timedelta(days=7), "30", True, id="held by the configured window"),
@@ -1881,6 +1985,7 @@ def _holds(log: HostLog, holder: str) -> None:
             "deleted workspace", timedelta(0), None, False, id="collected once unheld by delete"
         ),
     ],
+    ids=str,
 )
 def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_it(
     root, monkeypatch, holder, unheld, retention_days, kept
@@ -1888,6 +1993,9 @@ def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_i
     """The collector takes a body no live reference, pin or window holds: its event first, then
     its file; a held one, or one younger than the window, stays."""
     monkeypatch.setattr(governance, "UNHELD", unheld)
+    if holder in _REMOVAL:
+        _removed_workspace(root, monkeypatch, holder, kept)
+        return
     with HostLog.open(root) as log:
         _produced(log, "a", "blob")
         _holds(log, holder)

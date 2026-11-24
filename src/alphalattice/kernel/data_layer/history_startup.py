@@ -113,7 +113,12 @@ def open_history(
                     _open["catalog_reader"] = catalog_reader
                 if remote is not None:
                     _open["remote"] = remote
-        workspace = workspace_on_log(folder, name, workspace_id, root)
+        try:
+            workspace = workspace_on_log(folder, name, workspace_id, root)
+        except DataError:
+            if not _open.get("hosts"):
+                close_history()
+            raise
         with _lock:
             bound = _open.get("workspace")  # an open Host's, kept if this opening is refused
             _open.update(workspace=workspace, hosts=_open.get("hosts", 0) + 1)

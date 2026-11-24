@@ -29,7 +29,7 @@ import sqlite3
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, closing, nullcontext
-from datetime import datetime, timedelta
+from datetime import datetime
 from itertools import chain
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self
@@ -70,6 +70,7 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.data_layer import arrays, history
+from alphalattice.kernel.data_layer.governance import REMOVED_GRACE as REMOVED_GRACE
 from alphalattice.kernel.door import DECISIONS_DATABASE
 from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
@@ -155,9 +156,6 @@ re-hash it on every read. A backup that already holds that object records the fi
 without reading it again; one it does not hold yet is read and stored as any other file."""
 GENERATIONS_KEPT: Final = 7
 """How many generations a backup keeps unless a request keeps another count."""
-REMOVED_GRACE: Final = timedelta(days=30)
-"""How long a removed workspace's backups stay: a missing workspace's folder may come back (an
-unplugged drive, a moved folder opened again), and a restore needs them meanwhile."""
 PRUNED: Final = "workspace.backups_pruned"
 """The receipt of a removed workspace's pruned backups: how many generations and bytes went, and
 the backup root they went from; a retry resumes only that root."""

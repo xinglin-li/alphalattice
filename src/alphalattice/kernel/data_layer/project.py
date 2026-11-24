@@ -491,7 +491,8 @@ def _workspace_status(con: Con, e: Row, a: Attrs, text: str | None) -> None:
     """A deleted workspace holds nothing: its live references go, and what no other root holds is
     collected by the age rule (data_layer.governance)."""
     moved = con.execute(
-        "UPDATE workspace SET status = ?, status_seq = ? WHERE workspace_id = ? AND status <> ?",
+        "UPDATE workspace SET status = ?, status_seq = ? WHERE workspace_id = ?"
+        " AND status NOT IN (?, 'deleted')",
         (a["status"], e["seq"], e["subject_id"], a["status"]),
     )
     if moved.rowcount and a["status"] == "deleted":

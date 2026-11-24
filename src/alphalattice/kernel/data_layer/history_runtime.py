@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 import alphalattice.kernel.data_layer.experiences as experiences
+import alphalattice.kernel.data_layer.governance as governance
 import alphalattice.kernel.data_layer.knowledge as knowledge
 import alphalattice.kernel.data_layer.project as project
 import alphalattice.kernel.data_layer.recall as recall
@@ -353,7 +354,7 @@ def workspace_on_log(
             ).fetchone()
             if known is not None:
                 if known[1] == "missing":  # its folder holds it again
-                    _found(log, str(known[0]))
+                    governance.record_workspace_status(log, str(known[0]), "active")
                 return str(known[0])
             workspace_id = uuid7()
         subject, place = ("workspace", workspace_id), {"folder": where}
@@ -361,66 +362,52 @@ def workspace_on_log(
             "SELECT status FROM workspace WHERE workspace_id = ?", (workspace_id,)
         ).fetchone()
         if status is not None:
+            if status[0] == "deleted":
+                raise DataError(
+                    f"Workspace {workspace_id} was deleted. Create a new workspace to continue.",
+                    code="data_layer.workspace_deleted",
+                )
             if status[0] == "missing":
-                _found(log, workspace_id)
+                governance.record_workspace_status(log, workspace_id, "active")
             log.record("workspace.opened", subject, place, workspace=workspace_id)
         else:
             log.record("workspace.created", subject, place | {"name": name}, workspace=workspace_id)
     return workspace_id
 
 
-def _found(log: HostLog, workspace_id: str) -> None:
-    """A missing workspace opened again is active: every reader of active workspaces sees it."""
-    subject = ("workspace", workspace_id)
-    log.record("workspace.status_changed", subject, {"status": "active"}, workspace=workspace_id)
-
-
 def mark_missing() -> list[str]:
-    """Record each active or archived workspace whose last folder is gone, or held by another
-    workspace now (its folder NULL), as missing, and each missing one whose folder is back as
-    active: a reconnected drive's workspace is live before anyone opens it. Its live references
-    stay. Only the folder is read: not every workspace on the log has a manifest naming its id.
-    The ids marked missing; none outside a recording Host."""
+    """Reconcile workspace folders on the serving Host and return the IDs first marked missing."""
     opened = opened_log()
-    if opened is None:
-        return []
-    log, gone = opened[0], []
-    rows = log.read(
-        "SELECT workspace_id, folder, status FROM workspace"
-        " WHERE status IN ('active', 'archived', 'missing') ORDER BY workspace_id",
-        (),
-    )
-    for workspace_id, folder, status in ((str(r[0]), r[1], str(r[2])) for r in rows):
-        present = folder is not None and Path(folder).is_dir()
-        if status == "missing" and present:
-            _found(log, workspace_id)
-        elif status != "missing" and not present:
-            subject = ("workspace", workspace_id)
-            log.record(
-                "workspace.status_changed", subject, {"status": "missing"}, workspace=workspace_id
-            )
-            gone.append(workspace_id)
-    return gone
+    return governance.reconcile_workspaces(opened[0]) if opened is not None else []
 
 
 def removed_since(
     age: timedelta, receipt: str, *, now_us: int | None = None
 ) -> list[tuple[str, list[dict[str, Any]]]]:
     """The workspaces missing or deleted for longer than `age` on the log's clock (or at `now_us`),
-    the event that moved them there being older, each with the attributes of every `receipt`
-    event recorded on it since, oldest first: the removals this episode admitted, one per target.
-    None outside a recording Host."""
+    each with the receipts from its current removal episode. Deletion preserves the episode's
+    earlier missing timestamp and receipts. None outside a recording Host."""
     opened = opened_log()
     if opened is None:
         return []
     log = opened[0]
     before = (log.clock() if now_us is None else now_us) - age // timedelta(microseconds=1)
     rows = log.read(
-        "SELECT w.workspace_id, r.attrs FROM workspace w JOIN event e ON e.seq = w.status_seq"
-        " LEFT JOIN event r ON r.type = ? AND r.subject_kind = 'workspace'"
-        " AND r.subject_id = w.workspace_id AND r.seq > w.status_seq"
-        " WHERE w.status IN ('missing', 'deleted') AND e.recorded_us < ?"
-        " ORDER BY w.workspace_id, r.seq",
+        """WITH removed AS (
+             SELECT w.workspace_id, coalesce(
+               (SELECT CASE WHEN json_extract(prev.attrs, '$.status') = 'missing'
+                            THEN prev.seq END
+                FROM event prev
+                WHERE w.status = 'deleted' AND prev.subject_kind = 'workspace'
+                  AND prev.subject_id = w.workspace_id AND prev.type = 'workspace.status_changed'
+                  AND prev.seq < w.status_seq ORDER BY prev.seq DESC LIMIT 1),
+               w.status_seq) AS missing_seq
+             FROM workspace w WHERE w.status IN ('missing', 'deleted')
+           )
+           SELECT w.workspace_id, r.attrs FROM removed w JOIN event e ON e.seq = w.missing_seq
+           LEFT JOIN event r ON r.type = ? AND r.subject_kind = 'workspace'
+             AND r.subject_id = w.workspace_id AND r.seq > w.missing_seq
+           WHERE e.recorded_us < ? ORDER BY w.workspace_id, r.seq""",
         (receipt, before),
     )
     removed: dict[str, list[dict[str, Any]]] = {}
@@ -434,10 +421,10 @@ def removed_since(
 def admit_removal(
     workspace_id: str, receipt: str, attrs: Mapping[str, Any], *, resumed: bool = False
 ) -> bool:
-    """Admit a removed workspace's files to go, at each try: in one log unit, a workspace opened
-    again, or a missing one whose folder is back, is never admitted (False). A first try records
-    `receipt` with `attrs` durably before its files go; a `resumed` one, whose receipt for the
-    same target is recorded, records nothing. False outside a recording Host."""
+    """Admit a removed workspace's files to go when its folder is confirmed absent.
+
+    Record the receipt durably on the first try. A resumed try already has its receipt.
+    Return False outside a recording Host."""
     opened = opened_log()
     if opened is None:
         return False
@@ -448,7 +435,7 @@ def admit_removal(
         ).fetchone()
         if row is None or row[0] not in ("missing", "deleted"):
             return False
-        if row[0] == "missing" and row[1] is not None and Path(row[1]).is_dir():
+        if governance.folder_present(row[1]) is not False:
             return False
         if not resumed:
             log.record(receipt, ("workspace", workspace_id), dict(attrs), workspace=workspace_id)
