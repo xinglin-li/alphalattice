@@ -647,9 +647,10 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     stopped = tmp_path / "stopped"
     with monkeypatch.context() as patch:
         patch.setattr(multiprocessing.get_context("spawn").Process, "start", fail_second)
-        with child_calls(f"{HERE}:thread_variables", workers=2) as preparation:
-            preparation.make({})
-            preparation.answer()
+        # The worker reports its own PID: on Linux the started process is its pool guardian.
+        with child_calls(f"{HERE}:doubled", workers=2) as preparation:
+            preparation.make({"value": 0})
+            worker = preparation.answer()["pid"]
         with (
             pytest.raises(ChildStartFailed, match=r"^task_control\.child_start_failed$"),
             child_calls(f"{HERE}:observe_cancellation", workers=2) as calls,
@@ -664,7 +665,7 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     assert time.monotonic() - refused_at < 3
     assert stopped.read_text(encoding="utf-8") == "cancelled"
     # The first worker is intentionally kept idle; its next answer proves no owned call remains.
-    assert run_in_child(f"{HERE}:doubled", {"value": 21})["pid"] == processes[0].pid
+    assert run_in_child(f"{HERE}:doubled", {"value": 21})["pid"] == worker
     with child_calls(f"{HERE}:doubled", workers=2) as calls:
         calls.make({"value": 21})
         calls.make({"value": 22})
