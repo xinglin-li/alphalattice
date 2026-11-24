@@ -36,6 +36,7 @@ from release.public_manifest import (
 from release.public_manifest import (
     main as public_manifest_main,
 )
+from tests._support.process_starts import observe_starts
 
 _REVIEW_FIXTURE = "sk-" + "X" * 40 + " x@example.invalid"
 _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
@@ -693,12 +694,12 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
         check_output, responses = spawn.check_output, {}
         run, resolved = spawn.run, {}
-        popen, sent = subprocess.Popen, bytearray()
+        sent = bytearray()
 
         def recorded(
-            command, **kwargs
+            start, command, **kwargs
         ):  # the object session's commands, kept for the replays below
-            process = popen(command, **kwargs)
+            process = start(command, **kwargs)
             if "--batch-command" in command:
                 stdin, sent[:] = process.stdin, b""
                 write = lambda data: sent.extend(data) or stdin.write(data)
@@ -714,7 +715,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
 
         with monkeypatch.context() as patch:
             starts = Mock(wraps=recorded)
-            patch.setattr(subprocess, "Popen", starts)
+            observe_starts(patch, starts)
             patch.setattr(spawn, "run", record_run)
             patch.setattr(
                 spawn,

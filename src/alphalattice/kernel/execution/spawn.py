@@ -807,7 +807,7 @@ def _supervised_linux_host(memory: TreeMemory) -> Iterator[None]:
                 raise TreeNotStopped("spawn.tree_not_stopped: Host observer failed")
 
 
-class _JobProcess(subprocess.Popen[Any]):
+class JobProcess(subprocess.Popen[Any]):
     """Keep Popen's pipe and wait ownership while admitting its primary thread to a Job."""
 
     def __init__(
@@ -819,6 +819,7 @@ class _JobProcess(subprocess.Popen[Any]):
         creationflags: int,
         **kwargs: Any,
     ) -> None:
+        """Start ``args`` suspended, so ``job`` admits it before its first instruction."""
         self._job = job
         self._default_environment = default_environment
         super().__init__(args, creationflags=creationflags | _CREATE_SUSPENDED, **kwargs)
@@ -999,7 +1000,7 @@ def run(
                 args, processes, memory, creationflags=creationflags, **kwargs
             )
         else:
-            process = _JobProcess(
+            process = JobProcess(
                 job, default_environment, args, creationflags=creationflags, **kwargs
             )
     except BaseException:
@@ -1154,7 +1155,7 @@ class InteractiveSession:
         try:
             command = _command(args)
             if self.job is not None:
-                self.child = _JobProcess(
+                self.child = JobProcess(
                     self.job,
                     self._default_environment,
                     command,

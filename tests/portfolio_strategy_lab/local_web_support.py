@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -83,6 +82,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
+from tests._support.process_starts import observe_starts
 from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.node_runner import run_node
@@ -801,5 +801,5 @@ def serve_conflict(workspace, monkeypatch):
         raise PermissionError("local_web.detached_breakaway_denied")
 
     with monkeypatch.context() as build:
-        build.setattr(subprocess, "Popen", denied)
+        observe_starts(build, denied)
         return main(["--workspace", str(workspace), "--no-browser", "--detach"])

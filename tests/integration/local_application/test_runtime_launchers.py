@@ -35,6 +35,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.interface.local_application import client as local_client
 from alphalattice.kernel.clock import ReplayClock
+from tests._support.process_starts import observe_starts
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
 _FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
@@ -574,7 +575,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     if workspace_state == "cp1252":
         from alphalattice.control.product_host.composition import web_launcher
 
-        monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("output spawned"))
+        observe_starts(monkeypatch, lambda *a, **k: pytest.fail("output spawned"))
         data = BytesIO()
         args = SimpleNamespace(workspace=tmp_path, no_browser=True, pid=1)
         token = web_launcher.ANSWER_LANGUAGE.set("zh")
@@ -688,10 +689,9 @@ def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace
     """
     from alphalattice.control.product_host.composition import web_launcher
 
-    native = subprocess.Popen
     record = SimpleNamespace(spawned=[], flags=[], fault_handlers=[])
 
-    def spawn(*args, **kwargs):
+    def spawn(native, *args, **kwargs):
         if web_launcher.LAUNCH_KEY_VARIABLE not in kwargs.get("env", {}):
             return native(*args, **kwargs)  # any other child runs as it would
         if "alphalattice.control.product_host.composition.web_launcher" in args[0]:
@@ -707,7 +707,7 @@ def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace
             record.spawned.append(_ExitedHost())
         return record.spawned[-1]
 
-    monkeypatch.setattr(subprocess, "Popen", spawn)
+    observe_starts(monkeypatch, spawn)
     if os.name == "nt":
 
         def proof(_child, _job, inside):
