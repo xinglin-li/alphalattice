@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[3]
 _FUNCTOOLS = {"cache", "lru_cache"}
 _HAND = {"OrderedDict", "WeakKeyDictionary", "WeakValueDictionary"}
 _MAPS = {"BoundedMemo", "dict", "Dict", *_HAND}
+_WEAK_OWNER_DIRECTORIES = {
+    # Callers retain the pools. The weak keys only track the names of live owners.
+    "src/alphalattice/kernel/execution/pool.py::_POOLS",
+}
 # Module-level context state that holds a mapping but caches nothing: the scan reads past it.
 _CONTEXT_STATE = {
     "src/alphalattice/interface/local_application/cli_contract.py::BINDING_NOTICE",  # a notice
@@ -86,19 +90,27 @@ def _functools_bound(
     return False
 
 
-def _spelled(node: ast.AST) -> set[str]:
-    return {
-        name for n in ast.walk(node) if (name := getattr(n, "id", None) or getattr(n, "attr", None))
-    }
+def _stored_types(node: ast.expr) -> set[str]:
+    """Read the value's type and union members without descending into type arguments."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _stored_types(node.left) | _stored_types(node.right)
+    if isinstance(node, ast.Subscript):
+        if _named(node.value) in {"Optional", "Union"}:
+            members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            return set().union(*(_stored_types(member) for member in members))
+        node = node.value
+    return {name} if (name := _named(node)) else set()
 
 
 def _context_held(
     names: list[str], annotation: ast.expr, aliases: dict[str, ast.expr]
 ) -> dict[str, Declared]:
     """A context variable that holds a mapping, with the bound its mapping's type declares."""
-    spelled = _spelled(annotation)
+    if not isinstance(annotation, ast.Subscript):
+        return {}
+    spelled = _stored_types(annotation.slice)
     for alias in spelled & aliases.keys():
-        spelled |= _spelled(aliases[alias])
+        spelled |= _stored_types(aliases[alias])
     if not spelled & _MAPS:
         return {}
     bound: Declared = (
@@ -149,14 +161,17 @@ def _held(relative: str, source: str) -> dict[str, Declared]:
         names = [f"{relative}::{t.id}" for t in targets if isinstance(t, ast.Name)]
         if not isinstance(value, ast.Call):
             continue
-        if _named(value) == "BoundedMemo":
+        kind = _named(value)
+        if kind == "BoundedMemo":
             capacity = [k.value for k in value.keywords if k.arg == "capacity"]
             # BoundedMemo always holds a capacity: one it cannot read is its default or the owner's.
             bound = (_count(capacity[0], constants) if capacity else None) or "capacity"
             held.update(dict.fromkeys(names, bound))
-        elif _named(value) in _HAND:
-            held.update(dict.fromkeys(names, "hand"))
-        elif _named(value) == "ContextVar" and isinstance(node, ast.AnnAssign):
+        elif kind in _HAND:
+            for name in names:
+                if kind != "WeakKeyDictionary" or name not in _WEAK_OWNER_DIRECTORIES:
+                    held[name] = "hand"
+        elif kind == "ContextVar" and isinstance(node, ast.AnnAssign):
             held.update(_context_held(names, node.annotation, aliases))
     return held
 
@@ -285,6 +300,8 @@ def starred(key):
 
 
 _SCOPE: ContextVar[dict[str, object] | None] = ContextVar("scope", default=None)
+_CALLBACK: ContextVar[Callable[[dict[str, str]], None] | None] = ContextVar("callback")
+_WEAK_CACHE = WeakKeyDictionary()
 """
 
 
@@ -292,7 +309,17 @@ def _refused() -> None:
     assert _unbounded_cache(CACHES_REGISTRY, "entries:new", {"size_bound": "unbounded"})
     assert _unbounded_cache(CACHES_REGISTRY, "entries:new", {})
     held = _held(_NEW_MODULE, _NEW_SOURCE)
-    names = ["_SCOPE", "keyed", "sized", "starred", "unpacked", "unresolved", "unset", "unsized"]
+    names = [
+        "_SCOPE",
+        "_WEAK_CACHE",
+        "keyed",
+        "sized",
+        "starred",
+        "unpacked",
+        "unresolved",
+        "unset",
+        "unsized",
+    ]
     assert _unregistered(held) == [f"{_NEW_MODULE}::{name}" for name in names]
     rows = {
         name: {"defined_by": [f"{_NEW_MODULE}::{name}"], "size_bound": "64 entries"}

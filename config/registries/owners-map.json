@@ -4967,7 +4967,7 @@
         "alphalattice.kernel.execution"
       ],
       "folds_in": [],
-      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+      "note": "The package exports the port declaration. Its owning module maintains a weak directory of pool names whose entries last only while callers hold the pools."
     },
     "kernel door port": {
       "description": "Operation admission and dispatch boundary through the kernel door port.",

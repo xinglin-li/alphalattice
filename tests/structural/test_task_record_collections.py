@@ -105,7 +105,7 @@ STRICT_READERS = {
 # while the default actual-resume branch keeps its strict scan above.
 # P3a TASKS projects attention from readable canonical records and names unreadable IDs on
 # the selected session page; it grants no admission, control or supervision authority.
-# BADGE: History's rows (in `_execute`) and the supervisor's attention projection fold a
+# BADGE: History's rows (in `_execute_host`) and the supervisor's attention projection fold a
 # resolved stop under its successor from readable canonical records in admission order; they
 # grant no authority either.
 PARTIAL_READERS = {
@@ -120,7 +120,7 @@ PARTIAL_READERS = {
     COMPOSITION + "research_experiments.py": ("ResearchExperimentApplication", "listing"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_execute pending_decisions guardian upgrade tasks",
+        "_execute_host pending_decisions guardian upgrade tasks",
     ),
     COMPOSITION + "task_supervision.py": ("TaskSupervisor", "attention"),
     COMPOSITION + "upgrade_overview.py": ("", "upgrade_overview"),
