@@ -1384,8 +1384,17 @@ def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(t
             "    from alphalattice.capabilities.domain_contracts import spawn\n"
             f"    spawn.run([sys.executable, '-c', {detached!r}], timeout=8, check=True)\n"
         )
-    probe += "    assert False, 'record this failure'\n"
+    line = probe.count("\n") + 1
+    probe += "    assert False, 'child output stays out'\n"  # a message quoting a child's output
+    probe += "\ndef test_value_only():\n    import pytest\n"
+    probe += (
+        "    pytest.fail('child output stays out', pytrace=False)\n"  # no frame, only its crash
+    )
+    value_line = probe.count("\n")
     (tmp_path / "test_probe.py").write_text(probe, encoding="utf-8")
+    # Import and syntax errors reach pytest as text alone; their own error names the line.
+    (tmp_path / "test_broken.py").write_text("import child_output_stays_out\n", encoding="utf-8")
+    (tmp_path / "test_syntax.py").write_text("def broken(:\n", encoding="utf-8")
     (tmp_path / "conftest.py").write_text(
         "from threading import Event\n"
         "import pytest\n\n"
@@ -1422,8 +1431,11 @@ def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(t
             "-n",
             "1",
             "--max-worker-restart=0",
+            "--continue-on-collection-errors",
             "-q",
             "test_probe.py",
+            "test_broken.py",
+            "test_syntax.py",
         ],
         cwd=tmp_path,
         env=env,
@@ -1446,13 +1458,19 @@ def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(t
         assert not same_host, f"shard-owned Host {pid} survived the stop"
     assert run.returncode == 1, run.stdout + run.stderr
     assert "public shard timeout: gw0: session finish" in run.stderr
-    rows = ET.parse(junit).findall(".//testcase")
-    assert len(rows) == 2
-    failure, timeout = rows
-    assert failure.get("name") == "test_prior_failure"
+    rows = {row.get("name"): row for row in ET.parse(junit).findall(".//testcase")}
+    assert len(rows) == 5, rows
+    failure, value_only = rows["test_prior_failure"], rows["test_value_only"]
     assert failure.get("classname") == "test_probe"
-    assert failure.findtext("failure") == "AssertionError"
-    assert timeout.get("name") == "public shard timeout: gw0: session finish"
+    # Each keeps its type, then the failing file and line, and never its message or child text.
+    assert failure.findtext("failure").splitlines() == ["AssertionError", f"test_probe.py:{line}"]
+    assert value_only.findtext("failure").splitlines() == ["Failed", f"test_probe.py:{value_line}"]
+    assert rows["test_broken"].findtext("error").splitlines()[-1] == "test_broken.py:1"
+    assert rows["test_syntax"].findtext("error").splitlines()[-1] == "test_syntax.py:1"
+    diagnostics = [log.read_text("utf-8") for log in (tmp_path / "diagnostics").glob("*.log")]
+    kept = [junit.read_text("utf-8"), *diagnostics]
+    assert diagnostics and not any(re.search("stays.out", text) for text in kept)
+    timeout = rows["public shard timeout: gw0: session finish"]
     assert timeout.find("error").get("message") == timeout.get("name")
 
 

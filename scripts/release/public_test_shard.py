@@ -9,14 +9,18 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import _pytest
+import pluggy
 import psutil
 import pytest
 import pytest_timeout
 from _pytest.junitxml import bin_xml_escape, mangle_test_address
+from _pytest.pathlib import bestrelpath
 
 # The shard's own clock, bound at import: a test that fakes time.monotonic or time.time on
 # the shared time module never reaches the events and deadlines a worker writes from its
@@ -29,6 +33,9 @@ _owner = "controller"
 HANG_SECONDS = 900
 # The C watchdog gives pytest-timeout time to retain and exit after its diagnostic.
 HANG_GRACE = 60
+# Each failure keeps the file and line of its first and last traceback entries, never their text.
+TRACEBACK_LOCATIONS = 8
+_PYTEST_DIRS = (Path(_pytest.__file__).parent, Path(pluggy.__file__).parent)
 
 
 @pytest.hookimpl(wrapper=True)
@@ -246,12 +253,47 @@ def _record_failure(report, phase):
             if re.fullmatch(r"(?:[A-Za-z_]\w*\.)*(?:[A-Za-z_]\w*(?:Error|Exception)|Failed)", kind)
             else "pytest report failed"
         )
-        _event("failure", node=report.nodeid, phase=phase, detail=detail)
+        entries = getattr(getattr(report.longrepr, "reprtraceback", None), "reprentries", ())
+        places = [(at.path, at.lineno) for e in entries if (at := getattr(e, "reprfileloc", None))]
+        if not places and getattr(crash, "path", None):  # a value-only failure shows no frame
+            places = [(crash.path, crash.lineno)]
+        locations = getattr(report, "shard_locations", None) or _locations(places)
+        _event("failure", node=report.nodeid, phase=phase, detail=detail, locations=locations)
+
+
+def _locations(places):
+    """Each file and line alone: the test's call and the last entries, ending at the failing line,
+    which the bound always keeps. A path is relative to the run's directory when that is shorter,
+    as pytest shows it."""
+    here = Path.cwd()
+    named = [f"{min(bestrelpath(here, Path(p)), str(p), key=len)}:{line}" for p, line in places]
+    return named[:1] + named[1:][-(TRACEBACK_LOCATIONS - 1) :]
 
 
 def pytest_runtest_logreport(report):
-    """Retain the failed node and exception type without capturing child output."""
+    """Retain the failed node, its exception type and its traceback locations, without text."""
     _record_failure(report, report.when)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_make_collect_report(collector):
+    """Name an import or syntax error's frames, which pytest reports only as text."""
+    report = yield
+    error = getattr(getattr(getattr(report, "call", None), "excinfo", None), "value", None)
+    cause = getattr(error, "__cause__", None)
+    if isinstance(error, collector.CollectError) and cause is not None:
+        frames = traceback.extract_tb(cause.__traceback__)
+        places = [(f.filename, f.lineno) for f in frames if not _pytest_frame(f.filename)]
+        if isinstance(cause, SyntaxError) and cause.filename:
+            places.append((cause.filename, cause.lineno))
+        # A worker's report reaches the controller with this field, and its longrepr as text.
+        report.shard_locations = _locations(places)
+    return report
+
+
+def _pytest_frame(filename):
+    """The frames pytest leaves out of its own collection tracebacks."""
+    return filename.startswith("<") or any(map(Path(filename).is_relative_to, _PYTEST_DIRS))
 
 
 def pytest_collectreport(report):
@@ -290,7 +332,7 @@ class ShardWatch:
         kind = event["event"]
         if kind == "failure":
             key = (event["node"], event["phase"])
-            self.failures.setdefault(key, event["detail"])
+            self.failures.setdefault(key, "\n".join([event["detail"], *event.get("locations", ())]))
         elif kind == "phase":
             owner = event["owner"]
             previous = self.phases.get(owner)
