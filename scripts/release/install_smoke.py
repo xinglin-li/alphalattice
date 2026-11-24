@@ -24,9 +24,12 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from zipfile import ZipFile
 
+from packaging.requirements import Requirement
 from scripts.release import wheel_smoke
 
 from alphalattice.interface.local_application.thin_cli import AGENT_SESSION_VARIABLES
@@ -37,6 +40,11 @@ RUNTIME = "alphalattice/_runtime/config/release/"
 SIDECARS = ("runtime-requirements.txt", "runtime-overrides.txt")
 UV_INSTALL = "https://docs.astral.sh/uv/getting-started/installation/"
 PLUGIN = "alphalattice@alphalattice-tools"
+FIRST_USE_WALL_SECONDS = 600
+FIRST_USE_NODE = (
+    "tests/integration/product_host/test_first_use_goal.py::"
+    "test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on"
+)
 
 
 def write_sidecars(wheel: Path, output: Path) -> None:
@@ -90,6 +98,171 @@ def documented_doctor() -> list[str]:
     )
     assert match is not None
     return shlex.split(match.group())
+
+
+def wheel_launcher(command: list[str], wheel: str, requirements: str, overrides: str) -> list[str]:
+    """Use the documented launcher flags with sidecars from this build."""
+    prefix = command[:-4]
+    for flag, asset in zip(
+        ("--from", "--with-requirements", "--overrides"),
+        (wheel, requirements, overrides),
+        strict=True,
+    ):
+        prefix[prefix.index(flag) + 1] = asset
+    return prefix
+
+
+def first_use(wheel: Path, output: Path) -> None:
+    """Time the offline path to a labelled trial in the pinned wheel environment."""
+    bound = FIRST_USE_WALL_SECONDS
+    command, _ = documented_launcher()
+    with tempfile.TemporaryDirectory(dir=output.parent, prefix="alphalattice-first-use-") as tmp:
+        folder = Path(tmp)
+        write_sidecars(wheel, folder)
+        requirements, overrides = (folder / f"alphalattice-{name}" for name in SIDECARS)
+        test_requirements = folder / "test-requirements.txt"
+        # Test tooling adds packages to the environment. The wheel supplies its own runtime pins.
+        runtime_packages = set()
+        for line in requirements.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                requirement = Requirement(line)
+                if requirement.marker is None or requirement.marker.evaluate():
+                    runtime_packages.add(requirement.name)
+        omit_runtime = [
+            word for package in sorted(runtime_packages) for word in ("--no-emit-package", package)
+        ]
+        run(
+            [
+                "uv",
+                "export",
+                "--locked",
+                "--offline",
+                "--only-group",
+                "dev",
+                "--no-hashes",
+                "--no-emit-project",
+                *omit_runtime,
+                "--output-file",
+                str(test_requirements),
+            ],
+            ROOT,
+        )
+        argv = wheel_launcher(command, wheel.as_uri(), requirements.as_uri(), overrides.as_uri())
+        argv[1:1] = [
+            "--offline",
+            "--constraints",
+            test_requirements.as_uri(),
+            "--with",
+            "pytest",
+            "--with",
+            "pytest-socket",
+            "--with",
+            "pytest-timeout",
+            "--with",
+            "pytest-xdist",
+            "--with",
+            "portalocker",
+        ]
+        junit = folder / "first-use.xml"
+        # Load the installed package before exposing the checkout's test and devtools modules.
+        pytest_entry = """
+import sys
+import sysconfig
+from pathlib import Path
+
+import alphalattice
+
+assert Path(alphalattice.__file__).resolve().is_relative_to(
+    Path(sysconfig.get_path("purelib")).resolve()
+), "fresh_first_use.wheel_import_required"
+root = Path(sys.argv[1])
+sys.path.extend(map(str, (root, root / "src", root / "scripts")))
+
+import pytest
+
+raise SystemExit(pytest.main(sys.argv[2:]))
+"""
+        argv[-1:] = [
+            "python",
+            "-I",
+            "-c",
+            pytest_entry,
+            str(ROOT),
+            "-c",
+            str(ROOT / "pyproject.toml"),
+            "-o",
+            "pythonpath=",
+            "-m",
+            "not real_evidence",
+            "--disable-socket",
+            "--allow-hosts=127.0.0.1,::1",
+            "--basetemp",
+            str(folder / "test"),
+            "--junitxml",
+            str(junit),
+            str(ROOT / FIRST_USE_NODE),
+        ]
+        env = os.environ | {
+            "ALPHALATTICE_NETWORK_DISABLED": "1",
+            "ALPHALATTICE_TEST_FIRST_USE_WHEEL": "1",
+            "PYTHONPATH": "",
+        }
+        for key in ("VIRTUAL_ENV", "CONDA_PREFIX", "UV_RUN_RECURSION_DEPTH"):
+            env.pop(key, None)
+        trial = label = None
+        start = time.monotonic()
+        try:
+            result = spawn.run(argv, cwd=folder, env=env, timeout=bound, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            failure = "fresh_first_use.wall_limit_exceeded"
+        else:
+            cases = ET.parse(junit).findall(".//testcase") if junit.is_file() else []
+            passed = (
+                result.returncode == 0
+                and len(cases) == 1
+                and all(cases[0].find(tag) is None for tag in ("failure", "error", "skipped"))
+            )
+            properties = (
+                {
+                    item.get("name"): item.get("value")
+                    for item in cases[0].findall("properties/property")
+                }
+                if passed
+                else {}
+            )
+            trial = properties.get("first_use_trial")
+            label = properties.get("first_use_result")
+            failure = (
+                "fresh_first_use.scenario_failed"
+                if not passed
+                else "fresh_first_use.trial_result_missing"
+                if label != "DEVELOPMENT" or not trial
+                else None
+            )
+        elapsed = time.monotonic() - start
+        if elapsed > bound:
+            failure = "fresh_first_use.wall_limit_exceeded"
+        result_code = failure or label
+        reading = failure or f"{label} trial {trial}"
+        summary = f"Offline wheel first use: {reading} in {elapsed:.3f} s (limit {bound} s)."
+        output.write_text(
+            json.dumps(
+                {
+                    "result": result_code,
+                    "trial_id": trial,
+                    "wall_seconds": elapsed,
+                    "limit_seconds": bound,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        print(summary, flush=True)
+        if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
+            with Path(summary_path).open("a", encoding="utf-8") as report:
+                report.write(summary + "\n")
+        if failure:
+            raise SystemExit(1)
 
 
 def plugin(folder: Path, claude: str) -> dict[str, object]:
@@ -164,13 +337,11 @@ def verify(wheel: Path, output: Path, claude: str) -> dict[str, object]:
             thread.start()
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
-                prefix = command[:-4]
-                for flag, asset in zip(
-                    ("--from", "--with-requirements", "--overrides"),
-                    (wheel.name, *(f"alphalattice-{name}" for name in SIDECARS)),
-                    strict=True,
-                ):
-                    prefix[prefix.index(flag) + 1] = f"{base}/{asset}"
+                prefix = wheel_launcher(
+                    command,
+                    f"{base}/{wheel.name}",
+                    *(f"{base}/alphalattice-{name}" for name in SIDECARS),
+                )
 
                 def read_doctor(project: Path, install: dict[str, str]) -> dict[str, object]:
                     doctor_env = (
@@ -318,10 +489,14 @@ def main() -> None:
     parser.add_argument("--wheel", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--assets-only", action="store_true")
+    parser.add_argument("--first-use", action="store_true")
     parser.add_argument("--claude")
     args = parser.parse_args()
     if args.assets_only:
         write_sidecars(args.wheel, args.out)
+        return
+    if args.first_use:
+        first_use(args.wheel.resolve(), args.out.resolve())
         return
     if not args.claude:
         parser.error("--claude is required for the install check")

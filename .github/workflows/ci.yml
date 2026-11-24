@@ -161,12 +161,6 @@ jobs:
           export ALPHALATTICE_WEAVER_KIT="$RUNNER_TEMP/weaver"
           uv run --no-sync python -m devtools.testing.telemetry check "$ALPHALATTICE_WEAVER_KIT"
           uv run --no-sync python -m pytest tests/integration/data_layer/test_spans.py::test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree
-      - name: Run the offline first-use scenario
-        run: >-
-          uv run python -m pytest
-          tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on
-          -n 1 -m "not real_evidence"
-          --basetemp "${{ runner.temp }}/alphalattice-first-use"
       - name: Build the distribution wheel
         run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
       - name: Check the pinned launcher and Claude Code plugin in fresh folders
@@ -184,6 +178,13 @@ jobs:
           name: fresh-install-${{ matrix.os }}
           path: ${{ runner.temp }}/fresh-install.json
           if-no-files-found: error
+      # The pinned install above caches wheel runtime dependencies for the offline trial.
+      - name: Complete offline first use from the pinned wheel
+        run: |
+          wheels=("$RUNNER_TEMP"/dist/alphalattice-*-py3-none-any.whl)
+          test "${#wheels[@]}" -eq 1
+          uv run --locked --offline python -m scripts.release.install_smoke --first-use \
+            --wheel "${wheels[0]}" --out "$RUNNER_TEMP/first-use.json"
       - name: Install the wheel and smoke in fresh bash
         if: runner.os != 'Windows'
         run: |
