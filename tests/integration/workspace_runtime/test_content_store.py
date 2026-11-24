@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -1573,6 +1574,28 @@ def _seal_compacts_once(facts, target, clock, tmp_path, monkeypatch) -> str:
     return facts.file_sha256(target)
 
 
+def _own_priority() -> int:
+    """The calling thread's scheduling priority or class, as its OS reads it."""
+    if sys.platform == "win32":
+        import ctypes  # lazy: the Windows thread reader
+
+        kernel = ctypes.WinDLL("kernel32")
+        kernel.GetCurrentThread.restype = ctypes.c_void_p
+        kernel.GetThreadPriority.argtypes = (ctypes.c_void_p,)
+        return kernel.GetThreadPriority(kernel.GetCurrentThread())
+    if sys.platform == "darwin":
+        import ctypes  # lazy: the macOS thread QoS reader
+
+        libc = ctypes.CDLL(None)
+        libc.pthread_self.restype = ctypes.c_void_p
+        qos, relative = ctypes.c_uint(), ctypes.c_int()
+        libc.pthread_get_qos_class_np(
+            ctypes.c_void_p(libc.pthread_self()), ctypes.byref(qos), ctypes.byref(relative)
+        )
+        return qos.value
+    return os.sched_getscheduler(0)
+
+
 def _growth_arms_nothing(facts, target, clock, tmp_path, monkeypatch) -> str:
     from datetime import UTC, datetime, timedelta
     from types import SimpleNamespace
@@ -1585,14 +1608,22 @@ def _growth_arms_nothing(facts, target, clock, tmp_path, monkeypatch) -> str:
     clock.settle(target)
     now = [datetime(2026, 11, 22, tzinfo=UTC)]
     published = lambda action: (action(), True)[1]
+    priorities = []  # the cycle's thread, before it and where the cycle asks if the Host is idle
     host = SimpleNamespace(
-        clock=lambda: now[0], foreground_idle=lambda: True, publish_when_idle=published
+        clock=lambda: now[0],
+        foreground_idle=lambda: (priorities.append(_own_priority()), True)[1],
+        publish_when_idle=published,
     )
     timers = Timers()
     try:
         job = IdleFileTrustScrub(workspace, host, timers)
-        assert job.scrub.run(lambda: True, publish=published)  # a scheduled cycle completes
-        job.wake.set_next_due(job.scrub.next_due)  # armed for the next pass, a period away
+        cycle = Thread(target=lambda: (priorities.append(_own_priority()), job._run()))
+        cycle.start()
+        cycle.join(30)
+        assert job.scrub.next_due == now[0] + timedelta(days=7)  # a scheduled cycle completed
+        # A lowered thread holding the interpreter's lock on a busy machine stalls every request
+        # thread of its Host: the cycle keeps its thread's own priority.
+        assert len(priorities) > 1 and set(priorities) == {priorities[0]}, priorities
         armed = job.wake.seconds_until_due(now[0])
         journal = workspace / facts.FILE_TRUST
         base = target.stat().st_mtime_ns - 10**10
@@ -1742,6 +1773,7 @@ _TRUST_TABLE = {
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
+@pytest.mark.proves("product_host.an_idle_scrub_never_stalls_the_hosts_requests")
 @pytest.mark.parametrize("case", list(_TRUST_TABLE), ids=list(_TRUST_TABLE))
 def test_a_files_digest_is_trusted_until_its_stamp_changes(
     tmp_path: Path, monkeypatch, case: str

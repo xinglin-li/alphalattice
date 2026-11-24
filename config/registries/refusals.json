@@ -21,7 +21,6 @@
 "spawn.darwin_tree_unavailable": {"owner": "alphalattice.kernel.execution", "category": "UNAVAILABLE", "classification_note": "The macOS process identity could not be anchored before admitting its child tree."},
 "resources.capacity_exceeded": {"owner": "alphalattice.kernel.resources", "category": "RESOURCE_EXHAUSTED", "classification_note": "The requested quantity exceeds available capacity. Reduce the request or wait for the work holding the resource to finish."},
 "resources.holder_already_leased": {"owner": "alphalattice.kernel.resources", "category": "FAILED_PRECONDITION", "classification_note": "The holder already has a grant. Finish that work and release its grant before admitting the holder again."},
-"resources.idle_thread_priority_unavailable": {"owner": "alphalattice.kernel.resources", "category": "UNAVAILABLE", "classification_note": "The platform lacks a supported idle thread priority for periodic file verification."},
 "resources.invalid_quantity": {"owner": "alphalattice.kernel.resources", "category": "INVALID_ARGUMENT", "classification_note": "Supply a nonnegative whole amount for the named resource."},
 "egress.host_not_allowed": {"owner": "alphalattice.kernel.egress", "category": "PERMISSION_DENIED", "classification_note": "Use the installed source's declared HTTPS destinations."},
 "egress.network_disabled": {"owner": "alphalattice.kernel.egress", "category": "PERMISSION_DENIED", "classification_note": "Use recorded input or ask the operator to open the network."},

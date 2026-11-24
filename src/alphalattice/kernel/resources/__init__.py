@@ -2,7 +2,6 @@
 that hold memory."""
 
 import os
-import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -28,7 +27,6 @@ __all__ = [
     "cpu_width",
     "current_resource_lease",
     "logical_cpu_count",
-    "set_idle_thread_priority",
     "use_resource_lease",
     "worker_resource_lease",
     "worker_width",
@@ -38,30 +36,6 @@ __all__ = [
 def logical_cpu_count() -> int | None:
     """Read a machine fact for the policy resolver and diagnostic surfaces."""
     return os.cpu_count()
-
-
-def set_idle_thread_priority() -> None:
-    """Lower a dedicated worker's own scheduling priority for its remaining lifetime."""
-    if sys.platform == "win32":
-        import ctypes  # lazy: only the platform priority setter uses the native API.
-        from ctypes import wintypes  # lazy: the Windows setter needs native handle types.
-
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.GetCurrentThread.restype = wintypes.HANDLE
-        kernel.SetThreadPriority.argtypes = (wintypes.HANDLE, ctypes.c_int)
-        if not kernel.SetThreadPriority(kernel.GetCurrentThread(), -15):  # THREAD_PRIORITY_IDLE
-            raise ctypes.WinError(ctypes.get_last_error())
-    elif sys.platform == "darwin":
-        import ctypes  # lazy: thread QoS uses the native API on macOS.
-
-        setter = ctypes.CDLL(None).pthread_set_qos_class_self_np
-        setter.argtypes = (ctypes.c_uint, ctypes.c_int)
-        if error := setter(0x09, 0):  # QOS_CLASS_BACKGROUND
-            raise OSError(error, os.strerror(error))
-    elif sys.platform == "linux":
-        os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
-    else:
-        raise OSError("resources.idle_thread_priority_unavailable")
 
 
 _CURRENT: ContextVar[ResourceLease | None] = ContextVar("task_resource_lease", default=None)

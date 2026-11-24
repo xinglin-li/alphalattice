@@ -12,7 +12,6 @@ from alphalattice.control.workspace_runtime.verified_facts import FileTrustScrub
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import TIMERS, Timers
-from alphalattice.kernel.resources import set_idle_thread_priority
 
 from .signals import MaintenanceBackgroundHost, MaintenanceWakeController
 
@@ -33,7 +32,6 @@ class IdleFileTrustScrub:
         )
         self.wake = MaintenanceWakeController()
         self._stopping = Event()
-        self._prioritized = False
         self.host = MaintenanceBackgroundHost(
             wake=self.wake, run_once=self._run, clock=self.clock, timers=timers
         )
@@ -63,9 +61,9 @@ class IdleFileTrustScrub:
         return not self._stopping.is_set() and self.dispatcher.publish_when_idle(action)
 
     def _run(self) -> None:
-        if not self._prioritized:
-            set_idle_thread_priority()
-            self._prioritized = True
+        # At its thread's own priority: a lowered thread that holds the interpreter's lock, or
+        # the dispatcher's, on a busy machine stalls every request thread of this Host. The
+        # scrub yields to foreground work by `_available` instead.
         # Disarm before checking work so the next idle callback can always resume a yield.
         self.wake.set_next_due(None)
         try:

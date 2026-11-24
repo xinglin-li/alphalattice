@@ -2602,6 +2602,13 @@
       "seconds": 2,
       "lower_layer": "The goal composition imports Host facilities that the unit layer cannot load."
     },
+    "product_host.an_idle_scrub_never_stalls_the_hosts_requests": {
+      "description": "If the Host's idle file-trust scrub ran on a lowered thread, a busy machine would starve it while it holds the interpreter's or the dispatcher's lock, and every request of its Host would stall behind it.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 1,
+      "lower_layer": "It reads the scrub cycle's own thread priority in the trust table holder, whose cases run the real file facts."
+    },
     "product_host.backup_listing_read_creates_no_generation": {
       "description": "The live backup listing reads the held root and generations without adding a generation.",
       "owner": "alphalattice.control.product_host",
