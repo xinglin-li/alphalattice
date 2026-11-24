@@ -1457,6 +1457,10 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         "     markers=sorted({m.name for m in i.iter_markers()\n"
         "       if m.name in {'small','medium','large'}})))\n"
         "  print('SIZE_ITEMS='+json.dumps(rows))\n"
+        # the guard pytest-timeout arms, recorded before its timer can end the process
+        " def pytest_timeout_set_timer(self,item,settings):\n"
+        f"  Path({str(tmp_path / 'timer.json')!r}).write_text(json.dumps(\n"
+        "    dict(nodeid=item.nodeid,seconds=settings.timeout)),encoding='utf-8')\n"
         "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
     )
     if case == "sibling-race":
@@ -1519,8 +1523,14 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
         return
     if case == "timeout":  # past the live 300 s guard: killed as hung, by name
-        assert result.returncode != 0 and "Timeout" in result.stdout + result.stderr
-        assert "test_example" in result.stdout + result.stderr
+        # the hung test ends only by its guard (spawn's bound refuses otherwise); its record,
+        # never the banner the killed child may not have flushed, names the node and its limit
+        timer = json.loads((tmp_path / "timer.json").read_text(encoding="utf-8"))
+        assert timer == {
+            "nodeid": "test_example.py::test_example",
+            "seconds": pytest.approx(policy["limits"]["medium"]),  # the live guard, scaled
+        }, result.stdout + result.stderr
+        assert result.returncode != 0 and "test_example PASSED" not in result.stdout
     elif case == "guard-runs":  # 70 s, over the 30 s budget and under the 300 s guard: it ends
         row = json.loads(result.stdout.split("SIZE_ITEMS=")[1].splitlines()[0])[0]
         assert (row["timeout_marker"], row["speed_budget_seconds"]) == (30, 3), result.stdout

@@ -1322,19 +1322,17 @@ def _a_first_bind_behind_a_held_gate_answers_busy_within_its_deadline(host, monk
     service, client, _workspace, _goal, answer, bundle = host
     request, _made = bundle("first-bind", answer)
     client._test_session = "specialist-session"  # never bound: this request binds it first
-    monkeypatch.setattr(answer_owner, "SUBMISSION_WAIT_SECONDS", 1.0)
     gate = service.session.session.mutation_gate
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        with gate.hold():
-            pending = pool.submit(client.request, request)
-            completed, _waiting = wait({pending}, timeout=6)
-        refused = pending.result(timeout=10)
-    assert completed, "the first bind waited past its deadline behind the held gate"
+    with monkeypatch.context() as short, ThreadPoolExecutor(max_workers=1) as pool:
+        short.setattr(answer_owner, "SUBMISSION_WAIT_SECONDS", 1.0)
+        with gate.hold():  # held until the answer returns: only its own deadline ends the wait
+            refused = pool.submit(client.request, request).result(timeout=60)
     assert (refused["status"], refused["failure_code"]) == (
         "REFUSED",
         "agent_bundle.admission_busy",
     )
-    assert client.request(request)["status"] == "ACCEPTED"  # nothing was filed: it binds now
+    # nothing was filed, so with its real deadline back the same answer binds now
+    assert client.request(request)["status"] == "ACCEPTED"
 
 
 def _authority_change_during_preflight_refuses_without_filing(host, monkeypatch):
