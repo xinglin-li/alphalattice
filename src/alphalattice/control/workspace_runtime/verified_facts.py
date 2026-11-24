@@ -83,6 +83,11 @@ _TRUSTED: dict[Path, BoundedMemo[str, TrustEntry]] = {}
 """Per kept workspace: each file's trusted digest by its path under the workspace."""
 _TRUSTED_PROCESS: BoundedMemo[str, TrustEntry] = BoundedMemo()
 """Trusted digests outside a kept workspace, by absolute path, for this process."""
+_TRUST_LINES: dict[Path, int] = {}
+"""Per kept workspace: the lines its trust journal holds, so its idle job compacts it in time."""
+_TRUST_STALE: set[Path] = set()
+"""Kept workspaces whose trust journal may name a file the workspace no longer holds: each one
+loaded, and each whose scrub skipped a file. The idle job decides which files remain."""
 
 
 class _TrustJournal:
@@ -128,7 +133,10 @@ class _TrustJournal:
 
         # Only kept() drains queued facts. The marker's bytes are published before
         # fsync, so foreground writers can persist their own facts during the sync.
-        return _append(workspace / FILE_TRUST, "\n" + marker + "\n", publish=publish_marker)
+        if not _append(workspace / FILE_TRUST, "\n" + marker + "\n", publish=publish_marker):
+            return False
+        _counted(Path(os.path.abspath(workspace)), 2)
+        return True
 
     def _flush(self) -> None:
         # Write one batch. New arrivals stay queued for the next journal advance.
@@ -141,9 +149,101 @@ class _TrustJournal:
                 }
                 self._pending.clear()
             for (root, key), entry in pending.items():
-                _append(root / FILE_TRUST, _trust_line((key, entry)))
+                if _append(root / FILE_TRUST, _trust_line((key, entry))):
+                    _counted(root, 1)
         finally:
             self._writer.release()
+
+    def compact(self, workspace: Path, publish: _Publish) -> bool:
+        """Rewrite a due trust journal to its held files' entries, as its next load reads them.
+
+        The journal is read from its own bytes, with no lock and outside admission; its markers
+        apply as at a load, so a sealed discard holds. The probes and the staged file are made
+        there too. Only the replace, the compaction's one visible write, goes through `publish`
+        (the Host's idle boundary), and only while the journal is the one read: a fact appended
+        since leaves it for the next idle run. False when it yields."""
+        root = Path(os.path.abspath(workspace))
+        if not _compaction_due(root):
+            return True
+        journal = root / FILE_TRUST
+        try:
+            with journal.open("rb") as stream:
+                size = os.fstat(stream.fileno()).st_size
+                lines = stream.read(size).decode("utf-8", errors="replace").splitlines()
+        except FileNotFoundError:
+            size, lines = -1, []
+        durable = _entries(lines, _trust_entry, trust_journal=True)
+        items = cast(list[tuple[str, TrustEntry]], list(durable.items())[-_PROCESS.capacity :])
+        held, dropped = [], []
+        for item in items:
+            (held if _held(root, item[0]) else dropped).append(item)
+        bound = 2 * min(len(items), _PROCESS.capacity) + 1024
+        if not dropped and len(items) == len(durable) and len(lines) <= bound:
+            with _LOCK:
+                _TRUST_STALE.discard(root)  # every file it names is held: nothing to rewrite
+            return True
+        staged = journal.with_name(f"{journal.name}.{os.getpid()}.partial")
+        replaced = False
+
+        def replace() -> None:
+            nonlocal replaced
+            if not self._writer.acquire(blocking=False):
+                return
+            try:
+                if _size(journal) == size:
+                    os.replace(staged, journal)
+                    replaced = True
+                    with _LOCK:  # under the writer, before a later append is counted
+                        _TRUST_LINES[root] = len(held)
+                        _TRUST_STALE.discard(root)
+                        kept = _TRUSTED.get(root)
+                        for key, entry in dropped:  # the memo forgets them as the journal did
+                            if kept is not None and kept.get(key) == entry:
+                                del kept[key]
+            finally:
+                self._writer.release()
+
+        try:  # a failed write raises to the idle job's bounded retry; the journal stays due
+            with staged.open("w", encoding="utf-8") as stream:
+                stream.write("".join(map(_trust_line, held)))
+                stream.flush()
+                os.fsync(stream.fileno())
+            publish(replace)
+        finally:
+            staged.unlink(missing_ok=True)
+        return replaced
+
+
+def _counted(root: Path, lines: int) -> None:
+    with _LOCK:
+        if root in _TRUST_LINES:
+            _TRUST_LINES[root] += lines
+
+
+def _compaction_due(root: Path) -> bool:
+    """Whether a kept workspace's trust journal may name a removed file or outgrew its bound."""
+    with _LOCK:
+        kept = _TRUSTED.get(root)
+        if kept is None:
+            return False
+        bound = 2 * min(len(kept), kept.capacity) + 1024
+        return root in _TRUST_STALE or _TRUST_LINES.get(root, 0) > bound
+
+
+def _held(root: Path, key: str) -> bool:
+    """Whether the workspace still holds a trusted file, read as the scrub reads it: an entry
+    the confined resolver refuses, or an unreachable one, is dropped from this rebuildable cache."""
+    try:
+        return resolve_confined(root, key).is_file()
+    except (OSError, WorkspaceSecurityError):
+        return False
+
+
+def _size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return -1
 
 
 _TRUST_JOURNAL = _TrustJournal()
@@ -266,13 +366,16 @@ def keep_file_facts(workspace: Path) -> None:
     """Keep file digests and facts for `workspace` across processes; its writer lease's holder
     calls this, once per process."""
     root = Path(os.path.abspath(workspace))
-    facts = _journal(root / FILE_FACTS, _fact_entry, _line)
-    trusted = _journal(root / FILE_TRUST, _trust_entry, _trust_line)
+    facts, _ = _journal(root / FILE_FACTS, _fact_entry, _line)
+    # The lease's load probes no file: the idle job decides which of the journal's files remain.
+    trusted, lines = _journal(root / FILE_TRUST, _trust_entry, _trust_line, rewrite=False)
     with _LOCK:
         for kept, entries in ((_KEPT, facts), (_TRUSTED, trusted)):
             retained = BoundedMemo(capacity=_PROCESS.capacity)
             retained.update(entries)
             kept[root] = retained
+        _TRUST_LINES[root] = lines
+        _TRUST_STALE.add(root)
 
 
 def release_file_facts(workspace: Path) -> None:
@@ -281,19 +384,45 @@ def release_file_facts(workspace: Path) -> None:
     with _LOCK:
         _KEPT.pop(root, None)
         _TRUSTED.pop(root, None)
+        _TRUST_LINES.pop(root, None)
+        _TRUST_STALE.discard(root)
 
 
 def _journal(
     path: Path,
     entry: Callable[[list[object]], tuple[object, object]],
     line: Callable[[tuple[object, object]], str],
-) -> dict[object, object]:
-    entries: dict[object, object] = {}
+    *,
+    rewrite: bool = True,
+) -> tuple[dict[object, object], int]:
+    """A journal's latest entry per key and the lines it holds. Without `rewrite` (the trust
+    journal) nothing is rewritten here: its idle job compacts it."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
         lines = []
-    trust_journal = path.name == FILE_TRUST.name
+    entries = _entries(lines, entry, trust_journal=path.name == FILE_TRUST.name)
+    if not rewrite:
+        return entries, len(lines)
+    # A changing file must not leave an unbounded series of keys in the journal.
+    capacity = _PROCESS.capacity
+    if len(lines) > 2 * min(len(entries), capacity) + 1024:
+        # An entry is checked at use; dropping older ones only costs a future miss.
+        entries = dict(list(entries.items())[-capacity:])
+        staged = path.with_name(f"{path.name}.{os.getpid()}.partial")
+        try:
+            staged.write_text("".join(map(line, entries.items())), encoding="utf-8")
+            os.replace(staged, path)
+        except OSError:
+            staged.unlink(missing_ok=True)
+    return entries, len(lines)
+
+
+def _entries(
+    lines: list[str], entry: Callable[[list[object]], tuple[object, object]], *, trust_journal: bool
+) -> dict[object, object]:
+    """A journal's latest entry per key; in the trust journal, as its scrub markers leave it."""
+    entries: dict[object, object] = {}
     incomplete = False
     for text in lines:
         if trust_journal and text == _SCRUB_STARTED:
@@ -314,17 +443,6 @@ def _journal(
         entries[key] = value
     if incomplete:
         entries.clear()
-    # A changing file must not leave an unbounded series of keys in the journal.
-    capacity = _PROCESS.capacity
-    if len(lines) > 2 * min(len(entries), capacity) + 1024:
-        # An entry is checked at use; dropping older ones only costs a future miss.
-        entries = dict(list(entries.items())[-capacity:])
-        staged = path.with_name(f"{path.name}.{os.getpid()}.partial")
-        try:
-            staged.write_text("".join(map(line, entries.items())), encoding="utf-8")
-            os.replace(staged, path)
-        except OSError:
-            staged.unlink(missing_ok=True)
     return entries
 
 
@@ -490,6 +608,8 @@ class FileTrustScrub:
                 result = None
             if result is None:
                 self._skipped += 1
+                with _LOCK:
+                    _TRUST_STALE.add(self.workspace)  # its idle compaction decides if it remains
                 continue
             self._checked += 1
             if not result:
@@ -505,6 +625,10 @@ class FileTrustScrub:
             if not _TRUST_JOURNAL.mark_scrub(self.workspace, marker, publish):
                 return False
             self._journal_open = False
+        # The trust journal compacts only here, in the scheduled cycle, after its seal (an open
+        # scan keeps its opening record) and before the receipt: a yield leaves the cycle due.
+        if not _TRUST_JOURNAL.compact(self.workspace, publish):
+            return False
         finished = self.clock()
         receipt = {
             "finished_at": finished.isoformat(),

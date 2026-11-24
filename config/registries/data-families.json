@@ -3150,6 +3150,7 @@
       "writers": [
         "identity.file_facts:FileDigestTrust",
         "workspace_runtime.verified_facts:FileTrustScrub",
+        "workspace_runtime.verified_facts:_TrustJournal",
         "workspace_runtime.verified_facts:_append",
         "workspace_runtime.verified_facts:_journal"
       ],

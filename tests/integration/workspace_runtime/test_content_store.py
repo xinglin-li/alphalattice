@@ -1477,6 +1477,232 @@ def _scrub_yields_between_files(facts, target, clock, tmp_path, monkeypatch) -> 
     return facts.file_sha256(target)
 
 
+def _next_scrub(facts, workspace):
+    """The workspace's scrub a period after `_file_scrub`'s pass: due again."""
+    from datetime import UTC, datetime, timedelta
+
+    return facts.FileTrustScrub(
+        workspace, clock=lambda: datetime(2026, 11, 29, tzinfo=UTC), period=timedelta(days=7)
+    )
+
+
+def _removed_file_compacted(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)  # the next process: its load leaves the journal as it was
+    journal = workspace / facts.FILE_TRUST
+    assert "gone.parquet" in journal.read_text(encoding="utf-8")
+    published = []
+    publish = lambda action: (published.append(action.__name__), action(), True)[2]
+    assert facts._TRUST_JOURNAL.compact(workspace, publish)
+    assert published == ["replace"]  # read, probed and staged outside admission
+    assert "gone.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
+def _request_during_the_fsync(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    journal = workspace / facts.FILE_TRUST
+    journal.write_text(journal.read_text(encoding="utf-8") * 1100, encoding="utf-8")
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    before = journal.read_bytes()
+    facts.file_sha256(other, written=True)  # a foreground fact only appends, however long
+    grown = journal.read_bytes()
+    assert grown.startswith(before) and len(grown) > len(before)
+    requests, sync, replace, replaced = [], os.fsync, os.replace, []
+    staged = journal.with_name(f"{journal.name}.{os.getpid()}.partial")
+
+    def request_admitted(fd):  # a read-only request starts during the staged journal's sync
+        if staged.exists() and not requests:
+            requests.append("running")
+        sync(fd)
+
+    def counted(src, dst):
+        replaced.append(Path(dst)) if Path(dst) == journal else None
+        return replace(src, dst)
+
+    def idle(action) -> bool:  # the Host's boundary: no visible write while a request runs
+        if "running" in requests:
+            return False
+        action()
+        return True
+
+    monkeypatch.setattr(facts.os, "fsync", request_admitted)
+    monkeypatch.setattr(facts.os, "replace", counted)
+    scrub = _file_scrub(facts, workspace)
+    assert not scrub.run(lambda: "running" not in requests, publish=idle)
+    assert requests == ["running"] and replaced == []  # no replace while it is in flight
+    assert journal.read_bytes().startswith(grown)
+    requests[0] = "ended"
+    assert scrub.run(lambda: True, publish=idle)
+    assert len(journal.read_bytes()) < len(grown)
+    return facts.file_sha256(target)
+
+
+def _seal_compacts_once(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()  # trusted in this process; its scrub finds it gone
+    journal = workspace / facts.FILE_TRUST
+    replaced, replace = [], os.replace
+    monkeypatch.setattr(
+        facts.os, "replace", lambda src, dst: (replaced.append(Path(dst)), replace(src, dst))[1]
+    )
+    scrub = _file_scrub(facts, workspace)
+    published = lambda action: (action(), True)[1]
+    assert scrub.run(lambda: True, publish=published)
+    assert scrub.run(lambda: True, publish=published)  # sealed and compacted: nothing due
+    assert replaced.count(journal) == 1 and "gone.parquet" not in journal.read_text(
+        encoding="utf-8"
+    )
+    return facts.file_sha256(target)
+
+
+def _growth_arms_nothing(facts, target, clock, tmp_path, monkeypatch) -> str:
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.maintenance.file_trust_scrub import IdleFileTrustScrub
+    from alphalattice.kernel.execution import Timers
+
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    now = [datetime(2026, 11, 22, tzinfo=UTC)]
+    published = lambda action: (action(), True)[1]
+    host = SimpleNamespace(
+        clock=lambda: now[0], foreground_idle=lambda: True, publish_when_idle=published
+    )
+    timers = Timers()
+    try:
+        job = IdleFileTrustScrub(workspace, host, timers)
+        assert job.scrub.run(lambda: True, publish=published)  # a scheduled cycle completes
+        job.wake.set_next_due(job.scrub.next_due)  # armed for the next pass, a period away
+        armed = job.wake.seconds_until_due(now[0])
+        journal = workspace / facts.FILE_TRUST
+        base = target.stat().st_mtime_ns - 10**10
+        for tick in range(1100):  # a rewritten file's foreground facts outgrow the bound
+            os.utime(target, ns=(base, base + tick * 1000))
+            clock.settle(target)
+            facts.record_sealed_file(target, _ONE)
+        job.idle()
+        assert job.wake.seconds_until_due(now[0]) == armed  # the crossing arms nothing
+        assert len(journal.read_text(encoding="utf-8").splitlines()) > 1100
+        now[0] += timedelta(days=7)
+        assert job.scrub.run(lambda: True, publish=published)  # the next scheduled cycle
+        assert len(journal.read_text(encoding="utf-8").splitlines()) < 10
+    finally:
+        timers.close()
+    return facts.file_sha256(target)
+
+
+def _discard_survives_compaction(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    other, gone = target.with_name("other.parquet"), target.with_name("gone.parquet")
+    for path in (target, other, gone):
+        path.write_bytes(b"one")
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    stamp, real_stamp = file_stamp(other), digests.handle_stamp
+    monkeypatch.setattr(
+        digests, "handle_stamp", lambda h: stamp if Path(h.name) == other else real_stamp(h)
+    )
+    other.write_bytes(b"two")  # its stamp kept, its bytes changed: the scrub's mismatch
+    hashed = digests.integrity_sha256_stream
+
+    def removed_during_the_scan(*args, **kwargs):
+        gone.unlink(missing_ok=True)  # the pass then skips it, so a compaction is due at its seal
+        return hashed(*args, **kwargs)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", removed_during_the_scan)
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    monkeypatch.setattr(digests, "integrity_sha256_stream", hashed)
+    journal = workspace / facts.FILE_TRUST
+    assert facts._SCRUB_DISCARDED in journal.read_text(encoding="utf-8")  # within its bound
+    fresh = target.with_name("fresh.parquet")
+    fresh.write_bytes(b"one")
+    base = fresh.stat().st_mtime_ns - 10**10
+    for tick in range(1100):  # the same Host's later facts outgrow the bound
+        os.utime(fresh, ns=(base, base + tick * 1000))
+        clock.settle(fresh)
+        facts.record_sealed_file(fresh, _ONE)
+    assert _next_scrub(facts, workspace).run(lambda: True)  # its next scheduled cycle
+    text = journal.read_text(encoding="utf-8")
+    assert "gone.parquet" not in text and facts._SCRUB_DISCARDED not in text  # compacted
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert facts.file_fact(target, "sha256") is None  # the discard holds across the reopen
+    return facts.file_sha256(target)
+
+
+def _failed_replace_stays_due(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()
+    journal = workspace / facts.FILE_TRUST
+    replace, failed = os.replace, []
+
+    def shared_once(src, dst):
+        if Path(dst) == journal and not failed:
+            failed.append(dst)
+            raise PermissionError("the journal is open elsewhere")
+        return replace(src, dst)
+
+    monkeypatch.setattr(facts.os, "replace", shared_once)
+    scrub = _file_scrub(facts, workspace)
+    with pytest.raises(PermissionError, match="open elsewhere"):
+        scrub.run(lambda: True)
+    assert "gone.parquet" in journal.read_text(encoding="utf-8")
+    assert [name for name in os.listdir(journal.parent) if name.endswith(".partial")] == []
+    assert scrub.run(lambda: True)  # still due: the retry compacts
+    assert "gone.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
+def _load_probes_no_file(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    journal = workspace / facts.FILE_TRUST
+    line = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
+    (workspace.parent / "outside.parquet").write_bytes(b"one")
+    with journal.open("a", encoding="utf-8") as stream:  # an entry the confined resolver refuses
+        stream.write(json.dumps(["../outside.parquet", *line[1:]]) + "\n")
+    facts.release_file_facts(workspace)
+    probes, is_file = [], Path.is_file
+
+    def denied(path):
+        probes.append(path)
+        raise PermissionError("its parent denies traversal")
+
+    monkeypatch.setattr(Path, "is_file", denied)
+    facts.keep_file_facts(workspace)  # the lease's load opens the workspace with no probe
+    monkeypatch.setattr(Path, "is_file", is_file)
+    assert probes == []
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    assert "outside.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
 # Each input, the trust record's hashes it costs (a writer's hash of the file it renamed into
 # place included, backup's own hashlib digest not) and the digest its last read gives.
 _TRUST_TABLE = {
@@ -1493,6 +1719,25 @@ _TRUST_TABLE = {
     "scrub detects a settled changed stamp": (_scrubbed_rewrite, 3, _TWO),
     "scrub interruption leaves no stale journal on restart": (_scrub_interrupted_append, 4, _TWO),
     "scrub yields between files and keeps its period": (_scrub_yields_between_files, 7, _ONE),
+    "entries for removed files are compacted at idle": (_removed_file_compacted, 2, _ONE),
+    "a request during the staged journal's sync defers its replace": (
+        _request_during_the_fsync,
+        4,
+        _ONE,
+    ),
+    "a scrub sealed with immediate publication compacts once": (_seal_compacts_once, 3, _ONE),
+    "a foreground crossing arms nothing; the next scrub compacts": (
+        _growth_arms_nothing,
+        1103,
+        _ONE,
+    ),
+    "a discard sealed with a compaction due holds on reopen": (
+        _discard_survives_compaction,
+        1109,
+        _ONE,
+    ),
+    "a failed replace keeps the compaction due": (_failed_replace_stays_due, 3, _ONE),
+    "the lease's load probes no file": (_load_probes_no_file, 2, _ONE),
 }
 
 
@@ -1552,6 +1797,8 @@ def test_a_files_digest_outlives_its_process_for_the_lease_holders_workspace(
         before = journal.stat().st_size
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
+        assert journal.stat().st_size == before  # the load reads it; its idle job compacts it
+        assert _file_scrub(facts, workspace).run(lambda: True)
         assert journal.stat().st_size < before
         assert facts.file_fact(target, "sha256") == _ONE
 
