@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import ExitStack, nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
@@ -45,7 +45,18 @@ from devtools.evaluation.round_trip import (
 )
 from devtools.testing import isolation
 from devtools.testing.collection import CONTRACT as LAYER_CONTRACT
+from devtools.testing.collection import LANE_CONTRACT
 from tests import pytest_environment as environment
+
+try:
+    from release.public_manifest import declare_github
+except ModuleNotFoundError as missing:  # a test's own small checkout, built without scripts/release
+    if missing.name != "release":
+        raise
+
+    def declare_github(items: Iterable[Any], lane_contract: Callable[[Any], str | None]) -> None:
+        """A checkout without the export's rules publishes nothing, so no test in it is GitHub's."""
+
 
 # Initial conftests import shared fixtures before pytest_configure supplies session roots.
 _bootstrap_data = tempfile.TemporaryDirectory(prefix="alphalattice-test-bootstrap-")
@@ -679,6 +690,11 @@ def _recorded_durations() -> dict[str, float]:
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
+    config.addinivalue_line(
+        "markers",
+        "github: GitHub's public Verify runs this test, so the nightly never does; declared at "
+        "collection (release.public_manifest.declare_github)",
+    )
     # The test process's DuckDB driver, as each product process's entry installs it.
     from alphalattice.control.workspace_runtime import reader_threads
     from alphalattice.kernel import storage
@@ -834,7 +850,8 @@ def pytest_collection_finish(session: pytest.Session) -> None:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Start the longest work first, at the scheduler's own unit of dispatch.
+    """Declare the tests GitHub runs, then start the longest work first, at the scheduler's own
+    unit of dispatch.
 
     Default ``--dist load`` dispatches individual tests. File/scope schedulers
     retain each file's order and start its aggregate work first.
@@ -845,6 +862,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     Shared immutable prerequisites belong in the owning test package's session
     support, including when load dispatches their consumers across workers.
     """
+    declare_github(items, lambda item: item.stash.get(LANE_CONTRACT, None))
     workerinput = getattr(config, "workerinput", {})
     recorded = workerinput.get("recorded_durations")
     distribution = workerinput.get("recorded_distribution", config.getoption("dist", "no"))

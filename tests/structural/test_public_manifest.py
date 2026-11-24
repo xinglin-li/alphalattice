@@ -23,6 +23,7 @@ from release.public_manifest import (
     attach_reviews,
     classify,
     content_keys,
+    declare_github,
     declared_private,
     generate,
     internal_id_label,
@@ -125,6 +126,40 @@ def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind,
     decision = classify(path, set(), set(), set())
     assert decision[:2] == (kind, rule)
     assert decision[2]
+
+
+PUBLISHED, PRIVATE = (
+    "tests/unit/x/test_ids.py::test_one",
+    "tests/unit/agent_eval/test_x.py::test_one",
+)
+
+
+@pytest.mark.proves("pipeline.github_declared_on_published_tests")
+@pytest.mark.parametrize(
+    ("node", "docstring", "marks", "contract", "declared"),
+    [
+        pytest.param(PUBLISHED, None, (), None, True, id="published"),
+        pytest.param(PRIVATE, None, (), None, False, id="private-by-rule"),
+        pytest.param(
+            PUBLISHED, "PRIVATE_TEST: an inventory", (), None, False, id="private-by-docstring"
+        ),
+        pytest.param(
+            PUBLISHED, None, ("real_evidence",), None, False, id="published-real-evidence"
+        ),
+        pytest.param(PUBLISHED, None, ("paid_agent",), None, False, id="published-paid-agent"),
+        pytest.param(PUBLISHED, None, ("performance",), None, False, id="published-performance"),
+        pytest.param(PUBLISHED, None, (), "nightly_only", False, id="published-nightly-only"),
+    ],
+)
+def test_github_is_declared_on_exactly_the_published_tests_github_can_run(
+    node, docstring, marks, contract, declared
+):
+    """Each test has one runner: GitHub's public Verify (-m github), or else the nightly."""
+    added = []
+    item = SimpleNamespace(nodeid=node, module=SimpleNamespace(__doc__=docstring))
+    item.add_marker, item.get_closest_marker = added.append, lambda name: name in marks or None
+    declare_github([item], lambda _: contract)
+    assert added == (["github"] if declared else [])
 
 
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
@@ -1053,7 +1088,9 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     )
     launcher, pytest_options = " ".join(shard_command.split()).split(" -- ", 1)
     assert "python scripts/release/public_test_shard.py " in launcher
-    assert pytest_options.startswith('tests -m "not real_evidence" -n 4 ')
+    assert pytest_options.startswith(
+        "tests -m github -n 4 "
+    )  # exactly the tests declared for GitHub
     assert "--splits 4 --group ${{ matrix.group }}" in pytest_options
     assert "--durations-path .test_durations" in pytest_options
     assert not jobs["public-tests-shard"].get("continue-on-error", False)

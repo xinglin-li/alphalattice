@@ -39,6 +39,9 @@ from devtools.testing.sizes import (
 REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 CONTRACT = pytest.StashKey[LayerContract]()
+LANE_CONTRACT = pytest.StashKey[
+    str | None
+]()  # a Large rule's size_contract: nightly_only, release_only
 OBSERVATION = pytest.StashKey[audit.ResourceObservation | None]()
 OBSERVATION_PHASES = pytest.StashKey[dict[str, float]]()
 OBSERVATION_STREAM = pytest.StashKey[TextIO | None]()
@@ -937,6 +940,7 @@ def _size_attributes(
     contract = (
         str(large_rule["size_contract"]) if large_rule and "size_contract" in large_rule else None
     )
+    item.stash[LANE_CONTRACT] = contract
     if clock is not None:
         clock["collection_seconds"] += time.perf_counter() - began
     if selected and size == "large" and not contract:

@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -1557,6 +1557,36 @@ def classify(
             "Claude must decide this file's scope."
         ),
     )
+
+
+def published_test(path: str, docstring: str | None) -> bool:
+    """Whether the export publishes the test module at `path`, by `classify`'s rules for a test:
+    a private pattern, or a `PRIVATE_TEST:` docstring."""
+    declared = frozenset({path}) if "PRIVATE_TEST:" in (docstring or "") else frozenset()
+    return classify(path, set(), set(), set(), declared=declared)[0] == "PUBLIC"
+
+
+GITHUB_CANNOT_RUN = ("real_evidence", "paid_agent", "performance")
+"""A test's own mark that GitHub cannot run it: private evidence, money, or the performance run."""
+
+
+def declare_github(items: Iterable[Any], lane_contract: Callable[[Any], str | None]) -> None:
+    """Mark `github`, at collection (tests/conftest.py), each test GitHub's public Verify runs: one
+    in a module the export publishes, marked none of GITHUB_CANNOT_RUN, and not `nightly_only` by
+    its Large rule (`lane_contract`), which a run outside the nightly lane omits. The Verify
+    selects exactly these, and the nightly never runs them."""
+    published: dict[str, bool] = {}
+    for item in items:
+        path = item.nodeid.split("::", 1)[0]
+        if path not in published:
+            module = getattr(item, "module", None)
+            published[path] = module is not None and published_test(path, module.__doc__)
+        if (
+            published[path]
+            and lane_contract(item) != "nightly_only"
+            and not any(item.get_closest_marker(name) for name in GITHUB_CANNOT_RUN)
+        ):
+            item.add_marker("github")
 
 
 _REGISTRY_STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"')

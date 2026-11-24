@@ -42,7 +42,7 @@ checkout, for example:
 
 ```powershell
 $env:ALPHALATTICE_NETWORK_DISABLED = '1'
-uv run python -m pytest tests/integration/product_host/test_local_web_service.py tests/integration/local_application/test_local_web_client.py tests/integration/product_host/test_research_flow_answers.py -n auto -m "not real_evidence" --basetemp "$env:TEMP/alphalattice-public-tests"
+uv run python -m pytest tests/integration/product_host/test_local_web_service.py tests/integration/local_application/test_local_web_client.py tests/integration/product_host/test_research_flow_answers.py -n auto -m github --basetemp "$env:TEMP/alphalattice-public-tests"
 ```
 
 The optional Git pre-commit hook also scans staged changes with gitleaks. Install
