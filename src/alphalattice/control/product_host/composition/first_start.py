@@ -29,6 +29,8 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Final, Literal
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     verify_upgrade_backups,
 )
@@ -44,10 +46,9 @@ from alphalattice.control.product_host.storage.backup import (
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
 from alphalattice.control.workspace_runtime.storage.capacity import FREE_FLOOR_BYTES
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
-from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.data_layer.upgrade import (
+from alphalattice.foundation.data_layer.backup import backup_data_root, verify_data_root
+from alphalattice.foundation.data_layer.log import HostLog, uuid7
+from alphalattice.foundation.data_layer.upgrade import (
     CLEAN,
     PROGRESS,
     TARGET,
@@ -59,7 +60,6 @@ from alphalattice.kernel.data_layer.upgrade import (
     workspace_plan_prefix,
 )
 from alphalattice.kernel.identity import Stamp, file_stamp, handle_stamp, integrity_sha256_stream
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 UNHELD: Final = ("data_layer.outcome_missing",)
 """The refusal that says only that the catalog holds no body for a chunk: no profile for its

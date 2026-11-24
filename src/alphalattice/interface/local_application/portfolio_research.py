@@ -30,6 +30,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, create_model, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
 from alphalattice.interface.local_application.portfolio_research_fields import field_contract
 from alphalattice.interface.local_application.questions import (
@@ -50,7 +51,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioSupportCoverage,
     ScoreSourceMode,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import AgentRole
 
 from .portfolio_request_fields import FIELD_OWNER, request_fields

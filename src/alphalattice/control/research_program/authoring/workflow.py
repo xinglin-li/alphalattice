@@ -32,8 +32,8 @@ from types import MappingProxyType
 from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
 
-from alphalattice.kernel.shared_kernel.environment import held_offline
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.environment import held_offline
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,

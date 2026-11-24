@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 import check_test_shape as shape
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
 from devtools.testing import os_marks
@@ -1024,6 +1024,15 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
         monkeypatch.setattr(spawn, "run", _git_backend(texts, [new, table], {"raw": edited}))
         assert shape.main([]) == code
     texts[":" + new] = legacy
+    texts[":" + table] = json.dumps(
+        {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": old}}}
+    )
+    for allowed, code in ((1, 0), (2, 1)):  # the row carries its anti-pattern allowance, no more
+        texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {old + "::X": 1}})
+        texts[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {new + "::X": allowed}})
+        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new, table], {"raw": edited}))
+        assert shape.main([]) == code
+    del texts["HEAD:" + shape.ANTIPATTERN_BASELINE], texts[":" + shape.ANTIPATTERN_BASELINE]
 
     data, sizes = "tests/integration/testing/panel.csv", "config/registries/test-sizes.json"
     policy = json.loads((shape.ROOT / sizes).read_text("utf-8"))

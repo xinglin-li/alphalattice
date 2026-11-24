@@ -12,6 +12,8 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     _copy_input,
     confined,
@@ -81,8 +83,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FrozenPortfolioPreparationRequest(BaseModel):  # type: ignore[misc]

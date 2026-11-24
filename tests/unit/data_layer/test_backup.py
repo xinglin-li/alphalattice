@@ -6,10 +6,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import pytest
 from blake3 import blake3
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import backup, root
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import backup, root
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/backup.py"
 HEAD = {"seq": 7, "head": "blake3:" + "a" * 64, "chain_version": 1}
 FILE = {"path": "data/bar.parquet", "size": 4, "digest": "blake3:v1:" + blake3(b"PAR1").hexdigest()}
 MANIFEST = {

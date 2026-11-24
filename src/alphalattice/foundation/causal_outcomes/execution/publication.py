@@ -12,6 +12,10 @@ from typing import Literal, cast
 
 import pyarrow as pa
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.enums import RebalanceFrequency
+from alphalattice.capabilities.validation.schedule_contracts import cadence_threshold_profile
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
@@ -26,12 +30,8 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     RawDailyBar,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.enums import RebalanceFrequency
-from alphalattice.kernel.validation.schedule_contracts import cadence_threshold_profile
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,

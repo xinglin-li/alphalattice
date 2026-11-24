@@ -34,7 +34,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
-from alphalattice.kernel.data_layer import encoders, recall
+from alphalattice.foundation.data_layer import encoders, recall
 from tests.alternative_evidence_desk.planted_corpus import (
     _NOW,
     CIKS,

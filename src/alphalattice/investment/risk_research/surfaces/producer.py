@@ -17,9 +17,9 @@ from typing import Any, Final, Protocol
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,

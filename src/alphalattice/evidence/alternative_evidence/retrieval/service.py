@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from alphalattice.kernel.data_layer import history, recall
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.foundation.data_layer import history, recall
 
 from ..contracts import seal_contract
 from ..documents.contracts import AlternativeEvidenceDocumentSet
@@ -48,7 +48,7 @@ def reference_spec_identity(spec: dict[str, Any] | None = None) -> str:
 def store_capability(store: Path | None = None) -> StoreCapability:
     """The store's packs verified in `store` (the application model store when None), without
     building anything: what an authority's setup seals and a review's workspace checks."""
-    from alphalattice.kernel.knowledge import model_store  # lazy: the setup's pack owner
+    from alphalattice.capabilities.knowledge import model_store  # lazy: the setup's pack owner
 
     root = model_store.default_store_root() if store is None else store
     spec_hash = reference_spec_identity()

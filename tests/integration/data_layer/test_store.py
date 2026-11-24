@@ -20,14 +20,14 @@ import duckdb
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.config import Change, override
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, governance
-from alphalattice.kernel.data_layer import log as host
-from alphalattice.kernel.data_layer import store as storeport
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog, envelope
-from alphalattice.kernel.data_layer.store import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.foundation.data_layer import create_data_root, governance
+from alphalattice.foundation.data_layer import log as host
+from alphalattice.foundation.data_layer import store as storeport
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog, envelope
+from alphalattice.foundation.data_layer.store import (
     RESULTS_KEYS,
     WORLD_KEYS,
     Derivation,
@@ -38,10 +38,10 @@ from alphalattice.kernel.data_layer.store import (
     repair,
     stage,
 )
-from alphalattice.kernel.data_layer.telemetry import decode
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.foundation.data_layer.telemetry import decode
+from alphalattice.kernel.config import Change, override
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
 WRITTEN = {"source_observed_at": "2024-02-01 00:00:00+00"}  # a source's own write
 CHILD = {
@@ -192,8 +192,8 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
         )
 
     if case in {"held-reader-on-reopen", "failed-commit"}:
-        from alphalattice.kernel.data_layer import history, history_runtime, reading
-        from alphalattice.kernel.data_layer import root as catalog_owner
+        from alphalattice.foundation.data_layer import history, history_runtime, reading
+        from alphalattice.foundation.data_layer import root as catalog_owner
 
         if case == "held-reader-on-reopen":
             catalog_owner.catalog(root)
@@ -207,7 +207,7 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
 import sys
 from pathlib import Path
 import alphalattice.control.workspace_runtime.reader_threads
-from alphalattice.kernel.data_layer import reading
+from alphalattice.foundation.data_layer import reading
 
 requests, answers = sys.stdin.buffer, sys.stdout.buffer
 matches = reading.catalog_matches
@@ -381,11 +381,11 @@ reading.serve(Path(sys.argv[1]), requests, answers)
                 "status": "UNMEASURED",
                 "incomplete": 0,
             }
+            from alphalattice.foundation.data_layer import history
             from alphalattice.interface.local_application.native_bridge import (
                 NativeResearchBinding,
                 read_session_usage,
             )
-            from alphalattice.kernel.data_layer import history
 
             monkeypatch.setattr(
                 history,
@@ -457,14 +457,14 @@ from pathlib import Path
 import pyarrow as pa
 from alphalattice.control.workspace_runtime import reader_threads
 from alphalattice.kernel import storage
-from alphalattice.kernel.data_layer import store
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer import store
+from alphalattice.foundation.data_layer.log import HostLog
 storage.install_driver(reader_threads.DRIVER)  # this process's entry installs its DuckDB driver
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
 lag = batch["lag"] and tuple(batch["lag"])
 if batch.get("array"):
     import numpy as np
-    from alphalattice.kernel.data_layer import arrays
+    from alphalattice.foundation.data_layer import arrays
     log = HostLog.open(root)
     if point == "commit":  # the body staged, its profile not committed
         log.flush = lambda: os._exit(9)
@@ -473,7 +473,7 @@ if batch.get("array"):
     arrays.keep(root, log, {"value": np.array(batch["rows"])}, workspace=None)
 elif batch.get("owner"):
     from datetime import date, datetime
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
     rows = batch["rows"]
     for row in rows:
         row.pop("artifact_id")
@@ -494,7 +494,7 @@ elif batch.get("market"):
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
     from alphalattice.foundation.market_data_ops.storage import world
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
     from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
     workspace, manifest = root.parent / "workspace", acquisition_manifest()
     market = MarketDataRepository(workspace, universe_reader="workspace")
@@ -668,7 +668,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     if batch == "results":
         from datetime import datetime
 
-        from alphalattice.kernel.data_layer import history, history_execution_outcomes
+        from alphalattice.foundation.data_layer import history, history_execution_outcomes
 
         records = [{k: v for k, v in row.items() if k != "artifact_id"} for row in given]
         for row in records:
@@ -741,8 +741,8 @@ def _a_market_publish_after_a_kill(root, rows, published):
     killed publish left, world holds the workspace's bars once, the batch's commit is recorded
     once, and the journal is empty. A publish killed before its catalog commit is made by the
     open (`published`); one killed after it is judged `same` there and commits nothing again."""
+    from alphalattice.foundation.data_layer import history
     from alphalattice.foundation.market_data_ops.storage import world
-    from alphalattice.kernel.data_layer import history
 
     workspace = root.parent / "workspace"
     history.open_history("w1", "workspace", workspace, root=root)
@@ -771,7 +771,7 @@ def _an_array_after_a_kill(root, point, given):
     one whose profile committed is placed, and the lane reads back whole or is missing by name."""
     import numpy as np
 
-    from alphalattice.kernel.data_layer import arrays
+    from alphalattice.foundation.data_layer import arrays
 
     lane = {"value": np.array(given)}
     artifact, kept = arrays.describe(lane).artifact_id, point != "commit"
@@ -1794,9 +1794,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 from contextlib import closing
-from alphalattice.kernel.data_layer.log import attach
-from alphalattice.kernel.data_layer.project import require_lineage
-from alphalattice.kernel.data_layer.store import as_columns, stage
+from alphalattice.foundation.data_layer.log import attach
+from alphalattice.foundation.data_layer.project import require_lineage
+from alphalattice.foundation.data_layer.store import as_columns, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
          "close": float(i), "source_observed_at": "2024-02-01 00:00:00+00"}
         for i in range(100_000)]
@@ -1880,7 +1880,7 @@ _REMOVAL = {
 
 def _removed_workspace(root, monkeypatch, case, kept):
     from alphalattice.control.product_host.storage.backup import REMOVED_GRACE
-    from alphalattice.kernel.data_layer import history_runtime
+    from alphalattice.foundation.data_layer import history_runtime
 
     folder, other = root.parent / "removed", root.parent / "shared"
     unreadable = case == "unreadable after grace"

@@ -9,8 +9,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 
 from ..experiments.development_contracts import seal_current_contract
 

@@ -12,15 +12,15 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
 from alphalattice.control.workspace_runtime.verified_facts import (
     file_sha256,
     record_sealed_file,
 )
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .compile import _SCHEMA_ID, _schema
 from .contracts import (

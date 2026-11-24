@@ -11,6 +11,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -56,11 +61,6 @@ from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 STAGE = "publish_input_version"
 

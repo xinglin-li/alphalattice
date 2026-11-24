@@ -25,6 +25,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     HANDLED_OPERATION_ROUTES,
     OPERATION_ROUTES,
@@ -45,6 +47,9 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 )
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.log import COMMIT_TIMER, HostLog
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.interface.local_application import client, native_bridge
 from alphalattice.interface.local_application.answers import continuation_problem
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -72,11 +77,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.log import COMMIT_TIMER, HostLog
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
@@ -688,7 +688,7 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
     """A stopped upgrade never serves; a completed one is reused after a later bind failure. A
     start that fails before its timer starts (an upgrade), after (the socket) or as the system
     refuses the timer's thread leaves no thread, and a stop called twice answers as the first."""
-    from alphalattice.kernel.data_layer import history_runtime
+    from alphalattice.foundation.data_layer import history_runtime
 
     # An experience render runs only once the failed start's check has run, as a slow one on a
     # loaded runner would: a start that fails must have started none.
@@ -810,8 +810,8 @@ def test_shutdown_joins_a_slow_authenticated_handler(
     if held == "source":
         from stat import S_IFREG, S_ISREG
 
+        from alphalattice.capabilities.domain_contracts import source_identity
         from alphalattice.control.product_host.composition import portfolio_research_operations
-        from alphalattice.kernel.shared_kernel import source_identity
 
         source_package = Path(source_identity.__file__).resolve().parents[2]
         windows = source_identity.os_name == "nt"
@@ -1954,7 +1954,7 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
 
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from tests.portfolio_strategy_lab.node_runner import read_in_chinese
 
     with LocalPortfolioWebSession.from_workspace(tmp_path) as live:

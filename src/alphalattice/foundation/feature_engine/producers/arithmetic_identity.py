@@ -40,10 +40,10 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Final
 
-from alphalattice.kernel.shared_kernel import source_identity
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts import source_identity
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 
 SHARED_FACTOR_ARITHMETIC_OWNERS: Final = (
     "alphalattice.foundation.feature_engine.producers.base_materializer",

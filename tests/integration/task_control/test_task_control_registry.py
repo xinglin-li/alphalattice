@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import BaseModel, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -60,16 +62,14 @@ from alphalattice.control.task_control.runner import (
     TaskHeartbeatReadout,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.dispatcher import (
     CANCEL_REAIM_LIMIT,
     CommandAdmission,
     LocalBackgroundDispatcher,
     TaskVersionMovedError,
 )
-from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 from tests.workspace_task_runner.task_control_support import (
     FixtureTaskAdapter as _FixtureTaskAdapter,
 )

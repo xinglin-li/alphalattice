@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
     apply_frozen_price_volume_scale,
@@ -45,7 +46,6 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     live_vintages,
     score_heterogeneous_component,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FrozenInferenceError(ValueError):

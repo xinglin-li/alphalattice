@@ -3782,8 +3782,8 @@
     }
   },
   "helpers": {
-    "shared_kernel.persistence:write_new": "the shared create-only write; each caller is a family's writer",
-    "shared_kernel.persistence:replace_with_retry": "the shared atomic replace; each caller is a family's writer",
+    "domain_contracts.persistence:write_new": "the shared create-only write; each caller is a family's writer",
+    "domain_contracts.persistence:replace_with_retry": "the shared atomic replace; each caller is a family's writer",
     "workspace_runtime.reader_threads:_DuckDB": "the storage port's driver, which opens every DuckDB instance: the workspace database for its repositories, whose tables the storage authorities list, and the in-memory sessions"
   },
   "not_persisting": {

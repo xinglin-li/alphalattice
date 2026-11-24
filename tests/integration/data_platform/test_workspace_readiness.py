@@ -14,6 +14,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.preflight import (
     evaluate_universe_spy_divergence_preflight,
     resolve_trading_session_authority,
@@ -44,8 +46,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace

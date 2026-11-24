@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 from uuid import UUID
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.control.data_platform.candidate_requalification import (
     CandidateDataRequalification,
 )
@@ -61,7 +62,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from alphalattice.kernel.identity import identity_sha256
 
 

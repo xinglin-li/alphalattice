@@ -11,14 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, experiences, recall
-from alphalattice.kernel.data_layer.chain import digest
-from alphalattice.kernel.data_layer.log import HostLog, replay, uuid7
-from alphalattice.kernel.data_layer.project import differences, recipe_key
-from alphalattice.kernel.data_layer.reading import reading_session
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import create_data_root, experiences, recall
+from alphalattice.foundation.data_layer.chain import digest
+from alphalattice.foundation.data_layer.log import HostLog, replay, uuid7
+from alphalattice.foundation.data_layer.project import differences, recipe_key
+from alphalattice.foundation.data_layer.reading import reading_session
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/experiences.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/experiences.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC
 AGENT = {"workspace": "w1", "actor": ("agent", "claude")}
 REQUESTED = {"type": "factor.run", "product_version": "0.2.8", "input_hash": "i", "plan_hash": "p"}
@@ -297,7 +297,7 @@ def test_the_host_renders_a_note_into_an_experience_it_versions_and_replaces(
         kept = (root / "blobs" / body.removeprefix("blake3:")).read_bytes()
         assert (digest(kept), len(kept)) == (body, size)
     if path == "render-and-version":
-        from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
+        from alphalattice.foundation.data_layer.knowledge import KnowledgeStore
 
         store = KnowledgeStore(log)
         version_id = store.publish_experience(
@@ -337,7 +337,7 @@ def test_the_host_renders_a_note_into_an_experience_it_versions_and_replaces(
     if path == "replace-with-the-old-kept":
         import numpy as np
 
-        from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore
+        from alphalattice.foundation.data_layer.knowledge import HybridSearch, KnowledgeStore
 
         store = KnowledgeStore(log)
         recipe = store.recipe(recall._recipe())
@@ -460,9 +460,9 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
 
     import numpy as np
 
-    from alphalattice.kernel.data_layer import encoders
-    from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
-    from alphalattice.kernel.knowledge import model_store
+    from alphalattice.capabilities.knowledge import model_store
+    from alphalattice.foundation.data_layer import encoders
+    from alphalattice.foundation.data_layer.knowledge import KnowledgeStore
 
     root, log = world
     encoded, reranked, stops = [], [], []

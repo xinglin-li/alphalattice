@@ -9,7 +9,7 @@ from typing import Protocol
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture import import_contracts
 from devtools.architecture.structural import (
     PackageArchitectureRegistry,

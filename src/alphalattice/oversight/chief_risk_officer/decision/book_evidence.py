@@ -27,6 +27,7 @@ from datetime import date, datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EXECUTED_STATES,
     AlternativeEvidenceResearchObligation,
@@ -74,7 +75,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     OpenIssueState,
     PortfolioReviewAnswer,

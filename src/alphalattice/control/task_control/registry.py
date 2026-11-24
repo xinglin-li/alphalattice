@@ -14,15 +14,15 @@ from uuid import UUID
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.control.workspace_runtime.database import (
     WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
     open_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.kernel.data_layer.history import held, workspace_on_log
-from alphalattice.kernel.data_layer.log import uuid7
+from alphalattice.foundation.data_layer.history import held, workspace_on_log
+from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.kernel.execution import execution_port, preferred_task
-from alphalattice.kernel.shared_kernel.environment import package_versions
 
 from .contracts import (
     ResearchGoal,

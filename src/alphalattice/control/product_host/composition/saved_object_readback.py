@@ -16,6 +16,14 @@ from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
+from alphalattice.foundation.data_layer.history import (
+    carry_arrays,
+    carry_knowledge_snapshots,
+    carry_research_inputs,
+    carry_results,
+    data_root,
+    own_root,
+)
 from alphalattice.interface.local_application.web import (
     LOOPBACK_HOST,
     SESSION_COOKIE,
@@ -25,14 +33,6 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
     carry_risk_covariance,
 )
 from alphalattice.kernel.config import Change, process_override
-from alphalattice.kernel.data_layer.history import (
-    carry_arrays,
-    carry_knowledge_snapshots,
-    carry_research_inputs,
-    carry_results,
-    data_root,
-    own_root,
-)
 from alphalattice.kernel.identity import integrity_sha256
 
 

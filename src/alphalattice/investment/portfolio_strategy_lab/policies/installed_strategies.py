@@ -30,6 +30,14 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioPerSideCostAssumption,
 )
@@ -117,11 +125,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
-)
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]

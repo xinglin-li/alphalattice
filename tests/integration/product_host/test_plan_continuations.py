@@ -366,6 +366,7 @@ def test_a_stopped_portfolio_update_retains_the_requested_input_not_its_resolved
 def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_path):
     """regression (TE12): the durable update target survives a stop without any current
     scoring, calibration, data or checkpoint admission being required for its next plan."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
         WorkspaceDataUpdateBinding,
@@ -373,7 +374,6 @@ def test_a_stopped_research_update_retains_the_selected_package_and_target(tmp_p
         WorkspaceInputStatus,
         WorkspaceMaintenanceRequest,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     target = date(2026, 9, 30)
     fixture = "a" * 64
@@ -716,7 +716,7 @@ def test_an_offer_sent_back_as_it_stands_is_admitted_and_keeps_the_first_uses_da
 
 def test_a_full_training_plan_keeps_its_hash_and_a_light_one_names_its_lifecycle() -> None:
     """A FULL training plan keeps its existing hash, while a LIGHT plan names its lifecycle."""
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     fields = dict(
         workspace_id="s1-workspace",

@@ -13,7 +13,7 @@ from setuptools.command.build_py import build_py
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 
 MANIFEST = ROOT / "config/release/runtime-resources.json"
 

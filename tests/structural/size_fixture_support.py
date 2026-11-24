@@ -663,6 +663,9 @@ ADMISSION_CASES = (
         ("host.port_reuse", {}, "its id is product_host.<words>"),
         ("product_host.port_reuse", {"description": "One holds. Two hold."}, "one 5-40 word"),
         ("nowhere.port_reuse", {"owner": "nowhere"}, "owns a noun"),
+        ("nowhere.port_reuse", {"owner": "nowhere", "retired": "2026-11-23: it moved."}, "a noun"),
+        ("retired-history", {"owner": "nowhere", "retired": "2026-11-23: it moved."}, ""),
+        ("retired-history", {"retired": "2026-11-23: it moved.", "owner": "x"}, "x.<words>"),
         ("product_host.port_reuse", {"layer": "e2e", "seconds": 600}, "(journey, large)"),
         ("product_host.owed_work", {"description": "A detached Host keeps owed work."}, "near"),
         ("product_host.port_reuse", {"layer": "e2e", "exception": "decided"}, ""),
@@ -675,6 +678,30 @@ ADMISSION_CASES = (
         ("schema-unreadable-entry", {}, ""),
         ("entry-order", {}, ""),
     ]
+)
+ADMISSION_IDS = (
+    "unregistered",
+    "schema-preserved-time",
+    "seed-junction",
+    "unknown-node",
+    "row-admitted",
+    "id-names-another-package",
+    "description-two-sentences",
+    "owner-without-a-noun",
+    "new-retired-row-keeps-its-checks",
+    "retired-row-keeps-its-historical-owner",
+    "retired-row-with-a-changed-owner",
+    "journey-over-a-minute",
+    "near-duplicate",
+    "decided-journey",
+    "decision-without-kinds",
+    "decision-with-invalid-kinds",
+    "lower-layer-above-unit",
+    "unit-with-a-lower-layer",
+    "removed-row",
+    "schema-unreadable-directory",
+    "schema-unreadable-entry",
+    "entry-order",
 )
 
 

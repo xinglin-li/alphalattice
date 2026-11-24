@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceMaintenanceRequest
 from alphalattice.control.data_platform.maintenance.orphaned_bind import (
     restore_orphaned_membership,
@@ -28,7 +29,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as Request,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from devtools.evaluation.golden_workspaces import refuse_writers
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (

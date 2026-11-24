@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import alphalattice.interface.local_application.portfolio_research as research_requests
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     short_source_action,
     source_ways,
@@ -38,6 +39,7 @@ from alphalattice.control.product_host.data_preparation.application import (
 )
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -48,8 +50,6 @@ from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     target_sessions,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel import spawn
 from tests._support.history_fixtures import native_first_use
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.node_runner import run_node

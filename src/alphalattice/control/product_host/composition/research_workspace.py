@@ -20,6 +20,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.retired_spellings import (
+    PREPARED_BEFORE_RENAMES,
+    retired_spelling_in,
+)
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.product_host.composition.committee_materials import AGENDA_LIMIT
@@ -33,11 +38,6 @@ from alphalattice.control.workspace_runtime.content_store import replace_shared_
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     ScoreSourceMode,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.retired_spellings import (
-    PREPARED_BEFORE_RENAMES,
-    retired_spelling_in,
 )
 
 if TYPE_CHECKING:

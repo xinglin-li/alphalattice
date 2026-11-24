@@ -19,6 +19,8 @@ from typing import Protocol
 
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -42,8 +44,6 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 from alphalattice.evidence.alternative_evidence.publication.usage import (
     record_provider_stage_usage,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewAnswer,
     PortfolioReviewAssessmentSubmission,

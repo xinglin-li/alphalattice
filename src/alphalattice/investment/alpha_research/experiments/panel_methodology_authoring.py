@@ -22,6 +22,10 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel im
 from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear_dynamic_panel import (
     build_dynamic_panel_regularized_linear_search_domain,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.investment.alpha_research.experiments.panel_methodology_statistics import (
     fixed_recipe_economic_metric_call_count,
 )
@@ -47,10 +51,6 @@ from alphalattice.investment.portfolio_management.mandates.paired_panel_grid imp
     PAIRED_PANEL_PORTFOLIO_GRID,
     RANK_BUFFERED_TURNOVER_SUCCESSOR_GRID,
     PairedPanelPortfolioGrid,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
 )
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

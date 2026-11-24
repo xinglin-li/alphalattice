@@ -28,9 +28,9 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
 from tests.workspace_task_runner.task_control_support import (
     compatibility,
     complete_stage,
@@ -52,7 +52,7 @@ def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
     from alphalattice.control.task_control import upgrade as owner
     from alphalattice.control.task_control.runner import TaskControlRunner, TaskHeartbeatReader
     from alphalattice.control.task_control.timing import read_task_telemetry
-    from alphalattice.kernel.data_layer.log import replay
+    from alphalattice.foundation.data_layer.log import replay
 
     now = datetime(2026, 8, 5, 15, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
@@ -103,12 +103,12 @@ def _runtime_ledgers_keep_their_readings_across_an_interrupted_switch(
             },
         )
         path.write_text("".join(json.dumps(row) + "\n" for row in expected), encoding="utf-8")
+        from alphalattice.capabilities.domain_contracts.identity import canonical_hash
         from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
         from alphalattice.control.observation_runtime.telemetry.progress import (
             WorkProgressUpdate,
             WorkspaceProgressPublisher,
         )
-        from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
         progress = tmp_path / "runtime" / "preparation" / str(task.task_id) / "work-progress.json"
         projection = WorkspaceProgressPublisher(tmp_path / "artifacts").publish(

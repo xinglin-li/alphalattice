@@ -9,10 +9,10 @@ from typing import Any, cast
 import pytest
 from blake3 import blake3
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import inputs
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import inputs
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/inputs.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/inputs.py"
 
 
 @pytest.mark.proves("data_layer.research_input_seal_is_blake3_of_its_bytes")

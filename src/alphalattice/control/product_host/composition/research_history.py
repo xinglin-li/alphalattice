@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -28,7 +29,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 if TYPE_CHECKING:

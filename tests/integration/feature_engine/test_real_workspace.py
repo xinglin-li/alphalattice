@@ -183,10 +183,10 @@ def test_the_host_refuses_a_panel_without_feature_clock_authority(
 ) -> None:
     """The host refuses a panel without feature clock authority."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.research_authoring.authority import (
         WorkspaceResearchAuthorityResolver,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
     private = tmp_path / "legacy-shaped"

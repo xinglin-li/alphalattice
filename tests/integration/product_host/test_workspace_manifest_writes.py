@@ -24,6 +24,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.retired_spellings import RETIRED_SPELLINGS
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.product_host.composition import (
     evidence_authority_setup,
@@ -44,7 +45,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.data_preparation import input_capture, research_strategy
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application.cli_contract import refusal_words
-from alphalattice.kernel.shared_kernel.retired_spellings import RETIRED_SPELLINGS
 
 
 def _input(input_id: str, digit: str) -> ResearchWorkspaceExperimentInput:

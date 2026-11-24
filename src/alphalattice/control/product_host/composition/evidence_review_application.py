@@ -21,6 +21,8 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import validate_hash_compatible
 from alphalattice.control.product_host.composition.answer_turns import ANSWER_FILING
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -180,8 +182,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     CarriedReading,

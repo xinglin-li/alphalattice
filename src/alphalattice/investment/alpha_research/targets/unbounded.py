@@ -40,9 +40,9 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import sector_positions
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import sector_positions
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .catalog import AlphaTargetCatalog, build_installed_alpha_target_catalog
 from .execution_outcome import AlphaTargetBoundaryError

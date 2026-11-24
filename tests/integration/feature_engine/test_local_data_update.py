@@ -1364,6 +1364,7 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
 @pytest.mark.private_data  # its readiness gate opens the copy's market data for writing
 def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tmp_path):
     """behaviour: a saved request proves no authority for an unknown source name."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.data_platform.maintenance.contracts import (
         ListingMarketDataChange,
         MaintenancePhase,
@@ -1374,7 +1375,6 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
     )
     from alphalattice.control.data_platform.readiness import WorkspaceReadinessGate
     from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     workspace = copy_workspace(current_member_seed, tmp_path / "unknown-source")
     binding = bind_existing_data_workspace(workspace).data_update

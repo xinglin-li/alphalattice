@@ -28,6 +28,11 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    REFUSAL_WORDS_RESOURCE,
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_invocation import command_prefix
 from alphalattice.interface.local_application.cli_refused import refused as refused
@@ -65,11 +70,6 @@ from alphalattice.kernel.door import (
 )
 from alphalattice.kernel.door import Outcome as Outcome
 from alphalattice.kernel.door import cli_answer
-from alphalattice.kernel.shared_kernel.project_layout import (
-    REFUSAL_WORDS_RESOURCE,
-    resolve_playpen_root,
-    runtime_json,
-)
 
 
 def _schema_branches(

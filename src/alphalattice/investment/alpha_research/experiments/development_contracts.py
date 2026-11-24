@@ -12,9 +12,9 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model
 
 from ..evaluation.contracts import AlphaCandidateMetrics, AlphaFoldMetrics
 from ..targets.authority import InstalledAlphaTargetMethodBinding

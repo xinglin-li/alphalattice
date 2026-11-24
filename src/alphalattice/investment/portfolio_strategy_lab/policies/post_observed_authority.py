@@ -19,6 +19,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
     ScoreSourceMode,
@@ -41,7 +42,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     FrozenSleeveWeightRule,
 )
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 

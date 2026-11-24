@@ -17,6 +17,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.registry import TaskNotFoundError
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystBrief,
@@ -59,7 +60,6 @@ from alphalattice.evidence.alternative_evidence.runtime.coverage import (
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.evidence_cro import render_review_export
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,

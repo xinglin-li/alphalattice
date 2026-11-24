@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline import definition
 from release.public_manifest import (
     _HOST_ROUTES,
@@ -607,6 +607,47 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             else:
                 with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
                     validate_internal_id_history(tmp_path, candidate)
+        # A move Git records byte for byte carries its allowance without a map row; edited, not.
+        mapped = table.read_text(encoding="utf-8")
+        table.write_text(json.dumps({"files": {}}), encoding="utf-8", newline="\n")
+        baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+        (tmp_path / owner).parent.mkdir(exist_ok=True)
+        (tmp_path / owner).write_text("text = 1\n", encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        holding = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Hold the file")
+        (tmp_path / owner).unlink()
+        twin = "src/twin.py"  # the same bytes added twice: no unique move, so neither carries
+        for text, twins, refusal in (
+            ("text = 1\n", (), None),
+            ("text = 2\n", (), "map does not name it"),
+            ("text = 1\n", (twin,), "map does not name it"),
+        ):
+            claims = {path: {label: 1} for path in (moved, *twins)}
+            baseline.write_text(json.dumps({**policy, "occurrences": claims}))
+            for path in (moved, *twins):
+                (tmp_path / path).write_text(text, encoding="utf-8", newline="\n")
+            _git("add", "--all")
+            candidate = _git("commit-tree", _git("write-tree"), "-p", holding, "-m", "Git mv")
+            if refusal is None:
+                validate_internal_id_history(tmp_path, candidate)
+            else:
+                with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                    validate_internal_id_history(tmp_path, candidate)
+        # An edited move the map names and a byte-for-byte copy Git pairs, each a carry alone,
+        # both claim the one old allowance: it carries to one of them only.
+        row = {"domain": "d", "old": owner, "reason": "r"}
+        table.write_text(json.dumps({"files": {moved: row}}), encoding="utf-8", newline="\n")
+        claims = {moved: {label: 1}, twin: {label: 1}}
+        baseline.write_text(json.dumps({**policy, "occurrences": claims}))
+        (tmp_path / moved).write_text("text = 2\n", encoding="utf-8", newline="\n")
+        (tmp_path / twin).write_text("text = 1\n", encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", holding, "-m", "Mixed")
+        with pytest.raises(ValueError, match=r"allowance increased.*already carried to"):
+            validate_internal_id_history(tmp_path, candidate)
+        for path in (moved, twin):
+            (tmp_path / path).unlink()
+        table.write_text(mapped, encoding="utf-8", newline="\n")
         held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
         baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
         _git("add", "--all")
@@ -1330,7 +1371,7 @@ def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(t
             "import json, os, subprocess, sys\n"
             "from pathlib import Path\n"
             "import psutil\n"
-            "from alphalattice.kernel.shared_kernel import spawn\n"
+            "from alphalattice.capabilities.domain_contracts import spawn\n"
             "child = spawn.detached(\n"
             "    [sys.executable, '-c', 'from threading import Event; Event().wait(60)'],\n"
             "    log=subprocess.DEVNULL, env=dict(os.environ),\n"
@@ -1340,7 +1381,7 @@ def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(t
         )
         probe += (
             "    import sys\n"
-            "    from alphalattice.kernel.shared_kernel import spawn\n"
+            "    from alphalattice.capabilities.domain_contracts import spawn\n"
             f"    spawn.run([sys.executable, '-c', {detached!r}], timeout=8, check=True)\n"
         )
     probe += "    assert False, 'record this failure'\n"

@@ -29,6 +29,7 @@ from unittest import mock
 
 from packaging.version import Version
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.answers import ANSWERS
 from alphalattice.interface.local_application.cli_contract import (
@@ -40,7 +41,6 @@ from alphalattice.interface.local_application.cli_contract import (
     worded,
 )
 from alphalattice.kernel.config import Change, override
-from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
 from devtools.architecture.registries import refusal_entries

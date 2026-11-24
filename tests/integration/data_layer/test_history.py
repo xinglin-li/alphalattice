@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -36,14 +37,7 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.runtime import execution
-from alphalattice.interface.local_application.answers import (
-    ExperienceAnswer,
-    ExperienceRecallAnswer,
-    ExperienceRecordAnswer,
-)
-from alphalattice.kernel.config import Change, override
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import (
+from alphalattice.foundation.data_layer import (
     encoders,
     experiences,
     history,
@@ -51,10 +45,16 @@ from alphalattice.kernel.data_layer import (
     history_startup,
     recall,
 )
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.interface.local_application.answers import (
+    ExperienceAnswer,
+    ExperienceRecallAnswer,
+    ExperienceRecordAnswer,
+)
+from alphalattice.kernel.config import Change, override
 from tests.workspace_task_runner.task_control_support import task_contract
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/history.py"
 
 
 def _read_while_registry_writes(
@@ -270,7 +270,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 experience_known_at=None,
                 experience_limit=None,
             )
-            from alphalattice.kernel.knowledge import model_store
+            from alphalattice.capabilities.knowledge import model_store
 
             with monkeypatch.context() as models:
                 models.setattr(encoders, "StaticEncoder", Encoder)
@@ -352,7 +352,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     # The same process shares the attached catalog but closes each reader's cursor.
     import duckdb
 
-    from alphalattice.kernel.data_layer.root import catalog
+    from alphalattice.foundation.data_layer.root import catalog
 
     assert catalog(root) is not None
     monkeypatch.setattr(history_runtime, "data_root", lambda: root)

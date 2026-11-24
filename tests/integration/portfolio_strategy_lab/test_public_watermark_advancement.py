@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     ProcessResourceUsage,
     ResolvedRuntimeCapacityPlan,
@@ -69,7 +70,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioResearchSpec,
     PortfolioSupportCoverage,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
 # A synthetic calendar with no historical shape in it: not 1,260, not 494, not

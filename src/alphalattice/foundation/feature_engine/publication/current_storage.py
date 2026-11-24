@@ -16,11 +16,11 @@ from typing import Literal
 
 import duckdb
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.database import table_columns, table_info
 from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
-from alphalattice.kernel.data.errors import DataError
 from alphalattice.kernel.identity import change_sha256, identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
 _HEX = re.compile(r"[0-9a-f]{64}")

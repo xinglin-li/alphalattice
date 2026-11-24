@@ -10,6 +10,7 @@ import numpy as np
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.factor_research.experiments.campaign import (
     CuratedFactorCheckpoint,
@@ -29,7 +30,6 @@ from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
 from alphalattice.investment.alpha_research.inputs.workspace import (
     load_sector_history,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .development_artifacts import AlphaDevelopmentArtifactStore
 

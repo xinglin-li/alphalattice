@@ -17,6 +17,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -94,8 +96,6 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests._support import development_universe
 from tests._support.development_universe import DevelopmentProvider
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider, ordered_window
@@ -115,10 +115,10 @@ within the development set's 10,000 bars a family."""
 def extended_formula_layer(
     shipped: FeatureCatalog,
 ) -> tuple[FeatureCatalog, FeatureCatalogLayer, FeatureCatalog, FactorSpec]:
+    from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorTrack
     from alphalattice.foundation.feature_engine.producers.factors.formula import (
         formula_specification,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorTrack
 
     spec = formula_specification(
         FactorSpec(

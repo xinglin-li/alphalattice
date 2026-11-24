@@ -39,6 +39,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
@@ -59,6 +62,8 @@ from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutati
 from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.evidence.alternative_evidence.runtime.execution import below_normal_thread
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
+from alphalattice.foundation.data_layer import arrays, history
+from alphalattice.foundation.data_layer.governance import REMOVED_GRACE as REMOVED_GRACE
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     create_market_profile,
     market_format,
@@ -69,13 +74,8 @@ from alphalattice.investment.risk_research.experiments.development_artifacts imp
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.data_layer import arrays, history
-from alphalattice.kernel.data_layer.governance import REMOVED_GRACE as REMOVED_GRACE
 from alphalattice.kernel.door import DECISIONS_DATABASE
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span
 
 MARKET_DATABASE: Final = "market-data.duckdb"
 TASK_CONTROL_DATABASE: Final = Path("runtime") / TASK_CONTROL_DATABASE_FILENAME

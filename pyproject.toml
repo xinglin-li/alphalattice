@@ -288,7 +288,7 @@ module = [
     "alphalattice.kernel.execution.*",
     "alphalattice.kernel.identity",
     "alphalattice.kernel.identity.*",
-    "alphalattice.kernel.shared_kernel.spawn",
+    "alphalattice.capabilities.domain_contracts.spawn",
 ]
 follow_imports = "normal"
 

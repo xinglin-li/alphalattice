@@ -17,6 +17,7 @@ from typing import Any, Final, Protocol, TypeVar, cast
 import duckdb
 import pyarrow as pa
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceConnection,
     WorkspaceDatabase,
@@ -91,7 +92,6 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
 )
 from alphalattice.kernel.clock import observation_time, utc_now
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.bounded_memo import stage_digest
 
 
 def _evidence_number(value: float | None) -> object:

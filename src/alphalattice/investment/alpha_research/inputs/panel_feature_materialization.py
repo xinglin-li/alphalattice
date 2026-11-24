@@ -16,6 +16,12 @@ from typing import Literal, Protocol, cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    median_mad_winsor,
+)
+from alphalattice.capabilities.quant.sector_history import sector_codes, sector_slices
 from alphalattice.foundation.feature_engine.producers.preprocessing.joint_primary import (
     formula_pretransform,
     formula_pretransform_descriptor,
@@ -50,12 +56,6 @@ from alphalattice.investment.alpha_research.inputs.preprocessing.sector_context 
     SectorListingSessionScaleResult,
     scale_mapped_sector_context_by_listing_session,
 )
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    median_mad_winsor,
-)
-from alphalattice.kernel.quant.sector_history import sector_codes, sector_slices
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @dataclass(frozen=True, slots=True)

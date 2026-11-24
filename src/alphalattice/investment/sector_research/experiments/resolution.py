@@ -23,12 +23,12 @@ from typing import Literal, Self
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import sector_slices
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
-from alphalattice.kernel.quant.sector_history import sector_slices
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import FloatArray, SectorResearchError
 from ..inputs.membership import load_sector_membership

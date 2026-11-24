@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
 from alphalattice.control.product_host.composition.committee_answer import (
     answer_replay,
@@ -94,7 +95,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
     ADVANCEMENT_TASK_KIND,
 )
 from alphalattice.kernel.identity import identity_sha256, integrity_hmac_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
 if TYPE_CHECKING:

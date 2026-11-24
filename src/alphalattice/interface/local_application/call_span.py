@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Final
 from urllib.parse import quote, unquote, urlsplit
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
 from alphalattice.interface.local_application.cli_contract import (
     CLIENT_HEADER,
     INSTANCE_HEADER,
@@ -30,7 +31,6 @@ from alphalattice.interface.local_application.cli_contract import (
 )
 from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.config import Change, declare
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 
 CALL_PATH: Final = "/api/client/call"
 """Where a command ends its span at the Host its requests reached."""
@@ -175,7 +175,7 @@ def record(
 ) -> None:
     """Record an invocation's span in the Host's history: live at its first request, ended with
     its end and exit code. Its caller's session and vendor carry their GenAI names."""
-    from alphalattice.kernel.data_layer.history import call as recorded  # lazy: the Host's
+    from alphalattice.foundation.data_layer.history import call as recorded  # lazy: the Host's
 
     who = provenance or RequestProvenance()
     ids: dict[str, Any] = {telemetry.COMMAND: call.command}

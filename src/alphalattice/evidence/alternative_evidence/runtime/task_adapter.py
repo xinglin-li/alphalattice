@@ -22,6 +22,9 @@ from uuid import UUID
 from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.control.task_control.contracts import (
     PLAN_WORK_ITEM_LIMIT,
     ResearchGoal,
@@ -39,9 +42,6 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.host_stop import HostStopping
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 

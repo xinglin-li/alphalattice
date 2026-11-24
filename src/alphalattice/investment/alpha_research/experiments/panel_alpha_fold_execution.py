@@ -8,6 +8,8 @@ from datetime import date
 from types import MappingProxyType
 from typing import Any, Literal
 
+from alphalattice.capabilities.domain_contracts.environment import numerical_thread_limit
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
     PanelResearchMethodologyRequest,
 )
@@ -28,8 +30,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     PanelFeatureSourceArrays,
 )
 from alphalattice.kernel.config import Change, declare
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
 
 
 class PanelAlphaFoldExecutionError(ValueError):

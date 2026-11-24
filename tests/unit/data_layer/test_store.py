@@ -14,9 +14,9 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import governance
-from alphalattice.kernel.data_layer.store import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import governance
+from alphalattice.foundation.data_layer.store import (
     OWED_EVENTS_VERSION,
     admissible,
     as_columns,
@@ -27,7 +27,7 @@ from alphalattice.kernel.data_layer.store import (
     remove_bodies,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/store.py"
 
 
 @pytest.mark.proves("data_layer.store_deletes_only_its_own_files")

@@ -27,6 +27,7 @@ from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.control.guanyin.tasks.supervision import (
     IncidentRecord,
     IncidentStore,
@@ -59,7 +60,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.execution import TIMERS, Timers
-from alphalattice.kernel.shared_kernel.waits import CEILING
 
 
 class _Host(Protocol):

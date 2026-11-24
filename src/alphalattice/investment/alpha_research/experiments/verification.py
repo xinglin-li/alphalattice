@@ -31,6 +31,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, Protocol
 
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
+    SECTOR_HISTORY_BACKFILLED,
+    SECTOR_HISTORY_FORWARD,
+)
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     build_installed_execution_outcome_method_catalog,
 )
@@ -40,10 +44,6 @@ from alphalattice.investment.alpha_research.targets.authority import (
 )
 from alphalattice.investment.alpha_research.targets.canonical import (
     CANONICAL_ALPHA_TARGET_RECIPE_ID,
-)
-from alphalattice.kernel.shared_kernel.sector_treatment import (
-    SECTOR_HISTORY_BACKFILLED,
-    SECTOR_HISTORY_FORWARD,
 )
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

@@ -196,8 +196,8 @@ def input_seed(tmp_path_factory: pytest.TempPathFactory, request: pytest.Fixture
             strategy_artifacts=(artifact,),
         )
         publish_research_workspace_manifest(root, manifest)
+        from alphalattice.foundation.data_layer import history
         from alphalattice.foundation.market_data_ops.storage import world
-        from alphalattice.kernel.data_layer import history
 
         history.open_history("factor-seed", "factor seed", root)
         try:
@@ -248,8 +248,8 @@ def factor_history(request: pytest.FixtureRequest) -> Iterator[None]:
     the fixture's Host history open there for that test alone; a
     module-long recording refused each later seed build (own_root). A wider fixture's Host keeps
     the root it records in."""
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.root import data_root
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.root import data_root
 
     name = next((name for name in SEEDS if name in request.fixturenames), None)
     if name is None or history.recording():
@@ -283,7 +283,7 @@ def alpha_seed(factor_seed, tmp_path_factory):
     """The same bound input and curated Factor study, published once across workers."""
 
     def build(root: Path) -> dict:
-        from alphalattice.kernel.data_layer import history
+        from alphalattice.foundation.data_layer import history
 
         restore_seed(factor_seed[0])
         copy_workspace(factor_seed[0], root)

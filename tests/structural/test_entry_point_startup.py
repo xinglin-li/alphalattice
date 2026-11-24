@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"

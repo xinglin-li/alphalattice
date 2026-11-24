@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_QWEN3_GPU
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import RECIPE_QWEN3_GPU
 
 
 def _pack(

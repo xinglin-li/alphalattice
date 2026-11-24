@@ -9,6 +9,7 @@ from hashlib import sha256
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
 from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     projected_feature_rows,
@@ -17,7 +18,6 @@ from alphalattice.foundation.market_data_ops.publication import projection
 from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.bounded_memo import stage_digests
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
 )

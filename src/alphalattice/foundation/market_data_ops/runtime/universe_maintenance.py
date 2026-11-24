@@ -17,6 +17,7 @@ from enum import StrEnum
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.foundation.market_data_ops.publication.projection import action_set_hash
 from alphalattice.foundation.market_data_ops.runtime.diagnostics import (
     RestatementObservationReceipt,
@@ -75,7 +76,6 @@ from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel.spans import span
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection

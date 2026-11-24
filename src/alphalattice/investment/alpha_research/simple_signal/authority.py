@@ -21,16 +21,16 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_component_id,
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
     SIGNED_SCORE_SEMANTICS,
     ResolvedSignedScore,
     ScoreObservationAuthority,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_component_id,
-    switched_source_identity,
-)
 
 from . import materialization, standardize
 from .contracts import (

@@ -35,6 +35,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_row_hashes
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ProjectedBar,
     project_research_series,
@@ -42,8 +44,6 @@ from alphalattice.foundation.market_data_ops.publication.projection import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = r"^[0-9a-f]{64}$"
 

@@ -12,6 +12,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     full_content_proof,
     verified_model_read_scope,
@@ -31,7 +32,6 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _source() -> FrozenPriceVolumeInputs:
@@ -221,7 +221,7 @@ def test_publishing_the_same_immutable_artifact_succeeds_after_a_read(current_ar
     """requirement: publishing an artifact already kept in memory names the same content and reads
     back."""
     store, observation, preparation = current_artifacts
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     history.held()  # this test's machine, independent of a running Host
     parts = [(digest, "current/frozen-observation-arrays") for digest in observation.array_files]
@@ -259,7 +259,7 @@ def _check_candidate_score(tmp_path):
     """A nullable score and its listing identity read back from the door and the typed relation."""
     from hashlib import sha256
 
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     store = AlphaCurrentArtifactStore(tmp_path / "artifacts")
     session = date(2026, 1, 2)
@@ -297,11 +297,11 @@ def _check_array_doors(tmp_path):
 
     import pyarrow.parquet as pq
 
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.alpha_research.experiments.development_artifacts import (
         alpha_array_files,
         alpha_array_upgrade_family,
     )
-    from alphalattice.kernel.data_layer import history
 
     family = alpha_array_upgrade_family(lambda _workspace: None)
     assert not family.holds(tmp_path / "new-workspace")
@@ -526,7 +526,7 @@ def test_full_proof_refuses_a_kept_payload_tampered_with_restored_mtime(kind, cu
     path = store._packed_source_path(category.removeprefix("current/"), identity)
     original = path.read_bytes()
     stat = path.stat()
-    from alphalattice.kernel.data_layer import arrays, history
+    from alphalattice.foundation.data_layer import arrays, history
 
     packed = bytearray(history.read_array(identity, packed=True))
     # Change the packed array, not Parquet bookkeeping that is outside its identity.

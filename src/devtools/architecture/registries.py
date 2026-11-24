@@ -24,9 +24,9 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.message_catalog import english_message_ids
 from alphalattice.kernel.resources import cache_bound
-from alphalattice.kernel.shared_kernel import spawn
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
@@ -1329,6 +1329,30 @@ def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
     return CensusInputs(root, baseline, fixed, _CENSUS_INPUT_PATHS)
 
 
+def _module(path: str) -> str:
+    return path.removeprefix("src/").removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+
+
+def moved_allowances(held: Mapping[str, int], moves: Moves) -> dict[str, int]:
+    """Each retained import allowance where the change's moves put it: a moved file's path, and
+    in its statement each module the change moved, so a move neither grows nor drops one."""
+    renamed = {
+        _module(old): _module(new)
+        for new, old in moves.items()
+        if old.startswith("src/") and old.endswith(".py") and new.endswith(".py")
+    }
+    names = "|".join(re.escape(name) for name in sorted(renamed, key=len, reverse=True))
+    module = re.compile(rf"(?<![\w.])({names})(?![\w])") if names else None
+    forward = {old: new for new, old in moves.items()}
+    carried_rows: dict[str, int] = {}
+    for key, count in held.items():
+        path, scope, statement = key.split("::", 2)
+        if module is not None:
+            statement = module.sub(lambda m: renamed[m[1]], statement)
+        carried_rows[f"{forward.get(path, path)}::{scope}::{statement}"] = count
+    return carried_rows
+
+
 def census_check(
     root: Path,
     *,
@@ -1361,6 +1385,8 @@ def census_check(
     except ValueError as error:
         return [*out, f"import-hygiene: {error}"]
     prior = json.loads(blobs.get("HEAD:" + legacy_path, "{}")).get("legacy_lazy_imports", legacy)
+    pairing = staged_moves(root, pairs=inputs.changes) if moves is None else moves
+    prior = moved_allowances(prior, pairing)
     out.extend(
         f"import-hygiene: retained import allowance grew {key}"
         for key, count in legacy.items()
@@ -1369,7 +1395,6 @@ def census_check(
     if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
-    pairing = staged_moves(root, pairs=inputs.changes) if moves is None else moves
     description_errors, undescribed = _description_census(inputs, data, base, pairing)
     out.extend(description_errors)
     # Develop's caches that name no bound stay for 0.2.10; a new one is refused.

@@ -16,16 +16,16 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, history
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
     HistoryProofParts,

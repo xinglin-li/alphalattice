@@ -17,9 +17,9 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import switched_source_identity
 from alphalattice.investment.risk_research.contracts import CovarianceDiagnostics
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.source_identity import switched_source_identity
 
 type FloatArray = npt.NDArray[np.float64]
 

@@ -11,21 +11,21 @@ from typing import TYPE_CHECKING, Any, Literal, Self, cast
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.benchmark import (
     PortfolioBenchmarkBoundaryError,
     PortfolioBenchmarkSurface,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.feature_engine.producers.reference_data import MarketReference
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.foundation.market_data_ops.publication.projection import (
     action_set_hash as actions_hash,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
-    from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
+    from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 
 _HASH = r"^[0-9a-f]{64}$"
 _BENCHMARK_SERIES = ("log_returns", "simple_returns")
@@ -444,7 +444,7 @@ def carried_benchmark_check(_workspace: Path, digest: str, profile: Any, table: 
 
 def portfolio_benchmark_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """Move retained benchmark surfaces after the runner verifies its workspace backups."""
-    from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
+    from alphalattice.foundation.data_layer.upgrade import (  # lazy: first-start migration
         Family,
         workspace_files,
     )

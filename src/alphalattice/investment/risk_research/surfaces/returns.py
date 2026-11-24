@@ -17,6 +17,11 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import (
+    canonical_hash_with_row_lists,
+    canonical_row_hashes,
+)
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
@@ -43,11 +48,6 @@ from alphalattice.investment.risk_research.contracts import (
     seal_contract,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.arrow_identity import (
-    canonical_hash_with_row_lists,
-    canonical_row_hashes,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://data-operations/risk-returns/"

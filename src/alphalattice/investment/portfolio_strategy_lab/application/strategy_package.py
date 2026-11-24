@@ -30,6 +30,12 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import effective_moves
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     BoolArray,
     FloatArray,
@@ -58,9 +64,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import effective_moves
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
 
 type MergeSemantics = Literal[
     "SINGLE_COMPONENT_BOOK",

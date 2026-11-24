@@ -43,6 +43,7 @@ from alphalattice.capabilities.alpha_modeling.runtime.service import (
     AlphaModelExecutionResult,
     AlphaModelRuntimeService,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
     PanelResearchMethodologyRequest,
     panel_model_recipe_points,
@@ -64,7 +65,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     HistoricalPanelEvidenceViewId,
     InstalledPanelViewId,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]

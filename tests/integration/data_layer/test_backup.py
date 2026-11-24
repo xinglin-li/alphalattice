@@ -17,14 +17,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, backup, create_data_root
-from alphalattice.kernel.data_layer.chain import canonical, digest
-from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
-from alphalattice.kernel.data_layer.project import recipe_key
-from alphalattice.kernel.data_layer.store import SETTLE_FILES, StorePort, as_columns, stage
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import arrays, backup, create_data_root
+from alphalattice.foundation.data_layer.chain import canonical, digest
+from alphalattice.foundation.data_layer.log import HostLog, uuid7, verify_whole
+from alphalattice.foundation.data_layer.project import recipe_key
+from alphalattice.foundation.data_layer.store import SETTLE_FILES, StorePort, as_columns, stage
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/backup.py"
 
 
 def _admit(root, port, close=1.0, count=1500):

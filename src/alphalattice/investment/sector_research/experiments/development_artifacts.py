@@ -29,9 +29,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import (
     switched_source_identity,
 )
 
@@ -40,7 +40,7 @@ from ..models.contracts import SectorForecastRecipe
 from ..targets.execution import SectorTargetEvidence
 
 if TYPE_CHECKING:
-    from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
+    from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 
 SECTOR_TARGET_EVIDENCE_CATEGORY = "development/sector-target-evidence"
 SECTOR_FORECAST_SURFACE_CATEGORY = "development/sector-forecast-surfaces"
@@ -600,7 +600,7 @@ class SectorDevelopmentArtifactStore:
 
     @staticmethod
     def _results_mode() -> str:
-        from alphalattice.kernel.data_layer import history  # lazy: Host telemetry
+        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
 
         catalog = history.data_root() / "machine" / "catalog.sqlite"
         # The catalog on a data root, the files on a standalone workspace.
@@ -613,7 +613,7 @@ class SectorDevelopmentArtifactStore:
         experiment: str | None = None,
         upgrade_owner: tuple[Any, Path] | None = None,
     ) -> dict[str, str]:
-        from alphalattice.kernel.data_layer import history  # lazy: Host telemetry
+        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
 
         specs = []
         descriptors = []
@@ -645,7 +645,7 @@ class SectorDevelopmentArtifactStore:
         *,
         experiment: str | None = None,
     ) -> dict[str, object]:
-        from alphalattice.kernel.data_layer import history  # lazy: Host telemetry
+        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
 
         self._require_hash(content_hash)
         evaluation = category == SECTOR_FORECAST_EVALUATION_CATEGORY
@@ -829,7 +829,7 @@ class SectorDevelopmentArtifactStore:
 
 def sector_results_upgrade_family() -> Family:
     """Move the dated Sector series and verify every old value before switching readers."""
-    from alphalattice.kernel.data_layer.upgrade import Family  # lazy: first start
+    from alphalattice.foundation.data_layer.upgrade import Family  # lazy: first start
 
     def stores(workspace: Path) -> Iterator[SectorDevelopmentArtifactStore]:
         workspace = workspace.resolve()

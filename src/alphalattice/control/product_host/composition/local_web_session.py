@@ -22,6 +22,8 @@ from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -84,6 +86,15 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
     admit_workspace_source,
 )
+from alphalattice.foundation.data_layer.history import (
+    data_root,
+    held,
+    move_carried,
+    release_history,
+    render_in_background,
+)
+from alphalattice.foundation.data_layer.store import preload_grouping
+from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
@@ -164,18 +175,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.history import (
-    data_root,
-    held,
-    move_carried,
-    release_history,
-    render_in_background,
-)
-from alphalattice.kernel.data_layer.store import preload_grouping
-from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 from alphalattice.kernel.execution import Timers
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 if TYPE_CHECKING:
     from alphalattice.control.data_platform.readiness import SourceLoader

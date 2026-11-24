@@ -26,7 +26,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture.git_inputs import (
     CostIdentity,
     read_blobs,
@@ -74,7 +74,7 @@ DERIVED_OWNERS = (
             "src/alphalattice/interface/local_application/portfolio_research.py",
             "config/registries/messages.json",
             "src/alphalattice/control/product_host/composition/committee.py",
-            "src/alphalattice/kernel/shared_kernel/project_layout.py",
+            "src/alphalattice/capabilities/domain_contracts/project_layout.py",
             "src/alphalattice/interface/local_application/failure_codes.py",
         ),
         "tests/integration/local_application/test_claude_host_materialization.py::"

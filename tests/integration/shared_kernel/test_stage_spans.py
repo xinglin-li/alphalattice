@@ -11,6 +11,15 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spans
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.spans import (
+    absorb,
+    collect,
+    readout,
+    span,
+    spanned,
+)
 from alphalattice.control.task_control.child import child_calls, run_in_child
 from alphalattice.control.task_control.contracts import TaskEvidence, TaskLifecycle
 from alphalattice.control.task_control.registry import (
@@ -28,15 +37,6 @@ from alphalattice.control.task_control.timing import (
     task_timing,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.kernel.shared_kernel import spans
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.spans import (
-    absorb,
-    collect,
-    readout,
-    span,
-    spanned,
-)
 from tests.workspace_task_runner.task_control_support import compatibility, digest, task_contract
 
 HERE = __name__  # this module, wherever it lives
@@ -174,7 +174,7 @@ def test_cache_observations_merge_counts_and_keep_the_latest_instance_gauge(monk
         snapshot["cache_observations"][0]["retained_bytes_estimate"],
         snapshot["cache_observation_gaps"],
     ) == (8, ["CACHE_RETAINED_BYTES_UNOBSERVED"])
-    from alphalattice.kernel.shared_kernel import spans
+    from alphalattice.capabilities.domain_contracts import spans
 
     monkeypatch.setattr(spans, "MAXIMUM_SPAN_KEYS", 2)
     with collect() as limited:

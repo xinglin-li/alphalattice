@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
@@ -61,7 +62,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     panel_ordered_members_identity,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
 if TYPE_CHECKING:
     import pandas as pd

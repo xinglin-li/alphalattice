@@ -34,10 +34,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
 CAMPAIGN_LEDGER_ROOT = "sec-campaigns"
 """The directory under the artifact root that holds one ledger per campaign."""

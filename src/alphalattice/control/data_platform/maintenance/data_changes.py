@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     RemovedMemberTail,
     WorkspaceDataChange,
@@ -52,7 +53,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type BookObligations = dict[str, tuple[str, tuple[str, ...]]]
 

@@ -11,9 +11,9 @@ from typing import Literal, cast
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 WorkProgressStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "REUSED_EXACT"]
 

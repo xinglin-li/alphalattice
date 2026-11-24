@@ -16,6 +16,11 @@ from typing import Any, Final, Protocol
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.benchmark import (
     PortfolioBenchmarkBoundaryError,
 )
@@ -34,6 +39,7 @@ from alphalattice.capabilities.portfolio_inputs.tradability.publication import (
 from alphalattice.capabilities.portfolio_inputs.tradability.readback import (
     read_tradability_matrices,
 )
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeManifest,
@@ -99,12 +105,6 @@ from alphalattice.investment.risk_research.surfaces.producer import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
-)
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
 )
 
 type FloatArray = npt.NDArray[np.float64]

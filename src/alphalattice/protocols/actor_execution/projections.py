@@ -13,8 +13,8 @@ import tiktoken
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tiktoken_ext import openai_public
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 ENCODING = Path(__file__).with_name("cl100k_base.tiktoken.gz")
 """The cl100k encoding the package ships: tiktoken's rank file (NOTICE), gzipped, read in memory

@@ -21,6 +21,9 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     file_digest,
     select_research_inputs,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.chain import digest as text_digest
+from alphalattice.foundation.data_layer.store import KNOWN
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -32,9 +35,6 @@ from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel.clock import task_observation
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.chain import digest as text_digest
-from alphalattice.kernel.data_layer.store import KNOWN
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
 
@@ -385,8 +385,8 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
             verify_upgrade_backups,
         )
         from alphalattice.control.product_host.storage.backup import WorkspaceBackups
-        from alphalattice.kernel.data_layer.backup import backup_data_root
-        from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+        from alphalattice.foundation.data_layer.backup import backup_data_root
+        from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 
         assert "market-data" in [make().name for make in first_start.FAMILIES]
         family = market_upgrade_family(lambda _workspace: "w1")
@@ -1025,8 +1025,8 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     if focus == "workspace":
         import pyarrow as pa
 
-        from alphalattice.kernel.data_layer.log import uuid7
-        from alphalattice.kernel.data_layer.store import stage
+        from alphalattice.foundation.data_layer.log import uuid7
+        from alphalattice.foundation.data_layer.store import stage
 
         calendar = port.log.require_lineage("provider", world.CALENDARS)
         market = lake.execute(

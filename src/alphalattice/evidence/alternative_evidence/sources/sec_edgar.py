@@ -13,10 +13,10 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.egress import HttpEgress, HttpResponse, HttpSource
-from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,

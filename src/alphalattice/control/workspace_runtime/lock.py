@@ -12,9 +12,9 @@ from types import TracebackType
 from typing import BinaryIO, Final, Literal, cast
 from uuid import uuid4
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
 
 _PROCESS_STARTED_AT = utc_now()
 _LOCK_INITIALIZATION_GUARD = Lock()

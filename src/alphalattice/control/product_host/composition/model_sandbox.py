@@ -29,8 +29,8 @@ from typing import Any, cast
 import psutil
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.foundation.data_layer.history import own_root
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data_layer.history import own_root
 
 from .saved_object_readback import carry_copy, probe
 

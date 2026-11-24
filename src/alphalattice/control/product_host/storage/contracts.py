@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 GIB = 1024**3
 

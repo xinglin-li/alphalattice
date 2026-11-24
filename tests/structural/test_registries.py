@@ -384,6 +384,13 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
         retained({import_key: 1})
         commit("Freeze the reviewed pre-existing lazy site")
+        moved = client + "/moved.py"  # a move carries its allowance to the new path
+        git("mv", existing, moved)
+        assert "allowance grew" not in retained(
+            {moved + "::existing::import json": 1}, 0, "--update"
+        )
+        git("mv", moved, existing)
+        retained({import_key: 1}, 0, "--update")
         assert "allowance grew" in retained({import_key: 2}, 1, "--update")
         write(existing, "def existing():\n    import json  # lazy: optional fixture\n")
         retained({}, 0, "--update")

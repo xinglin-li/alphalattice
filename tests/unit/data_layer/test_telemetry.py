@@ -10,9 +10,9 @@ from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsSer
 from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportMetricsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-from alphalattice.kernel.data_layer import telemetry
+from alphalattice.foundation.data_layer import telemetry
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/telemetry.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/telemetry.py"
 
 
 @pytest.mark.proves("data_layer.agent_otlp_drops_content_before_storage")

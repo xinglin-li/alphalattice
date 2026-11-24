@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli, client
 from alphalattice.interface.local_application.cli import request_of
 from alphalattice.interface.local_application.cli_contract import (
@@ -24,7 +25,6 @@ from alphalattice.interface.local_application.cli_contract import (
     command_table,
     entry,
 )
-from alphalattice.kernel.shared_kernel import spawn
 from tests.portfolio_strategy_lab.cli_support import _assert_commands_parse
 from tests.structural.refusal_support import door_words, fill_subject
 

@@ -13,6 +13,7 @@ import duckdb
 import numpy as np
 import pyarrow as pa
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogLayer
 from alphalattice.foundation.feature_engine.inputs.closure_source import (
     FeatureClosureSourceRepository,
@@ -46,7 +47,6 @@ from alphalattice.foundation.feature_engine.storage.contracts import (
     FeatureRowIdentity,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     import pandas as pd

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 
 RISK_DEVELOPMENT_SOURCE_PATHS = (
     "src/alphalattice/investment/risk_research/estimators/capability.py",

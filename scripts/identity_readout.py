@@ -84,7 +84,7 @@ def record(changes: dict[str, tuple[str, str]], change: str, reason: str) -> lis
             "identity_readout: these roles compare exactly, so a move makes their current "
             f"plans historical; give them a role that follows recorded moves first: {exact}"
         )
-    from alphalattice.kernel.data_layer.log import uuid7
+    from alphalattice.foundation.data_layer.log import uuid7
 
     moves = [
         {
@@ -111,7 +111,7 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
     its package.
     """
 
-    from alphalattice.kernel.shared_kernel.source_identity import observe_source_closures
+    from alphalattice.capabilities.domain_contracts.source_identity import observe_source_closures
 
     reached: list[dict[str, str]] = []
     areas: dict[str, set[str]] = {}
@@ -147,7 +147,7 @@ def _area(module: str) -> str:
 def _how_reached(module: str, modules: set[str]) -> str:
     """The first module of the closure that imports this one, or that it is an entry."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import source_module_imports
+    from alphalattice.capabilities.domain_contracts.source_identity import source_module_imports
 
     for importer in sorted(modules - {module}):
         file = _file_of(importer)

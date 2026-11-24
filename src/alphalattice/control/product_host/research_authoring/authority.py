@@ -21,6 +21,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
@@ -45,8 +47,6 @@ from alphalattice.foundation.market_data_ops.sources.manifest import UniverseMan
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.evaluation.contracts import AlphaMetricPolicy
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,

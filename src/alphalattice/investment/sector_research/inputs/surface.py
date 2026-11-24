@@ -14,17 +14,17 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.cross_section import (
-    median_mad_winsor,
-)
-from alphalattice.kernel.quant.sector_history import sector_positions, sector_treatment_of
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
-from alphalattice.kernel.shared_kernel.spans import active_ledger
+from alphalattice.capabilities.domain_contracts.spans import active_ledger
+from alphalattice.capabilities.quant.cross_section import (
+    median_mad_winsor,
+)
+from alphalattice.capabilities.quant.sector_history import sector_positions, sector_treatment_of
+from alphalattice.kernel.identity import identity_sha256
 
 from .contracts import (
     SectorContextManifest,

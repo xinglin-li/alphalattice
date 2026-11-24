@@ -40,6 +40,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.environment import (
+    held_offline,
+    numerical_thread_limit,
+)
+from alphalattice.capabilities.domain_contracts.spans import (
+    SpanLedger,
+    absorb,
+    collect,
+    cpu_seconds_of,
+    span,
+)
 from alphalattice.kernel import storage
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
@@ -59,21 +72,11 @@ from alphalattice.kernel.resources import (
     worker_resource_lease,
     worker_width,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
-from alphalattice.kernel.shared_kernel.spans import (
-    SpanLedger,
-    absorb,
-    collect,
-    cpu_seconds_of,
-    span,
-)
 
 if TYPE_CHECKING:  # the SDK is imported by a traced call alone
     from opentelemetry.sdk.trace import TracerProvider
 
-    from alphalattice.kernel.data_layer.spans import RowsExporter
+    from alphalattice.foundation.data_layer.spans import RowsExporter
 
 _TRACER: tuple[TracerProvider, RowsExporter] | None = None
 """This worker process's tracer provider and the exporter keeping its spans' rows."""
@@ -343,7 +346,7 @@ def _submitted(
     may open the files this process holds that `opens` names (None: any), so none of them is kept
     open until the call ends."""
     from alphalattice.control.workspace_runtime.database import hand_off  # lazy: DuckDB
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+    from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
 
     pool = None
     ended = hand_off(opens)
@@ -516,7 +519,7 @@ def stop_task_workers() -> None:
 @contextmanager
 def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Callable[[], None]]:
     """Hold a Task's kept workers and give its runner the startup after claim."""
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
+    from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV  # lazy: the data layer
 
     lease = current_resource_lease()
     assert lease is not None
@@ -609,8 +612,8 @@ _RECORDED: set[Path] = set()
 def _follow_root(root: str | None) -> None:
     """Name the caller's data root in this worker's environment, which `data_root` reads, and
     record this worker in it once, so a Host started after this one's Host ends waits for it."""
-    from alphalattice.kernel.data_layer.log import record_worker  # lazy: the data layer
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV, data_root  # lazy: the same
+    from alphalattice.foundation.data_layer.log import record_worker  # lazy: the data layer
+    from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV, data_root  # lazy: the same
 
     declare(Change("task-worker-data-root", {DATA_ROOT_ENV: root}), native=True)
     where = data_root()
@@ -684,14 +687,14 @@ def _call(
 def _carrier() -> dict[str, str]:
     """The trace of the step sending a call. Only a Host loads its history, so a process that has
     not cannot be recording, and pays no import for it."""
-    history = sys.modules.get("alphalattice.kernel.data_layer.history")
+    history = sys.modules.get("alphalattice.foundation.data_layer.history")
     return {} if history is None else history.trace_carrier()
 
 
 def _traced(answer: Mapping[str, Any]) -> None:
     """Hand the worker's spans to the Host's log, when the call carried a trace."""
     if answer.get("trace"):
-        from alphalattice.kernel.data_layer.history import traced  # lazy: a traced answer alone
+        from alphalattice.foundation.data_layer.history import traced  # lazy: a traced answer alone
 
         traced(answer["trace"])
 
@@ -705,7 +708,7 @@ def _worker_span(
     if not trace:
         yield
         return
-    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, for a traced call alone
+    from alphalattice.foundation.data_layer.spans import (  # lazy: the SDK, for a traced call alone
         RowsExporter,
         context_of,
         tracer_provider,

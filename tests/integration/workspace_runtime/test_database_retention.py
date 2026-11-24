@@ -32,6 +32,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.workspace_runtime import reader_threads
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
@@ -49,10 +50,9 @@ from alphalattice.control.workspace_runtime.database import (
 )
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.foundation.data_layer import history_runtime
+from alphalattice.foundation.data_layer import log as host_log
 from alphalattice.kernel import storage
-from alphalattice.kernel.data_layer import history_runtime
-from alphalattice.kernel.data_layer import log as host_log
-from alphalattice.kernel.shared_kernel import spawn
 
 
 def _prepared(tmp_path: Path) -> WorkspaceDatabase:
@@ -1048,7 +1048,7 @@ _ITS_WORKER = textwrap.dedent(
     import sqlite3, sys, threading
     sys.path.insert(0, {str(Path("src").resolve())!r})
     from pathlib import Path
-    from alphalattice.kernel.data_layer.log import record_worker
+    from alphalattice.foundation.data_layer.log import record_worker
     root, ready, host = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
     record_worker(root, host=host)
     log = sqlite3.connect(root / "machine" / "log.sqlite", isolation_level=None)

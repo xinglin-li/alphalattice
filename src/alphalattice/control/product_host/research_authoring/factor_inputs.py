@@ -18,6 +18,8 @@ from uuid import UUID
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     current_allowed_logical_processors,
 )
@@ -52,6 +54,14 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 from alphalattice.foundation.causal_outcomes.selection.listing_set import (
     resolve_published_execution_outcome,
 )
+from alphalattice.foundation.data_layer import history, inputs
+from alphalattice.foundation.data_layer.backup import (
+    backup_data_root,
+    generation_reads,
+    verify_data_root,
+)
+from alphalattice.foundation.data_layer.inputs import folder_files
+from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     INSTALLED_REDUNDANCY_POLICIES,
@@ -87,18 +97,8 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel import storage
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, inputs
-from alphalattice.kernel.data_layer.backup import (
-    backup_data_root,
-    generation_reads,
-    verify_data_root,
-)
-from alphalattice.kernel.data_layer.inputs import folder_files
-from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,

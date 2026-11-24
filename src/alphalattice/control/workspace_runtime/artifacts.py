@@ -13,10 +13,10 @@ from uuid import uuid4
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import latest
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import latest
 
 
 def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:

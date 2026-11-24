@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.composition.plain_refusals import refused
+from alphalattice.foundation.data_layer import experiences, history, reading
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import experiences, history, reading
 
 if TYPE_CHECKING:
     from alphalattice.interface.local_application.portfolio_research import (

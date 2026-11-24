@@ -26,9 +26,9 @@ import portalocker
 import pytest
 
 from alphalattice.control.task_control.upgrade import carry_tasks
-from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
-from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs, own_root
-from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
+from alphalattice.foundation.data_layer.backup import backup_data_root, restore_data_root
+from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs, own_root
+from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,

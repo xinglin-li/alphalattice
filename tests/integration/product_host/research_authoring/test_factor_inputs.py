@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     AuthoringError,
     FactorInputBundle,
@@ -23,9 +24,8 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     research_input_copies_family,
     research_input_upgrade_family,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, inputs
-from alphalattice.kernel.data_layer.backup import restore_data_root
+from alphalattice.foundation.data_layer import history, inputs
+from alphalattice.foundation.data_layer.backup import restore_data_root
 
 TEST_SOURCE = "src/alphalattice/control/product_host/research_authoring/factor_inputs.py"
 

@@ -12,11 +12,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.evaluation.rank_correlation import (
     period_pair_correlation_matrix,
 )
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 

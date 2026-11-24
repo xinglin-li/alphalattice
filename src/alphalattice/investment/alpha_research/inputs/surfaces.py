@@ -15,13 +15,13 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.inputs.execution_target import (
     build_factor_target_policy,
     build_factor_target_policy_for_method,
     compile_factor_target_surface,
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..targets.execution_outcome import AlphaTargetPolicy, compile_alpha_target_surface
 from .folds import (

@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.storage.readiness import WorkspaceReadinessRecord
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboarding,
@@ -32,7 +33,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _CANDIDATE_DATA_RECHECK_DELAY = timedelta(days=1)
 _FAILED_CANDIDATE_STATES = frozenset({"RAW_FAILED", "QUALITY_INELIGIBLE", "AUDIT_FAILED"})

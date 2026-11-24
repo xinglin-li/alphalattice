@@ -42,6 +42,10 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import (
+    canonical_hash,
+    successor_identity_payload,
+)
 from alphalattice.investment.alpha_research.experiments.selected_scores import (
     AlphaSelectedRowAxis,
     AlphaSelectedScoreProjection,
@@ -50,10 +54,6 @@ from alphalattice.investment.alpha_research.targets.materialization import (
     CanonicalTargetMaterialization,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import (
-    canonical_hash,
-    successor_identity_payload,
-)
 
 from .stock_returns import (
     StockCalibrationEvidence,

@@ -22,9 +22,9 @@ from copy import deepcopy
 from typing import Any, Final
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.cli_contract import schema_request
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 from .cli_contract import error_projection, refusal_words
 

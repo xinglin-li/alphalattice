@@ -26,6 +26,18 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.environment import (
+    offline,
+    package_versions,
+    recorded_environment,
+)
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application import client, workbench_assets
@@ -83,18 +95,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.resources import logical_cpu_count
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.environment import (
-    offline,
-    package_versions,
-    recorded_environment,
-)
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-    runtime_json,
-)
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
 """The matcher of the product's retired lifecycle hooks; configure removes groups with it."""
@@ -534,7 +534,7 @@ def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
+    from alphalattice.capabilities.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
     # What the agent fills is read from the first use's own source, so the two never disagree.

@@ -23,6 +23,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
@@ -56,7 +57,6 @@ from alphalattice.kernel.door import (
     request_bytes,
 )
 from alphalattice.kernel.door import port as door_port
-from alphalattice.kernel.shared_kernel import spawn
 from devtools.evaluation.forms import Scenario
 from tests._support.history_fixtures import recording_history as recording_history
 from tests.portfolio_strategy_lab.cli_support import (

@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture import type_ignores, waits
 
 TEST_SCOPE = "whole-tree"

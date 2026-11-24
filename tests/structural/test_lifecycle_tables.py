@@ -386,7 +386,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "BLOCKED,DEFERRED,RUNNING",
     ): "the sector staging file's own statuses, not a Task's",
     (
-        "kernel/data_layer/project.py",
+        "foundation/data_layer/project.py",
         "_wait_resolved",
         "BLOCKED,CANCEL_REQUESTED,RECOVERY_REQUIRED,REVIEW_PENDING",
     ): "an ordinary wait resolution retains review, cancellation and explicit recovery; "

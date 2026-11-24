@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 
 from alphalattice.control.workspace_runtime import database, mutation_gate
-from alphalattice.kernel.data_layer import history, log
+from alphalattice.foundation.data_layer import history, log
 
 
 @dataclass

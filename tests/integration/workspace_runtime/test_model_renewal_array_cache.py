@@ -13,12 +13,12 @@ import numpy as np
 import pytest
 
 from alphalattice.control.workspace_runtime import content_store
+from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     AlphaDevelopmentArtifactReadbackError,
     AlphaDevelopmentArtifactStore,
 )
 from alphalattice.investment.alpha_research.scores import model_renewal
-from alphalattice.kernel.data_layer import arrays, history
 
 
 def _store_with_arrays(root, payload: bytes) -> tuple[AlphaDevelopmentArtifactStore, str]:

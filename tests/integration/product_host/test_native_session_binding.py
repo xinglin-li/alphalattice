@@ -610,8 +610,8 @@ def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
 
 def _usage_observation(live, host: str, session: str, *, output_tokens: int | None = None) -> None:
     """Seed numerical exports through the held Host's catalog, independent of metadata files."""
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.telemetry import decode
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.telemetry import decode
 
     codex = host == "codex"
     service = "codex" if codex else "claude_code"

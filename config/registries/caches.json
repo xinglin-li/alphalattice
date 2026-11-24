@@ -602,10 +602,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the installed fast-slow risk estimator's first-party implementation identity until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/environment.py::_installed_version::module-installed-version": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/environment.py::_installed_version::module-installed-version": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/environment.py::_installed_version"
+        "src/alphalattice/capabilities/domain_contracts/environment.py::_installed_version"
       ],
       "definition_line": 77,
       "key": "name",
@@ -622,10 +622,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches each distribution's installed version or absence until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister::module-module-lister": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/environment.py::_module_lister::module-module-lister": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/environment.py::_module_lister"
+        "src/alphalattice/capabilities/domain_contracts/environment.py::_module_lister"
       ],
       "definition_line": 118,
       "key": "unit key; installed module namespace",
@@ -642,10 +642,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the configured Windows process-module enumeration API until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/identity_successors.py::recorded_moves::module-recorded-moves": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/identity_successors.py::recorded_moves::module-recorded-moves": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/identity_successors.py::recorded_moves"
+        "src/alphalattice/capabilities/domain_contracts/identity_successors.py::recorded_moves"
       ],
       "definition_line": 48,
       "key": "root",
@@ -662,10 +662,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches recorded identity moves for each checkout root until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._ROLE_CLOSURES::source-role-closures": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::<module>._ROLE_CLOSURES::source-role-closures": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/source_identity.py::_ROLE_CLOSURES"
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py::_ROLE_CLOSURES"
       ],
       "definition_line": 1176,
       "key": "Checkout, tracked entries, owner, role and parsed rules",
@@ -682,10 +682,10 @@
       "source_commit": "a31a8dfb41cccaaea75de370781874053b6b488e",
       "description": "Carries a role's closure hash while every file fact used to compute it holds."
     },
-    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._MODULE_STAMPS::source-module-stamps": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::<module>._MODULE_STAMPS::source-module-stamps": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/source_identity.py::_MODULE_STAMPS"
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py::_MODULE_STAMPS"
       ],
       "definition_line": 1177,
       "key": "Module file path and relative import package",
@@ -702,10 +702,10 @@
       "source_commit": "a31a8dfb41cccaaea75de370781874053b6b488e",
       "description": "Reuses the canonical module input across roles that reach the same file."
     },
-    "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch::module-identity-switch": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::identity_switch::module-identity-switch": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/source_identity.py::identity_switch"
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py::identity_switch"
       ],
       "definition_line": 498,
       "key": "root",
@@ -762,10 +762,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches registered decision types and their owning packages for each checkout root until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/source_identity.py::<module>._PARSED::source-ast-import-memo-parsed": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/source_identity.py::<module>._PARSED::source-ast-import-memo-parsed": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/source_identity.py::_PARSED"
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py::_PARSED"
       ],
       "definition_line": 93,
       "key": "Source content digest, relative-import package and moved module bindings",
@@ -2780,10 +2780,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches committed chunk character positions by document within one retrieval generation until the retrieval session is discarded."
     },
-    "src/alphalattice/kernel/shared_kernel/spans.py::SpanLedger.__init__.self.readout_value::final-span-ledger-metric-readout": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/spans.py::SpanLedger.__init__.self.readout_value::final-span-ledger-metric-readout": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/spans.py::SpanLedger.__init__.self.readout_value"
+        "src/alphalattice/capabilities/domain_contracts/spans.py::SpanLedger.__init__.self.readout_value"
       ],
       "definition_line": 83,
       "key": "one finalized ledger",
@@ -3124,10 +3124,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches downloaded and built Python packages used by retrieval-environment setup, with refresh and removal delegated to uv's package validation and explicit cache cleaning."
     },
-    "src/alphalattice/kernel/knowledge/model_store.py::<module>.pack_directory::pinned-retrieval-embedding-reranker-model-packs": {
-      "owner": "alphalattice.kernel.knowledge",
+    "src/alphalattice/capabilities/knowledge/model_store.py::<module>.pack_directory::pinned-retrieval-embedding-reranker-model-packs": {
+      "owner": "alphalattice.capabilities.knowledge",
       "defined_by": [
-        "src/alphalattice/kernel/knowledge/model_store.py::pack_directory"
+        "src/alphalattice/capabilities/knowledge/model_store.py::pack_directory"
       ],
       "definition_line": 242,
       "key": "repository + immutable revision + exact expected file SHA",
@@ -3193,10 +3193,10 @@
       },
       "description": "Caches Yahoo historical HTTP responses by URL, frozen parameters and timeout, rebuilding after LRU eviction or process restart."
     },
-    "src/alphalattice/kernel/data/calendar.py::materialize_calendar_schedule.calendar::exchange-calendar-dispatcher-schedule-reuse-delegated": {
-      "owner": "alphalattice.kernel.data",
+    "src/alphalattice/capabilities/data/calendar.py::materialize_calendar_schedule.calendar::exchange-calendar-dispatcher-schedule-reuse-delegated": {
+      "owner": "alphalattice.capabilities.data",
       "defined_by": [
-        "src/alphalattice/kernel/data/calendar.py::materialize_calendar_schedule.calendar"
+        "src/alphalattice/capabilities/data/calendar.py::materialize_calendar_schedule.calendar"
       ],
       "definition_line": 85,
       "key": "resolved calendar name plus equality of start/end/side kwargs",
@@ -3592,10 +3592,10 @@
       },
       "description": "Caches the Python message catalog's frozen identifier projection until the Node process exits."
     },
-    "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin::module-tool-bin": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/project_layout.py::_tool_bin::module-tool-bin": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin"
+        "src/alphalattice/capabilities/domain_contracts/project_layout.py::_tool_bin"
       ],
       "definition_line": 106,
       "key": "uv launcher path; fixed environment per process",
@@ -3687,10 +3687,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the installed product label table and its index by identifier until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_resource_json::shipped-json-resource": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/runtime_resources.py::_resource_json::shipped-json-resource": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_resource_json"
+        "src/alphalattice/capabilities/domain_contracts/runtime_resources.py::_resource_json"
       ],
       "definition_line": 40,
       "key": "resource path and its file's stat (modification time, size, file id)",
@@ -3707,10 +3707,10 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches one shipped JSON resource while its file is unchanged, on either runtime leg."
     },
-    "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_root::installation-root": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/runtime_resources.py::_root::installation-root": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_root"
+        "src/alphalattice/capabilities/domain_contracts/runtime_resources.py::_root"
       ],
       "definition_line": 34,
       "key": "unit key; this installation's root",
@@ -3823,10 +3823,10 @@
       },
       "description": "Keeps the request document model for each operation's admitted fields and for every field, building one on first use."
     },
-    "src/alphalattice/kernel/shared_kernel/bounded_memo.py::<module>._STAGE_DIGESTS::stage-input-digests": {
-      "owner": "alphalattice.kernel.shared_kernel",
+    "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::<module>._STAGE_DIGESTS::stage-input-digests": {
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/bounded_memo.py::_STAGE_DIGESTS"
+        "src/alphalattice/capabilities/domain_contracts/bounded_memo.py::_STAGE_DIGESTS"
       ],
       "definition_line": 148,
       "key": "reader slot (store, kind, listing, range) and its equal immutable inputs",

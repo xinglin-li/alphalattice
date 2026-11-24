@@ -11,6 +11,14 @@ from typing import TYPE_CHECKING, Final, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    equal_sector_demean,
+    median_mad_winsor,
+)
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelAdmissionSummary,
@@ -20,14 +28,6 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
     feature_component_identity,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    equal_sector_demean,
-    median_mad_winsor,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .adapters import require_uniform_membership
 from .contracts import PanelPreprocessingImplementationBinding

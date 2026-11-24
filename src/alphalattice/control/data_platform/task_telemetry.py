@@ -25,6 +25,12 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.persistence import (
+    DURABLE_REPLACE_DELAYS,
+    replace_with_retry,
+)
 from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressProjection,
     WorkProgressUpdate,
@@ -33,9 +39,6 @@ from alphalattice.control.observation_runtime.telemetry.progress import (
 from alphalattice.control.task_control.contracts import TaskExecution, TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.timing import read_task_telemetry, record_task_telemetry
 from alphalattice.control.task_control.upgrade import import_telemetry
-from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import DURABLE_REPLACE_DELAYS, replace_with_retry
 
 TELEMETRY_REPLACE_DELAYS: tuple[float, ...] = (0.01, 0.02)
 """Best-effort telemetry sidecars (the Task-bound work progress and listing activity): a

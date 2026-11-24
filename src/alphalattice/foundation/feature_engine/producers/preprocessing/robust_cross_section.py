@@ -9,13 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from alphalattice.foundation.feature_engine.contracts import (
-    FeaturePanelBinding,
-    PanelAdmissionSummary,
-    canonical_hash,
-)
-from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.cross_section import (
+from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
     MIN_COVERAGE,
     MIN_SECTOR_SAMPLE,
@@ -24,6 +18,12 @@ from alphalattice.kernel.quant.cross_section import (
     median_mad_winsor,
     robust_zscore,
 )
+from alphalattice.foundation.feature_engine.contracts import (
+    FeaturePanelBinding,
+    PanelAdmissionSummary,
+    canonical_hash,
+)
+from alphalattice.kernel.identity import identity_sha256
 
 if TYPE_CHECKING:
     import pandas as pd

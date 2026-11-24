@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.interface.local_application import native_bridge, workbench_assets
 from alphalattice.interface.local_application import native_setup as setup
 from alphalattice.interface.local_application.client import (
@@ -39,7 +40,6 @@ from alphalattice.interface.local_application.native_setup import (
     declare_project,
     strip_product_hooks,
 )
-from alphalattice.kernel.knowledge import model_store
 from tests.portfolio_strategy_lab.host_requests import _json
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -138,7 +138,7 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     assert stored["payload"]["subject"] == subject
 
     # The native exporter uses this same authenticated Host socket and writer.
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     connection = LocalResearchConnection.read(live.workspace)
     exporters = setup.agent_exporters(project, connection)
@@ -830,7 +830,7 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     def run(argv, **_):
         return subprocess.CompletedProcess(argv, 0, stdout="")
 
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     monkeypatch.setattr(spawn, "run", run)
     user = tmp_path / ".alphalattice/user"
@@ -973,7 +973,7 @@ def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch,
             raise OSError("private launch detail")
         return subprocess.CompletedProcess(argv, 1 if outcome == "failed" else 0)
 
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     monkeypatch.setattr(spawn, "run", run)
     result = setup.codex_queue_readiness()

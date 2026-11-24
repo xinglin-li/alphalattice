@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 from blake3 import blake3
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.evidence.alternative_evidence.storage import world_reads
-from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/evidence/alternative_evidence/storage/world_reads.py"
 

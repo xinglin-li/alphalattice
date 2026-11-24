@@ -6,11 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import reading
-from alphalattice.kernel.data_layer.market_health import unavailable_market_health
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import reading
+from alphalattice.foundation.data_layer.market_health import unavailable_market_health
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/reading.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/reading.py"
 
 
 @pytest.mark.proves("data_layer.daily_market_health_names_unavailable_checks")

@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.clocks import (
     EveryFormationClock,
     EveryNFormationsClock,
@@ -41,6 +42,7 @@ from alphalattice.capabilities.portfolio_backtesting.reference_marks import Refe
 from alphalattice.capabilities.portfolio_backtesting.segments import (
     run_portfolio_walk_forward_segment_sequence_with_passive_holds,
 )
+from alphalattice.capabilities.quant.sector_history import sector_exposure
 from alphalattice.investment.alpha_research.experiments.panel_methodology_statistics import (
     circular_block_interval,
     dependence_aware_block_length,
@@ -82,8 +84,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.score_risk_cost imp
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.quant.sector_history import sector_exposure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .paired_alpha_portfolio_evidence import (
     ControlledCovarianceRegressionEvidence,

@@ -19,6 +19,7 @@ from uuid import UUID
 import pytest
 
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
+from alphalattice.capabilities.domain_contracts.waits import wait_until
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
@@ -28,7 +29,6 @@ from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.waits import wait_until
 from devtools.evaluation.golden_workspaces import remove_tree
 from tests.portfolio_strategy_lab.local_web_support import _json
 

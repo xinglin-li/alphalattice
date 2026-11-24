@@ -17,6 +17,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.data.enums import ExecutionSessionStatus
+from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_row_hashes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.verified_facts import (
@@ -26,14 +28,12 @@ from alphalattice.control.workspace_runtime.verified_facts import (
 from alphalattice.foundation.causal_outcomes.execution.compile import execution_session_status
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.enums import ExecutionSessionStatus
 from alphalattice.kernel.identity import (
     canonical_hash,
     canonical_json,
     identity_sha256,
     integrity_sha256,
 )
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
 
 from .contracts import (
     DecisionTradabilityReason,

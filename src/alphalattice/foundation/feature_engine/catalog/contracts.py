@@ -10,6 +10,11 @@ from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
+from alphalattice.capabilities.domain_contracts.identity_successors import (
+    is_current,
+    recorded_origin,
+)
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FEATURE_OBSERVATION_CLOCK_POLICY_ID,
     LEGACY_SKIP_WIRE_FIELD,
@@ -27,8 +32,6 @@ from alphalattice.foundation.feature_engine.contracts import FeatureCatalogBindi
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     control_arithmetic_content_hash,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity_successors import is_current, recorded_origin
 
 DESKTOP_FEATURE_CATALOG_ID = "feature-catalog.desktop-core-equity"
 SOURCE_AVAILABILITY_ROLE = "feature_engine.source_availability_catalog"

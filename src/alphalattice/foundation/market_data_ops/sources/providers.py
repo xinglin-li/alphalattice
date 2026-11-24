@@ -20,6 +20,7 @@ from threading import Lock
 from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
+from alphalattice.capabilities.domain_contracts.spans import spanned
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -30,7 +31,6 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
 )
 from alphalattice.kernel.egress import EgressRefusal, HttpSource, require_network, yahoo_session
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.spans import spanned
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "actions": True,

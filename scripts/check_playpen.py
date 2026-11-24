@@ -22,8 +22,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.kernel.config import Change, process_override
-from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"

@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NamedTuple
 
+from alphalattice.evidence.live_evidence.online_sources import not_carried_tables
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
-from alphalattice.kernel.live_evidence.online_sources import not_carried_tables
 from alphalattice.kernel.resources import worker_width
 
 from ..documents.canonicalization import SecTableCarry

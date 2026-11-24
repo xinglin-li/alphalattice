@@ -12,6 +12,9 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
@@ -45,17 +48,17 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     process_priority,
 )
 from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
+from alphalattice.foundation.data_layer.backup import verify_data_root
+from alphalattice.foundation.data_layer.history import open_history
+from alphalattice.foundation.data_layer.history_carried_results import CarriedCheck
+from alphalattice.foundation.data_layer.history_runtime import (
+    set_host_duckdb_threads,
+    start_log_reader,
+)
+from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.backup import verify_data_root
-from alphalattice.kernel.data_layer.history import open_history
-from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
-from alphalattice.kernel.data_layer.history_runtime import set_host_duckdb_threads, start_log_reader
-from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
 

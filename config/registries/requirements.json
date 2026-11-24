@@ -507,112 +507,112 @@
     "data_layer.a_backup_copy_excludes_collection": {
       "description": "A collection waits while a backup copies the data root and decides no body until the copy ends.",
       "lower_layer": "The lock is the one backup_data_root holds; the log is a fake that keeps what the collector does.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_body_goes_only_when_nothing_holds_it": {
       "description": "The collector removes an artifact body only when no live reference, pin or retention window holds it, recording its collection before the body goes.",
       "lower_layer": "Holds are live_ref rows the projection writes from real events in a SQLite log; the body is a file in a real data root.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.a_brief_budget_is_bounded": {
       "description": "If a brief took any budget, an agent could ask for none of the brief, or for more than its context holds.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_brief_fits_its_budget_in_priority_order": {
       "description": "If a brief broke its budget, or let lessons or similar experiences take the room of the goal's current decisions, or read anything recorded after its cut, the agent would start new work on the wrong or later knowledge.",
       "lower_layer": "The brief joins the log's events, notes and class members in DuckDB over a real log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.a_cache_is_valid_for_exactly_its_inputs": {
       "description": "A cached partition's input digest moves with exactly the admissions, lag rules and cutoff its parts see, and with nothing else.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_class_read_gives_its_effective_n": {
       "description": "If a class read gave no effective N, or counted series known only after its cut, a result's significance would be read against the raw trial count, or against later knowledge.",
       "lower_layer": "The series are inline bodies in the log read by DuckDB's SQLite scan, so only a real log shows them correlated.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.a_class_read_is_a_search_memory_span": {
       "description": "If a class read left no search_memory step in the Host's log, which experience reads informed a trial could never be measured; if it carried the query or the records, it would hold what the conventions keep opt-in.",
       "lower_layer": "The step is the span the Host's log accepts by its registered event type, so only a real log shows it recorded.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.a_class_read_is_cut_at_its_known_time": {
       "description": "If a class read named the wrong trials at a width, or counted a trial, a state or a measure learned after its cutoff, an agent would judge a result against a spread that never existed then.",
       "lower_layer": "The read joins the log's trials, recipes, events and measures through the reading views in DuckDB; only a real log shows each width and cut.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.a_class_read_splits_its_effect_by_market_condition": {
       "description": "If a class read gave no effect by market condition, or banded a member by a condition recorded after its cut, which approach works in which market could not be read, or would be read from later knowledge.",
       "lower_layer": "The bands join the log's condition artifacts and measures to the class in DuckDB over a real log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.a_class_width_is_named": {
       "description": "If an unknown class width were read as some default, an agent would get a class it did not ask for.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_clients_trace_reaches_its_workers": {
       "description": "Client trace context reaches its Host and worker spans; the log and an opted-in receiver retain their trace, and external secrets and content are protected.",
       "lower_layer": "A real Host serves the request over loopback HTTP and a real worker process runs the call; the spans are read from a real log and an in-memory OTLP/HTTP receiver.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 20
     },
     "data_layer.a_condition_digest_names_its_content": {
       "description": "If a condition artifact's content digest left out its values, two different results of one question would claim one content, and the digest could not tell them apart.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_correction_is_known_from_its_admission": {
       "description": "StorePort admits one fact as one version however a writer stages it, a changed value as a new version known from its admission, and supersedes each held version once.",
       "lower_layer": "The versions are written to and read as of from a real DuckLake catalog through the views.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.a_document_is_keyed_by_its_doc_id": {
       "description": "A legacy evidence document batch names no market and is keyed by its doc_id, so two bodies of one document go in separate admissions.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_lake_scan_holds_files_by_thread": {
       "description": "A DuckDB session over the lake scans a table of many small Parquet files holding open about one file per thread, never one per file, so a process stays within macOS's default 256 descriptors however many files admissions leave.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "Descriptors are held by DuckDB's reader over real Parquet files; only a real catalog and its files show them."
     },
     "data_layer.a_lake_session_bounds_its_read_ahead": {
       "description": "Every DuckDB session over the lake loads its extensions and then turns DuckDB's read-ahead off, so no scan holds a queue of open Parquet files.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_legacy_document_is_known_from_its_availability": {
       "description": "A legacy evidence document is known from its 0.2.7 availability, the source's acceptance or a recorded import's capture, never its filing date; another body of a held document is known no earlier than its admission.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "lower_layer": "The known time is derived by StorePort's catalog SQL in a real DuckLake commit and read back through the as-of macro.",
       "seconds": 10
@@ -620,88 +620,88 @@
     "data_layer.a_note_closes_what_it_reviews": {
       "description": "If a review's note did not close its trial or task with its run's aggregates in one unit, a reader could see a verdict without the usage and cost it rests on.",
       "lower_layer": "It needs the real log's projection triggers and a reviewed trial's spans in one SQLite unit, which no single function holds.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.a_note_renders_the_same_bytes": {
       "description": "If the same note rendered different bytes, its experience's BLAKE3 name would change and every re-render would mint a version for nothing.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_note_says_each_part": {
       "description": "If a note could omit its hypothesis, method or conclusion or hold a blank lesson, an experience would cite a review that says nothing.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_number_has_one_typed_form": {
       "description": "A number has one typed form, so 5 and 5.0 are one recipe parameter and one measure dimension, and a value with none is refused.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_reads_answer_and_refusal_cross_the_reader": {
       "description": "A reading view's answer reaches the Host from the reader's process as the read returned it, a mapping too; the read's own refusal arrives by its code; any other failure is refused as the history being unavailable.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_rename_moves_no_key": {
       "description": "A renamed method, metric or feature set keeps its lineage's id, so no recipe key, measure, cache entry or derived partition moves, and every old name still finds it.",
       "lower_layer": "A rename is an event projected inside the log's own SQLite transaction; only a real log shows the rows it leaves.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.a_return_series_is_kept_in_its_form": {
       "description": "If a malformed series were kept, the class read's correlations would join months that are not calendar months or read values that are not returns.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_source_supersedes_only_with_a_later_write": {
       "description": "StorePort writes a closed interval's two versions and supersedes a held bar only with a source write after its value's last write, which a same-value write moves without a version.",
       "lower_layer": "The versions are written to and read as of from a real DuckLake catalog.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.a_source_time_is_not_content": {
       "description": "A row's value digest leaves out its source's write time and original payload digest, and a legacy closed interval carries the digest of its open version.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1,
       "retired": "2026-11-17: no digest remains for the source time to stay out of; a source time never decides newness, proved by data_layer.a_correction_is_known_from_its_admission's rewrite row"
     },
     "data_layer.a_stuck_log_reader_is_ended": {
       "description": "A reading views process that does not answer within its bound is ended, reaped and refused by name, so the history it serves is never held.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_task_control_time_is_its_microseconds": {
       "description": "A Task Control time is read as UTC integer microseconds by one rule the log's views share, and refused by name otherwise.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_task_parent_is_its_nearest": {
       "description": "A task stores its parent task, else its goal held in its own workspace, else its workspace, by its event's version.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_timed_row_needs_its_source_time": {
       "description": "Staging refuses by name a raw_bar or corporate_action row without its source's own write time, which orders it against a held value.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.a_workspace_attaches_the_catalog_once": {
       "description": "A workspace connection attaches the catalog read-only only when its instance lacks it, and makes each served view its own.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1,
       "retired": "2026-11-20: the opt-in derived Feature view is retired; no workspace connection attaches the catalog for a view"
@@ -709,33 +709,33 @@
     "data_layer.a_workspace_reads_derived_rows_under_its_names": {
       "description": "Under derived, a workspace reader reads the catalog's derived rows under the table's name while its writer keeps the table.",
       "lower_layer": "It attaches a real DuckLake catalog to a real workspace DuckDB file and reads through the workspace's own connections; only both files show it.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10,
       "retired": "2026-11-20: the opt-in derived Feature view is retired; Feature values are read from the workspace's table"
     },
     "data_layer.a_world_row_carries_its_providers_lineage": {
       "description": "Staging gives a world row whose key names a provider the lineage it is admitted under, and stages other rows as they came.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.admission_is_read_as_of_before_and_after_a_correction": {
       "description": "One admission's rows share one known_at that never steps back with the wall clock; the as-of read before its correction sees them, after it sees the correction, and the replaced version is superseded in the same commit.",
       "lower_layer": "The as-of read is DuckDB's macro over a real DuckLake catalog.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.agent_otlp_drops_content_before_storage": {
       "description": "Native OTLP attribution and numerical usage survive decoding while prompt, tool, opt-in and unknown content never enters the storage batch.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.agent_otlp_is_one_catalog_batch": {
       "description": "Sanitized native observations commit atomically through the catalog's existing writer, even when the Host stops meanwhile, and read under their exact vendor and conversation with absent attribution counted.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "The contract crosses real DuckLake metadata, Arrow registration and restart persistence."
@@ -743,84 +743,84 @@
     "data_layer.an_ended_trial_awaits_its_review": {
       "description": "If an ended trial with no note read as reviewed or as running, an agent would skip its review or wait on work already done.",
       "lower_layer": "It reads the experience view over real projected trial rows, which no single function holds.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.an_event_names_its_type_version": {
       "description": "A new event is written under version 1 of its type unless its writer names a later registered version.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.an_experience_body_shows_its_run": {
       "description": "If an experience's body omitted its run's seconds, tokens and cost or its measures' place in their spread, its reader could not weigh its verdict.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.an_experience_renders_again_equal": {
       "description": "If a grown log's experiences did not replay equal, or a body did not render again to the bytes its event named, a reopened Host would cite experiences it cannot reproduce.",
       "lower_layer": "It replays a real grown log into an empty one and re-renders its stored bodies, which no single function holds.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.an_owed_list_is_read_whatever_its_version": {
       "description": "An admission snapshot's commit info is read as the events it owes, one envelope written before the list as a list of one, and an unknown version refused.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.analytics_views_preserve_values": {
       "description": "Each analytics view returns every pinned column and row of the fixed Host-written research log.",
       "lower_layer": "The views execute DuckDB SQL over the attached SQLite log; a unit test cannot prove both engines' result values.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 3
     },
     "data_layer.append_admits_only_a_keepable_event": {
       "description": "The append boundary refuses by name a missing attribute, an unbound, missing or unexpected text, a malformed count or part, a credential and a live write under a superseded definition.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.array_bodies_settle_after_a_refused_placement_or_rollback": {
       "description": "A body whose event rolled back, or whose rename after its commit was refused, is settled by the next start in the same process, and the commit's later bodies are placed.",
       "lower_layer": "A rollback and a commit are a real log's; the refused rename is a real file move.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 3
     },
     "data_layer.array_digest_names_one_array": {
       "description": "A digest kept again with another dtype or shape is refused by name, and the array it names stays readable.",
       "lower_layer": "The refusal reads the profile the log holds for the digest.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.array_door_holds_one_body_per_machine": {
       "description": "Two workspaces citing one lane hold one body under blobs/, each by its own live_ref, however often each keeps it.",
       "lower_layer": "Holds are live_ref rows the log projects; the body is a file under the data root.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.array_door_keeps_every_lane_kind_bit_exact": {
       "description": "Every lane kind (float with NaN payloads and signed zeros, integer, boolean, several columns, a 2-D shape, legacy packed bytes) kept through the array door reads back bit-exact as columns and as packed bytes, under the digest documents cite.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.array_door_refuses_a_wrong_dtype_or_shape_by_name": {
       "description": "A body whose dtype, shape or bytes differ from its profile is refused by name, and equal bytes of another dtype or shape are another array.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.array_start_places_only_a_committed_staged_body": {
       "description": "Start moves a body a crash left staged into place when the log holds its profile, and collects it when it does not.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
@@ -828,17 +828,17 @@
       "description": "A machine backup copies newly referenced immutable files into its shared pool, reuses unchanged held files and refuses a changed sealed name or a path outside its roots.",
       "layer": "unit",
       "seconds": 1,
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.backup_manifest_is_portable": {
       "description": "A machine backup manifest names exactly its three databases, a well-formed chain head and unique relative data/blob handles; malformed or escaping handles are refused before restore writes.",
       "layer": "unit",
       "seconds": 1,
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.backup_names_only_its_own_files": {
       "description": "If a backup named a file outside its data path as its own, or refused a deletion scheduled in the folder its catalog left, a relocated root would carry or refuse another folder's files.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
@@ -846,150 +846,150 @@
       "description": "A machine backup gives SQLite the same escaped, read-only file URI for an ordinary Windows path and its extended-length spelling.",
       "layer": "unit",
       "seconds": 1,
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.baggage_attributes_every_span": {
       "description": "A span below W3C headers is their trace's child, carries its baggage's trial and selection and its caller's workspace, is logged live as started, and has its log records as facts inside it.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.chain_catches_a_rewritten_event": {
       "description": "The chain verifies whole and from its last checkpoint, a new log is seeded and checkpointed monthly, and an event rewritten past its trigger breaks the fold.",
       "lower_layer": "The chain folds rows of a real SQLite log, rewritten past its trigger.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.collected_rows_leave_in_one_catalog_commit": {
       "description": "The rows of collected artifacts leave every results table in one catalog commit before they leave the deletion queue.",
       "lower_layer": "A fake catalog session keeps the statements; the integration crash case runs them on a real catalog.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.configured_export_scrubs_secrets": {
       "description": "A configured span exporter receives admitted secret values redacted, with prompt and result content off unless the person enables it; the local span record stays independent.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.copy_carries_its_catalog_results": {
       "description": "A workspace copy carries its catalog's outcomes and Portfolio results, and the Host opening it admits each its owner proves, holds committed before the files go, refusals releasing only that opening.",
       "lower_layer": "The carry reads one real catalog and admits onto another through the Host's log and DuckLake writers; no unit can hold two data roots.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.daily_market_health_counts_catalog_failures": {
       "description": "The Daily records distinct failure counts for freshness, non-null keys, unique versions, action kinds and listing relationships in the world catalog.",
       "lower_layer": "Actual DuckDB predicates, parameter binding and joins are required to prove the SQL counts.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 3
     },
     "data_layer.daily_market_health_names_unavailable_checks": {
       "description": "An unavailable observation retains every check identity and reports no invented failure counts.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.data_root_is_set_or_the_application_folder": {
       "description": "The data root is ALPHALATTICE_DATA_ROOT when set, else the platform's application data folder.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.durable_events_commit_at_once": {
       "description": "A durable event commits when appended and syncs the log's WAL to the disk; an ordinary one commits with its batch, its deadline, or the flush a reply waits for, which a Host killed after the reply keeps.",
       "lower_layer": "Commit visibility is what another SQLite connection reads, and a kill is a real process's death.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.each_note_renders_a_versioned_experience": {
       "description": "If the Host's rendering of a note did not make an experience of its own, versioned by renderer and kept when a later note replaces it, a later note or renderer would overwrite the experience an earlier read cited.",
       "lower_layer": "It runs the Host's render over a real log and its stored bodies across a re-render and a replacement.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.each_work_unit_stores_one_parent": {
       "description": "A task, hypothesis and trial each store exactly one parent, and their workspace, goal and experience are reached by joining up it.",
       "lower_layer": "The parent is chosen in the log's own SQLite projection and checked by its tables; only a real log shows the rows.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.effective_n_follows_its_formula": {
       "description": "If effective N left the method's range, a deflated Sharpe ratio built on it would count more trials than were run, or fewer than one.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.event_ids_are_uuidv7": {
       "description": "A new event's id is a UUIDv7 whose leading 48 bits are the Unix milliseconds it was minted in.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.every_body_kind_is_collected_and_a_crash_finishes_at_start": {
       "description": "A collected blob, inline body and table rows all go; a crash after the collection event leaves the body queued and the next start removes it, and a collected body is never held again.",
       "lower_layer": "A real log, DuckLake catalog and data root.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.experience_reads_without_bodies": {
       "description": "The reading views and compare read profiles and measures only: with every artifact body removed, experience returns each trial with its measures and two artifacts compare across a convertible metric version.",
       "lower_layer": "The views are DuckDB SQL over the attached SQLite log; only both engines run them.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.expiry_keeps_what_repair_reads": {
       "description": "If expiry took the newest snapshot, a young one, or one from an admission whose event the log lacks on, a reader or the next start's repair would lose the commit it reads.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.family_declares_old_data_by_holds_alone": {
       "description": "A declared upgrade family names its old data by its holds predicate alone, which defaults to holding nothing, so a family with a reader switch cannot return.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.goal_trace_breaks_down_a_goals_time": {
       "description": "A goal's calls read apart by session, with the agent's time between calls inferred, untraced call time flagged, unattributed calls counted and each stage summed.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.heavy_work_runs_beside_the_writer": {
       "description": "An append and its flush made while a large admission is digested and staged wait as an ordinary one does, since staging runs in the process that has the rows and never under the writer.",
       "lower_layer": "The wait is measured on a real log's commits against a second real process.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 20
     },
     "data_layer.held_files_wait_in_the_deletion_queue": {
       "description": "A file another handle holds open waits in the deletion queue with its error and tries, and goes at the first start after it is released.",
       "lower_layer": "Windows' refusal to delete an open file is the operating system's, on a real disk.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.host_append_is_all_or_nothing": {
       "description": "Each append writes the event, its text, the chain head, its projection and an inline body as one unit: a refused event leaves no trace and its batch's other events whole.",
       "lower_layer": "The unit is a SQLite transaction and its savepoints; only a real database holds them.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.host_history_records_or_defers": {
       "description": "A Host's history records its workspace, its own definitions, begun spans as started then ended with flattened attributes, and facts with their text in their span, and nothing while another Host holds the data root.",
       "lower_layer": "The lock is an operating-system file lock, the history a real SQLite log, and the catalog uses DuckDB.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5,
       "retired": "2026-11-15: the history is no longer deferred; a Host whose log does not open does not start, which data_layer.host_history_records_or_refuses proves."
@@ -997,100 +997,100 @@
     "data_layer.host_history_records_or_refuses": {
       "description": "A Host's history records its workspace and definitions, closes with its last Host, shares a catalog surface and closes its cursors, and refuses an unavailable log, views or held data root without retaining a lock.",
       "lower_layer": "The lock is an operating-system file lock, the history a real SQLite log, and the catalog uses DuckDB.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.kill_inside_append_leaves_the_log_whole": {
       "description": "A process killed after an event's row, after its chain fold or after its projection leaves a log the next Host opens whole, with the chain verifying.",
       "lower_layer": "A kill is a real process ending inside a SQLite transaction.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 15
     },
     "data_layer.knowledge_batches_decode_once": {
       "description": "Writing the vector index reads each encoded batch once and decodes only its requested rows, each the value a whole-batch decode gives.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.knowledge_chunks_preserve_character_offsets": {
       "description": "The chunker honors character capacity, overlap and trimming while preserving offsets into the original text and preferring paragraph, sentence and word boundaries in that order.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.knowledge_embedding_cache_survives_its_readers": {
       "description": "A chunk's recipe-and-model embedding is encoded once in the Host's shared cache and reused by another reader or a rebuild at its calibrated storage precision.",
       "lower_layer": "Reuse crosses store instances through real SQLite rows and their vector blobs, which a unit double cannot prove.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.knowledge_fusion_weighs_both_channels": {
       "description": "Retrieval scales each channel's scores to [0, 1] and sums them with equal weight, so a chunk both the full-text and the vector channel find outranks one channel's top hit alone; equal scores keep source row order.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.knowledge_index_projects_scopes_on_their_events": {
       "description": "The vector index projects its scopes again only after an event that changes what they admit, and then admits it; any other event projects nothing.",
       "lower_layer": "The scope events and their projections are real SQLite rows of the Host's log, which a unit double cannot prove.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.knowledge_index_reopens_from_its_derived_files": {
       "description": "The vector index reopens from its derived files without reading a vector from the log, takes only the chunks after them, and rebuilds files it cannot read, answering alike each time.",
       "lower_layer": "The files' stamp is read against real SQLite chunk rows and the matrix is a real mapped file, which a unit double cannot prove.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.knowledge_publications_replay_with_their_sources": {
       "description": "A knowledge revision and snapshot retain their source identity, known time and workspace membership when the Host replays its log.",
       "lower_layer": "The authority is the event transaction and its normalized SQLite projections, so replay must read and rebuild a real log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.legacy_rows_are_known_from_their_lag_rule": {
       "description": "StorePort preserves typed catalog rows, derives legacy knowledge from the market's next session close and lag rule, and keeps market and session identities through MIC changes.",
       "lower_layer": "The lag rule is read from a real log's definition and the session close from a real DuckLake catalog.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.lexical_leaves_out_common_words": {
       "description": "From 10,000 indexed chunks the full-text query leaves out each word at least half the chunks hold, and counts each word again after a chunk is added.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.lineage_id_is_its_first_registration": {
       "description": "A first version, task or wait reference, or finished step can introduce a definition lineage from the name that event holds.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.live_ref_bodies_are_never_collected": {
       "description": "A blob whose artifact a live reference holds is refused deletion by name and stays, while an unheld blob is deleted.",
       "lower_layer": "The hold is a live_ref row in a real SQLite log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.log_refuses_what_its_rules_forbid": {
       "description": "Each rule of the data root's event log refuses its breach by name and leaves the log unchanged.",
       "lower_layer": "The rules are SQLite triggers and constraints of log.sql; only a real database holds them.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.log_views_read_as_defined": {
       "description": "Each view of the data root's event log reads a settled log as defined, and each hot read uses its index.",
       "lower_layer": "The views and query plans are SQLite's; only a real database holds them.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
@@ -1099,51 +1099,51 @@
       "layer": "integration",
       "seconds": 20,
       "lower_layer": "The interleaving crosses real SQLite backup steps and a committed DuckLake snapshot with the Host writer active.",
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.machine_backup_restores_all_retained_results": {
       "description": "Online snapshots of all three machine databases and the admitted file set restore every retained result ALL EQUAL into a fresh root while workspace backup remains unchanged.",
       "layer": "integration",
       "seconds": 20,
       "lower_layer": "SQLite online backup, SQLite vectors and the DuckLake catalog/file readback require real databases and files.",
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.machine_restore_refuses_a_changed_chain": {
       "description": "Machine restore refuses a changed chain, changed retained bytes or a manifest missing an owned file before publishing the destination.",
       "layer": "integration",
       "seconds": 10,
       "lower_layer": "The corruption crosses real copied SQLite/DuckLake owners, retained files and the restore publication boundary.",
-      "owner": "alphalattice.kernel.data_layer"
+      "owner": "alphalattice.foundation.data_layer"
     },
     "data_layer.maintenance_bounds_the_catalog": {
       "description": "If maintenance expired a snapshot whose admission event the log lacks, the next start could not repair it; if it never expired or cleaned up, a collected partition's bytes would stay forever.",
       "lower_layer": "Expiry and file cleanup are DuckLake's own catalog calls over real Parquet files, read against the log's events; only a real catalog and log show both.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.market_condition_is_measured_at_its_cutoff": {
       "description": "If a market's condition read members or bars known after its cutoff, or a member that had left the universe, a trial's effect would be split by a condition it could not have seen.",
       "lower_layer": "The condition is read through world's point-in-time macros over the lake, so only a real lake shows what was known at the cutoff.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.model_head_tensors_read_as_float32": {
       "description": "The reranker's head files read as named float32 tensors with their shapes, and a tensor of another dtype is refused by name.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.native_events_split_an_agents_gap": {
       "description": "The time between a conversation's calls splits by its native records into waits on the person, the agent's tools and model requests, each moment counted once, the remainder unattributed; with no records the whole gap stays inferred.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.one_block_of_admissions_is_one_snapshot": {
       "description": "Admissions made in one block share one catalog snapshot, each keeping its own admission and event, and a refusal commits the admissions made before it.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 3,
       "lower_layer": "A snapshot and its repaired events exist only in a real DuckLake catalog and Host log on a data root."
@@ -1151,40 +1151,40 @@
     "data_layer.one_host_writes_the_data_root": {
       "description": "A second Host is refused the data root's lock by name with its holder, and other processes read the log through a read-only attach that refuses a write.",
       "lower_layer": "The lock is an operating-system file lock and the attach a SQLite connection.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.one_sqlite_library_opens_the_log": {
       "description": "Only the reading views' own process attaches the log in DuckDB; every other reading session leaves it out, so a process writing the log opens it with one SQLite library.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "lower_layer": "It reads the whole source tree from disk.",
       "seconds": 10
     },
     "data_layer.only_a_host_opens_its_store": {
       "description": "A process whose Host history is not open gets no StorePort and admits nothing.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.paths_are_quoted_sql_literals": {
       "description": "A data root path enters DuckDB SQL as a literal with forward slashes, each quote doubled and a Windows extended-length prefix dropped, so any such path attaches.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.recall_finds_experiences_as_known": {
       "description": "Recall finds each experience known at its cutoff with its trials, projecting new experiences first, never encoding a cached vector again, and reranking English only.",
       "lower_layer": "The corpus is a projection of the log's experiences through the store's SQLite tables and FTS5, so the catch-up and the as-of filters need a real log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.recall_meets_its_speed_at_100k": {
       "description": "At 100,000 chunks with the real CPU models, recall answers its first query and its p95 within one second in English and Chinese.",
       "lower_layer": "The target is the whole query path over a real SQLite store, its FTS5 index, the mapped matrix and the installed model packs, so it needs them all.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 300,
       "exception": {
@@ -1198,171 +1198,171 @@
     },
     "data_layer.recipe_key_is_its_content": {
       "description": "A recipe's key is the digest of its method's lineage, version, parameters and upstream recipes, whatever order they are written in, and never a name.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.repair_appends_each_owed_event_once": {
       "description": "Repair appends each event a catalog snapshot carried and the log lacks once, with its writer's envelope and snapshot, at the next start even below the free-space floor that refuses staging.",
       "lower_layer": "The owed event is read from a real DuckLake snapshot's commit info and appended through the Host's write path into a real log.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.replay_rebuilds_every_projection": {
       "description": "Replay reproduces every projected table and the chain head, including minted definition IDs and renames, and names a divergent projection by its table.",
       "lower_layer": "A projection is SQL inside the event's own SQLite transaction; only a real database replays it.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.reranker_head_scores_the_first_token": {
       "description": "The reranker's head scores each pair by its first token through Dense, exact GELU, LayerNorm and a final Dense.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.research_input_held_by_each_workspace_binding_it": {
       "description": "A research input binding already kept for one workspace is held again by each later workspace that binds it, so no workspace's removal releases it from another.",
       "lower_layer": "The holds are live_ref rows the log projects from two opened workspaces; only a real log shows them.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.research_input_path_stays_in_its_binding": {
       "description": "A research-input file laid out outside its binding's folder is refused by name before any log or body is touched.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.research_input_released_with_its_last_workspace": {
       "description": "Once the last workspace that binds a research input is deleted, its member and manifest bodies are collected and every view that linked them is removed, while other bindings stay.",
       "lower_layer": "The release is the log's workspace projection, the collector on a real data root and the views' hard links; only those together free the bytes.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.research_input_seal_is_blake3_of_its_bytes": {
       "description": "A research-input file's seal is the BLAKE3 of its bytes, read without loading it whole, for any size the empty file included; a binding's files are listed by their relative POSIX paths.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.research_input_view_lays_out_each_binding": {
       "description": "A kept research input binding reads as its folder under the holder's view, its pooled database placed once and shared, and an unkept binding is refused by name.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.research_input_views_go_with_their_bodies": {
       "description": "A view of a research input binding whose bodies were collected is removed with each pooled database no kept binding lists, while kept bindings' views stay.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.research_inputs_carried_into_a_copy": {
       "description": "A workspace copy carries only the bindings its workspace holds, its own root keeps them at open, and a tampered carried body is refused.",
       "lower_layer": "The holds are live_ref rows the log projects, on two real data roots; only real logs show the carry.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.research_inputs_kept_once_and_held_per_workspace": {
       "description": "A binding's research-input files are kept once under blobs/, held once by each workspace that binds them, and read back as the folder it was bound from, byte for byte; a binding kept again records nothing.",
       "lower_layer": "The holds are live_ref rows the log projects; the bodies are files under the data root.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.research_records_are_named_by_ids": {
       "description": "Every research record is named by an id, so equal facts never collide or split across workspaces, trials, versions, renames or number forms.",
       "lower_layer": "Each record is written by the log's own projection inside its SQLite transaction and read back by its tables and views; only a real log shows the rows.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 15
     },
     "data_layer.root_created_twice_is_all_equal": {
       "description": "Creating a data root with installed data dependencies creates the SQLite DuckLake catalog and runs its views and macros offline; repeating creation leaves every file byte-identical, and another schema version is refused by name.",
       "lower_layer": "Creation writes SQLite databases and folders on disk.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.seed_registry_is_whole": {
       "description": "The seed registry names each reference definition once as a registered family's version 1, with registry.seeded, the research tags and every artifact type's measures.",
       "lower_layer": "The seed registry is package data the unit layer may not read; the log a data root is born with holds it.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 1
     },
     "data_layer.spans_are_step_events": {
       "description": "Each span ended through the OpenTelemetry SDK is appended as its step event with its trace, parent, times, phase, actor and attributes, and a span the log refuses is counted by its code, never raised.",
       "lower_layer": "The exporter writes into a real Host log through the SDK's span processor.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.stage_digest_is_canonicals": {
       "description": "Each world row's value_digest, built over its admission's Arrow columns, is blake3 over canonical() of the row with its provider's lineage, byte for byte, for every column type a row can carry.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1,
       "retired": "2026-11-17: a world version is named by an engine-minted version_id and judged new by comparing its columns, so no row digest is built"
     },
     "data_layer.stage_refuses_what_it_cannot_admit": {
       "description": "Staging refuses by name two versions of one key in one admission, a table StorePort does not admit and a legacy batch with no valid date, before anything is staged.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.staging_keeps_every_rows_columns": {
       "description": "Staging writes every column any row of an admission carries, not only the first row's, so a field a later row gives is kept.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.start_collects_what_no_write_owns": {
       "description": "Start collects staging no producer holds and data files the catalog does not name, holding each admission's lock while it does, so a producer's staging is never lost.",
       "lower_layer": "Collection reads a real DuckLake catalog's file tables and deletes files on disk.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.store_deletes_only_its_own_files": {
       "description": "StorePort refuses by name to delete anything outside the data root's staging, data and blobs folders, before touching the disk.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.store_research_laws": {
       "description": "Each registered store keeps the known-time boundary, gives a later restatement only at its own cutoff, keeps one identity for equal evidence, and reads identical typed evidence after restart.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "contract",
       "seconds": 20
     },
     "data_layer.storeport_writes_each_derived_partition_once": {
       "description": "StorePort writes a derived partition once, valid only for its recipe and inputs, keeps each digest a workspace roots and collects the rest, and makes and widens a feature set's table.",
       "lower_layer": "The partitions are written into the DuckLake catalog in one transaction and their validity and roots into the log; only a real catalog and log show both.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.the_schema_meets_its_contract": {
       "description": "A schema change that breaks a declared identity, link or status rule is refused, including an outside identity code admitted without a cited guarantee that it never changes.",
       "lower_layer": "The DDL is read as SQLite and DuckDB build it, the engines the Host runs, so the contract judges the schema they enforce, not a parse of its text.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5
     },
     "data_layer.upgrade_stops_before_unverified_readers": {
       "description": "An upgrade does no work without verified backups and switches only an ALL EQUAL family; completed steps are not repeated.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "unit",
       "seconds": 1
     },
     "data_layer.upgrade_verifies_before_switch_and_resumes": {
       "description": "First 0.2.8 startup requires verified machine and workspace backups, resumes the first unfinished family after a kill, switches only verified ALL EQUAL families and serves no failed upgrade.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 15,
       "lower_layer": "The runner records durable progress in a real Host log and a killed child must resume with the old reader retained until verification."
@@ -1370,7 +1370,7 @@
     "data_layer.vector_table_defers_without_extension_loading": {
       "description": "Without extension loading a data root still creates every index table but the vector table, and names that table deferred.",
       "lower_layer": "The index is a SQLite database on disk, built through the extension loader.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 5,
       "retired": "2026-11-18: the data root makes no index.sqlite and loads no extension; the knowledge store's search lives in log.sqlite as FTS5 and a NumPy matrix, proved by data_layer.knowledge_embedding_cache_survives_its_readers"
@@ -1378,14 +1378,14 @@
     "data_layer.workspace_copy_carries_its_lanes": {
       "description": "A workspace copy opened on its own data root reads every lane its source held, carried in the old lane form and moved onto its own log when its Host opens.",
       "lower_layer": "The copy opens a second real data root and log in the same process.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10
     },
     "data_layer.write_order_recovers_from_a_kill_at_each_point": {
       "description": "A Host killed at each write-order point of an observed, results or array write leaves no half write: the next start finds all of it or none, its event once, and no staging.",
       "lower_layer": "A kill is a real process's death between a real DuckLake commit and a real log append.",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 41,
       "exception": {
@@ -1401,6 +1401,45 @@
       "owner": "alphalattice.control.data_platform",
       "layer": "integration",
       "seconds": 2
+    },
+    "domain_contracts.a_wait_ends_by_its_deadline_or_its_stop": {
+      "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.census_row_names_its_site_and_input": {
+      "description": "If a census row named the wrong site or input, or raised on an input it cannot read, the census would rank work at the wrong file and line or stop the work it measures.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.child_processes_are_bounded_and_isolated": {
+      "description": "A child starts quietly with closed input and UTF-8 text, and a timeout ends its process tree.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "contract",
+      "seconds": 10,
+      "lower_layer": "The process and its descendant must actually run for the operating system to establish their lifetime and pipe behavior."
+    },
+    "domain_contracts.schema_hash_ignores_prose_and_binds_structure": {
+      "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It hashes the schemas pydantic builds from real model classes, which a unit test of one function cannot hold without rebuilding pydantic's schema generation."
+    },
+    "domain_contracts.source_identity_survives_relocation": {
+      "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.work_census_tags_each_repeat_of_an_input": {
+      "description": "If the work census tagged repeats wrongly, a repeat within one Task, a repeat by another Task, a verification at a process boundary and a write nothing reads would be ranked as the wrong lever.",
+      "lower_layer": "The tags are read from the rows each process writes to its own file, by DuckDB's JSON reader and window queries, so the proof needs a real file and a real query engine.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "integration",
+      "seconds": 5
     },
     "door.named_operations_preserve_bytes_and_person_authority": {
       "description": "The Door routes registered names without changing request or answer bytes, loads a family on first use, refuses invalid registrations and requests by name, and persists decisions that require a person.",
@@ -1775,20 +1814,20 @@
     },
     "knowledge.a_new_authority_takes_the_int8_recipe": {
       "description": "If a new Evidence authority did not take the int8 recipe, or an installed one lost its own recipe on a rebind, first use stays slow or old indexes stop matching.",
-      "owner": "alphalattice.kernel.knowledge",
+      "owner": "alphalattice.capabilities.knowledge",
       "layer": "unit",
       "seconds": 1
     },
     "knowledge.int8_canary_is_proved_live_at_session_open": {
       "description": "If an int8 session loaded at the CPU budget's threads without equalling the canary one thread gives on this machine, threads could move retrieval numbers unseen.",
-      "owner": "alphalattice.kernel.knowledge",
+      "owner": "alphalattice.capabilities.knowledge",
       "layer": "unit",
       "seconds": 1,
       "retired": "2026-11-19: the retired retrieval core's session pool, whose threads the canary judged, is gone; the retrieval store opens no shared session"
     },
     "knowledge.int8_recipe_is_the_retained_models_int8_graphs": {
       "description": "If the int8 recipe named other models, shared a sealed canary, installed over the fp32 packs or shared identities across machine classes, results from different machines would mix.",
-      "owner": "alphalattice.kernel.knowledge",
+      "owner": "alphalattice.capabilities.knowledge",
       "layer": "unit",
       "seconds": 1,
       "retired": "2026-11-19: the retired retrieval core's per-machine int8 identities are gone; the recipe a new authority takes is proved by knowledge.a_new_authority_takes_the_int8_recipe"
@@ -2760,39 +2799,45 @@
       "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.a_wait_ends_by_its_deadline_or_its_stop proves it there."
     },
     "shared_kernel.census_row_names_its_site_and_input": {
       "description": "If a census row named the wrong site or input, or raised on an input it cannot read, the census would rank work at the wrong file and line or stop the work it measures.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.census_row_names_its_site_and_input proves it there."
     },
     "shared_kernel.child_processes_are_bounded_and_isolated": {
       "description": "A child starts quietly with closed input and UTF-8 text, and a timeout ends its process tree.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "contract",
       "seconds": 10,
-      "lower_layer": "The process and its descendant must actually run for the operating system to establish their lifetime and pipe behavior."
+      "lower_layer": "The process and its descendant must actually run for the operating system to establish their lifetime and pipe behavior.",
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.child_processes_are_bounded_and_isolated proves it there."
     },
     "shared_kernel.schema_hash_ignores_prose_and_binds_structure": {
       "description": "If a schema hash followed docstrings or missed a structural change, a rewording would rotate every identity or a real change would keep one.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.schema_hash_ignores_prose_and_binds_structure proves it there."
     },
     "shared_kernel.source_identity_survives_relocation": {
       "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "unit",
-      "seconds": 1
+      "seconds": 1,
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.source_identity_survives_relocation proves it there."
     },
     "shared_kernel.work_census_tags_each_repeat_of_an_input": {
       "description": "If the work census tagged repeats wrongly, a repeat within one Task, a repeat by another Task, a verification at a process boundary and a write nothing reads would be ranked as the wrong lever.",
       "lower_layer": "The tags are read from the rows each process writes to its own file, by DuckDB's JSON reader and window queries, so the proof needs a real file and a real query engine.",
       "owner": "alphalattice.kernel.shared_kernel",
       "layer": "integration",
-      "seconds": 5
+      "seconds": 5,
+      "retired": "2026-11-23: shared_kernel moved whole to alphalattice.capabilities.domain_contracts; domain_contracts.work_census_tags_each_repeat_of_an_input proves it there."
     },
     "storage.an_open_without_a_driver_is_refused_by_name": {
       "description": "If the storage port opened an engine of its own when no driver was installed, a process could configure DuckDB two ways and the kernel would load a third-party engine.",

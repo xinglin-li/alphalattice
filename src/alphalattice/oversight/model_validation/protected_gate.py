@@ -33,12 +33,16 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     CommittedKind,
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     CLAIM_LIMIT_NO_RESELECTION,
     CLAIM_LIMIT_SINGLE_EVALUATION,
@@ -55,10 +59,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
     ProtectedPackageInspector,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class ProtectedValidationGateError(ValueError):

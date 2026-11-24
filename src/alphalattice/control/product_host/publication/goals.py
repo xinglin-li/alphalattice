@@ -23,6 +23,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer.project import uuid7
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.interface.local_application.goals import (
@@ -34,7 +35,6 @@ from alphalattice.interface.local_application.goals import (
     declaration_hash,
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
-from alphalattice.kernel.data_layer.project import uuid7
 from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
 
 EXPERIENCE_RECORD_WORDS = (

@@ -14,16 +14,16 @@ from uuid import uuid4
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
+from alphalattice.foundation.data_layer import history, risk_history
 from alphalattice.foundation.market_data_ops.storage.world import world_listing
 from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceBuildCheckpoint,
     HistoricalCovarianceChunk,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, risk_history
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://risk-research/"

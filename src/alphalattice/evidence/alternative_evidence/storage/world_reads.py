@@ -16,11 +16,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.root import data_root
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.root import data_root
 from alphalattice.kernel.identity import identity_blake3, integrity_blake3
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
 
 from ..sources.contracts import (
     AcquiredEvidenceDocument,

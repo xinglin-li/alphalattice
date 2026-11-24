@@ -10,7 +10,7 @@
       "dependency_level": 0,
       "authority_kind": "ACTOR_EXECUTION_PROVENANCE",
       "allowed_peer_dependencies": [
-        "shared_kernel"
+        "domain_contracts"
       ],
       "artifact_writer": false,
       "physical_namespace_target": "alphalattice.protocols.actor_execution"
@@ -23,24 +23,24 @@
       "dependency_level": 0,
       "authority_kind": "MODEL_MECHANICS",
       "allowed_peer_dependencies": [
-        "shared_kernel"
+        "domain_contracts"
       ],
       "artifact_writer": false,
       "physical_namespace_target": "alphalattice.capabilities.alpha_modeling"
     },
     {
       "package_id": "knowledge",
-      "product_area": "kernel",
+      "product_area": "capabilities",
       "capability_owner": "Knowledge Catalog",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 0,
       "authority_kind": "KNOWLEDGE_CATALOG_MECHANICS",
       "allowed_peer_dependencies": [
-        "shared_kernel",
+        "domain_contracts",
         "workspace_runtime"
       ],
       "artifact_writer": true,
-      "physical_namespace_target": "alphalattice.kernel.knowledge"
+      "physical_namespace_target": "alphalattice.capabilities.knowledge"
     },
     {
       "package_id": "portfolio_backtesting",
@@ -50,7 +50,7 @@
       "dependency_level": 0,
       "authority_kind": "PORTFOLIO_PATH_MECHANICS",
       "allowed_peer_dependencies": [
-        "shared_kernel"
+        "domain_contracts"
       ],
       "artifact_writer": false,
       "physical_namespace_target": "alphalattice.capabilities.portfolio_backtesting"
@@ -64,7 +64,7 @@
       "authority_kind": "EXPERIMENT_AUTHORING_VOCABULARY",
       "allowed_peer_dependencies": [
         "actor_execution",
-        "shared_kernel"
+        "domain_contracts"
       ],
       "artifact_writer": false,
       "physical_namespace_target": "alphalattice.protocols.research_authoring"
@@ -81,15 +81,15 @@
       "physical_namespace_target": "alphalattice.foundation.resources"
     },
     {
-      "package_id": "shared_kernel",
-      "product_area": "kernel",
+      "package_id": "domain_contracts",
+      "product_area": "capabilities",
       "capability_owner": "Shared Kernel",
       "role": "CROSS_DOMAIN_PROTOCOL",
       "dependency_level": 0,
       "authority_kind": "IDENTITY_AND_PRIMITIVES",
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.shared_kernel"
+      "physical_namespace_target": "alphalattice.capabilities.domain_contracts"
     },
     {
       "package_id": "workspace_runtime",
@@ -99,25 +99,25 @@
       "dependency_level": 0,
       "authority_kind": "ARTIFACT_AND_WORKSPACE_MECHANICS",
       "allowed_peer_dependencies": [
-        "shared_kernel"
+        "domain_contracts"
       ],
       "artifact_writer": true,
       "physical_namespace_target": "alphalattice.control.workspace_runtime"
     },
     {
       "package_id": "data",
-      "product_area": "kernel",
+      "product_area": "capabilities",
       "capability_owner": "Market Data Mechanics",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 1,
       "authority_kind": "MARKET_DATA_MECHANICS",
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.data"
+      "physical_namespace_target": "alphalattice.capabilities.data"
     },
     {
       "package_id": "data_layer",
-      "product_area": "kernel",
+      "product_area": "foundation",
       "capability_owner": "Data Layer",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 1,
@@ -126,7 +126,7 @@
         "data"
       ],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.data_layer"
+      "physical_namespace_target": "alphalattice.foundation.data_layer"
     },
     {
       "package_id": "observation_runtime",
@@ -144,14 +144,14 @@
     },
     {
       "package_id": "quant",
-      "product_area": "kernel",
+      "product_area": "capabilities",
       "capability_owner": "Factor And Return Mechanics",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 1,
       "authority_kind": "FACTOR_AND_RETURN_MECHANICS",
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.quant"
+      "physical_namespace_target": "alphalattice.capabilities.quant"
     },
     {
       "package_id": "research_program",
@@ -180,7 +180,7 @@
     },
     {
       "package_id": "validation",
-      "product_area": "kernel",
+      "product_area": "capabilities",
       "capability_owner": "Validation Statistics",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 1,
@@ -190,7 +190,7 @@
         "quant"
       ],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.validation"
+      "physical_namespace_target": "alphalattice.capabilities.validation"
     },
     {
       "package_id": "causal_inputs",
@@ -253,14 +253,14 @@
     },
     {
       "package_id": "live_evidence",
-      "product_area": "kernel",
+      "product_area": "evidence",
       "capability_owner": "Live Evidence Sources",
       "role": "DETERMINISTIC_CAPABILITY",
       "dependency_level": 2,
       "authority_kind": "EVIDENCE_SOURCE_MECHANICS",
       "allowed_peer_dependencies": [],
       "artifact_writer": false,
-      "physical_namespace_target": "alphalattice.kernel.live_evidence"
+      "physical_namespace_target": "alphalattice.evidence.live_evidence"
     },
     {
       "package_id": "market_data_ops",
@@ -777,8 +777,8 @@
     "alphalattice.control.workspace_runtime.artifacts": "Resolve the workspace artifact store in the Sector publication command.",
     "alphalattice.control.workspace_runtime.database": "Hand a held market database off to a child process only when a call goes to one; task control imports no DuckDB otherwise.",
     "alphalattice.investment.sector_research.experiments.service": "Load the Sector experiment and its numerical adapters only for the publication command.",
-    "alphalattice.kernel.shared_kernel.spawn": "Load process supervision only when locating a CLI executable outside PATH.",
-    "alphalattice.kernel.data_layer.upgrade": "Load migration composition only when a verified first-start family is requested; ordinary Portfolio reads do not run an upgrade.",
+    "alphalattice.capabilities.domain_contracts.spawn": "Load process supervision only when locating a CLI executable outside PATH.",
+    "alphalattice.foundation.data_layer.upgrade": "Load migration composition only when a verified first-start family is requested; ordinary Portfolio reads do not run an upgrade.",
     "alphalattice.foundation.market_data_ops.storage.world": "Resolve legacy listing identities only for catalog holdings; ordinary Portfolio ledger reads do not open market storage.",
     "alphalattice.capabilities.alpha_modeling.adapters.hist_gradient_boosting": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.capabilities.alpha_modeling.adapters.huber": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
@@ -880,22 +880,22 @@
     "alphalattice.investment.risk_research.experiments.verification": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.investment.risk_research.experiments.window": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.investment.sector_research.inputs.storage": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
-    "alphalattice.kernel.data.calendar": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
-    "alphalattice.kernel.data_layer.arrays": "Load the array door only when a lane is kept, read, carried or settled; dependencies: numpy, pyarrow and blake3.",
-    "alphalattice.kernel.data_layer.inputs": "Load the research-input door only when a binding is kept, held, read, carried or upgraded; dependency: blake3.",
-    "alphalattice.kernel.data_layer.kept_files": "Load a workspace's kept files only when one is read, written, carried or named at admission; it loads the array door.",
-    "alphalattice.kernel.data_layer.history": "Load the Host's history only for a step a Host records; it brings the OpenTelemetry SDK.",
-    "alphalattice.kernel.data_layer.log": "Record a kept worker in its data root only when its first call names the root; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
-    "alphalattice.kernel.data_layer.root": "Name the data root's variable only when a kept worker's call is handed over or run; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
-    "alphalattice.kernel.data_layer.store": "Open the DuckDB/DuckLake writer only when a Host admits world rows or receives or reads native telemetry; ordinary history and CLI startup need no catalog.",
-    "alphalattice.kernel.data_layer.telemetry": "Load decoding only for Host ingest; the data-layer package imports numerical storage dependencies that a spawned launcher must not load before its worker budget.",
-    "alphalattice.kernel.data_layer.spans": "Defer this optional implementation until a Host or a traced worker call records a span; dependencies: opentelemetry-sdk.",
-    "alphalattice.kernel.knowledge.model_store": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
-    "alphalattice.kernel.live_evidence.online_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
+    "alphalattice.capabilities.data.calendar": "Defer this numerical or optional implementation until its owner requests it; dependencies: pyarrow.",
+    "alphalattice.foundation.data_layer.arrays": "Load the array door only when a lane is kept, read, carried or settled; dependencies: numpy, pyarrow and blake3.",
+    "alphalattice.foundation.data_layer.inputs": "Load the research-input door only when a binding is kept, held, read, carried or upgraded; dependency: blake3.",
+    "alphalattice.foundation.data_layer.kept_files": "Load a workspace's kept files only when one is read, written, carried or named at admission; it loads the array door.",
+    "alphalattice.foundation.data_layer.history": "Load the Host's history only for a step a Host records; it brings the OpenTelemetry SDK.",
+    "alphalattice.foundation.data_layer.log": "Record a kept worker in its data root only when its first call names the root; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
+    "alphalattice.foundation.data_layer.root": "Name the data root's variable only when a kept worker's call is handed over or run; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
+    "alphalattice.foundation.data_layer.store": "Open the DuckDB/DuckLake writer only when a Host admits world rows or receives or reads native telemetry; ordinary history and CLI startup need no catalog.",
+    "alphalattice.foundation.data_layer.telemetry": "Load decoding only for Host ingest; the data-layer package imports numerical storage dependencies that a spawned launcher must not load before its worker budget.",
+    "alphalattice.foundation.data_layer.spans": "Defer this optional implementation until a Host or a traced worker call records a span; dependencies: opentelemetry-sdk.",
+    "alphalattice.capabilities.knowledge.model_store": "Defer this numerical or optional implementation until its owner requests it; dependencies: torch.",
+    "alphalattice.evidence.live_evidence.online_sources": "Defer this numerical or optional implementation until its owner requests it; dependencies: selected optional implementation.",
     "alphalattice.oversight.chief_risk_officer.decision.book_evidence": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.protocols.research_authoring.selection": "Read and write the declaration dialect for commands that use YAML documents.",
     "devtools.architecture.git_inputs": "Read exact Git identity only when historical test evidence is requested.",
-    "alphalattice.kernel.data_layer.encoders": "Load the retrieval models only when a recall runs; dependencies: onnxruntime, tokenizers and the installed retrieval-store packs."
+    "alphalattice.foundation.data_layer.encoders": "Load the retrieval models only when a recall runs; dependencies: onnxruntime, tokenizers and the installed retrieval-store packs."
   },
   "private_import_fences": {
     "alphalattice.control.product_host.composition.decision_advancement::<module>": {

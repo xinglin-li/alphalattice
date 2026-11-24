@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from scripts.run_current_universe_onboarding import _latest_common_us_session
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.market_data_ops.runtime import universe_onboarding as onboarding_module
 from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import (
     CurrentUniverseMaintenance,
@@ -40,8 +42,6 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data_layer import history
 from tests.workspace_maintenance.audit_workspace import audit_one
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
@@ -67,11 +67,11 @@ def test_bulk_calendar_preserves_scalar_clocks_hashes_and_cutoff(monkeypatch):
     import exchange_calendars
     import pyarrow as pa
 
-    from alphalattice.kernel.data.calendar import (
+    from alphalattice.capabilities.data.calendar import (
         calendar_schedule_schema,
         canonicalize_calendar_schedule,
     )
-    from alphalattice.kernel.data.errors import DataQualityError
+    from alphalattice.capabilities.data.errors import DataQualityError
 
     periods = (
         (date(2016, 8, 1), date(2026, 8, 3), datetime(2026, 8, 3, 23, tzinfo=UTC)),
@@ -316,7 +316,7 @@ def _bootstrap(
 def test_full_onboarding_resumes_without_refetching_and_freezes_quality_manifest(
     tmp_path, monkeypatch, request
 ) -> None:
-    from alphalattice.kernel.data_layer.store import StorePort
+    from alphalattice.foundation.data_layer.store import StorePort
 
     schedule = materialize_calendar_schedule(
         ("XNAS",),

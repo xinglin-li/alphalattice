@@ -20,9 +20,16 @@ from pathlib import Path
 from typing import Final, Protocol
 from uuid import UUID, uuid4
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    StageDigests,
+    stage_digests,
+)
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping, checkpoint
+from alphalattice.capabilities.domain_contracts.spans import SpanLedger, collect
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
+from alphalattice.foundation.data_layer.history import held
 from alphalattice.kernel.clock import carry_observation, task_observation, utc_now
-from alphalattice.kernel.data_layer.history import held
 from alphalattice.kernel.execution import (
     CANCELLED,
     TIMED_OUT,
@@ -36,13 +43,6 @@ from alphalattice.kernel.resources import (
     carry_resource_lease,
     worker_width,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import (
-    BoundedMemo,
-    StageDigests,
-    stage_digests,
-)
-from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
-from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
 from .child import ChildInterrupted, ChildStartFailed, stop_task_workers
 from .contracts import (

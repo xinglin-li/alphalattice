@@ -9,8 +9,8 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 from ..contracts import (
     MAXIMUM_SOURCE_DOCUMENT_BYTES,

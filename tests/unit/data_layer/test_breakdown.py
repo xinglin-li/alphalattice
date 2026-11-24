@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from alphalattice.kernel.data_layer.breakdown import goal_trace
+from alphalattice.foundation.data_layer.breakdown import goal_trace
 from tests._support.history_fixtures import native_first_use
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/breakdown.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/breakdown.py"
 S = 1_000_000  # microseconds in a second
 
 

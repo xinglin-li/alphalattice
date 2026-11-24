@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from xdist.scheduler import LoadScheduling
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.testing import collection
 from tests.structural.pytest_support import child_environment
 

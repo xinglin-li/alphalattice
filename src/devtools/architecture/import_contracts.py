@@ -19,7 +19,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture.structural import (
     _PHYSICAL_NAMESPACE_GROUPS,
     PackageArchitectureRegistry,

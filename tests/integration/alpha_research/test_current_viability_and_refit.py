@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.evaluation.metrics import (
     FoldScoreVector,
     compute_candidate_metrics,
@@ -25,7 +26,6 @@ from alphalattice.investment.alpha_research.experiments.development_contracts im
 from alphalattice.investment.alpha_research.experiments.policies import load_alpha_metric_policy
 from alphalattice.investment.alpha_research.inputs.folds import AlphaCurrentRefitArrays
 from alphalattice.investment.alpha_research.scores.refit import fit_and_assess_current_alpha
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alpha_research.fixtures import (
     registered_test_cards,
     synthetic_prepared_arrays,

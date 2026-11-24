@@ -35,7 +35,7 @@ _CONTEXT_STATE = {
     "src/alphalattice/interface/local_application/cli_contract.py::READ_VIEW",  # a view binding
     "src/alphalattice/interface/local_application/call_span.py::_REPLACED",  # span names
     "src/alphalattice/foundation/market_data_ops/storage/world_reads.py::_UPDATES",  # callbacks
-    "src/alphalattice/kernel/data_layer/history_alpha_arrays.py::_ALPHA_PARTS",  # parts to write
+    "src/alphalattice/foundation/data_layer/history_alpha_arrays.py::_ALPHA_PARTS",  # parts
 }
 
 # What a cache's source holds its size to: a count, an owner's capacity it does not spell as a
@@ -246,7 +246,7 @@ def _bounded() -> None:
 
 
 def _keyed(tmp_path: Path) -> None:
-    from alphalattice.kernel.shared_kernel.project_layout import json_file
+    from alphalattice.capabilities.domain_contracts.project_layout import json_file
 
     resource = tmp_path / "resource.json"
     resource.write_text('{"words": "one"}', encoding="utf-8")

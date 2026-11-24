@@ -13,6 +13,8 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.maintenance.contracts import (
     ListingMarketDataChange,
@@ -139,8 +141,6 @@ from alphalattice.foundation.research_foundation.contracts import (
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"

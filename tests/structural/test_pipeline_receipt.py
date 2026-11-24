@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from scripts import pipeline as cli
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline import receipt
 
 ROOT = Path(__file__).resolve().parents[2]

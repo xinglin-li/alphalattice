@@ -12,13 +12,13 @@ from fractions import Fraction
 from itertools import pairwise
 from typing import Final, Literal
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
 DailyPriceBasis = Literal["unadjusted", "split_adjusted"]
 _RAW_BAR_FIELDS: Final = tuple(item.name for item in fields(RawDailyBar))

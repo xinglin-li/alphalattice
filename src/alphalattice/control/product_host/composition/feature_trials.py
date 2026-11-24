@@ -32,6 +32,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_experiments import (
     ENVELOPE_SCHEMA_ID,
@@ -60,7 +61,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     FactorCurationRequest,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")

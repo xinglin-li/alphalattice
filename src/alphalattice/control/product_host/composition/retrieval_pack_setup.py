@@ -30,11 +30,11 @@ import argparse
 import sys
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.interface.local_application.cli_contract import join, shell, worded
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.read_views import emit_owner
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN = resolve_playpen_root(Path(__file__))
 

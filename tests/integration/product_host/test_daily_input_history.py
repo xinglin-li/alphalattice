@@ -352,11 +352,11 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
     the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
     from contextlib import nullcontext
 
+    from alphalattice.capabilities.domain_contracts import identity_successors
     from alphalattice.control.product_host.composition import strategy_scoring as scoring
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AdmittedRenewingInference as Renewing,
     )
-    from alphalattice.kernel.shared_kernel import identity_successors
 
     inference, captured = object.__new__(Renewing), {}
     inference.authority = SimpleNamespace(
@@ -425,7 +425,7 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     """A head written without the optional proof parts is sealed as before (its JSON without
     them), verifies on load and reuses whole when its prefix proof holds. A head from before the
     proof's v3 kind never holds it, so the first update after upgrading is cold once."""
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     prepared = _capture(daily_workspace, FIRST, WIDE[:1])
@@ -463,7 +463,7 @@ def _legacy(store, snapshot):
 def test_three_consecutive_days_write_only_their_last_frozen_block(
     daily_workspace, monkeypatch, upgraded
 ):
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     folder = history.data_root() / "blobs"

@@ -32,11 +32,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import parse_qsl, unquote, urlsplit
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN: Path = resolve_playpen_root(Path(__file__))
 LOCK = PLAYPEN / "uv.lock"

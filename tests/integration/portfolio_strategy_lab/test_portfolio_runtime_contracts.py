@@ -294,7 +294,7 @@ def test_a_read_back_projection_keeps_the_update_owner_invariants(tmp_path: Path
 
     from pydantic import ValidationError
 
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     published = WorkspaceProgressPublisher(tmp_path).publish(
         WorkProgressUpdate(
@@ -415,7 +415,7 @@ def test_portfolio_artifact_readers_keep_missing_corrupt_and_invalid_distinct(
     with pytest.raises(PortfolioPublicationError, match=r"^content_store\.identity_invalid$"):
         load("bad-hash")
     if reader in {"columns", "packed"}:  # a lane's body is the door's, under the data root
-        from alphalattice.kernel.data_layer import history
+        from alphalattice.foundation.data_layer import history
 
         identity = store.publish_array(category=category, values=np.arange(3.0))
         history.flush()  # a lane's body is placed when its batch commits
@@ -443,6 +443,7 @@ def test_indexed_missing_content_is_lost_work_and_not_a_tampered_index(
 ) -> None:
     """BEHAVIOUR: all six persisted index readers distinguish a lost child from a bad index."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
     from alphalattice.investment.portfolio_strategy_lab.publication.advancement_ledger import (
         AdvancementLedgerStore,
@@ -450,7 +451,6 @@ def test_indexed_missing_content_is_lost_work_and_not_a_tampered_index(
     from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
         PortfolioLedgerStore,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     program, child = "a" * 64, "b" * 64
     spec, authorities = "c" * 64, "d" * 64

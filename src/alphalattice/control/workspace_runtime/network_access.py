@@ -19,12 +19,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal
 
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
-from alphalattice.kernel.shared_kernel.environment import (
+from alphalattice.capabilities.domain_contracts.environment import (
     OFFLINE_SWITCH,
     offline,
     running_held_offline,
 )
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 
 NETWORK_SWITCH = OFFLINE_SWITCH
 CONTROL_PATH = Path("runtime") / "network-access.json"

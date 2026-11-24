@@ -23,13 +23,13 @@ from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING
 
-from alphalattice.kernel import storage
-from alphalattice.kernel.resources import cpu_width, current_resource_lease
-from alphalattice.kernel.shared_kernel.environment import (
+from alphalattice.capabilities.domain_contracts.environment import (
     duckdb_thread_config,
     set_duckdb_pool_width,
     thread_share,
 )
+from alphalattice.kernel import storage
+from alphalattice.kernel.resources import cpu_width, current_resource_lease
 
 if TYPE_CHECKING:
     import duckdb

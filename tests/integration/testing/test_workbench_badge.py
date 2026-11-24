@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.verification_sweep import SWEEP_TASK_KIND
 from alphalattice.control.task_control.contracts import (
@@ -24,7 +25,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel import storage
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab import local_web_support as web
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.node_runner import run_node

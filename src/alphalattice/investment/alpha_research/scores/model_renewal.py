@@ -35,6 +35,8 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.workspace_runtime.content_store import (
     verified_array_read_scope,
     verified_npz_arrays,
@@ -93,8 +95,6 @@ from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 type FloatArray = npt.NDArray[np.float64]
 

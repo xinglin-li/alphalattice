@@ -569,7 +569,7 @@ rules:
     languages: [python]
     paths:
       include:
-        - "/src/alphalattice/kernel/data_layer/"
+        - "/src/alphalattice/foundation/data_layer/"
         - "/src/alphalattice/**/storage/"
     pattern-either:
       - pattern: |

@@ -9,8 +9,8 @@ from contextvars import ContextVar
 from time import monotonic
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.activity import OperationSpan, refusal_code
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 # The client waits 120 seconds; leave 30 seconds for the response and other work.
 SUBMISSION_WAIT_SECONDS = 90.0

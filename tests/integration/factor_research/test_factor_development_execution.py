@@ -30,6 +30,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.research_program.authoring.workflow import ResearchEvidenceStore
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FactorExperimentCompiler,
@@ -58,7 +59,6 @@ from alphalattice.foundation.feature_engine.producers.factors.open_intraday impo
 from alphalattice.foundation.feature_engine.producers.factors.registry import (
     factor_methodology_hash,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

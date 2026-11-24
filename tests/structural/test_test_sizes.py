@@ -13,11 +13,12 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from tests.structural.pytest_support import child_environment, descriptor_provenance
 from tests.structural.size_fixture_support import (
     _CASES,
     ADMISSION_CASES,
+    ADMISSION_IDS,
     DECLARED_CASES,
     HELD,
     HOLDER_CASES,
@@ -1886,10 +1887,7 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
     "testing.unregistered_test_refused_with_its_find",
     "testing.row_admitted_or_refused_by_its_check",
 )
-@pytest.mark.parametrize(
-    ("case", "edit", "refused"),
-    ADMISSION_CASES,
-)
+@pytest.mark.parametrize(("case", "edit", "refused"), ADMISSION_CASES, ids=ADMISSION_IDS)
 def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
     tmp_path, case, edit, refused, monkeypatch
 ):
@@ -2069,11 +2067,15 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         "lower_layer": "Only a served Host on a real loopback port shows the reuse.",
     }
     decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
+    prior = json.loads(base)["entries"]
+    if case == "retired-history":  # an existing row whose owner's package has since moved away
+        case = "nowhere.port_reuse"
+        prior[case] = row | {"owner": "nowhere"}
     if edit is None:
         del entries[case]
     else:
         entries[case] = row | edit | (decided if edit.get("exception") == "decided" else {})
-    found = r.admission(tmp_path, entries, json.loads(base)["entries"])
+    found = r.admission(tmp_path, entries, prior)
     assert (refused in " ".join(found)) if refused else found == []
 
 
@@ -2271,7 +2273,7 @@ def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed()
     fast, slow = f"{guard}::test_fast", f"{guard}::test_slow"
     rule = {"reason": "why", "reads": ["src/*"], "slow": [f"{slow}*"]}
     policy = {**sizes.load_policy(Path(__file__).resolve().parents[2]), "whole_tree_guards": rule}
-    source = frozenset({"src/alphalattice/kernel/data/calendar.py"})
+    source = frozenset({"src/alphalattice/capabilities/data/calendar.py"})
     assert sizes.moved(fast, policy) and sizes.included(fast, "medium", "merge", policy, source)
     assert not sizes.included(fast, "medium", "merge", policy, frozenset({"tests/README.md"}))
     assert not sizes.included(slow, "medium", "merge", policy, source)

@@ -18,25 +18,25 @@ from unittest.mock import patch
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import (
     create_data_root,
     history,
     market_health,
     reading,
     return_series,
 )
-from alphalattice.kernel.data_layer import log as log_module
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.data_layer.project import lineage, recipe_key
-from alphalattice.kernel.data_layer.reading import compare, reading_session
-from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
+from alphalattice.foundation.data_layer import log as log_module
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog, uuid7
+from alphalattice.foundation.data_layer.project import lineage, recipe_key
+from alphalattice.foundation.data_layer.reading import compare, reading_session
+from alphalattice.foundation.data_layer.store import StorePort, as_columns, stage
 from tests.integration.data_layer import test_project as project_fixture
 from tests.integration.data_layer.analytics_view_values import EXPECTED
 from tests.integration.data_layer.test_project import AGENT, T0, _aftermath, _define, _research
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/reading.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/reading.py"
 
 
 @pytest.mark.proves("data_layer.daily_market_health_counts_catalog_failures")

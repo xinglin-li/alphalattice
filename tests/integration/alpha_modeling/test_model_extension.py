@@ -18,13 +18,13 @@ import pytest
 from alphalattice.capabilities.alpha_modeling.extension import EXTENSION_PACKAGE
 from alphalattice.capabilities.alpha_modeling.model_contract import STATE_CONTRACT, check_model
 from alphalattice.capabilities.alpha_modeling.model_scaffold import scaffold_model
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.research_authoring.model_extensions import (
     ModelExtensionRegistry,
     ModelExtensions,
     ModelSandboxRecord,
     activated_models,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 ROOT = resolve_playpen_root(Path(__file__))
 MODEL = "numpy_ridge_probe"

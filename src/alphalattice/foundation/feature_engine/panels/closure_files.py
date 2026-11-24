@@ -16,12 +16,12 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family, workspace_files
-from alphalattice.kernel.shared_kernel.persistence import (
+from alphalattice.capabilities.domain_contracts.persistence import (
     DURABLE_REPLACE_DELAYS,
     replace_with_retry,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.upgrade import PROGRESS, Family, workspace_files
 
 CLOSURE: Final = Path("artifacts", "feature-panel", "closure")
 """A workspace's own closure root, under its folder."""
@@ -176,7 +176,7 @@ def _moved_by(runner: Any, held: str) -> bool:
     follows the run's durable start (`upgrade.progress` `started`), which a resumed run keeps.
     A cutover carried by a copy, or moved by an earlier run, precedes it. A run with no start
     recorded (a family driven outside the runner) owns every cutover."""
-    import alphalattice.kernel.data_layer.kept_files as kept_files  # lazy: the array door
+    import alphalattice.foundation.data_layer.kept_files as kept_files  # lazy: the array door
 
     started = runner.log.read(
         "SELECT min(seq) FROM event WHERE type = ? AND subject_id = ?"

@@ -19,6 +19,14 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    resolve_playpen_root,
+    runtime_json,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
@@ -147,11 +155,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.advancement_ledg
     AdvancementLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
-from alphalattice.kernel.shared_kernel.spans import span
 
 SCHEMA = DECISION_ADVANCEMENT_SCHEMA
 STAGES = (

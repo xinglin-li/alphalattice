@@ -10,6 +10,12 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.screening_statistics import (
+    average_ranks,
+    gross_decile_spread,
+    spearman_rank_correlation,
+)
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeManifest,
     CausalExecutionOutcomeMarker,
@@ -60,12 +66,6 @@ from alphalattice.foundation.factor_research.programs.walk_forward import (
     FactorWalkForwardBoundaryError,
     build_factor_walk_forward_policy,
     compile_factor_walk_forward_plan,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.screening_statistics import (
-    average_ranks,
-    gross_decile_spread,
-    spearman_rank_correlation,
 )
 from tests.factor_research_pipeline_correctness.walk_forward_source import (
     _manifest,

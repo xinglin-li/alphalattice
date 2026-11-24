@@ -20,16 +20,16 @@ from uuid import uuid4
 import psutil
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
 )
 from alphalattice.interface.local_application.retrieval_environment import interpreter_path
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel import spawn
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import serve_conflict

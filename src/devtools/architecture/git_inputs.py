@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping
 from functools import cached_property
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.testing.layout import rule_patterns  # the mover's own rule projection
 from devtools.testing.requirements import LAYOUT_SCHEMA, schema_file
 

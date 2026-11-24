@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli, cli_contract, client
 from alphalattice.interface.local_application.cli_contract import envelope
-from alphalattice.kernel.shared_kernel import spawn
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
 CLAIM = "HISTORICAL_SAVED_ANSWER_NOT_REVERIFIED"

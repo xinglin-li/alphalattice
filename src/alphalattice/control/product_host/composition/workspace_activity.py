@@ -48,6 +48,9 @@ from uuid import UUID, uuid4
 
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
@@ -88,6 +91,10 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.timing import read_stage_spans, stage_spans_path
 from alphalattice.control.task_control.upgrade import set_aside
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.admit import SECRET_NAME
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
     ExternalActivityEventDocument,
@@ -131,15 +138,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 from alphalattice.interface.local_application.questions import asked_questions, person_question
 from alphalattice.kernel.clock import clock_metadata, utc_now
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.admit import SECRET_NAME
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 """Under `<workspace>/runtime`, the same store the Desk publishers use."""
 

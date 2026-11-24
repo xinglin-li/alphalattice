@@ -11,13 +11,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
     DynamicPanelFoldDossier,
     DynamicPanelScaleReceipt,
     dynamic_panel_array_identity,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .dynamic_panel_campaign import (
     DynamicPanelModelCampaignDossier,

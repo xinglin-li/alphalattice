@@ -22,7 +22,7 @@ from pathlib import Path
 
 import psutil
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 HOST_MODULE = "alphalattice.control.product_host.composition.web_launcher"
 """The module a detached Host runs as (web_launcher._detach's command)."""

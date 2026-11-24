@@ -21,6 +21,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.product_host.composition.feature_trials import FeatureTrial, FeatureTrials
 from alphalattice.control.product_host.composition.result_standing import packet_standing
 from alphalattice.control.product_host.publication.goals import GoalStore
@@ -65,9 +68,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.catalog impo
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _LISTING_PAGE = 50
 """Formula factors one page of `FEATURE_EXTENSIONS` lists: the Local Web's table page."""

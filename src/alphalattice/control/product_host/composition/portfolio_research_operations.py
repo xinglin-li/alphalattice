@@ -31,6 +31,9 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.environment import file_trust
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import source_read_admission
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
 from alphalattice.control.product_host.composition.answer_turns import (
@@ -276,9 +279,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 )
 from alphalattice.kernel.door import DoorPort, DoorRefusal, question_key
 from alphalattice.kernel.execution import EVENTS, TIMERS, EventDeadline, Timers
-from alphalattice.kernel.shared_kernel.environment import file_trust
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.source_identity import source_read_admission
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
@@ -1173,7 +1173,7 @@ class PortfolioResearchOperations:
 
     def _maintain_catalog(self) -> None:
         """Use the writer and backup holds after Tasks and automatic backup."""
-        from alphalattice.kernel.data_layer.history import store  # lazy: on use
+        from alphalattice.foundation.data_layer.history import store  # lazy: on use
 
         if self.dispatcher.stop_requested():
             return

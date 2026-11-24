@@ -13,6 +13,7 @@ from typing import Any
 
 import pandas as pd
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -23,7 +24,6 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,

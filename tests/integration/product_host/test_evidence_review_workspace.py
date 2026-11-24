@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
     verify_evidence_review_workspace,
@@ -31,7 +32,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceManifest,
 )
-from alphalattice.kernel.shared_kernel import spawn
 from tests.alternative_evidence_desk.review_package import (
     CAPABILITY_HASH,
     _package,
@@ -1234,13 +1234,13 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
 
 
 def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, monkeypatch, capsys):
+    from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
     from alphalattice.control.product_host.composition import entry as run_alphalattice
     from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
     from alphalattice.interface.local_application import retrieval_environment
-    from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
     binding, _registry = _package(tmp_path)
     publish_research_workspace_manifest(

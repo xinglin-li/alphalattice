@@ -986,7 +986,13 @@ def admission(
     idf = _idf(at.entries)
     for key in changed:
         row, mine = rows[key], at.entries[f"R {key}"]
-        found += [f"TEST-REGISTRY {key} is refused: {why}." for why in _checks(key, row, owners)]
+        # A row retiring with the owner it already had keeps that owner as history: keys never
+        # change, and the package may have moved since. Every other check stands.
+        history = row.get("retired") and before.get(key, {}).get("owner") == row["owner"]
+        found += [
+            f"TEST-REGISTRY {key} is refused: {why}."
+            for why in _checks(key, row, owners | ({row["owner"]} if history else set()))
+        ]
         found += lower_layer(key, row, before.get(key))
         twins = [
             other.partition(" ")[2]

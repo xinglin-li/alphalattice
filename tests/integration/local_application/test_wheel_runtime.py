@@ -23,6 +23,7 @@ from markdown_it import MarkdownIt
 from scripts.release import install_smoke, wheel_smoke
 from scripts.release.wheel_build import resource_files, runtime_requirements
 
+from alphalattice.capabilities.domain_contracts import project_layout, spawn
 from alphalattice.control.product_host.composition import (
     entry,
     evidence_authority_setup,
@@ -38,7 +39,6 @@ from alphalattice.interface.local_application import (
     thin_cli,
 )
 from alphalattice.kernel.config import DATA_ROOT_ENV, Change, override
-from alphalattice.kernel.shared_kernel import project_layout, spawn
 from tests.portfolio_strategy_lab.cli_support import _agent_project
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -653,17 +653,17 @@ def test_resource_names_and_printed_commands_survive_the_installed_layout(
 ) -> None:
     """Control: Installed layouts retain canonical resources and usable printed commands."""
     installed = tmp_path / "site-packages/alphalattice/_runtime"
-    source = installed.parent / "kernel/shared_kernel/source_identity.py"
+    source = installed.parent / "capabilities/domain_contracts/source_identity.py"
     assert project_layout.source_root(installed) == tmp_path / "site-packages"
     assert (
         project_layout.resource_path(
-            installed, "src/alphalattice/kernel/shared_kernel/source_identity.py"
+            installed, "src/alphalattice/capabilities/domain_contracts/source_identity.py"
         )
         == source
     )
     assert (
         project_layout.tracked_path(installed, source)
-        == "src/alphalattice/kernel/shared_kernel/source_identity.py"
+        == "src/alphalattice/capabilities/domain_contracts/source_identity.py"
     )
     assert project_layout.tracked_path(installed, installed / "uv.lock") == "uv.lock"
     for name in ("", "../outside", str(tmp_path.resolve())):

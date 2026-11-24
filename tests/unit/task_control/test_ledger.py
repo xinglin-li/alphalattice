@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -14,7 +15,6 @@ from alphalattice.control.task_control.ledger import (
     TaskAdmissionRequest,
     read_frozen,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 TEST_SOURCE = "src/alphalattice/control/task_control/ledger.py"
 

@@ -776,8 +776,8 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
 ) -> None:
     """Control: Changed pointer outlives transient sharing violation and refuses lasting one."""
 
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 
     catalog, _store, artifact_store, ledger, _coordinator = _fixture(tmp_path)
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
@@ -876,8 +876,8 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
 def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
     tmp_path, monkeypatch, kind
 ):
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 
     store = PanelClosureArtifactStore(ArtifactResolver(root=tmp_path))
     content_hash = _hash("publication")
@@ -909,8 +909,8 @@ def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
 
 
 def test_shared_replace_preserves_the_default_catalog_bound(tmp_path, monkeypatch):
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 
     waits = []
 

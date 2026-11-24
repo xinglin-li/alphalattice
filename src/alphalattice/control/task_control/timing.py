@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
     TaskRecord,
@@ -31,7 +32,6 @@ from alphalattice.control.task_control.contracts import (
     WorkItemState,
 )
 from alphalattice.kernel.clock import clock_metadata
-from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
 
 from .upgrade import import_telemetry
 from .upgrade import read_task_telemetry as read_task_telemetry

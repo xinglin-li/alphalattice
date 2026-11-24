@@ -25,10 +25,10 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
+from alphalattice.foundation.data_layer import history, history_execution_outcomes, history_startup
+from alphalattice.foundation.data_layer.upgrade import PROGRESS, Family, UpgradeRunner
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
-from alphalattice.kernel.data_layer import history, history_execution_outcomes, history_startup
-from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family, UpgradeRunner
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 
 TEST_SOURCE = "src/alphalattice/control/product_host/composition/first_start.py"
@@ -328,9 +328,9 @@ def test_a_workspace_holding_no_old_data_is_asked_once_per_folder(
 def test_first_start_reuses_only_the_recorded_family_inputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, witness: str
 ) -> None:
-    from alphalattice.kernel.data.errors import DataError
-    from alphalattice.kernel.data_layer import create_data_root
-    from alphalattice.kernel.data_layer.log import HostLog
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.foundation.data_layer import create_data_root
+    from alphalattice.foundation.data_layer.log import HostLog
 
     root, workspace, manifestless = (tmp_path / name for name in ("data", "workspace", "unnamed"))
     create_data_root(root)
@@ -479,13 +479,13 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
 
     import pyarrow as pa
 
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.foundation.causal_outcomes.execution.contracts import (
         CausalExecutionOutcomeChunk,
         CausalExecutionOutcomeManifest,
         CausalExecutionOutcomeMarker,
     )
-    from alphalattice.kernel.data.errors import DataError
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     outcomes, address = tmp_path / OUTCOMES, "playpen://data-operations/execution-outcomes/"
 

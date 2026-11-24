@@ -12,6 +12,7 @@ from typing import Any, get_args
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.cli import request_of
 from alphalattice.interface.local_application.native_setup import declare_project
@@ -19,7 +20,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel import spawn
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 

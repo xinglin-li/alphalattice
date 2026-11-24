@@ -38,6 +38,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE as ANSWER_LANGUAGE,
 )
@@ -52,9 +55,6 @@ from alphalattice.interface.local_application.web import (
     OPEN_THE_WORKBENCH,
 )
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
-from alphalattice.kernel.shared_kernel.waits import pause
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files

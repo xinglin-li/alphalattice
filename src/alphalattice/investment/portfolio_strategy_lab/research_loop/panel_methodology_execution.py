@@ -32,6 +32,7 @@ from alphalattice.capabilities.causal_inputs.schedules import (
     resolve_installed_schedule_handle,
     resolve_strategy_decision_schedule,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
 )
@@ -146,7 +147,6 @@ from alphalattice.investment.risk_research.experiments.temporal import (
     risk_covariance_authority,
 )
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

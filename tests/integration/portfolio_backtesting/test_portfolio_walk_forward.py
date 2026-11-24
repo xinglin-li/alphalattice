@@ -15,13 +15,13 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     PortfolioScoreMode,
     PortfolioStrategyLabMandate,
     TopKEqualWeightPolicy,
     seal_contract,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
@@ -423,6 +423,7 @@ def _publish_operational_tradability(  # type: ignore[no-untyped-def]
 ):
     """Publish one tiny exact bundle through the real Tradability owner."""
 
+    from alphalattice.capabilities.data.enums import ExecutionSessionStatus
     from alphalattice.capabilities.portfolio_inputs.tradability.contracts import (
         DecisionTradabilityStatus,
         ExecutionObservationMethod,
@@ -434,7 +435,6 @@ def _publish_operational_tradability(  # type: ignore[no-untyped-def]
     from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
         TradabilityArtifactStore,
     )
-    from alphalattice.kernel.data.enums import ExecutionSessionStatus
 
     store = TradabilityArtifactStore(artifact_root)
     intended = tuple(value + timedelta(days=1) for value in sessions)
@@ -1692,7 +1692,7 @@ def test_the_mark_surface_publishes_reads_and_reverifies_every_block(tmp_path: P
         store.load_manifest(_HASHES[1])
 
     # --- what a *tampered block* refuses, on the way out ---------------------
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     def _row_identity(row: dict[str, object]) -> str:
         # The formula a forger follows: the canonical hash of the row's six columns.

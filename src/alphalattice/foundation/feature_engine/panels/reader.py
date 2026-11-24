@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.panels.identity import (
@@ -19,7 +20,6 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
 
 if TYPE_CHECKING:
     pass

@@ -8,12 +8,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.storage.contracts import (
     PhysicalAvailability,
     StorageEvictionPlan,
 )
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 

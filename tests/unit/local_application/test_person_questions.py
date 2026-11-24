@@ -50,8 +50,8 @@ def test_a_network_stop_asks_the_person_only_when_their_yes_can_open_it(tmp_path
     """The coded network question is put only where the person's yes opens the network."""
     from datetime import UTC, datetime
 
+    from alphalattice.capabilities.domain_contracts.environment import OFFLINE_SWITCH
     from alphalattice.control.workspace_runtime.network_access import set_network_access
-    from alphalattice.kernel.shared_kernel.environment import OFFLINE_SWITCH
 
     now = datetime(2026, 11, 6, 21, tzinfo=UTC)
     monkeypatch.delenv(OFFLINE_SWITCH, raising=False)

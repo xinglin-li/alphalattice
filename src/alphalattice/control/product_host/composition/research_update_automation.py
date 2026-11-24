@@ -19,6 +19,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -45,7 +46,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.kernel.execution import TIMERS, Timers
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class ResearchUpdateAutomationSettings(BaseModel):  # type: ignore[misc]

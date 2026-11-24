@@ -32,10 +32,10 @@ EXCLUDED_POSITIVE = {
         "decision_advancement.py:290-293; internal WAIT carries StageExecutionResult, "
         "not a public failure"
     ),
-    "alphalattice.kernel.knowledge.model_store._RetryableStatus": (
+    "alphalattice.capabilities.knowledge.model_store._RetryableStatus": (
         "model_store.py:464-465,482; numeric HTTP status controls transfer retry, not an owner code"
     ),
-    "alphalattice.kernel.shared_kernel.domain.errors.RegisteredCodeError": (
+    "alphalattice.capabilities.domain_contracts.domain.errors.RegisteredCodeError": (
         "domain/errors.py:48-50,65-68; abstract category/label/codes require "
         "a concrete registered subclass"
     ),

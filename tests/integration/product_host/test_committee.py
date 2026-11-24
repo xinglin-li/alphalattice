@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
 from alphalattice.control.product_host.composition import (
     committee,
@@ -49,6 +50,7 @@ from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.verified_readbacks import VerifiedReadbacks
+from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
@@ -73,8 +75,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
-from alphalattice.kernel.data_layer import history as data_history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
 from tests.portfolio_strategy_lab.node_runner import run_node
@@ -133,9 +133,9 @@ def _registered(listings: tuple[str, ...]) -> None:
     catalog keeps Risk only over listings it holds."""
     import pyarrow as pa
 
+    from alphalattice.foundation.data_layer.chain import canonical
+    from alphalattice.foundation.data_layer.store import stage
     from alphalattice.foundation.market_data_ops.storage.world import world_listing
-    from alphalattice.kernel.data_layer.chain import canonical
-    from alphalattice.kernel.data_layer.store import stage
 
     log, port = data_history.held(), data_history.store()
     key = {"family": "provider", "name": "committee-fixture", "version": 1}
@@ -242,8 +242,8 @@ def risk_source(
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
     """A wider or differently ordered book never borrows another book's cached label axis."""
+    from alphalattice.capabilities.quant.sector_history import SectorHistory
     from alphalattice.control.product_host.research_authoring import execution
-    from alphalattice.kernel.quant.sector_history import SectorHistory
 
     context.configure_projection_memos(capacity=1)
     request.addfinalizer(context.configure_projection_memos)

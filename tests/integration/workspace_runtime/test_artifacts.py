@@ -8,10 +8,10 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts import identity_successors
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import IdentityMove
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
-from alphalattice.kernel.shared_kernel import identity_successors
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import IdentityMove
 
 TEST_SOURCE = "src/alphalattice/control/workspace_runtime/artifacts.py"
 

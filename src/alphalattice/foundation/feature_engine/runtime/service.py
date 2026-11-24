@@ -12,6 +12,10 @@ from datetime import UTC, date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
+from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed, child_calls
@@ -141,10 +145,6 @@ from alphalattice.kernel.resources import (
     current_resource_lease,
     worker_width,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
-from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 if TYPE_CHECKING:
     import pandas as pd

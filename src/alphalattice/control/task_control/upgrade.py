@@ -19,15 +19,15 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.history import data_root, held, holding
+from alphalattice.foundation.data_layer.log import attach, uuid7
+from alphalattice.foundation.data_layer.project import registry_us
+from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.history import data_root, held, holding
-from alphalattice.kernel.data_layer.log import attach, uuid7
-from alphalattice.kernel.data_layer.project import registry_us
-from alphalattice.kernel.data_layer.upgrade import Family
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
     TaskExecution,
@@ -828,7 +828,7 @@ def record_task_telemetry(path: Path, row: Mapping[str, Any]) -> None:
         get_current_span,
     )
 
-    from alphalattice.kernel.data_layer.spans import (  # lazy: the SDK, only while recording
+    from alphalattice.foundation.data_layer.spans import (  # lazy: the SDK, only while recording
         step_event,
     )
 

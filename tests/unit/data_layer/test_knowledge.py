@@ -7,10 +7,10 @@ from contextlib import contextmanager
 import numpy as np
 import pytest
 
-from alphalattice.kernel.data_layer import knowledge
-from alphalattice.kernel.data_layer.knowledge import Chunk, SearchHit, WordCounts, fuse
+from alphalattice.foundation.data_layer import knowledge
+from alphalattice.foundation.data_layer.knowledge import Chunk, SearchHit, WordCounts, fuse
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/knowledge.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/knowledge.py"
 
 
 @pytest.mark.proves("data_layer.knowledge_chunks_preserve_character_offsets")

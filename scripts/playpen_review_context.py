@@ -9,7 +9,7 @@ from pathlib import Path
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 
 
 def _git(*args: str) -> str:

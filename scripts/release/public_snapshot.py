@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 MANIFEST_SCHEMA = "alphalattice.release.public-manifest"
 PROVENANCE_SCHEMA = "alphalattice.release.snapshot-provenance"

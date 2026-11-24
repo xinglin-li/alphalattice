@@ -77,7 +77,7 @@
     "experience.hypothesis_goal": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to a different goal from this request.", "zh-CN": "该假设所属的目标与本次请求不同。"}},
     "experience.hypothesis_existing_run": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "zh-CN": "该研究已有与其他假设关联的运行；复用不能更改其历史。"}},
     "upgrade.refused": {
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
@@ -140,11 +140,11 @@
       "words": {"en": "The update has not reached the {subject} stage. Wait for its Task, then read again.", "zh-CN": "更新尚未到达 {subject} 阶段。请等待该任务完成后再读取。"}
     },
     "retrieval.legacy_canary_rebuild": {
-      "owner": "alphalattice.kernel.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
+      "owner": "alphalattice.capabilities.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
       "words": {"en": "the {subject} session's canary differs from the sealed canary at {subject} intra-op threads, the CPU budget's share: this machine's runtime moves a retrieval number; rebuild the index with the current int8 recipe", "zh-CN": "{subject} 会话在 CPU 预算分配的 {subject} 个运算线程下，其金丝雀结果与封存值不同：此机器的运行环境改变了检索数值；请使用当前的 int8 配方重建索引。"}
     },
     "data_layer.extension_unavailable": {
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
@@ -162,11 +162,11 @@
       }
     },
     "shared.wait.stopped": {
-      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The wait was stopped before its bound, as its owner asked; nothing it waited for was changed. Send the request again when it is wanted.", "zh-CN": "等待在到达上限前按其所有者的要求停止；所等待的内容没有任何改变。需要时请再次发送该请求。"}
     },
     "shared.wait.timeout": {
-      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The wait reached its bound before what it waited for; that work may still finish. Read its status, then wait again.", "zh-CN": "等待在所等待的内容出现前到达了上限；该工作仍可能完成。请读取它的状态，然后再次等待。"}
     },
     "cli.max_wait_invalid": {

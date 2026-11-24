@@ -12,6 +12,15 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, cast
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    WINSOR_MULTIPLIER,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
@@ -33,15 +42,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelMaterialization,
     cross_section_policy_hash,
 )
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    WINSOR_MULTIPLIER,
-)
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span
 
 if TYPE_CHECKING:
     import pandas as pd

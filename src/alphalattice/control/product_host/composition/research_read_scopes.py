@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 
 TRIALS_DIRECTORY = Path("runtime") / "feature-trials"
 

@@ -26,6 +26,7 @@ from pydantic import (
 )
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.portfolio_research import (
     PersonConfirmation,
@@ -34,7 +35,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.questions import person_question, relayed_question
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import identity_blake3
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
     "DATA_FEATURES", "FACTOR_FOUNDATION", "ALPHA", "RISK", "PORTFOLIO", "EVIDENCE_CRO"
@@ -448,10 +448,10 @@ def _earliest_entry(formation: date) -> str | None:
     """The first entry whose formation's ten-year history the calendars plan, when this
     formation's history would start before their first session; else nothing."""
 
+    from alphalattice.capabilities.data.calendar import SUPPORTED_CALENDARS
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
         history_floor,
     )
-    from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)

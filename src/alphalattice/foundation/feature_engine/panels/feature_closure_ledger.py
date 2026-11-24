@@ -10,6 +10,8 @@ from typing import cast
 import pyarrow as pa
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
     arrow_table_logical_hash,
@@ -34,8 +36,6 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
     SectorRevisionMapActivationReceipt,
 )
 from alphalattice.foundation.feature_engine.panels.sector_classification import classified
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FeatureClosureLedger:

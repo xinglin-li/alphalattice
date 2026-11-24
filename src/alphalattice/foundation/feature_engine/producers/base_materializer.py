@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Final
 
 import numpy as np
 
+from alphalattice.capabilities.quant.factor_formulas import (
+    ANNUALIZATION,
+    REASON_INSUFFICIENT_HISTORY,
+    REASON_MARKET_ALIGNMENT,
+    REASON_ZERO_DENOMINATOR,
+)
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     MARKET_DEPENDENT_FACTOR_IDS,
     FeatureCatalog,
@@ -28,12 +34,6 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
-from alphalattice.kernel.quant.factor_formulas import (
-    ANNUALIZATION,
-    REASON_INSUFFICIENT_HISTORY,
-    REASON_MARKET_ALIGNMENT,
-    REASON_ZERO_DENOMINATOR,
-)
 
 if TYPE_CHECKING:
     import pandas as pd

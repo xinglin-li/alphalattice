@@ -3,9 +3,9 @@
 from contextlib import closing
 from pathlib import Path
 
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.data_layer.root import duckdb_session
-from alphalattice.kernel.data_layer.store import StorePort
+from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.root import duckdb_session
+from alphalattice.foundation.data_layer.store import StorePort
 
 
 def assert_old_receipt_catalog_opens(root: Path) -> None:

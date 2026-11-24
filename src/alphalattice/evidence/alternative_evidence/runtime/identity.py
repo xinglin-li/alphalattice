@@ -12,6 +12,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     CROAlternativeEvidencePackage,
 )
@@ -43,9 +46,6 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceDocumentSet,
     AcquiredEvidenceSourceReferenceSet,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 
 def alternative_evidence_playpen_root(source_path: Path) -> Path:
@@ -247,7 +247,7 @@ def alternative_document_binding_hash(playpen_root: Path) -> str:
                 # The store's revisions are bound by content: each revision's SHA-256 is in
                 # the snapshot the document set seals (LAWS.md ID8).
                 "workspace_owners": _files(
-                    playpen_root, ("src/alphalattice/kernel/live_evidence/online_sources.py",)
+                    playpen_root, ("src/alphalattice/evidence/live_evidence/online_sources.py",)
                 ),
             }
         )

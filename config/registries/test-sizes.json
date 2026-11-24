@@ -86,7 +86,7 @@
     "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair": {
       "inputs": [
         "src/devtools/architecture/moved_names.py",
-        "src/alphalattice/kernel/shared_kernel/project_layout.py"
+        "src/alphalattice/capabilities/domain_contracts/project_layout.py"
       ]
     },
     "tests/structural/test_owner_source_shape.py::test_every_fit_plan_call_site_states_its_protocol": {
@@ -2509,19 +2509,19 @@
         "src/alphalattice/investment/risk_research/surfaces/__init__.py",
         "src/alphalattice/investment/risk_research/surfaces/decomposition.py",
         "src/alphalattice/kernel/__init__.py",
-        "src/alphalattice/kernel/shared_kernel/__init__.py",
-        "src/alphalattice/kernel/shared_kernel/bounded_memo.py",
-        "src/alphalattice/kernel/shared_kernel/domain/__init__.py",
-        "src/alphalattice/kernel/shared_kernel/domain/base.py",
-        "src/alphalattice/kernel/shared_kernel/domain/errors.py",
-        "src/alphalattice/kernel/shared_kernel/domain/models.py",
-        "src/alphalattice/kernel/shared_kernel/environment.py",
-        "src/alphalattice/kernel/shared_kernel/identity.py",
-        "src/alphalattice/kernel/shared_kernel/persistence.py",
-        "src/alphalattice/kernel/shared_kernel/project_layout.py",
-        "src/alphalattice/kernel/shared_kernel/sealing.py",
-        "src/alphalattice/kernel/shared_kernel/source_identity.py",
-        "src/alphalattice/kernel/shared_kernel/spans.py",
+        "src/alphalattice/capabilities/domain_contracts/__init__.py",
+        "src/alphalattice/capabilities/domain_contracts/bounded_memo.py",
+        "src/alphalattice/capabilities/domain_contracts/domain/__init__.py",
+        "src/alphalattice/capabilities/domain_contracts/domain/base.py",
+        "src/alphalattice/capabilities/domain_contracts/domain/errors.py",
+        "src/alphalattice/capabilities/domain_contracts/domain/models.py",
+        "src/alphalattice/capabilities/domain_contracts/environment.py",
+        "src/alphalattice/capabilities/domain_contracts/identity.py",
+        "src/alphalattice/capabilities/domain_contracts/persistence.py",
+        "src/alphalattice/capabilities/domain_contracts/project_layout.py",
+        "src/alphalattice/capabilities/domain_contracts/sealing.py",
+        "src/alphalattice/capabilities/domain_contracts/source_identity.py",
+        "src/alphalattice/capabilities/domain_contracts/spans.py",
         "src/alphalattice/oversight/__init__.py",
         "src/alphalattice/oversight/chief_risk_officer/__init__.py",
         "src/alphalattice/oversight/chief_risk_officer/decision/__init__.py",
@@ -2594,7 +2594,7 @@
       "pattern": "tests/structural/test_schema_contract.py::*",
       "owner": "tests.structural",
       "inputs": [
-        "src/alphalattice/kernel/data_layer/schema/*"
+        "src/alphalattice/foundation/data_layer/schema/*"
       ],
       "reason": "It judges only the DDL and its contract registry beside it, so a change elsewhere cannot move its verdict; the nightly runs it whole.",
       "escape_class": "a schema change that breaks a declared data-model rule",

@@ -10,6 +10,10 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sector_treatment import SECTOR_HISTORY_FORWARD
+from alphalattice.capabilities.quant.sector_history import reclassification_payload
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -69,10 +73,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     CausalRiskReturnSurfacePublisher,
 )
-from alphalattice.kernel.quant.sector_history import reclassification_payload
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sector_treatment import SECTOR_HISTORY_FORWARD
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,

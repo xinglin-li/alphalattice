@@ -28,11 +28,11 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_VARIABLES,
     TRACE_VARIABLES,
 )
-from alphalattice.kernel.shared_kernel import spawn
 from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
@@ -118,7 +118,7 @@ def _one_machine_per_test(request: pytest.FixtureRequest) -> Iterator[None]:
     if contract is not None and contract.layer == "unit":
         yield
         return
-    from alphalattice.kernel.data_layer import history_runtime as history
+    from alphalattice.foundation.data_layer import history_runtime as history
 
     if history.recording():
         yield

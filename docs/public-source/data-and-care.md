@@ -49,7 +49,7 @@ it into a fresh root:
 ```python
 from pathlib import Path
 
-from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
+from alphalattice.foundation.data_layer.backup import backup_data_root, restore_data_root
 
 generation = backup_data_root(Path("data-root"), Path("machine-backups"))
 restored = restore_data_root(generation, Path("restored-data-root"))

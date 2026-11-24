@@ -9,7 +9,7 @@ from alphalattice.control.task_control.contracts import (
     StageFailureCause,
     failure_code_from,
 )
-from alphalattice.kernel.data_layer import recall
+from alphalattice.foundation.data_layer import recall
 
 from ..documents.contracts import AlternativeEvidenceDocumentSet
 

@@ -9,6 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
@@ -65,6 +68,7 @@ from alphalattice.foundation.causal_outcomes.execution.artifacts import (
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.feature_engine.panels.retention_residue import (
     PanelRetentionResidueOwner,
 )
@@ -73,11 +77,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _strings(value: object) -> set[str]:

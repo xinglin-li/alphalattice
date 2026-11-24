@@ -10,8 +10,8 @@ from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutati
 from alphalattice.foundation.causal_outcomes.execution.publication import (
     CausalExecutionOutcomePublisher,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data_layer import history
 from tests._support.development_universe import OBSERVED_AT
 
 if TYPE_CHECKING:

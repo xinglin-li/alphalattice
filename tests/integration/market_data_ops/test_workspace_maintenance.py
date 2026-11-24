@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     ActionAuditChainReceipt,
     ActionAuditScope,
@@ -105,7 +106,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ProviderAdjustedSeriesRevision,
 )
 from alphalattice.kernel.execution import EVENTS, EventDeadline, Events, Timers
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import (
     audit_one,

@@ -18,12 +18,12 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.feature_engine.panels.closure_contracts import (
     SectorRevisionEntry,
     SectorRevisionMap,
 )
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
-from alphalattice.kernel.data_layer import history
 
 
 def classified(classification: SectorRevisionMap) -> tuple[SectorRevisionEntry, ...]:

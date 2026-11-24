@@ -10,6 +10,7 @@ from typing import cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     ActiveMetricsError,
     active_path_metrics,
@@ -62,7 +63,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @dataclass(frozen=True, slots=True)

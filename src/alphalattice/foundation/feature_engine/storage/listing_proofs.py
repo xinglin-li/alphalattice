@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 import duckdb
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     from alphalattice.foundation.feature_engine.storage.repositories import (

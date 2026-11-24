@@ -15,6 +15,8 @@ import numpy.typing as npt
 import pyarrow as pa
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import RebalanceClock
 from alphalattice.capabilities.portfolio_inputs.session_marks import (
@@ -99,8 +101,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TRANCHES_RANGE,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,

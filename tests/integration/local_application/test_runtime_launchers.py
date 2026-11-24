@@ -22,6 +22,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.control.product_host.composition import saved_object_readback
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -30,8 +35,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.interface.local_application import client as local_client
 from alphalattice.kernel.clock import ReplayClock
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
 _FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
@@ -531,8 +534,8 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     a new workspace or an initialized one, serves a later client until `host stop`, with its
     key in no log; a second launch is refused by name and leaves no log."""
     if workspace_state == "attached":
+        from alphalattice.capabilities.domain_contracts import spawn
         from alphalattice.control.product_host.composition import web_launcher
-        from alphalattice.kernel.shared_kernel import spawn
 
         calls = []
         monkeypatch.setattr(spawn, "attached", lambda *a, **k: calls.append((a, k)) or 7)
@@ -550,8 +553,8 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
         ]
         return
     if workspace_state == "timeout":
+        from alphalattice.capabilities.domain_contracts import spawn
         from alphalattice.control.product_host.composition import web_launcher
-        from alphalattice.kernel.shared_kernel import spawn
 
         stopped = []
         monkeypatch.setattr(spawn, "stop_tree", stopped.append)

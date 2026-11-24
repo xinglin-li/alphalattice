@@ -24,6 +24,13 @@ from alphalattice.control.product_host.composition.application_session import (
 )
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.workspace_runtime.network_access import set_network_access
+from alphalattice.foundation.data_layer import create_data_root, history
+from alphalattice.foundation.data_layer.log import HostLog, envelope
+from alphalattice.foundation.data_layer.spans import (
+    ExternalSpanProcessor,
+    LogSpanExporter,
+    tracer_provider,
+)
 from alphalattice.interface.local_application import call_span
 from alphalattice.interface.local_application.cli_contract import (
     CLIENT_HEADER,
@@ -40,16 +47,9 @@ from alphalattice.interface.local_application.web import (
     LocalWebApplication,
     LocalWebService,
 )
-from alphalattice.kernel.data_layer import create_data_root, history
-from alphalattice.kernel.data_layer.log import HostLog, envelope
-from alphalattice.kernel.data_layer.spans import (
-    ExternalSpanProcessor,
-    LogSpanExporter,
-    tracer_provider,
-)
 from devtools.testing import child_targets
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/spans.py"
 T0 = 1_794_700_000_000_000
 AGENT = {"alphalattice.actor_kind": "agent", "alphalattice.actor_id": "claude"}
 

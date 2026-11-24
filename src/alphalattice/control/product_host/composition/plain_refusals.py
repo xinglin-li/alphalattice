@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.foundation.factor_research.experiments.authoring import (
     INSTALLED_REDUNDANCY_POLICIES,
     INSTALLED_SCREENING_POLICIES,
@@ -31,7 +32,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     validate_request_document,
 )
 from alphalattice.interface.local_application.questions import network_question, person_question
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (

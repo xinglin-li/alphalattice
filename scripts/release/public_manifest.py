@@ -125,7 +125,7 @@ RULES = [
             "scripts/antipattern-" + "decisions.md",
             "scripts/work_census.py",
             "scripts/work_census_site/sitecustomize.py",
-            "src/alphalattice/kernel/shared_kernel/work_census.*",
+            "src/alphalattice/capabilities/domain_contracts/work_census.*",
             "config/registries/data-families-development.json",
             "tests/*/shared_kernel/test_work_census.py",
         ],
@@ -914,7 +914,7 @@ class _GitObjects:
     ROUND = 32
 
     def __init__(self, repo: Path, *, safe_directory: bool = False):
-        from alphalattice.kernel.shared_kernel import spawn
+        from alphalattice.capabilities.domain_contracts import spawn
 
         self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
         git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
@@ -1007,7 +1007,7 @@ def validate_internal_id_history(
 def _validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
 ) -> None:
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     found = spawn.run(  # one start: the history's depth, then the source's commit
         ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
@@ -1159,6 +1159,36 @@ def _validate_internal_id_history(
                 raise ValueError(f"the test layout map is unreadable at {commit}") from None
         return moves[commit]
 
+    deltas: dict[tuple[str, str], dict[str, str]] = {}
+    carried: dict[tuple[str, str, str], str] = {}
+
+    def git_move(commit: str, parent: str, owner: str) -> dict[str, str]:
+        """A move Git's tree delta records byte for byte, as the staged moves pair exact blobs:
+        the owner is the one path the commit added with its blob, and the one path it deleted
+        with that blob is the old path."""
+        if (commit, parent) not in deltas:
+            fields = spawn.check_output(
+                ["git", "diff-tree", "-r", "-z", "--no-renames", parent, commit],
+                cwd=repo,
+                creationflags=_NO_WINDOW,
+                text=True,
+            ).split("\0")
+            gone: dict[str, list[str]] = {}
+            added: dict[str, list[str]] = {}
+            for status, path in zip(fields[0::2], fields[1::2], strict=False):
+                *_, old_blob, new_blob, kind = status.split()
+                if kind == "D":
+                    gone.setdefault(old_blob, []).append(path)
+                elif kind == "A":
+                    added.setdefault(new_blob, []).append(path)
+            deltas[commit, parent] = {
+                paths[0]: gone[blob][0]
+                for blob, paths in added.items()
+                if len(paths) == 1 and len(gone.get(blob, ())) == 1
+            }
+        old = deltas[commit, parent].get(owner)
+        return {} if old is None else {owner: old}
+
     for commit in commits:
         policy = policy_at(commit)
         if policy is None:
@@ -1218,7 +1248,17 @@ def _validate_internal_id_history(
                         "occurrences", {}
                     ).get(owner, {}).get(label):
                         continue
-                    why = _carry_refusal(owner, labels, policy, previous, mapped(commit))
+                    moved = mapped(commit)
+                    if owner not in moved:
+                        moved = {**moved, **git_move(commit, parent, owner)}
+                    why = _carry_refusal(owner, labels, policy, previous, moved)
+                    # Each old allowance carries to one new path, whichever path paired it.
+                    if (
+                        not why
+                        and carried.setdefault(claim := (commit, parent, moved[owner]), owner)
+                        != owner
+                    ):
+                        why = f"{moved[owner]}'s allowance was already carried to {carried[claim]}"
                     if why:
                         raise ValueError(
                             f"the frozen internal-label allowance increased at {commit}: "
@@ -1260,7 +1300,7 @@ def validate_path(path: str) -> None:
 
 def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     """Read each immutable blob once and refuse truncated or mismatched batch output."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     if not objects:
         return {}
@@ -1289,7 +1329,7 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")

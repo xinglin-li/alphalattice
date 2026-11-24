@@ -14,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -41,7 +42,6 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _source(

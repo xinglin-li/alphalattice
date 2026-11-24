@@ -849,7 +849,7 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
         "factor_records": [],
         "total_clipped_count": 0,
     }
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     evidence_hash = canonical_hash(payload)
     descriptor = resolver.publish_panel_clipping_evidence(
@@ -1548,6 +1548,7 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
 def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> None:
     """Panel snapshot identity binds the preprocessing method."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
         ROBUST_SECTOR_NEUTRAL_Z,
         build_installed_panel_preprocessing_catalog,
@@ -1561,7 +1562,6 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         resolve_panel_preprocessing_lineage,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     catalog = build_installed_panel_preprocessing_catalog()
     recipe, adapter = catalog.resolve_executable(ROBUST_SECTOR_NEUTRAL_Z)

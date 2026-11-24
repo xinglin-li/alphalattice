@@ -5,10 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/upgrade.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/upgrade.py"
 
 
 @pytest.mark.proves("data_layer.upgrade_stops_before_unverified_readers")

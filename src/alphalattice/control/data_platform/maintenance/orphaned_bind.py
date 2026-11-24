@@ -13,9 +13,9 @@ from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 
 from .contracts import MaintenanceStatus
 from .registry import DuckDbWorkspaceMaintenanceRegistry

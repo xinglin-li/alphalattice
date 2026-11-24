@@ -32,8 +32,8 @@ from zipfile import ZipFile
 from packaging.requirements import Requirement
 from scripts.release import wheel_smoke
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.thin_cli import AGENT_SESSION_VARIABLES
-from alphalattice.kernel.shared_kernel import spawn
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = "alphalattice/_runtime/config/release/"

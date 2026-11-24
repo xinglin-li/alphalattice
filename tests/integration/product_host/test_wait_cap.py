@@ -9,8 +9,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import waits
 from alphalattice.interface.local_application import cli, client
-from alphalattice.kernel.shared_kernel import waits
 
 
 class _Clock:

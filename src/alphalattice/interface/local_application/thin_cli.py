@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Final, NamedTuple
 from urllib.parse import urlsplit
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING as WAIT_CEILING
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.config import data_root
 from alphalattice.kernel.door import (
@@ -40,7 +41,6 @@ from alphalattice.kernel.door import (
     request_bytes,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
 
 ENDPOINT_FOLDER: Final = "host-endpoints"
 """The data root's endpoint records, one per served workspace, beside its lock."""

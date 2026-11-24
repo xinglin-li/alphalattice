@@ -32,6 +32,8 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition import host_answer_submission as answer_owner
 from alphalattice.control.product_host.composition.evidence_review_application import (
@@ -46,8 +48,6 @@ from alphalattice.interface.local_application.cli_contract import RequestProvena
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebService
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, answer_slot
 from tests.alternative_evidence_desk.planted_corpus import _CitingActor
 from tests.alternative_evidence_desk.review_dossiers import controlled_answer
@@ -1143,8 +1143,8 @@ def _a_correction_cut_short_is_completed_once(host, monkeypatch, *, filed: bool)
         from threading import RLock
         from types import SimpleNamespace
 
+        from alphalattice.capabilities.domain_contracts.identity import canonical_hash
         from alphalattice.control.product_host.composition import committee_answer
-        from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
         pending = {
             "id": "pending",

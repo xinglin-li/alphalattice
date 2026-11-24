@@ -15,6 +15,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
@@ -31,7 +32,6 @@ from alphalattice.foundation.feature_engine.panels.identity import (
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import SectorHistory
 
 if TYPE_CHECKING:
     import pandas as pd

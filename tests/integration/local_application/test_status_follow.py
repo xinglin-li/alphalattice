@@ -21,6 +21,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import waits
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
     analyst_reads_answer,
     set_analyst_reads,
@@ -46,8 +48,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.review_evidence import REVIEW_DETAIL
-from alphalattice.kernel.shared_kernel import waits
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
 @pytest.mark.parametrize("wait", [0, -1, 20.5, True, "5"])

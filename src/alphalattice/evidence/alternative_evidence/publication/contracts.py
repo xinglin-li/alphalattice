@@ -8,11 +8,11 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceContract,
     validate_contract_identity,
 )
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 
 ACQUISITION_BINDING_ROLE = "alternative_evidence.acquisition_binding"
 CANONICALIZATION_BINDING_ROLE = "alternative_evidence.canonicalization_binding"

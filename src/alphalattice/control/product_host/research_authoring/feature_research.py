@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
     read_factor_bundle,
@@ -33,7 +34,6 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
-from alphalattice.kernel.data.errors import DataError
 
 CATEGORY = "research-feature-plans"
 

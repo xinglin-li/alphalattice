@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -69,10 +73,6 @@ from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 TASK_KIND = "research_feature_materialization"
 STAGE = "materialize_local_formula_columns"

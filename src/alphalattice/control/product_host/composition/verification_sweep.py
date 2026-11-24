@@ -24,6 +24,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -49,7 +50,6 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     from .research_experiments import ResearchExperimentApplication

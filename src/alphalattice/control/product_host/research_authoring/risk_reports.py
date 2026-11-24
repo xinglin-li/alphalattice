@@ -10,6 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.research_authoring.factor_inputs import confined
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -18,7 +19,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioPublicationError,
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError, ResolvedListingScope
 
 CATEGORY = "development/risk-report-links"

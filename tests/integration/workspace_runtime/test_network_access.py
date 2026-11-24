@@ -103,6 +103,7 @@ def test_every_network_way_on_reads_the_effective_decision(
     """Coded network questions follow the effective owner without lifting offline holds."""
 
     import alphalattice.interface.local_application as local_application
+    from alphalattice.capabilities.domain_contracts.environment import held_offline
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.control.workspace_runtime.network_access import set_network_access
     from alphalattice.interface.local_application.cli_contract import (
@@ -111,7 +112,6 @@ def test_every_network_way_on_reads_the_effective_decision(
         worded_refusal,
     )
     from alphalattice.interface.local_application.questions import person_question
-    from alphalattice.kernel.shared_kernel.environment import held_offline
 
     table = json.loads(Path(local_application.__file__).with_name("refusal_words.json").read_text())
     network_codes = {

@@ -23,15 +23,18 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
 from alphalattice.investment.alpha_research.scores.product_recipe import (
     INSTALLED_ALPHA_PRODUCT_RECIPE,
     PRODUCT_ESTIMATOR_POINT,
     AlphaEstimatorParameterPoint,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
 
 HETEROGENEOUS_STRATEGY_ID: Final = "FOUR_COMPONENT_BOOK"
 _RECIPE_SEAL: Final = frozenset({"recipe_hash"})

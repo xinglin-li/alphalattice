@@ -11,10 +11,10 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel import storage
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 
 def serve(arguments: list[str]) -> int:

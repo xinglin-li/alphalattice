@@ -11,6 +11,7 @@ from uuid import UUID
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
@@ -45,7 +46,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_weight,
     render_decision_update,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,

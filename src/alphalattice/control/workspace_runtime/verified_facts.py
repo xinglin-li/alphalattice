@@ -41,6 +41,10 @@ from typing import BinaryIO, TextIO, cast
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
+from alphalattice.capabilities.domain_contracts.environment import file_trust
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.control.workspace_runtime.database import table_columns
 from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.kernel import storage
@@ -53,10 +57,6 @@ from alphalattice.kernel.identity import (
     integrity_sha256_path,
     integrity_sha256_stream,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
-from alphalattice.kernel.shared_kernel.environment import file_trust
-from alphalattice.kernel.shared_kernel.spans import span
 
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
 FILE_TRUST = Path("runtime") / "file-trust.jsonl"

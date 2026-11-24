@@ -388,7 +388,7 @@ def _process_alive(pid):
 
 def run_shard(args, junit, diagnostics, budget):
     """Run pytest in its own process tree and finish a stalled shard as a named red."""
-    from alphalattice.kernel.shared_kernel import spawn, waits
+    from alphalattice.capabilities.domain_contracts import spawn, waits
 
     began = waits.clock()
     cutoff = began + (waits.bound(budget, ceiling=55 * 60) if budget > 0 else 0)

@@ -12,11 +12,11 @@ import secrets
 from dataclasses import dataclass
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.kernel.clock import wall_time_ns
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.shared_kernel.environment import package_versions
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import ResearchExecutionEvidence
 

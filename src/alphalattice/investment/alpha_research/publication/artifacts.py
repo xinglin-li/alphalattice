@@ -16,21 +16,21 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     verified_npz_arrays,
     verified_request_proof,
     verified_request_value,
     verified_source_value,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..experiments.contracts import AlphaCandidateRole, AlphaCandidateStatus
 from ..experiments.development_artifacts import (

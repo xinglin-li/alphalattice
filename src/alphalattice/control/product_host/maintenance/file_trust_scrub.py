@@ -7,12 +7,12 @@ from datetime import timedelta
 from pathlib import Path
 from threading import Event
 
+from alphalattice.capabilities.domain_contracts.environment import file_trust
 from alphalattice.control.workspace_runtime.verified_facts import FileTrustScrub
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import TIMERS, Timers
 from alphalattice.kernel.resources import set_idle_thread_priority
-from alphalattice.kernel.shared_kernel.environment import file_trust
 
 from .signals import MaintenanceBackgroundHost, MaintenanceWakeController
 

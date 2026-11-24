@@ -15,6 +15,8 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildCalls, ChildRefused
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -80,8 +82,6 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests._support import development_universe, sufficient_universe
 from tests.feature_engine.panel_workspace import (
     NOW,
@@ -575,10 +575,14 @@ def test_a_catalog_that_gains_a_factor_gains_its_column_and_the_earlier_rows_sta
 
 
 def _formula_factor(factor_id: str, formula: str) -> dict[str, object]:
+    from alphalattice.capabilities.quant.factor_contracts import (
+        FactorFamily,
+        FactorSpec,
+        FactorTrack,
+    )
     from alphalattice.foundation.feature_engine.producers.factors.formula import (
         formula_specification,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
     spec = formula_specification(
         FactorSpec(

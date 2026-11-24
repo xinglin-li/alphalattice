@@ -9,6 +9,7 @@ from threading import Lock
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -42,7 +43,6 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
 NOW = datetime(2026, 8, 3, 12, tzinfo=UTC)
 

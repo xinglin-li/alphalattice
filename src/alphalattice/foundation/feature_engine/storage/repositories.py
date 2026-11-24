@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
     WorkspaceRepository,
@@ -102,7 +103,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     raw_bars_from_table,
 )
 from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
 if TYPE_CHECKING:
     import duckdb

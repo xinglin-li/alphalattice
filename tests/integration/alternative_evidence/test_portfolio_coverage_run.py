@@ -48,10 +48,10 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     UNIT_FAILURE_CATEGORY,
     AlternativeEvidenceDocumentTaskAdapter,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.cli import main as cli_main
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
-from alphalattice.kernel.data_layer import history
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
@@ -1211,10 +1211,10 @@ def test_host_stop_leaves_a_coverage_unit_to_resume(
 ) -> None:
     from threading import Event
 
+    from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
     from alphalattice.evidence.alternative_evidence.retrieval.session import (
         AlternativeEvidenceRetrievalSession,
     )
-    from alphalattice.kernel.shared_kernel.host_stop import checkpoint
     from tests.alternative_evidence_desk.review_http_support import start_service
 
     service = single_service

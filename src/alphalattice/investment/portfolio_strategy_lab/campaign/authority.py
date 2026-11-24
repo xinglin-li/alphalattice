@@ -19,6 +19,11 @@ from typing import Final
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import source_root
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     MARKED_TO_MARKET_AT_CLOSE_T,
     PortfolioStateTransitionBinding,
@@ -44,11 +49,6 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import source_root
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
-)
 
 from .upstream import (
     PortfolioUpstreamAuthorityError,

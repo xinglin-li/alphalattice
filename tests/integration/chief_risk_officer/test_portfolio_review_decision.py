@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceStructureState,
 )
@@ -32,7 +33,6 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
 )
 from alphalattice.evidence.alternative_evidence.runtime.coverage import UNIT_LIMIT, coverage_units
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     EVIDENCE_REQUIRED_CHECKS,
     portfolio_review_key_payload,

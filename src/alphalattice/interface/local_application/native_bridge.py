@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Any, Final, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
@@ -51,9 +54,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -1190,8 +1190,8 @@ def read_session_usage(
     committee's member identity is never inferred from native telemetry.
     The serving Host supplies its catalog workspace id explicitly on every read.
     """
-    from alphalattice.kernel.data_layer.history import agent_telemetry  # lazy: Host log only
-    from alphalattice.kernel.data_layer.telemetry import usage  # lazy: Host log only
+    from alphalattice.foundation.data_layer.history import agent_telemetry  # lazy: Host log only
+    from alphalattice.foundation.data_layer.telemetry import usage  # lazy: Host log only
 
     if binding.usage == "OFF" or not usage_reading(binding.workspace):
         return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}

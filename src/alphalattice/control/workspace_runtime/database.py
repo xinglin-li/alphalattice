@@ -43,15 +43,15 @@ from uuid import uuid4
 
 import duckdb
 
-from alphalattice.control.workspace_runtime.reader_threads import configure_duckdb, connect_duckdb
-from alphalattice.kernel import storage
-from alphalattice.kernel.execution import interruptible
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.persistence import (
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.persistence import (
     DURABLE_REPLACE_DELAYS,
     replace_with_retry,
 )
-from alphalattice.kernel.shared_kernel.spans import span
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.control.workspace_runtime.reader_threads import configure_duckdb, connect_duckdb
+from alphalattice.kernel import storage
+from alphalattice.kernel.execution import interruptible
 
 WORKSPACE_MARKET_DATA_DATABASE_FILENAME = "market-data.duckdb"
 """The market/feature/sector store. Named so other owners can refuse it by name."""

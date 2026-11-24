@@ -6,14 +6,14 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.store import lag_rule
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.foundation.market_data_ops.storage.world import (
     admissions,
     world_action,
     world_listing,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.store import lag_rule
 
 TEST_SOURCE = "src/alphalattice/foundation/market_data_ops/storage/world.py"
 AAPL = "listing-aapl"

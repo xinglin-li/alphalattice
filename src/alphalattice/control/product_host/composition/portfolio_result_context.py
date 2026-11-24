@@ -13,6 +13,8 @@ from uuid import UUID
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     TRADING_SESSIONS_PER_YEAR,
 )
@@ -114,8 +116,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     listing_sources,
 )
 from alphalattice.kernel.identity import change_xxh3_128_hex
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 from .research_experiments import review_requests

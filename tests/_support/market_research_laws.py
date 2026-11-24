@@ -10,10 +10,10 @@ from uuid import UUID
 
 import pyarrow as pa
 
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.data_layer.store import as_columns, stage
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.store import as_columns, stage
 
 LISTING = str(UUID(int=7))
 SOURCE = "contract_fixture"

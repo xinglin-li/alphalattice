@@ -17,6 +17,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.network_access import (
     NetworkAccess,
     network_access,
@@ -41,7 +42,6 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecOfficialTransport,
 )
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SEC_USER_AGENT_VARIABLE = "SEC_USER_AGENT"
 SEC_CONTACT = "sec-contact.json"

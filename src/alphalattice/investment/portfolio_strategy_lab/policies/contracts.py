@@ -22,15 +22,18 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import (
+    canonical_hash,
+    successor_identity_payload,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_component_id,
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     BoolArray,
     FloatArray,
     PortfolioTargetDecision,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, successor_identity_payload
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_component_id,
-    switched_source_identity,
 )
 
 if TYPE_CHECKING:

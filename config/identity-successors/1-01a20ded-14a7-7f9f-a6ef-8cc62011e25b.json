@@ -1,0 +1,118 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "e1409b0b25eea991d25a5f30ec83b87020655f4e6eb73588d115d5dfcef89263",
+   "successor": "8e11fc6168476f9c88f6ccd4b809b35526249f4ccc4cd27a0b94fa672966a75f",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "86ab4eb47b5e043196be955f57cf198e79621cee718903a943c2ce743ab0e8fd",
+   "successor": "b9222ee607be8d9c9aa729c32526e0e70628ef9e8e6534de4208e335a4cf430b",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "af26114661dbe52928394b0731c25a88013f82649518235ba7b81da659a41b7c",
+   "successor": "1b1c221c4f1f97b15f3226dce7e3d8e589641045d7ba4bbbac98bb32406424a0",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "5cb8ba444af4b0c12728a3602036f887d807c82c8a963e5d5b1aa98b0c93dd4f",
+   "successor": "54431fc9ad73e4189c30e397fb7148edee62570d0847553de2276d9b6a2324d2",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "2ba74f9bc2aec5f9a69bc1620cfc7faa05184be6b3098dcb1e365bb4f346345b",
+   "successor": "beed09270d88729007c1237cefe812e76d1100c880efaaeae660dfb85b803a17",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "94cb8208eb86264118a4f6b9d825826fc09391f3a5996fa7495f52da632e19bb",
+   "successor": "456568f9af0199cd07a2a646fbf83353ca6e7459679e26e4b0c04b742bf6e9cb",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "39e4b838a6792b6d3895b1d77bae8fb3b65b0c8d573bc71e8f4c8c8a3aaefd89",
+   "successor": "24fce0a98ad3873da1cdc0008df9dceaa0802ee52141a82a581921459a715258",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "f1b2b22d9089343e514fbaa3a0d3bf5b8c1282d7b5658038879895c05d45a55c",
+   "successor": "86585640e6ca6fa5796bfecb95b735de8171fa1dfc94ace1dd02acbcd401247b",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "23e04ae098f61cfc94b5cd75af22839b7f95f4baa95ac6f29327ac54882e67fc",
+   "successor": "df4586471f6e3dcc9bec4e556dc442a4a128db2c7ca5bb158dde9a42ea2d01bd",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "3146e1164ce52d36c69c211d589a4cdc09af6c3c2a998eb2305c5898276409ba",
+   "successor": "7a2d97bcbd00eb15d6a60957eb7c41e56ad0cbdb25598b194e23cf71e860d569",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "179e01cb9249bb0d17da4b3f735df32326fefa73d7568546940a247dbe5091c2",
+   "successor": "e53f901b2bb16296d3e268865d5432cbb0467dbecd040481c3b689a2d806f65d",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e4e86c80ebec5bc6fd47fe1c0a0a83dd927479dad728279a30eca8d150ddaa33",
+   "successor": "0f13644ba54ef5cd4736036eaff28541a9ecd4f696de8c1e8c008be85979917d",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "74b272670d11a19e8b4ace91a4a7249d90de52bfa3f24126b2a0a0ddff0ba3b8",
+   "successor": "7ea002a7bc6b762617ff639bb3980bcf62407792f2081da9514af44534f86a62",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "74b272670d11a19e8b4ace91a4a7249d90de52bfa3f24126b2a0a0ddff0ba3b8",
+   "successor": "7ea002a7bc6b762617ff639bb3980bcf62407792f2081da9514af44534f86a62",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "1f972ec3c3a34e49919498ce21657f55868e88eccc6ddaa39fa39c2d6c97550e",
+   "successor": "3df5e4d992d158547c3622135433d2a57f5d7c9006651ef12145f5e61d67f628",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "6c8b95ccb3958cf80b4a6f050fca7e3972102d31ddb455aa40f2528560895528",
+   "successor": "23533429571966676838abfef9ee3953dd6c974a708b857bafc8f9bdba5814e3",
+   "change": "Domain packages moved out of the kernel with every result unchanged",
+   "reason": "No result changes for users: seven domain packages moved out of the kernel, so the moved modules' source fingerprints change; the development replay reads every record equal, and every Feature value equals the last version's through recorded switch rows"
+  }
+ ]
+}

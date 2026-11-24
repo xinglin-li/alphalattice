@@ -20,6 +20,8 @@ from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING as WAIT_CEILING
+from alphalattice.capabilities.domain_contracts.waits import pause, spaced
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
@@ -95,8 +97,6 @@ from alphalattice.interface.local_application.thin_cli import (
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
-from alphalattice.kernel.shared_kernel.waits import pause, spaced
 
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""

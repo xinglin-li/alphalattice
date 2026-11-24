@@ -17,6 +17,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.research_authoring import (
     build_research_program_workflow,
     host_resolved_factor_inventory,
@@ -47,7 +48,6 @@ from alphalattice.foundation.factor_research.experiments.development_evidence im
 from alphalattice.foundation.feature_engine.panels.development_input import (
     ResolvedDevelopmentFeatureInput,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import ResearchExperimentEnvelope
 from tests.researcher_methodology_surface.real_workspace import (

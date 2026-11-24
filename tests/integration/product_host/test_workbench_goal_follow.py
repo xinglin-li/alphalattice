@@ -12,6 +12,7 @@ from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
@@ -35,7 +36,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     PortfolioExperimentSource,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     portfolio_review_task_contract,
 )

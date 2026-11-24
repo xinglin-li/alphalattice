@@ -15,10 +15,10 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
-from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,

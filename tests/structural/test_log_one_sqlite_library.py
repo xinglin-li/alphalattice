@@ -9,7 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "alphalattice"
-READING = "src/alphalattice/kernel/data_layer/reading.py"
+READING = "src/alphalattice/foundation/data_layer/reading.py"
 TEST_SCOPE = "whole-tree"
 
 

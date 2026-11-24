@@ -55,6 +55,14 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
     alpha_model_numerical_scope,
     resolve_alpha_model_numerical_environment,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitSpec,
+    ValidationTimeline,
+)
+from alphalattice.capabilities.validation.enums import SplitMode
+from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.investment.alpha_research.experiments.contracts import (
     AlphaFoldCommitment,
 )
@@ -69,14 +77,6 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitSpec,
-    ValidationTimeline,
-)
-from alphalattice.kernel.validation.enums import SplitMode
-from alphalattice.kernel.validation.splitting import build_research_split
 from tests.alpha_research.fixtures import research_foundation_binding
 
 FACTOR_IDS = ("nonlinear-a", "nonlinear-b", "size", "trend")

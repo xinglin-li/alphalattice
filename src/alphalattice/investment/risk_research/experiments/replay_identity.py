@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current, predecessors
 from alphalattice.investment.risk_research.estimators.catalog import (
     ESTIMATOR_CATALOG_ROLE,
     numerical_binding_role,
@@ -22,7 +23,6 @@ from alphalattice.investment.risk_research.experiments.compiler import RiskExper
 from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
-from alphalattice.kernel.shared_kernel.identity_successors import is_current, predecessors
 from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,

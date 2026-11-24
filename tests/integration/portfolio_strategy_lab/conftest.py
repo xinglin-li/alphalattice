@@ -14,7 +14,9 @@ from tests._support.portfolio_strategy_lab_fixtures import read_only_live as rea
 @pytest.fixture
 def portfolio_result_history(tmp_path: Path) -> Iterator[None]:
     """Open the machine catalog for standalone Portfolio publication fixtures."""
-    from alphalattice.kernel.data_layer import history  # lazy: only fixtures that publish need it
+    from alphalattice.foundation.data_layer import (
+        history,  # lazy: only fixtures that publish need it
+    )
 
     history.open_history("portfolio-test-history", "portfolio", tmp_path / "portfolio-history")
     try:

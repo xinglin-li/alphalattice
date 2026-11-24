@@ -5,7 +5,7 @@ import inspect
 import re
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture.structural import file_text
 
 _OPTION_CASES = {

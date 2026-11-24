@@ -19,6 +19,8 @@ from collections.abc import Mapping, Sequence
 
 import pyarrow as pa
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_hash_with_values
+from alphalattice.capabilities.domain_contracts.environment import duckdb_thread_config
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -26,8 +28,6 @@ from alphalattice.foundation.feature_engine.contracts import (
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import interruptible
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_values
-from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config
 
 PANEL_IDENTITY_COLUMNS = (
     "manifest_revision",

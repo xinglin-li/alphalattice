@@ -12,6 +12,8 @@ import pyarrow as pa
 import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
@@ -21,8 +23,6 @@ from alphalattice.foundation.feature_engine.panels.closure_files import (
     KeptFiles,
     closure_upgrade_family,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/panels/closure_files.py"
 HEAD = "feature-ledger/operational/heads/" + "a" * 64 + ".json"

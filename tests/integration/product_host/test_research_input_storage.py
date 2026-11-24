@@ -14,6 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -30,10 +32,8 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     read_factor_bundle,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
 if sys.platform == "win32":
@@ -898,6 +898,7 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
 ):
     """The plan links a retained retrieval model copy to the store."""
 
+    from alphalattice.capabilities.knowledge import model_store
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewArtifactBinding,
         EvidenceReviewWorkspaceManifest,
@@ -906,7 +907,6 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
         ResearchWorkspaceEvidenceReview,
         read_research_workspace_manifest,
     )
-    from alphalattice.kernel.knowledge import model_store
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()

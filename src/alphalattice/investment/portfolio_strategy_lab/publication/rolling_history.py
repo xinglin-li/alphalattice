@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.metrics import (
     evaluate_net_simple_return_path,
 )
@@ -25,7 +26,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     PortfolioObservedSettlement,
     PortfolioUpdatePublication,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class RollingHistoryError(ValueError):

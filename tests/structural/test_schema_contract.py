@@ -27,7 +27,7 @@ import pytest
 TEST_SCOPE = "whole-tree"
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA = ROOT / "src" / "alphalattice" / "kernel" / "data_layer" / "schema"
+SCHEMA = ROOT / "src" / "alphalattice" / "foundation" / "data_layer" / "schema"
 FILES = ("log", "catalog")
 HOMES = {"log", "definition", "projection", "body", "working", "cache", "index", "world", "derived",
          "results"}  # fmt: skip
@@ -69,7 +69,7 @@ def _registry() -> dict[str, Any]:
 
 
 def _statements(text: str) -> list[str]:
-    from alphalattice.kernel.data_layer.root import statements
+    from alphalattice.foundation.data_layer.root import statements
 
     return list(statements(text))
 
@@ -468,14 +468,14 @@ def test_the_schema_meets_its_registry_with_only_its_known_breaks() -> None:
 @pytest.mark.parametrize(
     ("changed", "runs"),
     [
-        pytest.param("src/alphalattice/kernel/data_layer/schema/log.sql", True, id="ddl"),
+        pytest.param("src/alphalattice/foundation/data_layer/schema/log.sql", True, id="ddl"),
         pytest.param(
-            "src/alphalattice/kernel/data_layer/schema/contract.json", True, id="registry"
+            "src/alphalattice/foundation/data_layer/schema/contract.json", True, id="registry"
         ),
         pytest.param(
-            "src/alphalattice/kernel/data_layer/schema/contract-market.json", True, id="family"
+            "src/alphalattice/foundation/data_layer/schema/contract-market.json", True, id="family"
         ),
-        pytest.param("src/alphalattice/kernel/data_layer/log.py", False, id="data-layer-code"),
+        pytest.param("src/alphalattice/foundation/data_layer/log.py", False, id="data-layer-code"),
         pytest.param("README.md", False, id="elsewhere"),
     ],
 )

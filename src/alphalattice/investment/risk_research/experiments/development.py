@@ -33,6 +33,9 @@ from datetime import date
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.investment.risk_research.contracts import (
     CausalRiskReturnSurface,
     RiskFormationEvaluation,
@@ -66,9 +69,6 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
-from alphalattice.kernel.quant.sector_history import reclassification_payload, sector_slices
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 type FloatArray = NDArray[np.float64]

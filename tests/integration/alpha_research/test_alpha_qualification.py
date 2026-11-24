@@ -29,6 +29,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.research_experiments import (
@@ -49,6 +50,7 @@ from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
 )
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.candidates.artifacts import (
     AlphaGoalResearchArtifactStore,
 )
@@ -109,8 +111,6 @@ from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaResearchModelRecipe,
     build_current_alpha_research_model_mandate,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,

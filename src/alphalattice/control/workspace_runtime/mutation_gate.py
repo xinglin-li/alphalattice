@@ -9,7 +9,7 @@ from threading import RLock, Thread, current_thread
 from time import monotonic
 from typing import ParamSpec, TypeVar
 
-from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope, stop_predicate
+from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope, stop_predicate
 
 _Parameters = ParamSpec("_Parameters")
 _Result = TypeVar("_Result")

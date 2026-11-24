@@ -36,6 +36,9 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     AnchoredInstantPolicy,
     SessionAnchor,
 )
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -45,6 +48,8 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_request_value,
     verified_source_value,
 )
+from alphalattice.foundation.data_layer import arrays, history
+from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.investment.alpha_research.calibration.return_unit import (
     RETURN_UNIT_CALIBRATION_CATEGORY,
     AlphaReturnUnitCalibrationEvidence,
@@ -97,12 +102,7 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
     total_return_array_identity,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, history
-from alphalattice.kernel.data_layer.upgrade import Family
 from alphalattice.kernel.identity import identity_sha256, integrity_blake3, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span, spanned
 
 from .campaign import AlphaDevelopmentProgram
 from .campaign_evidence import (

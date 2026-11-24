@@ -43,8 +43,8 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.source_identity import source_bytes_syntax_sha256
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.source_identity import source_bytes_syntax_sha256
 from devtools.architecture import structural
 from devtools.architecture.identity_closures import closure_sites
 
@@ -68,7 +68,7 @@ _SOURCE_READERS = frozenset({"getsource", "getsourcelines", "getsourcefile"})
 _BYTE_READERS = frozenset({"read_bytes", "read_text"})
 _SCANNED = ("src", "scripts")
 _PREFILTER = ("getsource", "__file__", "__doc__", "tool", ".py")
-_PRIMITIVES_MODULE = "src/alphalattice/kernel/shared_kernel/source_identity.py"
+_PRIMITIVES_MODULE = "src/alphalattice/capabilities/domain_contracts/source_identity.py"
 """The primitives' own module reads every file a rule closure hashes, as syntax: not a text read."""
 
 

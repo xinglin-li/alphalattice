@@ -28,6 +28,7 @@ from alphalattice.control.product_host.research_authoring.input_revisions import
     ResearchInputRevisions,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.foundation.data_layer.history import research_input_kept
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
     FeaturePanelReadRequest,
@@ -37,7 +38,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from alphalattice.kernel.data_layer.history import research_input_kept
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 from tests.pytest_environment import closure_on_log

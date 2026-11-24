@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal, Protocol
 
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
 
 from .contracts import (
     ObservationReadCursor,

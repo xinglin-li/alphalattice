@@ -27,6 +27,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.foundation.data_layer import history, risk_history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceChunk,
@@ -44,9 +47,6 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactError,
     RiskArtifactStore,
 )
-from alphalattice.kernel.data_layer import history, risk_history
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = r"^[0-9a-f]{64}$"
 

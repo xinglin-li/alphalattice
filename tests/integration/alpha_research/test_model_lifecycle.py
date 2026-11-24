@@ -15,6 +15,7 @@ from types import MappingProxyType, SimpleNamespace
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
@@ -41,7 +42,6 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     resolve_alpha_refit_plan,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import live_vintages
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 COMPONENT = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component("G6_R0_FAST_REBOUND")
 
@@ -294,7 +294,7 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
         "prepared": authority.prepared[-1].array_file_hash,
     }[damaged_source]
     category = "frozen-observation-arrays" if damaged_source == "frozen" else "lifecycle-arrays"
-    from alphalattice.kernel.data_layer import arrays, history
+    from alphalattice.foundation.data_layer import arrays, history
 
     path = store._packed_source_path(category, identity)
     before = path.stat()
@@ -1006,12 +1006,12 @@ def test_score_dispatch_uses_captured_formation_membership(tmp_path, monkeypatch
 
 def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeypatch):
 
+    from alphalattice.capabilities.domain_contracts.spans import collect, readout
     from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
         assemble_panel_context_arrays,
     )
     from alphalattice.investment.sector_research.inputs import surface
     from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
-    from alphalattice.kernel.shared_kernel.spans import collect, readout
 
     days = tuple(date(2024, 1, 1) + timedelta(days=i) for i in range(300))
     ends = tuple(day + timedelta(days=1) for day in days)

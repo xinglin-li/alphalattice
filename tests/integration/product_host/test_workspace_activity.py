@@ -44,6 +44,7 @@ from alphalattice.control.workspace_runtime.mutation_gate import (
     background_task,
     gate_subject,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.activity import (
     OBSERVED_OPERATIONS,
     READ_OPERATIONS,
@@ -66,7 +67,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
 from alphalattice.interface.local_application.questions import person_question
-from alphalattice.kernel.data_layer import history
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import _cli
 from tests.workspace_task_runner.task_control_support import task_log
@@ -397,7 +397,7 @@ def test_a_complete_native_binding_does_not_hide_another_bindings_pending_read(
     bind(projects[1])
     admitted = []
     monkeypatch.setattr(
-        "alphalattice.kernel.data_layer.history.receive_agent_telemetry",
+        "alphalattice.foundation.data_layer.history.receive_agent_telemetry",
         lambda rows: admitted.extend(rows) or len(rows),
     )
     sample = {
@@ -1497,7 +1497,7 @@ def test_unopenable_activity_store_degrades_observation_not_the_product(
     if history_available:
         from opentelemetry.sdk.trace.export import SpanExportResult
 
-        from alphalattice.kernel.data_layer.spans import LogSpanExporter
+        from alphalattice.foundation.data_layer.spans import LogSpanExporter
 
         def no_observation(*_args: object, **_kwargs: object) -> None:
             raise ObservationStorageError("observation.storage_busy", "fixture: observer stopped")

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
     DEVELOPMENT_SYMBOLS,

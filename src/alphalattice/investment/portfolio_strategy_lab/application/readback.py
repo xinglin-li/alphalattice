@@ -35,6 +35,8 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     ActiveMetricsError,
     active_path_metrics,
@@ -78,8 +80,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
     PortfolioLedgerStoreError,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
 
 ReadbackDisposition = Literal[
     "VERIFIED",

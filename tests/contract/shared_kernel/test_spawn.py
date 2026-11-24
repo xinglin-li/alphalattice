@@ -28,7 +28,7 @@ from alphalattice.kernel.execution import (
 )
 from alphalattice.kernel.execution import spawn as execution_spawn
 
-TEST_SOURCE = "src/alphalattice/kernel/shared_kernel/spawn.py"
+TEST_SOURCE = "src/alphalattice/capabilities/domain_contracts/spawn.py"
 
 
 @pytest.mark.proves("execution.registered_pools_keep_their_workers")
@@ -45,10 +45,10 @@ def test_registered_pools_keep_their_workers() -> None:
         assert second.submit(lambda: 1).result(timeout=1) == 1
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_ambient_job_probe_adds_no_job(monkeypatch, tmp_path):
     """The ambient probe measures the caller's Job without adding its own."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     calls = []
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "person-root"))
@@ -69,10 +69,10 @@ def test_ambient_job_probe_adds_no_job(monkeypatch, tmp_path):
     assert "ALPHALATTICE_DATA_ROOT" not in options["env"]
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
     """The group owner waits for its remaining member after sending the stop signal."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     events = []
 
@@ -136,7 +136,7 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
 
 
 def _assert_cancelled_tree_exits(*, parent_returns=False):
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     parent = """
 import subprocess
@@ -208,7 +208,7 @@ def _escaped_session(published):
 
 
 def _assert_pool_retains_escaped_child(ready):
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     execution_id = uuid4()
     with execution_cancellation(execution_id):
@@ -237,7 +237,7 @@ def _assert_pool_retains_escaped_child(ready):
                     descendant.wait(timeout=5)
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 @pytest.mark.parametrize(
     ("budget", "mode", "members", "limit_event", "stops", "report"),
     [
@@ -305,7 +305,7 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
             _assert_cancelled_tree_exits(parent_returns=True)
         return
     if mode == "cancel-pool-admission":
-        from alphalattice.kernel.shared_kernel import spawn
+        from alphalattice.capabilities.domain_contracts import spawn
 
         execution_id = uuid4()
         with execution_cancellation(execution_id):
@@ -393,12 +393,12 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
         memory.check()
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_a_child_gets_closed_input_utf8_and_no_inherited_data_root(monkeypatch, tmp_path):
     """A real interpreter sees only the caller's chosen process environment."""
-    name = "alphalattice.kernel.shared_kernel.spawn"
+    name = "alphalattice.capabilities.domain_contracts.spawn"
     assert importlib.util.find_spec(name) is not None
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(tmp_path / "person-root"))
     script = (
@@ -440,11 +440,11 @@ def test_a_child_gets_closed_input_utf8_and_no_inherited_data_root(monkeypatch, 
         spawn.run([sys.executable, "-c", "pass"], timeout=5, encoding="cp1252")
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 @pytest.mark.parametrize("parent", ["live", "exited", "returned"])
 def test_a_timed_out_child_and_its_descendant_are_stopped(parent, tmp_path):
     """A real timed-out process cannot leave its child behind."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     if parent in {"exited", "returned"}:
         pid_file = tmp_path / "descendant.pid"
@@ -502,10 +502,10 @@ def test_a_timed_out_child_and_its_descendant_are_stopped(parent, tmp_path):
     assert not psutil.pid_exists(int(error.value.output.strip()))
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_an_interactive_session_feeds_turns_and_captures_streams():
     """A real child consumes two turns before EOF and the owner closes both pipes."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     code = (
         "import sys; a=sys.stdin.readline(); b=sys.stdin.readline(); "
@@ -525,10 +525,10 @@ def test_an_interactive_session_feeds_turns_and_captures_streams():
     assert child.stdout.closed and child.stderr.closed
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_an_interactive_session_stops_at_its_deadline():
     """The deadline terminates the real child and the owner reports timeout."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     with spawn.InteractiveSession(timeout=0.5, stop_scope="tree") as session:
         child = session.start(
@@ -539,10 +539,10 @@ def test_an_interactive_session_stops_at_its_deadline():
             session.check()
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_an_interactive_session_names_its_stop_scope(monkeypatch):
     """Root scope stops only the child; tree scope selects the POSIX group barrier."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     with pytest.raises(ValueError, match="stop_scope"):
         spawn.InteractiveSession(timeout=1, stop_scope="unknown")
@@ -581,10 +581,10 @@ def test_an_interactive_session_names_its_stop_scope(monkeypatch):
     assert calls == [("group", 123), "wait"]
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 def test_concurrent_stops_wait_for_the_same_termination_barrier():
     """Concurrent callers return only after the owned child has stopped."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     waiting, release, second_started, second_finished = (threading.Event() for _ in range(4))
     failures = []
@@ -632,7 +632,7 @@ def test_concurrent_stops_wait_for_the_same_termination_barrier():
 
 LAUNCHER = """
 import subprocess, sys, psutil
-from alphalattice.kernel.shared_kernel import spawn, waits
+from alphalattice.capabilities.domain_contracts import spawn, waits
 
 with spawn.reap_detached_sessions() as keep:
     own = subprocess.Popen(
@@ -662,7 +662,7 @@ with spawn.reap_detached_sessions() as keep:
 """
 
 
-@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
 @pytest.mark.skipif(sys.platform != "linux", reason="a child subreaper is Linux's alone")
 def test_a_subreaper_launcher_reaps_an_adopted_orphan_as_it_ends():
     """Under a subreaper launcher, an adopted orphan is gone to every reader once it ends."""

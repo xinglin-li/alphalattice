@@ -40,6 +40,8 @@ from uuid import uuid4
 
 import numpy as np
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     MaintenanceStatus,
     MaintenanceTrigger,
@@ -54,6 +56,8 @@ from alphalattice.control.product_host.composition.workspace import WorkspaceRun
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.arrays import CARRIED
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.inputs.closure_source import (
     FeatureClosureSourceRepository,
@@ -93,10 +97,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnSurfacePublisher,
     RiskReturnArtifactStore,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.arrays import CARRIED
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from devtools.architecture.structural import (
     dependency_closure,
     discover_module_dependencies,

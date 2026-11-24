@@ -10,6 +10,7 @@ import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
@@ -25,7 +26,6 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import
 from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data_layer import history
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/panels/sector_classification.py"

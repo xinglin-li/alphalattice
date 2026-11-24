@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 from .development_evidence import AlphaDevelopmentVerifiedGraph

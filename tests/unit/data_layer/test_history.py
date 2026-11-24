@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data_layer.history import DATA_ROOT_ENV, data_root, store
+from alphalattice.foundation.data_layer.history import DATA_ROOT_ENV, data_root, store
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/history.py"
 
 
 @pytest.mark.proves("data_layer.data_root_is_set_or_the_application_folder")

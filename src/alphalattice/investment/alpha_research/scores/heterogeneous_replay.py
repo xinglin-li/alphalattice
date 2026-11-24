@@ -47,6 +47,7 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
 from alphalattice.capabilities.alpha_modeling.runtime.service import (
     AlphaModelRuntimeService,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
@@ -76,7 +77,6 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     live_vintages,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 

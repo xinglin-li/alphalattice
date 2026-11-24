@@ -8,12 +8,12 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.enums import RebalanceFrequency
 
 _FORMULA_ID = "formation-close-next-common-open-following-common-open-simple-return"
 _ACTION_ID = "provider-split-adjusted-open-and-period-dividend"

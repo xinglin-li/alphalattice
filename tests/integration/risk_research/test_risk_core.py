@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 from threadpoolctl import threadpool_info, threadpool_limits
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
@@ -48,7 +49,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnSurfaceError,
     derive_risk_return_rows,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 

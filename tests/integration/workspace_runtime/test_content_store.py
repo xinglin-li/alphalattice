@@ -33,6 +33,7 @@ import pyarrow.parquet as pq
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.capabilities.domain_contracts.spans import collect
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -46,11 +47,10 @@ from alphalattice.control.workspace_runtime.content_store import (
     verify_source_checks,
 )
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, table_columns
+from alphalattice.foundation.data_layer import backup
 from alphalattice.kernel.config import Change, override
-from alphalattice.kernel.data_layer import backup
 from alphalattice.kernel.identity import file_facts as digests
 from alphalattice.kernel.identity import file_stamp
-from alphalattice.kernel.shared_kernel.spans import collect
 
 
 def _store(tmp_path: Path) -> ContentAddressedStore:

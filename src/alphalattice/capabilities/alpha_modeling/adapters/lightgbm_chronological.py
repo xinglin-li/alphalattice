@@ -11,8 +11,8 @@ from typing import Any, Final, cast
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 from ..contracts import (
     NESTED_FIT_RUNTIME_CAPABILITY,

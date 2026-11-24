@@ -42,6 +42,7 @@ from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
     TaskRecord,
@@ -50,7 +51,6 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.execution import EVENTS, ExecutionLane, ExecutionPool, prefer_task
-from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
 
 
 class _DispatcherClosed(RuntimeError):

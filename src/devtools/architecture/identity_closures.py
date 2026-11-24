@@ -32,23 +32,23 @@ from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any
 
-from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
-    control_arithmetic_rule_identity,
-    installed_method_family_owners,
-    method_family_rule_identity,
-)
-from alphalattice.kernel.shared_kernel import source_identity
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.domain_contracts import source_identity
+from alphalattice.capabilities.domain_contracts.source_identity import (
     IDENTITY_ROLES_PATH,
     current_module_name,
     number_deciding_closure,
     number_deciding_rule,
 )
+from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
+    control_arithmetic_rule_identity,
+    installed_method_family_owners,
+    method_family_rule_identity,
+)
 from devtools.architecture import structural
 
 PRIMITIVES = frozenset({"source_rule_closure_hash"})
 _LISTED = frozenset({"source_rule_closure_hash"})
-_DEFINITIONS = "src/alphalattice/kernel/shared_kernel/source_identity.py"
+_DEFINITIONS = "src/alphalattice/capabilities/domain_contracts/source_identity.py"
 _PLATFORM = (
     ("BUILD", ("pyproject.toml", "uv.lock")),
     ("COMPOSITION", ("/composition/",)),

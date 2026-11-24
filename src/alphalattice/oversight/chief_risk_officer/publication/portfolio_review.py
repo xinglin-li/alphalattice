@@ -17,13 +17,13 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     OpenIssueState,
     PortfolioReviewDossier,

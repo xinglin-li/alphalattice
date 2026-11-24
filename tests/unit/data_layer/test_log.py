@@ -6,9 +6,9 @@ import uuid
 
 import pytest
 
-from alphalattice.kernel.data_layer.log import uuid7
+from alphalattice.foundation.data_layer.log import uuid7
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/log.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/log.py"
 NOW_NS = 1_794_728_593_622_519_000
 
 

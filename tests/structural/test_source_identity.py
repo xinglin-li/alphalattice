@@ -9,11 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
-    VALUE_ROLE_PREFIXES,
-    recipe_hashes_match,
-)
-from alphalattice.kernel.shared_kernel.identity_successors import (
+from alphalattice.capabilities.domain_contracts.identity_successors import (
     IdentitySuccessorError,
     is_current,
     latest,
@@ -21,8 +17,14 @@ from alphalattice.kernel.shared_kernel.identity_successors import (
     recorded_moves,
     recorded_origin,
 )
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    current_module_name,
+    number_deciding_rule,
     source_component_id_from_tracked_path,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+    VALUE_ROLE_PREFIXES,
+    recipe_hashes_match,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -491,7 +493,7 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
 ) -> None:
     """A rule closure follows the deciding imports and moves only with the code that runs."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import (
+    from alphalattice.capabilities.domain_contracts.source_identity import (
         NumberDecidingRule,
         number_deciding_closure,
         source_rule_closure_hash,
@@ -541,8 +543,8 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     ]
     assert sorted(number_deciding_closure(entry, root=tmp_path, rule=rule)) == modules
 
+    from alphalattice.capabilities.domain_contracts import source_identity
     from alphalattice.kernel.clock import wall_time_ns
-    from alphalattice.kernel.shared_kernel import source_identity
 
     clock = wall_time_ns() + 10_000_000_000  # a settled scratch tree without waiting on its clock
     monkeypatch.setattr(source_identity, "wall_time_ns", lambda: clock, raising=False)
@@ -612,13 +614,13 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
         assert len(closures) == 2 and source_reads[len(initial_reads) :] == [source / MODEL_PATH]
 
 
-@pytest.mark.proves("shared_kernel.source_identity_survives_relocation")
+@pytest.mark.proves("domain_contracts.source_identity_survives_relocation")
 @pytest.mark.parametrize("numerical", [False, True], ids=["external", "numerical"])
 def test_a_rule_closure_carries_the_semantic_binding_of_an_import(
     tmp_path: Path, numerical: bool
 ) -> None:
     """Requirement (LAWS.md ID3): both closure forms preserve resolved source identity on a move."""
-    from alphalattice.kernel.shared_kernel.source_identity import (
+    from alphalattice.capabilities.domain_contracts.source_identity import (
         number_deciding_closure,
         number_deciding_rule,
         source_rule_closure_hash,
@@ -676,7 +678,7 @@ def test_a_rule_closure_carries_the_semantic_binding_of_an_import(
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     """A span moves no identity and any other form reads as written."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import (
+    from alphalattice.capabilities.domain_contracts.source_identity import (
         source_bytes_syntax_sha256 as digest,
     )
 
@@ -687,7 +689,7 @@ def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     )
     measured = (
         "import numpy as np\n"
-        "from alphalattice.kernel.shared_kernel.spans import span, spanned\n\n\n"
+        "from alphalattice.capabilities.domain_contracts.spans import span, spanned\n\n\n"
         "def fit(x):\n"
         '    with span("compute", detail="sum"):\n        total = np.sum(x)\n'
         '    with span("score"):\n        return total * 2\n\n\n'
@@ -709,8 +711,8 @@ def test_every_span_in_the_source_is_literal_and_names_a_category_its_ledger_cou
     class, with literal arguments, so it lands in its ledger class and reads as its body in every
     identity that holds its module."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import SPAN_MODULE
-    from alphalattice.kernel.shared_kernel.spans import SPAN_CLASSES
+    from alphalattice.capabilities.domain_contracts.source_identity import SPAN_MODULE
+    from alphalattice.capabilities.domain_contracts.spans import SPAN_CLASSES
 
     found: list[str] = []
     for path in sorted((ROOT / "src").rglob("*.py")):
@@ -784,10 +786,12 @@ def test_the_recorded_reach_names_real_areas_and_roles() -> None:
 
 _ENVIRONMENT_READERS = {
     # The one helper (LAWS.md ID6).
-    "src/alphalattice/kernel/shared_kernel/environment.py": "the helper",
+    "src/alphalattice/capabilities/domain_contracts/environment.py": "the helper",
     # Rebuild keys of caches whose content the environment decides, and packs it gates.
-    "src/alphalattice/kernel/knowledge/model_store.py": "a stored model's rebuild key",
-    "src/alphalattice/kernel/knowledge/catalog.py": "a knowledge pack's installed distributions",
+    "src/alphalattice/capabilities/knowledge/model_store.py": "a stored model's rebuild key",
+    "src/alphalattice/capabilities/knowledge/catalog.py": (
+        "a knowledge pack's installed distributions"
+    ),
     "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py": (
         "the LightGBM thread canary is sealed per installed version (PA3)"
     ),
@@ -867,7 +871,7 @@ def test_the_environment_is_read_by_one_helper_and_the_named_keys() -> None:
     assert _environment_readers(ROOT / "src" / "alphalattice") == set(_ENVIRONMENT_READERS)
 
 
-@pytest.mark.proves("shared_kernel.schema_hash_ignores_prose_and_binds_structure")
+@pytest.mark.proves("domain_contracts.schema_hash_ignores_prose_and_binds_structure")
 def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     """requirement (SH, LAWS.md SC3, V98): a schema's words -- a model's docstring, a
     field's description, an enum's docstring, a title, examples -- move no schema hash; a type,
@@ -875,7 +879,7 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
 
     from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 
     def contract(*, words: bool, bound: int = 3, default: str = "A", required: bool = True):
         class Colour(StrEnum):
@@ -977,8 +981,8 @@ _SCHEMA_DISPLAYS = frozenset(
             "full_request_document",
         ),
         ("src/alphalattice/interface/local_application/portfolio_research.py", "_request_document"),
-        ("src/alphalattice/kernel/shared_kernel/identity.py", "cast"),
-        ("src/alphalattice/kernel/shared_kernel/identity.py", "schema"),
+        ("src/alphalattice/capabilities/domain_contracts/identity.py", "cast"),
+        ("src/alphalattice/capabilities/domain_contracts/identity.py", "schema"),
         (
             "src/alphalattice/oversight/chief_risk_officer/decision/book_evidence.py",
             "PortfolioReviewAnswer",
@@ -1036,8 +1040,10 @@ def test_preparation_identity_tracks_the_data_rule_and_not_grant_mechanics(tmp_p
     (tmp_path / "config/identity-roles.json").write_bytes(
         (ROOT / "config/identity-roles.json").read_bytes()
     )
+    bindings = number_deciding_rule(ROOT)  # a stable path's file sits where its binding puts it
     for relative in paths:
-        file = tmp_path / relative
+        module = relative.removeprefix("src/").removesuffix(".py").replace("/", ".")
+        file = tmp_path / "src" / (current_module_name(module, bindings).replace(".", "/") + ".py")
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text("VALUE = 1\n", encoding="utf-8")
     grant = tmp_path / "src/alphalattice/control/data_platform/delegation.py"

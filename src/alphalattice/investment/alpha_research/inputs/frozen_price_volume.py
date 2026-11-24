@@ -17,6 +17,12 @@ from typing import Any, cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.quant.sector_history import (
+    SectorHistory,
+    sector_codes,
+    sector_ids,
+    sector_slices,
+)
 from alphalattice.investment.alpha_research.inputs.panel_feature_materialization import (
     apply_frozen_temporal_scale,
     scale_alpha_stock_cross_section,
@@ -26,12 +32,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
 )
 from alphalattice.investment.alpha_research.inputs.preprocessing.sector_context import (
     scale_mapped_sector_context_by_listing_session,
-)
-from alphalattice.kernel.quant.sector_history import (
-    SectorHistory,
-    sector_codes,
-    sector_ids,
-    sector_slices,
 )
 
 type FloatArray = npt.NDArray[np.float64]

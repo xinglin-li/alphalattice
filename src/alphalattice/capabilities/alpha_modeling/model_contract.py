@@ -35,9 +35,9 @@ from typing import Any, cast
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.kernel.identity import change_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 from .contracts import (
     AlphaModelAdapter,

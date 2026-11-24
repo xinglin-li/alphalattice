@@ -26,13 +26,13 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_row_hashes
+from alphalattice.foundation.data_layer import arrays
 from alphalattice.interface.local_application import thin_cli
-from alphalattice.kernel.data_layer import arrays
 from alphalattice.kernel.door import Door, FamilyRoute
 from alphalattice.kernel.execution import process_execution
 from alphalattice.kernel.execution.events import Events
 from alphalattice.kernel.identity import FileDigestTrust, TrustEntry
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
 from devtools.testing.performance import (
     Operation,
     judged,

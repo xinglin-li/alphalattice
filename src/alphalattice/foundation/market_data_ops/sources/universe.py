@@ -15,15 +15,15 @@ import json
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 
-from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.data.enums import UniverseIndex
-from alphalattice.kernel.data.universe import (
+from alphalattice.capabilities.data.enums import UniverseIndex
+from alphalattice.capabilities.data.universe import (
     FROZEN_UNIVERSE_SOURCES,
     FetchedUniverseSource,
     fetch_universe_source,
     parse_membership,
     provider_symbol,
 )
+from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
 
 

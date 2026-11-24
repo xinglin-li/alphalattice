@@ -15,6 +15,7 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
     ONE_THREAD_VARIABLES,
@@ -24,8 +25,8 @@ from alphalattice.control.task_control.child import (
     child_calls,
     run_in_child,
 )
-from alphalattice.kernel.data_layer import create_data_root, reading
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer import create_data_root, reading
+from alphalattice.foundation.data_layer.log import HostLog
 from alphalattice.kernel.execution import (
     CANCELLED,
     cancel_execution,
@@ -33,7 +34,6 @@ from alphalattice.kernel.execution import (
     stop_reason,
 )
 from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
-from alphalattice.kernel.shared_kernel import spawn
 
 HERE = __spec__.name if __spec__ else __name__
 
@@ -102,6 +102,7 @@ def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> Non
     )
     from alphalattice.control.task_control.runner import TaskControlRunner
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.alpha_research.candidates.contracts import (
         AlphaExperimentBatch,
         seal_contract,
@@ -112,7 +113,6 @@ def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> Non
     from alphalattice.investment.alpha_research.experiments.development_execution import (
         AlphaDevelopmentCancelled,
     )
-    from alphalattice.kernel.data_layer import history
     from tests.alpha_research.fixtures import _plan_and_workspace
     from tests.integration.alpha_research.test_model_adapter_boundary import _batch, _program
     from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
@@ -269,7 +269,7 @@ class _Declared(RuntimeError):
 
 
 def doubled(*, value: int, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
-    from alphalattice.kernel.data_layer.root import data_root
+    from alphalattice.foundation.data_layer.root import data_root
 
     return {"value": value * 2, "pid": os.getpid(), "root": str(data_root())}
 
@@ -281,8 +281,8 @@ def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-
 def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
     import numpy as np
 
+    from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
     from alphalattice.kernel.resources import current_resource_lease
-    from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
 
     grant = current_resource_lease()
     values = np.arange(64, dtype=np.float64).reshape(8, 8)
@@ -297,7 +297,7 @@ def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-unt
 
 
 def limited_once(*, cancelled) -> None:  # type: ignore[no-untyped-def]
-    from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
+    from alphalattice.capabilities.domain_contracts.environment import numerical_thread_limit
 
     with numerical_thread_limit(1):  # loads the libraries a limit holds, as a fit's first does
         pass
@@ -359,7 +359,7 @@ def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
         _check_alpha_child_parts(tmp_path, interruption=None if case == "complete" else case)
         return
 
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
+    from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV
 
     monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "first"))
     first = run_in_child(f"{HERE}:doubled", {"value": 21})
@@ -401,12 +401,12 @@ def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() 
 
 def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:
     """The shared stage constructor preserves both consumers' complete plans and work items."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition import (
         research_experiments,
         strategy_calibration,
     )
     from alphalattice.control.task_control.contracts import ResearchPlan, WorkItemDefinition
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     for owner, namespace in (
         (research_experiments, "research_experiment"),
@@ -466,17 +466,17 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
 
     import numpy  # noqa: F401 -- the Host's numerical libraries are loaded when it fits
 
-    from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
-    from alphalattice.kernel.shared_kernel.environment import (
+    from alphalattice.capabilities.domain_contracts.environment import (
         numerical_thread_counts,
         numerical_thread_limit,
     )
+    from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
 
     # Exercise a fresh process: no prior cached pool view may hide the Windows race.
     probe = """import importlib
 import numpy
 import threadpoolctl
-from alphalattice.kernel.shared_kernel import environment
+from alphalattice.capabilities.domain_contracts import environment
 # Fit loads its numerical libraries before reading their thread pools.
 with environment.numerical_thread_limit(1):
     pass

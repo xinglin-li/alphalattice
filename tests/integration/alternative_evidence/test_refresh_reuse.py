@@ -34,7 +34,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources import sec_edgar
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     LATER_EIGHT_K,

@@ -13,9 +13,11 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import NamedTuple, TextIO
 
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix as layout_command_prefix,
+)
 from alphalattice.interface.local_application.thin_cli import CLI_ENVIRONMENT, CLI_OPERATION, select
 from alphalattice.kernel.config import current as process_config
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix as layout_command_prefix
 
 
 class Call(NamedTuple):

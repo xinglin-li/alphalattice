@@ -166,10 +166,10 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
 ) -> None:
     """legacy outer/inner seals and derivation hold; admission reads the live cap."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
     from alphalattice.control.task_control.runner import StageDisposition
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
@@ -260,8 +260,8 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
 ) -> None:
     """Publication retries preserve bytes, clean staging and reach Task failure codes."""
 
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("retry"))
@@ -462,9 +462,9 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 ) -> None:
     """An exact live grant resumes the same Task after data and storage stops."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
     # Its preparation runs a Factor study, whose walk-forward policy needs FACTOR_SCALE's history.
@@ -662,6 +662,9 @@ def test_optional_progress_delivery_never_governs_the_stage(
     typed cause and the work goes on; a file that cannot be read, is malformed or is
     another Task's is never promoted, and the last valid observation is kept."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.observation_runtime.telemetry.progress import (
         WorkProgressUpdate,
         WorkspaceProgressPublisher,
@@ -669,9 +672,6 @@ def test_optional_progress_delivery_never_governs_the_stage(
     from alphalattice.control.product_host.maintenance.data_update import (
         WorkspaceDataUpdateApplication,
     )
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
@@ -866,9 +866,9 @@ def test_listing_activity_is_bound_bounded_and_optional(
 ) -> None:
     """Listing activity telemetry is bound to its listing, bounded in size, and optional."""
 
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
     from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     symbols = ("AAA", "BBB", "CCC", "FAIL")
@@ -1149,14 +1149,14 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
 ) -> None:
     """Listing delivery stays cheap under persistent refusal."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
         CurrentUniverseOnboardingOutcome,
         CurrentUniverseOnboardingStatus,
         ListingUnitObservation,
     )
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cost"))

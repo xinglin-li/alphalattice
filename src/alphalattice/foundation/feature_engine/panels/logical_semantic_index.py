@@ -7,10 +7,10 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     PanelLogicalMembershipEpoch,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LOGICAL_SLICE_ALGORITHM_IDENTITY = "ordered-logical-row-digest"
 """The logical digests' algorithm. A change to them bumps it: a publication takes an unchanged

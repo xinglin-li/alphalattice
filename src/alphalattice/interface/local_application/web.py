@@ -57,6 +57,8 @@ from select import select
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.call_span import (
     CALL_PATH,
     REQUEST_CALL,
@@ -91,8 +93,6 @@ from alphalattice.kernel.door import (
     refusal_fields,
 )
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 if TYPE_CHECKING:
@@ -270,7 +270,7 @@ def _step(
     if not traced:
         yield
         return
-    from alphalattice.kernel.data_layer.history import step  # lazy: the Host's, never the CLI's
+    from alphalattice.foundation.data_layer.history import step  # lazy: the Host's, never the CLI's
 
     named = operation if isinstance(operation, str) else route.path
     who = admitted.provenance or RequestProvenance()
@@ -661,7 +661,7 @@ class LocalWebApplication:
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         payload: dict[str, Any] = {}
         if route.otlp:
-            from alphalattice.kernel.data_layer.telemetry import decode  # lazy: Host ingest only
+            from alphalattice.foundation.data_layer.telemetry import decode  # lazy: Host ingest
 
             try:
                 payload = {

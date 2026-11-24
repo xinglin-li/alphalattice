@@ -26,6 +26,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import DesktopCoreFeatureBundle
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     method_family_content_hash,
@@ -35,8 +37,6 @@ from alphalattice.foundation.feature_engine.producers.factors.core_bundle import
     is_maintained_control,
     numerical_spec_hash,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     import pandas as pd

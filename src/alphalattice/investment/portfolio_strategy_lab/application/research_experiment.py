@@ -24,6 +24,13 @@ from pydantic import (
     model_validator,
 )
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.clocks import ScoredFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioCostPolicy,
@@ -40,6 +47,8 @@ from alphalattice.capabilities.portfolio_backtesting.reference_marks import Refe
 from alphalattice.capabilities.portfolio_backtesting.segments import (
     run_portfolio_walk_forward_segment,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.arrays import packed_digest
 from alphalattice.investment.alpha_research.experiments.development_contracts import (
     canonical_score_value_identity,
 )
@@ -64,15 +73,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioResearchArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.arrays import packed_digest
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

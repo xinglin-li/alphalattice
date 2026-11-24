@@ -10,6 +10,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_inputs.tradability.contracts import (
     HistoricalDecisionTradabilitySurface,
     HistoricalExecutionAvailabilitySurface,
@@ -38,7 +39,6 @@ from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _H = "a" * 64
 

@@ -31,9 +31,9 @@ from typing import Any, Final
 import pyarrow as pa
 
 from alphalattice.control.workspace_runtime.database import release_workspace_database
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.history import catalog_session as session
-from alphalattice.kernel.data_layer.root import sql_path
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.history import catalog_session as session
+from alphalattice.foundation.data_layer.root import sql_path
 
 from . import world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows

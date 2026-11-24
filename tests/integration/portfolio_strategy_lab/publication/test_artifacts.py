@@ -11,11 +11,11 @@ import numpy as np
 import pytest
 
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
     lane_upgrade_family,
 )
-from alphalattice.kernel.data_layer import history
 
 TEST_SOURCE = "src/alphalattice/investment/portfolio_strategy_lab/publication/artifacts.py"
 LANE = np.array([[0.5, -0.0], [np.nan, 2.0]])

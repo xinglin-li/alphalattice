@@ -25,6 +25,19 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.persistence import replace_with_retry
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+)
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
+    NEW_BUILD_RECIPE,
+    RECIPE_MINILM_CPU,
+    SUPPORTED_RECIPES,
+    setup_recipe,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -124,19 +137,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
 )
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    NEW_BUILD_RECIPE,
-    RECIPE_MINILM_CPU,
-    SUPPORTED_RECIPES,
-    setup_recipe,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import replace_with_retry
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-)
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,

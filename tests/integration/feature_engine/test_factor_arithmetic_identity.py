@@ -45,6 +45,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    IDENTITY_SWITCH_PATH,
+    current_module_name,
+    number_deciding_closure,
+    number_deciding_rule,
+    source_syntax_sha256,
+)
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
@@ -96,15 +106,6 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
 )
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     admit_factor_development_capabilities,
-)
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.source_identity import (
-    IDENTITY_SWITCH_PATH,
-    number_deciding_closure,
-    number_deciding_rule,
-    source_syntax_sha256,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -216,7 +217,9 @@ def test_registry_mechanics_reach_every_family_and_composition_reaches_none() ->
 def test_a_comment_moves_no_identity_and_a_changed_rule_is_a_new_one(tmp_path: Path) -> None:
     """A comment moves no identity and a changed rule is a new one."""
 
-    spec = find_spec(SHARED_FACTOR_ARITHMETIC_OWNERS[1])
+    spec = find_spec(
+        current_module_name(SHARED_FACTOR_ARITHMETIC_OWNERS[1], number_deciding_rule(ROOT))
+    )
     assert spec is not None and spec.origin is not None
     formulas = Path(spec.origin)
     commented = tmp_path / "factor_formulas.py"

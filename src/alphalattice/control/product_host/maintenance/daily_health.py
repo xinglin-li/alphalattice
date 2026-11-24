@@ -7,7 +7,10 @@ from uuid import UUID
 
 from alphalattice.control.task_control.contracts import TaskRecord
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
-from alphalattice.kernel.data_layer.market_health import market_health, unavailable_market_health
+from alphalattice.foundation.data_layer.market_health import (
+    market_health,
+    unavailable_market_health,
+)
 
 
 def record_daily_health(

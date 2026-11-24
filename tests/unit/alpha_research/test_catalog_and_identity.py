@@ -6,13 +6,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.experiments.bindings import (
     AlphaExperimentAdmissionError,
     build_alpha_experiment_request,
     build_candidate_execution_binding,
     build_development_surface_binding,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alpha_research.candidate_inventories import (
     load_full_alpha_candidate_inventory,
     load_initial_candidate_inventory,
@@ -161,11 +161,11 @@ def test_foundation_axis_cannot_be_narrowed_or_reordered_by_a_direct_compiler():
 
 @pytest.mark.proves("alpha_research.historical_sector_coverage_is_bound")
 def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations():
+    from alphalattice.capabilities.validation.enums import RebalanceFrequency
     from alphalattice.investment.alpha_research.inputs.development_foundation import (
         AlphaDevelopmentExecutionOutcomeRef,
         AlphaDevelopmentFoundationBinding,
     )
-    from alphalattice.kernel.validation.enums import RebalanceFrequency
 
     digest = "1" * 64
     legacy = AlphaDevelopmentFoundationBinding.create(

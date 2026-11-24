@@ -35,15 +35,15 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.persistence import fsync_directory, write_new
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.data_layer.root import data_root
-from alphalattice.kernel.data_layer.store import as_columns, newest, stage
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
+from alphalattice.foundation.data_layer.root import data_root
+from alphalattice.foundation.data_layer.store import as_columns, newest, stage
 from alphalattice.kernel.identity import change_blake3, identity_blake3
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
-from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
 
 from ..documents.contracts import AlternativeEvidenceDocumentReference
 from ..publication.artifacts import AlternativeEvidenceArtifactStore

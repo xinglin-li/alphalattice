@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.evidence.alternative_evidence.analysis import packet as packet_module
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -28,7 +29,6 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.analysis.matters import EvidenceNeed
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
 )

@@ -39,6 +39,8 @@ import numpy as np
 import numpy.typing as npt
 
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalOutcomeDevelopmentRows,
 )
@@ -113,8 +115,6 @@ from alphalattice.investment.alpha_research.targets.development import (
     AlphaDevelopmentTargetMaterializationBinding,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

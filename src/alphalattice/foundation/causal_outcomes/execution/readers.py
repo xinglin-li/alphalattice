@@ -13,7 +13,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -21,10 +25,6 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,

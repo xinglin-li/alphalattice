@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from alphalattice.capabilities.domain_contracts.environment import OFFLINE_SWITCH
 from alphalattice.control.workspace_runtime.network_access import set_network_access
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     SEC_USER_AGENT_VARIABLE,
@@ -31,7 +32,6 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecEdgarSource,
 )
 from alphalattice.kernel.config import Change, override
-from alphalattice.kernel.shared_kernel.environment import OFFLINE_SWITCH
 
 USER_AGENT = "AlphaLattice QA qa@example.com"
 ARCHIVE = f"https://www.sec.gov/Archives/edgar/data/320193/{'0' * 18}"

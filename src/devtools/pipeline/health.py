@@ -24,7 +24,7 @@ from typing import Any, TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline.definition import DefinitionError
 from devtools.pipeline.receipt import (
     CASCADE,

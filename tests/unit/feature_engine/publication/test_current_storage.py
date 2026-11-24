@@ -1,7 +1,7 @@
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.feature_engine.publication.current_storage import refuse_before_0_2_7
-from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/publication/current_storage.py"
 

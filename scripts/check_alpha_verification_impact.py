@@ -27,13 +27,13 @@ for _entry in (str(SRC), str(SCRIPTS_ROOT)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 from alphalattice.investment.alpha_research.verification.identity import (  # noqa: E402
     alpha_execution_domain_hashes,
 )
 from alphalattice.investment.alpha_research.verification.impact import (  # noqa: E402
     alpha_verification_impact,
 )
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
 
 # The gate owns the structural set; this runner only needs to know which paths
 # it has already executed. `check_playpen` imports no product runtime, so

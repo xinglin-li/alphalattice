@@ -1,7 +1,7 @@
 """The commit's wait rules: an unbounded wait or loop is refused where it is written.
 
 Each rule names a classic loop or wait anti-pattern and its repair through the one way to wait,
-``alphalattice.kernel.shared_kernel.waits``. The rules read Python source with the standard
+``alphalattice.capabilities.domain_contracts.waits``. The rules read Python source with the standard
 library's ``ast`` alone, so they run alike on every platform. A thread target's endless loop is a
 ``while True`` loop and is caught by that rule; a poison item retried ahead of the rest cannot be
 seen statically and stays a review question.
@@ -14,8 +14,8 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-PRIMITIVE = "src/alphalattice/kernel/shared_kernel/waits.py"
-WAIT = "alphalattice.kernel.shared_kernel.waits"
+PRIMITIVE = "src/alphalattice/capabilities/domain_contracts/waits.py"
+WAIT = "alphalattice.capabilities.domain_contracts.waits"
 RULES = {
     "while-true-without-deadline": f"a while True loop no deadline or stop check ends: "
     f"bound it with {WAIT}.wait_until, or break on a monotonic deadline or a stop event",

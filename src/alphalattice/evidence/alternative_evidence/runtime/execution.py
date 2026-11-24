@@ -39,6 +39,8 @@ from uuid import UUID
 import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
@@ -50,8 +52,6 @@ from alphalattice.kernel.resources import (
     logical_cpu_count,
     use_resource_lease,
 )
-from alphalattice.kernel.shared_kernel.host_stop import checkpoint
-from alphalattice.kernel.shared_kernel.waits import pause
 
 MAXIMUM_SESSION_THREADS = 16
 """The most threads one unit is planned (S2 measured 1-16, identical)."""

@@ -17,6 +17,11 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 import numpy as np
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
+from alphalattice.capabilities.quant.sector_history import sector_ids, sector_subset
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceDataUpdateBinding,
@@ -97,19 +102,14 @@ from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
 from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span
 
 if TYPE_CHECKING:
     import pandas as pd
 
+    from alphalattice.capabilities.quant.sector_history import SectorHistory
     from alphalattice.foundation.feature_engine.contracts import PanelSourceExclusion
     from alphalattice.foundation.feature_engine.storage.contracts import SectorReferenceState
     from alphalattice.foundation.market_data_ops.sources.membership import MembershipSchedule
-    from alphalattice.kernel.quant.sector_history import SectorHistory
 
 
 TRAINING_TARGET_METHOD_ID: Final = "EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET"

@@ -19,6 +19,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.data.quality import diagnose_daily_table
+from alphalattice.capabilities.data.table import coerce_daily_records
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.market_data_ops.sources.contracts import FailureEvidence, RawDailyBar
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     UniverseManifest,
@@ -50,10 +54,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
 from alphalattice.kernel.clock import observation_time
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data.quality import diagnose_daily_table
-from alphalattice.kernel.data.table import coerce_daily_records
-from alphalattice.kernel.data_layer import history
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.resources import worker_width

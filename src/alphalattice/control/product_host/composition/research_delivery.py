@@ -10,6 +10,7 @@ from uuid import UUID
 
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.product_host.research_authoring.comparison import (
     compare_experiment_reports,
@@ -20,7 +21,6 @@ from alphalattice.interface.local_application.failure_codes import located_failu
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 

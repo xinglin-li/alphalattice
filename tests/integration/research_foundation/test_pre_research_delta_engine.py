@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.market_data_ops.returns.semantic_revisions import (
     AdjustedReturnSemanticDelta,
@@ -34,7 +35,6 @@ from alphalattice.foundation.research_foundation.runtime.delta_service import (
     PRE_RESEARCH_DELTA_POLICY_HASHES,
     PreResearchDeltaService,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 

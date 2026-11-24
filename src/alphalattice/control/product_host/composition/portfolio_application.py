@@ -346,7 +346,7 @@ class PortfolioResearchApplication:
         that admission never calls, so an admission costs no score replay and no
         Risk surface even on a full miss.
         """
-        from alphalattice.kernel.data_layer import history  # lazy: admission needs the Host writer
+        from alphalattice.foundation.data_layer import history  # lazy: needs the Host writer
 
         history.require_portfolio_result_store()
         work = planned or self.plan(spec)

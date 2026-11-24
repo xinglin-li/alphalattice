@@ -13,6 +13,7 @@ from uuid import uuid4
 import duckdb
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -32,9 +33,8 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.thin_cli import connection_path
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def set_tasks_waiting(workspace: Path, count: int, at: datetime) -> None:

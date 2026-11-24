@@ -7,6 +7,7 @@ from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.evidence_review_application import ReviewOutcome
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
@@ -33,7 +34,6 @@ from alphalattice.control.product_host.composition.research_review_outcome impor
 )
 from alphalattice.control.product_host.composition.review_updates import bundle_update
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.data.errors import DataError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,

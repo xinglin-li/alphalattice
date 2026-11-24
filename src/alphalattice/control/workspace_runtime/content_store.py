@@ -46,6 +46,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.control.workspace_runtime.verified_facts import (
     _FULL_PROOF,
     file_fact,
@@ -56,8 +58,6 @@ from alphalattice.control.workspace_runtime.verified_facts import (
 from alphalattice.kernel.execution import execution_port
 from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
 from alphalattice.kernel.resources import worker_width
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.spans import span
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
 _VERIFIED_MODEL_CACHE_LIMIT = 128

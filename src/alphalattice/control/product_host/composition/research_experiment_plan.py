@@ -14,6 +14,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceModelTrainingInput,
@@ -39,8 +41,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
     PortfolioExperimentSource,
 )
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model
 from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

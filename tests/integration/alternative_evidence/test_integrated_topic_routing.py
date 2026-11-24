@@ -90,7 +90,7 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 from alphalattice.evidence.alternative_evidence.runtime.history import (
     receipt_matter_selection_id,
 )
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _registry,

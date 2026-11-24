@@ -11,8 +11,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.kernel.execution import TIMERS, Timer, Timers
-from alphalattice.kernel.shared_kernel.waits import CEILING
 
 
 class MaintenanceWakeController:

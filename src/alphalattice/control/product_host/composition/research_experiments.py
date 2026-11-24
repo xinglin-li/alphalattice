@@ -22,6 +22,16 @@ from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
     LightGBMThreads,
     lightgbm_threads,
 )
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -201,6 +211,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     budget_cores,
     machine_load,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     INSTALLED_REDUNDANCY_POLICIES,
@@ -308,17 +319,6 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,

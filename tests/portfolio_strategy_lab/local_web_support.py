@@ -25,6 +25,8 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -81,8 +83,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.node_runner import run_node
@@ -638,7 +638,7 @@ def _harness(tmp_path: Path) -> Iterator[_Harness]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
     resolver = _Resolver(_resolved())
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     workspace_id = named_workspace_id(workspace) or "synthetic"
     history.open_history(workspace_id, "portfolio", workspace)
@@ -676,9 +676,9 @@ def _manifest(workspace_id: str) -> ResearchWorkspaceManifest:
 def admit_market_fixture(workspace: Path, workspace_id: str) -> None:
     """Give a freshly seeded workspace its market admission before testing the ordinary Host."""
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.foundation.data_layer import history
     from alphalattice.foundation.market_data_ops.storage import world
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data_layer import history
 
     lease = WorkspaceWriterLease.acquire(workspace)
     try:

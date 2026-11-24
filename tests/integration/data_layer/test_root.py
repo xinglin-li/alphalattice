@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.project import lineage, register, uuid7
-from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.project import lineage, register, uuid7
+from alphalattice.foundation.data_layer.reading import reading_session
+from alphalattice.foundation.data_layer.root import (
     LAKE_THREAD_CEILING,
     SCHEMA_VERSION,
     catalog,
@@ -30,7 +30,7 @@ from tests.integration.data_layer.root_protected_validation import (
     assert_old_receipt_catalog_opens,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/root.py"
 N = 10**9
 T0 = 1_767_225_600_000_000
 SPAN = "a" * 16

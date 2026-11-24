@@ -6,7 +6,7 @@ from collections.abc import Callable
 from importlib import import_module
 from typing import Protocol, cast, runtime_checkable
 
-from alphalattice.kernel.live_evidence.errors import LiveEvidenceError
+from alphalattice.evidence.live_evidence.errors import LiveEvidenceError
 
 
 @runtime_checkable
@@ -49,7 +49,7 @@ SecSectionDiscoveryPort = Callable[..., SecSectionDiscovery]
 
 def resolve_sec_section_discovery() -> SecSectionDiscoveryPort:
     """Resolve the optional outer capability lazily and fail closed when absent."""
-    module = import_module("alphalattice.kernel.live_evidence.online_sources")  # lazy: HTML.
+    module = import_module("alphalattice.evidence.live_evidence.online_sources")  # lazy: HTML.
     capability = getattr(module, "discover_sec_filing_sections", None)
     if capability is None or not callable(capability):
         raise LiveEvidenceError(

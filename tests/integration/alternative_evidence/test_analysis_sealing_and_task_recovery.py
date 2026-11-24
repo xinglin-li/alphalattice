@@ -19,6 +19,8 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
@@ -59,8 +61,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     SubmittedEvidenceAnalysis,
     alternative_evidence_document_task_contract,
 )
-from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
@@ -630,8 +630,8 @@ def test_a_stage_failure_names_the_owners_own_code(
         )
         monkeypatch.setattr(authority.evidence_runtime, "whole_delivery", lambda *_: False)
         if untyped == "citation":
-            from alphalattice.kernel.data.errors import DataError
-            from alphalattice.kernel.data_layer.knowledge import KnowledgeStore
+            from alphalattice.capabilities.data.errors import DataError
+            from alphalattice.foundation.data_layer.knowledge import KnowledgeStore
 
             index_chunks = KnowledgeStore.index_chunks
 

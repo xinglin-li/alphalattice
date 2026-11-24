@@ -17,7 +17,7 @@ from datetime import date
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.quant.sector_history import sector_positions
+from alphalattice.capabilities.quant.sector_history import sector_positions
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]

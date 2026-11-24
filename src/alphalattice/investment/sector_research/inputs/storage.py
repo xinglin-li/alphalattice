@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.kernel.identity import integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import SectorContextManifest
 from .surface import SectorContextBoundaryError, SectorContextSurface

@@ -8,9 +8,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FactorPipelineArtifactKind = Literal[
     "deterministic-evidence",

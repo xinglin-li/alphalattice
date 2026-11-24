@@ -42,7 +42,7 @@ def test_discovered_imports_are_kept_by_place_and_bytes_and_errors_never(tmp_pat
 
 
 SOURCE = "alphalattice.capabilities.alpha_modeling"
-TARGET = "alphalattice.kernel.shared_kernel"
+TARGET = "alphalattice.capabilities.domain_contracts"
 
 MODULE = TARGET + ".sample"
 READ = "def read():\n    "
@@ -67,7 +67,7 @@ IMPORTS = {
 def import_fixture(tmp_path, statement):
     raw = json.loads((Path(__file__).parents[2] / "config/package-architecture.json").read_text())
     packages = [
-        p for p in raw["packages"] if p["package_id"] in {"alpha_modeling", "shared_kernel"}
+        p for p in raw["packages"] if p["package_id"] in {"alpha_modeling", "domain_contracts"}
     ]
     registry = PackageArchitectureRegistry.model_validate(
         {"schema": raw["schema"], "packages": packages}

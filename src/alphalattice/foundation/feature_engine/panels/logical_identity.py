@@ -16,6 +16,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -50,8 +52,6 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
 )
 from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _Model = TypeVar("_Model", bound=BaseModel)
 _RESERVED_COLUMNS = frozenset(

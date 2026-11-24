@@ -26,8 +26,8 @@ from zipfile import ZipFile
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.cli_contract import refusal_words, worded
-from alphalattice.kernel.shared_kernel import spawn
 
 
 def _blocked(tmp_path: Path) -> Path:

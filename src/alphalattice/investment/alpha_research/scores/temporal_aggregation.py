@@ -85,12 +85,12 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     AnchoredInstantPolicy,
     SessionAnchor,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_feature_availability_policy,
 )
 from alphalattice.kernel.identity import identity_sha256
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import MarketPhase
 
 type FloatArray = npt.NDArray[np.float64]

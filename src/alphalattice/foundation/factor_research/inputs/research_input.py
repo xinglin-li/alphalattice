@@ -7,13 +7,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.evaluation.oos_evidence import (
     FactorEvidenceClassification,
     FactorOosEvidenceReport,
 )
 from alphalattice.foundation.factor_research.evaluation.redundancy import FactorRedundancyStructure
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FactorResearchInputBoundaryError(ValueError):

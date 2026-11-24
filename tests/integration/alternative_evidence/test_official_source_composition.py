@@ -1480,8 +1480,8 @@ def test_a_holding_with_nothing_to_cite_carries_the_review(tmp_path: Path) -> No
 def test_a_raised_risk_stays_open_whichever_book_or_policy_raised_it(tmp_path: Path) -> None:
     """Control: Raised risk stays open any book or policy raised it."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition import evidence_review_application
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from alphalattice.oversight.chief_risk_officer.decision import submissions
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
         BookSelector,

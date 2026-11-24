@@ -15,6 +15,10 @@ from uuid import uuid4
 import pytest
 from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
 
+from alphalattice.capabilities.domain_contracts.environment import (
+    numerical_thread_limit,
+    numerical_thread_pools,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -41,10 +45,6 @@ from alphalattice.interface.local_application.dispatcher import (
     LocalBackgroundDispatcher,
 )
 from alphalattice.kernel.resources import ResourceRefused
-from alphalattice.kernel.shared_kernel.environment import (
-    numerical_thread_limit,
-    numerical_thread_pools,
-)
 from tests.workspace_task_runner.task_control_support import (
     FixtureTaskAdapter,
     compatibility,

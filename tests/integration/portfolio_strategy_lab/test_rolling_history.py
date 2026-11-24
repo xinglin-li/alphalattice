@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     advance_decision_state,
@@ -23,7 +24,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.rolling_history 
     append_rolling_report_head,
     project_rolling_report,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     build_numerical,
     prepared_for,

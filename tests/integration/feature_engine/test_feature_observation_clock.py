@@ -29,6 +29,8 @@ import pyarrow as pa
 import pytest
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry import (
     process_metrics,
 )
@@ -95,8 +97,6 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     build_installed_factor_formula_specifications,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
 ANNUALIZATION = math.sqrt(252.0)
@@ -911,7 +911,7 @@ def test_runtime_plan_jointly_bounds_desktop_workers_models_and_duckdb(
     assert database.path.read_bytes() == before
     # A test node gives each process one thread (OMP_NUM_THREADS); every DuckDB pool sized to all
     # ten cores in every worker held mac1 at load 80 (11-19).
-    from alphalattice.kernel.shared_kernel import environment
+    from alphalattice.capabilities.domain_contracts import environment
 
     reader_threads._THREADS.clear()  # the list patched above: nothing applied
     monkeypatch.setattr(pa, "set_cpu_count", lambda threads: None)  # the one reader_threads loads

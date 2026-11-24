@@ -30,6 +30,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
@@ -72,7 +73,6 @@ from alphalattice.investment.sector_research.targets.execution import (
     compile_sector_target_surface,
     seal_sector_target_evidence,
 )
-from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind
 from tests._support.researcher_methodology_session_fixtures import (
     development_risk_workspace as development_risk_workspace,
@@ -217,6 +217,7 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
     )
     from types import SimpleNamespace
 
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.sector_research.contracts import sector_array_identity
     from alphalattice.investment.sector_research.experiments.development_artifacts import (
         SectorDevelopmentArtifactStore,
@@ -225,7 +226,6 @@ def test_clean_target_is_the_hand_computed_sector_mean_and_nothing_else(
         evaluate_sector_forecast_surface,
         sector_results_upgrade_family,
     )
-    from alphalattice.kernel.data_layer import history
 
     workspace = tmp_path / "workspace"
     store = SectorDevelopmentArtifactStore(workspace / "artifacts")
@@ -625,10 +625,10 @@ def test_host_derives_every_identity_and_the_verifier_walks_to_the_seal(  # type
     # Seed a legacy workspace before comparing its two readers across upgrade.
     from types import SimpleNamespace
 
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.sector_research.experiments.development_artifacts import (
         sector_results_upgrade_family,
     )
-    from alphalattice.kernel.data_layer import history
 
     family = sector_results_upgrade_family()
     legacy_workspace = tmp_path / "legacy-workspace"
@@ -729,7 +729,7 @@ def test_tamper_missing_child_and_wrong_lineage_are_refused(  # type: ignore[no-
         surface_path.write_bytes(original)
     service.verify(experiment_hash=ewma.experiment.experiment_hash)
 
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     log = history.held()
     profile = history._sector_result_profile(
@@ -1111,8 +1111,8 @@ def test_forged_recipe_policy_and_closure_cannot_pass_the_verifier(  # type: ign
 ) -> None:
     """Forged recipe policy and closure cannot pass the verifier."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.investment.sector_research.models.contracts import SectorForecastRecipe
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     service, _snapshot, _revision, ewma, _zero, _range = sector_publication
     store = service.store

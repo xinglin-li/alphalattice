@@ -12,6 +12,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -37,12 +43,6 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 CAPTURE_TASK_KIND = "research_input_capture"
 
