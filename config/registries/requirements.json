@@ -734,7 +734,7 @@
       "seconds": 1
     },
     "data_layer.agent_otlp_is_one_catalog_batch": {
-      "description": "Sanitized native observations commit atomically through the catalog's existing writer, even when the Host stops meanwhile, and read under their exact vendor and conversation with absent attribution counted.",
+      "description": "Sanitized native observations commit atomically through the catalog's existing writer while a Task starts or the Host stops, and read under their exact vendor and conversation with absent attribution counted.",
       "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
       "seconds": 10,

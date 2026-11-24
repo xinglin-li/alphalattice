@@ -16,7 +16,10 @@ from uuid import uuid4
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.environment import recorded_environment
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
+from alphalattice.control.observation_runtime.telemetry.process_metrics import (
+    current_allowed_logical_processors,
+    worker_processes,
+)
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
@@ -53,10 +56,7 @@ from alphalattice.evidence.alternative_evidence.storage import world as evidence
 from alphalattice.foundation.data_layer.backup import verify_data_root
 from alphalattice.foundation.data_layer.history import open_history
 from alphalattice.foundation.data_layer.history_carried_results import CarriedCheck
-from alphalattice.foundation.data_layer.history_runtime import (
-    set_host_duckdb_threads,
-    start_log_reader,
-)
+from alphalattice.foundation.data_layer.history_runtime import start_log_reader
 from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
@@ -68,13 +68,12 @@ _TASK_READER_POLICY = Lock()
 
 
 def _apply_task_reader_policy() -> int:
-    """Apply the widest remaining grant to the shared Arrow and DuckDB pools."""
+    """Apply the widest remaining grant to Arrow and workspace database opens."""
     with _TASK_READER_POLICY:
         widest = TASK_LEASES.widest()
         if widest is None:
             return 1  # No Task remains to use the pool; the next admission sets its width.
         threads: int = apply_reader_threads(widest)
-        set_host_duckdb_threads(threads)
         return threads
 
 
@@ -206,12 +205,15 @@ class WorkspaceApplicationSession:
     @staticmethod
     def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
         """Open Host history with the workspace's network control at the export boundary."""
+        budget = CpuBudgetStore(workspace / "runtime").read().cpu_budget
+        processors = len(current_allowed_logical_processors()) or 1
         open_history(
             workspace_id,
             workspace.name,
             workspace,
             can_export=lambda: network_access(workspace, now=clock()).allowed,
             carried_checks=carried_result_checks(),
+            duckdb_threads=processors if budget == "auto" else min(processors, budget),
         )
 
     def execute_admitted(

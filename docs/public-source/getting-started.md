@@ -181,6 +181,8 @@ alphalattice cpu-budget set --cores auto
 `show` reports capacity, load and work. `auto` uses processors not already
 busy when work starts; a positive count bounds preparation CPU use without
 changing the calculation. Queue capacity is a separate `--queue` setting.
+The Host sizes its shared catalog's DuckDB pools at startup. Restart the Host
+to apply a changed budget to those pools.
 
 After preparation publishes an input, [Research flows](research-flows.md)
 explains the research choices. [CLI](cli.md) explains answers and continuations,

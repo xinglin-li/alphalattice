@@ -225,13 +225,13 @@ def configure_read_cache(connection: Any) -> None:
     connection.execute("SET cache_local_files = true").complete()
 
 
-def lake_thread_config() -> dict[str, int]:
-    """Size both of a new lake instance's pools within its execution grant."""
-    width = cpu_width(LAKE_THREAD_CEILING)
+def lake_thread_config(threads: int | None = None) -> dict[str, int]:
+    """Size both of a new lake instance's pools within its execution and Host limits."""
+    width = cpu_width(min(threads or LAKE_THREAD_CEILING, LAKE_THREAD_CEILING))
     return {"threads": width, "async_threads": width}
 
 
-def duckdb_session(root: Path) -> Any | None:
+def duckdb_session(root: Path, *, threads: int | None = None) -> Any | None:
     """An in-memory DuckDB session with the SQLite scanner and DuckLake loaded from their installed
     wheels, every download off; None without the data extra. The caller closes it."""
     try:
@@ -244,7 +244,7 @@ def duckdb_session(root: Path) -> Any | None:
             "extension_directory": str(root / "extensions"),
             "autoinstall_known_extensions": False,
             "autoload_known_extensions": False,
-            **lake_thread_config(),
+            **lake_thread_config(threads),
         },
     )
     try:

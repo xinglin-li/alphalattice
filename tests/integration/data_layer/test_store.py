@@ -139,6 +139,56 @@ def owe(port: StorePort) -> dict:
     return owed
 
 
+def _telemetry_during_task_admission(root, monkeypatch, rows):
+    """Admit a Task while the Host's shared DuckLake instance is writing telemetry."""
+    from alphalattice.control.product_host.composition import application_session
+    from alphalattice.foundation.data_layer import history
+
+    workspace = root.parent / "workspace"
+    workspace.mkdir()
+    now = datetime(2025, 1, 1, tzinfo=UTC)
+    application_session.CpuBudgetStore(workspace / "runtime").write(
+        1, chosen_by="HUMAN", chosen_at=now
+    )
+    with history.own_root(root):
+        application_session.WorkspaceApplicationSession.open_history("w1", workspace, lambda: now)
+        port = history.store()
+        assert port is not None
+        settings = "SELECT current_setting('threads'), current_setting('async_threads')"
+        opened = port.lake.execute(settings).fetchone()
+        monkeypatch.setattr(application_session, "apply_reader_threads", int)
+        resume = threading.Event()
+
+        def admit():
+            with application_session.TASK_LEASES.lease(uuid.uuid4(), 1, 1):
+                return application_session._apply_task_reader_policy()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            execute = duckdb.DuckDBPyConnection.execute
+
+            def at_transaction(connection, sql, *args, **kwargs):
+                if sql.startswith("INSERT INTO lake.telemetry.event"):
+                    try:
+                        assert pool.submit(admit).result(timeout=5) == 1
+                    except TimeoutError as error:
+                        raise AssertionError("Task admission stalled during telemetry") from error
+                    finally:
+                        resume.set()
+                if sql.startswith("SET threads TO ?"):
+                    # DuckDB's native resize can get stuck here. Model that wait so
+                    # the red replay releases the transaction and its test thread.
+                    assert resume.wait(10)
+                    raise AssertionError("Task admission tried to resize the shared lake")
+                return execute(connection, sql, *args, **kwargs)
+
+            with monkeypatch.context() as transaction:
+                transaction.setattr(duckdb.DuckDBPyConnection, "execute", at_transaction)
+                assert port.telemetry_batch(rows) == 1
+        (record,) = port.agent_telemetry("codex", "c", workspace_id="w1")
+        assert record["output_tokens"] == 3
+        assert port.lake.execute(settings).fetchone() == opened == (1, 1)
+
+
 @pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
 @pytest.mark.parametrize(
     "case",
@@ -151,6 +201,7 @@ def owe(port: StorePort) -> dict:
         "failed-commit",
         "concurrent-batches",
         "daily-admission",
+        "task-admission",
     ),
 )
 def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
@@ -190,6 +241,10 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
             "application/json",
             workspace_id=workspace,
         )
+
+    if case == "task-admission":
+        _telemetry_during_task_admission(root, monkeypatch, batch("c"))
+        return
 
     if case in {"held-reader-on-reopen", "failed-commit"}:
         from alphalattice.foundation.data_layer import history, history_runtime, reading
@@ -1161,22 +1216,29 @@ def _check_maintenance_keeps_owed_snapshots(root, log, port):
 
 @pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
 @pytest.mark.parametrize("listings", [None, 108, 1080], ids=["owed", "inlined", "parquet"])
-def test_maintenance_bounds_catalog_and_preserves_its_readers(root, listings):
+def test_maintenance_bounds_catalog_and_preserves_its_readers(root, listings, monkeypatch):
     """A real catalog keeps recovery snapshots and equal as-of rows through maintenance."""
     with HostLog.open(root) as log, closing(StorePort.open(root, log)) as port:
         if listings is None:
             _check_maintenance_keeps_owed_snapshots(root, log, port)
         else:
-            _check_idle_maintenance_preserves_world_rows(root, log, port, listings)
+            _check_idle_maintenance_preserves_world_rows(root, log, port, listings, monkeypatch)
 
 
-def _check_idle_maintenance_preserves_world_rows(root, log, port, listings):
+def _check_idle_maintenance_preserves_world_rows(root, log, port, listings, monkeypatch):
     """The idle write and age triggers compact both physical forms without moving as-of rows."""
     now = datetime.now(UTC)
     image = "SELECT * FROM raw_bar_asof(epoch_us(?)) ORDER BY listing_id, session_date"
     at = datetime(2024, 4, 1, tzinfo=UTC)
     run = port.lake.execute
     run("SET threads TO 6").complete()
+    maintain = port.maintain
+
+    def maintain_at_open_width(when):
+        assert run("SELECT current_setting('threads')").fetchone() == (6,)
+        return maintain(when)
+
+    monkeypatch.setattr(port, "maintain", maintain_at_open_width)
     provider = log.require_lineage("provider", "yf")
     for day in range(126):
         run(

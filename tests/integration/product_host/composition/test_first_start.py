@@ -541,7 +541,7 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
     publish("markers", marker.model_dump(mode="json"), "marker_hash")
 
     if case == "no catalog reader":
-        monkeypatch.setattr(history_startup, "duckdb_session", lambda _root: None)
+        monkeypatch.setattr(history_startup, "duckdb_session", lambda *_args, **_kwargs: None)
     history.open_history("first-start", "first start", tmp_path, tmp_path / "data-root")
     try:
         family = first_start.execution_outcomes()

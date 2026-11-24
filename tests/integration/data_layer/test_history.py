@@ -36,6 +36,7 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.reader_threads import reader_threads
 from alphalattice.evidence.alternative_evidence.runtime import execution
 from alphalattice.foundation.data_layer import (
     encoders,
@@ -383,7 +384,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         assert port is not None
         settings = "SELECT current_setting('threads'), current_setting('async_threads')"
         assert port.lake.execute(settings).fetchone() == (4, 4)
-        # A two-core Task finishes while the one-core Task still uses this cursor.
+        # The Task reader grant changes while the shared catalog keeps its opening width.
         with monkeypatch.context() as fixed, ExitStack() as application:
             fixed.setattr(history_runtime, "data_root", lambda: results_root)
             session = application.enter_context(
@@ -417,10 +418,12 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
             try:
                 with session.task_resources(narrower, clock):
                     assert execution.TASK_LEASES.current() == 1
-                    assert port.lake.execute(settings).fetchone() == (2, 2)
+                    assert reader_threads() == 2
+                    assert port.lake.execute(settings).fetchone() == (4, 4)
                     context.run(wide.close)
                     assert execution.TASK_LEASES.holders() == (narrower.task_id,)
-                    assert port.lake.execute(settings).fetchone() == (1, 1)
+                    assert reader_threads() == 1
+                    assert port.lake.execute(settings).fetchone() == (4, 4)
             finally:
                 context.run(wide.close)
         port.lake.execute("BEGIN TRANSACTION").complete()

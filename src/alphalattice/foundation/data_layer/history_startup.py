@@ -59,13 +59,15 @@ def open_history(
     *,
     can_export: Callable[[], bool] | None = None,
     carried_checks: Mapping[str, CarriedCheck] | None = None,
+    duckdb_threads: int | None = None,
 ) -> None:
     """Open this Host's history: the held log, its reading views and its workspace's row.
 
     Refused by name when the log is held elsewhere or does not open, and
     `data_layer.history_unavailable` when the views do not; either way the data root is released.
-    Opening an open history again records the workspace only. The results a copy carries are
-    admitted once their owners' `carried_checks` prove them; a refusal releases this opening.
+    The first Host sets the shared catalog's pool width for its lifetime. Opening an open history
+    again records the workspace only. The results a copy carries are admitted once their owners'
+    `carried_checks` prove them; a refusal releases this opening.
     """
     with _lifecycle:
         log = held(root)
@@ -73,7 +75,8 @@ def open_history(
             where = data_root() if root is None else root
             catalog_reader = None
             try:  # the views' DuckDB, checked here without the log, which only the reader opens
-                owner = duckdb_session(where)
+                # All cursors share these pools. Size them before publishing the owner.
+                owner = duckdb_session(where, threads=duckdb_threads)
                 if owner is not None:
                     with _lock:
                         _open["duckdb"] = owner

@@ -13058,11 +13058,6 @@
 "count": 1,
 "description": "The share of a derived file's rows that must be dead before idle maintenance rewrites the file."
 },
-"src/alphalattice/foundation/data_layer/store.py::IDLE_MAINTENANCE_THREADS::4": {
-"class": "EXECUTION",
-"count": 1,
-"description": "The number of threads the Host's idle maintenance uses at once."
-},
 "src/alphalattice/foundation/data_layer/store.py::IDLE_MAINTENANCE_WRITES::16": {
 "class": "EXECUTION",
 "count": 1,

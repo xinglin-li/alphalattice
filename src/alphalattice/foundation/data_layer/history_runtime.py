@@ -47,7 +47,7 @@ import alphalattice.foundation.data_layer.recall as recall
 import alphalattice.foundation.data_layer.return_series as return_series
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
-from alphalattice.capabilities.domain_contracts.environment import offline, set_duckdb_pool_width
+from alphalattice.capabilities.domain_contracts.environment import offline
 from alphalattice.foundation.data_layer.admit import secrets_in
 from alphalattice.foundation.data_layer.breakdown import goal_trace as traced_goal
 from alphalattice.foundation.data_layer.log import HostLog, attach, await_workers, envelope, uuid7
@@ -59,7 +59,6 @@ from alphalattice.foundation.data_layer.reading import (
 )
 from alphalattice.foundation.data_layer.root import (
     DATA_ROOT_ENV,
-    LAKE_THREAD_CEILING,
     create_data_root,
     data_root,
 )
@@ -238,17 +237,6 @@ def host_duckdb(root: Path) -> Any | None:
         if active is not None and active.resolve() == root.resolve():
             return _open.get("duckdb")
         return None
-
-
-def set_host_duckdb_threads(threads: int) -> None:
-    """Resize the lake shared by history readers and the retained StorePort."""
-    threads = min(threads, LAKE_THREAD_CEILING)
-    with _lock:
-        owner = _open.get("duckdb")
-        if owner is not None and _open.get("duckdb_threads") != threads:
-            with owner.cursor() as cursor:
-                set_duckdb_pool_width(cursor, threads)
-            _open["duckdb_threads"] = threads
 
 
 def store() -> StorePort | None:
@@ -584,7 +572,6 @@ def _close_history() -> None:
                 catalog_reader = _open.pop("catalog_reader", None)
             reading = _open.pop("reading", None)
             duckdb = _open.pop("duckdb", None)
-            _open.pop("duckdb_threads", None)
             _open.pop("log", None)
             _open.pop("workspace", None)
             _open.pop("portfolio_catalog_workspaces", None)

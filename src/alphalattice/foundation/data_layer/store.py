@@ -164,7 +164,6 @@ before its snapshot expired still finds it: DuckLake's own guidance, a few days.
 IDLE_MAINTENANCE_AGE: Final = timedelta(days=1)
 IDLE_MAINTENANCE_WRITES: Final = 16
 """Earlier of one wall day or sixteen catalog snapshots, checked at the Host's next idle turn."""
-IDLE_MAINTENANCE_THREADS: Final = 4
 DERIVED_REWRITE: Final = 0.5
 """The share of a derived file's rows that must be dead before maintenance rewrites it: a
 collected partition is the derived schema's normal churn, so its dead bytes never outgrow the live
@@ -925,17 +924,9 @@ class StorePort:
                     and now - checked < IDLE_MAINTENANCE_AGE
                 ):
                     return
-                ((threads,),) = run("SELECT current_setting('threads')").fetchall()
-                limited = threads > IDLE_MAINTENANCE_THREADS
-                if limited:
-                    run("SET threads TO ?", (IDLE_MAINTENANCE_THREADS,)).complete()
-                try:
-                    self.maintain(now)
-                    ((latest,),) = run("SELECT max(snapshot_id) FROM lake.snapshots()").fetchall()
-                    self._maintained = latest, now
-                finally:
-                    if limited:
-                        run("SET threads TO ?", (threads,)).complete()
+                self.maintain(now)
+                ((latest,),) = run("SELECT max(snapshot_id) FROM lake.snapshots()").fetchall()
+                self._maintained = latest, now
             finally:
                 self._writer.release()
         finally:
