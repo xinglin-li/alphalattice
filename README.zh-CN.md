@@ -17,14 +17,15 @@
 
 研究计算遵循每项结果声明的信息截止时间。市场名单使用当前上市公司，报告会说明由此带来的幸存者偏差，以及历史行业和价格记录的局限。验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
 
-## 0.2.8：现已提供
+## 0.2.9：现已提供
 
-- 产品记录的一切，从市场数据到研究结果，都放进本机的同一个数据层：一份只追加的事件日志，加一个按版本保存的列式数据目录（基于 DuckDB 的 DuckLake）。
-- 市场数据只发布一次，由同一数据根目录下的所有工作区共用，不再每个工作区各存一份。
-- 0.2.7 的工作区在 0.2.8 第一次启动时完成升级；升级前先做一份经过校验的备份，它也是回退的途径。
-- 在同一台四核台式机上，完整的 Daily 用时 190 秒，0.2.7 是 333 秒。
+- 每个数据根目录只有一个常驻 Host。没有 Host 应答时，受支持的工作区命令会在后台启动一个（帮助命令不会；`serve` 则在自己的终端中运行 Host）；它在命令和会话之间保持运行，空闲且没有待办工作一段时间后自行停止。`alphalattice host stop` 会有序关闭 Host：它先完成正在运行的任务和请求，再释放数据根目录。
+- 精简的命令行：Host 运行期间，受支持的命令直接把请求交给它，不再加载整个程序，因此省去程序的启动。其他命令仍通过完整的命令行执行；需要等待任务完成的命令仍会等待。
+- 检查过一次的文件，在它改变之前一直被信任；Host 空闲时会重新检查它信任的文件。设置 `ALPHALATTICE_FILE_TRUST=0` 可以关闭这项信任。
+- 每日数据健康检查：每次 Daily 对市场数据做五项检查，结果显示在 Workbench 的 Data 页面和这次更新的回读中。
+- 0.2.8 的数据根目录可以直接使用：0.2.9 不移动任何数据。
 
-[0.2.8 发行说明（英文）](docs/public-source/release-notes.md#028)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
+[0.2.9 发行说明（英文）](docs/public-source/release-notes.md#029)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
 
 <a id="two-ways-to-use-alphalattice"></a>
 
@@ -65,11 +66,11 @@
 
 ## 安装并启动
 
-[0.2.10](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)
+[0.2.9](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)
 发布后，在选定的目录中执行这条 PowerShell 命令。
 
 ```powershell
-if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
 ```
 
 [安装并启动](docs/public-source/install.md)提供 macOS 和 Linux 命令及 Claude Code 插件的用法。
@@ -189,16 +190,15 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 
 ## 本次发布与后续方向
 
-**当前版本为 0.2.8。** 它重建了 AlphaLattice 保存数据的方式，一次启动即可升级 0.2.7 的工作区，并让 Daily、Evidence 和查询更快。[发行说明](docs/public-source/release-notes.md#028)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
+**当前版本为 0.2.9。** 程序核心里的每件事都只有一个负责方：时钟、配置、网络访问、哈希和数据库连接。每个数据根目录由一个常驻 Host 为精简的命令行服务，资源在四核预算内按租约分配，已经做过的检查在输入未变时直接信任，每次 Daily 都检查数据健康。[发行说明](docs/public-source/release-notes.md#029)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
 
 每个次版本提前规划范围；发行说明列出已运行的检查、已测工作负载和仍未证明的限制，期间的补丁让当前版本更顺畅。各版本借鉴已在其他地方得到验证的方法，并按 AlphaLattice 自身的规则调整：按日期限定的输入、封存的结果，以及你的决定权。
 
 后续 0.2.x 补丁按顺序如下。每个补丁只有一个主题，并按既定预算公布实测的时间、磁盘和内存：
 
-- **0.2.9：程序核心里每件事只有一个负责方。** 时钟、配置、网络访问、哈希和数据库连接各归一个负责方。资源在四核预算内按租约分配，常驻 Host 为精简的命令行服务，已经做过的检查在输入未变时直接信任。
-- **0.2.10：每日更新适配本机，并且可以直接试用。** 首次使用和每日更新控制在 8 GB 内存以内。一条命令完成安装，并提供 Claude Code 插件。从空目录开始，十分钟内看到第一个标注为试用的结果。每天检查数据健康，结果在程序和 Workbench 中都能看到。
+- **0.2.10：每日更新适配本机，并且可以直接试用。** 一条命令完成安装，并提供 Claude Code 插件。目标是：首次使用和每日更新控制在 8 GB 内存以内；从空目录开始，十分钟内看到第一个标注为试用的结果。
 - **0.2.11：贴近实际的回放。** 通过真实的数据客户端及其缓存，回放真实世界的事件（公司行动、延迟发布、数据源中断）。
-- **0.2.12：插件平台。** 产品的各个部分通过同一个接口登记表注册，支持配置组合和插件信任；各模型族成为第一批插件。
+- **0.2.12：插件平台。** 产品的各个部分通过同一个接口登记表注册，支持配置档和插件信任；各模型族成为第一批插件。
 - **0.2.13：可以按日期查询的历史。** 查询过去某一天当时已知、尝试过和决定过的内容，不含之后才得知的信息。
 - **0.2.14：产品迁入插件，代理协议成为 API。** 产品的各个部分逐个迁入插件平台；完成代理协议，以对现有调用方保持兼容的 API 形式提供。
 - **0.2.15：少等程序。** 代理思考的同时，程序预先准备可能的下一步。
@@ -239,7 +239,7 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 
 ## 关于
 
-Last checked: 2026-11-21 against 0.2.8
+Last checked: 2026-11-23 against 0.2.9
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 

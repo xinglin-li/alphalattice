@@ -1,7 +1,19 @@
 # AlphaLattice release notes
-Last checked: 2026-11-21 against 0.2.8
+Last checked: 2026-11-24 against 0.2.9
 
-Latest released version: [0.2.8](#028). Earlier measurements describe their own versions.
+Latest released version: [0.2.9](#029). Earlier measurements describe their own versions.
+
+## 0.2.9
+
+**One resident Host and a thin command line.** 0.2.9 gives each job in the program's core one owner, and the owner keeps the work it has done for the next request:
+
+- **One resident Host per data root.** When none answers, a supported workspace command starts the Host in the background; help does not, and `serve` runs its Host in its own terminal. The background Host stays up between commands and sessions, holds the data root's lock as its only writer, and stops by itself once it has been idle with no work owed. `alphalattice host stop` starts an orderly shutdown: the Host finishes its running Tasks and requests before it releases the data root. A second Host on the same data root is refused by name.
+- **A thin command line.** While the Host runs, a supported command hands its request to it without loading the program, so it skips the program's start. Other commands run through the full command line, and a command that waits for its Task still waits for it.
+- **Checked once, trusted until changed.** A file's digest is computed once, by its writer or its first reader, and trusted while the file's size, times and identity hold. While the Host is idle it re-checks the files it trusts on a schedule, and at the end of each scheduled re-check its record drops the files the workspace no longer holds. `ALPHALATTICE_FILE_TRUST=0` turns the trust off.
+- **Daily data health checks.** Each Daily runs five checks on its market data: `source_freshness`, `not_null`, `unique`, `accepted_values` and `relationships`. The Workbench's Data page and the update's readback show each check's verdict and failure count. The results are advisory.
+- **Your 0.2.8 data root as it is.** 0.2.9 moves no data. A workspace from before 0.2.8 is upgraded at its first start, as in 0.2.8. A workspace last opened by a release before 0.2.7 still holds tables 0.2.7 retired and is refused with `feature_storage.workspace_before_0_2_7`: open it with 0.2.7 first.
+
+**For integrators.** Every operation goes through one registered door: an operation outside the registry is refused by name (`door.operation_unknown`), and a request that needs a person's decision says so (`door.person_required`). Resources are granted by lease within the four-core budget.
 
 ## 0.2.8
 

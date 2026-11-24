@@ -10,6 +10,7 @@
     {
       "name": "alphalattice",
       "source": "./",
+      "version": "0.2.9",
       "description": "AlphaLattice research skill, specialist roles and local Host entry."
     }
   ]

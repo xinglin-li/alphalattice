@@ -228,7 +228,7 @@ def _run(argv: list[str] | None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.8",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.9",
                         ]
                     ),
                     "interpreter": sys.executable

@@ -1,5 +1,5 @@
 # Use the CLI
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most

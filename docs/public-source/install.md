@@ -1,28 +1,33 @@
 # Install and start / 安装并启动
 
-## Start AlphaLattice 0.2.10
+## Start AlphaLattice 0.2.9
 
-After the [0.2.10 release](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)
+After the [0.2.9 release](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)
 is available, open a terminal in the folder where you want your workspace. Run the
 command for your shell. It starts the local Host with the versioned release wheel
 and its locked runtime packages. It uses the `alphalattice-workspace` and
 `alphalattice-data` subfolders, so an older Host can keep serving on its own
 machine data root. Open the Workbench
-link printed by the Host. Keep the terminal running while you work. Use Ctrl+C to
-stop the Host.
+link printed by the Host. This Host runs in the terminal; Ctrl+C stops it. Once it
+has stopped, a supported workspace command starts a resident Host in the background
+(help does not, and rerunning this `serve` command runs its Host in the terminal
+again). The background Host outlives the terminal and stops by itself once it has
+been idle with no work owed. `alphalattice host stop` shuts it down in order, after its running Tasks and
+requests finish.
 
 For follow-up commands keep the data-root setting and the launcher prefix through
 `--workspace ./alphalattice-workspace` in this folder. See [Getting started](getting-started.md) for
 system prerequisites and [Upgrading](upgrading.md) for existing workspaces.
 
-## 启动 AlphaLattice 0.2.10
+## 启动 AlphaLattice 0.2.9
 
-[0.2.10 发布](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)后，
+[0.2.9 发布](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)后，
 在你选定的工作区目录中打开终端，执行适合当前终端的命令。它使用固定版本的发布 wheel
 及其锁定的运行依赖来启动本地 Host，并使用 `alphalattice-workspace` 和
 `alphalattice-data` 子目录。旧版 Host 可继续使用自己的机器数据根目录。打开 Host
-打印的 Workbench 链接。使用期间保持
-终端开启，按 Ctrl+C 停止 Host。
+打印的 Workbench 链接。这个 Host 在终端中运行，按 Ctrl+C 停止它。它停止后，受支持的工作区命令会在后台启动一个常驻 Host
+（帮助命令不会；再次运行本页的 `serve` 命令仍会在终端中运行 Host）。后台 Host 在关闭终端后仍在运行，空闲且没有待办工作一段时间后自行停止。
+`alphalattice host stop` 会在正在运行的任务和请求完成后有序关闭它。
 
 在同一目录中执行后续命令时，请沿用数据根设置及截至
 `--workspace ./alphalattice-workspace` 的命令前缀。系统依赖见[入门](getting-started.md)，
@@ -31,13 +36,13 @@ system prerequisites and [Upgrading](upgrading.md) for existing workspaces.
 ### Windows PowerShell
 
 ```powershell
-if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
 ```
 
 ### macOS and Linux / macOS 和 Linux
 
 ```bash
-if command -v uvx >/dev/null 2>&1; then ALPHALATTICE_DATA_ROOT="$PWD/alphalattice-data" uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser; else printf '%s\n' 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' >&2; false; fi
+if command -v uvx >/dev/null 2>&1; then ALPHALATTICE_DATA_ROOT="$PWD/alphalattice-data" uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser; else printf '%s\n' 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' >&2; false; fi
 ```
 
 ## First-use doctor

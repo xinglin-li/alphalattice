@@ -1,11 +1,11 @@
 # Maintain data and the workspace
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 Updates preserve the exact inputs bound by earlier studies. Local Web shows the proposed change, progress and receipt; reusing an exact completed update can return its receipt without another Task. Source terms belong to the [third-party data guide](third-party-and-data.md). The [CLI guide](cli.md) describes commands and continuations. The [research-agent guide](../../AGENTS.md#what-only-a-person-decides) lists choices that need you.
 
 ## Updates and data issues
 
-The Data page in Workbench shows Daily data health for the latest recorded Daily or the selected update. The Host's update readback carries the same five results. Each result has a stable check ID, a verdict and a failure count when the catalog can be read. The checks cover raw-bar freshness for the requested market session, bar keys, corporate action kinds and bar-to-listing relationships. Unavailable results have no count. The results are advisory and leave the Daily's published inputs and positions intact.
+The Data page in Workbench shows Daily data health for the latest recorded Daily or the selected update. The Host's update readback carries the same five results. Each result has a stable check ID, a verdict and a failure count when the catalog can be read. The five checks, by ID: `source_freshness`, raw bars for the requested market session; `not_null`, bars with a missing provider, listing or version key; `unique`, bars recorded twice under one key; `accepted_values`, corporate actions of an unknown kind on that date; and `relationships`, bars whose listing is not in the catalog. Unavailable results have no count. The results are advisory and leave the Daily's published inputs and positions intact.
 
 An unfinished update keeps its own plan. A provider deferral retains fetched listings and records when continuation is due. The offered continuation resumes that update; preparation has its own confirmation path. Timeouts or unreadable responses can instead leave failed listings and issues requiring review. Earlier published inputs remain available.
 
@@ -55,7 +55,7 @@ generation = backup_data_root(Path("data-root"), Path("machine-backups"))
 restored = restore_data_root(generation, Path("restored-data-root"))
 ```
 
-Keep the whole backup repository: each generation contains its three SQLite snapshots,
+Keep the whole backup repository: each generation contains its two SQLite snapshots (the log and the catalog),
 file manifest and saved log chain head; its immutable files live in the shared `files/`
 pool. Later generations copy only new files into that pool.
 
@@ -66,7 +66,7 @@ against the copied catalog and admitted blob owners before publishing the new ro
 A changed file or an incomplete generation is refused by name. Generations without
 these file seals are refused; take a new backup to obtain a verified generation.
 
-Online backup copies the index, then the log, then the catalog, without holding the
+Online backup copies the log, then the catalog, without holding the
 Host writer for the backup's duration. The catalog may contain commits newer than the
 copied log. Restore first verifies the saved chain and its catalog references, then runs
 the store's existing startup repair to append owed events. It relocates the restored

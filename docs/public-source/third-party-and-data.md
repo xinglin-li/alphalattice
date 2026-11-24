@@ -1,5 +1,5 @@
 # Downloads, data sources and terms
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 AlphaLattice is Apache-2.0. Software, models and data retain their terms; [NOTICE](../../NOTICE) lists included material and separately installed model licenses.
 

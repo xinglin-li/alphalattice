@@ -1,11 +1,11 @@
 r"""Prepare release-wheel sidecars and prove the public install commands without an agent turn.
 
-For the 0.2.10 release, extract the sidecars from the cut wheel with this command.
+For the 0.2.9 release, extract the sidecars from the cut wheel with this command.
 
     uv run --locked python -m scripts.release.install_smoke \
         --wheel <release-wheel> --assets-only --out <asset-directory>
 
-Attach `alphalattice-0.2.10-py3-none-any.whl`, `alphalattice-runtime-requirements.txt`
+Attach `alphalattice-0.2.9-py3-none-any.whl`, `alphalattice-runtime-requirements.txt`
 and `alphalattice-runtime-overrides.txt` to the GitHub release. Take all three
 files from the same cut wheel.
 """

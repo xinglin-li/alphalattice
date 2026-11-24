@@ -24,14 +24,15 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.8, now
+## 0.2.9, now
 
-- Everything the product records, from market data to research results, now lives in one data layer on your machine: one append-only event log and one catalog of versioned tables (DuckLake on DuckDB).
-- Market data is published once and shared by every workspace under the data root, instead of each workspace keeping its own copy.
-- A 0.2.7 workspace is upgraded in its first 0.2.8 start, after a verified backup that is also the way back.
-- On the same four-core desktop, the whole Daily took 190 s against 0.2.7's 333 s.
+- One resident Host per data root. When none answers, a supported workspace command starts one in the background; help does not, and `serve` runs its Host in its own terminal. The background Host stays up between commands and sessions and stops by itself once it has been idle with no work owed. `alphalattice host stop` starts an orderly shutdown: the Host finishes its running Tasks and requests before it releases the data root.
+- A thin command line: while the Host runs, a supported command hands its request to it without loading the program, so it skips the program's start. Other commands run through the full command line, and a command that waits for its Task still waits for it.
+- A file checked once is trusted until it changes, and the Host re-checks the files it trusts while it is idle. `ALPHALATTICE_FILE_TRUST=0` turns the trust off.
+- Daily data health checks: five checks on each Daily's market data, shown on the Workbench's Data page and in the update's readback.
+- A 0.2.8 data root is used as it is: 0.2.9 moves no data.
 
-See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each change. The versioned notes keep each measured workload and its limits.
+See the [0.2.9 release notes](docs/public-source/release-notes.md#029) for each change. The versioned notes keep each measured workload and its limits.
 
 ## Two ways to use AlphaLattice
 
@@ -51,8 +52,8 @@ See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each 
    convene the investment committee. Decide it in the conversation, then or at any
    later time, and change it the same way, for example "Stop convening the
    committee on daily updates." Until you say yes, later updates get the portfolio
-   manager's view on the reviewed positions. The first use does not wait for this
-   answer.
+   manager's view on the reviewed positions, with the option to convene the
+   committee. The first use does not wait for this answer.
 
 2. **Daily update, in a new session in the same folder.** Say
    `Positions for <next session>, reviewed.` The agent uses the installed strategy
@@ -86,11 +87,11 @@ See the [0.2.8 release notes](docs/public-source/release-notes.md#028) for each 
 
 ## Install and start
 
-When [0.2.10](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.10)
+When [0.2.9](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)
 is available, run this PowerShell command in the folder you want to use.
 
 ```powershell
-if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-0.2.10-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.10/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
 ```
 
 [Install and start](docs/public-source/install.md) has the macOS and Linux
@@ -267,7 +268,7 @@ explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.8 is the current release.** It rebuilds how AlphaLattice keeps its data, upgrades a 0.2.7 workspace in one start, and makes the Daily, Evidence and queries faster. The [release notes](docs/public-source/release-notes.md#028) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
+**0.2.9 is the current release.** It gives each job in the program's core one owner: the clock, settings, network access, hashing and database connections. One resident Host per data root serves a thin command line, resources are granted by lease within the four-core budget, a check already done is trusted until its input changes, and each Daily checks its data's health. The [release notes](docs/public-source/release-notes.md#029) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -278,8 +279,7 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.9: one owner for each job in the program's core.** The clock, settings, network access, hashing and database connections each get one owner. Resources are granted by lease within the four-core budget, a resident Host serves a thin command line, and a check already done is trusted until its input changes.
-- **0.2.10: the daily fits the machine, and you can try it.** First use and daily updates within 8 GB of memory. One command to install and a Claude Code plugin. A first labelled result within ten minutes from an empty folder. Daily health checks on the data, in the program and the Workbench.
+- **0.2.10: the daily fits the machine, and you can try it.** One command to install and a Claude Code plugin. Its targets: first use and daily updates within 8 GB of memory, and a first result, labelled as a trial, within ten minutes from an empty folder.
 - **0.2.11: realistic replay.** Replay real-world events (corporate actions, late reports, provider outages) through the real data client and its cache.
 - **0.2.12: a plugin platform.** The product's parts register through one interface registry, with profiles and plugin trust; the model families become the first plugins.
 - **0.2.13: history you can query by date.** Ask what was known, tried and decided on a past date, with nothing learned after it.
@@ -335,7 +335,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-11-21 against 0.2.8
+Last checked: 2026-11-23 against 0.2.9
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 **Your first step in every session, before any answer:** run `Get-Content
 .alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
