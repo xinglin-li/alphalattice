@@ -41,9 +41,32 @@ def shared_outcome_catalog(factory: pytest.TempPathFactory) -> Path:
     return factory.getbasetemp() / "methodology-outcome-catalog"
 
 
+SESSION_WORKSPACES = frozenset(
+    {
+        "development_risk_workspace",
+        "extension_feature_workspace",
+        "external_factor_workspace",
+        "real_risk_workspace",
+    }
+)
+
+
 @pytest.fixture(scope="module")
-def outcome_catalog_root(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Hold the module's isolated catalog for its shared publication fixtures."""
+def outcome_catalog_root(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Path]:
+    """Hold the module's isolated catalog for its shared publication fixtures. A session
+    workspace builds under a root of its own, which is refused while the catalog records, so the
+    workspaces this module's cases use are built before the catalog opens: a later case's first
+    use would otherwise build inside the hold an earlier case left open."""
+    used = {
+        name
+        for item in request.session.items
+        if getattr(item, "module", None) is request.module
+        for name in item.fixturenames
+    }
+    for name in sorted(used & SESSION_WORKSPACES):
+        request.getfixturevalue(name)
     with open_outcome_catalog(shared_outcome_catalog(tmp_path_factory)) as root:
         yield root
 
