@@ -23,6 +23,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel import storage
 from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab import local_web_support as web
 from tests.portfolio_strategy_lab.host_requests import _json, _request
@@ -191,8 +192,11 @@ def test_real_task_records_drive_home_badges_and_grouped_history(
     )
     assert agent_closed["lifecycle"] == "CANCELLED"
     assert registry.task(agent_stop.task_id).failure_code == "task_control.ledger_rebuilt"
-    # An existing table-less database cannot prove that no decisions are pending.
-    duckdb.connect(str(live.workspace / "market-data.duckdb")).close()
+    # An existing table-less database cannot prove that no decisions are pending. This open is
+    # outside the product's opener, so it names the file and the Host's instance lets it go.
+    market = live.workspace / "market-data.duckdb"
+    with storage.outside(market, replacing=True):
+        duckdb.connect(str(market)).close()
     status, _headers, body = _request(live, "/api/decisions")
     refusal = json.loads(body)
     unavailable = "feature_input.case_store_unavailable"

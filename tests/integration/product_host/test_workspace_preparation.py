@@ -1532,6 +1532,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         inspect_existing_data_workspace,
     )
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+    from alphalattice.kernel import storage
     from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
     from tests.workspace_readiness.storage_support import future_sample
 
@@ -1559,10 +1560,16 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         def __getattribute__(self, name):
             raise AssertionError(f"qualified local preparation accessed sources: {name}")
 
+    def held_bytes() -> bytes:
+        # The live Host holds the file, and Windows refuses a bare read of it: a byte reader
+        # names the file to its owner first, as every reader outside the engine does.
+        with storage.outside(root / "market-data.duckdb"):
+            return (root / "market-data.duckdb").read_bytes()
+
     start = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     start.data_provider = NoSources()
     with start as live:
-        before_read = (root / "market-data.duckdb").read_bytes()
+        before_read = held_bytes()
         too_late = live.operations.preparation.plan(
             requested_formation_session=datetime.fromisoformat(
                 inspection["inputs"]["panel_through"]
@@ -1570,7 +1577,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
             - timedelta(days=1),
         )
         assert too_late["failure_code"] == "workspace_preparation.local_inputs_after_requested_date"
-        assert (root / "market-data.duckdb").read_bytes() == before_read
+        assert held_bytes() == before_read
         assert not live.session.task_control_registry.tasks()
         through = datetime.fromisoformat(inspection["inputs"]["panel_through"]).date()
         late = through + timedelta(days=7)
@@ -1588,7 +1595,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
             with future_sample(market, live.session.mutation_gate, table, listing_id, late):
                 # The later row is world's, where the Host serves it, not only the stage's buffer.
                 assert late in {row.session_date for row in served(listing_id, through=late)}
-                mutated = (root / "market-data.duckdb").read_bytes()
+                mutated = held_bytes()
                 refused = live.operations.preparation.plan(requested_formation_session=through)
                 assert refused["source_inputs"][field] == str(through)
                 assert refused["source_through"] == str(late)
@@ -1597,7 +1604,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
                     == "workspace_preparation.local_inputs_after_requested_date"
                 )
                 assert not live.session.task_control_registry.tasks()
-                assert (root / "market-data.duckdb").read_bytes() == mutated
+                assert held_bytes() == mutated
         perform = live.operations.preparation._perform
 
         def interrupt_before_publication(task, plan, stage, execution):
