@@ -25,6 +25,7 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     client_refusal,
@@ -49,11 +50,10 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.identity import identity_sha256
 from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -1342,7 +1342,7 @@ OFF_PATH: Final = "setup.tool.command"
 
 def tool_setup() -> dict[str, Any]:
     """Only an absent launcher needs installation; an off-PATH launcher remains executable."""
-    prefix = command_prefix()
+    prefix = cli_invocation.command_prefix()
     if shutil.which(prefix[0], path=fresh_path()) is not None:
         return {
             "present": True,
@@ -1378,19 +1378,20 @@ def tool_setup() -> dict[str, Any]:
 
 
 def fresh_path() -> str | None:
-    """This shell's PATH as a fresh shell has it, for the bare-command check.
+    """The command's shell PATH as a fresh shell has it, for the bare-command check.
 
     `uv run` puts its environment's folder first, whose checkout command no specialist's own
-    shell reaches.
+    shell reaches. A forwarded command reads its caller's shell, never the Host's.
 
     Returns:
-        PATH without that folder under `uv run`; otherwise None, PATH as it is.
+        PATH without that folder under `uv run`; otherwise PATH as it is (None: this process's).
     """
-    venv = process_config().get("VIRTUAL_ENV")
-    if venv is None or "UV_RUN_RECURSION_DEPTH" not in process_config().public:
-        return None
+    caller = cli_invocation.environment()
+    venv = caller.get("VIRTUAL_ENV")
+    if venv is None or "UV_RUN_RECURSION_DEPTH" not in caller:
+        return cli_invocation.search_path()
     own = {Path(venv) / "Scripts", Path(venv) / "bin"}
-    parts = process_config().get("PATH", "").split(os.pathsep)
+    parts = caller.get("PATH", "").split(os.pathsep)
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
 
 
@@ -1540,7 +1541,7 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
     if session is not None and session[0] == "codex":
         trust = codex_project_trust(
-            project, process_config().public
+            project, cli_invocation.environment()
         )  # missing gates; unknown never does
         answer.update({} if trust["present"] is True else {"project_trust": trust})
     return answer
@@ -1603,7 +1604,7 @@ def declaration_setup(project: Path, host: str) -> list[str]:
     python = python if (checkout / "pyproject.toml").is_file() else Path(sys.executable)
     module = "alphalattice.interface.local_application.native_setup"
     configure = [str(python), "-m", module, "--project", str(project), "configure", "--host", host]
-    bind = [*command_prefix(), "--workspace", "<dir>", "session", "bind"]
+    bind = [*cli_invocation.command_prefix(), "--workspace", "<dir>", "session", "bind"]
     return [join(configure, shell()), join(bind, shell())]
 
 
@@ -1673,7 +1674,8 @@ def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | N
     Fail fast: each missing item is named with its commands, under `missing` only (never an
     offered command a walk would run), and nothing opens until the same command runs again.
     """
-    setup = setup_reading(Path.cwd(), workspace, agent_session(process_config().public))
+    caller = cli_invocation.environment()  # a forwarded command's own, not the Host's
+    setup = setup_reading(cli_invocation.cwd(), workspace, agent_session(caller))
     missing = {k: setup[k] for k in SETUP_GATE if (setup.get(k) or {}).get("present") is False}
     if not missing:
         return setup, None

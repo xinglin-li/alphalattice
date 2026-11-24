@@ -1824,6 +1824,13 @@
         "decided": "2026-11-16: granted: one unit test per bounded loop is the goal's proof, each one function under 30 lines with no fixture world; source falls because dead code is deleted, which the growth rule never weighs against new proof"
       }
     },
+    "local_application.agent_calls_count_as_the_full_cli": {
+      "description": "If an agent session's call took the thin path without its session, or its Host counted the launch outside the caller's temporary folder, an agent would read a launch count or an answer the full CLI never gives.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "It runs a served Host and the full CLI against it, which the unit layer refuses; the Host is in-process, so no process starts."
+    },
     "local_application.agent_exporters_preview_before_project_write": {
       "description": "Native exporter setup previews both agents without writes and, only on explicit consent, merges Claude's project-local environment while leaving user configuration and other settings unchanged.",
       "owner": "alphalattice.interface.local_application",

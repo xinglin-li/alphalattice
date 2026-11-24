@@ -10,6 +10,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import tomllib
 import zipfile
 from pathlib import Path
@@ -27,7 +29,9 @@ from alphalattice.control.product_host.composition import (
     retrieval_pack_setup,
 )
 from alphalattice.interface.local_application import (
+    cli,
     cli_contract,
+    cli_invocation,
     client,
     native_bridge,
     native_setup,
@@ -35,6 +39,7 @@ from alphalattice.interface.local_application import (
 )
 from alphalattice.kernel.config import DATA_ROOT_ENV, Change, override
 from alphalattice.kernel.shared_kernel import project_layout, spawn
+from tests.portfolio_strategy_lab.cli_support import _agent_project
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "config/release/runtime-resources.json"
@@ -145,13 +150,36 @@ class _Loopback:
         self.live: set[int] = set()
         self.holders: dict[Path, int] = {}  # each data root's lock: the port of its Host
         self.next_port = 41000
+        self.foreign: set[int] = set()  # a crashed Host's port another service answers on
+        self.closing: set[int] = set()  # a Host that closes each connection after its answer
+        self.sent: list[dict[str, object]] = []  # each request body, as it reached a port
 
     def connection(self, host: str, port: int, timeout: float) -> SimpleNamespace:
+        ended: list[bool] = []  # this connection, once a closing Host has answered on it
+
         def connect() -> None:
             if port not in self.live:
                 raise ConnectionRefusedError(port)
 
-        return SimpleNamespace(connect=connect, close=lambda: None, port=port)
+        def response() -> SimpleNamespace:
+            answer = {"cli": "complete", "exit": 0, "stdout": "", "stderr": ""}
+            answer = answer if "argv" in self.sent[-1] else {"cli": "local"}  # its handshake
+            body = b"<html>another service</html>" if port in self.foreign else json.dumps(answer)
+            ended.extend([True] * (port in self.closing))
+            return SimpleNamespace(status=200, read=lambda: body)
+
+        def request(_method: str, _path: str, body: bytes, headers: object) -> None:
+            if ended:  # as a connection that may not reopen refuses before sending
+                raise thin_cli.http.client.NotConnected
+            self.sent.append(json.loads(body))
+
+        return SimpleNamespace(
+            connect=connect,
+            close=lambda: None,
+            port=port,
+            request=request,
+            getresponse=response,
+        )
 
 
 def _record(root: Path, workspace: Path, port: int) -> None:
@@ -188,16 +216,24 @@ RESIDENT = {
     "the-root-serves-another-workspace": (1, [None]),
     "help-starts-nothing": (0, [None]),
     "a-bound-sessions-first-command": (1, ["cli:a"]),
+    "an-agent-sessions-first-command": (1, ["thin:a"]),
+    "a-bound-command-meets-another-service": (0, [None]),
+    "a-bound-command-after-the-host-closed": (0, [None]),
 }
 """Each resident-Host case: the Host starts its commands asked for, and the path and workspace
 each reached. A Host past its idle bound stays while a Task runs
 (test_local_web_service.py:464-471), so it is the running Host's case here."""
 
 
-def _command(argv: list[str], cwd: Path, *, thin: bool = True, hosted: bool = True) -> str | None:
+def _command(
+    argv: list[str], cwd: Path, *, thin: bool = True, hosted: bool = True, entry: bool = False
+) -> str | None:
     """The path and workspace a command reached, as the console entry decides: the thin path,
     which starts the Host when none answers, else (a bound session goes there first) the full
-    CLI's Host-backed operation, which takes the same start; `--help` starts none."""
+    CLI's Host-backed operation, which takes the same start; `--help` starts none. `entry` sends
+    it through the console's own entry, which answers from the Host it reached."""
+    if entry:
+        return None if thin_cli.invoke(argv) is None else "thin:" + cwd.name
     selected = thin_cli.select(argv, cwd) if thin else None
     serving = None if selected is None else thin_cli._serving(selected)
     if serving is not None:
@@ -245,17 +281,41 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
         _record(roots["a"], workspaces["other"], 40001)
         loopback.live.add(40001)
         loopback.holders[roots["a"]] = 40001
+    elif case == "a-bound-command-meets-another-service":
+        _record(roots["a"], workspaces["other"], 40001)  # its Host crashed; its port was taken
+        loopback.live.add(40001)
+        loopback.foreign.add(40001)
+    elif case == "a-bound-command-after-the-host-closed":
+        _record(roots["a"], workspaces["other"], 40001)  # it proves itself, then closes
+        loopback.live.add(40001)
+        loopback.closing.add(40001)
     names = {
         "two-data-roots": ["a", "b"],
         "one-data-root-twice": ["a", "a"],
     }.get(case, ["a"])
+    bound = case in {
+        "a-bound-command-meets-another-service",
+        "a-bound-command-after-the-host-closed",
+    }
+    agent = bound or case == "an-agent-sessions-first-command"
+    session = {"CLAUDE_CODE_SESSION_ID": "claude-1", "UV_RUN_RECURSION_DEPTH": None}
+    session = session if agent else {}
+    if agent:  # an installed console on the caller's PATH, as an agent's shell finds it
+        console = tmp_path / "bin"
+        console.mkdir()
+        for launcher in ("alphalattice", "alphalattice.cmd"):
+            (console / launcher).write_text("", encoding="utf-8")
+            (console / launcher).chmod(0o755)
+        monkeypatch.setenv("PATH", str(console) + os.pathsep + os.environ.get("PATH", ""))
+        monkeypatch.setattr(tempfile, "tempdir", str(console))
     seen = []
     for name in names:
-        with override(Change("data-root", {DATA_ROOT_ENV: str(roots[name])})):
+        with override(Change("data-root", {DATA_ROOT_ENV: str(roots[name]), **session})):
             help_only = case == "help-starts-nothing"
             argv = (
                 ["--help"] if help_only else ["--workspace", str(workspaces[name]), "study", "list"]
             )
+            argv = argv[2:] if bound else argv
             with thin_cli.one_command():  # one console command, as the entry holds it
                 seen.append(
                     _command(
@@ -263,9 +323,94 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
                         workspaces[name],
                         thin=case != "a-bound-sessions-first-command",
                         hosted=not help_only,
+                        entry=agent,
                     )
                 )
     assert (len(started), seen) == (starts, served)
+    if agent:  # the Host counts the launch it dispatches; the console counts none of its own
+        assert not list(console.rglob("*.count"))
+    if bound:  # only the handshake, no caller data, on any connection
+        assert loopback.sent == [{"operation": thin_cli.CLI_OPERATION}]
+
+
+AGENT_SESSIONS = {
+    "claude-code": {"CLAUDE_CODE_SESSION_ID": "claude-1"},
+    "codex": {"CODEX_THREAD_ID": "codex-1"},
+    "both": {"CLAUDE_CODE_SESSION_ID": "claude-1", "CODEX_THREAD_ID": "codex-1"},
+    "neither": {},
+    "malformed": {"CLAUDE_CODE_SESSION_ID": "not one token"},
+}
+"""Each case's session variables; both at once, or a value not one token, names no session."""
+
+
+def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_path) -> None:
+    """An agent's CLI call, named or left to its binding, takes the thin path to its running Host,
+    which counts the launch in the folder the caller's `tempfile` chose (TMPDIR=. here), anchored
+    in the caller, and answers as the full CLI does; a call no binding names is the full CLI's."""
+    live, capsys = request.getfixturevalue("live"), request.getfixturevalue("capsys")
+    caller, hosts, console = _agent_project(tmp_path), tmp_path / "host-temp", tmp_path / "bin"
+    for folder in (hosts, console):
+        folder.mkdir()
+    for name in ("alphalattice", "alphalattice.cmd"):  # an installed console on the caller's PATH
+        (console / name).write_text("", encoding="utf-8")
+        (console / name).chmod(0o755)
+    monkeypatch.setenv("PATH", str(console) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.delenv("UV_RUN_RECURSION_DEPTH", raising=False)
+    monkeypatch.chdir(caller)
+    monkeypatch.setenv("TMPDIR", ".")
+    for _, variable in thin_cli.AGENT_SESSION_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+    for variable, value in AGENT_SESSIONS[case].items():
+        monkeypatch.setenv(variable, value)
+    chosen = tempfile.gettempdir
+    monkeypatch.setattr(tempfile, "tempdir", None)  # the caller's own choice, from its TMPDIR
+    monkeypatch.setattr(  # the Host's request thread stands for the Host's own process
+        tempfile,
+        "gettempdir",
+        lambda: str(hosts) if threading.current_thread().name == "local-web-request" else chosen(),
+    )
+    anchored, temporary = [], cli_invocation.temporary
+
+    def recorded() -> Path:  # the folder the Host counts a forwarded launch in
+        folder = temporary()
+        if threading.current_thread().name == "local-web-request":
+            anchored.append(folder.is_absolute())
+        return folder
+
+    monkeypatch.setattr(cli_invocation, "temporary", recorded)
+
+    def answer(printed: str) -> dict[str, object]:
+        body = json.loads(printed.strip().splitlines()[-1])
+        body.pop("timing")
+        return body
+
+    named = {"claude-code": "claude-code--claude-1", "codex": "codex--codex-1"}.get(case)
+    launches, workspace = 1, ["--workspace", str(live.workspace)]
+    cli.main([*workspace, "task", "list"], serve=lambda _: 99)
+    capsys.readouterr()  # a session's first answer alone carries the Workbench step
+    lines = [[*workspace, "--view", "full", "task", "list"], ["--view", "full", "task", "list"]]
+    if case == "claude-code":  # a bound session's line leaves its workspace to the binding
+        assert cli.main([*workspace, "session", "bind"], serve=lambda _: 99) == 0
+        launches += 1
+        capsys.readouterr()
+    elif named is not None:
+        lines.pop()
+    for argv in lines:
+        full_code, full = cli.main(argv, serve=lambda _: 99), answer(capsys.readouterr().out)
+        thin_code = thin_cli.invoke(argv)
+        if named is None and argv[0] != "--workspace":
+            assert thin_code is None  # no session's binding names it: the full CLI answers
+            continue
+        launches += 2
+        thin = answer(capsys.readouterr().out)
+        assert (thin_code, thin.pop("session_launches", None)) == (
+            full_code,
+            None if full.pop("session_launches", None) is None else launches,
+        )
+        assert thin == full
+    counts = {path.name: path.read_bytes() for path in caller.rglob("*.count")}
+    assert list(hosts.iterdir()) == [] and all(anchored) and (named is None or anchored)
+    assert counts == ({} if named is None else {f"{named}.count": b"1\n" * launches})
 
 
 @pytest.mark.parametrize(
@@ -285,6 +430,13 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
             )
             for case in RESIDENT
         ),
+        *(
+            pytest.param(
+                f"agent-session:{case}",
+                marks=pytest.mark.proves("local_application.agent_calls_count_as_the_full_cli"),
+            )
+            for case in AGENT_SESSIONS
+        ),
         pytest.param(
             "repo-link-first-use",
             marks=pytest.mark.proves(
@@ -298,12 +450,17 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
     ],
     ids=str,
 )
-def test_the_console_entry_and_runtime_exceptions_are_explicit(case, monkeypatch, tmp_path) -> None:
-    """requirement: one packaged console entry, existing backend, named development exceptions;
-    one Host per data root, which the first command none answers starts; the release install
-    smoke's repo-link leg passes wherever product tests run, and its failures keep no output."""
+def test_the_console_entry_and_runtime_exceptions_are_explicit(
+    case, monkeypatch, tmp_path, request
+) -> None:
+    """requirement: one console entry and backend, named development exceptions; one Host per data
+    root, which a command none answers starts and an agent session reaches as the full CLI would;
+    the install smoke's repo-link leg passes wherever product tests run, keeping no output."""
     if case in RESIDENT:
         _resident(tmp_path, monkeypatch, case)
+        return
+    if case.startswith("agent-session:"):
+        _agent_session(case.removeprefix("agent-session:"), request, monkeypatch, tmp_path)
         return
     if case == "smoke-diagnostics":
         key = "workbench-session-key"

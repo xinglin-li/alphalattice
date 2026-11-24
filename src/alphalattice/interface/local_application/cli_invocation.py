@@ -7,6 +7,7 @@ import builtins
 import codecs
 import io
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from pathlib import Path
@@ -44,6 +45,19 @@ def cwd() -> Path:
     """Read the command's own directory without changing the process directory."""
     call = CLI_CALL.get()
     return Path.cwd() if call is None else call.cwd
+
+
+def search_path() -> str | None:
+    """Read the command's PATH: a forwarded command's caller's; None, this process's own."""
+    call = CLI_CALL.get()
+    return None if call is None else call.environment.get("PATH")
+
+
+def temporary() -> Path:
+    """Read the command's temporary folder: the one a forwarded command's caller chose."""
+    call = CLI_CALL.get()
+    folder = None if call is None else call.environment.get("TMPDIR")
+    return Path(folder) if folder else Path(tempfile.gettempdir())
 
 
 def workspace(path: Path | None) -> Path | None:
@@ -110,8 +124,11 @@ def invoke(
     payload: dict[str, object],
     served_workspace: Path,
     dispatch: Callable[[list[str]], int],
+    bound: Callable[[], Path | None],
 ) -> dict[str, object]:
-    """Admit the same forms as the client, then run the ordinary CLI with local streams."""
+    """Admit the same forms as the client, then run the ordinary CLI with local streams; a form
+    that names no workspace runs only where its agent session's binding (`bound`) names this
+    one."""
     if payload.keys() != {"operation", "argv", "cwd", "stdin", "streams", "environment"}:
         return {"cli": "local"}
     argv, directory = payload["argv"], payload["cwd"]
@@ -126,7 +143,9 @@ def invoke(
         return {"cli": "local"}
     caller = Path(directory)
     selected = select(argv, caller)
-    if not caller.is_absolute() or selected is None or selected.workspace != served_workspace:
+    if not caller.is_absolute() or selected is None:
+        return {"cli": "local"}
+    if selected.workspace not in {None, served_workspace}:
         return {"cli": "local"}
     try:
         out_style, err_style = _styles(payload["streams"])
@@ -139,6 +158,8 @@ def invoke(
     with stdout, stderr:
         scope = CLI_CALL.set(Call(caller, settings, stdout, stderr))
         try:
+            if selected.workspace is None and bound() != served_workspace:
+                return {"cli": "local"}
             try:
                 code = dispatch(argv)
             except SystemExit as exited:

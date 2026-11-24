@@ -19,7 +19,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -61,7 +60,6 @@ from alphalattice.interface.local_application.thin_cli import (
     WORKSPACE_HEADER as WORKSPACE_HEADER,
 )
 from alphalattice.interface.local_application.thin_cli import agent_session_values
-from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.door import (
     SCHEMA_VERSION as SCHEMA_VERSION,
 )
@@ -383,7 +381,7 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     if named is None:
         return None
 
-    folder = Path(tempfile.gettempdir()) / "alphalattice-cli-launches"
+    folder = cli_invocation.temporary() / "alphalattice-cli-launches"
     try:
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{named[0]}--{named[1].replace(':', '_')}.count"
@@ -2502,7 +2500,7 @@ def wait_event(
 
 def follow_returns() -> str:
     """When a follow returns and how this host waits for it, never by polling."""
-    session = agent_session(process_config().public)
+    session = agent_session(cli_invocation.environment())
     way = AGENT_HOST_WAITS.get(session[0]) if session else None
     way = way or "let your shell wait or run this in the background"
     return f"{_FOLLOW_RETURNS}{way}, and do not poll it"

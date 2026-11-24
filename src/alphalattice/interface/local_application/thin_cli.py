@@ -4,9 +4,10 @@ One Host stays resident per data root: it holds the root's lock (machine/host.lo
 its endpoint record beside it (machine/host-endpoints/<workspace key>.json), so every checkout's
 CLI on that root finds it. A command none answers starts the Host detached here (`start_host`,
 the CLI's own `serve --detach`, which returns once the Host serves) and then sends, so a cold
-command loads no product module either; a command this client declines (a bound session's) takes
-the same start in the full CLI's Host-backed operation. The Host retires after its idle bound
-(web.DEFAULT_IDLE_TIMEOUT_SECONDS), never while a Task runs, and the next command starts it.
+command loads no product module either. A command that leaves its workspace to an agent
+session's binding goes to the one Host answering on the root, which reads the binding; with none
+answering, the full CLI's Host-backed operation takes the start. The Host retires after its idle
+bound (web.DEFAULT_IDLE_TIMEOUT_SECONDS), never while a Task runs, and the next command starts it.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -38,6 +40,7 @@ from alphalattice.kernel.door import (
     request_bytes,
 )
 from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
 
 ENDPOINT_FOLDER: Final = "host-endpoints"
 """The data root's endpoint records, one per served workspace, beside its lock."""
@@ -53,7 +56,24 @@ AGENT_SESSION_VARIABLES: Final = (
     ("codex", "CODEX_THREAD_ID"),
 )
 """The native environment variable naming each vendor's session."""
-CLI_ENVIRONMENT: Final = ("ALPHALATTICE_SHELL", "MSYSTEM", "TRACEPARENT", "BAGGAGE")
+CLI_ENVIRONMENT: Final = (
+    "ALPHALATTICE_SHELL",
+    "MSYSTEM",
+    "TRACEPARENT",
+    "BAGGAGE",
+    *(variable for _vendor, variable in AGENT_SESSION_VARIABLES),
+    "PATH",
+    "VIRTUAL_ENV",
+    "UV_RUN_RECURSION_DEPTH",
+    "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+    "PROGRAMDATA",
+    "TMPDIR",
+)
+"""The caller's settings a forwarded command reads, so the Host answers as the full CLI would in
+the caller's shell: its agent session, the shell's command path and each vendor's configuration
+folders, sent unchanged; and as TMPDIR, the temporary folder the caller's `tempfile` chose, where
+the Host counts the session's launch."""
 MAXIMUM_REQUEST_BODY_BYTES: Final = 128 * 1024
 DEFAULT_HTTP_WAIT_SECONDS: Final = 120.0
 _DELIVERY_LOST: Final = "local_client.connection_lost_task_may_still_run"
@@ -64,6 +84,8 @@ _COMMANDS: Final = {
     ("--help",): (0, frozenset()),
     ("-h",): (0, frozenset()),
     ("activity", "list"): (0, frozenset({"--after", "--limit"})),
+    ("cpu-budget", "set"): (0, frozenset({"--cores", "--running", "--queue"})),
+    ("first-use", "prepare"): (0, frozenset({"--sentence", "--date", "--max-wait"})),
     ("goal", "show"): (1, frozenset()),
     ("input", "list"): (0, frozenset()),
     ("network", "show"): (0, frozenset()),
@@ -74,6 +96,8 @@ _COMMANDS: Final = {
     ("task", "show"): (1, frozenset()),
     ("workspace", "show"): (0, frozenset()),
 }
+_WAITING: Final = frozenset({("first-use", "prepare")})
+"""The forms that wait for their Task before they answer, up to --max-wait (WAIT_CEILING)."""
 _WORKSPACE_OPTION: Final = "--workspace"
 _GLOBAL_VALUES: Final = frozenset(
     {_WORKSPACE_OPTION, "--lang", "--view", "--goal", "--request-timeout"}
@@ -85,8 +109,11 @@ _VIEW_SWITCHES: Final = frozenset({"--list-next"})
 class Invocation(NamedTuple):
     """A CLI form whose streams and effects fit an ordinary Host response."""
 
-    workspace: Path
+    workspace: Path | None
+    """The named workspace (the caller's folder for help); None when the agent session's binding
+    names it, which the Host reads."""
     timeout: float
+    """How long the exchange may take: the request's own wait, and a waiting form's --max-wait."""
     starts: bool
     """Whether no answer starts the Host: a named workspace's command, never `--help`."""
 
@@ -177,16 +204,23 @@ def select(argv: list[str], cwd: Path) -> Invocation | None:
     if options.keys() - admitted - rule[1]:
         return None
     named = options.get(_WORKSPACE_OPTION)
-    if named is None and not help_only:
-        return None
+    bound = named is None and not help_only
     try:
         timeout = float(options.get("--request-timeout", DEFAULT_HTTP_WAIT_SECONDS))
-        workspace = (cwd / named if named is not None else cwd).resolve()
+        workspace = None if bound else (cwd / named if named is not None else cwd).resolve()
     except (OSError, RuntimeError, ValueError):
         return None
     if not 0 < timeout <= 600:
         return None
-    return Invocation(workspace, timeout, starts=not help_only)
+    if command in _WAITING:  # the Host answers once the form's own wait ends
+        try:
+            waited = float(options.get("--max-wait", WAIT_CEILING))
+        except ValueError:
+            return None
+        if not 0 < waited <= WAIT_CEILING:
+            return None
+        timeout += waited
+    return Invocation(workspace, timeout, starts=workspace is not None and not help_only)
 
 
 def agent_session_values(environ: Mapping[str, str]) -> dict[str, str]:
@@ -196,7 +230,8 @@ def agent_session_values(environ: Mapping[str, str]) -> dict[str, str]:
 
 def _settings() -> dict[str, str]:
     values = process_config().public
-    return {key: values[key] for key in CLI_ENVIRONMENT if key in values}
+    named = {key: values[key] for key in CLI_ENVIRONMENT if key in values}
+    return {**named, "TMPDIR": os.path.abspath(tempfile.gettempdir())}  # "." too, in the caller
 
 
 def _styles() -> list[list[str | None]]:
@@ -229,6 +264,7 @@ def _connect(record: Mapping[str, str], timeout: float) -> http.client.HTTPConne
     """A connection to the record's Host, or None when nothing answers at its port."""
     port = urlsplit(record["url"]).port
     exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    exchange.auto_open = 0  # a closed connection never reopens, to whatever holds the port then
     try:
         exchange.connect()
     except OSError:
@@ -309,10 +345,57 @@ def _serving(selected: Invocation) -> tuple[dict[str, str], http.client.HTTPConn
     """The record and a connection to the Host serving the selected workspace, starting the data
     root's Host when none answers and the command starts one; None when no Host serves it, and
     the full CLI answers."""
+    if selected.workspace is None:
+        return _resident(selected.timeout)
     found = _answering(selected.workspace, selected.timeout)
     if found is None and selected.starts and start_host(selected.workspace):
         found = _answering(selected.workspace, selected.timeout)
     return found
+
+
+def _resident(timeout: float) -> tuple[dict[str, str], http.client.HTTPConnection] | None:
+    """The record and a connection to the one Host answering on this data root, for a command
+    whose agent session's binding names its workspace; None unless exactly one answers and it
+    proves, on that connection, to be the Host its record names (`_confirmed`)."""
+    folder = data_root().resolve() / "machine" / ENDPOINT_FOLDER
+    with os.scandir(folder) as entries:  # none, or unreadable, refuses: the full CLI answers
+        records = [Path(e.path) for e in entries if e.name.endswith(".json") and not e.is_symlink()]
+    found = []
+    for path in sorted(records):
+        record = _endpoint(path)
+        exchange = None if record is None else _connect(record, timeout)
+        if record is not None and exchange is not None:
+            found.append((record, exchange))
+    if len(found) == 1 and _confirmed(*found[0]):
+        return found[0]
+    for _record, exchange in found:
+        exchange.close()
+    return None
+
+
+def _confirmed(record: Mapping[str, str], exchange: http.client.HTTPConnection) -> bool:
+    """Whether the listener at a record's port is the Host it names: a request carrying no caller
+    data, which only that Host's token admits and which it declines as no command. The command
+    then goes on this same connection; a failed proof closes it."""
+    try:
+        body = json.dumps({"operation": CLI_OPERATION}).encode("ascii")
+        exchange.request("POST", OPERATIONS_PATH, body=body, headers=_headers(record))
+        response = exchange.getresponse()
+        if response.status == 200 and json.loads(response.read()) == {"cli": "local"}:
+            return True
+    except (OSError, ValueError, http.client.HTTPException):
+        pass
+    exchange.close()
+    return False
+
+
+def _headers(record: Mapping[str, str]) -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        CLIENT_HEADER: record["token"],
+        WORKSPACE_HEADER: workspace_connection_key(Path(record["workspace"]).resolve()),
+        INSTANCE_HEADER: record["instance"],
+    }
 
 
 def _answering(
@@ -339,9 +422,6 @@ def _refused_before_dispatch(status: int, response: dict[str, object]) -> bool:
 
 def invoke(argv: list[str]) -> int | None:
     """Print the Host's bytes and return its exit code, or select the full CLI."""
-    if any(agent_session_values(process_config().public).values()):
-        # Launch counting and named native bindings are caller-side file operations.
-        return None
     # The portable launcher is the caller's existing prefix in this case. Probing
     # an off-PATH tool can start uv, so that caller-side action stays on the full path.
     if (
@@ -351,14 +431,18 @@ def invoke(argv: list[str]) -> int | None:
     try:
         cwd = Path.cwd()
         selected = select(argv, cwd)
-        if selected is None:
-            return None
+        if selected is None or (selected.workspace is None and not _agent()):
+            return None  # only an agent session's binding names a workspace left out
         serving = _serving(selected)
     except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError):
         return None
     if serving is None:
         return None
-    return send(*serving, argv, cwd, selected.workspace)
+    return send(*serving, argv, cwd, Path(serving[0]["workspace"]).resolve())
+
+
+def _agent() -> bool:
+    return any(agent_session_values(process_config().public).values())
 
 
 def send(
@@ -383,14 +467,12 @@ def send(
     if len(body) > MAXIMUM_REQUEST_BODY_BYTES:
         exchange.close()
         return None
-    headers = {
-        "Content-Type": "application/json",
-        CLIENT_HEADER: record["token"],
-        WORKSPACE_HEADER: workspace_connection_key(workspace),
-        INSTANCE_HEADER: record["instance"],
-    }
+    headers = {**_headers(record), WORKSPACE_HEADER: workspace_connection_key(workspace)}
     try:
-        exchange.request("POST", OPERATIONS_PATH, body=body, headers=headers)
+        try:
+            exchange.request("POST", OPERATIONS_PATH, body=body, headers=headers)
+        except http.client.NotConnected:  # the proven connection ended before any byte left
+            return None
         response = exchange.getresponse()
         answer = json.loads(response.read())
         if not isinstance(answer, dict):

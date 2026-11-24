@@ -1414,7 +1414,7 @@ def execute_forwarded(call: cli_invocation.ForwardedCli) -> dict[str, object]:
         raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
 
     return cli_invocation.invoke(
-        call.document, call.workspace, lambda argv: main(argv, serve=refuse_serve)
+        call.document, call.workspace, lambda argv: main(argv, serve=refuse_serve), bound_workspace
     )
 
 
@@ -1643,6 +1643,15 @@ def _workspace(
     if found is not None:
         raise client.LocalResearchClientError("local_client.workspace_bound_to_another_session")
     raise client.LocalResearchClientError("local_client.workspace_unbound")
+
+
+def bound_workspace() -> Path | None:
+    """The workspace this command's agent session is bound to, as a line that names none reads
+    it (`_workspace`); None when the line would be refused."""
+    try:
+        return _workspace(None)[0].resolve()
+    except client.LocalResearchClientError:
+        return None
 
 
 def _binding_mismatch(
