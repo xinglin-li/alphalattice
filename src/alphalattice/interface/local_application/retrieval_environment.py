@@ -191,6 +191,7 @@ def _run_uv(
         try:
             result = spawn.run(
                 command,
+                process_kind="retrieval_environment_setup",
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

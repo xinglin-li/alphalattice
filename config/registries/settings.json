@@ -218,6 +218,22 @@
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
     },
+    "env:ALPHALATTICE_PROCESS_MEMORY_MODE": {
+      "key": "env:ALPHALATTICE_PROCESS_MEMORY_MODE",
+      "description": "Reports a tree memory breach in observe mode and also stops the tree in enforce mode.",
+      "owner": "alphalattice.kernel.config",
+      "type": "observe | enforce",
+      "default": {
+        "value": "observe",
+        "source": "src/alphalattice/kernel/config/port.py::Settings"
+      },
+      "defined_by": [
+        "src/alphalattice/kernel/config/port.py::Settings"
+      ],
+      "identity_bearing": false,
+      "identity_scope": "environment/operational policy",
+      "identity_basis": "Process memory enforcement controls execution rather than research identity."
+    },
     "env:ALPHALATTICE_RETENTION_DAYS": {
       "key": "env:ALPHALATTICE_RETENTION_DAYS",
       "description": "Keeps artifact bodies that have no live reference for this many whole days after production.",

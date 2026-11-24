@@ -3687,12 +3687,12 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches the installed product label table and its index by identifier until process restart."
     },
-    "src/alphalattice/kernel/shared_kernel/project_layout.py::_resource_json::shipped-json-resource": {
+    "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_resource_json::shipped-json-resource": {
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/project_layout.py::_resource_json"
+        "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_resource_json"
       ],
-      "definition_line": 45,
+      "definition_line": 40,
       "key": "resource path and its file's stat (modification time, size, file id)",
       "dependency_coverage": "The file's stat is the key's invalidation input: a rewritten resource is read again",
       "invalidation_rule": "the file's stat changes; LRU eviction at the bound",
@@ -3707,12 +3707,12 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches one shipped JSON resource while its file is unchanged, on either runtime leg."
     },
-    "src/alphalattice/kernel/shared_kernel/project_layout.py::_root::installation-root": {
+    "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_root::installation-root": {
       "owner": "alphalattice.kernel.shared_kernel",
       "defined_by": [
-        "src/alphalattice/kernel/shared_kernel/project_layout.py::_root"
+        "src/alphalattice/kernel/shared_kernel/runtime_resources.py::_root"
       ],
-      "definition_line": 39,
+      "definition_line": 34,
       "key": "unit key; this installation's root",
       "dependency_coverage": "A process never moves its installation",
       "invalidation_rule": "none; process end",

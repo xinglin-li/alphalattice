@@ -16,12 +16,14 @@ CPU_SHARE = "OMP_NUM_THREADS"
 NETWORK_DISABLED = "ALPHALATTICE_NETWORK_DISABLED"
 RETENTION_DAYS = "ALPHALATTICE_RETENTION_DAYS"
 FILE_SCRUB_DAYS = "ALPHALATTICE_FILE_SCRUB_DAYS"
+PROCESS_MEMORY_MODE = "ALPHALATTICE_PROCESS_MEMORY_MODE"
 
 _PUBLIC_NAMES = frozenset(
     {
         CPU_SHARE,
         FILE_SCRUB_DAYS,
         NETWORK_DISABLED,
+        PROCESS_MEMORY_MODE,
         RETENTION_DAYS,
         "ALPHALATTICE_BACKUP_ROOT",
         "ALPHALATTICE_DATA_ROOT",
@@ -65,15 +67,20 @@ class Settings:
     retention_days: int | None
     network_disabled: bool
     file_scrub_days: int = 7
+    process_memory_mode: str = "observe"
 
     @classmethod
     def from_values(cls, values: Mapping[str, str]) -> Settings:
         """Project the operator's settings from an admitted environment snapshot."""
+        process_memory_mode = values.get(PROCESS_MEMORY_MODE, "observe")
+        if process_memory_mode not in {"observe", "enforce"}:
+            raise ValueError("spawn.memory_mode_invalid: use observe or enforce")
         return cls(
             cpu_cores=_count(values.get(CPU_SHARE, "")),
             retention_days=_count(values.get(RETENTION_DAYS, "")),
             network_disabled=values.get(NETWORK_DISABLED) == "1",
             file_scrub_days=_count(values.get(FILE_SCRUB_DAYS, "")) or 7,
+            process_memory_mode=process_memory_mode,
         )
 
 

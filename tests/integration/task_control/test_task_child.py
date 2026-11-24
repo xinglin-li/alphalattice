@@ -770,6 +770,7 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path,
             self._processes.clear()
 
     monkeypatch.setattr(child, "ProcessPoolExecutor", Pool)
+    monkeypatch.setattr(child.spawn, "stop_pool", lambda pool: pool.terminate())
     execution = UUID(int=3)
     lease = ResourceLease(execution, ResourceAmounts(cpu=4, workers=3))
     with use_resource_lease(lease), execution_cancellation(execution):

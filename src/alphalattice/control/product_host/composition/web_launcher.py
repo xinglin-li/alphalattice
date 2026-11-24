@@ -206,7 +206,12 @@ def _refusal(
 def attached_child(command: list[str], *, env: dict[str, str]) -> int:
     """Run the retrieval child with its caller's streams and parent-owned lifetime."""
     try:
-        return spawn.attached(command, env=env, job_factory=ChildJob)
+        return spawn.attached(
+            command,
+            env=env,
+            job_factory=ChildJob,
+            process_kind="attached_retrieval_host_child",
+        )
     except OSError:
         return _refusal(
             "local_web.child_ownership_unavailable",
@@ -473,6 +478,7 @@ def main(
     *,
     host_interpreter: Path | None = None,
     new_research: bool = False,
+    own_process_tree: bool = False,
 ) -> int:
     """Run the declared command and return its exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -499,9 +505,21 @@ def main(
     arguments = parser.parse_args(argv)
     if arguments.detach:
         return _detach(arguments, host_interpreter, new_research)
+    if own_process_tree:
+        if sys.platform == "win32" and process_config().secret(LAUNCH_KEY_VARIABLE) is not None:
+            # The detached launcher verifies it escaped its caller's Job before
+            # we enter the serving process's own Job.
+            sys.stdin.read()
+        with spawn.current_tree("host"):
+            return _serve(arguments)
+    return _serve(arguments)
+
+
+def _serve(arguments: argparse.Namespace) -> int:
+    """Run one Host and drain its work before releasing the service."""
     handed = process_config().secret(LAUNCH_KEY_VARIABLE) is not None
 
-    from alphalattice.control.product_host.composition.local_web_session import (
+    from alphalattice.control.product_host.composition.local_web_session import (  # lazy: serve
         LocalPortfolioWebSession,
     )
 
@@ -594,6 +612,6 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(own_process_tree=True))
 
 __all__ = ["main"]

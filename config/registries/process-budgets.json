@@ -1,8 +1,9 @@
 {
-  "note": "What the product may leave on the person's machine, by process kind: how many processes, how much commit and CPU while it serves and idles, nothing left once stopped, no console window, and no file outside the workspace but the declared ones. The hygiene gate (tests/integration/local_application/test_runtime_launchers.py) reads these budgets; a process kind the registry census lists takes its budget from here.",
+  "note": "What the product may leave on the person's machine, by process kind. The runtime reads tree_memory_bytes as the aggregate process-tree memory limit, or observes an undeclared tree. The hygiene gate separately reads idle process, commit, CPU, teardown, console and file settings.",
   "kinds": {
     "host": {
       "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
+      "tree_memory_bytes": 8000000000,
       "idle_processes": 3,
       "idle_processes_reason": "the Host's interpreter, its venv launcher and the hidden console a windowless process keeps",
       "idle_commit_gib": 2.5,
@@ -11,11 +12,13 @@
     },
     "kept_worker": {
       "owner": "src/alphalattice/control/task_control/child.py",
+      "tree_memory_bytes": "undeclared",
       "most": "RuntimeCapacityRequest.maximum_kept_workers spread workers and the Task's own",
       "idle_retire": "KEPT_WORKER_IDLE_SECONDS",
       "spread_commit_gib": 0.25
     },
     "codex_wake_queue": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/control/product_host/composition/workspace_activity.py::_queue_wake",
       "spawn_sites": [
         {
@@ -79,6 +82,7 @@
       }
     },
     "causal_derivation_worker": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/foundation/causal_outcomes/execution/publication.py::CausalExecutionOutcomePublisher.publish_daily",
       "spawn_sites": [
         {
@@ -166,6 +170,7 @@
       }
     },
     "dependency_command_probe": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::command_readiness",
       "spawn_sites": [
         {
@@ -275,6 +280,7 @@
       }
     },
     "codex_queue_reach_probe": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/interface/local_application/native_bridge.py::codex_queue_reach",
       "spawn_sites": [
         {
@@ -370,6 +376,7 @@
       }
     },
     "uv_tool_bin_probe": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/kernel/shared_kernel/project_layout.py::_tool_bin",
       "spawn_sites": [
         {
@@ -421,6 +428,7 @@
       "description": "Discovers the uv tool-bin directory for the shared command resolver."
     },
     "retrieval_environment_setup": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/interface/local_application/retrieval_environment.py::create",
       "spawn_sites": [
         {
@@ -507,6 +515,7 @@
       }
     },
     "model_store_windows_junction": {
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/kernel/knowledge/model_store.py::_link_directory",
       "spawn_sites": [
         {
@@ -587,6 +596,7 @@
       }
     },
     "attached_retrieval_host_child": {
+      "tree_memory_bytes": "undeclared",
       "owner": "src/alphalattice/control/product_host/composition/web_launcher.py",
       "owner_package": "alphalattice.control.product_host.composition",
       "defined_by": "src/alphalattice/control/product_host/composition/web_launcher.py::attached_child",

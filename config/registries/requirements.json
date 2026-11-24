@@ -1600,8 +1600,9 @@
     "execution.registered_pools_keep_their_workers": {
       "description": "The execution owner lists independently registered pools, and closing one leaves the other able to run work.",
       "owner": "alphalattice.kernel.execution",
-      "layer": "unit",
-      "seconds": 1
+      "layer": "contract",
+      "seconds": 1,
+      "lower_layer": "The installed owner admits both thread and native process pools. This check exercises its real registration binding."
     },
     "factor_research.curation_and_handoff_are_durable_without_execution": {
       "description": "If Factor curation or Alpha handoff trained a model or depended on its actor, a recorded decision would not reopen safely.",

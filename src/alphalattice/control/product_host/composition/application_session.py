@@ -306,15 +306,12 @@ class WorkspaceApplicationSession:
                 )
             )
             start_log_reader()
-            with (
-                warm_child_workers(
-                    worker_processes(cores),
-                    modules=("alphalattice.foundation.feature_engine.runtime.service", "pandas"),
-                )
-                if task.task_kind == "workspace_preparation"
-                else nullcontext()
+            prepare = task.task_kind == "workspace_preparation"
+            with warm_child_workers(
+                worker_processes(cores) if prepare else 0,
+                modules=("alphalattice.foundation.feature_engine.runtime.service", "pandas"),
             ) as start_workers:
-                yield start_workers
+                yield start_workers if prepare else None
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.

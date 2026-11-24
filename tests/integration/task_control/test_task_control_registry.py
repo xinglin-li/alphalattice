@@ -5,6 +5,7 @@ import multiprocessing
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -21,6 +22,7 @@ from alphalattice.control.product_host.composition.application_session import (
 from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
 )
+from alphalattice.control.task_control import child
 from alphalattice.control.task_control.contracts import (
     FAILURE_CODE_MAX_LENGTH,
     ResearchGoal,
@@ -65,6 +67,7 @@ from alphalattice.interface.local_application.dispatcher import (
     TaskVersionMovedError,
 )
 from alphalattice.kernel.data_layer import history
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.kernel.shared_kernel.project_layout import runtime_json
 from tests.workspace_task_runner.task_control_support import (
@@ -929,6 +932,7 @@ def test_runner_preserves_typed_failure_class_from_verification(tmp_path: Path) 
 def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     tmp_path: Path,
     ready: bool,
+    monkeypatch,
 ) -> None:
     """Control: Checkpoints cancel."""
     now = datetime(2026, 8, 10, 17, tzinfo=UTC)
@@ -945,12 +949,35 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     adapter = _CancellingTaskAdapter(
         registry=registry, observed_at=now + timedelta(seconds=1), ready=ready
     )
+    settled = False
+
+    def join(**_options):
+        nonlocal settled
+        settled = True
+
+    @contextmanager
+    def resources(task):
+        with (
+            use_resource_lease(ResourceLease(task.task_id, ResourceAmounts(cpu=1, workers=1))),
+            child.warm_child_workers(0, modules=()),
+        ):
+            child._kept_workers()[0] = SimpleNamespace(shutdown=join, _processes={})
+            yield
+
+    apply_cancel = registry.apply_cancel
+
+    def checked_apply(**options):
+        assert settled, "cancellation became terminal before the kept worker joined"
+        return apply_cancel(**options)
+
+    monkeypatch.setattr(registry, "apply_cancel", checked_apply)
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
         runtime_path=str(tmp_path / "task-runtime.sqlite"),
         clock=lambda: now + timedelta(seconds=2),
         heartbeat_seconds=0.01,
+        task_scope=resources,
     )
     try:
         result = runner.run_next()

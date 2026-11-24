@@ -1,19 +1,47 @@
 """The process owner gives real children bounded, isolated streams and lifetimes."""
 
 import importlib.util
+import logging
+import multiprocessing
 import os
 import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
+from contextlib import suppress
 from types import SimpleNamespace
+from uuid import uuid4
 
 import psutil
 import pytest
 
-from alphalattice.kernel.execution import child_process as execution_spawn
+from alphalattice.kernel.execution import (
+    CANCELLED,
+    ExecutionStopped,
+    cancel_execution,
+    execution_cancellation,
+    execution_port,
+    process_execution,
+)
+from alphalattice.kernel.execution import spawn as execution_spawn
 
 TEST_SOURCE = "src/alphalattice/kernel/shared_kernel/spawn.py"
+
+
+@pytest.mark.proves("execution.registered_pools_keep_their_workers")
+def test_registered_pools_keep_their_workers() -> None:
+    """Register both pools and close the first without stopping the second's worker."""
+    owner = process_execution()
+    with (
+        owner.register_pool(ThreadPoolExecutor(1), name="first-test-pool") as first,
+        owner.register_pool(ThreadPoolExecutor(1), name="second-test-pool") as second,
+    ):
+        assert first is not second
+        assert {"first-test-pool", "second-test-pool"} <= set(owner.registered_pool_names())
+        first.shutdown()
+        assert second.submit(lambda: 1).result(timeout=1) == 1
 
 
 @pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
@@ -104,6 +132,216 @@ def test_a_posix_group_is_killed_before_waiting_for_its_members(monkeypatch):
     with pytest.raises(subprocess.TimeoutExpired):
         spawn.run([sys.executable, "-c", "pass"], timeout=1)
     assert stops == [123]
+
+
+def _assert_cancelled_tree_exits(*, parent_returns=False):
+    from alphalattice.kernel.shared_kernel import spawn
+
+    parent = """
+import subprocess
+import os
+import sys
+import threading
+
+child = subprocess.Popen(
+    [sys.executable, "-c", "import threading; threading.Event().wait(20)"],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    start_new_session=os.name == "posix",
+    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+)
+print(child.pid, flush=True)
+if sys.argv[1] == "live":
+    threading.Event().wait(20)
+"""
+    execution_id = uuid4()
+    with (
+        execution_cancellation(execution_id),
+        spawn.InteractiveSession(timeout=10, stop_scope="tree") as session,
+    ):
+        child = session.start(
+            [sys.executable, "-c", parent, "return" if parent_returns else "live"],
+            stdout=subprocess.PIPE,
+        )
+        assert child.stdout is not None
+        descendant = psutil.Process(int(child.stdout.readline()))
+        try:
+            if os.name == "posix":
+                assert os.getsid(descendant.pid) == descendant.pid
+            if parent_returns:
+                assert child.wait(timeout=5) == 0
+            cancel_execution(execution_id)
+            assert session._finished.wait(timeout=5)  # The cancellation, not the test, stops it.
+            session.stop()
+            with pytest.raises(ExecutionStopped, match=CANCELLED.replace(".", r"\.")):
+                session.check()
+            with suppress(psutil.NoSuchProcess):
+                assert descendant.status() == psutil.STATUS_ZOMBIE
+        finally:
+            with suppress(psutil.NoSuchProcess):
+                descendant.kill()
+                descendant.wait(timeout=5)
+
+
+def _leave_pool_descendant(ready):
+    context = multiprocessing.get_context("spawn")
+    received, published = context.Pipe(duplex=False)
+    with received, published:
+        child = context.Process(target=_escaped_session, args=(published,))
+        child.start()
+        published.close()
+        if not received.poll(5):
+            child.kill()
+            child.join(timeout=5)
+            raise TimeoutError("fixture descendant did not enter its new session")
+        ready.write_text(str(received.recv()), encoding="ascii")
+    os._exit(91)
+
+
+def _escaped_session(published):
+    vars(os)["setsid"]()
+    with published:
+        published.send(os.getpid())
+    threading.Event().wait(25)
+
+
+def _assert_pool_retains_escaped_child(ready):
+    from alphalattice.kernel.shared_kernel import spawn
+
+    execution_id = uuid4()
+    with execution_cancellation(execution_id):
+        pool = execution_port().register_pool(
+            ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")),
+            name="causal-derivation",
+        )
+        descendant = None
+        try:
+            future = pool.submit(_leave_pool_descendant, ready)
+            with pytest.raises(BrokenProcessPool):
+                future.result(timeout=10)
+            pid = int(ready.read_text(encoding="ascii"))
+            with suppress(psutil.NoSuchProcess):
+                descendant = psutil.Process(pid)
+            cancel_execution(execution_id)
+            spawn.stop_pool(pool)
+            if descendant is not None:
+                with suppress(psutil.NoSuchProcess):
+                    assert descendant.status() == psutil.STATUS_ZOMBIE
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+            if descendant is not None:
+                with suppress(psutil.NoSuchProcess):
+                    descendant.kill()
+                    descendant.wait(timeout=5)
+
+
+@pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")
+@pytest.mark.parametrize(
+    ("budget", "mode", "members", "limit_event", "stops", "report"),
+    [
+        (100, "observe", (120,), False, False, "spawn.tree_memory_limit"),
+        (100, "enforce", (120,), False, True, "spawn.tree_memory_limit"),
+        (100, "enforce", (70, 60), False, True, "spawn.tree_memory_limit"),
+        (100, "enforce", (70,), False, False, ""),
+        (100, "enforce", (97,), True, True, "spawn.tree_memory_limit"),
+        (None, "enforce", (120,), False, False, "budget_bytes=undeclared"),
+        (None, "cancel", (), False, True, ""),
+        (None, "cancel-pool-admission", (), False, True, ""),
+        (100, "darwin-aggregate", (70, 60), False, True, ""),
+        pytest.param(
+            None,
+            "cancel-retired-pool",
+            (),
+            False,
+            True,
+            "",
+            marks=pytest.mark.skipif(
+                sys.platform not in {"darwin", "linux"}, reason="POSIX retired pool ownership"
+            ),
+        ),
+    ],
+    ids=(
+        "observe",
+        "enforce",
+        "grandchild",
+        "under",
+        "native-limit",
+        "undeclared",
+        "cancel",
+        "cancel-pool-admission",
+        "darwin-aggregate",
+        "cancel-retired-pool",
+    ),
+)
+def test_spawn_judges_one_budget_for_the_whole_tree(
+    budget, mode, members, limit_event, stops, report, caplog, tmp_path, monkeypatch
+):
+    """A tree charge includes all members, and an OS limit event can deny an allocation."""
+    if mode == "cancel":
+        _assert_cancelled_tree_exits()
+        if sys.platform in {"win32", "darwin"}:
+            _assert_cancelled_tree_exits(parent_returns=True)
+        return
+    if mode == "cancel-pool-admission":
+        from alphalattice.kernel.shared_kernel import spawn
+
+        execution_id = uuid4()
+        with execution_cancellation(execution_id):
+            pool = execution_port().register_pool(
+                ProcessPoolExecutor(max_workers=1), name="causal-derivation"
+            )
+            try:
+                cancel_execution(execution_id)
+                with pytest.raises(ExecutionStopped, match=r"execution\.cancelled"):
+                    pool.submit(os.getpid)
+                assert not pool._processes
+            finally:
+                spawn.stop_pool(pool)
+                pool.shutdown(wait=True, cancel_futures=True)
+        return
+    if mode == "darwin-aggregate":
+        ancestry = SimpleNamespace(
+            remember=lambda _members: None,
+            members=lambda _candidates: (
+                False,
+                [
+                    SimpleNamespace(memory_info=lambda amount=amount: SimpleNamespace(rss=amount))
+                    for amount in members
+                ],
+            ),
+        )
+        watch = object.__new__(execution_spawn._PosixMemoryWatch)
+        watch._lock = threading.RLock()
+        watch._members = []
+        watch.lineage = ancestry
+        watch.processes = SimpleNamespace(
+            process_iter=lambda: (), NoSuchProcess=psutil.NoSuchProcess
+        )
+        watch.memory = execution_spawn.TreeMemory("host", budget, "enforce")
+        assert watch._sample() == sum(members)
+        return
+    if mode == "cancel-retired-pool":
+        if sys.platform == "linux":
+            monkeypatch.setattr(execution_spawn, "linux_scope_available", lambda: False)
+            monkeypatch.setattr(psutil.Process, "children", lambda self, recursive=False: [])
+        _assert_pool_retains_escaped_child(tmp_path / "descendant")
+        return
+    with caplog.at_level(logging.INFO):
+        memory = execution_spawn.TreeMemory("host", budget, mode)
+        assert memory.observe(sum(members), limit_event=limit_event) is stops
+        memory.finish()
+    if report:
+        assert report in caplog.text
+        assert "kind=host" in caplog.text
+        assert f"peak_bytes={sum(members)}" in caplog.text
+    else:
+        assert "spawn.tree_memory_limit" not in caplog.text
+    if stops:
+        with pytest.raises(execution_spawn.TreeMemoryLimit, match=r"spawn\.tree_memory_limit"):
+            memory.check()
+    else:
+        memory.check()
 
 
 @pytest.mark.proves("shared_kernel.child_processes_are_bounded_and_isolated")

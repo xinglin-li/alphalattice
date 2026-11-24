@@ -1306,9 +1306,10 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []
-    monkeypatch.setattr(web_launcher, "main", lambda args: started.append(args) or 0)
+    monkeypatch.setattr(web_launcher, "main", lambda args, **kw: started.append((args, kw)) or 0)
     empty_args = ["--workspace", str(tmp_path / "empty"), "--no-browser"]
-    assert run_alphalattice.serve(empty_args) == 0 and started == [empty_args]
+    assert run_alphalattice.serve(empty_args) == 0
+    assert started == [(empty_args, {"own_process_tree": True})]
 
 
 def test_workspace_authority_installs_the_existing_runtime_and_no_model_actor(

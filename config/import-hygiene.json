@@ -72,7 +72,6 @@
     "src/alphalattice/control/product_host/composition/web_launcher.py::_windows_stdin::from ctypes import wintypes": 1,
     "src/alphalattice/control/product_host/composition/web_launcher.py::_windows_stdin::import ctypes": 1,
     "src/alphalattice/control/product_host/composition/web_launcher.py::_windows_stdin::import msvcrt": 1,
-    "src/alphalattice/control/product_host/composition/web_launcher.py::main::from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession": 1,
     "src/alphalattice/control/product_host/composition/workspace.py::WorkspaceRuntime.prepare_feature_closure::from alphalattice.foundation.feature_engine.runtime.closure_genesis import FeatureClosureGenesisService": 1,
     "src/alphalattice/control/product_host/data_preparation/remediation.py::WorkspaceDataIssueApplication._escalation::from alphalattice.control.product_host.publication.goals import GoalStore": 1,
     "src/alphalattice/control/product_host/data_preparation/remediation.py::WorkspaceDataIssueApplication._failure_reason::from alphalattice.control.data_platform.maintenance.registry import DuckDbWorkspaceMaintenanceRegistry": 1,

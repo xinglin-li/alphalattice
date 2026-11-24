@@ -1,0 +1,105 @@
+"""Read the same project resources from a checkout and an installed distribution."""
+
+from __future__ import annotations
+
+import json
+from functools import cache, lru_cache
+from importlib.resources import files
+from pathlib import Path
+from typing import Any, Final
+
+REFUSAL_WORDS_RESOURCE: Final = "src/alphalattice/interface/local_application/refusal_words.json"
+
+
+_RESOURCES_HELD = 64
+"""The shipped JSON resources one process reads: a few dozen registries and catalogs."""
+
+
+def runtime_json(relative: str) -> dict[str, Any]:
+    """Read one shipped JSON resource on either runtime leg, once while its file is unchanged."""
+    return json_file(resource_path(_root(), relative))
+
+
+def json_file(path: Path) -> dict[str, Any]:
+    """Read one JSON file, once while it is unchanged.
+
+    The file's stat (modification time, size and file id) is the key's invalidation input, so a
+    resident process reads a resource again once it is rewritten, as an editable checkout's are.
+    """
+    stat = path.stat()
+    return _resource_json(path, stat.st_mtime_ns, stat.st_size, stat.st_ino)
+
+
+@cache
+def _root() -> Path:
+    """This installation's root, which a process never moves."""
+    return resolve_playpen_root(Path(__file__))
+
+
+@lru_cache(maxsize=_RESOURCES_HELD)
+def _resource_json(path: Path, _mtime_ns: int, _size: int, _ino: int) -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return payload
+
+
+def resolve_playpen_root(source_path: Path) -> Path:
+    """Return the checkout root identified by both project and architecture markers."""
+    resolved = source_path.resolve()
+    candidates = (resolved, *resolved.parents) if resolved.is_dir() else resolved.parents
+    for candidate in candidates:
+        if (candidate / "pyproject.toml").is_file() and (
+            candidate / "config" / "package-architecture.json"
+        ).is_file():
+            return candidate
+    installed = Path(str(files("alphalattice"))) / "_runtime"
+    if (installed / "config" / "identity-roles.json").is_file():
+        return installed
+    raise RuntimeError("shared_kernel.playpen_root_unavailable")
+
+
+def source_root(root: Path) -> Path:
+    """Return the import root without changing canonical source component names.
+
+    Args:
+        root: The checkout or packaged resource root.
+
+    Returns:
+        The directory containing the alphalattice package.
+    """
+    if root.name == "_runtime" and root.parent.name == "alphalattice":
+        return root.parent.parent
+    return root / "src"
+
+
+def resource_path(root: Path, relative: str) -> Path:
+    """Resolve a canonical resource path on either runtime leg.
+
+    Args:
+        root: The checkout or packaged resource root.
+        relative: The repository-relative resource name.
+
+    Returns:
+        The resource's physical file.
+    """
+    path = Path(relative)
+    if not path.parts or path.is_absolute() or ".." in path.parts:
+        raise ValueError("shared_kernel.resource_path_invalid")
+    return source_root(root).joinpath(*path.parts[1:]) if path.parts[0] == "src" else root / path
+
+
+def tracked_path(root: Path, path: Path) -> str:
+    """Keep identity input names independent of the installation layout.
+
+    Args:
+        root: The checkout or packaged resource root.
+        path: A source or resource file.
+
+    Returns:
+        Its canonical repository-relative name.
+    """
+    resolved = path.resolve()
+    if resolved.is_relative_to(root):
+        return resolved.relative_to(root).as_posix()
+    if resolved.is_relative_to(source_root(root)):
+        return "src/" + resolved.relative_to(source_root(root)).as_posix()
+    raise ValueError("shared_kernel.source_resource_outside_runtime")

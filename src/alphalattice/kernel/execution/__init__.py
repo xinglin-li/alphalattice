@@ -8,12 +8,13 @@ from .cancel import (
     cancel_execution,
     carry_cancellation,
     execution_cancellation,
+    interrupt_on_execution_stop,
     interruptible,
     stop_reason,
     worker_cancellation,
 )
 from .events import EVENTS, EventDeadline, Events, Subscription
-from .pool import ExecutionPool, execution_port, process_execution
+from .pool import ExecutionPool, execution_port, install_process_pool_owner, process_execution
 from .port import ExecutionHeartbeat, ExecutionLane, ExecutionPort, prefer_task, preferred_task
 from .timers import TIMERS, Timer, Timers
 
@@ -37,6 +38,8 @@ __all__ = [
     "child_process",
     "execution_cancellation",
     "execution_port",
+    "install_process_pool_owner",
+    "interrupt_on_execution_stop",
     "interruptible",
     "prefer_task",
     "preferred_task",

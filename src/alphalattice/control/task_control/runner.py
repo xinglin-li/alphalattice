@@ -44,7 +44,7 @@ from alphalattice.kernel.shared_kernel.bounded_memo import (
 from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
 from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
 
-from .child import ChildInterrupted, ChildStartFailed
+from .child import ChildInterrupted, ChildStartFailed, stop_task_workers
 from .contracts import (
     FAILURE_CODE_MAX_LENGTH,
     StageFailureCause,
@@ -648,6 +648,7 @@ class TaskControlRunner:
             ):
                 current = self.registry.task(task.task_id)
                 if current.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+                    stop_task_workers()
                     stopped = self.registry.apply_cancel(
                         task_id=task.task_id, observed_at=self._now()
                     )
@@ -759,10 +760,7 @@ class TaskControlRunner:
         pool = context.pool
         task = registry.task(task_id)
         if task.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
-            pool.drain()
-            registry.apply_cancel(task_id=task_id, observed_at=self._now())
-            self._publish_projection(task_id)
-            return False
+            raise ExecutionStopped(CANCELLED)
         if task.lifecycle is not TaskLifecycle.RUNNING:
             pool.drain()
             return False
@@ -807,10 +805,7 @@ class TaskControlRunner:
                 # the run RECOVERY_REQUIRED and the queue behind it waiting).
                 moved = registry.task(task_id)
                 if moved.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
-                    pool.drain()
-                    registry.apply_cancel(task_id=task_id, observed_at=self._now())
-                    self._publish_projection(task_id)
-                    return False
+                    raise ExecutionStopped(CANCELLED) from None
                 raise
             self._publish_projection(task_id)
             # This attempt, after the stage's interrupted ones in a row.
@@ -863,17 +858,14 @@ class TaskControlRunner:
             # none of their work (the cancel covers them), a blocked one keeps
             # what completed -- a later run carries a completed item, and one
             # that did not complete is left as it stood.
-            finished = pool.drain()
             if result.disposition is StageDisposition.CANCELLED:
                 current_task = registry.task(task_id)
                 if current_task.lifecycle is not TaskLifecycle.CANCEL_REQUESTED:
                     raise RuntimeError(
                         "stage reported cancellation without a pending task cancellation"
                     )
-                registry.apply_cancel(task_id=task_id, observed_at=self._now())
-                self._publish_projection(task_id)
-                return False
-            for other, value in finished:
+                raise ExecutionStopped(CANCELLED)
+            for other, value in pool.drain():
                 if value.disposition is StageDisposition.READY:
                     self._complete(context, task_id, execution, other, value)
             # A domain adapter's refusal is recorded as the refusal it is,

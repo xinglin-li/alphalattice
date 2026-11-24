@@ -674,6 +674,7 @@ def _link_directory(link: Path, target: Path) -> None:
     if os.name == "nt":
         spawn.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            process_kind="model_store_windows_junction",
             check=True,
             capture_output=True,
         )

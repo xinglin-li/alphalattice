@@ -68,7 +68,11 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
         return {**result, "reason": "COMMAND_MISSING"}
     try:
         completed = spawn.run(
-            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
+            [executable, *command[1:]],
+            process_kind="dependency_command_probe",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return {**result, "reason": "COMMAND_TIMED_OUT"}
@@ -153,6 +157,7 @@ def codex_queue_reach(path: str | None = None) -> dict[str, Any]:
     try:
         done = spawn.run(
             [command, "queue", "--thread", CODEX_REACH_THREAD, "--message", "reach probe"],
+            process_kind="codex_queue_reach_probe",
             capture_output=True,
             timeout=30,
             check=False,

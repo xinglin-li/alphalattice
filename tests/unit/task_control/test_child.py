@@ -75,6 +75,7 @@ def test_a_worker_that_makes_no_progress_is_ended_and_its_call_interrupted(
     clock, cpu, ends = count(0, 100), iter(used), []
     monkeypatch.setattr(child.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(child, "cpu_seconds_of", lambda _pid: next(cpu))
+    monkeypatch.setattr(child.spawn, "stop_pool", lambda _pool: ends.append("terminated"))
 
     class _Running:
         def result(self, timeout: float) -> dict:
@@ -84,9 +85,7 @@ def test_a_worker_that_makes_no_progress_is_ended_and_its_call_interrupted(
 
     class _Pool:
         def __init__(self) -> None:
-            self._processes = {
-                7: SimpleNamespace(pid=7, terminate=lambda: ends.append("terminated"))
-            }
+            self._processes = {7: SimpleNamespace(pid=7)}
 
         def shutdown(self, *, wait: bool, cancel_futures: bool) -> None:
             ends.append("shut down")

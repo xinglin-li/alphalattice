@@ -538,7 +538,16 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
         monkeypatch.setattr(spawn, "attached", lambda *a, **k: calls.append((a, k)) or 7)
         env = {"EXAMPLE": "value"}
         assert web_launcher.attached_child(["tool"], env=env) == 7
-        assert calls == [((["tool"],), {"env": env, "job_factory": web_launcher.ChildJob})]
+        assert calls == [
+            (
+                (["tool"],),
+                {
+                    "env": env,
+                    "job_factory": web_launcher.ChildJob,
+                    "process_kind": "attached_retrieval_host_child",
+                },
+            ),
+        ]
         return
     if workspace_state == "timeout":
         from alphalattice.control.product_host.composition import web_launcher
@@ -656,6 +665,7 @@ class _ExitedHost:
 
     pid = 4242
     returncode = 1
+    stdin = None
     _handle = 0x4242  # the handle a Windows job proof reads
 
     def poll(self):

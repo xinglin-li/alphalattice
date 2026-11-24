@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from collections import deque
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import Context
 from threading import Condition, Event, Lock, Thread, local
@@ -19,6 +19,13 @@ from .port import ExecutionHeartbeat, ExecutionLane, ExecutionPort
 _DEFAULT_EXECUTION_TIMEOUT_SECONDS = 24 * 60 * 60
 _POOLS: WeakKeyDictionary[Any, str] = WeakKeyDictionary()
 _POOL_LOCK = Lock()
+_process_pool_owner: Callable[[ProcessPoolExecutor, str], None] | None = None
+
+
+def install_process_pool_owner(owner: Callable[[ProcessPoolExecutor, str], None]) -> None:
+    """Bind the product's process observations at the execution boundary."""
+    global _process_pool_owner
+    _process_pool_owner = owner
 
 
 class ExecutionPool:
@@ -44,6 +51,8 @@ class ExecutionPool:
 
     def register_pool[T](self, pool: T, *, name: str) -> T:
         """Record a pool for its lifetime. Its caller owns its workers and shutdown."""
+        if isinstance(pool, ProcessPoolExecutor) and _process_pool_owner is not None:
+            _process_pool_owner(pool, name)
         with _POOL_LOCK:
             _POOLS[pool] = name
         return pool

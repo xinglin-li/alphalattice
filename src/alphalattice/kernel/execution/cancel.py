@@ -123,6 +123,7 @@ def execution_cancellation(execution_id: UUID, timeout: float | None = None) -> 
         if timer is not None:
             timer.cancel()
             timer.join(timeout=1.0)
+        signal.close()
         _CURRENT.reset(reset)
         with _RUNNING_LOCK:
             del _RUNNING[execution_id]
@@ -152,6 +153,14 @@ def stop_reason() -> str | None:
     """Return the accepted stop reason for the current execution, if any."""
     signal = _CURRENT.get()
     return None if signal is None else signal.reason
+
+
+def interrupt_on_execution_stop(interrupt: Callable[[], object]) -> Callable[[], None]:
+    """Register a resource stop and return its owner-lifetime release."""
+    signal = _CURRENT.get()
+    if signal is None or (registration := signal.watch(interrupt)) is None:
+        return lambda: None
+    return lambda: signal.unwatch(registration)
 
 
 def carry_cancellation[T](call: Callable[[], T]) -> Callable[[], T]:

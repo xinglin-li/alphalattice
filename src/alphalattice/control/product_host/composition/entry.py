@@ -102,7 +102,7 @@ def serve(arguments: list[str]) -> int:
     return (
         start(arguments, new_research=selected.new_research)
         if "--detach" in arguments
-        else start(arguments)
+        else start(arguments, own_process_tree=True)
     )
 
 

@@ -4,12 +4,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-
-import pytest
-
-from alphalattice.kernel.execution import process_execution
 
 
 def test_every_process_pool_owner_is_in_the_child_start_class():
@@ -38,17 +33,3 @@ def test_every_process_pool_owner_is_in_the_child_start_class():
         "ProcessPoolExecutor": 2,
         "Parallel": 1,
     }
-
-
-@pytest.mark.proves("execution.registered_pools_keep_their_workers")
-def test_registered_pools_keep_their_workers() -> None:
-    """Register both pools and close the first without stopping the second's worker."""
-    owner = process_execution()
-    with (
-        owner.register_pool(ThreadPoolExecutor(1), name="first-test-pool") as first,
-        owner.register_pool(ThreadPoolExecutor(1), name="second-test-pool") as second,
-    ):
-        assert first is not second
-        assert {"first-test-pool", "second-test-pool"} <= set(owner.registered_pool_names())
-        first.shutdown()
-        assert second.submit(lambda: 1).result(timeout=1) == 1

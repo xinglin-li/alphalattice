@@ -1678,6 +1678,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     try:
         spawn.run(
             [codex, "queue", "--thread", thread, "--message", message],
+            process_kind="codex_wake_queue",
             check=True,
             capture_output=True,
             timeout=60,

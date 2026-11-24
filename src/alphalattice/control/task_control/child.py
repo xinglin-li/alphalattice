@@ -44,6 +44,8 @@ from alphalattice.kernel import storage
 from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import (
+    CANCELLED,
+    ExecutionStopped,
     child_process,
     execution_port,
     stop_reason,
@@ -57,6 +59,7 @@ from alphalattice.kernel.resources import (
     worker_resource_lease,
     worker_width,
 )
+from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
 from alphalattice.kernel.shared_kernel.environment import held_offline, numerical_thread_limit
 from alphalattice.kernel.shared_kernel.spans import (
@@ -269,6 +272,9 @@ class ChildCalls:
         running = [item.future for item in pending if not item.future.cancel()]
         if running:
             self._flag.touch()
+            if stop_reason() is not None:
+                for pool in {item.pool for item in pending if _task_owns_pool(item.pool)}:
+                    spawn.stop_pool(pool)
             futures.wait(running)
         for item in pending:
             if not item.future.cancelled() and isinstance(
@@ -413,10 +419,14 @@ def _waited(
             try:
                 return submitted.future.result(timeout=POLL_SECONDS)
             except FutureTimeout:
-                if not flag.exists() and (
-                    stop_reason() is not None or (cancelled is not None and cancelled())
-                ):
-                    flag.touch()
+                reason = stop_reason()
+                if reason is not None or (cancelled is not None and cancelled()):
+                    if not flag.exists():
+                        flag.touch()
+                    if _task_owns_pool(submitted.pool):
+                        spawn.stop_pool(submitted.pool)
+                        _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
+                        raise ExecutionStopped(reason or CANCELLED) from None
                 progress = _progressed(submitted.pool, progress)
                 if time.monotonic() - progress[1] > WEDGED_SECONDS:
                     raise _ended_wedged(submitted) from None
@@ -453,9 +463,7 @@ def _ended_wedged(submitted: _Submitted) -> ChildInterrupted:
 
 def _terminate_processes(pool: ProcessPoolExecutor) -> None:
     """Signal the processes this exact pool still owns before joining its manager."""
-    for process in list((getattr(pool, "_processes", None) or {}).values()):
-        with suppress(ProcessLookupError):
-            process.terminate()
+    spawn.stop_pool(pool)
 
 
 def _ended(worker: int, pool: ProcessPoolExecutor) -> ChildInterrupted:
@@ -482,6 +490,29 @@ def _kept_workers() -> dict[int, ProcessPoolExecutor]:
     return _WORKERS if lease is None else _TASK_WORKERS.get(lease, _WORKERS)
 
 
+def _task_owns_pool(pool: ProcessPoolExecutor) -> bool:
+    lease = current_resource_lease()
+    if lease is None:
+        return False
+    with _WORKER_LOCK:
+        return pool in _TASK_WORKERS.get(lease, {}).values()
+
+
+def stop_task_workers() -> None:
+    """Join this Task's workers before a terminal outcome can release its running place."""
+    lease = current_resource_lease()
+    with _WORKER_LOCK:
+        owned = _TASK_WORKERS.get(lease) if lease is not None else None
+        pools = tuple(owned.values()) if owned is not None else ()
+    for pool in pools:
+        _terminate_processes(pool)
+    for pool in pools:
+        pool.shutdown(wait=True, cancel_futures=True)
+    if owned is not None:
+        with _WORKER_LOCK:
+            owned.clear()
+
+
 @contextmanager
 def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Callable[[], None]]:
     """Hold a Task's kept workers and give its runner the startup after claim."""
@@ -503,12 +534,11 @@ def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Ca
     try:
         yield start
     finally:
-        with _WORKER_LOCK:
-            owned = _TASK_WORKERS.pop(lease)
-        for pool in owned.values():
-            _terminate_processes(pool)
-        for pool in owned.values():
-            pool.shutdown(wait=True, cancel_futures=True)
+        try:
+            stop_task_workers()
+        finally:
+            with _WORKER_LOCK:
+                del _TASK_WORKERS[lease]
 
 
 type _WarmImports = tuple[tuple[str, ...], str | None, ResourceLease | None]
@@ -584,9 +614,9 @@ def _follow_root(root: str | None) -> None:
 
     declare(Change("task-worker-data-root", {DATA_ROOT_ENV: root}), native=True)
     where = data_root()
-    host = multiprocessing.parent_process()
-    if where not in _RECORDED and host is not None and host.pid is not None:
-        record_worker(where, host=host.pid)
+    host = spawn.worker_host_pid()
+    if where not in _RECORDED and host is not None:
+        record_worker(where, host=host)
         _RECORDED.add(where)
 
 
