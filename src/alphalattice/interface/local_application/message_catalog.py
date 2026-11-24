@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from functools import cache
 from typing import Any
 
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 
 
 def english_message_ids(entries: Mapping[str, Any]) -> dict[str, str]:

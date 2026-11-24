@@ -5,7 +5,9 @@ import multiprocessing
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from threading import Event, Lock, get_ident
 from types import SimpleNamespace
@@ -14,12 +16,15 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import BaseModel, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
 )
+from alphalattice.control.task_control import child
 from alphalattice.control.task_control.contracts import (
     FAILURE_CODE_MAX_LENGTH,
     ResearchGoal,
@@ -57,15 +62,14 @@ from alphalattice.control.task_control.runner import (
     TaskHeartbeatReadout,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.dispatcher import (
     CANCEL_REAIM_LIMIT,
     CommandAdmission,
     LocalBackgroundDispatcher,
     TaskVersionMovedError,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 from tests.workspace_task_runner.task_control_support import (
     FixtureTaskAdapter as _FixtureTaskAdapter,
 )
@@ -928,6 +932,7 @@ def test_runner_preserves_typed_failure_class_from_verification(tmp_path: Path) 
 def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     tmp_path: Path,
     ready: bool,
+    monkeypatch,
 ) -> None:
     """Control: Checkpoints cancel."""
     now = datetime(2026, 8, 10, 17, tzinfo=UTC)
@@ -944,12 +949,35 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     adapter = _CancellingTaskAdapter(
         registry=registry, observed_at=now + timedelta(seconds=1), ready=ready
     )
+    settled = False
+
+    def join(**_options):
+        nonlocal settled
+        settled = True
+
+    @contextmanager
+    def resources(task):
+        with (
+            use_resource_lease(ResourceLease(task.task_id, ResourceAmounts(cpu=1, workers=1))),
+            child.warm_child_workers(0, modules=()),
+        ):
+            child._kept_workers()[0] = SimpleNamespace(shutdown=join, _processes={})
+            yield
+
+    apply_cancel = registry.apply_cancel
+
+    def checked_apply(**options):
+        assert settled, "cancellation became terminal before the kept worker joined"
+        return apply_cancel(**options)
+
+    monkeypatch.setattr(registry, "apply_cancel", checked_apply)
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
         runtime_path=str(tmp_path / "task-runtime.sqlite"),
         clock=lambda: now + timedelta(seconds=2),
         heartbeat_seconds=0.01,
+        task_scope=resources,
     )
     try:
         result = runner.run_next()
@@ -2028,6 +2056,7 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
 ):
     """TE12: the shared runner holds the stop for the complete registered Task-kind class."""
 
+    from alphalattice.control.product_host.composition import application_session
     from alphalattice.control.task_control import child
     from alphalattice.control.task_control.child import run_in_child
 
@@ -2037,26 +2066,37 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
         child._retire_worker(worker, pool)
     assert not child._WORKERS
     now = datetime(2026, 10, 3, 12, tzinfo=UTC)
-    original, _, original_plan = task_contract(salt=task_kind)
-    envelope = TaskInputEnvelope.create(
-        task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
-    )
-    goal = ResearchGoal.create(
-        goal_kind="RUN_FACTOR_RESEARCH",
-        input_hash=envelope.input_hash,
-        deliverable_kind="ResearchDeskFactorInput",
-        summary="Exercise the common child start seam.",
-    )
-    plan = ResearchPlan.create(
-        goal_hash=goal.goal_hash,
-        workflow_definition_hash=original_plan.workflow_definition_hash,
-        verifier_catalog_hash=original_plan.verifier_catalog_hash,
-        work_items=original_plan.work_items,
-    )
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
-    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+
+    def admit(salt, observed_at):
+        original, _, original_plan = task_contract(salt=salt)
+        envelope = TaskInputEnvelope.create(
+            task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
+        )
+        goal = ResearchGoal.create(
+            goal_kind="RUN_FACTOR_RESEARCH",
+            input_hash=envelope.input_hash,
+            deliverable_kind="ResearchDeskFactorInput",
+            summary="Exercise the common child start seam.",
+        )
+        plan = ResearchPlan.create(
+            goal_hash=goal.goal_hash,
+            workflow_definition_hash=original_plan.workflow_definition_hash,
+            verifier_catalog_hash=original_plan.verifier_catalog_hash,
+            work_items=original_plan.work_items,
+        )
+        return registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=observed_at
+        ).record
+
+    # Only the installed preparation Task starts a worker before its first work item.
+    ahead = task_kind == "workspace_preparation"
+    if ahead:
+        set_tasks_waiting(tmp_path, 2, now)
+    admitted = admit(task_kind, now)
+    successor = admit("after-preparation", now + timedelta(seconds=1)) if ahead else None
 
     class ChildStartAdapter(_FixtureTaskAdapter):
         needs_child = True
@@ -2069,11 +2109,24 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     adapter = ChildStartAdapter()
     adapter.task_kind = task_kind
     projections = []
+    runtime = tmp_path / "runtime.sqlite"
+    session = SimpleNamespace(
+        workspace=tmp_path,
+        task_control_registry=registry,
+        runtime_path=runtime,
+        processor="test",
+        scratch_epoch=str(uuid4()),
+    )
+    session.task_resources = partial(WorkspaceApplicationSession.task_resources, session)
+
+    def clock():
+        return now + timedelta(seconds=2)
+
     runner = TaskControlRunner(
         registry=registry,
         adapters={task_kind: adapter},
-        runtime_path=str(tmp_path / "runtime.sqlite"),
-        clock=lambda: now + timedelta(seconds=1),
+        runtime_path=str(runtime),
+        clock=clock,
         projection_sink=projections.append,
         heartbeat_seconds=0.01,
     )
@@ -2084,13 +2137,25 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     try:
         with monkeypatch.context() as patch:
             patch.setattr(multiprocessing.get_context("spawn").Process, "start", cannot_start)
-            stopped = runner.run_next()
+            if ahead:
+                patch.setattr(
+                    application_session,
+                    "TaskControlRunner",
+                    partial(TaskControlRunner, projection_sink=projections.append),
+                )
+                stopped = WorkspaceApplicationSession.execute_admitted(
+                    session, admitted, adapter, clock
+                )
+            else:
+                stopped = runner.run_next()
         assert stopped is not None and stopped.task_id == admitted.task_id
         assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
         assert stopped.failure_code == "task_control.child_start_failed"
         assert registry.task(admitted.task_id) == stopped
         assert projections[-1].latest_failure_code == stopped.failure_code
         assert adapter.executed == []  # first attempt; no repeated untyped interruption
+        if successor is not None:
+            assert registry.queued_task().task_id == successor.task_id
         adapter.needs_child = False
         recovered = runner.recover(admitted.task_id, expected_task_hash=stopped.record_hash)
         assert (

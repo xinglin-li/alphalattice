@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
 from alphalattice.control.workspace_runtime.paths import resolve_confined, resolve_workspace_root
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
 
 
 def _link_directory(link: Path, target: Path) -> None:

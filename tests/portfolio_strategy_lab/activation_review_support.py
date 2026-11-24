@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
@@ -102,7 +103,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import admit_market_fixture
 
@@ -689,7 +689,7 @@ def activation_review_host(
         from alphalattice.control.product_host.composition.research_workspace import (
             manifest_fields_hash,
         )
-        from alphalattice.kernel.data_layer import history
+        from alphalattice.foundation.data_layer import history
 
         history.open_history(manifest.workspace_id, "portfolio", root)
         try:

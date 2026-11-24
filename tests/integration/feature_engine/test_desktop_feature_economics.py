@@ -14,6 +14,7 @@ import pytest
 from hypothesis import given, seed, settings
 from hypothesis import strategies as st
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import (
     FactorSessionInvalidation,
@@ -43,7 +44,6 @@ from alphalattice.foundation.feature_engine.runtime.service import (
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 
 CASE_ROOT = Path(__file__).resolve().parents[3] / "tests/feature_engine"
 PLAYPEN_ROOT = CASE_ROOT.parents[1]

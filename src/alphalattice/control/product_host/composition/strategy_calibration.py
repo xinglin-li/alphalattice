@@ -12,6 +12,15 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import (
+    canonical_hash,
+    schema_structure,
+)
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_closes,
 )
@@ -80,15 +89,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.identity import (
-    canonical_hash,
-    schema_structure,
-)
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 PLAN_FIELDS = ("calibration_inputs",)
 """The manifest fields a plan reads: the calibration inputs it prepares. A plan binds them, never

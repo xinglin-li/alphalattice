@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
 from devtools.testing import sizes

@@ -261,9 +261,9 @@
     "validation": {
       "description": "Validation provides shared research checks and sealed split contracts so research stages use explicit timing, fold and holdout rules.",
       "covers": "the checks and their contracts",
-      "owner": "alphalattice.kernel.validation",
+      "owner": "alphalattice.capabilities.validation",
       "defined_by": [
-        "alphalattice.kernel.validation.contracts"
+        "alphalattice.capabilities.validation.contracts"
       ],
       "folds_in": []
     },
@@ -640,27 +640,27 @@
     "knowledge retrieval": {
       "description": "Knowledge retrieval contracts name the retrieval recipes and model packs a workspace's retrieval store loads, and choose the recipe its setup installs.",
       "covers": "local retrieval recipe and model-pack constants and the setup recipe choice",
-      "owner": "alphalattice.kernel.knowledge",
+      "owner": "alphalattice.capabilities.knowledge",
       "defined_by": [
-        "alphalattice.kernel.knowledge.hybrid_contracts"
+        "alphalattice.capabilities.knowledge.hybrid_contracts"
       ],
       "folds_in": []
     },
     "source identity": {
       "description": "Source identity names source components and hashes their executable syntax and declared import closure so records can bind to code independently of checkout layout.",
       "covers": "source syntax and import closure identity, including the fixed-install AST memo",
-      "owner": "alphalattice.kernel.shared_kernel",
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "alphalattice.kernel.shared_kernel.source_identity"
+        "alphalattice.capabilities.domain_contracts.source_identity"
       ],
       "folds_in": []
     },
     "memo cache": {
       "description": "A memo cache holds derived values within an owner's capacity so callers can reuse known work and recompute values after eviction.",
       "covers": "bounded derived values with exact recomputation on a miss; no admission state or active leases",
-      "owner": "alphalattice.kernel.shared_kernel",
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "alphalattice.kernel.shared_kernel.bounded_memo"
+        "alphalattice.capabilities.domain_contracts.bounded_memo"
       ],
       "folds_in": [],
       "note": "OrderedDict LRU with typed owner capacity and a machine-derived default; consumers retain their existing keys, validation and close authority. Optional registered cache identity and owner-charged retained-byte estimates feed scoped execution-span cache observations; measurement changes no cached value and never claims physical memory."
@@ -668,9 +668,9 @@
     "cache observation": {
       "covers": "per-phase cache lookup and capacity-eviction counts, with per-instance retained-byte estimate gauges and explicit missing measurements; worker readouts preserve their outcome scope",
       "description": "Keeps scoped cache outcomes and retained-byte estimates in the Task's execution spans without changing cached results.",
-      "owner": "alphalattice.kernel.shared_kernel",
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "alphalattice.kernel.shared_kernel.spans"
+        "alphalattice.capabilities.domain_contracts.spans"
       ],
       "folds_in": []
     },
@@ -687,18 +687,18 @@
     "product resource data": {
       "description": "Product resource data is the immutable package catalog and reference payloads that verified loaders use for Knowledge articles and supported package arguments.",
       "covers": "immutable package data shipped in the base wheel: the system resource catalog, Knowledge articles, package-argument specifications, and recorded demonstration and evidence payload bytes",
-      "owner": "alphalattice.kernel.resources",
+      "owner": "alphalattice.foundation.resources",
       "defined_by": [
-        "alphalattice.kernel.resources"
+        "alphalattice.foundation.resources"
       ],
       "folds_in": [],
-      "note": "This is a data-only package. Its package declaration is at __init__.py:1; catalog.json and the packaged JSON payloads define the bytes. Catalog schema types and verified loading are defined by kernel.knowledge, so this entry claims no Python catalog type or loader.",
+      "note": "This is a data-only package. Its package declaration is at __init__.py:1; catalog.json and the packaged JSON payloads define the bytes. Catalog schema types and verified loading are defined by capabilities.knowledge, so this entry claims no Python catalog type or loader.",
       "consumers": {
         "import": [],
         "path": [],
         "string": [
           "config/package-architecture.json:80",
-          "src/alphalattice/kernel/knowledge/catalog.py:150"
+          "src/alphalattice/capabilities/knowledge/catalog.py:150"
         ]
       },
       "consumer_basis": {
@@ -706,30 +706,38 @@
         "scope": "Static import, path and string references to public consumers; matches do not prove runtime execution."
       }
     },
+    "process configuration": {
+      "description": "Owns the process environment snapshot and the operator settings read from it.",
+      "covers": "startup capture, typed policy, declared changes, secret access and child environment transport",
+      "owner": "alphalattice.kernel.config",
+      "defined_by": [
+        "alphalattice.kernel.config.port"
+      ],
+      "folds_in": []
+    },
     "shared kernel": {
       "description": "The shared kernel provides common immutable records, identity functions and persistence primitives so domain owners can share these basic contracts and operations.",
       "covers": "shared domain validation, failure and value records; canonical JSON, content, source and recipe identity and seals; durable-file and resource-layout primitives; bounded waits; environment provenance, execution-span readouts and sector-history treatment vocabulary",
-      "owner": "alphalattice.kernel.shared_kernel",
+      "owner": "alphalattice.capabilities.domain_contracts",
       "defined_by": [
-        "alphalattice.kernel.shared_kernel.arrow_identity",
-        "alphalattice.kernel.shared_kernel.clocks",
-        "alphalattice.kernel.shared_kernel.domain.base",
-        "alphalattice.kernel.shared_kernel.domain.enums",
-        "alphalattice.kernel.shared_kernel.domain.errors",
-        "alphalattice.kernel.shared_kernel.domain.models",
-        "alphalattice.kernel.shared_kernel.domain.serialization",
-        "alphalattice.kernel.shared_kernel.environment",
-        "alphalattice.kernel.shared_kernel.identity",
-        "alphalattice.kernel.shared_kernel.identity_successors",
-        "alphalattice.kernel.shared_kernel.persistence",
-        "alphalattice.kernel.shared_kernel.project_layout",
-        "alphalattice.kernel.shared_kernel.recipe_identity",
-        "alphalattice.kernel.shared_kernel.retired_spellings",
-        "alphalattice.kernel.shared_kernel.sealing",
-        "alphalattice.kernel.shared_kernel.sector_treatment",
-        "alphalattice.kernel.shared_kernel.source_identity",
-        "alphalattice.kernel.shared_kernel.spans",
-        "alphalattice.kernel.shared_kernel.waits"
+        "alphalattice.capabilities.domain_contracts.arrow_identity",
+        "alphalattice.capabilities.domain_contracts.domain.base",
+        "alphalattice.capabilities.domain_contracts.domain.enums",
+        "alphalattice.capabilities.domain_contracts.domain.errors",
+        "alphalattice.capabilities.domain_contracts.domain.models",
+        "alphalattice.capabilities.domain_contracts.domain.serialization",
+        "alphalattice.capabilities.domain_contracts.environment",
+        "alphalattice.capabilities.domain_contracts.identity",
+        "alphalattice.capabilities.domain_contracts.identity_successors",
+        "alphalattice.capabilities.domain_contracts.persistence",
+        "alphalattice.capabilities.domain_contracts.project_layout",
+        "alphalattice.capabilities.domain_contracts.recipe_identity",
+        "alphalattice.capabilities.domain_contracts.retired_spellings",
+        "alphalattice.capabilities.domain_contracts.sealing",
+        "alphalattice.capabilities.domain_contracts.sector_treatment",
+        "alphalattice.capabilities.domain_contracts.source_identity",
+        "alphalattice.capabilities.domain_contracts.spans",
+        "alphalattice.capabilities.domain_contracts.waits"
       ],
       "folds_in": [],
       "note": "Neutral primitives are defined here and imported by domain owners. This entry does not transfer the meaning, state or decisions of any domain noun.",
@@ -1253,40 +1261,40 @@
           "src/alphalattice/investment/sector_research/models/legacy_excess_ema.py:25",
           "src/alphalattice/investment/sector_research/targets/execution.py:39",
           "src/alphalattice/investment/sector_research/targets/execution.py:40",
-          "src/alphalattice/kernel/data/contracts.py:14",
-          "src/alphalattice/kernel/data/contracts.py:22",
-          "src/alphalattice/kernel/data/errors.py:5",
-          "src/alphalattice/kernel/data/universe.py:15",
-          "src/alphalattice/kernel/data/universe.py:16",
-          "src/alphalattice/kernel/knowledge/catalog.py:39",
-          "src/alphalattice/kernel/knowledge/catalog.py:40",
-          "src/alphalattice/kernel/knowledge/contracts.py:17",
-          "src/alphalattice/kernel/knowledge/contracts.py:18",
-          "src/alphalattice/kernel/knowledge/contracts.py:19",
-          "src/alphalattice/kernel/knowledge/errors.py:7",
-          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:24",
-          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:32",
-          "src/alphalattice/kernel/live_evidence/errors.py:7",
-          "src/alphalattice/kernel/quant/errors.py:7",
-          "src/alphalattice/kernel/quant/factor_contracts.py:11",
-          "src/alphalattice/kernel/quant/return_model_contracts.py:13",
-          "src/alphalattice/kernel/quant/sector_history.py:24",
-          "src/alphalattice/kernel/quant/sector_history.py:25",
-          "src/alphalattice/kernel/shared_kernel/__init__.py:3",
-          "src/alphalattice/kernel/shared_kernel/arrow_identity.py:37",
-          "src/alphalattice/kernel/shared_kernel/domain/errors.py:7",
-          "src/alphalattice/kernel/shared_kernel/domain/models.py:9",
-          "src/alphalattice/kernel/shared_kernel/domain/serialization.py:17",
-          "src/alphalattice/kernel/shared_kernel/identity_successors.py:25",
-          "src/alphalattice/kernel/shared_kernel/persistence.py:10",
-          "src/alphalattice/kernel/shared_kernel/recipe_identity.py:22",
-          "src/alphalattice/kernel/shared_kernel/sealing.py:14",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:14",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:21",
-          "src/alphalattice/kernel/validation/contracts.py:10",
-          "src/alphalattice/kernel/validation/contracts.py:15",
-          "src/alphalattice/kernel/validation/errors.py:7",
-          "src/alphalattice/kernel/validation/schedule_contracts.py:9",
+          "src/alphalattice/capabilities/data/contracts.py:14",
+          "src/alphalattice/capabilities/data/contracts.py:22",
+          "src/alphalattice/capabilities/data/errors.py:5",
+          "src/alphalattice/capabilities/data/universe.py:15",
+          "src/alphalattice/capabilities/data/universe.py:16",
+          "src/alphalattice/capabilities/knowledge/catalog.py:39",
+          "src/alphalattice/capabilities/knowledge/catalog.py:40",
+          "src/alphalattice/capabilities/knowledge/contracts.py:17",
+          "src/alphalattice/capabilities/knowledge/contracts.py:18",
+          "src/alphalattice/capabilities/knowledge/contracts.py:19",
+          "src/alphalattice/capabilities/knowledge/errors.py:7",
+          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:24",
+          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:32",
+          "src/alphalattice/evidence/live_evidence/errors.py:7",
+          "src/alphalattice/capabilities/quant/errors.py:7",
+          "src/alphalattice/capabilities/quant/factor_contracts.py:11",
+          "src/alphalattice/capabilities/quant/return_model_contracts.py:13",
+          "src/alphalattice/capabilities/quant/sector_history.py:24",
+          "src/alphalattice/capabilities/quant/sector_history.py:25",
+          "src/alphalattice/capabilities/domain_contracts/__init__.py:3",
+          "src/alphalattice/capabilities/domain_contracts/arrow_identity.py:37",
+          "src/alphalattice/capabilities/domain_contracts/domain/errors.py:7",
+          "src/alphalattice/capabilities/domain_contracts/domain/models.py:9",
+          "src/alphalattice/capabilities/domain_contracts/domain/serialization.py:17",
+          "src/alphalattice/capabilities/domain_contracts/identity_successors.py:25",
+          "src/alphalattice/capabilities/domain_contracts/persistence.py:10",
+          "src/alphalattice/capabilities/domain_contracts/recipe_identity.py:22",
+          "src/alphalattice/capabilities/domain_contracts/sealing.py:14",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:14",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:21",
+          "src/alphalattice/capabilities/validation/contracts.py:10",
+          "src/alphalattice/capabilities/validation/contracts.py:15",
+          "src/alphalattice/capabilities/validation/errors.py:7",
+          "src/alphalattice/capabilities/validation/schedule_contracts.py:9",
           "src/alphalattice/oversight/chief_risk_officer/decision/book_evidence.py:77",
           "src/alphalattice/oversight/chief_risk_officer/decision/portfolio_review.py:1523",
           "src/alphalattice/oversight/chief_risk_officer/decision/portfolio_review.py:1662",
@@ -1515,7 +1523,7 @@
           "config/package-architecture.json:91",
           "config/registries/identity-reach.json:1038",
           "scripts/release/public_outputs.py:108",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:246",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:246",
           "tests/portfolio_strategy_lab/typed_owner_refusals.py:34",
           "tests/structural/test_source_identity.py:339"
         ]
@@ -1528,15 +1536,15 @@
     "market data mechanics": {
       "description": "Market data mechanics provide shared universe, table and quality rules so observations can be normalized and checked against eligible symbols and calendar sessions.",
       "covers": "market-data truth and provenance contracts and vocabulary; frozen daily-price table and calendar mechanics, deterministic row-quality checks, current-universe source parsing and symbol normalization",
-      "owner": "alphalattice.kernel.data",
+      "owner": "alphalattice.capabilities.data",
       "defined_by": [
-        "alphalattice.kernel.data.calendar",
-        "alphalattice.kernel.data.contracts",
-        "alphalattice.kernel.data.enums",
-        "alphalattice.kernel.data.errors",
-        "alphalattice.kernel.data.quality",
-        "alphalattice.kernel.data.table",
-        "alphalattice.kernel.data.universe"
+        "alphalattice.capabilities.data.calendar",
+        "alphalattice.capabilities.data.contracts",
+        "alphalattice.capabilities.data.enums",
+        "alphalattice.capabilities.data.errors",
+        "alphalattice.capabilities.data.quality",
+        "alphalattice.capabilities.data.table",
+        "alphalattice.capabilities.data.universe"
       ],
       "folds_in": [],
       "note": "Separate from the existing market data row: foundation.market_data_ops owns stored data, acquisition and maintenance. Kernel Data defines the primitive contracts, schemas and algorithms those owners import.",
@@ -1564,14 +1572,14 @@
           "src/alphalattice/foundation/market_data_ops/sources/universe.py:20",
           "src/alphalattice/interface/local_application/goals.py:329",
           "src/alphalattice/investment/portfolio_strategy_lab/inputs/development.py:36",
-          "src/alphalattice/kernel/data/calendar.py:12",
-          "src/alphalattice/kernel/data/contracts.py:10",
-          "src/alphalattice/kernel/data/quality.py:14",
-          "src/alphalattice/kernel/data/quality.py:15",
-          "src/alphalattice/kernel/data/quality.py:16",
-          "src/alphalattice/kernel/data/table.py:12",
-          "src/alphalattice/kernel/data/universe.py:13",
-          "src/alphalattice/kernel/data/universe.py:14",
+          "src/alphalattice/capabilities/data/calendar.py:12",
+          "src/alphalattice/capabilities/data/contracts.py:10",
+          "src/alphalattice/capabilities/data/quality.py:14",
+          "src/alphalattice/capabilities/data/quality.py:15",
+          "src/alphalattice/capabilities/data/quality.py:16",
+          "src/alphalattice/capabilities/data/table.py:12",
+          "src/alphalattice/capabilities/data/universe.py:13",
+          "src/alphalattice/capabilities/data/universe.py:14",
           "tests/integration/data/test_current_universe.py:11",
           "tests/integration/data/test_current_universe.py:12",
           "tests/integration/data/test_current_universe.py:13",
@@ -1607,16 +1615,16 @@
     "factor and return mechanics": {
       "description": "Factor and return mechanics provide shared numerical primitives and contracts so research owners reuse factor formulas, input conventions and package argument checks.",
       "covers": "deterministic factor specifications and formula arithmetic, return-model fit and predict mechanics, robust cross-section mathematics and session-aware sector-history arithmetic",
-      "owner": "alphalattice.kernel.quant",
+      "owner": "alphalattice.capabilities.quant",
       "defined_by": [
-        "alphalattice.kernel.quant.cross_section",
-        "alphalattice.kernel.quant.errors",
-        "alphalattice.kernel.quant.factor_contracts",
-        "alphalattice.kernel.quant.factor_enums",
-        "alphalattice.kernel.quant.factor_formulas",
-        "alphalattice.kernel.quant.return_model_contracts",
-        "alphalattice.kernel.quant.return_models",
-        "alphalattice.kernel.quant.sector_history"
+        "alphalattice.capabilities.quant.cross_section",
+        "alphalattice.capabilities.quant.errors",
+        "alphalattice.capabilities.quant.factor_contracts",
+        "alphalattice.capabilities.quant.factor_enums",
+        "alphalattice.capabilities.quant.factor_formulas",
+        "alphalattice.capabilities.quant.return_model_contracts",
+        "alphalattice.capabilities.quant.return_models",
+        "alphalattice.capabilities.quant.sector_history"
       ],
       "folds_in": [],
       "note": "Separate from factor research, Alpha, Risk and Portfolio research nouns: their studies, curation, publication and decisions consume these numerical contracts and mechanics.",
@@ -1693,12 +1701,12 @@
           "src/alphalattice/investment/sector_research/inputs/surface.py:18",
           "src/alphalattice/investment/sector_research/inputs/surface.py:21",
           "src/alphalattice/investment/sector_research/targets/execution.py:38",
-          "src/alphalattice/kernel/quant/factor_contracts.py:10",
-          "src/alphalattice/kernel/quant/factor_formulas.py:12",
-          "src/alphalattice/kernel/quant/return_models.py:16",
-          "src/alphalattice/kernel/quant/return_models.py:17",
-          "src/alphalattice/kernel/validation/return_model_statistics.py:15",
-          "src/alphalattice/kernel/validation/return_model_statistics.py:16",
+          "src/alphalattice/capabilities/quant/factor_contracts.py:10",
+          "src/alphalattice/capabilities/quant/factor_formulas.py:12",
+          "src/alphalattice/capabilities/quant/return_models.py:16",
+          "src/alphalattice/capabilities/quant/return_models.py:17",
+          "src/alphalattice/capabilities/validation/return_model_statistics.py:15",
+          "src/alphalattice/capabilities/validation/return_model_statistics.py:16",
           "tests/integration/alpha_research/test_context_selection.py:24",
           "tests/integration/feature_engine/test_factor_arithmetic_identity.py:100",
           "tests/integration/feature_engine/test_feature_catalog_crud.py:37",
@@ -2007,11 +2015,11 @@
     },
     "live evidence sources": {
       "description": "Live evidence sources define bounded HTML and table extraction rules that turn acquired documents into canonical text for evidence reading.",
-      "owner": "alphalattice.kernel.live_evidence",
+      "owner": "alphalattice.evidence.live_evidence",
       "covers": "source-specific HTML canonicalization and table extraction primitives, table carry policy, canonical extraction rule identity, acquisition/extraction bounds and stable Live Evidence failures; acquired-document provenance and SEC filing selection remain with alternative evidence",
       "defined_by": [
-        "alphalattice.kernel.live_evidence.errors",
-        "alphalattice.kernel.live_evidence.online_sources"
+        "alphalattice.evidence.live_evidence.errors",
+        "alphalattice.evidence.live_evidence.online_sources"
       ],
       "folds_in": [],
       "consumers": {
@@ -2023,7 +2031,7 @@
           "src/alphalattice/evidence/alternative_evidence/documents/tables.py:359",
           "src/alphalattice/evidence/alternative_evidence/retrieval/session.py:24",
           "src/alphalattice/evidence/alternative_evidence/sources/sec_edgar.py:17",
-          "src/alphalattice/kernel/live_evidence/online_sources.py:9",
+          "src/alphalattice/evidence/live_evidence/online_sources.py:9",
           "tests/alternative_evidence_desk/table_view_support.py:9",
           "tests/integration/alternative_evidence/test_document_spans_and_sections.py:1123",
           "tests/integration/alternative_evidence/test_document_spans_and_sections.py:227",
@@ -4371,10 +4379,10 @@
     },
     "source AST memo": {
       "description": "The source AST memo reuses a module's syntax digest and import list by source-byte hash and package context so source identity avoids parsing unchanged input again.",
-      "owner": "alphalattice.kernel.shared_kernel",
+      "owner": "alphalattice.capabilities.domain_contracts",
       "covers": "source-byte and relative-package keyed parsed syntax/import memo used by source identity",
       "defined_by": [
-        "alphalattice.kernel.shared_kernel.source_identity"
+        "alphalattice.capabilities.domain_contracts.source_identity"
       ],
       "folds_in": [],
       "consumers": {
@@ -4435,11 +4443,11 @@
           "tests/integration/local_application/test_wheel_runtime.py:231"
         ],
         "string": [
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:93",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:140",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:230",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:235",
-          "src/alphalattice/kernel/shared_kernel/source_identity.py:242"
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:93",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:140",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:230",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:235",
+          "src/alphalattice/capabilities/domain_contracts/source_identity.py:242"
         ]
       }
     },
@@ -4825,19 +4833,161 @@
     "data layer": {
       "description": "The data layer holds the 0.2.8 data root: its event log, definition registry, catalog schema and search index, so every later reader shares one store.",
       "covers": "the data root's folders, the DDL of log.sqlite with the knowledge store's tables, the DuckLake catalog, the seed registry, the schema version a data root is refused by, and the Host's one write path into the log: its admission checks, hash chain, lock and span exporter, and StorePort: the catalog's one writer and write order, the staging layout, the repair of owed events, start-up collection, the deletion queue and the free-space floor",
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "defined_by": [
-        "alphalattice.kernel.data_layer.admit",
-        "alphalattice.kernel.data_layer.chain",
-        "alphalattice.kernel.data_layer.log",
-        "alphalattice.kernel.data_layer.root",
-        "alphalattice.kernel.data_layer.spans",
-        "alphalattice.kernel.data_layer.store",
-        "alphalattice.kernel.data_layer.telemetry",
-        "alphalattice.kernel.data_layer.upgrade"
+        "alphalattice.foundation.data_layer.admit",
+        "alphalattice.foundation.data_layer.chain",
+        "alphalattice.foundation.data_layer.log",
+        "alphalattice.foundation.data_layer.root",
+        "alphalattice.foundation.data_layer.spans",
+        "alphalattice.foundation.data_layer.store",
+        "alphalattice.foundation.data_layer.telemetry",
+        "alphalattice.foundation.data_layer.upgrade"
       ],
       "folds_in": [],
       "note": "The Host's pre-serve application session calls the ordered family upgrade through the data layer's existing log writer. Family moves supply their own steps, comparisons and reader switches; the mechanism itself registers no real family."
+    },
+    "kernel types port": {
+      "description": "Clock-independent value and type contracts through the kernel types port.",
+      "covers": "the kernel-facing protocol for clock-independent value and type contracts",
+      "owner": "alphalattice.kernel.types",
+      "defined_by": [
+        "alphalattice.kernel.types"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel clock port": {
+      "description": "Wall time and calendar-date access through the kernel clock port.",
+      "covers": "wall-clock reads, Task observations and replay-clock correlation",
+      "owner": "alphalattice.kernel.clock",
+      "defined_by": [
+        "alphalattice.kernel.clock"
+      ],
+      "folds_in": [],
+      "note": "Elapsed-time measurements still use monotonic clocks at their existing callers."
+    },
+    "kernel config port": {
+      "description": "Configuration access through the kernel config port.",
+      "covers": "the kernel-facing protocol for configuration access",
+      "owner": "alphalattice.kernel.config",
+      "defined_by": [
+        "alphalattice.kernel.config"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel layout port": {
+      "description": "Data-root and workspace path layout through the kernel layout port.",
+      "covers": "the kernel-facing protocol for data-root and workspace path layout",
+      "owner": "alphalattice.kernel.layout",
+      "defined_by": [
+        "alphalattice.kernel.layout"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel identity port": {
+      "description": "Canonical identity and digest operations through the kernel identity port.",
+      "covers": "canonical identity, integrity and change digests, and stat-trusted file digests",
+      "owner": "alphalattice.kernel.identity",
+      "defined_by": [
+        "alphalattice.kernel.identity",
+        "alphalattice.kernel.identity._digests",
+        "alphalattice.kernel.identity.file_facts"
+      ],
+      "folds_in": [],
+      "note": "Callers use the public port for the digest kind they need. BLAKE3 and xxHash load on first use."
+    },
+    "kernel locks port": {
+      "description": "Lock and lease primitives through the kernel locks port.",
+      "covers": "the kernel-facing protocol for lock and lease primitives",
+      "owner": "alphalattice.kernel.locks",
+      "defined_by": [
+        "alphalattice.kernel.locks"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel telemetry port": {
+      "description": "Instrumentation and exporter boundary through the kernel telemetry port.",
+      "covers": "the kernel-facing protocol for instrumentation and exporter boundary",
+      "owner": "alphalattice.kernel.telemetry",
+      "defined_by": [
+        "alphalattice.kernel.telemetry"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel resources port": {
+      "description": "Resource budgets and leases through the kernel resources port.",
+      "covers": "the kernel-facing protocol for resource budgets and leases",
+      "owner": "alphalattice.kernel.resources",
+      "defined_by": [
+        "alphalattice.kernel.resources"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel ledger port": {
+      "description": "Ordered durable event records through the kernel ledger port.",
+      "covers": "the kernel-facing protocol for ordered durable event records",
+      "owner": "alphalattice.kernel.ledger",
+      "defined_by": [
+        "alphalattice.kernel.ledger"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel storage port": {
+      "description": "Persistent storage sessions and objects through the kernel storage port.",
+      "covers": "the kernel-facing protocol for persistent storage sessions and objects",
+      "owner": "alphalattice.kernel.storage",
+      "defined_by": [
+        "alphalattice.kernel.storage"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel egress port": {
+      "description": "Outbound access boundary through the kernel egress port.",
+      "covers": "the kernel-facing protocol for outbound access boundary",
+      "owner": "alphalattice.kernel.egress",
+      "defined_by": [
+        "alphalattice.kernel.egress"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel execution port": {
+      "description": "Task execution, scheduling and cancellation through the kernel execution port.",
+      "covers": "the kernel-facing protocol for task execution, scheduling and cancellation; the process's one timer for periodic jobs and the in-process events a wait blocks on",
+      "owner": "alphalattice.kernel.execution",
+      "defined_by": [
+        "alphalattice.kernel.execution"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its owning module maintains a weak directory of pool names whose entries last only while callers hold the pools."
+    },
+    "kernel door port": {
+      "description": "Operation admission and dispatch boundary through the kernel door port.",
+      "covers": "the kernel-facing protocol for operation admission and dispatch boundary",
+      "owner": "alphalattice.kernel.door",
+      "defined_by": [
+        "alphalattice.kernel.door"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
+    },
+    "kernel lifecycle port": {
+      "description": "Host lifetime and supervision through the kernel lifecycle port.",
+      "covers": "the kernel-facing protocol for host lifetime and supervision",
+      "owner": "alphalattice.kernel.lifecycle",
+      "defined_by": [
+        "alphalattice.kernel.lifecycle"
+      ],
+      "folds_in": [],
+      "note": "The package exports the port declaration. Its implementation is supplied by the owning module."
     }
   }
 }

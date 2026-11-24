@@ -15,13 +15,13 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.evidence.alternative_evidence.publication.usage import (
     record_provider_stage_usage,
 )
-from alphalattice.kernel.data_layer import history as data_history
-from alphalattice.kernel.shared_kernel.host_stop import checkpoint
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 from alphalattice.protocols.actor_execution.usage import ProviderStageUsage

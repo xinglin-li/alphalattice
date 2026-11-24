@@ -18,7 +18,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +26,9 @@ import portalocker
 import pytest
 
 from alphalattice.control.task_control.upgrade import carry_tasks
-from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
-from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs, own_root
-from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
+from alphalattice.foundation.data_layer.backup import backup_data_root, restore_data_root
+from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs, own_root
+from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,
@@ -59,8 +59,13 @@ def _files(root: Path) -> dict[str, str]:
 def _closed_seed(workspace: Path) -> Iterator[None]:
     """The golden owner seals only after its Host and writer have stopped."""
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.interface.local_application.client import (
+        LocalResearchClientError,
+        LocalResearchConnection,
+    )
 
-    if (workspace / "runtime/local-research-connection.json").exists():
+    with suppress(LocalResearchClientError):  # a Host still serving it holds the record
+        LocalResearchConnection.read(workspace)
         raise RuntimeError("session workspace still names a Host")
     lease = WorkspaceWriterLease.acquire(workspace)
     try:

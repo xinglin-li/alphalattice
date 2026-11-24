@@ -8,22 +8,22 @@ from functools import partial
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.application_session import verify_upgrade_backups
 from alphalattice.control.product_host.storage.backup import WorkspaceBackupError, WorkspaceBackups
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.backup import backup_data_root
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.backup import backup_data_root
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/upgrade.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/upgrade.py"
 PROGRAM = """
 import json, os, sys
 from pathlib import Path
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.log import HostLog
 from functools import partial
 from alphalattice.control.product_host.composition.application_session import verify_upgrade_backups
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups

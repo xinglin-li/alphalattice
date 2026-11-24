@@ -6,15 +6,18 @@ import base64
 import builtins
 import codecs
 import io
-import os
 import sys
-from collections.abc import Callable, MutableMapping
+import tempfile
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from pathlib import Path
 from typing import NamedTuple, TextIO
 
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix as layout_command_prefix,
+)
 from alphalattice.interface.local_application.thin_cli import CLI_ENVIRONMENT, CLI_OPERATION, select
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix as layout_command_prefix
+from alphalattice.kernel.config import current as process_config
 
 
 class Call(NamedTuple):
@@ -29,10 +32,10 @@ class Call(NamedTuple):
 CLI_CALL: ContextVar[Call | None] = ContextVar("cli_invocation", default=None)
 
 
-def environment() -> MutableMapping[str, str]:
+def environment() -> Mapping[str, str]:
     """Read the command's presentation environment."""
     call = CLI_CALL.get()
-    return os.environ if call is None else call.environment
+    return process_config().public if call is None else call.environment
 
 
 def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
@@ -44,6 +47,19 @@ def cwd() -> Path:
     """Read the command's own directory without changing the process directory."""
     call = CLI_CALL.get()
     return Path.cwd() if call is None else call.cwd
+
+
+def search_path() -> str | None:
+    """Read the command's PATH: a forwarded command's caller's; None, this process's own."""
+    call = CLI_CALL.get()
+    return None if call is None else call.environment.get("PATH")
+
+
+def temporary() -> Path:
+    """Read the command's temporary folder: the one a forwarded command's caller chose."""
+    call = CLI_CALL.get()
+    folder = None if call is None else call.environment.get("TMPDIR")
+    return Path(folder) if folder else Path(tempfile.gettempdir())
 
 
 def workspace(path: Path | None) -> Path | None:
@@ -63,6 +79,11 @@ def stream(file: TextIO | None = None, *, error: bool = False) -> TextIO:
         if chosen is stderr:
             return call.stderr
     return chosen
+
+
+def interactive() -> bool:
+    """A local terminal can answer a prompt from this invocation."""
+    return CLI_CALL.get() is None and sys.stdin.isatty()
 
 
 def cli_print(
@@ -110,8 +131,11 @@ def invoke(
     payload: dict[str, object],
     served_workspace: Path,
     dispatch: Callable[[list[str]], int],
+    bound: Callable[[], Path | None],
 ) -> dict[str, object]:
-    """Admit the same forms as the client, then run the ordinary CLI with local streams."""
+    """Admit the same forms as the client, then run the ordinary CLI with local streams; a form
+    that names no workspace runs only where its agent session's binding (`bound`) names this
+    one."""
     if payload.keys() != {"operation", "argv", "cwd", "stdin", "streams", "environment"}:
         return {"cli": "local"}
     argv, directory = payload["argv"], payload["cwd"]
@@ -126,7 +150,9 @@ def invoke(
         return {"cli": "local"}
     caller = Path(directory)
     selected = select(argv, caller)
-    if not caller.is_absolute() or selected is None or selected.workspace != served_workspace:
+    if not caller.is_absolute() or selected is None:
+        return {"cli": "local"}
+    if selected.workspace not in {None, served_workspace}:
         return {"cli": "local"}
     try:
         out_style, err_style = _styles(payload["streams"])
@@ -139,6 +165,8 @@ def invoke(
     with stdout, stderr:
         scope = CLI_CALL.set(Call(caller, settings, stdout, stderr))
         try:
+            if selected.workspace is None and bound() != served_workspace:
+                return {"cli": "local"}
             try:
                 code = dispatch(argv)
             except SystemExit as exited:
@@ -153,3 +181,10 @@ def invoke(
             }
         finally:
             CLI_CALL.reset(scope)
+
+
+class ForwardedCli(NamedTuple):
+    """The admitted CLI transport request and the Host workspace it reached."""
+
+    document: dict[str, object]
+    workspace: Path

@@ -8,17 +8,17 @@ from typing import Literal
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.foundation.factor_research.inputs.execution_target import FactorTargetSurface
-from alphalattice.foundation.factor_research.programs.sealed import seal_contract
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.contracts import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.contracts import (
     RebalanceEvidencePoint,
     ResearchSplitPlan,
     ResearchSplitSpec,
     ValidationTimeline,
 )
-from alphalattice.kernel.validation.enums import SplitMode
-from alphalattice.kernel.validation.splitting import build_research_split, verify_plan_hash
+from alphalattice.capabilities.validation.enums import SplitMode
+from alphalattice.capabilities.validation.splitting import build_research_split, verify_plan_hash
+from alphalattice.foundation.factor_research.inputs.execution_target import FactorTargetSurface
+from alphalattice.foundation.factor_research.programs.sealed import seal_contract
 
 
 class FactorWalkForwardBoundaryError(ValueError):

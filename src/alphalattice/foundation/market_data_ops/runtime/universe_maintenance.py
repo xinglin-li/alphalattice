@@ -15,9 +15,9 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Protocol
 
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.foundation.market_data_ops.publication.projection import action_set_hash
 from alphalattice.foundation.market_data_ops.runtime.diagnostics import (
     RestatementObservationReceipt,
@@ -72,7 +72,10 @@ from alphalattice.foundation.market_data_ops.storage.rebase import (
     recorded,
     standing,
 )
-from alphalattice.kernel.shared_kernel.spans import span
+from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.resources import worker_width
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -136,7 +139,7 @@ def current_universe_maintenance_id(
             ",".join(sorted(set(authorized_full_history_listing_ids))),
         )
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 _Chunk = list[CurrentUniverseMaintenanceListing]
@@ -301,7 +304,7 @@ class CurrentUniverseMaintenance:
         the rest of the run and its own epilogue. Neither is called by a run
         that fetches nothing.
         """
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("maintenance observed_at must be timezone-aware")
         if self.as_of_session > now.date():
@@ -323,7 +326,10 @@ class CurrentUniverseMaintenance:
                 before_fetch()
             systemic_failure: str | None = None
             last_chunk = index == len(chunks) - 1
-            with ThreadPoolExecutor(max_workers=min(self.max_workers, len(jobs) or 1)) as pool:
+            width = worker_width(min(self.max_workers, len(jobs) or 1))
+            with execution_port().register_pool(
+                ThreadPoolExecutor(max_workers=width), name="universe-refresh"
+            ) as pool:
                 futures = {
                     pool.submit(
                         self._fetch_with_retry,
@@ -959,11 +965,6 @@ class CurrentUniverseMaintenance:
             receipt, audit_counts = yield self._observation(
                 item, hydration, audit_start, observed_at, write_counts
             )
-            adjusted_revision = self.store.provider_adjusted_revision(
-                receipt.receipt_hash, _connection=connection
-            )
-            if adjusted_revision is not None:
-                adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
         except ProviderFetchError as exc:
             if connection is not None:
                 raise
@@ -984,7 +985,7 @@ class CurrentUniverseMaintenance:
                 return f"DEFERRED:{exc.code}"
             self._record_failure(item, code=exc.code, observed_at=observed_at)
             return "FAILED"
-        except ActionAuditScopeInsufficient:
+        except ActionAuditScopeInsufficient as exc:
             if connection is not None:
                 raise
             # A rolling payload can be internally valid yet insufficient to
@@ -993,17 +994,25 @@ class CurrentUniverseMaintenance:
             # a full payload that remains ambiguous fails closed below.
             if audit_start == bars[0].session_date:
                 self._record_failure(
-                    item, code="data.action_audit_invalid", observed_at=observed_at
+                    item, code="data.action_audit_invalid", observed_at=observed_at, exception=exc
                 )
                 return "FAILED"
             force_full_audit = True
-        except ValueError:
+        except ValueError as exc:
             if connection is not None:
                 raise
             # Programmer errors, unsupported actions, and invalid diagnostics
             # are not authority to spend a full-history Provider budget.
-            self._record_failure(item, code="data.action_audit_invalid", observed_at=observed_at)
+            self._record_failure(
+                item, code="data.action_audit_invalid", observed_at=observed_at, exception=exc
+            )
             return "FAILED"
+        else:
+            adjusted_revision = self.store.provider_adjusted_revision(
+                receipt.receipt_hash, _connection=connection
+            )
+            if adjusted_revision is not None:
+                adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
         historical_adjusted_change = before_adjusted_through is not None and any(
             session <= before_adjusted_through for session in adjusted_return_change_sessions
         )
@@ -1028,7 +1037,9 @@ class CurrentUniverseMaintenance:
             raise RuntimeError(item.listing_id)
         if needs_full:
             try:
-                with ThreadPoolExecutor(max_workers=1) as pool:
+                with execution_port().register_pool(
+                    ThreadPoolExecutor(max_workers=worker_width(1)), name="universe-write"
+                ) as pool:
                     hydration = pool.submit(
                         self._fetch_with_retry, listing, bars[0].session_date, False
                     ).result()
@@ -1342,6 +1353,11 @@ class CurrentUniverseMaintenance:
             if rejected_history is not None
             else None
         )
+        audit_error = (
+            isinstance(exception, ValueError)
+            and not isinstance(exception, CorruptedPayload)
+            and code in {"data.action_audit_invalid", "data.full_history_audit_failed"}
+        )
         self._mutate(
             self.store.record_failures,
             (
@@ -1377,10 +1393,12 @@ class CurrentUniverseMaintenance:
                     "exception_type": type(exception).__name__ if exception else "UNKNOWN",
                     "detail": "The provider price history could not be read."
                     if isinstance(exception, ProviderFetchError)
+                    else " ".join(str(exception).split())[:400]
+                    if audit_error
                     else "The provider price history failed validation."
                     if exception
                     else "The source failure cause was not recorded.",
-                    "step": "Provider price history",
+                    "step": "Corporate action audit" if audit_error else "Provider price history",
                     "unit": self._listing(item.listing_id).symbol,
                     "row_count": row_count if row_count is not None else "UNKNOWN",
                     "sanitizer_code": exception.code

@@ -31,10 +31,10 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts.persistence import replace_with_retry  # noqa: E402
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
 from alphalattice.interface.local_application.message_catalog import catalog_words  # noqa: E402
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
-from alphalattice.kernel.shared_kernel.persistence import replace_with_retry  # noqa: E402
 
 ASSETS = ROOT / "src/alphalattice/interface/local_application/assets"
 REPLACE_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8)

@@ -30,7 +30,6 @@ import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from threading import Condition, Lock
@@ -40,12 +39,19 @@ from uuid import UUID
 import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
-from alphalattice.kernel.shared_kernel.host_stop import checkpoint
-from alphalattice.kernel.shared_kernel.waits import pause
+from alphalattice.kernel.resources import (
+    ResourceAmounts,
+    ResourceLeases,
+    current_resource_lease,
+    logical_cpu_count,
+    use_resource_lease,
+)
 
 MAXIMUM_SESSION_THREADS = 16
 """The most threads one unit is planned (S2 measured 1-16, identical)."""
@@ -53,8 +59,8 @@ MAXIMUM_SESSION_THREADS = 16
 
 def safe_intra_op_threads(cpu_count: int | None = None) -> int:
     """The desktop-safe threads of one unit when no CPU budget says otherwise: the processors,
-    up to four (`os.cpu_count()` when `cpu_count` is None)."""
-    detected = os.cpu_count() if cpu_count is None else cpu_count
+    up to four (`logical_cpu_count()` when `cpu_count` is None)."""
+    detected = logical_cpu_count() if cpu_count is None else cpu_count
     return max(1, min(4, detected or 1))
 
 
@@ -202,14 +208,16 @@ def parse_cpu_budget(value: object) -> Literal["auto"] | int:
     return value
 
 
-def machine_load(*, preparations_running: int = 0) -> MachineLoad:
-    """Read machine capacity and current load for budget planning."""
+def machine_load(*, preparations_running: int = 0, sample_busy: bool = True) -> MachineLoad:
+    """Read capacity, sampling load only when the caller needs it for its policy."""
     capacity = runtime_machine_capacity()
     return MachineLoad(
         processors=len(capacity.allowed_logical_processor_ids),
         # The work on this process's own processors, not the machine's.
-        busy_processors=busy_logical_processors(
-            processor_ids=capacity.allowed_logical_processor_ids
+        busy_processors=(
+            busy_logical_processors(processor_ids=capacity.allowed_logical_processor_ids)
+            if sample_busy
+            else None
         ),
         total_memory_bytes=capacity.total_memory_bytes,
         available_memory_bytes=capacity.available_memory_bytes,
@@ -461,41 +469,45 @@ class TaskCpuLeases:
     """
 
     def __init__(self) -> None:
-        """Begin with no cores held."""
-        self._held: dict[UUID, int] = {}
+        """Begin with no cores held until the Host supplies its policy."""
+        self._leases = ResourceLeases(ResourceAmounts())
         self._turn = Condition()
-        self._current: ContextVar[int | None] = ContextVar("task_cpu_lease", default=None)
 
     @contextmanager
     def lease(self, task_id: UUID, cores: int, ceiling: int) -> Iterator[int]:
         """Hold the Task's cores while it runs; yield how many other Tasks hold cores."""
+        budget = ResourceAmounts(cpu=ceiling, workers=ceiling)
+        request = ResourceAmounts(cpu=cores, workers=cores)
         with self._turn:
-            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling
-            self._turn.wait_for(fits)
-            self._held[task_id] = cores
-            others = len(self._held) - 1
-        token = self._current.set(cores)
+            if budget != self._leases.capacity:
+                self._leases.configure(budget)
+                self._turn.notify_all()
+            if cores > 0:
+                self._turn.wait_for(
+                    lambda: cores > self._leases.capacity.cpu or self._leases.available.cpu >= cores
+                )
+            others = len(self._leases)
+            granted = self._leases.grant(task_id, request)
         try:
-            yield others
+            with use_resource_lease(granted):
+                yield others
         finally:
-            self._current.reset(token)
             with self._turn:
-                self._held.pop(task_id, None)
+                self._leases.release(granted)
                 self._turn.notify_all()
 
     def current(self) -> int | None:
         """The cores the Task running here holds, if it holds a lease."""
-        return self._current.get()
+        lease = current_resource_lease()
+        return None if lease is None else lease.amounts.cpu
 
     def holders(self) -> tuple[UUID, ...]:
         """The Tasks holding cores now, the oldest lease first: the Tasks this process runs."""
-        with self._turn:
-            return tuple(self._held)
+        return tuple(task_id for task_id in self._leases.holders() if isinstance(task_id, UUID))
 
-    def widest(self) -> int:
-        """The most cores any running Task holds: the process-wide reader threads."""
-        with self._turn:
-            return max(self._held.values(), default=1)
+    def widest(self) -> int | None:
+        """The widest running Task grant, or no grant when the Host is idle."""
+        return self._leases.widest_cpu()
 
 
 TASK_LEASES = TaskCpuLeases()

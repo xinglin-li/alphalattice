@@ -32,6 +32,7 @@ from alphalattice.capabilities.causal_inputs.schedules import (
     resolve_installed_schedule_handle,
     resolve_strategy_decision_schedule,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
 )
@@ -145,7 +146,7 @@ from alphalattice.investment.risk_research.experiments.temporal import (
     RISK_READINESS_BUDGET,
     risk_covariance_authority,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.execution import execution_port
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -4424,12 +4425,15 @@ class PanelResearchMethodologyExecutor:
                 admit_and_publish(_execute_monitored_panel_alpha_fold_worker(request))
         else:
             with parallel_config(backend="loky", inner_max_num_threads=1):
-                computed = Parallel(
-                    n_jobs=worker_count,
-                    pre_dispatch=worker_count,
-                    max_nbytes="64M",
-                    mmap_mode="r",
-                    return_as="generator_unordered",
+                computed = execution_port().register_pool(
+                    Parallel(
+                        n_jobs=worker_count,
+                        pre_dispatch=worker_count,
+                        max_nbytes="64M",
+                        mmap_mode="r",
+                        return_as="generator_unordered",
+                    ),
+                    name="panel-alpha-fold",
                 )(
                     delayed(_execute_monitored_panel_alpha_fold_worker)(value, owns_process=True)
                     for value in requests

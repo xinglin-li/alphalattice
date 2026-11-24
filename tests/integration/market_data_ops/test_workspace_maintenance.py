@@ -7,12 +7,16 @@ import math
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from threading import Barrier, Event, get_ident
+from threading import Barrier, Event, Thread, get_ident
+from time import monotonic
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     ActionAuditChainReceipt,
     ActionAuditScope,
@@ -36,10 +40,15 @@ from alphalattice.control.data_platform.readiness import (
     WorkspaceReadinessDecision,
     WorkspaceReadinessStatus,
 )
+from alphalattice.control.product_host.composition.portfolio_research_operations import (
+    PortfolioResearchOperations,
+)
+from alphalattice.control.product_host.composition.task_supervision import TaskSupervisor
 from alphalattice.control.product_host.maintenance import (
     MaintenanceBackgroundHost,
     MaintenanceWakeController,
 )
+from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import (
@@ -96,7 +105,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     ProviderAdjustedSeriesRevision,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.execution import EVENTS, EventDeadline, Events, Timers
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import (
     audit_one,
@@ -2768,9 +2777,21 @@ def test_rolling_action_ambiguity_uses_one_full_history_hydration(
     assert len(audits) == 3 and all(start > sessions[0] for start in audits[:-1])
 
 
+@pytest.mark.parametrize(
+    ("error_type", "full"),
+    [
+        pytest.param(ActionAuditScopeInsufficient, False, id="rolling-needs-approval"),
+        pytest.param(ActionAuditScopeInsufficient, True, id="full-ambiguous"),
+        pytest.param(ValueError, False, id="invalid-audit"),
+    ],
+)
 def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[ValueError],
+    full: bool,
 ) -> None:
+    """Audit refusal records its cause while the original fetch authority holds."""
     manifest, market_data, _, _ = _maintenance_workspace(tmp_path)
     sessions = tuple(date(2026, 5, 1) + timedelta(days=offset) for offset in range(92))
     rows = tuple(
@@ -2827,11 +2848,10 @@ def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
                 ),
             )
 
-    monkeypatch.setattr(
-        market_data,
-        "complete_action_audit",
-        lambda *args, **kwargs: (_ for _ in ()).throw(ActionAuditScopeInsufficient("ambiguous")),
-    )
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise error_type("recorded audit mismatch")
+
+    monkeypatch.setattr(market_data, "complete_action_audit", refuse)
     provider = RecordingProvider()
     outcome = CurrentUniverseMaintenance(
         store=market_data,
@@ -2840,18 +2860,27 @@ def test_rolling_ambiguity_never_expands_to_full_history_without_authorization(
         as_of_session=date(2026, 7, 31),
         max_workers=1,
         mutation_gate=WorkspaceMutationGate(),
+        full_audit_listing_ids=frozenset({"listing-aapl"}) if full else frozenset(),
     ).run(observed_at=NOW)
 
     listing = market_data.current_universe_maintenance_listings(outcome.maintenance_id)[0]
     assert outcome.failed == 1
-    assert listing.failure_code == "data.full_history_audit_approval_required"
-    assert provider.starts == [date(2026, 6, 15)]
+    assert provider.starts == [sessions[0] if full else date(2026, 6, 15)]
+    if error_type is ActionAuditScopeInsufficient and not full:
+        assert listing.failure_code == "data.full_history_audit_approval_required"
+    else:
+        assert listing.failure_code == "data.action_audit_invalid"
+        cause = listing.change_document["failure_cause"]
+        assert (cause["exception_type"], cause["detail"], cause["step"]) == (
+            error_type.__name__,
+            "recorded audit mismatch",
+            "Corporate action audit",
+        )
 
 
-def test_turn_signal_is_memory_only_and_background_remains_wakeable() -> None:
-    wake = MaintenanceWakeController()
-    called = Event()
-    calls: list[int] = []
+def _turn_signal() -> None:
+    """A clockless job runs on its turn's signal, never before its due time, and once."""
+    wake, called, calls = MaintenanceWakeController(), Event(), []
 
     def run_once() -> None:
         calls.append(1)
@@ -2869,12 +2898,11 @@ def test_turn_signal_is_memory_only_and_background_remains_wakeable() -> None:
         host.close()
 
 
-def test_timed_wake_fires_without_a_front_desk_turn_and_stops() -> None:
-    wake = MaintenanceWakeController()
-    called = Event()
-    calls = []
+def _timed_wake() -> None:
+    """A job the process's timer wakes at its due time with no turn, and nothing once closed."""
+    wake, called, calls = MaintenanceWakeController(), Event(), []
 
-    def once():
+    def once() -> None:
         calls.append(1)
         wake.set_next_due(None)
         called.set()
@@ -2891,6 +2919,197 @@ def test_timed_wake_fires_without_a_front_desk_turn_and_stops() -> None:
     wake.set_next_due(datetime.now(UTC))
     wake.event.set()
     assert not called.wait(0.05)
+
+
+def _daily_update(asleep: timedelta) -> None:
+    """A daily job armed for tomorrow, its clock moved to the due time and ``asleep`` past it."""
+    now, ran, called = [NOW], [], Event()
+    wake = MaintenanceWakeController()
+
+    def once() -> None:
+        ran.append(now[0])
+        wake.set_next_due(now[0] + timedelta(days=1))  # the next due time, from the clock owner
+        called.set()
+
+    wake.set_next_due(NOW + timedelta(days=1))
+    timers = Timers(recheck_seconds=0.01)  # a jumped wall clock is read again at once
+    host = MaintenanceBackgroundHost(wake=wake, run_once=once, clock=lambda: now[0], timers=timers)
+    host.start()
+    try:
+        assert not ran  # armed for tomorrow: nothing runs today
+        now[0] = NOW + timedelta(days=1) + asleep
+        assert called.wait(5)
+    finally:
+        assert host.close()
+        timers.close()
+    assert ran == [now[0]]  # once, never once for each day it slept through
+
+
+def _follow(published: bool) -> None:
+    """A STATUS follow on a running Task whose Task Control row arrives, or never does."""
+    task, reads, follow = uuid4(), [], cast(Any, PortfolioResearchOperations._moved_on)
+    running = SimpleNamespace(lifecycle=TaskLifecycle.RUNNING, verified_stage_count=0)
+    staged = SimpleNamespace(lifecycle=TaskLifecycle.RUNNING, verified_stage_count=1)
+    answers = [running]
+
+    def stage() -> None:  # the Task's own writer: its row lands, its subject is published
+        answers.append(staged)
+        EVENTS.publish(("task", str(task)))
+
+    def status(_task_id: object) -> SimpleNamespace:
+        reads.append(answers[-1])
+        if published and len(reads) == 1:
+            Thread(target=stage).start()
+        return reads[-1]
+
+    host = SimpleNamespace(dispatcher=SimpleNamespace(status=status))
+    if published:
+        assert follow(host, task, running, 5.0) is staged
+        assert len(reads) <= 2  # once subscribed, once on the event
+        return
+    begun = monotonic()
+    assert follow(host, task, running, 0.3) is running
+    assert 0.3 <= monotonic() - begun < 3.0  # answered at its deadline, the seen state
+    assert reads == [running]  # no event, no read: a poll would read the Task each pause
+    with (
+        Events().subscribed(("task", str(task))) as never,
+        pytest.raises(
+            EventDeadline, match=rf"^events\.deadline: Task {task} had no event within 0\.05 s$"
+        ),
+    ):
+        never.wait(0, timeout=0.05, what=f"Task {task}")
+
+
+def _ended() -> None:
+    """A follow on a Task that has ended answers at once, with no read and no wait."""
+    done = SimpleNamespace(lifecycle=TaskLifecycle.SUCCEEDED, verified_stage_count=2)
+    host = SimpleNamespace(dispatcher=SimpleNamespace(status=None))  # never read
+    assert cast(Any, PortfolioResearchOperations._moved_on)(host, uuid4(), done, 5.0) is done
+
+
+def _held_clock_supervision() -> None:
+    """The Supervisor's pass comes each interval on the clock owner's time, even on a Host whose
+    own clock is held at one moment (an as-of Host)."""
+    passed = Event()
+    host = SimpleNamespace(
+        dispatcher=SimpleNamespace(clock=lambda: NOW),  # held: never reaches a next pass
+        workspace_session=SimpleNamespace(workspace=Path("unwritten")),
+    )
+    supervisor = TaskSupervisor(cast(Any, host), interval=0.05)
+    cast(Any, supervisor).supervise_once = lambda: passed.set() or ()
+    supervisor.start()
+    try:
+        assert passed.wait(5)
+    finally:
+        supervisor.stop()
+
+
+def _signal_during_check() -> None:
+    """A timer signal that lands while the worker reads an early clock is kept for its next pass,
+    never cleared with the early wake's: the job runs, not an hour later."""
+    timers = Timers()
+    timers.close()  # no timer thread reads this clock: the worker's reads alone
+    reads, ran, wake = iter([NOW - timedelta(seconds=1)]), Event(), MaintenanceWakeController()
+
+    def clock() -> datetime:
+        early = next(reads, None)
+        if early is None:
+            return NOW
+        wake.event.set()  # the timer fires at the due time while this early read is taken
+        return early
+
+    def once() -> None:
+        wake.set_next_due(None)
+        ran.set()
+
+    wake.set_next_due(NOW)
+    host = MaintenanceBackgroundHost(wake=wake, run_once=once, clock=clock, timers=timers)
+    host.start()
+    try:
+        wake.event.set()  # an early signal: the held update's scheduling wakes the worker
+        assert ran.wait(5)
+    finally:
+        assert host.close()
+
+
+class _SetAfterTimeout(Event):
+    """The worker's wake event whose first wait runs out its hour; the timer's set lands at the
+    worker's next touch of the event, before that touch reads it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ran_out = self._landing = False
+
+    def _land(self) -> None:
+        if self._landing:
+            self._landing = False
+            self.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        if not self._ran_out:
+            self._ran_out = self._landing = True
+            return False
+        self._land()
+        return super().wait(timeout)
+
+    def is_set(self) -> bool:
+        observed = super().is_set()
+        self._land()
+        return observed
+
+
+def _signal_after_timeout() -> None:
+    """A timer signal that lands just after a wait runs out its hour is kept: the timed-out wait
+    reads and clears nothing, and the job runs at once, not an hour later."""
+    timers = Timers()
+    timers.close()  # no timer thread: the event's own landing is the timer's set
+    ran, wake = Event(), MaintenanceWakeController()
+    cast(Any, wake)._wake = _SetAfterTimeout()
+
+    def once() -> None:
+        wake.set_next_due(None)
+        ran.set()
+
+    wake.set_next_due(NOW)
+    host = MaintenanceBackgroundHost(wake=wake, run_once=once, clock=lambda: NOW, timers=timers)
+    host.start()
+    try:
+        assert ran.wait(5)
+    finally:
+        assert host.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            lambda: _daily_update(timedelta(0)), id="a daily update reaching its due time runs once"
+        ),
+        pytest.param(
+            lambda: _daily_update(timedelta(days=3)),
+            id="the Host asleep past a due time runs once at wake",
+        ),
+        pytest.param(lambda: _follow(True), id="a wait whose event arrives returns at once"),
+        pytest.param(
+            lambda: _follow(False),
+            id="a wait whose event never arrives is refused by name at its deadline",
+        ),
+        pytest.param(_ended, id="a wait on a Task that has ended answers at once"),
+        pytest.param(_signal_during_check, id="a timer signal during an early check is kept"),
+        pytest.param(
+            _signal_after_timeout, id="a timer signal just after a timed-out wait is kept"
+        ),
+        pytest.param(_held_clock_supervision, id="a pass comes due on the clock owner's time"),
+        pytest.param(_turn_signal, id="a turn's signal runs a clockless job once, never early"),
+        pytest.param(_timed_wake, id="the timer wakes a job with no turn, and nothing once closed"),
+    ],
+)
+@pytest.mark.proves("execution.a_wait_ends_on_its_owners_event")
+def test_waits_end_on_their_owners_event_and_periodic_jobs_on_the_one_timer(case) -> None:
+    """Each wait ends on its owner's event and each periodic job wakes at its due time once. An
+    outside provider's retry keeps its named backoff: its owner's unit proof,
+    tests/unit/market_data_ops/sources/test_providers.py::test_a_rate_limited_retry_waits_longer_each_time_up_to_its_cap."""
+    case()
 
 
 def _restatement_bar(session: date, *, close: float) -> RawDailyBar:

@@ -2,6 +2,26 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
+    "door.operation_unknown": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Choose a registered operation from operation list.", "zh-CN": "请从操作列表中选择已注册的操作。"}},
+    "door.operation_duplicate": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Two families registered the same operation. Repair the Host installation.", "zh-CN": "两个模块组注册了同一操作。请修复 Host 安装。"}},
+    "door.operation_unregistered": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host is missing a registered operation. Repair the Host installation.", "zh-CN": "Host 缺少已注册的操作。请修复 Host 安装。"}},
+    "door.operation_unrecognized": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host registered an operation outside the installed vocabulary. Repair the Host installation.", "zh-CN": "Host 注册了已安装操作列表之外的操作。请修复 Host 安装。"}},
+    "door.family_import_failed": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The operation's family could not load. Check the named family and repair the Host installation.", "zh-CN": "无法加载该操作所属的模块组。请检查指定的模块组并修复 Host 安装。"}},
+    "door.person_unavailable": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "This request needs a person's decision. Ask them before continuing.", "zh-CN": "此请求需要由用户决定。请先征询用户，再继续。"}},
+    "door.person_required": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Only the person can answer this decision.", "zh-CN": "只有用户本人可以回答这个问题。"}},
+    "door.paid_run_approval_required": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The person must approve this paid run before it can start.", "zh-CN": "这次付费运行须经用户本人批准后才能开始。"}},
+    "door.decision_not_pending": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "This decision is no longer pending. Read the current decision before answering.", "zh-CN": "此决定已不再待处理。请先查看当前决定，再作答。"}},
+    "door.decisions_unavailable": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The workspace's decision file could not be opened or written. Check the workspace before retrying.", "zh-CN": "无法打开或写入工作区的决定文件。请检查工作区后重试。"}},
+    "data.health.title": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Daily data health", "zh-CN": "日更数据健康"}},
+    "data.health.passed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Passed", "zh-CN": "通过"}},
+    "data.health.source_freshness": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Source freshness", "zh-CN": "来源新鲜度"}},
+    "data.health.not_null": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Non-null bar keys", "zh-CN": "日线主键非空"}},
+    "data.health.unique": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Unique bar keys", "zh-CN": "日线主键唯一"}},
+    "data.health.accepted_values": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Accepted action kinds", "zh-CN": "公司行动类型有效"}},
+    "data.health.relationships": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Bar listing relationships", "zh-CN": "日线对应上市标的"}},
+    "data.health.check_id": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Check ID", "zh-CN": "检查编号"}},
+    "data.health.failure_count": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Failure count", "zh-CN": "失败数"}},
+    "storage.backup_bytes": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Size on disk", "zh-CN": "占用磁盘"}},
     "storage.evidence_kept": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "What the evidence data layer keeps, physical bytes each object once; the index and vector files earlier builds left are counted, never released.", "zh-CN": "证据数据层保有的内容，按物理字节计，每个对象只计一次；早先构建留下的索引和向量文件只计入，从不释放。"}
@@ -13,6 +33,14 @@
     "activity.observation_id_invalid": {
       "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The selected observation must be named by the exact observation id the activity page returns. Read the activity page and use that id as it is.", "zh-CN": "所选观察必须使用活动页返回的准确观察标识来指定。请读取活动页，并原样使用该标识。"}
+    },
+    "local_client.connection_path_escapes_workspace": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "The Host's endpoint record is not a plain file in the data root's machine/host-endpoints folder, so it is not used.", "zh-CN": "Host 的端点记录不是数据根目录 machine/host-endpoints 文件夹中的普通文件，因此不予使用。"}
+    },
+    "local_client.connection_owner_mismatch": {
+      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
+      "words": {"en": "This workspace's endpoint record names another workspace's Host: stop that Host, then start this workspace's Host, which replaces the record.", "zh-CN": "此工作区的端点记录指向另一个工作区的 Host：请先停止那个 Host，再启动此工作区的 Host，新 Host 会替换该记录。"}
     },
     "activity.storage_unavailable": {
       "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
@@ -49,7 +77,7 @@
     "experience.hypothesis_goal": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to a different goal from this request.", "zh-CN": "该假设所属的目标与本次请求不同。"}},
     "experience.hypothesis_existing_run": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "zh-CN": "该研究已有与其他假设关联的运行；复用不能更改其历史。"}},
     "upgrade.refused": {
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
@@ -112,11 +140,11 @@
       "words": {"en": "The update has not reached the {subject} stage. Wait for its Task, then read again.", "zh-CN": "更新尚未到达 {subject} 阶段。请等待该任务完成后再读取。"}
     },
     "retrieval.legacy_canary_rebuild": {
-      "owner": "alphalattice.kernel.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
+      "owner": "alphalattice.capabilities.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
       "words": {"en": "the {subject} session's canary differs from the sealed canary at {subject} intra-op threads, the CPU budget's share: this machine's runtime moves a retrieval number; rebuild the index with the current int8 recipe", "zh-CN": "{subject} 会话在 CPU 预算分配的 {subject} 个运算线程下，其金丝雀结果与封存值不同：此机器的运行环境改变了检索数值；请使用当前的 int8 配方重建索引。"}
     },
     "data_layer.extension_unavailable": {
-      "owner": "alphalattice.kernel.data_layer",
+      "owner": "alphalattice.foundation.data_layer",
       "kind": "MESSAGE",
       "arguments": [],
       "words": {
@@ -134,11 +162,11 @@
       }
     },
     "shared.wait.stopped": {
-      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The wait was stopped before its bound, as its owner asked; nothing it waited for was changed. Send the request again when it is wanted.", "zh-CN": "等待在到达上限前按其所有者的要求停止；所等待的内容没有任何改变。需要时请再次发送该请求。"}
     },
     "shared.wait.timeout": {
-      "owner": "alphalattice.kernel.shared_kernel", "kind": "MESSAGE", "arguments": [],
+      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
       "words": {"en": "The wait reached its bound before what it waited for; that work may still finish. Read its status, then wait again.", "zh-CN": "等待在所等待的内容出现前到达了上限；该工作仍可能完成。请读取它的状态，然后再次等待。"}
     },
     "cli.max_wait_invalid": {

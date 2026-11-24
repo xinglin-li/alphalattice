@@ -13,11 +13,12 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from tests.structural.pytest_support import child_environment, descriptor_provenance
 from tests.structural.size_fixture_support import (
     _CASES,
     ADMISSION_CASES,
+    ADMISSION_IDS,
     DECLARED_CASES,
     HELD,
     HOLDER_CASES,
@@ -34,7 +35,16 @@ PLAIN_LAYER_EXPECTED = {
     "numpy-save": "file outside temporary root",
 }
 # The cases needing their own session: a checkout, plugin, lane, timing probe or in-process check.
-OWN_SESSION = ("fd-provenance", "network-caught", "observe", "own-", "primary-", "root-", "shape")
+OWN_SESSION = (
+    "fd-provenance",
+    "load-",
+    "network-caught",
+    "observe",
+    "own-",
+    "primary-",
+    "root-",
+    "shape",
+)
 OWN_SESSION += ("size-live-", "slow")
 
 
@@ -120,6 +130,90 @@ def plain_layer_run(tmp_path_factory):
     return {"nodes": nodes, "output": result.stdout + result.stderr}
 
 
+def import_clock_threads(tmp_path: Path, monkeypatch) -> None:
+    """A library's first import is left out of a unit test's own phases only when the measured
+    phase's thread pays it: a helper thread's first import is not credited."""
+    import importlib
+    import threading
+
+    from devtools.testing.contracts import LayerContract
+
+    def first_import() -> None:  # an installed module, imported anew
+        monkeypatch.delitem(sys.modules, "colorsys", raising=False)
+        importlib.import_module("colorsys")
+
+    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
+    with guard.active():
+        helper = threading.Thread(target=first_import)
+        helper.start()
+        helper.join()
+        assert guard.library_import_seconds == 0
+        first_import()
+        assert guard.library_import_seconds > 0
+
+
+def native_loads(tmp_path: Path, monkeypatch, case: str, refused: bool) -> None:
+    """A unit test's native loads: the identity owner's file stamp and what a library's import
+    loads or imports are admitted; a product module's import load and a load outside any import
+    are refused."""
+    import ctypes
+    import importlib.machinery
+    import importlib.util
+    import sysconfig
+
+    import devtools
+    from alphalattice.kernel.identity import handle_stamp
+    from devtools.testing.contracts import LayerContract
+
+    source = tmp_path / "loads_natively.py"
+    source.write_text(
+        "import ctypes, os\nctypes.WinDLL('kernel32') if os.name == 'nt' else ctypes.CDLL(None)\n"
+        "import refused_backend\n"  # a dependency the unit layer refuses to the test itself
+    )
+    (tmp_path / "refused_backend.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "refused_backend", raising=False)
+
+    class ReadFromTemporary(importlib.machinery.SourceFileLoader):
+        """The temporary module, compiled as a file at another place: installed, or under src/."""
+
+        def get_data(self, path: str) -> bytes:
+            return source.read_bytes()
+
+        def path_stats(self, path: str) -> dict:
+            raise OSError(path)
+
+    def imported(location: Path) -> None:
+        loader = ReadFromTemporary("loads_natively", str(location))
+        spec = importlib.util.spec_from_file_location("loads_natively", location, loader=loader)
+        assert spec is not None
+        loader.exec_module(importlib.util.module_from_spec(spec))
+
+    stamped = tmp_path / "stamped"
+    stamped.write_bytes(b"one")
+    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
+    with stamped.open("rb") as handle, guard.active():
+        load = {
+            "load-file-stamp": lambda: handle_stamp(handle),
+            "load-library-import": lambda: imported(
+                Path(sysconfig.get_paths()["purelib"]) / source.name
+            ),
+            "load-product-import": lambda: imported(
+                Path(devtools.__file__).resolve().parents[1] / "alphalattice" / source.name
+            ),
+            "load-outside-an-import": lambda: (
+                ctypes.WinDLL("kernel32") if os.name == "nt" else ctypes.CDLL(None)
+            ),
+        }[case]
+        if refused:
+            with pytest.raises(
+                AssertionError, match=r"testing\.layer_contract: unit ctypes\.dlopen"
+            ):
+                load()
+        else:
+            load()
+
+
 @pytest.mark.proves("testing.layer_contract")
 @pytest.mark.parametrize(
     "case,layer,header,body,refused",
@@ -149,6 +243,12 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
         return
+    if case == "load-import-clock-threads":
+        import_clock_threads(tmp_path, monkeypatch)
+        return
+    if case.startswith("load-"):
+        native_loads(tmp_path, monkeypatch, case, refused)
+        return
     if not case.startswith(OWN_SESSION):
         nodes = plain_layer_run["nodes"].get("test_" + case.replace("-", "_"), [])
         assert len(nodes) == 1, plain_layer_run["output"]
@@ -159,6 +259,18 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
             assert PLAIN_LAYER_EXPECTED.get(case, "testing.layer_contract") in text, text
         if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
             assert len(failures) == 1, text
+        if case == "first-library-import":  # its first import is left out of its own phases
+            names = ("setup_seconds", "call_seconds", "teardown_seconds", "library_import_seconds")
+            held = {
+                row.get("name"): float(row.get("value"))
+                for row in nodes[0].iter("property")
+                if row.get("name") in (*names, "unit_own_seconds")
+            }
+            phases = sum(held[when + "_seconds"] for when in ("setup", "call", "teardown"))
+            assert 0 < held["library_import_seconds"] <= phases, held
+            assert held["unit_own_seconds"] == pytest.approx(
+                phases - held["library_import_seconds"], abs=1e-3
+            ), held
         return
     if case in {"temporary", "root-pure"}:
         monkeypatch.setenv(
@@ -1346,6 +1458,10 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         "     markers=sorted({m.name for m in i.iter_markers()\n"
         "       if m.name in {'small','medium','large'}})))\n"
         "  print('SIZE_ITEMS='+json.dumps(rows))\n"
+        # the guard pytest-timeout arms, recorded before its timer can end the process
+        " def pytest_timeout_set_timer(self,item,settings):\n"
+        f"  Path({str(tmp_path / 'timer.json')!r}).write_text(json.dumps(\n"
+        "    dict(nodeid=item.nodeid,seconds=settings.timeout)),encoding='utf-8')\n"
         "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
     )
     if case == "sibling-race":
@@ -1408,8 +1524,14 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
         return
     if case == "timeout":  # past the live 300 s guard: killed as hung, by name
-        assert result.returncode != 0 and "Timeout" in result.stdout + result.stderr
-        assert "test_example" in result.stdout + result.stderr
+        # the hung test ends only by its guard (spawn's bound refuses otherwise); its record,
+        # never the banner the killed child may not have flushed, names the node and its limit
+        timer = json.loads((tmp_path / "timer.json").read_text(encoding="utf-8"))
+        assert timer == {
+            "nodeid": "test_example.py::test_example",
+            "seconds": pytest.approx(policy["limits"]["medium"]),  # the live guard, scaled
+        }, result.stdout + result.stderr
+        assert result.returncode != 0 and "test_example PASSED" not in result.stdout
     elif case == "guard-runs":  # 70 s, over the 30 s budget and under the 300 s guard: it ends
         row = json.loads(result.stdout.split("SIZE_ITEMS=")[1].splitlines()[0])[0]
         assert (row["timeout_marker"], row["speed_budget_seconds"]) == (30, 3), result.stdout
@@ -1765,10 +1887,7 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
     "testing.unregistered_test_refused_with_its_find",
     "testing.row_admitted_or_refused_by_its_check",
 )
-@pytest.mark.parametrize(
-    ("case", "edit", "refused"),
-    ADMISSION_CASES,
-)
+@pytest.mark.parametrize(("case", "edit", "refused"), ADMISSION_CASES, ids=ADMISSION_IDS)
 def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
     tmp_path, case, edit, refused, monkeypatch
 ):
@@ -1948,11 +2067,15 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
         "lower_layer": "Only a served Host on a real loopback port shows the reuse.",
     }
     decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
+    prior = json.loads(base)["entries"]
+    if case == "retired-history":  # an existing row whose owner's package has since moved away
+        case = "nowhere.port_reuse"
+        prior[case] = row | {"owner": "nowhere"}
     if edit is None:
         del entries[case]
     else:
         entries[case] = row | edit | (decided if edit.get("exception") == "decided" else {})
-    found = r.admission(tmp_path, entries, json.loads(base)["entries"])
+    found = r.admission(tmp_path, entries, prior)
     assert (refused in " ".join(found)) if refused else found == []
 
 
@@ -2150,7 +2273,7 @@ def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed()
     fast, slow = f"{guard}::test_fast", f"{guard}::test_slow"
     rule = {"reason": "why", "reads": ["src/*"], "slow": [f"{slow}*"]}
     policy = {**sizes.load_policy(Path(__file__).resolve().parents[2]), "whole_tree_guards": rule}
-    source = frozenset({"src/alphalattice/kernel/data/calendar.py"})
+    source = frozenset({"src/alphalattice/capabilities/data/calendar.py"})
     assert sizes.moved(fast, policy) and sizes.included(fast, "medium", "merge", policy, source)
     assert not sizes.included(fast, "medium", "merge", policy, frozenset({"tests/README.md"}))
     assert not sizes.included(slow, "medium", "merge", policy, source)

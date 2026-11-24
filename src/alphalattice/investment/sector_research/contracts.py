@@ -10,12 +10,11 @@ corrupt artifact gets reported as merely waiting.
 
 from __future__ import annotations
 
-from hashlib import sha256
-
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -39,7 +38,7 @@ def sector_array_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": sha256(contiguous.tobytes()).hexdigest(),
+                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

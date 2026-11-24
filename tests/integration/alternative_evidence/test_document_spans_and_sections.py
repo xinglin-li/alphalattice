@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceClass,
     AlternativeEvidenceReadingDepth,
@@ -27,7 +28,6 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     _unit_declaration,
 )
 from alphalattice.evidence.alternative_evidence.sources.contracts import AcquiredEvidenceDocument
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alternative_evidence_desk import development_documents as development
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
@@ -227,7 +227,7 @@ def test_a_bare_amount_carries_the_source_scale_statement_nearest_before_it() ->
 def test_a_one_cell_layout_table_keeps_its_amount_in_the_sentence() -> None:
     """A one cell layout table keeps its amount in the sentence."""
 
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
         extract_canonical_markdown,
     )
@@ -474,7 +474,7 @@ def test_tables_reach_the_canonical_text_as_self_describing_rows() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         TABLE_ROW_LIMIT,
         extract_canonical_markdown,
     )
@@ -648,7 +648,7 @@ def test_a_long_cell_is_never_cut_silently() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         _TABLE_CELL_LIMIT,
         extract_canonical_markdown,
     )
@@ -687,7 +687,7 @@ def test_a_spanning_cell_keeps_its_grid_position() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     # FRT's dividends table, reduced to its shape: a blank corner cell and the
     # dividend heading span two heading rows; "High" and "Low" sit under
@@ -740,7 +740,7 @@ def test_a_spanning_cell_keeps_its_grid_position() -> None:
 def test_inline_text_beside_a_replaced_table_is_kept() -> None:
     """Inline text beside a replaced table is kept."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     narrative = "".join(
         f"<p>Paragraph {i} of ordinary narrative text that describes the business of the "
@@ -767,7 +767,7 @@ def test_inline_text_beside_a_replaced_table_is_kept() -> None:
 def test_a_div_paragraph_among_p_paragraphs_is_read() -> None:
     """A div paragraph among p paragraphs is read."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     conclusion = (
         "Under the supervision and with the participation of our management, we conducted "
@@ -814,7 +814,7 @@ def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
 
     from alphalattice.evidence.alternative_evidence.analysis.financing import financing_regions
     from alphalattice.evidence.alternative_evidence.documents.structure import DocumentStructure
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         _linked_paragraph_divs,
         extract_canonical_markdown,
     )
@@ -886,7 +886,7 @@ def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
 def test_inline_xbrl_is_unwrapped_and_its_hidden_header_is_never_prose() -> None:
     """Inline XBRL is unwrapped and its hidden header is never prose."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     def amount(value: str, *, sign: str = "") -> str:
         return (
@@ -1136,7 +1136,7 @@ def test_sec_material_sections_fail_closed_when_item_boundaries_are_ambiguous(
 def test_a_heading_longer_than_a_heading_can_be_is_carried_as_a_paragraph() -> None:
     """Text exceeding the heading-length bound is carried as a paragraph."""
 
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
         extract_canonical_markdown,
     )

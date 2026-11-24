@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from scripts.release.public_manifest import classify  # noqa: E402
 
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 from devtools.architecture import type_ignores, waits  # noqa: E402
 from devtools.architecture.git_inputs import read_blobs, staged_changes, staged_moves  # noqa: E402
 

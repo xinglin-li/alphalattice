@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
@@ -72,7 +73,6 @@ from alphalattice.interface.local_application.native_setup import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     assessment_schema_hash,
 )

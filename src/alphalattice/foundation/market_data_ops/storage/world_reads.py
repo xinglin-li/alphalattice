@@ -31,9 +31,9 @@ from typing import Any, Final
 import pyarrow as pa
 
 from alphalattice.control.workspace_runtime.database import release_workspace_database
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.history import catalog_session as session
-from alphalattice.kernel.data_layer.root import sql_path
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.history import catalog_session as session
+from alphalattice.foundation.data_layer.root import sql_path
 
 from . import world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
@@ -69,11 +69,12 @@ def cutoff(at: datetime) -> int:
 
 
 @contextmanager
-def reading(database: Path) -> Iterator[Any | None]:
+def reading(database: Path, *, with_market_tables: bool = True) -> Iterator[Any | None]:
     """A cursor on world for the market and sector reads of the workspace in `database`; None,
     and the workspace's own tables answer, inside an update of it this context opened
     (`writing`), with no catalog to read, and while world holds no publish of it (`_serves`). The
-    cursor's statements share one transaction, so they see one catalog snapshot."""
+    cursor's statements share one transaction, so they see one catalog snapshot.
+    Universe readers use their own log lookups and need none of the market relation tables."""
     if str(database.resolve()) in _UPDATES.get():
         yield None
         return
@@ -81,7 +82,8 @@ def reading(database: Path) -> Iterator[Any | None]:
         if cursor is None or not _serves(cursor, database):
             yield None
             return
-        _log_tables(cursor)
+        if with_market_tables:
+            _log_tables(cursor)
         cursor.begin()
         try:
             yield cursor

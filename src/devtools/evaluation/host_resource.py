@@ -560,6 +560,15 @@ def _process_row(process, parent, processes_api, workspaces, identities, failure
             parent=parent,
             name=name,
             host=False,
+            kind=(
+                "python_spawn_worker"
+                if "-c" in command
+                and any(
+                    arg.startswith("from multiprocessing.spawn import spawn_main;")
+                    for arg in command
+                )
+                else None
+            ),
             rss=memory.rss,
             private=getattr(memory, "private", None),
             peak_working_set=getattr(memory, "peak_wset", None),
@@ -621,8 +630,6 @@ def _workspace_endpoints(workspaces, explicit, connection_type, connection_error
 
 
 def _host_tree(processes, hosts):
-    for row in processes:
-        row["host"] = row["pid"] in hosts
     members = set(hosts)
     while True:
         expanded = members | {p["pid"] for p in processes if p["parent"] in members}
@@ -635,7 +642,7 @@ def _host_tree(processes, hosts):
         for p in processes
         if p["pid"] in members and (type(p["private"]) is not int or p["private"] < 0)
     ]
-    return private, errors
+    return members, private, errors
 
 
 def _sample_processes(observed, processes_api, workspaces, snapshot):
@@ -724,16 +731,19 @@ def sample_memory(
         errors.append("pid=unknown error=ListenerUnmeasured stage=listener_bindings")
     hosts = {b["pid"] for b in bindings}
     errors.extend(_binding_errors(snapshot, hosts, bindings))
-    private, tree_errors = _host_tree(processes, hosts)
-    if snapshot is not None:
-        private, tree_errors = _host_tree(processes, snapshot.members)
-        for row in processes:
-            row["host"] = row["pid"] in hosts
+    members, private, tree_errors = _host_tree(
+        processes, snapshot.members if snapshot is not None else hosts
+    )
+    for row in processes:
+        row["host"] = row["pid"] in hosts
+        if row["host"]:
+            row["kind"] = "host"
     errors.extend(tree_errors)
     complete = not errors
     return dict(
         processes=processes,
         host_bindings=bindings,
+        host_tree_members=sorted(members),
         rss_sum=sum(p["rss"] for p in processes),
         host_private_commit_bytes=sum(private) if complete else None,
         host_tree_complete=complete,

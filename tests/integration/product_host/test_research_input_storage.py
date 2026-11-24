@@ -11,9 +11,12 @@ import threading
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -30,10 +33,8 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     read_factor_bundle,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
 if sys.platform == "win32":
@@ -114,20 +115,20 @@ def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
 
     import alphalattice.control.product_host.research_authoring.factor_inputs as inputs
 
-    original = inputs._digest_stream
+    original = inputs.file_sha256
     reads = [0]
     # The objects are digested on a pool: the first read's inject holds the
     # others until it has run, or a second read also sees a count of zero.
     first_read = threading.Lock()
 
-    def counted(stream):
+    def counted(path, **keywords):
         with first_read:
             if reads[0] == 0 and inject is not None:
                 inject()
             reads[0] += 1
-        return original(stream)
+        return original(path, **keywords)
 
-    monkeypatch.setattr(inputs, "_digest_stream", counted)
+    monkeypatch.setattr(inputs, "file_sha256", counted)
     return reads
 
 
@@ -159,7 +160,7 @@ def test_file_digests_bind_every_path_to_the_object_whose_bytes_were_read(
     digests = file_digests([a, b, c, a])
     # One read per object: the two links once, the same-size other file itself.
     assert reads[0] == 2
-    # Nothing survives a call: the next call reads every object again.
+    # A file inside its racy tick is read again by the next call.
     assert file_digests([a, b, c]) == digests
     assert reads[0] == 4
     assert digests[a] == digests[b] == file_digest(a) and digests[c] == file_digest(c)
@@ -782,7 +783,9 @@ def test_a_cleanup_takes_only_its_eligible_targets_never_an_input(
             assert read_factor_bundle(tmp_path, bundle.binding_hash) == bundle
 
 
-def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
+def test_storage_readback_breaks_managed_bytes_down_by_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Storage readback breaks managed bytes down by root."""
 
     from alphalattice.control.product_host.storage.input_references import MANAGED_ROOTS
@@ -807,6 +810,269 @@ def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
     assert roots["WORKING_DATABASE"] == {"physical_bytes": 0, "logical_bytes": 0, "files": 0}
     assert roots["STAGING"]["files"] == 3  # the fixture's staging copies
     assert roots["AUTHORITY"] == {"physical_bytes": 1024, "logical_bytes": 1024, "files": 1}
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        _check_storage_status_categories(tmp_path / "footprint", ResearchInputStorage(session))
+    _check_task_scratch(tmp_path / "scratch-workspace")
+    _check_reclaim_command(tmp_path, monkeypatch)
+
+
+def _check_storage_status_categories(root: Path, storage: ResearchInputStorage) -> None:
+    from alphalattice.control.product_host.composition import task_operations
+    from alphalattice.control.workspace_runtime.storage.footprint import files, owner_for
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument as Request,
+    )
+
+    for name, payload in (("blobs/body", b"body"), ("staging/temporary", b"scratch")):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    expected: dict[str, int] = {}
+    for path, (allocated, _length, _identity) in files(root):
+        owner = owner_for("data-root", path.relative_to(root).as_posix())
+        assert owner is not None
+        expected[owner[1]] = expected.get(owner[1], 0) + allocated
+    assert len(expected) == 2
+    measured = []
+
+    def storage_status():
+        measured.append(True)
+        return storage.status()
+
+    operations = SimpleNamespace(
+        status=lambda *_a, **_kw: {},
+        storage=SimpleNamespace(status=storage_status),
+    )
+    task_id = uuid7()
+    with history.own_root(root):
+        for wait_seconds in (None, 20):
+            plain = Request(operation="STATUS", task_id=task_id, wait_seconds=wait_seconds)
+            assert (
+                task_operations.execute(
+                    SimpleNamespace(
+                        operations=operations, request=plain.to_operation_request(), caller="HUMAN"
+                    )
+                )
+                == {}
+            )
+        assert measured == []
+        explicit = Request(operation="STATUS", task_id=task_id, status_section="storage")
+        answer = task_operations.execute(
+            SimpleNamespace(
+                operations=operations, request=explicit.to_operation_request(), caller="HUMAN"
+            )
+        )
+    assert measured == [True]
+    assert answer is not None and "storage" in answer
+    assert answer["storage"]["bytes_by_category"] == expected
+    assert answer["storage"]["reclaimable_bytes"] == storage.plan()["reclaimable_bytes"]
+
+
+def _check_task_scratch(workspace: Path) -> None:
+    import psutil
+
+    from alphalattice.control.task_control.scratch import (
+        own_task_scratch,
+        reclaim_task_scratch,
+        task_scratch_directory,
+    )
+
+    live = psutil.Process()
+    previous = str(uuid7())
+    root = workspace / "staging/task-scratch"
+    outside = workspace / "do-not-reclaim"
+    outside.mkdir(parents=True)
+    (outside / "retained").write_text("keep", encoding="utf-8")
+
+    def scratch(epoch: str | None, pid: int) -> Path:
+        path = root / str(uuid7())
+        path.mkdir(parents=True)
+        (path / "payload").write_bytes(b"tmp")
+        if epoch is not None:
+            identity = path.stat()
+            (path / "owner.json").write_text(
+                json.dumps(
+                    dict(
+                        task_id=path.name,
+                        host_epoch=epoch,
+                        pid=pid,
+                        created=live.create_time(),
+                        device=identity.st_dev,
+                        inode=identity.st_ino,
+                    )
+                ),
+                encoding="utf-8",
+            )
+        return path
+
+    dead_pid = 2**31 - 1
+    paths = {
+        name: scratch(epoch, pid)
+        for name, epoch, pid in (
+            ("killed", previous, dead_pid),
+            ("previous", previous, live.pid),
+            ("unproved", None, live.pid),
+            ("outside-link", previous, live.pid),
+        )
+    }
+    link = paths["outside-link"] / "alias"
+    if sys.platform == "win32":
+        _winapi.CreateJunction(str(outside), str(link))
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        for case in ("killed", "previous", "outside-link"):
+            assert not paths[case].exists(), case
+        assert paths["unproved"].exists()
+        assert (outside / "retained").read_text(encoding="utf-8") == "keep"
+        assert str(paths["unproved"].name) in session.scratch_cleanup["unproved"]
+        current = session.scratch_epoch
+        missing_process = scratch(current, dead_pid)
+        with own_task_scratch(workspace, uuid7(), current):
+            running = task_scratch_directory()
+            assert running is not None and running.is_dir()
+            read = reclaim_task_scratch(workspace, current)
+            assert read["removed"] == [missing_process.name]
+            assert not missing_process.exists()
+            assert running.is_dir()
+
+
+def _check_reclaim_command(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+
+    from alphalattice.control.product_host.composition.operation_route_families import host_door
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        read_research_workspace_manifest,
+    )
+    from alphalattice.control.task_control.runner import TaskHeartbeatReader
+    from alphalattice.foundation.feature_engine.panels.retention_residue import (
+        PanelRetentionResidueOwner,
+    )
+    from alphalattice.interface.local_application import cli, client
+    from alphalattice.interface.local_application.cli_contract import (
+        REQUEST_PROVENANCE,
+        RequestProvenance,
+    )
+    from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
+    from alphalattice.interface.local_application.goals import GoalSession
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument as Request,
+    )
+    from alphalattice.investment.alpha_research.publication.artifacts import (
+        AlphaCurrentArtifactStore,
+    )
+
+    parser = cli.command_parser(frozenset({"storage"}))
+    assert ("storage", "reclaim") in cli.CLIENT_COMMANDS
+    chunk = _panel_generations(workspace, monkeypatch)
+    monkeypatch.setattr(PanelRetentionResidueOwner, "reconcile_physical_availability", lambda _: 0)
+    pinned = (
+        workspace / "artifacts/alpha-research/current/workspace-observation-history/pinned.parquet"
+    )
+    pinned.parent.mkdir(parents=True)
+    pinned.write_bytes(b"pinned")
+    pin = "f" * 64
+    file = SimpleNamespace(path=pinned, sha256=file_digest(pinned), bytes=pinned.stat().st_size)
+
+    def retention(_self, referenced_heads=(), *, active_scope_hashes=None):
+        held = pin in referenced_heads
+        return SimpleNamespace(
+            head_hashes=(pin,),
+            roots=(file,) if held else (),
+            targets=() if held else (file,),
+        )
+
+    monkeypatch.setattr(
+        AlphaCurrentArtifactStore, "workspace_observation_history_retention", retention
+    )
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        storage = ResearchInputStorage(session)
+        pins = {pin: 1}
+        receipt_hash = canonical_hash(pins)
+        storage.owner._publish("input-pin-receipts", receipt_hash, pins)
+        (storage.owner.governance_root / "input-pins.json").write_text(
+            json.dumps({"pins": pins, "receipt_hash": receipt_hash}), encoding="utf-8"
+        )
+        host = PortfolioResearchOperations(
+            dispatcher=LocalBackgroundDispatcher(status_port=session.task_control_registry),
+            workspace_manifest=read_research_workspace_manifest(workspace),
+            workspace_session=session,
+            heartbeats=TaskHeartbeatReader(session.runtime_path),
+            door=host_door(),
+        )
+        opened = host.execute(
+            Request(
+                operation="GOAL_OPEN",
+                change_reason="Configure the storage fixture",
+                goal_declaration={
+                    "title": "Workspace care",
+                    "objective": "Reclaim eligible storage.",
+                    "kind": "RESEARCH",
+                    "criteria": [{"criterion_id": "storage", "text": "Keep pinned objects."}],
+                    "deliverables": [
+                        {
+                            "deliverable_id": "cleanup",
+                            "kind": "RESULT",
+                            "description": "Cleanup result.",
+                        },
+                    ],
+                },
+            ).to_operation_request()
+        )
+        goal_id = UUID(opened["goal_id"])
+        member = GoalSession(vendor="codex", session_id="storage-fixture")
+        host.goals.store.bind(member, goal_id)
+        provenance = RequestProvenance(
+            vendor=member.vendor, session=member.session_id, goal_id=str(goal_id)
+        )
+
+        def request(document):
+            token = REQUEST_PROVENANCE.set(provenance)
+            try:
+                return host.execute(
+                    Request.model_validate(document).to_operation_request(),
+                    caller="INSTALLED_AGENT",
+                )
+            finally:
+                REQUEST_PROVENANCE.reset(token)
+
+        class Terminal(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        connection = SimpleNamespace(request=request)
+        monkeypatch.setattr(sys, "stdin", io.StringIO())
+        preview = client.reclaim_storage(connection, None)
+        assert list(preview["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
+        hash_only = ["--confirm", preview["plan_hash"]]
+        with pytest.raises(SystemExit):
+            cli._client_fields(parser, parser.parse_args(["storage", "reclaim", *hash_only]))
+        words = "Yes, please apply that cleanup plan."
+        question = preview["ask_now"]
+        approval = (*hash_only, "--asked", question, "--person-said", words)
+        monkeypatch.setattr(sys, "stdin", Terminal("no\n"))
+        for case, flags, count in (
+            ("declined", (), 0),
+            ("pinned", approval, 3),
+            ("repeated", (), 0),
+        ):
+            args = parser.parse_args(["storage", "reclaim", *flags])
+            confirmation = cli._client_fields(parser, args)["storage_reclaim_confirmation"]
+            answer = client.reclaim_storage(connection, confirmation)
+            assert answer.get("deleted_paths") == count, (case, answer)
+            assert pinned.read_bytes() == b"pinned", case
+            approvals = [
+                event["relayed"]
+                for event in host.goals.store.attributed(goal_id)
+                if event.get("operation") == "STORAGE_CONFIRM"
+            ]
+            if case == "declined":
+                assert not approvals and all((workspace / p).exists() for p in preview["targets"])
+            else:
+                assert [(row["question"], row["words"]) for row in approvals] == [(question, words)]
 
 
 def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatch):
@@ -898,6 +1164,7 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
 ):
     """The plan links a retained retrieval model copy to the store."""
 
+    from alphalattice.capabilities.knowledge import model_store
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewArtifactBinding,
         EvidenceReviewWorkspaceManifest,
@@ -906,7 +1173,6 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
         ResearchWorkspaceEvidenceReview,
         read_research_workspace_manifest,
     )
-    from alphalattice.kernel.knowledge import model_store
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -11,10 +11,10 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.foundation.data_layer import history, project, risk_history
+from alphalattice.foundation.data_layer.log import attach, uuid7
+from alphalattice.foundation.data_layer.root import data_root
 from alphalattice.foundation.market_data_ops.storage.world import world_listing
-from alphalattice.kernel.data_layer import history, project, risk_history
-from alphalattice.kernel.data_layer.log import attach, uuid7
-from alphalattice.kernel.data_layer.root import data_root
 
 from .decomposition import FactorIdiosyncraticRiskSurface, RiskDecompositionError, _frozen
 
@@ -136,7 +136,7 @@ def admit_factor_surface(surface: FactorIdiosyncraticRiskSurface) -> FactorIdios
     """Root all three native factor blocks before publishing the model's sealed profile."""
     import pyarrow as pa  # lazy: construct Arrow rows only at catalog admission
 
-    from alphalattice.kernel.data_layer.store import Derivation  # lazy: catalog writes only
+    from alphalattice.foundation.data_layer.store import Derivation  # lazy: catalog writes only
 
     port = history.store()
     opened = history.opened_log()

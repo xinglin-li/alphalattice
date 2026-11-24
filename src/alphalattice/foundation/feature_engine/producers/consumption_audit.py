@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Final
 
 import numpy as np
 
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FeatureObservationClock,
@@ -68,7 +69,6 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     installed_formula_specs,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
 
 if TYPE_CHECKING:
     import pandas as pd

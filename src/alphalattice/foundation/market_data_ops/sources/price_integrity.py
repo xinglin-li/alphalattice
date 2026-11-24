@@ -9,11 +9,11 @@ from datetime import date
 from itertools import pairwise
 from typing import Literal
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 #: Data-owned quarantine bound for a single cash dividend against the same
 #: session's close. Deliberately broad: ordinary dividends sit far below one

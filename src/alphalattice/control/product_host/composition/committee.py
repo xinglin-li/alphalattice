@@ -19,11 +19,11 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
 from alphalattice.control.product_host.composition.committee_answer import (
     answer_replay,
@@ -94,7 +94,7 @@ from alphalattice.interface.local_application.questions import person_question
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256, integrity_hmac_sha256, integrity_sha256
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
 if TYPE_CHECKING:
@@ -242,7 +242,7 @@ def settled(floor: Floor, now: datetime) -> bool:
 
 def member_key(seed: str, thread: str, role: str) -> str:
     """A member's key on one thread: it admits that member's messages there and nowhere else."""
-    return hmac.new(bytes.fromhex(seed), f"{thread}:{role}".encode(), sha256).hexdigest()[:32]
+    return integrity_hmac_sha256(bytes.fromhex(seed), f"{thread}:{role}".encode())[:32]
 
 
 def floor_of(store: GoalStore, task: str) -> Floor | None:
@@ -1420,7 +1420,7 @@ def _proof(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str, s
         role = claim.get("role") or (floor.opened.get("role") if floor is not None else None)
         if floor is None or role not in {*ROLES[1:], *REVIEWERS}:
             continue
-        own = sha256(floor.key(str(role)).encode()).hexdigest()
+        own = integrity_sha256(floor.key(str(role)).encode()).hexdigest()
         if hmac.compare_digest(own, str(claim.get("key"))):
             cards.add(_card(floor, str(role)))
             if claim.get("spoke"):
@@ -1969,7 +1969,7 @@ def pm_route(floor: Floor) -> tuple[str, ...]:
 
 def thread_id(reference: str) -> str:
     """The thread a review bundle opens, named by the bundle's own record."""
-    return str(UUID(hex=sha256(reference.encode()).hexdigest()[:32]))
+    return str(UUID(hex=identity_sha256(reference.encode()).hexdigest()[:32]))
 
 
 def review_route(store: GoalStore, role: str, directory: str | None) -> tuple[str, ...] | None:

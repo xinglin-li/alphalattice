@@ -28,7 +28,7 @@ from alphalattice.evidence.alternative_evidence.runtime.reuse import (
     SPAN_SET_CATEGORY,
 )
 from alphalattice.evidence.alternative_evidence.runtime.service import SUPERSESSION_CATEGORY
-from alphalattice.kernel.data_layer.encoders import RerankScores
+from alphalattice.foundation.data_layer.encoders import RerankScores
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _built,
     _counted_runtime,

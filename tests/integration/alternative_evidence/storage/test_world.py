@@ -14,6 +14,8 @@ from typing import Any
 import pytest
 from blake3 import blake3
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceClass,
     seal_contract,
@@ -33,9 +35,7 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.sources.sec_edgar import plan_sec_filing_selection
 from alphalattice.evidence.alternative_evidence.storage import world, world_reads
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, recall
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import history, recall
 from tests.alternative_evidence_desk.document_intelligence_support import _registry, _request
 from tests.alternative_evidence_desk.planted_corpus import _NOW, _recorded_document, _runtime
 
@@ -394,7 +394,11 @@ def test_knowledge_retrieves_the_world_body_by_document_version_and_cutoff(
     superseded at that cutoff, from either channel."""
     import numpy as np
 
-    from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
+    from alphalattice.foundation.data_layer.knowledge import (
+        HybridSearch,
+        KnowledgeStore,
+        SourceOrigin,
+    )
 
     original = b"<html>annual evidence and market risk</html>"
     monkeypatch.delenv(history.OTLP_CONTENT_ENV, raising=False)

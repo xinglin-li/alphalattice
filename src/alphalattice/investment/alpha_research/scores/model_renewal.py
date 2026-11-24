@@ -13,7 +13,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date
 from functools import partial
-from hashlib import sha256
 from io import BytesIO
 from itertools import chain
 from pathlib import Path
@@ -36,6 +35,8 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
 from alphalattice.capabilities.alpha_modeling.runtime.service import AlphaModelRuntimeService
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.workspace_runtime.content_store import (
     verified_array_read_scope,
     verified_npz_arrays,
@@ -93,8 +94,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
 from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span, spanned
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -283,7 +283,32 @@ def publish_training_observations(
         AlphaLifecycleError: Target/eligibility axes or dtypes, availability clocks, unavailable
             labels or reference-population support are invalid.
     """
-    source = store.load_frozen_observations(observation_hash)
+    return _training_observations(
+        store,
+        (observation_hash, store.load_frozen_observations(observation_hash)),
+        target_method_id=target_method_id,
+        target_authority_hash=target_authority_hash,
+        label_available_sessions=label_available_sessions,
+        targets=targets,
+        eligible=eligible,
+        training_support_hash=training_support_hash,
+    )
+
+
+def _training_observations(
+    store: AlphaCurrentArtifactStore,
+    observed: tuple[str, FrozenPriceVolumeInputs],
+    *,
+    target_method_id: str,
+    target_authority_hash: str,
+    label_available_sessions: tuple[date | None, ...],
+    targets: FloatArray,
+    eligible: npt.NDArray[np.bool_],
+    training_support_hash: str | None,
+) -> AlphaTrainingObservations:
+    """`publish_training_observations` over an observation's hash and its value together: read
+    back by that hash, or the value its caller has just published under it."""
+    observation_hash, source = observed
     shape = (len(source.formation_sessions), len(source.ordered_listing_ids))
     if (
         targets.shape != shape
@@ -322,6 +347,7 @@ def publish_component_training_observations(
     component: HeterogeneousAlphaComponentRecipe,
     source: FrozenPriceVolumeInputs,
     training: PanelFeatureSourceArrays,
+    compiled: tuple[FloatArray, tuple[date | None, ...]] | None = None,
 ) -> AlphaTrainingObservations:
     """Prepare the frozen training support, not just the selected Feature mask.
 
@@ -348,7 +374,8 @@ def publish_component_training_observations(
         selected_method_ids=("SPARSE_SESSION_AMPLITUDE",),
         maximum_aggregation_span=1,
     )
-    values, ends = compile_frozen_component_training_targets(
+    # The caller's targets, when it compiled the component's own method over these inputs.
+    values, ends = compiled or compile_frozen_component_training_targets(
         source=source,
         formation_sessions=training.formation_sessions,
         holding_end_sessions=training.holding_end_sessions,
@@ -368,9 +395,9 @@ def publish_component_training_observations(
     targets[:n], eligible[:n] = values, support.common_row_mask
     snapshot = store.publish_frozen_observations(source, disposition="RECORDED_INPUT_QA")
     store._publish("lifecycle-training-support", support.preflight, "preflight_hash")
-    return publish_training_observations(
+    return _training_observations(
         store,
-        observation_hash=snapshot.snapshot_hash,
+        (snapshot.snapshot_hash, source),
         target_method_id=component.target_recipe,
         target_authority_hash=canonical_hash(
             {"source": dict(training.source_identity_hashes), "method": component.target_recipe}
@@ -583,7 +610,7 @@ def prepare_alpha_refit(
         {
             "sessions": plan.training_sessions,
             "listings": plan.ordered_listing_ids,
-            "positions": sha256(rows.tobytes()).hexdigest(),
+            "positions": identity_sha256(rows.tobytes()).hexdigest(),
         }
     )
     with span("hash", "refit_arrays"):

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.interface.local_application.goals import Goal, GoalStatement
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
 
 _ADOPTED = {"SUPPORTS": True, "DOES_NOT_SUPPORT": False, "REJECTED": False}
 """A person's response to a conclusion, as feedback: adopted when it supports it."""

@@ -19,6 +19,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.evidence.alternative_evidence.analysis.read_model import earlier_findings
 from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
@@ -32,7 +33,6 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.questions import person_question
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,

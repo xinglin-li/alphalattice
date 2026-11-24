@@ -10,7 +10,6 @@ sealed and what it computed cannot come apart.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -20,6 +19,11 @@ from typing import Final
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import source_root
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     MARKED_TO_MARKET_AT_CLOSE_T,
     PortfolioStateTransitionBinding,
@@ -44,11 +48,7 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import source_root
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
-)
+from alphalattice.kernel.identity import identity_sha256
 
 from .upstream import (
     PortfolioUpstreamAuthorityError,
@@ -238,7 +238,7 @@ def _allocation_projection(
                 "recipe_hash": str(surface.recipe_hash),
                 "formation_session": session.isoformat(),
                 "ordered_listing_ids": list(listing_ids),
-                "per_name_volatility": hashlib.sha256(
+                "per_name_volatility": identity_sha256(
                     np.ascontiguousarray(lane, dtype="<f8").tobytes()
                 ).hexdigest(),
             }

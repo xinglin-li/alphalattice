@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "dc3554d0dc2786f34e9b689cfef2a4b037ca4fde324acb2bd267c2b794028158",
+   "successor": "478e8ad43c60083117995ec8a6e75800148b5695b32edf9bee2849c019812aa7",
+   "change": "On Windows, daily updates no longer stop on an open market database",
+   "reason": "Results are unchanged: the development replay reads all 185,251 records equal. The research input and workspace preparation steps get new identities only because their source code changed, from a fix to how data files are opened on Windows."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "586325193af22dc1f7518f67ffa2800b2d63337e69c16434dbd135d7ddffcbc8",
+   "successor": "65aca5f96fba6fe1549b3446b28d73a5ec9d733aacdc73c8733a3892e4cdd285",
+   "change": "On Windows, daily updates no longer stop on an open market database",
+   "reason": "Results are unchanged: the development replay reads all 185,251 records equal. The research input and workspace preparation steps get new identities only because their source code changed, from a fix to how data files are opened on Windows."
+  }
+ ]
+}

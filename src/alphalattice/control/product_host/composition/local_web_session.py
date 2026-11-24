@@ -8,11 +8,10 @@ pages; Evidence and CRO share the browser and generic Agent operation owner.
 from __future__ import annotations
 
 import json
-import os
 import secrets
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from functools import partial
 from http import HTTPStatus
 from pathlib import Path
@@ -23,6 +22,8 @@ from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -76,11 +77,24 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.task_control.runner import TaskHeartbeatReader
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
+from alphalattice.control.workspace_runtime.database import (
+    WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
+    keep_workspace_databases,
+)
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
     admit_workspace_source,
 )
+from alphalattice.foundation.data_layer.history import (
+    data_root,
+    held,
+    move_carried,
+    release_history,
+    render_in_background,
+)
+from alphalattice.foundation.data_layer.store import preload_grouping
+from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
@@ -97,7 +111,7 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     refusal_words,
 )
-from alphalattice.interface.local_application.cli_invocation import invoke as invoke_cli
+from alphalattice.interface.local_application.cli_invocation import ForwardedCli
 from alphalattice.interface.local_application.client import (
     LocalResearchConnection,
 )
@@ -159,17 +173,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.history import (
-    data_root,
-    held,
-    move_carried,
-    release_history,
-    render_in_background,
-)
-from alphalattice.kernel.data_layer.store import preload_grouping
-from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.execution import Timers
 
 if TYPE_CHECKING:
     from alphalattice.control.data_platform.readiness import SourceLoader
@@ -226,7 +232,7 @@ ASSET_ROOT = Path(__file__).resolve().parents[3] / "interface" / "local_applicat
 def _utc_now() -> datetime:
     """The product clock: one function, aware, used by every owner on the path."""
 
-    return datetime.now(tz=UTC)
+    return utc_now()
 
 
 _utc_now.clock_domain = "UTC"  # type: ignore[attr-defined]  # the default Host uses the system wall clock
@@ -519,13 +525,16 @@ class PortfolioForwardPrewarm:
     @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def _read_once(self) -> None:
-        if self._stopping.is_set() or self.operations.activations is None:
+        if self._stopping.is_set():
             return
         manifests = self.operations.manifests
         assert manifests is not None
+        bindings = manifests.current.decision_updates
+        if not bindings or (activations := self.operations.activations) is None:
+            return
         candidates: list[tuple[datetime, str, UUID]] = []
-        for binding in manifests.current.decision_updates or ():
-            state = self.operations.activations.summary(binding.strategy_package_id)
+        for binding in bindings:
+            state = activations.summary(binding.strategy_package_id)
             if state.get("status") != "ACTIVE":
                 continue
             book = state.get("book_task_id")
@@ -642,6 +651,8 @@ class LocalPortfolioWebSession:
     stop_host: Callable[[], dict[str, object]] | None = field(default=None, kw_only=True)
     """How `host stop` stops this Host, given to its operations when they compose."""
     _upgrading: Thread | None = field(default=None, init=False, repr=False)
+    _timers: Timers | None = field(default=None, init=False, repr=False)
+    """This Host's one timer, made with its operations and closed by its teardown."""
     _admitting: Lock = field(default_factory=Lock, init=False, repr=False)
 
     review_authority: EvidenceReviewAuthority | None = None
@@ -658,6 +669,8 @@ class LocalPortfolioWebSession:
     web: LocalWebService | None = field(default=None, init=False)
     client_connection: LocalResearchConnection | None = field(default=None, init=False, repr=False)
     _history: bool = field(default=False, init=False, repr=False)
+    _kept: Callable[[], None] | None = field(default=None, init=False, repr=False)
+    """The end of this Host's storage session: each workspace file opened once while it serves."""
     resumed_task_ids: tuple[UUID, ...] = field(default=(), init=False)
     stop_requested: Callable[[], bool] = field(default=bool, init=False)
     _workspace_review_authority: bool = field(default=False, init=False)
@@ -728,6 +741,11 @@ class LocalPortfolioWebSession:
         already started (the history, a lease, a non-daemon worker) in a healthy stop's order,
         and is re-raised, so no held workspace is left with no URL to stop it through."""
         try:
+            # The session writes the market store (its data updates): it opens writable once, at
+            # its first use, the history's own reads included.
+            self._kept = keep_workspace_databases(
+                writes=(self.workspace / WORKSPACE_MARKET_DATA_DATABASE_FILENAME,)
+            )
             WorkspaceApplicationSession.open_history(
                 self.workspace_manifest.workspace_id, self.workspace, self.clock
             )
@@ -855,7 +873,7 @@ class LocalPortfolioWebSession:
 
     def _compose(self) -> str:
         from .native_usage_reader import attach_native_usage  # lazy: full Host only
-        from .operation_route_families import HostRouteFamilies  # lazy: full Host only
+        from .operation_route_families import host_door  # lazy: full Host only
         from .portfolio_research_operations import (  # lazy: full Host only
             PortfolioResearchOperations,
         )
@@ -980,10 +998,11 @@ class LocalPortfolioWebSession:
                 source_loader=data_source_loader,
             )
 
+        self._timers = Timers()
         self.operations = PortfolioResearchOperations(
             dispatcher=self.dispatcher,
             workspace_manifest=self.workspace_manifest,
-            route_families=HostRouteFamilies(),
+            door=host_door(),
             portfolio_factory=open_portfolio,
             portfolio_pipeline=pipeline,
             installed_packages=None if resolver is None else resolver.installed_packages,
@@ -1001,7 +1020,9 @@ class LocalPortfolioWebSession:
                 self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE,
             ),
             data_update_factory=open_data_update,
+            timers=self._timers,
         )
+        self.operations.start_file_scrub()
         # The activity observer is composed after every owner it reads and before the socket opens,
         # so the first request is already observed. Activity is optional infrastructure: a store
         # that cannot open leaves the observer UNAVAILABLE on every read and the product usable.
@@ -1024,7 +1045,8 @@ class LocalPortfolioWebSession:
         self.forward_prewarm.attach(self.dispatcher)
         attach_native_usage(self, self.operations, activity)
         web_application = build_local_web_application(operations=self.operations, activity=activity)
-        web_application.admission = self.dispatcher._admit
+        web_application.admission = self.dispatcher.admit_request
+        web_application.request_scope = self.dispatcher.serving_request
         _agent_telemetry_routes(web_application, self.native_usage_reader, self.workspace_id)
         self.operations.stop_host = self.stop_host
         with self.operations.recover_after_connection():
@@ -1332,8 +1354,12 @@ class LocalPortfolioWebSession:
             quiet = self.forward_prewarm.close(timeout=timeout) and quiet
         if self.operations is not None:
             self.operations.supervisor.stop()
+            quiet = self.operations.stop_file_scrub(timeout) and quiet
         if self.operations is not None and (automation := self.operations._automation) is not None:
             quiet = automation.close(timeout=timeout) and quiet
+        if self._timers is not None:
+            # After its jobs' owners, a failed start's as well: the thread they armed ends here.
+            quiet = self._timers.close(timeout=timeout) and quiet
         if self.dispatcher is not None:
             quiet = self.dispatcher.close(timeout=timeout) and quiet
         if self.web is not None and quiet:
@@ -1356,6 +1382,9 @@ class LocalPortfolioWebSession:
             self.review_authority = None
         if self.operations is not None and self.operations._review is not None:
             self.operations._review.close_source()
+        if self._kept is not None:  # before the lease: every kept file closed and sealed
+            self._kept()
+            self._kept = None
         if self._history:
             self._history = False
             release_history()
@@ -1370,6 +1399,7 @@ class LocalPortfolioWebSession:
         self.operations = None
         self.forward_prewarm = None
         self.native_usage_reader = None
+        self._timers = None
         return True
 
     def __enter__(self) -> LocalPortfolioWebSession:
@@ -1405,7 +1435,7 @@ class LocalPortfolioWebSession:
         """
         if self.web is None:
             raise LocalWebError("local_web.service_not_started")
-        named = agent_session(os.environ)
+        named = agent_session(process_config().public)
         goal = (
             self.operations.goals.attributed_goal(
                 RequestProvenance(vendor=named[0], session=named[1])
@@ -1818,17 +1848,10 @@ def build_local_web_application(
     # Every hash and id answered to a client, which reads them back from a beginning.
     references = ReferenceLedger(operations.workspace_session.workspace)
 
-    def refuse_forwarded_serve(_arguments: list[str]) -> int:
-        raise ValueError("the Host does not serve its own launcher through CLI_INVOKE")
-
     @web.route("POST", "/api/client/operations", mutates=True, external_client=True)
     def external_operation(_query: Mapping[str, list[str]], payload: dict[str, Any]) -> object:
         if payload.get("operation") == CLI_OPERATION:
-            from alphalattice.interface.local_application.cli import main  # lazy: CLI dispatch
-
-            return invoke_cli(
-                payload, session.workspace, lambda argv: main(argv, serve=refuse_forwarded_serve)
-            )
+            return operations.door.dispatch(CLI_OPERATION, ForwardedCli(payload, session.workspace))
         try:
             document = validate_request_document(payload)
         except ValidationError as error:

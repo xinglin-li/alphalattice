@@ -16,12 +16,15 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+)
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.control.workspace_runtime.network_access import network_access, persons_stop
 from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT_SOURCE_CONSENT
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.retrieval_environment import fill_command
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 if TYPE_CHECKING:
     from datetime import datetime

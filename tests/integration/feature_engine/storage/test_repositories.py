@@ -9,6 +9,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
@@ -16,7 +17,6 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     UniverseManifest,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.errors import DataError
 
 TEST_SOURCE = "src/alphalattice/foundation/feature_engine/storage/repositories.py"
 

@@ -1,4 +1,11 @@
 {
  "factory": "alphalattice.oversight.model_validation.protected_gate:validation_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "protected-validation",
+ "trust_paths": [
+  "/runtime/artifacts/protected-validation/index/by-permit/*",
+  "/runtime/artifacts/protected-validation/index/by-permit-receipt/*",
+  "/runtime/artifacts/protected-validation/claims/*.json",
+  "/runtime/artifacts/protected-validation/receipts/*.json"
+ ]
 }

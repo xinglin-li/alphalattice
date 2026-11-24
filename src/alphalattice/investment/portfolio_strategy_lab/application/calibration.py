@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-from hashlib import sha256
 from io import BytesIO
 from typing import Literal, Self, cast
 
@@ -11,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import columns_digest
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
@@ -29,7 +29,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -133,7 +133,7 @@ def _legacy_npz_digest(scores: FloatArray, returns: FloatArray, eligible: BoolAr
     # Legacy observations carry the digest of their arrays packed as one npz.
     data = BytesIO()
     np.savez(data, scores=scores, returns=returns, eligible=eligible)
-    return sha256(data.getvalue()).hexdigest()
+    return identity_sha256(data.getvalue()).hexdigest()
 
 
 def publish_observations(

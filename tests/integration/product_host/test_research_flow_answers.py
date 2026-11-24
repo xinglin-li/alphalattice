@@ -1200,7 +1200,7 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
 def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
     "Risk recovery carries its selected input and exact history, skipping absent formations."
     from alphalattice.control.product_host.composition.operation_route_families import (
-        HostRouteFamilies,
+        host_door,
     )
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
@@ -1290,7 +1290,7 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
 
     monkeypatch.setattr(owner, "plan", refused_plan)
     host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
-    host.route_families = HostRouteFamilies()
+    host.door = host_door()
     host.research_strategies = owner
     answer = host._workspace_operation(
         PortfolioResearchOperationRequest(
@@ -1359,6 +1359,7 @@ def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_prepar
 
 def _research_update_plan(package: str, target: Any) -> Any:
     """A sealed research update plan of one strategy, each of its parts well formed ()."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
         WorkspaceDataUpdateBinding,
@@ -1372,7 +1373,6 @@ def _research_update_plan(package: str, target: Any) -> Any:
     from alphalattice.control.product_host.composition.research_workspace import (
         ResearchWorkspaceScoreInput,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     fixture = "a" * 64
     binding = WorkspaceDataUpdateBinding.seal(
@@ -1442,10 +1442,10 @@ def _admitted(registry: Any, envelope: Any, goal: Any, plan: Any) -> str:
 
 def test_a_cancelled_research_update_keeps_its_stop_and_offers_its_task_record(live, capsys):
     "A cancelled research update keeps its stop and offers its task record."
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition.decision_advancement import task_contract
     from alphalattice.control.task_control.contracts import TaskExecutionCompatibility
     from alphalattice.interface.local_application.cli import main
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     registry = live.session.task_control_registry
     envelope, goal, workflow = task_contract(_research_update_plan(ALPHA, date(2026, 9, 29)))
@@ -1523,13 +1523,13 @@ def test_a_cancelled_research_update_keeps_its_stop_and_offers_its_task_record(l
 
 def _planned_task(registry: Any, kind: str, plan: dict[str, object]) -> str:
     """A Task of `kind` whose sealed plan is `plan`: what a reader picking among Tasks reads."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,
         ResearchPlan,
         TaskInputEnvelope,
         WorkItemDefinition,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     envelope = TaskInputEnvelope.create(
         task_kind=kind, input_schema_id=f"{kind}.fixture", payload={"plan": plan}

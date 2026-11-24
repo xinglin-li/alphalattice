@@ -12,18 +12,18 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.research_program.authoring.document import load_authoring_document
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import replay
+from alphalattice.foundation.data_layer.project import differences
+from alphalattice.foundation.data_layer.reading import experience, reading_session
 from alphalattice.foundation.market_data_ops.storage import world
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import replay
-from alphalattice.kernel.data_layer.project import differences
-from alphalattice.kernel.data_layer.reading import experience, reading_session
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from tests.integration.research_program.test_program_execution import _FIXTURE, _workflow
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
@@ -46,8 +46,8 @@ def test_a_run_and_its_rerun_are_two_trials_of_one_selection_and_recipe(
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))  # the Host's data root
     sealed = workflow.prepare(document, **who)
     history.open_history("w-risk", "risk", tmp_path)
+    from alphalattice.foundation.data_layer.telemetry import decode
     from alphalattice.interface.local_application import trial_history
-    from alphalattice.kernel.data_layer.telemetry import decode
 
     started = trial_history.started
 

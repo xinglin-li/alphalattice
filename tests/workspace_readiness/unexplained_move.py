@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.market_data_ops.sources.universe import ResearchWhitelistStandard
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,

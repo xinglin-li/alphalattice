@@ -35,6 +35,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
 )
@@ -59,8 +61,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
     KIND as PORTFOLIO_EXPERIMENT_KIND,
 )
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import review_book_key
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,

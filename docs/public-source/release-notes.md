@@ -1,7 +1,42 @@
 # AlphaLattice release notes
-Last checked: 2026-11-21 against 0.2.8
+Last checked: 2026-11-24 against 0.2.9
 
-Latest released version: [0.2.8](#028). Earlier measurements describe their own versions.
+Latest released version: [0.2.9](#029). Earlier measurements describe their own versions.
+
+## 0.2.9
+
+**AlphaLattice 0.2.9 starts faster, runs Tasks more reliably, frees unused storage, and makes research results easier to check.**
+
+### Faster
+
+**Faster on the same machine.** On a Windows desktop with four cores, each version freshly installed and started cold, a first use took 34.9 s against 0.2.8's 42.9 s, the median of three alternating runs on a pre-release build. A second command, answered by the resident Host, took 0.20 s against 0.61 s, and starting the Host on an existing data root took 4.2 s against 8.4 s.
+
+- Supported commands from you or a bound agent go straight to the resident Host. It keeps databases open and loads handlers as needed. Earlier worker and log-reader startup saved 3.13 s in a paired first-use test on generated data. Reusing unchanged source checks saved 1.97 s in a separate pair. Fixed CPU budgets skip sampling, and eligible Windows child processes start directly.
+- Daily reuses verified history, inputs and table layouts and scores only eligible listings. Feature scoring took 2.79 s versus 3.00 s on 0.2.7 in a generated Daily benchmark, with the same results.
+- On generated data, preparing three review bundles took 2.156 s versus 5.968 s. With one million chunks, Chinese search’s 95th-percentile latency fell from 267 to 173 ms by default and from 242 to 154 ms with a search scope. The bundles and search results matched.
+
+### Steadier
+
+- Start with a version-pinned command or the Claude Code plugin. Each data root has one background Host that starts on demand, restarts after a stop, and stops when idle with no work due. `alphalattice host stop` finishes active work, including strategy reads. Failed background starts report the reason and clean up their timers. Help leaves the Host alone and `serve` runs it in the terminal.
+- Interactive Tasks get priority over queued background work. Background waits wake on events. Cancellation interrupts queries and cleans up child processes. Host reports include memory limits. On Linux, observation mode can work without a memory monitor or a cgroup manager.
+- On Windows, Daily updates and research-input preparation work with the market database open. Restored workspaces can start again on the same system. Upgrades reuse verified work, report their duration, and preserve Panel preprocessing records. Existing 0.2.8 data roots open without moving data. Older workspaces upgrade on opening. Those last opened before 0.2.7 must first be opened in 0.2.7.
+
+### Lighter on disk
+
+- `alphalattice task show <task> --section storage` shows bytes by category and the amount reclaimable. `alphalattice storage reclaim` shows the plan and asks for confirmation. On startup, the Host clears scratch it can attribute to ended Tasks.
+- Backup sizes are visible. The Host prunes backups and collects eligible unshared data after a workspace has been missing for 30 days. Data held by another workspace is kept. The idle file check drops verification records for files no longer held.
+
+### Results you can trust
+
+- Each Daily shows five advisory market-data checks with verdicts and failure counts. Corporate action audits explain why they stop, and sealed Factor inputs stay free of verification journals.
+- Verified files are trusted until their size, timestamps or file identity changes and are rechecked while the Host is idle. `ALPHALATTICE_FILE_TRUST=0` checks file contents on read instead. Code identities track executable changes and survive moves of unchanged code.
+
+### For integrators
+
+- Requests enter through one registered operation interface. Unknown operations are refused by name, and decisions that belong to a person are requested and recorded. Resource leases share the configured CPU budget. Caches have declared bounds. Outbound requests use approved hosts and timeouts per source.
+- Startup captures configuration once. Runtime timestamps and digests use shared rules. Telemetry can commit during catalog reads, and the timing ledger counts schema work.
+- Source verification checks an offline first trial within ten minutes and identifies stalled test phases or locations. Performance checks use per-operation budgets and a 2% hot-loop tolerance. Resource reports show the operation observed at peak Host memory.
+- Seven packages moved out of `alphalattice.kernel`. Update imports for `data`, `knowledge`, `quant` and `validation` to `alphalattice.capabilities`, `shared_kernel` to `alphalattice.capabilities.domain_contracts`, `data_layer` to `alphalattice.foundation.data_layer`, and `live_evidence` to `alphalattice.evidence.live_evidence`. The old import paths are gone.
 
 ## 0.2.8
 
@@ -766,6 +801,6 @@ The incomplete daily increased retained workspace files by 144.27 MB net. New or
 
 - Host memory remains above the 8 GB budget: 8.66 GB in the first use and at least 9.39 GB in the incomplete daily. Memory limits and controls are planned for 0.2.6.
 - The 20-minute daily wall-time budget remains unproven by this run: the daily was still open when its measurement deadline arrived after 464.2 seconds. Smaller readbacks and fewer finishing steps remain planned for 0.2.4.
-- The incomplete first daily after a first use grew the workspace by 144.27 MB at the measurement deadline, exceeding the 50 MB ordinary-day budget. The five-day scenario through the actual daily data and book writers, and the storage work it informs, are planned for 0.2.9.
+- The incomplete first daily after a first use grew the workspace by 144.27 MB at the measurement deadline, exceeding the 50 MB ordinary-day budget. The five-day scenario ran before 0.2.8 shipped: five consecutive daily updates through the Host, each after the first growing the workspace within the ordinary-day budget scaled to its data.
 - An update with no end date, including an activation's first update or an undated daily update, can be refused when it resumes if its data step re-admitted quarantined candidates before waiting: that step changed the update's own inputs. The answer offers to cancel the update and plan it again; this route completes the update. A fix is planned for 0.2.4. The same limit applies to 0.2.2.
 - The other limits recorded in [0.2.2](#022), including explicit input captures, split-day writes and unproven native browser parity, still apply. Idle shutdown and authenticated reuse of an existing local Host are also later work.

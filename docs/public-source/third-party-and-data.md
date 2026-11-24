@@ -1,11 +1,13 @@
 # Downloads, data sources and terms
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 AlphaLattice is Apache-2.0. Software, models and data retain their terms; [NOTICE](../../NOTICE) lists included material and separately installed model licenses.
 
 ## Network and installation
 
 The [agent guide](../../AGENTS.md) owns first-use authority and [your choices](../../AGENTS.md#what-only-a-person-decides). Acquisition starts closed; `ALPHALATTICE_NETWORK_DISABLED=1` forces it offline; calculations stay offline. Installation's `--network` consent is separate from workspace authority and that override. Local import accepts held pinned files.
+
+Each outbound request has a timeout and a source-specific list of HTTPS hosts. When a request follows a redirect, it checks the new destination before connecting. The list covers the existing Yahoo Finance, Wikipedia, SEC EDGAR, and Hugging Face sources, including the Hub's file-delivery hosts. The product's local Host remains reachable while outbound networking is disabled.
 
 ## Local retrieval models
 

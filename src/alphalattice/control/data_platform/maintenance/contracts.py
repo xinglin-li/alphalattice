@@ -11,11 +11,11 @@ from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import successor_identity_payload
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
-from alphalattice.kernel.shared_kernel.identity import successor_identity_payload
 
 
 class MaintenanceTrigger(StrEnum):

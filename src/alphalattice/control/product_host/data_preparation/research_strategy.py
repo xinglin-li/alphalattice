@@ -11,6 +11,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -75,14 +83,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 )
 from alphalattice.investment.risk_research.experiments.window import REQUIRED_LOOKBACK_SESSIONS
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 
 TASK_KIND = "research_strategy_preparation"
 IMPLEMENTATION_ROLE = "product_host.research_strategy_preparation"

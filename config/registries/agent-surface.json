@@ -3767,6 +3767,14 @@
         "default": null
       }
     },
+    "answer:DATA_UPDATE_READBACK.daily_health": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:DATA_UPDATE_READBACK.detail": {
       "required": false,
       "schema": {
@@ -21392,6 +21400,14 @@
         "type": "string"
       }
     },
+    "answer:RESEARCH_UPDATE_READBACK.daily_health": {
+      "required": false,
+      "schema": {
+        "additionalProperties": true,
+        "default": null,
+        "type": "object"
+      }
+    },
     "answer:RESEARCH_UPDATE_READBACK.detail": {
       "required": false,
       "schema": {
@@ -22285,6 +22301,20 @@
         ]
       }
     },
+    "answer:STATUS.storage": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskStorageStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "answer:STATUS.task_id": {
       "required": true,
       "schema": {
@@ -22362,6 +22392,76 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:STATUS/TaskScratchCleanup.removed": {
+      "required": true,
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "answer:STATUS/TaskScratchCleanup.unproved": {
+      "required": true,
+      "schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
+    "answer:STATUS/TaskStorageStatus.bytes_by_category": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:STATUS/TaskStorageStatus.reclaimable_bytes": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:STATUS/TaskStorageStatus.scratch_cleanup": {
+      "required": true,
+      "schema": {
+        "$ref": "#/$defs/TaskScratchCleanup"
+      }
+    },
+    "answer:STATUS/TaskStorageStatus.unavailable": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "answer:STORAGE_CAP_SET.capacity": {
@@ -24630,6 +24730,20 @@
         "default": null
       }
     },
+    "answer:TASKS/TaskRow.storage": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskStorageStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "answer:TASKS/TaskRow.submitted_by": {
       "required": false,
       "schema": {
@@ -24682,6 +24796,76 @@
       "required": true,
       "schema": {
         "type": "integer"
+      }
+    },
+    "answer:TASKS/TaskScratchCleanup.removed": {
+      "required": true,
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "answer:TASKS/TaskScratchCleanup.unproved": {
+      "required": true,
+      "schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
+    "answer:TASKS/TaskStorageStatus.bytes_by_category": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:TASKS/TaskStorageStatus.reclaimable_bytes": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:TASKS/TaskStorageStatus.scratch_cleanup": {
+      "required": true,
+      "schema": {
+        "$ref": "#/$defs/TaskScratchCleanup"
+      }
+    },
+    "answer:TASKS/TaskStorageStatus.unavailable": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "answer:TASK_GUARDIAN.counts": {
@@ -25215,6 +25399,24 @@
         "type": "boolean"
       }
     },
+    "answer:TASK_RECOVERY/TaskScratchCleanup.removed": {
+      "required": true,
+      "schema": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "answer:TASK_RECOVERY/TaskScratchCleanup.unproved": {
+      "required": true,
+      "schema": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      }
+    },
     "answer:TASK_RECOVERY/TaskStatusAnswer.cancel_available": {
       "required": true,
       "schema": {
@@ -25390,6 +25592,20 @@
         ]
       }
     },
+    "answer:TASK_RECOVERY/TaskStatusAnswer.storage": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskStorageStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
     "answer:TASK_RECOVERY/TaskStatusAnswer.task_id": {
       "required": true,
       "schema": {
@@ -25427,6 +25643,58 @@
       "required": true,
       "schema": {
         "type": "integer"
+      }
+    },
+    "answer:TASK_RECOVERY/TaskStorageStatus.bytes_by_category": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:TASK_RECOVERY/TaskStorageStatus.reclaimable_bytes": {
+      "required": true,
+      "schema": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "answer:TASK_RECOVERY/TaskStorageStatus.scratch_cleanup": {
+      "required": true,
+      "schema": {
+        "$ref": "#/$defs/TaskScratchCleanup"
+      }
+    },
+    "answer:TASK_RECOVERY/TaskStorageStatus.unavailable": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "answer:TASK_REMEDIATE.answer": {
@@ -26113,6 +26381,12 @@
         "type": "string"
       }
     },
+    "answer:WORKSPACE_BACKUP.bytes": {
+      "required": true,
+      "schema": {
+        "type": "integer"
+      }
+    },
     "answer:WORKSPACE_BACKUP.error_info": {
       "required": false,
       "schema": {
@@ -26204,6 +26478,12 @@
       "required": true,
       "schema": {
         "type": "string"
+      }
+    },
+    "answer:WORKSPACE_BACKUPS.bytes": {
+      "required": true,
+      "schema": {
+        "type": "integer"
       }
     },
     "answer:WORKSPACE_BACKUPS.error_info": {
@@ -28054,6 +28334,7 @@
         "STORAGE_EVIDENCE_REBUILD"
       ]
     },
+    "command:storage reclaim": {},
     "command:storage set": {
       "operations": [
         "STORAGE_CAP_SET"
@@ -29994,6 +30275,7 @@
     },
     "operation:STATUS": {
       "allowed": [
+        "status_section",
         "task_id",
         "wait_seconds"
       ],
@@ -51384,6 +51666,79 @@
       "required": false,
       "type": null
     },
+    "option:storage reclaim/--asked": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--confirm": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--goal": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--help": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--lang": {
+      "choices": [
+        "en",
+        "zh"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--output": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:storage reclaim/--person-said": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--request-timeout": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "float"
+    },
+    "option:storage reclaim/--view": {
+      "choices": [
+        "compact",
+        "full",
+        "summary"
+      ],
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    "option:storage reclaim/--workspace": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": "Path"
+    },
+    "option:storage reclaim/-h": {
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
     "option:storage set/--cap-bytes": {
       "choices": null,
       "nargs": null,
@@ -63591,6 +63946,21 @@
           {
             "additionalProperties": true,
             "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.status_section": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "const": "storage",
+            "type": "string"
           },
           {
             "type": "null"

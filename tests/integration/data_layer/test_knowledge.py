@@ -12,14 +12,14 @@ from uuid import UUID
 import numpy as np
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, knowledge, recall
-from alphalattice.kernel.data_layer.chain import digest
-from alphalattice.kernel.data_layer.encoders import Reranker, RerankScores, StaticEncoder
-from alphalattice.kernel.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
-from alphalattice.kernel.data_layer.log import HostLog, uuid7
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import create_data_root, knowledge, recall
+from alphalattice.foundation.data_layer.chain import digest
+from alphalattice.foundation.data_layer.encoders import Reranker, RerankScores, StaticEncoder
+from alphalattice.foundation.data_layer.knowledge import HybridSearch, KnowledgeStore, SourceOrigin
+from alphalattice.foundation.data_layer.log import HostLog, uuid7
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/knowledge.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/knowledge.py"
 
 
 @pytest.mark.proves("data_layer.knowledge_embedding_cache_survives_its_readers")
@@ -86,9 +86,9 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
 
     An in-memory double cannot prove the publication transaction or its reconstruction.
     """
-    from alphalattice.kernel.data_layer.knowledge import fuse
-    from alphalattice.kernel.data_layer.log import replay
-    from alphalattice.kernel.data_layer.project import differences
+    from alphalattice.foundation.data_layer.knowledge import fuse
+    from alphalattice.foundation.data_layer.log import replay
+    from alphalattice.foundation.data_layer.project import differences
 
     root = tmp_path / "source"
     create_data_root(root)

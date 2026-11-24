@@ -14,13 +14,18 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer import log as host
-from alphalattice.kernel.data_layer.log import HostLog, attach, verify_from_checkpoint, verify_whole
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer import log as host
+from alphalattice.foundation.data_layer.log import (
+    HostLog,
+    attach,
+    verify_from_checkpoint,
+    verify_whole,
+)
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/log.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/log.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC: every open here is in this month
 DAY = 86_400_000_000
 RESEARCH = {"actor": ("agent", "claude"), "node": "research"}
@@ -326,7 +331,7 @@ def test_a_new_log_is_seeded_and_checkpointed_once_a_month(root):
 KILL = """
 import json, os, sys
 from pathlib import Path
-from alphalattice.kernel.data_layer import log as host
+from alphalattice.foundation.data_layer import log as host
 root, point, now = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
 log = host.HostLog.open(root, now_us=now)
 def die(*args):
@@ -397,7 +402,7 @@ def test_a_second_host_is_refused_by_name_and_others_attach_read_only(root):
 REPLY = """
 import os, sys
 from pathlib import Path
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.log import HostLog
 log = HostLog.open(Path(sys.argv[1]), batch=1000, seconds=60, now_us=int(sys.argv[2]))
 log.record("tool.call", attrs={"tool": "replied"}, phase="completed", started_us=int(sys.argv[2]))
 log.flush()  # a reply waits for its commit

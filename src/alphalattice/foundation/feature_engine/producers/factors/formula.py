@@ -44,8 +44,8 @@ from typing import TYPE_CHECKING, Final
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.observation_clock import formula_skip_sessions
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
 
 from .formula_language import (
     EWM_SPAN,

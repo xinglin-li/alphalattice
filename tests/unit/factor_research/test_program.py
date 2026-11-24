@@ -33,11 +33,13 @@ def test_program_uses_dated_members_not_all_covered_outcomes_for_sample_coverage
     case = _case_program_inputs()
     boundary = case.sessions[8]
     early_members = set(case.listings[:100])
-    rows = [
-        {**row, "unused_volume_feature": None}
-        for row in case.feature_reader._table.to_pylist()
-        if row["session_date"] >= boundary or row["listing_id"] in early_members
-    ]
+    dated_members = pa.Table.from_pylist(
+        [
+            {**row, "unused_volume_feature": None}
+            for row in case.feature_reader._table.to_pylist()
+            if row["session_date"] >= boundary or row["listing_id"] in early_members
+        ]
+    )
     manifest = {
         "snapshot_hash": case.program.feature_panel_snapshot_hash,
         "safe_summary": {
@@ -62,7 +64,7 @@ def test_program_uses_dated_members_not_all_covered_outcomes_for_sample_coverage
     result = execute_factor_research_program(
         program=case.program,
         panel_manifest=manifest,
-        feature_reader=_FeatureReader(case.sessions, pa.Table.from_pylist(rows)),
+        feature_reader=_FeatureReader(case.sessions, dated_members),
         outcome_reader=outcome,
     )
     assert result.feature_row_count < result.target_row_count
@@ -71,6 +73,6 @@ def test_program_uses_dated_members_not_all_covered_outcomes_for_sample_coverage
         execute_factor_research_program(
             program=case.program,
             panel_manifest=manifest,
-            feature_reader=_FeatureReader(case.sessions, pa.Table.from_pylist(rows[1:])),
+            feature_reader=_FeatureReader(case.sessions, dated_members.slice(1)),
             outcome_reader=outcome,
         )

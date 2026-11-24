@@ -5,71 +5,255 @@
   (`WorkspaceDatabase.seal_epoch`) and the reader's basis (the rule or view it was made under).
   The rows' writers forget or renew the years they touch in their own transactions, so only an
   edit none of them made could leave a fact stale, and the epoch ends every fact then.
-- A **file fact** binds a verified value to its kind and the file's SHA-256. xxh3 indexes the
-  complete canonical key; a hit compares that key. Under a workspace whose writer lease this
-  process holds it is kept across processes in `runtime/verified-files.jsonl`; elsewhere it
-  lives for the process. Legacy stamp-only rows are misses. A digest is reused while file identity,
-  size, modification time and kernel change time hold. A reader hashes a recent stamp on
-  every read. A writer can record its own digest immediately. Deliberately restoring
-  timestamps is outside the accidental-change model.
+- A **file's digest** is the hashing owner's trust record (`FileDigestTrust`): taken once,
+  by its writer after the bytes are on disk and renamed into place or by a read whose stamp
+  held and was settled, and trusted until the file's stamp (identity, size, modification and
+  change time) changes. A stamp inside the racy tick is hashed again. Under a workspace whose
+  writer lease this process holds, the record is kept across processes in
+  `runtime/file-trust.jsonl`, keyed by the path under the workspace; elsewhere it lives for
+  the process. ``ALPHALATTICE_FILE_TRUST=0`` turns trust off: every read hashes. Inside
+  ``full_content_proof()`` (an entry, an export, the scrub: LAWS.md EV2) every sealed file is
+  proved from its bytes. Deliberately restoring timestamps is outside the accidental-change
+  model.
+- A **file fact** binds a value derived from a file's bytes to its kind and the file's
+  SHA-256. xxh3 indexes the complete canonical key; a hit compares that key. It is kept
+  beside the digests in `runtime/verified-files.jsonl`, or for the process.
 
-- A **sealed file** is checked once, at write, in git's index form: its writer records the
-  SHA-256 of the bytes it wrote with the file's identity stat (size, modification time, file
-  id), and a read takes that digest while the stat holds, hashing the file again only once the
-  stat changed. Inside ``full_content_proof()`` (an entry, an export, the scrub: LAWS.md EV2)
-  every sealed file is proved from its bytes.
-
-A missing fact only costs the full computation: both records are rebuildable caches, and a
+A missing fact only costs the full computation: the records are rebuildable caches, and a
 store that predates the year-fact table holds none until its first writer creates it.
 """
 
 from __future__ import annotations
 
-import ctypes
-import hashlib
+import errno
 import json
 import os
-import time
-import weakref
-from _thread import LockType
-from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+import re
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
-from ctypes import wintypes
+from datetime import datetime, timedelta
+from io import BufferedReader
 from pathlib import Path
 from threading import Lock
+from typing import BinaryIO, TextIO, cast
 
 import duckdb
-import xxhash
 
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.spans import span
-
-if os.name == "nt":
-    import msvcrt
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
+from alphalattice.capabilities.domain_contracts.environment import file_trust
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.control.workspace_runtime.database import table_columns
+from alphalattice.control.workspace_runtime.paths import resolve_confined
+from alphalattice.kernel import storage
+from alphalattice.kernel.clock import wall_time, wall_time_ns
+from alphalattice.kernel.identity import (
+    RACY_SECONDS,
+    FileDigestTrust,
+    TrustEntry,
+    change_xxh3_128_hex,
+    integrity_sha256_path,
+    integrity_sha256_stream,
+)
 
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
+FILE_TRUST = Path("runtime") / "file-trust.jsonl"
+FILE_TRUST_SCRUB = Path("runtime") / "file-trust-scrub.json"
+_SCRUB_STARTED = '"scrub-start-v1"'
+_SCRUB_CHECKED = '"scrub-checked-v1"'
+_SCRUB_DISCARDED = '"scrub-discard-v1"'
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _CONTENT_KIND = "\x00content-v1:"
-_STAMP_KIND = "\x00file-stamp-v1:"
-_SEALED = "sealed-sha256"
-"""A sealed file's fact: this path holds the bytes of this SHA-256 while its stat holds."""
-_FULL_PROOF: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+_FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
     "content_store_full_proof", default=None
 )
 """Open inside ``full_content_proof()``: what a proof has shown, shared by its reads."""
-RACY_SECONDS = 2.0
-"""How old the newest modification or change time must be before a digest is kept."""
 
 _Key = tuple[str, str]
 _Entry = tuple[tuple[int, int, int], str]
 _LOCK = Lock()
-_DIGEST_LOCKS: weakref.WeakValueDictionary[str, LockType] = weakref.WeakValueDictionary()
+_Publish = Callable[[Callable[[], None]], bool]
 _KEPT: dict[Path, BoundedMemo[_Key, _Entry]] = {}
 """Per workspace whose writer lease this process holds: its file facts by path and kind."""
 _PROCESS: BoundedMemo[_Key, _Entry] = BoundedMemo()
 """File facts outside a kept workspace, by absolute path and kind, for this process."""
-_HELD: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, bool] = weakref.WeakKeyDictionary()
-"""Connections that have seen the year-fact table: one catalog read each, not one per call."""
+_TRUSTED: dict[Path, BoundedMemo[str, TrustEntry]] = {}
+"""Per kept workspace: each file's trusted digest by its path under the workspace."""
+_TRUSTED_PROCESS: BoundedMemo[str, TrustEntry] = BoundedMemo()
+"""Trusted digests outside a kept workspace, by absolute path, for this process."""
+_TRUST_LINES: dict[Path, int] = {}
+"""Per kept workspace: the lines its trust journal holds, so its idle job compacts it in time."""
+_TRUST_STALE: set[Path] = set()
+"""Kept workspaces whose trust journal may name a file the workspace no longer holds: each one
+loaded, and each whose scrub skipped a file. The idle job decides which files remain."""
+
+
+class _TrustJournal:
+    """The trust record's store: a kept workspace's map and journal, else the process map."""
+
+    def __init__(self) -> None:
+        """Serialize durable writes separately from the in-memory trust lookup."""
+        self._writer = Lock()
+        self._pending: dict[tuple[Path, str], TrustEntry] = {}
+
+    def place(self, path: Path) -> tuple[MutableMapping[str, TrustEntry], str]:
+        absolute = Path(os.path.abspath(path))
+        with _LOCK:
+            for root, entries in _TRUSTED.items():
+                if absolute.is_relative_to(root):
+                    return entries, absolute.relative_to(root).as_posix()
+            return _TRUSTED_PROCESS, str(absolute)
+
+    def kept(self, path: Path, key: str, entry: TrustEntry) -> None:
+        absolute = Path(os.path.abspath(path))
+        with _LOCK:
+            root = next((root for root in _TRUSTED if absolute.is_relative_to(root)), None)
+            if root is None or _TRUSTED[root].get(key) != entry:
+                return
+            self._pending[root, key] = entry
+            acquired = self._writer.acquire(blocking=False)
+        if acquired:
+            self._flush()
+
+    def mark_scrub(self, workspace: Path, marker: str, publish: _Publish) -> bool:
+        """Seal the scan's journal boundary before hashing or advancing its cadence."""
+
+        def publish_marker(append: Callable[[], None]) -> bool:
+            def write() -> None:
+                if not self._writer.acquire(blocking=False):
+                    raise BlockingIOError(errno.EBUSY, os.strerror(errno.EBUSY))
+                try:
+                    append()
+                finally:
+                    self._writer.release()
+
+            return publish(write)
+
+        # Only kept() drains queued facts. The marker's bytes are published before
+        # fsync, so foreground writers can persist their own facts during the sync.
+        if not _append(workspace / FILE_TRUST, "\n" + marker + "\n", publish=publish_marker):
+            return False
+        _counted(Path(os.path.abspath(workspace)), 2)
+        return True
+
+    def _flush(self) -> None:
+        # Write one batch. New arrivals stay queued for the next journal advance.
+        try:
+            with _LOCK:
+                pending = {
+                    (root, key): entry
+                    for (root, key), entry in self._pending.items()
+                    if (kept := _TRUSTED.get(root)) is not None and kept.get(key) == entry
+                }
+                self._pending.clear()
+            for (root, key), entry in pending.items():
+                if _append(root / FILE_TRUST, _trust_line((key, entry))):
+                    _counted(root, 1)
+        finally:
+            self._writer.release()
+
+    def compact(self, workspace: Path, publish: _Publish) -> bool:
+        """Rewrite a due trust journal to its held files' entries, as its next load reads them.
+
+        The journal is read from its own bytes, with no lock and outside admission; its markers
+        apply as at a load, so a sealed discard holds. The probes and the staged file are made
+        there too. Only the replace, the compaction's one visible write, goes through `publish`
+        (the Host's idle boundary), and only while the journal is the one read: a fact appended
+        since leaves it for the next idle run. False when it yields."""
+        root = Path(os.path.abspath(workspace))
+        if not _compaction_due(root):
+            return True
+        journal = root / FILE_TRUST
+        try:
+            with journal.open("rb") as stream:
+                size = os.fstat(stream.fileno()).st_size
+                lines = stream.read(size).decode("utf-8", errors="replace").splitlines()
+        except FileNotFoundError:
+            size, lines = -1, []
+        durable = _entries(lines, _trust_entry, trust_journal=True)
+        items = cast(list[tuple[str, TrustEntry]], list(durable.items())[-_PROCESS.capacity :])
+        held, dropped = [], []
+        for item in items:
+            (held if _held(root, item[0]) else dropped).append(item)
+        bound = 2 * min(len(items), _PROCESS.capacity) + 1024
+        if not dropped and len(items) == len(durable) and len(lines) <= bound:
+            with _LOCK:
+                _TRUST_STALE.discard(root)  # every file it names is held: nothing to rewrite
+            return True
+        staged = journal.with_name(f"{journal.name}.{os.getpid()}.partial")
+        replaced = False
+
+        def replace() -> None:
+            nonlocal replaced
+            if not self._writer.acquire(blocking=False):
+                return
+            try:
+                if _size(journal) == size:
+                    os.replace(staged, journal)
+                    replaced = True
+                    with _LOCK:  # under the writer, before a later append is counted
+                        _TRUST_LINES[root] = len(held)
+                        _TRUST_STALE.discard(root)
+                        kept = _TRUSTED.get(root)
+                        for key, entry in dropped:  # the memo forgets them as the journal did
+                            if kept is not None and kept.get(key) == entry:
+                                del kept[key]
+            finally:
+                self._writer.release()
+
+        try:  # a failed write raises to the idle job's bounded retry; the journal stays due
+            with staged.open("w", encoding="utf-8") as stream:
+                stream.write("".join(map(_trust_line, held)))
+                stream.flush()
+                os.fsync(stream.fileno())
+            publish(replace)
+        finally:
+            staged.unlink(missing_ok=True)
+        return replaced
+
+
+def _counted(root: Path, lines: int) -> None:
+    with _LOCK:
+        if root in _TRUST_LINES:
+            _TRUST_LINES[root] += lines
+
+
+def _compaction_due(root: Path) -> bool:
+    """Whether a kept workspace's trust journal may name a removed file or outgrew its bound."""
+    with _LOCK:
+        kept = _TRUSTED.get(root)
+        if kept is None:
+            return False
+        bound = 2 * min(len(kept), kept.capacity) + 1024
+        return root in _TRUST_STALE or _TRUST_LINES.get(root, 0) > bound
+
+
+def _held(root: Path, key: str) -> bool:
+    """Whether the workspace still holds a trusted file, read as the scrub reads it: an entry
+    the confined resolver refuses, or an unreachable one, is dropped from this rebuildable cache."""
+    try:
+        return resolve_confined(root, key).is_file()
+    except (OSError, WorkspaceSecurityError):
+        return False
+
+
+def _size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return -1
+
+
+_TRUST_JOURNAL = _TrustJournal()
+_DIGEST_TRUST = FileDigestTrust(
+    store=_TRUST_JOURNAL,
+    lock=_LOCK,
+    span=span,
+    time_ns=lambda: wall_time_ns(),
+    trusting=file_trust,
+)
 
 
 def ensure_year_fact_schema(connection: duckdb.DuckDBPyConnection) -> None:
@@ -87,17 +271,8 @@ def ensure_year_fact_schema(connection: duckdb.DuckDBPyConnection) -> None:
 
 def _year_facts_held(connection: duckdb.DuckDBPyConnection) -> bool:
     # Asked of the catalog, never by a failed read: a failed statement ends the caller's
-    # transaction.
-    if connection in _HELD:
-        return True
-    held = connection.execute(
-        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'verified_year_fact'"
-    ).fetchone()
-    if held is None or not held[0]:
-        return False
-    with _LOCK:
-        _HELD[connection] = True
-    return True
+    # transaction. The file's schema is read once until a writer changes it (`table_columns`).
+    return bool(table_columns(connection, "verified_year_fact"))
 
 
 def year_facts(
@@ -173,158 +348,156 @@ def forget_year_facts(
 
 def configure_file_facts(*, capacity: int | None = None) -> None:
     """Bound retained RAM facts, preserving active writer leases and the persistent journals."""
-    global _PROCESS
+    global _PROCESS, _TRUSTED_PROCESS
     with _LOCK:
-        for root, previous in [(None, _PROCESS), *_KEPT.items()]:
-            retained = BoundedMemo[_Key, _Entry](capacity=capacity)
-            retained.update(previous)
-            if root is None:
-                _PROCESS = retained
-            else:
-                _KEPT[root] = retained
+        for kept in (_KEPT, _TRUSTED):
+            for root, previous in list(kept.items()):
+                retained = BoundedMemo(capacity=capacity)
+                retained.update(previous)
+                kept[root] = retained
+        facts = BoundedMemo[_Key, _Entry](capacity=capacity)
+        facts.update(_PROCESS)
+        trusted = BoundedMemo[str, TrustEntry](capacity=capacity)
+        trusted.update(_TRUSTED_PROCESS)
+        _PROCESS, _TRUSTED_PROCESS = facts, trusted
 
 
 def keep_file_facts(workspace: Path) -> None:
-    """Keep file facts for `workspace` across processes; its writer lease's holder calls this."""
+    """Keep file digests and facts for `workspace` across processes; its writer lease's holder
+    calls this, once per process."""
     root = Path(os.path.abspath(workspace))
-    entries: dict[_Key, _Entry] = {}
-    try:
-        lines = (root / FILE_FACTS).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        lines = []
-    for line in lines:
-        try:
-            path, kind, size, mtime, ino, value = json.loads(line)
-            # contract: remove legacy stamp-only handling once workspace journals are compacted.
-            if not str(kind).startswith(_CONTENT_KIND):
-                continue  # a legacy stamp cannot establish the bytes of a reusable fact
-            key = (str(path), str(kind))
-            entries.pop(key, None)
-            entries[key] = ((int(size), int(mtime), int(ino)), str(value))
-        except (ValueError, TypeError):
-            continue  # a damaged line costs that file one full digest
-    # A changing file must not leave an unbounded series of content keys in the journal.
-    capacity = _PROCESS.capacity
-    if len(lines) > 2 * min(len(entries), capacity) + 1024:
-        # A content key is checked at use; dropping older keys only costs a future miss.
-        entries = dict(list(entries.items())[-capacity:])
-        staged = (root / FILE_FACTS).with_name(f"{FILE_FACTS.name}.{os.getpid()}.partial")
-        try:
-            staged.write_text("".join(map(_line, entries.items())), encoding="utf-8")
-            os.replace(staged, root / FILE_FACTS)
-        except OSError:
-            staged.unlink(missing_ok=True)
+    facts, _ = _journal(root / FILE_FACTS, _fact_entry, _line)
+    # The lease's load probes no file: the idle job decides which of the journal's files remain.
+    trusted, lines = _journal(root / FILE_TRUST, _trust_entry, _trust_line, rewrite=False)
     with _LOCK:
-        retained = BoundedMemo[_Key, _Entry](capacity=_PROCESS.capacity)
-        retained.update(entries)
-        _KEPT[root] = retained
+        for kept, entries in ((_KEPT, facts), (_TRUSTED, trusted)):
+            retained = BoundedMemo(capacity=_PROCESS.capacity)
+            retained.update(entries)
+            kept[root] = retained
+        _TRUST_LINES[root] = lines
+        _TRUST_STALE.add(root)
 
 
 def release_file_facts(workspace: Path) -> None:
-    """Stop keeping `workspace`'s file facts in this process (its writer lease closed)."""
+    """Stop keeping `workspace`'s file digests and facts in this process (its lease closed)."""
+    root = Path(os.path.abspath(workspace))
     with _LOCK:
-        _KEPT.pop(Path(os.path.abspath(workspace)), None)
+        _KEPT.pop(root, None)
+        _TRUSTED.pop(root, None)
+        _TRUST_LINES.pop(root, None)
+        _TRUST_STALE.discard(root)
+
+
+def _journal(
+    path: Path,
+    entry: Callable[[list[object]], tuple[object, object]],
+    line: Callable[[tuple[object, object]], str],
+    *,
+    rewrite: bool = True,
+) -> tuple[dict[object, object], int]:
+    """A journal's latest entry per key and the lines it holds. Without `rewrite` (the trust
+    journal) nothing is rewritten here: its idle job compacts it."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        lines = []
+    entries = _entries(lines, entry, trust_journal=path.name == FILE_TRUST.name)
+    if not rewrite:
+        return entries, len(lines)
+    # A changing file must not leave an unbounded series of keys in the journal.
+    capacity = _PROCESS.capacity
+    if len(lines) > 2 * min(len(entries), capacity) + 1024:
+        # An entry is checked at use; dropping older ones only costs a future miss.
+        entries = dict(list(entries.items())[-capacity:])
+        staged = path.with_name(f"{path.name}.{os.getpid()}.partial")
+        try:
+            staged.write_text("".join(map(line, entries.items())), encoding="utf-8")
+            os.replace(staged, path)
+        except OSError:
+            staged.unlink(missing_ok=True)
+    return entries, len(lines)
+
+
+def _entries(
+    lines: list[str], entry: Callable[[list[object]], tuple[object, object]], *, trust_journal: bool
+) -> dict[object, object]:
+    """A journal's latest entry per key; in the trust journal, as its scrub markers leave it."""
+    entries: dict[object, object] = {}
+    incomplete = False
+    for text in lines:
+        if trust_journal and text == _SCRUB_STARTED:
+            if incomplete:
+                entries.clear()  # an earlier process did not seal its scan
+            incomplete = True
+            continue
+        if trust_journal and text in {_SCRUB_CHECKED, _SCRUB_DISCARDED}:
+            if text == _SCRUB_DISCARDED:
+                entries.clear()
+            incomplete = False
+            continue
+        try:
+            key, value = entry(json.loads(text))
+        except (ValueError, TypeError):
+            continue  # a damaged or older line costs that file one full digest
+        entries.pop(key, None)
+        entries[key] = value
+    if incomplete:
+        entries.clear()
+    return entries
+
+
+def _fact_entry(row: list[object]) -> tuple[_Key, _Entry]:
+    path, kind, size, mtime, ino, value = row
+    # contract: remove legacy stamp-only handling once workspace journals are compacted.
+    if not str(kind).startswith(_CONTENT_KIND):
+        raise ValueError("a legacy stamp cannot establish the bytes of a reusable fact")
+    return (str(path), str(kind)), ((int(size), int(mtime), int(ino)), str(value))
+
+
+def _trust_entry(row: list[object]) -> tuple[str, TrustEntry]:
+    path, dev, ino, size, mtime, changed, digest = row
+    if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+        raise ValueError("a trusted digest is a SHA-256")
+    stamp = (int(dev), int(ino), int(size), int(mtime), int(changed))
+    return str(path), (stamp, digest)
+
+
+def _append(journal: Path, line: str, *, publish: _Publish | None = None) -> bool:
+    """Append a fact, or publish a durable scrub marker and sync it outside admission."""
+    try:
+        with ExitStack() as opened:
+            log: TextIO | None = None
+
+            def append() -> None:
+                nonlocal log
+                journal.parent.mkdir(parents=True, exist_ok=True)
+                log = opened.enter_context(journal.open("a", encoding="utf-8"))
+                log.write(line)
+                if publish is not None:
+                    log.flush()
+
+            if publish is None:
+                append()
+            elif not publish(append):
+                return False
+            else:
+                assert log is not None
+                os.fsync(log.fileno())
+    except OSError:
+        if publish is not None:
+            raise
+        # Rebuildable facts stay in this process if the journal cannot take them.
+        return False
+    return True
 
 
 def _content_kind(kind: str, digest: str) -> str:
     canonical = json.dumps([kind, digest], ensure_ascii=False, separators=(",", ":"))
-    return _CONTENT_KIND + xxhash.xxh3_128_hexdigest(canonical.encode("utf-8")) + ":" + canonical
+    return _CONTENT_KIND + change_xxh3_128_hex(canonical.encode("utf-8")) + ":" + canonical
 
 
 def _content_shared(kind: str) -> bool:
-    return kind in {"sha256", "columns"} or kind.startswith("columns-v2:")
-
-
-def _content_sha256(path: Path) -> str:
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
-
-
-def _stamp(path: Path) -> tuple[int, int, int, int, int]:
-    """Read identity, size and both change clocks from the same open file."""
-    with path.open("rb") as handle:
-        stat = os.fstat(handle.fileno())
-        if os.name == "nt":
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel.GetFileInformationByHandleEx.argtypes = [
-                wintypes.HANDLE,
-                ctypes.c_int,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-            ]
-            kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
-            basic = (ctypes.c_longlong * 5)()
-            if not kernel.GetFileInformationByHandleEx(
-                msvcrt.get_osfhandle(handle.fileno()), 0, ctypes.byref(basic), ctypes.sizeof(basic)
-            ):
-                raise ctypes.WinError(ctypes.get_last_error())
-            changed = (basic[3] - 116444736000000000) * 100
-        else:
-            changed = stat.st_ctime_ns
-        if changed <= 0:
-            raise OSError("File change time is unavailable")
-    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, changed
-
-
-def _stamp_key(path: Path, stamp: tuple[int, ...]) -> _Key:
-    return str(Path(os.path.abspath(path))), _STAMP_KIND + json.dumps(stamp, separators=(",", ":"))
-
-
-def _settled(stamp: tuple[int, ...]) -> bool:
-    return time.time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9
-
-
-def _held_digest(path: Path) -> str | None:
-    try:
-        stamp = _stamp(path)
-    except OSError:
-        return None
-    with _LOCK:
-        held = _PROCESS.get(_stamp_key(path, stamp))
-    return held[1] if held is not None and _settled(stamp) else None
-
-
-def _verified_digest(path: Path) -> tuple[str, bool]:
-    """Return the digest and whether an unchanged, settled stamp lets a reader keep it."""
-    absolute = str(Path(os.path.abspath(path)))
-    with _LOCK:
-        gate = _DIGEST_LOCKS.get(absolute)
-        if gate is None:
-            gate = Lock()
-            _DIGEST_LOCKS[absolute] = gate
-    with gate:
-        return _read_digest(path)
-
-
-def _read_digest(path: Path) -> tuple[str, bool]:
-    try:
-        before = _stamp(path)
-    except OSError:
-        with span("hash", "file_stamp_unavailable"):
-            return _content_sha256(path), False
-    settled = _settled(before)
-    with _LOCK:
-        held = _PROCESS.get(_stamp_key(path, before))
-    if held is not None and settled:
-        return held[1], True
-    digest = _content_sha256(path)
-    try:
-        after = _stamp(path)
-    except OSError:
-        with span("verify", "file_stamp_unavailable"):
-            pass
-        return digest, False
-    if before == after and settled:
-        with _LOCK:
-            _PROCESS[_stamp_key(path, after)] = ((after[2], after[3], after[1]), digest)
-        return digest, True
-    if before != after:
-        with span("verify", "file_stamp_changed"):
-            pass
-    else:
-        with span("verify", "file_stamp_unsettled"):
-            pass
-    return digest, False
+    return kind == "columns" or kind.startswith("columns-v2:")
 
 
 @contextmanager
@@ -338,7 +511,7 @@ def full_content_proof() -> Iterator[None]:
     if _FULL_PROOF.get() is not None:
         yield
         return
-    token = _FULL_PROOF.set({})
+    token = _FULL_PROOF.set(BoundedMemo())
     try:
         yield
     finally:
@@ -354,59 +527,147 @@ def sealed_file_holds(path: Path, sha256: str) -> bool:
     """Whether `path` holds the bytes whose SHA-256 is `sha256`, checked once (git's index).
 
     An ordinary read takes the digest its writer recorded, or an earlier read proved, while the
-    file's identity stat holds, and hashes the file only when there is none or the stat changed;
-    inside ``full_content_proof()`` the bytes are always hashed. As git does with a racily clean
-    entry, a stat whose modification time is not yet settled is hashed: a rewrite of the same
-    size within one clock tick would leave it unchanged. False for a missing, unreadable or
+    file's stamp holds and is settled, and hashes the file otherwise; inside
+    ``full_content_proof()`` the bytes are always hashed. False for a missing, unreadable or
     different file.
     """
-    if not full_proof():
-        entries, key = _place(path, _content_kind(_SEALED, sha256))
-        with _LOCK:
-            held = entries.get(key)
-        settled = held is not None and time.time_ns() - held[0][1] > RACY_SECONDS * 10**9
-        if settled and held is not None and _holds(path, held):
-            return True
     try:
-        before = os.stat(path)
-        with span("hash", "sealed_file"):
-            digest = _content_sha256(path)
+        if full_proof():
+            with span("hash", "full_proof"), storage.outside(path):
+                return integrity_sha256_path(path) == sha256
+        return _verified(path) == sha256
     except OSError:
         return False
-    if digest != sha256:
-        return False
-    record_file_fact(path, _SEALED, sha256, stat=before, _content=sha256)
-    return True
 
 
 def record_sealed_file(path: Path, sha256: str) -> None:
-    """Record, as its writer, that `path` now holds the bytes it wrote, whose SHA-256 is `sha256`,
-    so no read hashes them again while the file's stat holds."""
-    record_file_fact(path, _SEALED, sha256, written=True, _content=sha256)
+    """Record, as its writer after the atomic rename, that `path` now holds the bytes it wrote,
+    whose SHA-256 is `sha256`, so no read hashes them again while the file's stamp holds."""
+    _DIGEST_TRUST.written(path, sha256)
+
+
+class FileTrustScrub:
+    """Re-prove a kept workspace's trust records one file at a time."""
+
+    def __init__(
+        self, workspace: Path, *, clock: Callable[[], datetime], period: timedelta
+    ) -> None:
+        """Restore the workspace's completed cadence and start with no in-flight scan."""
+        self.workspace = Path(os.path.abspath(workspace))
+        self.clock, self.period = clock, period
+        now = clock()
+        self.next_due = now
+        try:
+            receipt = resolve_confined(self.workspace, FILE_TRUST_SCRUB.as_posix())
+            finished = datetime.fromisoformat(json.loads(receipt.read_bytes())["finished_at"])
+            if finished.tzinfo is not None and finished <= now:
+                self.next_due = finished + period
+        except (OSError, ValueError, KeyError, TypeError, WorkspaceSecurityError):
+            pass  # absent or unreadable cadence evidence makes a scrub due
+        self._remaining: deque[str] | None = None
+        self._journal_open = False
+        self._checked = self._skipped = self._mismatches = 0
+        self._first_mismatch: str | None = None
+
+    def run(
+        self,
+        available: Callable[[], bool],
+        *,
+        publish: _Publish | None = None,
+    ) -> bool:
+        """Perform a due scrub, returning False if it yields to foreground work."""
+
+        def write(action: Callable[[], None]) -> bool:
+            if publish is not None:
+                return publish(action)
+            if not available():
+                return False
+            action()
+            return True
+
+        if not file_trust() or self.clock() < self.next_due:
+            return True
+        if not available():
+            return False
+        if self._remaining is None:
+            with _LOCK:
+                remaining = deque(_TRUSTED.get(self.workspace, ()))
+            if not _TRUST_JOURNAL.mark_scrub(self.workspace, _SCRUB_STARTED, write):
+                return False
+            self._journal_open = True
+            self._remaining = remaining
+            self._checked = self._skipped = self._mismatches = 0
+            self._first_mismatch = None
+        while self._remaining:
+            if not available():
+                return False
+            relative = self._remaining.popleft()
+            try:
+                result = _DIGEST_TRUST.scrub(resolve_confined(self.workspace, relative))
+            except (OSError, WorkspaceSecurityError):
+                result = None
+            if result is None:
+                self._skipped += 1
+                with _LOCK:
+                    _TRUST_STALE.add(self.workspace)  # its idle compaction decides if it remains
+                continue
+            self._checked += 1
+            if not result:
+                self._mismatches += 1
+                if self._first_mismatch is None:
+                    self._first_mismatch = relative
+        return self._finish(write)
+
+    def _finish(self, publish: _Publish) -> bool:
+        if self._journal_open:
+            # A detected mismatch makes the old durable cache unusable on restart.
+            marker = _SCRUB_DISCARDED if self._mismatches else _SCRUB_CHECKED
+            if not _TRUST_JOURNAL.mark_scrub(self.workspace, marker, publish):
+                return False
+            self._journal_open = False
+        # The trust journal compacts only here, in the scheduled cycle, after its seal (an open
+        # scan keeps its opening record) and before the receipt: a yield leaves the cycle due.
+        if not _TRUST_JOURNAL.compact(self.workspace, publish):
+            return False
+        finished = self.clock()
+        receipt = {
+            "finished_at": finished.isoformat(),
+            "checked": self._checked,
+            "skipped": self._skipped,
+            "mismatches": self._mismatches,
+            "first_mismatch": self._first_mismatch,
+        }
+        target = resolve_confined(self.workspace, FILE_TRUST_SCRUB.as_posix())
+        staged = resolve_confined(
+            self.workspace, FILE_TRUST_SCRUB.with_suffix(".partial").as_posix()
+        )
+        payload = json.dumps(receipt, separators=(",", ":")) + "\n"
+
+        def replace() -> None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_text(payload, encoding="utf-8")
+            os.replace(staged, target)
+
+        if not publish(replace):
+            return False
+        self._remaining = None
+        self.next_due = finished + self.period
+        return True
 
 
 def file_fact(path: Path, kind: str, *, _content: str | None = None) -> str | None:
-    """The value proved for this exact file content, or None when absent or unreadable."""
+    """The value proved for this exact file content, or None when absent or unreadable; for
+    ``sha256``, the trusted digest, never a hash."""
     try:
         digest = (
             _content
             if _content is not None
-            else (_held_digest(path) if kind == "sha256" else _verified_digest(path)[0])
+            else (_DIGEST_TRUST.held(path) if kind == "sha256" else _verified(path))
         )
     except OSError:
         return None
-    if digest is None:
-        entries, _ = _place(path, kind)
-        with _LOCK:
-            kept = entries is not _PROCESS and any(
-                k[1].startswith(_CONTENT_KIND) and '"sha256"' in k[1] for k in entries
-            )
-        if not kept:
-            return None
-        try:
-            digest, _ = _verified_digest(path)
-        except OSError:
-            return None
+    if digest is None or kind == "sha256":
+        return digest
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
     with _LOCK:
         held = entries.get(key)
@@ -422,15 +683,18 @@ def record_file_fact(
     stat: os.stat_result | None = None,
     _content: str | None = None,
 ) -> None:
-    """Remember `path`'s digest of `kind`: verified by a reader, or `written` by its writer."""
+    """Remember a value derived from `path`'s bytes: verified by a reader, or `written` by its
+    writer. `stat` is the file's stat before the value was derived; a changed file keeps none."""
     stat = stat if stat is not None else os.stat(path)
-    if not written and time.time() - stat.st_mtime <= RACY_SECONDS:
+    if not written and wall_time() - stat.st_mtime <= RACY_SECONDS:
         return
-    digest = _content if _content is not None else _verified_digest(path)[0]
-    if kind == "sha256" and value != digest:
-        return
+    digest = _content if _content is not None else _verified(path)
     entry = ((stat.st_size, stat.st_mtime_ns, stat.st_ino), value)
-    if not _holds(path, entry):
+    try:
+        now = os.stat(path)
+    except OSError:
+        return
+    if (now.st_size, now.st_mtime_ns, now.st_ino) != entry[0]:
         return
     entries, key = _place(path, _content_kind(kind, digest), shared=_content_shared(kind))
     with _LOCK:
@@ -439,33 +703,30 @@ def record_file_fact(
         entries[key] = entry
         root = next((root for root, held in _KEPT.items() if held is entries), None)
         if root is not None:
-            try:
-                (root / FILE_FACTS).parent.mkdir(parents=True, exist_ok=True)
-                with (root / FILE_FACTS).open("a", encoding="utf-8") as log:
-                    log.write(_line((key, entry)))
-            except OSError:
-                pass  # kept for this process; the next one digests the file again
+            _append(root / FILE_FACTS, _line((key, entry)))
 
 
-def file_sha256(path: Path, *, written: bool = False) -> str:
-    """Hash now, recording the result for a settled file or for its own writer."""
-    before = os.stat(path)
+def file_sha256(path: Path, *, written: bool = False, handle: BinaryIO | None = None) -> str:
+    """The file's SHA-256 through the trust record, read off `handle` when the caller holds the
+    file open; its `written` writer hashes and records it. Inside ``full_content_proof()`` a read
+    hashes the bytes, answering nothing kept before."""
     if written:
-        digest = _content_sha256(path)
-    else:
-        digest, settled = _verified_digest(path)
-        if not settled:
-            return digest
-    record_file_fact(path, "sha256", digest, written=written, stat=before, _content=digest)
-    return digest
+        return _DIGEST_TRUST.written(path)
+    if full_proof():
+        with span("hash", "full_proof"):
+            if handle is None:
+                with storage.outside(path):
+                    return integrity_sha256_path(path)
+            handle.seek(0)
+            return integrity_sha256_stream(cast(BufferedReader, handle)).hexdigest()
+    return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle)[0]
 
 
-def _holds(path: Path, entry: _Entry) -> bool:
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return False
-    return (stat.st_size, stat.st_mtime_ns, stat.st_ino) == entry[0]
+def _verified(path: Path) -> str:
+    """The trust record's digest of `path`, its bytes read outside the engine
+    (`storage.outside`): a workspace database instance that would refuse the read is let go."""
+    with storage.outside(path):
+        return _DIGEST_TRUST.verified(path)[0]
 
 
 def _place(
@@ -482,3 +743,8 @@ def _place(
 def _line(item: tuple[_Key, _Entry]) -> str:
     (path, kind), (stamp, value) = item
     return json.dumps([path, kind, *stamp, value], separators=(",", ":")) + "\n"
+
+
+def _trust_line(item: tuple[str, TrustEntry]) -> str:
+    path, (stamp, digest) = item
+    return json.dumps([path, *stamp, digest], separators=(",", ":")) + "\n"

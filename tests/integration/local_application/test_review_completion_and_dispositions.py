@@ -19,11 +19,11 @@ from typing import Any
 
 import pytest
 
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.evidence_cro import (
     _ANSWERED_ROUTE_IN_WORDS,
     render_review_export,
 )
-from alphalattice.kernel.data_layer import history
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )

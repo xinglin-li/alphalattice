@@ -38,6 +38,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.advancement_task
 )
 
 if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        WorkspaceOperationCall,
+    )
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
@@ -386,3 +389,10 @@ def execute(
             assert request.result_hash is not None
             return operations.export(request.result_hash)
     raise ValueError("portfolio_research.operation_unknown")
+
+
+def route(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve an installed Portfolio operation."""
+    if not call.operations.installed():
+        return refused("research_workspace.strategy_not_installed")
+    return execute(call.operations, call.request, caller=call.caller)

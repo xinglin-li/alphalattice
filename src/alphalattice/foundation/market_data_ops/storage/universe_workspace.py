@@ -9,7 +9,11 @@ from pathlib import Path
 
 import duckdb
 
-from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, WorkspaceRepository
+from alphalattice.control.workspace_runtime.database import (
+    WorkspaceDatabase,
+    WorkspaceRepository,
+    table_info,
+)
 from alphalattice.foundation.market_data_ops.publication.projection import _canonical_hash
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
@@ -60,10 +64,7 @@ class UniverseWorkspaceReader(WorkspaceRepository):
             # Obligations arrived after workspaces existed: a manifest stored
             # before the column carries none, and a reader must not need the
             # writer's upgrade to say so.
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info('universe_manifest')").fetchall()
-            }
+            columns = {name for _, name, *_ in table_info(connection, "universe_manifest")}
             obligations_column = (
                 "u.qualification_obligations_json"
                 if "qualification_obligations_json" in columns

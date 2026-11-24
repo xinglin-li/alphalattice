@@ -14,6 +14,10 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioPerSideCostAssumption
 from alphalattice.capabilities.portfolio_backtesting.metrics import evaluate_net_simple_return_path
 from alphalattice.control.product_host.composition.portfolio_application import (
@@ -74,10 +78,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
     recipe_hashes_match,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 from .plain_refusals import refused
 

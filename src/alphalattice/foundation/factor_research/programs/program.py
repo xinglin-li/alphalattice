@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeManifest,
 )
@@ -46,7 +47,6 @@ from alphalattice.foundation.factor_research.programs.walk_forward import (
 )
 from alphalattice.foundation.feature_engine.contracts import panel_member_counts
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FactorResearchProgramBoundaryError(ValueError):

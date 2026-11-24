@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
     prepare_frozen_price_volume_features,
@@ -21,7 +22,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
 
 MARKET_IDS = (*BASE_MARKET_CONTEXT_SOURCE_IDS, *OBSERVED_MARKET_SOURCE_IDS)
 INFERENCE_MARKET_IDS = (

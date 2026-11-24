@@ -7,12 +7,12 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     ProviderAdjustedSeriesRevision,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def set_change_explained(

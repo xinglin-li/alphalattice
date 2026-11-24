@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PortfolioUpdatePlan,
@@ -45,7 +46,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     _post_observed_package,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )

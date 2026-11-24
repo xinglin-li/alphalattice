@@ -21,6 +21,8 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import validate_hash_compatible
 from alphalattice.control.product_host.composition.answer_turns import ANSWER_FILING
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -179,8 +181,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
+from alphalattice.kernel.clock import utc_now
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     CarriedReading,
@@ -1095,7 +1096,7 @@ class EvidenceReviewApplication:
     response_schema_hash: str = "0" * 64
     typed_user_authority: str = "local product reviewer"
     portfolio_report_link: str = "/report"
-    clock: Callable[[], datetime] = lambda: datetime.now(tz=UTC)
+    clock: Callable[[], datetime] = utc_now
     runtime_path: Path | None = None
     read_update: Callable[[UUID, str], dict[str, object]] | None = None
     installed_temporal_statements: Callable[[date, date], tuple[str, ...]] | None = None
@@ -4680,6 +4681,7 @@ class EvidenceReviewApplication:
             adapters={adapter.task_kind: adapter},  # type: ignore[attr-defined]
             runtime_path=str(self.runner_runtime_path()),
             clock=self.clock,
+            task_scope=lambda task: self.session.task_resources(task, self.clock),
             stage_scope=storage_capacity_scope,
         )
         try:

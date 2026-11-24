@@ -124,6 +124,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     MarketDataRepository,
 )
+from alphalattice.kernel.clock import utc_now
 
 DataEngineerDiagnoser = Callable[
     [
@@ -1213,7 +1214,7 @@ class WorkspaceMaintenanceCoordinator:
         )
         outcome = self.feature_foundation.build(
             feature_request,
-            observed_at=self._utc(self.clock() if self.clock is not None else datetime.now(UTC)),
+            observed_at=self._utc(self.clock() if self.clock is not None else utc_now()),
             refresh_sector=True,
             compose_panel=compose_panel,
         )

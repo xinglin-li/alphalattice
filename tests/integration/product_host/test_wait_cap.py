@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import waits
 from alphalattice.interface.local_application import cli, client
-from alphalattice.kernel.shared_kernel import waits
 
 
 class _Clock:
@@ -224,28 +223,3 @@ def test_the_shared_pause_reserves_a_final_read(monkeypatch, cap, delay) -> None
     assert reads[-1] == pytest.approx(cap)
     assert all(t <= cap for t in reads)
     assert len(reads) >= 2
-
-
-@pytest.mark.parametrize("cap", [0.05, 1.0, 2.0])
-@pytest.mark.parametrize("arrives", [False, True])
-def test_the_host_status_poll_reads_at_its_cap(monkeypatch, cap, arrives) -> None:
-    """The Host long poll already sleeps by remaining time and reads before timing out."""
-
-    from alphalattice.control.product_host.composition import portfolio_research_operations as host
-    from alphalattice.control.task_control.contracts import TaskLifecycle
-
-    clock, reads = _Clock(), []
-    running = SimpleNamespace(lifecycle=TaskLifecycle.RUNNING, verified_stage_count=0)
-    ended = SimpleNamespace(lifecycle=TaskLifecycle.SUCCEEDED, verified_stage_count=1)
-
-    def status(_task):
-        reads.append(clock.now)
-        return ended if arrives and clock.now >= cap else running
-
-    monkeypatch.setattr(host, "monotonic", clock.monotonic)
-    monkeypatch.setattr(host, "sleep", clock.sleep)
-    owner = SimpleNamespace(dispatcher=SimpleNamespace(status=status))
-    result = host.PortfolioResearchOperations._moved_on(owner, uuid4(), running, cap)
-    assert result is (ended if arrives else running)
-    assert reads[-1] == pytest.approx(cap) and clock.now == pytest.approx(cap)
-    assert all(t <= cap for t in reads)

@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.experiences import note_text, render
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.experiences import note_text, render
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/experiences.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/experiences.py"
 TEXT = note_text("Momentum pays", "12-1 momentum", "It paid, thinly", ["Mind costs"])
 RUN = {"gen_ai.usage.input_tokens": 1200, "gen_ai.usage.output_tokens": 300, "cost_usd": 0.25}
 NOTE = {

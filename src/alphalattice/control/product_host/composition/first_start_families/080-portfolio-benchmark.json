@@ -1,4 +1,8 @@
 {
  "factory": "alphalattice.capabilities.portfolio_inputs.benchmark:portfolio_benchmark_upgrade_family",
- "mode": "portfolio"
+ "mode": "portfolio",
+ "name": "portfolio-benchmark",
+ "trust_paths": [
+  "*/portfolio-benchmark/surfaces/*.json"
+ ]
 }

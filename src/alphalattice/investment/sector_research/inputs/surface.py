@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from hashlib import sha256
 from math import exp, log
 from typing import cast
 
@@ -15,16 +14,17 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.kernel.quant.cross_section import (
-    median_mad_winsor,
-)
-from alphalattice.kernel.quant.sector_history import sector_positions, sector_treatment_of
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
-from alphalattice.kernel.shared_kernel.spans import active_ledger
+from alphalattice.capabilities.domain_contracts.spans import active_ledger
+from alphalattice.capabilities.quant.cross_section import (
+    median_mad_winsor,
+)
+from alphalattice.capabilities.quant.sector_history import sector_positions, sector_treatment_of
+from alphalattice.kernel.identity import identity_sha256
 
 from .contracts import (
     SectorContextManifest,
@@ -311,7 +311,7 @@ def compile_sector_context_surface(
                     "source": source_surface_hash,
                     "sessions": event_sessions,
                     "listings": listings,
-                    "reference_mask": sha256(
+                    "reference_mask": identity_sha256(
                         np.ascontiguousarray(reference_eligible).tobytes()
                     ).hexdigest(),
                     "reference_reduction": "COMPACT_SESSION_ROWS",
@@ -386,7 +386,7 @@ def compile_sector_context_surface(
         sector_ids=sectors,
         available_row_count=int(np.isfinite(values).all(axis=2).sum()),
         table_content_hash=table_hash,
-        payload_sha256=sha256(payload).hexdigest(),
+        payload_sha256=identity_sha256(payload).hexdigest(),
     )
     return SectorContextSurface(manifest=manifest, values=values), table, payload
 

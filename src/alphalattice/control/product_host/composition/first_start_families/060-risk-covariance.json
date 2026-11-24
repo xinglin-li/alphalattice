@@ -1,4 +1,12 @@
 {
  "factory": "alphalattice.investment.risk_research.experiments.development_artifacts:risk_covariance_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "risk-covariance",
+ "trust_paths": [
+  "/held-state/generation.json",
+  "/market-data.duckdb",
+  "/market-data.duckdb.wal",
+  "*/risk-research/*.json",
+  "*/risk-research/covariance/chunks/*.bin"
+ ]
 }

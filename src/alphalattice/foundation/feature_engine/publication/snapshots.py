@@ -9,6 +9,9 @@ from typing import Protocol, cast
 
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.sector_history import SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -57,9 +60,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.quant.sector_history import SectorReclassification
-from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
-from alphalattice.kernel.shared_kernel.spans import span
+from alphalattice.kernel.clock import observation_time
 
 
 @dataclass(frozen=True)
@@ -336,7 +337,7 @@ class FeaturePanelSnapshotPublisher:
             ValueError: Publication time is naive or the source cannot be verified.
 
         """
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("snapshot publication time must be timezone-aware")
         # Before anything is composed: a row of the right shape carrying another
@@ -670,7 +671,7 @@ class FeaturePanelSnapshotPublisher:
         observed_at: datetime | None = None,
     ) -> None:
         """Fail closed on one unsafe snapshot before changing mutable authority."""
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("snapshot lifecycle time must be timezone-aware")
         projected = []

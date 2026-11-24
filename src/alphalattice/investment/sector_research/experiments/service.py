@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from alphalattice.capabilities.quant.sector_history import sector_treatment_of
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
@@ -30,7 +31,6 @@ from alphalattice.foundation.factor_research.inputs.execution_target import (
     build_factor_target_policy,
     compile_factor_target_surface,
 )
-from alphalattice.kernel.quant.sector_history import sector_treatment_of
 from alphalattice.protocols.actor_execution import ActorKind
 
 from ..contracts import FloatArray, SectorResearchError, grid_to_matrix, sector_array_identity

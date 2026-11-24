@@ -38,6 +38,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
+from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.interface.local_application.cli_contract import (
     ANSWER_LANGUAGE as ANSWER_LANGUAGE,
 )
@@ -51,9 +54,7 @@ from alphalattice.interface.local_application.web import (
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
-from alphalattice.kernel.shared_kernel.waits import pause
+from alphalattice.kernel.config import current as process_config
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files
@@ -205,7 +206,12 @@ def _refusal(
 def attached_child(command: list[str], *, env: dict[str, str]) -> int:
     """Run the retrieval child with its caller's streams and parent-owned lifetime."""
     try:
-        return spawn.attached(command, env=env, job_factory=ChildJob)
+        return spawn.attached(
+            command,
+            env=env,
+            job_factory=ChildJob,
+            process_kind="attached_retrieval_host_child",
+        )
     except OSError:
         return _refusal(
             "local_web.child_ownership_unavailable",
@@ -225,9 +231,9 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
     """
     # The new interpreter imports this same source, as `entry.serve` gives its child.
     source = str(Path(__file__).resolve().parents[4])
-    inherited = os.environ.get("PYTHONPATH")
-    environment = {
-        **os.environ,
+    environment = process_config().child_environment()
+    inherited = environment.get("PYTHONPATH")
+    environment |= {
         "PYTHONPATH": source + os.pathsep + inherited if inherited else source,
         "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
@@ -315,7 +321,7 @@ def _detach(
                     failed.write("local_web.detached_breakaway_denied\n")
                 return _failed_start(arguments.workspace, None, "", log_path)
         log_path.unlink(missing_ok=True)
-        panel_host = os.environ.get("ALPHALATTICE_TERMINAL_PANEL_HOST", "")
+        panel_host = process_config().get("ALPHALATTICE_TERMINAL_PANEL_HOST", "")
         capability = runtime_json("config/registries/host-capabilities.json")["entries"].get(
             f"{panel_host}.product-host.terminal-panel", {}
         )
@@ -472,6 +478,7 @@ def main(
     *,
     host_interpreter: Path | None = None,
     new_research: bool = False,
+    own_process_tree: bool = False,
 ) -> int:
     """Run the declared command and return its exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -498,9 +505,21 @@ def main(
     arguments = parser.parse_args(argv)
     if arguments.detach:
         return _detach(arguments, host_interpreter, new_research)
-    handed = LAUNCH_KEY_VARIABLE in os.environ
+    if own_process_tree:
+        if sys.platform == "win32" and process_config().secret(LAUNCH_KEY_VARIABLE) is not None:
+            # The detached launcher verifies it escaped its caller's Job before
+            # we enter the serving process's own Job.
+            sys.stdin.read()
+        with spawn.current_tree("host"):
+            return _serve(arguments)
+    return _serve(arguments)
 
-    from alphalattice.control.product_host.composition.local_web_session import (
+
+def _serve(arguments: argparse.Namespace) -> int:
+    """Run one Host and drain its work before releasing the service."""
+    handed = process_config().secret(LAUNCH_KEY_VARIABLE) is not None
+
+    from alphalattice.control.product_host.composition.local_web_session import (  # lazy: serve
         LocalPortfolioWebSession,
     )
 
@@ -593,6 +612,6 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(own_process_tree=True))
 
 __all__ = ["main"]

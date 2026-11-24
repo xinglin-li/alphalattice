@@ -19,7 +19,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -29,6 +28,11 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    REFUSAL_WORDS_RESOURCE,
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_invocation import command_prefix
 from alphalattice.interface.local_application.cli_refused import refused as refused
@@ -61,13 +65,11 @@ from alphalattice.interface.local_application.thin_cli import (
     WORKSPACE_HEADER as WORKSPACE_HEADER,
 )
 from alphalattice.interface.local_application.thin_cli import agent_session_values
-from alphalattice.kernel.shared_kernel.project_layout import (
-    REFUSAL_WORDS_RESOURCE,
-    resolve_playpen_root,
-    runtime_json,
+from alphalattice.kernel.door import (
+    SCHEMA_VERSION as SCHEMA_VERSION,
 )
-
-SCHEMA_VERSION: Final = 1
+from alphalattice.kernel.door import Outcome as Outcome
+from alphalattice.kernel.door import cli_answer
 
 
 def _schema_branches(
@@ -379,7 +381,7 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     if named is None:
         return None
 
-    folder = Path(tempfile.gettempdir()) / "alphalattice-cli-launches"
+    folder = cli_invocation.temporary() / "alphalattice-cli-launches"
     try:
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{named[0]}--{named[1].replace(':', '_')}.count"
@@ -413,7 +415,6 @@ and a bound that is written down and checked *before* the read is the
 difference between refusing an oversized request and allocating for it.
 """
 
-Outcome = Literal["OK", "INVALID_INPUT", "REFUSED", "PENDING", "NO_HOST"]
 EXIT_CODES: Final[dict[Outcome, int]] = {
     "OK": 0,
     "INVALID_INPUT": 1,
@@ -1131,7 +1132,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "REFUSED",
             _REOPEN,
-            "The connection record is not a plain file inside this workspace, so it is not used.",
+            "local_client.connection_path_escapes_workspace",
         ),
     ),
     (
@@ -1139,9 +1140,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "NO_HOST",
             "STOP_THE_HOST_THAT_WROTE_IT",
-            "This workspace's connection record names another workspace's Host, so this Host "
-            "does not replace it: stop that Host, or, when none runs, remove "
-            "`runtime/local-research-connection.json` and start again.",
+            "local_client.connection_owner_mismatch",
         ),
     ),
     (
@@ -1907,9 +1906,6 @@ def client_failure(
     return refusal, known
 
 
-_NO_HOST_ENVELOPE = (None, "NO_HOST", "local_client.service_not_running")
-
-
 def envelope(
     *,
     operation: str | None,
@@ -1947,7 +1943,6 @@ def envelope(
         and owner.get("answer_status", owner.get("status")) in {"ACCEPTED", "DONE"}
     ):
         outcome = "OK"  # Submission succeeded; outcome_of still follows the review Task.
-    refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
         from alphalattice.interface.local_application.labels import (  # lazy: installed names
@@ -1956,42 +1951,24 @@ def envelope(
 
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
-    return {
-        "status": status or owner.get("status", owner.get("disposition")),
-        "next_action": owner.get("next_action"),
-        "task_id": owner.get("task_id") or owner.get("publication_task_id"),
-        "schema_version": SCHEMA_VERSION,
-        "operation": (
-            "request" if (body, outcome, failure_code) == _NO_HOST_ENVELOPE else operation
-        ),
-        "outcome": outcome,
-        "data": body if display is None else display,
-        **({"titles": titles} if titles else {}),
-        "failure_code": failure_code
-        or owner.get("failure_code")
-        or (refusal if isinstance(refusal, str) else None),
-        "detail": worded(detail or owner.get("detail")),
-        **error_projection(owner | {"failure_code": failure_code or refusal_code(owner)}),
-        **(
-            {"closure_detail": worded(owner["closure_message_id"])}
-            if owner.get("closure_message_id")
-            else {}
-        ),
-        "next_requests": owner.get("next_requests"),
-        "timing": {"elapsed_seconds": round(elapsed_seconds, 3)},
-        # This agent session's CLI launches, help and schema included.
-        **(
-            {"session_launches": launches}
-            if (launches := SESSION_LAUNCHES.get()) is not None
-            else {}
-        ),
-        **extra,
-        **deprecation_notices(
-            operation,
-            owner | {"failure_code": failure_code or owner.get("failure_code")},
-            request or {},
-        ),
-    }
+    return cli_answer(
+        operation=operation,
+        outcome=outcome,
+        body=body,
+        elapsed_seconds=elapsed_seconds,
+        display=display,
+        status=status,
+        failure_code=failure_code,
+        detail=detail,
+        request=request,
+        titles=titles,
+        launches=SESSION_LAUNCHES.get(),
+        owner_refusal=refusal_code(owner),
+        present=worded,
+        project_error=error_projection,
+        notices=deprecation_notices,
+        extra=extra,
+    )
 
 
 def answer_json(
@@ -2523,7 +2500,7 @@ def wait_event(
 
 def follow_returns() -> str:
     """When a follow returns and how this host waits for it, never by polling."""
-    session = agent_session(os.environ)
+    session = agent_session(cli_invocation.environment())
     way = AGENT_HOST_WAITS.get(session[0]) if session else None
     way = way or "let your shell wait or run this in the background"
     return f"{_FOLLOW_RETURNS}{way}, and do not poll it"

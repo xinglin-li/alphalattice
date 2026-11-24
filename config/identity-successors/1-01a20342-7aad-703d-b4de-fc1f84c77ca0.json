@@ -1,0 +1,167 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "d7f5f2e480440db9a32651f9aaf2b8a534f19fb88194b7b3ef2314550e10119e",
+   "successor": "be3267ccab218272eeb760177dd5f814d687295aeaf12b98bce44f990f1c75a9",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "340f2226bfe10e89c87487bcfae9a20567569cc670114327c2a305d67983eaca",
+   "successor": "cb3a5af81ef11dd573f09f737bd8ba48ef66383de5f01cf051fdb05ca0bd0c6b",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "678d272c421519233cbdab00a56f91b4d45bff4475a17b888a57d4fdc83df39d",
+   "successor": "a14a55eb00505be2fb504be0b19bd114857000f3061a200d6e4134ef4bb8d28b",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "f1a78b37182761defa91b01ac1e2274c797199657323cc58011e38783acf35d6",
+   "successor": "4fcb6f55036215c5fbce6bf37561ef04f92c06c959eaae6dc9bbc27d9f6f7d24",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "cfa6d14fc3206b2f59492e77db2d9e6c3a0f9cdfbcf38706d4a602a4cd4c27f0",
+   "successor": "d40aa9d1d591a08aa5600dc5d143104e8ee1ae486d8421d757f28572c6d67c78",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "c0ac7093b4652d2fa96c4b56c06ea92ff1b0f31d6d7d22b9d3d3fe7f1d290ea4",
+   "successor": "b8c73679f3bde8073ac09648187a7bdc3265da8222312c8c9a0418d5cf239f93",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "0ceb39f447f47ae5437b598134d8525e91ac79ab0d5995d85c7cabf98f2b5884",
+   "successor": "47b73c8e7e2c57923e73038a9fa0ff362efc6cf358d0e59ab2d6f909282097ac",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "43faf99219aa1cf5c481151ed414ae80c6ea34144790da0a57072584a2073b06",
+   "successor": "18401bd26814b4fce3ae455b2a85223c0e273c5f725e5fb23a75493511eb8c1b",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "90547c8364b967d4cccc5cbcf18ba106510e8ae46e2bec2633a26cc9c90fc076",
+   "successor": "d86c222088fd3afe005ffe1c10b93bfae96595cb615ccbb10ca11905f027283c",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "b27df2dc4f2e0156585fd437fd8a30bbe5b8e855ca99f6d312c9c5ae63cc48c0",
+   "successor": "da5c855fcffcf98b192d375419679c60ef1de66b14ccd4a0f54525fb8121eef7",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "d155debc2aad6a48643d264f5bde24991f984b6b76e40b8da8108908c9b4844c",
+   "successor": "bc4bd026a84c9a9aa1c56d9e0072513499873dd90566e71895031212087491ce",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "85748d52b8335220c135a8e578a5aab324fdcb9864d15e3e332668d72aacafa1",
+   "successor": "6d898b157b8f0677a6cfce138d58f51df78ceb831e806bbad91c3c372192f6f9",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "50c7e27af321be35950701bd6c991185e05dc37258bf4cac33a613b94192d816",
+   "successor": "8aa8124ea228b846db588b5f3954aa78a8acc85c35292fa0ce2d7f9ab60df705",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "2c9242b8a526f2f83b8b76f9fa67e48f87b3988d21e035f5790d24b448d47ba6",
+   "successor": "66577d3769581312fb508dea59b5ec4b6597823d13fe98c5ea960199aab89aac",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "6a60834f302d193017a7e83804235f31d21ccaa4b55dffa4f1e35609ec6c2756",
+   "successor": "cf23bf9722f49837f183d0e3c77e8744821cc009c39883cec0cdd7c8bead1710",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "df17f0f422c2ca9a8e1f0101af50b4fe3b362ee6c9f53d01a060dc696288c004",
+   "successor": "c66c9aa5556db1902c827abf64e2a4527b131407acd9fee455d0febe4580c7d7",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "10c8a544195bff0e6b286d09fc5a926ab9afe20bcacea7521e994f4fe36741bb",
+   "successor": "f43793fb8752cba17c1a0529c0274c0cf4eac369f216f95899552748b56a0075",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "10c8a544195bff0e6b286d09fc5a926ab9afe20bcacea7521e994f4fe36741bb",
+   "successor": "f43793fb8752cba17c1a0529c0274c0cf4eac369f216f95899552748b56a0075",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "69408fc7d008f5cc19fa08f163ee9f1d1bd1d738e919a9c63b341ea5c3159fd9",
+   "successor": "3d643cbfbd9ceb2016854e659315b7fb5a690e13ef67eccc8d2b3169d07bb0cd",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "5fdd6a526aec8c1f518e5c2c63699ab59097eae0b3745641f3bd16f545eb4819",
+   "successor": "adbc220b5c7fab148188aacc674a2a55c8580f57a4146e3cb1cb12c0878e5726",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "6f1a297969c9db762e4da44afeec87219da04427c4eac0d38124acdf233ce259",
+   "successor": "619d5c28505eb0d1735f56de46b0948c9f93375f65d2c344c1ea9a4a82444089",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "4a6b3eeee45c5cb62a7aa55807eb25ecaaee59553e6643d7b37e6927781f125f",
+   "successor": "ec52e6ceb7494d6e72f2ba18d5f68181f0e06b9f0497b9fc13817ac4af20b1ee",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "c0fcdd8276960c14e9729103e51804d36400389085e10a6c21d4f863bd6c71ef",
+   "successor": "29a66aa18761dc91fb863bceb0897d218ddba731ff6f7ad0cb7daea58c028b72",
+   "change": "Apply source-specific host limits and timeouts to outbound requests",
+   "reason": "Twenty-three roles move only through their source closures, each successor row matching the commit stage and continuing the landed Daily health history; the development replay is ALL EQUAL over 185,251 records."
+  }
+ ]
+}

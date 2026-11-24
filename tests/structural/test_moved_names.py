@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from devtools.architecture.moved_names import moved_name_problems, problems
 
 LOCAL = "alphalattice.interface.local_application"
@@ -77,18 +77,29 @@ CASES = {
         "monkeypatch.setattr('sklearn.linear_model.Lasso', 1)\n",
         "regularized_linear.Lasso moved",
     ),
+    # a module moved under identity bindings: its import is refused, its stable name is kept
+    "stable name": (
+        "src/alphalattice/capabilities/quant/cross_section.py",
+        "def z(): ...\n",
+        None,
+        "from alphalattice.capabilities.quant.cross_section import z\n",
+        "OWNER = 'alphalattice.capabilities.quant.cross_section'\n",
+        "alphalattice.capabilities.quant.cross_section moved",
+        frozenset({"alphalattice.capabilities.quant"}),
+    ),
 }
 
 
-@pytest.mark.parametrize("case", CASES)
+@pytest.mark.parametrize("case", CASES, ids=list(CASES))
 def test_a_reference_left_at_a_moved_name_is_refused_and_its_fix_passes(case: str) -> None:
     """Each recorded escape names its file and line and the name's new home; its fix passes."""
-    path, before, after, bad, good, said = CASES[case]
+    path, before, after, bad, good, said, *bound = CASES[case]
+    stable = bound[0] if bound else frozenset()
     moved = "tests/pytest_environment.py" if after is None else None
     changes = [(path, before, after, moved)]
-    refused = moved_name_problems(changes, {"tests/test_consumer.py": bad})
+    refused = moved_name_problems(changes, {"tests/test_consumer.py": bad}, stable)
     assert refused and refused[0].startswith("tests/test_consumer.py:") and said in refused[0]
-    assert moved_name_problems(changes, {"tests/test_consumer.py": good}) == []
+    assert moved_name_problems(changes, {"tests/test_consumer.py": good}, stable) == []
 
 
 @pytest.mark.parametrize("alias", ["client", "client_module"])

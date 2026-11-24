@@ -1,4 +1,9 @@
 {
  "factory": "alphalattice.foundation.market_data_ops.storage.world_upgrade:market_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "market-data",
+ "trust_paths": [
+  "/market-data.duckdb",
+  "/market-data.duckdb.wal"
+ ]
 }

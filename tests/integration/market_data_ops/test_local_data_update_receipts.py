@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -22,7 +23,6 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.bounded_memo import stage_digests
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
     _Resolver,

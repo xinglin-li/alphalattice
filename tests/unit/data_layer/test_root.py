@@ -6,10 +6,10 @@ from pathlib import PureWindowsPath
 
 import pytest
 
-from alphalattice.kernel.data_layer.log import envelope
-from alphalattice.kernel.data_layer.root import bound_reads, sql_path
+from alphalattice.foundation.data_layer.log import envelope
+from alphalattice.foundation.data_layer.root import bound_reads, sql_path
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/root.py"
 
 
 @pytest.mark.proves("data_layer.paths_are_quoted_sql_literals")

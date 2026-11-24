@@ -1,0 +1,321 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "e8b8ab10a3f39342e5e803e24e361a717333bb5ce4d8b6b3a91b2491f43ba050",
+   "successor": "a979533f1e2db88d5f77543897850f7111e708ed65e98c628578c3c1aa237cde",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.campaign_scale_catalog",
+   "predecessor": "cf9e57569a2efca7cceec74061a2f404253c0a6e1214fa49ef3f76060a5e665c",
+   "successor": "60848d42e69091447efdb3574c936c8374501a43b54e021d0d03404fc6f1e5f3",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "0c20a89edb490d52ea9e1560b6e9fafe977f25c2ad83fcb1a2c2c2769d0a13db",
+   "successor": "c81da016132a0f9c734ee779ee1baddb5da2c726d8a4f1c85089cc12b93d3e91",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "07475f80c71eb0e1e168145b266b6d3c5c38afc05ccbd3b2c4ad6f924ca9c531",
+   "successor": "95ab4719c96e72baa5c33ffdb78d22236ffcbf58f721c62370707ae37f95d018",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.scale_implementation.ASYMMETRIC_EWMA_XS_DISPERSION",
+   "predecessor": "b449c4dd692eebe534bfeaeb36f70a4913c00e3e5268159ed4b170b9a9b9ae85",
+   "successor": "06cf0938341f1ea839d38d811fff6ebd1c9d6f1d2c5200c1784abdcad8fac462",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.scale_implementation.EWMA_XS_DISPERSION",
+   "predecessor": "21d421f2a39cb4c45718b0a90bd63089ff1ae7936978da92a3e0a463dab562a1",
+   "successor": "a9ab473214463458e17edb3c8d1abf242f873eac588d51de2d39eb7fa6e3e1d8",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.scale_implementation.HAR_XS_DISPERSION",
+   "predecessor": "3f1e8f8630caeead3fb9f85d5e20760fe94ad94d16b2777acad38feb9c39f338",
+   "successor": "23344213910d26b074b8c07657e3814ad2caafaf07ca81c8c25932bd807db267",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alpha_research.scale_implementation.LAGGED_XS_DISPERSION",
+   "predecessor": "2b155a0d13f77bdcfe9d4e84c975e7f66b1ab25b70d37d01cf109bacadaa3e32",
+   "successor": "1353ca4292b72dc61f7bec733b0ede43542a5109117f1d87785e9df6b0190b85",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "ab48f6ef5fdef80e6ca7f657de23b8a83a918b86f5fb8c79413adb29c381bd1b",
+   "successor": "678d272c421519233cbdab00a56f91b4d45bff4475a17b888a57d4fdc83df39d",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "8b7669d42128c6d306f738b1b04cc0b39234f873b054b601137cafa94dbc5905",
+   "successor": "dd1e6dfaf2efafbdf948398147b5a675d1f969545f754848d2c4f3476f2af4cb",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.canonicalization_binding",
+   "predecessor": "81c87d34ee5085c1c85c82f21d6c87db1c401780e8d4e3a6d6639c63b09811fc",
+   "successor": "8e362d61cf83fc107930245fa2ba53d5f9eaafd0b0ff9124933c40f5024b42ae",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.decision_policy",
+   "predecessor": "b6c20ccd60d75b42f42654664264f599c60062dadd60f0b196e641ebc211916b",
+   "successor": "daf4b8ad0ca11406b2d9393dc2949d5e10e3d08e71285340c28bf1bbf7b43bf1",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.publication_binding",
+   "predecessor": "de51d84886d01785762b505aff96d63246c9c205972842714f5e5fdaab90b01b",
+   "successor": "0297528e07c920f00c314f1eceb42aa84f524dc8f38ddab63690d1156df08505",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "de2ab54ff10533aa0bd6c66fc6b839339d322ecf96af47b58369e14902450f98",
+   "successor": "2a3fe99c7eb2334568d7ded45b29b010d16c502871f10293b2801926001910bf",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "3c908bc158d2cc89d47d28acf97092ce2a3e4432e1d05843bc64293c6bbc5391",
+   "successor": "26a342230d53ab8f8288e32f9eabbfee3c2e60a69a86786808dc066b6d9fa0b7",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "2b507f4377df3e1123044ee1715cfe8a3c2a78e198d301d63948724916443c34",
+   "successor": "c0c948d030201366de7345f2d011af84bae2b18007035a1faf461e6b9e30165f",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "5eba64ca939f81781158cfea2eb54d19d6684d7535ee9962017a8632549399eb",
+   "successor": "0c0df2752aae38ff21ff79d50a1480374ef70650dd8930d17044906ced0bcf6c",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "6039616340bab866eeaa162912a32dcc1cef9570991db06a451aff4a8e51db8d",
+   "successor": "60ef48a4776ed74cdd4dc75294155e38c519916380aa2c658e971cb19fa8d7c5",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "9ac5635c1d08eb5578dfa4061f68b67756661a1f067225ffcc94e1db8fb21735",
+   "successor": "1cbbbdf1c868fb1c4ab49eabd97a728800d25023a98ab14091c75881d271375f",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "de0bd59b5bbc7f6abae44389702de431e87e98a450b72c638b254bbed2f96b43",
+   "successor": "f064e50462c43c2a7f58a819ceff8ac77b427a12afe6432d1cb4232fd043f020",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "e1b643e4bedb3b0af5371e684ccd58d5e7c4f5bd1138bf3834e571f3cd858c1c",
+   "successor": "0ba66a78f2d14da9b0207b48399a9177b334b00440b601849c8a7629b64ac568",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "d329da945f54a285b74ed4f0d51a345d72a18f63bf7992129c7078eb0afb87f2",
+   "successor": "76b84e8a21cb75f341fc3505f42cdc8cc8e9926660f4d2a3d29d87946417fbda",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "293c0e77a9157dfab2ae4e5376f4ee81bb92d0ecdfee417b2f238da073eb7038",
+   "successor": "95b02986db79c4567ad9e3173b45c6ded888ec3637450913c7effff688b2b6e2",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_input_capture",
+   "predecessor": "5a5d1bf029fb5b5c7c30500e7a50d8ad6c1fb073f28273da3b63f1868be09f8c",
+   "successor": "b0bca1e8a61a4f5ec5d4816f2cc9f618bd05743f362b798a267c0735146990c9",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6da1ebd471db187562aaf6f49c9850409fc324b90cbe10f207f6156808bd1624",
+   "successor": "c043998c5a3935c6d9363ce723406f34bb925f9a6b5747bcc044e895773866fd",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "a40d5d1ac02b25d27774d82ed1c04aa24f2a26db2ce88d30d85103feca8885ca",
+   "successor": "ba5a538f429c2e8dfbf747c5b3bbcfced548c53ce77c9940fea3f0c5f999bd36",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "9604d739e7a6abe12f44abadd71f083a897248942f38af166ba06ca0371eaf51",
+   "successor": "917bfe973b843e166bd97600e0ed9c0fb0d14ef16e691a4eacfa9723e61c3f05",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "12870909a1235b094462d9ea41c22bf7ae9e84011d671664327f80f6a0dbe4e8",
+   "successor": "4bd23d5fcb19eb70ec22a6fa62ac49ae2f2c1032108aff7e5b979c767b995841",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "39b687531224bf0519161ffb39e2994274e5f1bbd5f5606fac171a46ed63e7a3",
+   "successor": "9f779f3fc4ba2d2c353abe3449537371ead762d12a9dddf466e23e610b738881",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "b4ddb7ae77cbfaa49e2839a695697757cfb83596974cd02dbe2ff2b981f5239a",
+   "successor": "2cb0488286540646ee02a6da667b085ed3c618a4552e037e6ae6e0d7318fb19d",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "b4ddb7ae77cbfaa49e2839a695697757cfb83596974cd02dbe2ff2b981f5239a",
+   "successor": "2cb0488286540646ee02a6da667b085ed3c618a4552e037e6ae6e0d7318fb19d",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "ed67adf753df75606dbb69919a7947e9af84088cc7d3e0d526e99d8b263c82f2",
+   "successor": "39fc3f098a400ff851c2dae468e07ea963f26f3fbbdfa1bab255a1d7a9780596",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "c98d32a91e057492d659b7a353b0612f8592e5619d43ba667228bc7293e2c600",
+   "successor": "ae25864ef43f898b053a95c0f40b13f61be8b616a861ee197da75e80f35280d1",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "c6f8d1ecd89bb4f7ca93c802ded57323b7783258979f3e6627ffdaf547f8abb8",
+   "successor": "15c4f410474cf532e8de5b73b9b559069efe0ea5f562f47863ebfb70710630fd",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "158aca2a43bb6ef1f4ee052f5b5215f0627a0eb75f15db9ca834877cfc345497",
+   "successor": "02d9c725463756a6b24974fb9ce50964f8a72500e9b5b870a635eb4c5f5bb29c",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "061831b879cccfdcd22ae9fb58b82b6c9f4bc30c42f36c946150926a7bd51d1a",
+   "successor": "3035ab56dcd68562e233f74ac8e13905f0cad1f5ce8f87a596e21749d5f55a9f",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "da79883bcacdcdfaa7531badc5e0daed5f4e521aae1344ae1bdb86409a25379e",
+   "successor": "053c2f4845c01bc91a275dd65866514457e29630dcdbb63ce931c5e9f08b7c1c",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "fdcd6a22bb19eae45a552b0c7246b1a0c33352d00dd191fec80ac64c6a2da657",
+   "successor": "817f2fdda3f75c9004722c615481cb1b4b6682b8808ee98f06dae3a58b25c5c8",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "6252c0c20911781867063594693cbab88caab351c86f6e63820ac5844a1c358f",
+   "successor": "a8eeac6d61c75e757ae98296f8d5d54f96c9e962c687deb3f83d19c0458f8f15",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "18434c9922f1bb55749b9f4ce12762b3f3bd17469a006a0e7ccbff66d93da53e",
+   "successor": "4b4e6e66176f1f0421bfc56289eba29bd04e0842646de49105706c83cd41a0b9",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.forecast_catalog",
+   "predecessor": "b52952baf67ce9017598d260b9f40afef8719f4d3136ab5bb618a499b1ba88b0",
+   "successor": "243784cb6f8d4873d37d37e45d6bc5b1bd67b7d6fb4548e52b96e3ca96896853",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.method.DISTRIBUTED_LAG_ELASTIC_NET",
+   "predecessor": "e95e8a15c80a73f0e07765208dc69ea332838438f607f3eac61235ba22d3c3a8",
+   "successor": "4d44bbdda06061a2bc75a247138bd0a483e1fb0315b00ee41ce9326e55d8b35b",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.method.EWMA_SECTOR_MEAN",
+   "predecessor": "414e54134da31f022d2def6cb8be5e984f1aed9bf742115c00a57d671e230da9",
+   "successor": "5f20323cab7169c2503fdbb15589958c4416ce75ab7b32f1c53a63ef7bf3f777",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.method.SECTOR_RELATIVE_STRENGTH_126",
+   "predecessor": "3b5bd5b7c3c150810b54a5856bbee0886f7e4e9745182c97322b17d8f4ecea5d",
+   "successor": "e3dda20902d0bc21cfdfbc196b12a768c7cd91800e005f096b2a9e064a90c121",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  },
+  {
+   "role": "sector_research.method.ZERO_SECTOR_FORECAST",
+   "predecessor": "b5bb938975e906e908033d65e425c2cfdfe0b2169bef9ca7504cd12af9095dc5",
+   "successor": "cf684e75203d62d9ce874e6bd5b4865a000db25e5850a0c0d30124d16303028b",
+   "change": "Code identities now move only when the code that runs changes",
+   "reason": "Forty-five roles move once, only through the new fingerprint form, each with a successor row that matches the commit stage; the development replay is ALL EQUAL over 185,251 records; the import rule is narrowed as decided at the third FIX."
+  }
+ ]
+}

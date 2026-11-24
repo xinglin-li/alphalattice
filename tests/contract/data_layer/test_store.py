@@ -5,7 +5,7 @@ from functools import partial
 
 import pytest
 
-from alphalattice.kernel.data_layer.store import StorePort
+from alphalattice.foundation.data_layer.store import StorePort
 from tests._support.market_research_laws import (
     RESEARCH_CASES,
     assert_provider_research_laws,
@@ -13,7 +13,7 @@ from tests._support.market_research_laws import (
     store_readbacks,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/store.py"
 STORES = {"ducklake": StorePort.open}
 
 

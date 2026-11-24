@@ -8,14 +8,20 @@ import sqlite3
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing, contextmanager
+from contextlib import ExitStack, closing, contextmanager
+from contextvars import copy_context
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.control.product_host.composition.application_session import (
+    WorkspaceApplicationSession,
+)
 from alphalattice.control.product_host.composition.experience_read import (
     read_experience,
     read_experience_brief,
@@ -23,19 +29,16 @@ from alphalattice.control.product_host.composition.experience_read import (
     recall_experience,
     record_experience,
 )
+from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     TaskAdmission,
     resolve_task_control_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.interface.local_application.answers import (
-    ExperienceAnswer,
-    ExperienceRecallAnswer,
-    ExperienceRecordAnswer,
-)
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import (
+from alphalattice.control.workspace_runtime.reader_threads import reader_threads
+from alphalattice.evidence.alternative_evidence.runtime import execution
+from alphalattice.foundation.data_layer import (
     encoders,
     experiences,
     history,
@@ -43,10 +46,16 @@ from alphalattice.kernel.data_layer import (
     history_startup,
     recall,
 )
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.interface.local_application.answers import (
+    ExperienceAnswer,
+    ExperienceRecallAnswer,
+    ExperienceRecordAnswer,
+)
+from alphalattice.kernel.config import Change, override
 from tests.workspace_task_runner.task_control_support import task_contract
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/history.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/history.py"
 
 
 def _read_while_registry_writes(
@@ -262,7 +271,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
                 experience_known_at=None,
                 experience_limit=None,
             )
-            from alphalattice.kernel.knowledge import model_store
+            from alphalattice.capabilities.knowledge import model_store
 
             with monkeypatch.context() as models:
                 models.setattr(encoders, "StaticEncoder", Encoder)
@@ -344,7 +353,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     # The same process shares the attached catalog but closes each reader's cursor.
     import duckdb
 
-    from alphalattice.kernel.data_layer.root import catalog
+    from alphalattice.foundation.data_layer.root import catalog
 
     assert catalog(root) is not None
     monkeypatch.setattr(history_runtime, "data_root", lambda: root)
@@ -364,12 +373,59 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
         "SELECT value FROM lake.results.series WHERE artifact_id IN (SELECT unnest(?::VARCHAR[]))"
     )
     artifact = "test's artifact"
-    with history.own_root(tmp_path / "results-root") as results_root:
+    with (
+        override(Change("test-thread-cap", {"OMP_NUM_THREADS": "4"})),
+        history.own_root(tmp_path / "results-root") as results_root,
+    ):
         history.open_history("catalog-test", "Catalog test", tmp_path / "results", results_root)
         with history.catalog_projection("series", query, ([artifact],)) as result:
             assert result is None  # the write owner has yet to open the catalog
         port = history.store()
         assert port is not None
+        settings = "SELECT current_setting('threads'), current_setting('async_threads')"
+        assert port.lake.execute(settings).fetchone() == (4, 4)
+        # The Task reader grant changes while the shared catalog keeps its opening width.
+        with monkeypatch.context() as fixed, ExitStack() as application:
+            fixed.setattr(history_runtime, "data_root", lambda: results_root)
+            session = application.enter_context(
+                WorkspaceApplicationSession.acquire(tmp_path / "results")
+            )
+            session.task_control_registry.overlapping = lambda _task: True
+            write_queue_setting(
+                session.workspace / "runtime",
+                "2",
+                chosen_by="HUMAN",
+                chosen_at=datetime(2026, 10, 9, tzinfo=UTC),
+                field="tasks_running",
+            )
+            busy = iter((0.0, 3.0))
+            capacity = SimpleNamespace(
+                allowed_logical_processor_ids=(0, 1, 2, 3),
+                total_memory_bytes=4 * 1024**3,
+                available_memory_bytes=4 * 1024**3,
+            )
+            fixed.setattr(execution, "runtime_machine_capacity", lambda: capacity)
+            fixed.setattr(execution, "busy_logical_processors", lambda **_kw: next(busy))
+            wider, narrower = (
+                SimpleNamespace(task_id=uuid4(), task_kind="factor_research") for _ in range(2)
+            )
+
+            def clock():
+                return datetime(2026, 10, 9, tzinfo=UTC)
+
+            context, wide = copy_context(), ExitStack()
+            context.run(wide.enter_context, session.task_resources(wider, clock))
+            try:
+                with session.task_resources(narrower, clock):
+                    assert execution.TASK_LEASES.current() == 1
+                    assert reader_threads() == 2
+                    assert port.lake.execute(settings).fetchone() == (4, 4)
+                    context.run(wide.close)
+                    assert execution.TASK_LEASES.holders() == (narrower.task_id,)
+                    assert reader_threads() == 1
+                    assert port.lake.execute(settings).fetchone() == (4, 4)
+            finally:
+                context.run(wide.close)
         port.lake.execute("BEGIN TRANSACTION").complete()
         try:
             port.lake.execute(

@@ -13,7 +13,6 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
@@ -22,6 +21,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
@@ -40,6 +40,11 @@ from alphalattice.capabilities.portfolio_inputs.tradability.contracts import (
 )
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     TradabilityArtifactStore,
+)
+from alphalattice.capabilities.quant.sector_history import (
+    SectorHistory,
+    reclassification_payload,
+    sector_ids,
 )
 from alphalattice.control.product_host.research_authoring.feature_activations import (
     feature_catalog_for,
@@ -164,12 +169,7 @@ from alphalattice.investment.sector_research.inputs.storage import SectorContext
 from alphalattice.investment.sector_research.inputs.surface import (
     compile_sector_context_arrays,
 )
-from alphalattice.kernel.quant.sector_history import (
-    SectorHistory,
-    reclassification_payload,
-    sector_ids,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
@@ -578,7 +578,7 @@ def _array_identity(values: npt.NDArray[Any]) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": list(contiguous.shape),
-                "content_sha256": sha256(contiguous.tobytes()).hexdigest(),
+                "content_sha256": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

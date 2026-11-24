@@ -36,10 +36,10 @@ from typing import TYPE_CHECKING, Final
 
 import numpy as np
 
+from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 if TYPE_CHECKING:
     import pandas as pd

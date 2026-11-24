@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 SCANNED = ("src", "scripts", "tests", "tools/tests")
+ROLES = "config/identity-roles.json"  # its module bindings: each stable name to its current one
 PATCHES = {"setattr", "delattr", "object", "patch"}
 FIRST_PARTY = ("alphalattice.", "devtools.", "scripts.", "tests.")
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -66,9 +68,13 @@ def _named(node: ast.AST, names: Mapping[str, set[str]], package: str) -> list[t
     return [(node.value, False)] if isinstance(node, ast.Constant) else []
 
 
-def references(text: str, targets: set[str], package: str) -> dict[tuple[int, str], bool]:
-    """Each line and target `text` names (at or below it), and whether it patches it itself."""
+def references(
+    text: str, targets: set[str], package: str, written: set[tuple[int, str]] | None = None
+) -> dict[tuple[int, str], bool]:
+    """Each line and target `text` names (at or below it), and whether it patches it itself.
+    `written` collects each one only a string names, never an import or attribute."""
     tree, names, found = ast.parse(text), dict[str, set[str]](), dict[tuple[int, str], bool]()
+    coded = set[tuple[int, str]]()
     for node in ast.walk(tree):
         for a in node.names if isinstance(node, ast.Import | ast.ImportFrom) else ():
             source = f"{_from(node, package)}." if isinstance(node, ast.ImportFrom) else ""
@@ -79,6 +85,10 @@ def references(text: str, targets: set[str], package: str) -> dict[tuple[int, st
             for target in [t for t in targets if f"{d}.".startswith(f"{t}.")]:
                 key = (getattr(node, "lineno", 0), target)
                 found[key] = found.get(key, False) or (patch and d == target)
+                if not isinstance(node, ast.Constant):
+                    coded.add(key)
+    if written is not None:
+        written |= found.keys() - coded
     return found
 
 
@@ -105,16 +115,25 @@ def _uses(texts: Mapping[str, str], target: str) -> bool:  # its home's code rea
     return any(isinstance(n, ast.Name) and n.id == name for s in bodies for n in ast.walk(s))
 
 
-def moved_name_problems(changes: list[Change], sources: Mapping[str, str]) -> list[str]:
-    """Each reference left at a moved name's old place, and each test patch a hoist bypasses."""
+def moved_name_problems(
+    changes: list[Change], sources: Mapping[str, str], stable: frozenset[str] = frozenset()
+) -> list[str]:
+    """Each reference left at a moved name's old place, and each test patch a hoist bypasses.
+    A string naming a `stable` module, one the identity bindings carry to its current module,
+    is that stable name, never a reference left behind."""
     (gone, hoisted, homes), found = _moved(changes), []
     texts = {module_of(p): t for p, t in sources.items()} if hoisted else {}
     hoisted = {t: u for t, u in hoisted.items() if not _uses(texts, t)}  # else a patch there acts
     for path, text in sources.items():
         scope = {*gone, *hoisted} if path.startswith("tests/") else set(gone)
         wanted = {t for t in scope if all(w in text for w in t.rsplit(".", 2)[-2:])}
-        hits = references(text, wanted, _package(path)) if wanted else {}
+        written = set[tuple[int, str]]()
+        hits = references(text, wanted, _package(path), written) if wanted else {}
         for (line, target), patch in hits.items():
+            if (line, target) in written and any(
+                target == name or target.startswith(name + ".") for name in stable
+            ):
+                continue
             name, user = target.rsplit(".", 1)[-1], hoisted.get(target, "")
             if target in gone:
                 home = gone[target] or homes.get(name)
@@ -145,4 +164,6 @@ def problems(root: Path, *, staged: bool) -> list[str]:
         changes.append((old, git("show", f"HEAD:{old}") or None, after, (old != new) * new or None))
     listed = git("ls-files", "--", *(f"{r}/*.py" for r in SCANNED)).splitlines() if changes else []
     files = {p: read(p) for p in listed if p in dirty or (root / p).is_file()}
-    return moved_name_problems(changes, files)
+    roles = json.loads(read(ROLES)) if (root / ROLES).is_file() else {}
+    bound = roles.get("module_bindings", {})
+    return moved_name_problems(changes, files, frozenset(k for k, v in bound.items() if k != v))

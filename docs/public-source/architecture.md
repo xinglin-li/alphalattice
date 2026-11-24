@@ -1,5 +1,5 @@
 # AlphaLattice architecture
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 Local Web and the CLI share owners for calculation, permissions, Tasks and publication. External Claude Code or Codex agents interpret evidence and propose choices; role cards add no authority. The [agent guide](../../AGENTS.md) owns the research steps and [choices that need you](../../AGENTS.md#what-only-a-person-decides).
 

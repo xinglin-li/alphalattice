@@ -12,12 +12,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.publication.artifacts import (
     AlphaCurrentArtifactReadbackError,
     AlphaCurrentArtifactStore,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _sessions(count):
@@ -142,7 +142,7 @@ def test_a_restatement_from_a_recent_session_rewrites_only_its_parts(tmp_path):
 
 
 def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_path):
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     store = AlphaCurrentArtifactStore(tmp_path)
     first = _publish(store, _columns(2), stable=1, selection="model-one")
@@ -215,7 +215,7 @@ def test_older_request_does_not_demote_latest_slot(tmp_path):
 
 
 def test_capacity_covers_parts_json_and_marker_staging_and_interrupt_keeps_current(tmp_path):
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     store = AlphaCurrentArtifactStore(tmp_path)
     admissions = []

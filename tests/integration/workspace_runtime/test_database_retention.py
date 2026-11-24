@@ -14,30 +14,45 @@ retention -- instead of meeting DuckDB's configuration refusal.
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import textwrap
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
+from typing import cast
 
 import duckdb
+import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.control.workspace_runtime import reader_threads
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
+    WorkspaceConnection,
     WorkspaceDatabase,
     checkpoint_workspace_database,
     hand_off,
+    keep_workspace_databases,
     live_workspace_connections,
     open_workspace_database,
     release_workspace_database,
     retain_workspace_database,
     retained_workspace_database,
+    table_columns,
 )
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.foundation.data_layer import history_runtime
+from alphalattice.foundation.data_layer import log as host_log
+from alphalattice.kernel import storage
 
 
 def _prepared(tmp_path: Path) -> WorkspaceDatabase:
@@ -576,6 +591,328 @@ def _attachable(database: WorkspaceDatabase) -> bool:
     return True
 
 
+def _kept_for_the_session(
+    database: WorkspaceDatabase, second: WorkspaceDatabase, case: str
+) -> None:
+    """While a Host's storage session lives, each file is opened once in the process: reads take
+    cursors of its one instance, a second data root has its own, a reader sees the writer's rows,
+    a schema change refreshes the kept schema, a pool's readers each hold a handle of their own,
+    a unit's hold ending keeps the instance, a narrower CPU grant reaches the kept instance, a
+    pinned reader and a writer's open transaction each read their own catalog, a declared write
+    finds the instance it needs, a call in another process lets go of only the file it opens, a
+    digest of a written file and a replacement each let go of what would refuse them, and the
+    session's end lets every file go."""
+    before = storage.opens()
+    end = keep_workspace_databases(writes=(database.path,) if case in DECLARED else ())
+    try:
+        if case == "session-reads-in-one-task":
+            seen: object = [_rows(database) for _ in range(5)]
+        elif case == "session-a-second-data-root":
+            seen = [_rows(each) for each in (database, second, database, second)]
+        elif case == "session-a-reader-after-a-writer":
+            with database.transaction() as connection:
+                connection.execute("INSERT INTO unit VALUES (2, 'written')")
+            seen = _rows(database)
+        elif case == "session-a-schema-change-by-the-writer":
+            seen = _session_schema(database)
+        elif case == "session-a-unit-hold-ends":
+            with database.hold():
+                seen = [_rows(database)]
+            seen.append(_rows(database))
+        elif case == "session-a-narrower-grant-on-a-kept-instance":
+            seen = _session_grant(database)
+        elif case == "session-a-declared-write-on-a-read-only-file":
+            database.path.chmod(0o444)
+            try:
+                seen = _rows(database)
+            finally:
+                database.path.chmod(0o644)
+        elif case == "session-a-declared-write-after-a-read":
+            seen = [_rows(database)]
+            with database.transaction() as connection:
+                connection.execute("INSERT INTO unit VALUES (2, 'written')")
+            seen.append(_rows(database))
+        elif case.startswith("session-a-hand-off-of-"):
+            seen = _session_hand_off(
+                database, second if case.endswith("another-file") else database
+            )
+        elif case == "session-a-read-unit-proves-a-written-file":
+            with database.transaction() as connection:
+                connection.execute("INSERT INTO unit VALUES (2, 'written')")
+            with database.retain(read_only=True):  # the score inputs' read with its byte proof
+                seen = (len(file_sha256(database.path)), _rows(database))
+        elif case == "session-a-read-unit-of-other-files-between-writes":
+            seen = []
+            for note in ("written", "again"):
+                with database.transaction() as connection:
+                    connection.execute(f"INSERT INTO unit VALUES ({len(seen) + 2}, '{note}')")
+                # the data update's input read: its byte proofs read the Panel's files, not this one
+                with database.retain(read_only=True, proves_bytes=False):
+                    seen.append(_rows(database))
+        elif case == "session-a-digest-of-a-written-file":
+            with database.transaction() as connection:
+                connection.execute("INSERT INTO unit VALUES (2, 'written')")
+            # the strategy score inputs' digest of the market store, through the trust record
+            seen = (len(file_sha256(database.path)), _rows(database))
+        elif case == "session-a-replaced-file":
+            seen = _session_replaced(database)
+        elif case == "session-a-replacement-meets-live-connections":
+            seen = _session_replacement_waits(database)
+        elif case.startswith(("session-a-pinned-reader", "session-a-writers-own-catalog")):
+            seen = _session_catalogs(
+                database, pinned=case.endswith("its-catalog"), begun=case.rpartition("catalog")[2]
+            )
+        else:
+            seen = _session_pool(database)
+    finally:
+        end()
+    after = storage.opens()
+    opened = {
+        name: after.get(str(each.path), 0) - before.get(str(each.path), 0)
+        for name, each in (("first", database), ("second", second))
+    }
+    assert (opened, seen, _attachable(database)) == (*SESSION_CASES[case], True)
+
+
+def _session_schema(database: WorkspaceDatabase) -> tuple[bool, list[str]]:
+    """Columns read twice (kept), then after the writer adds one (read again)."""
+
+    def columns() -> tuple[tuple[str, str], ...]:
+        connection = database.connect(read_only=True)
+        try:
+            return table_columns(connection, "unit")
+        finally:
+            connection.close()
+
+    kept = columns() == columns()
+    with database.transaction() as connection:
+        connection.execute("ALTER TABLE unit ADD COLUMN extra INTEGER")
+    return kept, [name for name, _ in columns()]
+
+
+def _session_grant(database: WorkspaceDatabase) -> int:
+    """The threads a kept instance reads with after a later Task's narrower grant."""
+    saved, cpus = list(reader_threads._THREADS), pa.cpu_count()
+    try:
+        apply_reader_threads(2)
+        _rows(database)  # the instance opens, and is kept idle
+        apply_reader_threads(1)
+        connection = database.connect(read_only=True)
+        try:
+            row = connection.execute("SELECT current_setting('threads')").fetchone()
+        finally:
+            connection.close()
+    finally:
+        reader_threads._THREADS[:] = saved
+        pa.set_cpu_count(cpus)
+    return int(row[0]) if row else 0
+
+
+def _session_catalogs(
+    database: WorkspaceDatabase, *, pinned: bool, begun: str = ""
+) -> tuple[object, ...]:
+    """A table created while another handle reads: a reader pinned before it, or the writer in
+    its open transaction, reads its own catalog; a reader of the latest catalog reads the other.
+    The writer begins by its own BEGIN, by `begin()`, or with the change in one call in any of
+    its spellings, and commits, or rolls back (its table is never published)."""
+    writer = database.connect(read_only=False)
+    reader = database.connect(read_only=True)
+    try:
+        if pinned:
+            with cast(WorkspaceConnection, reader).snapshot():
+                before = table_columns(reader, "late")
+                writer.execute("CREATE TABLE late (x INTEGER)")
+                current = database.connect(read_only=True)
+                try:
+                    latest = table_columns(current, "late")
+                finally:
+                    current.close()
+                return before, latest, table_columns(reader, "late")
+        if begun in IN_ONE_CALL:
+            writer.execute(IN_ONE_CALL[begun])
+        else:
+            writer.begin() if begun == "-after-begin" else writer.execute("BEGIN TRANSACTION")
+            writer.execute("CREATE TABLE late (x INTEGER)")
+        own, other = table_columns(writer, "late"), table_columns(reader, "late")
+        writer.execute("ROLLBACK" if begun == "-rolled-back" else "COMMIT")
+        return own, other, table_columns(reader, "late")
+    finally:
+        reader.close()
+        writer.close()
+
+
+IN_ONE_CALL = {
+    "-in-one-call": "BEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-after-a-comment": "-- the writer's unit\nBEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-after-whitespace": "\n\t BEGIN TRANSACTION; CREATE TABLE late (x INTEGER)",
+    "-in-lower-case": "begin transaction; create table late (x integer)",
+}
+"""A writer's transaction begun with its schema change in one call, in each spelling."""
+
+
+def _session_hand_off(
+    database: WorkspaceDatabase, opened: WorkspaceDatabase
+) -> list[list[tuple[int, str]]]:
+    """A call in another process that opens `opened`, made while the file is kept: a read before
+    it, during it (an instance of its own when the call opens the file) and after it."""
+    seen = [_rows(database)]
+    end = hand_off(opens=(opened.path,))
+    try:
+        seen.append(_rows(database))
+    finally:
+        end()
+    seen.append(_rows(database))
+    return seen
+
+
+def _session_replaced(database: WorkspaceDatabase) -> list[tuple[int, str]]:
+    """The kept file replaced by another store: the next read sees the replacement's rows."""
+    _rows(database)
+    replacement = database.path.with_name("replacement.duckdb")
+    made = duckdb.connect(str(replacement))
+    try:
+        made.execute("CREATE TABLE unit (id INTEGER PRIMARY KEY, note VARCHAR)")
+        made.execute("INSERT INTO unit VALUES (9, 'replaced')")
+    finally:
+        made.close()
+    with storage.outside(database.path, replacing=True):
+        os.replace(replacement, database.path)
+    return _rows(database)
+
+
+def _session_replacement_waits(database: WorkspaceDatabase) -> tuple[bool, str]:
+    """A replacement while another thread's connection is open waits for its close; one while
+    this thread's is open is refused by name, since no wait can release it."""
+    holding, release, entered = threading.Event(), threading.Event(), threading.Event()
+
+    def read() -> None:
+        connection = database.connect(read_only=True)
+        holding.set()
+        release.wait(30.0)
+        connection.close()
+
+    def replace() -> None:
+        with storage.outside(database.path, replacing=True):
+            entered.set()
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    assert holding.wait(30.0)
+    replacer = threading.Thread(target=replace, daemon=True)
+    replacer.start()
+    waited = not entered.wait(0.3)  # it cannot begin while the reader's connection is open
+    release.set()
+    reader.join(30.0)
+    replacer.join(30.0)
+    own = database.connect(read_only=True)
+    try:
+        with pytest.raises(RuntimeError) as refused, storage.outside(database.path, replacing=True):
+            pass
+    finally:
+        own.close()
+    return waited and entered.is_set(), str(refused.value)
+
+
+def _session_pool(database: WorkspaceDatabase) -> tuple[int, int, bool]:
+    """Four readers at once: each holds a handle of its own on the one instance."""
+    together = threading.Barrier(4, timeout=30.0)
+
+    def read(_: int) -> tuple[int, int, list[tuple[int, str]]]:
+        connection = database.connect(read_only=True)
+        try:
+            rows = connection.execute("SELECT id, note FROM unit ORDER BY id").fetchall()
+            together.wait()
+            live = live_workspace_connections(database.path)
+            together.wait()
+            return id(connection), 0 if live is None else live.handles, rows
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        seen = list(pool.map(read, range(4)))
+    return (
+        len({handle for handle, _, _ in seen}),
+        max(live for _, live, _ in seen),
+        all(rows == [(1, "seed")] for _, _, rows in seen),
+    )
+
+
+WRITE_THEN_READ = 2 if os.name == "nt" else 1
+"""Instances a session opens for a write then a read of one file."""
+
+SESSION_CASES = {
+    "session-reads-in-one-task": ({"first": 1, "second": 0}, [[(1, "seed")]] * 5),
+    "session-a-second-data-root": ({"first": 1, "second": 1}, [[(1, "seed")]] * 4),
+    "session-a-reader-after-a-writer": ({"first": 1, "second": 0}, [(1, "seed"), (2, "written")]),
+    # On Windows a writable instance shares nothing, so a read unit after a writer reopens the
+    # file read-only (`_WRITABLE_SHARES_READS`) and proves its bytes under its own connection.
+    "session-a-read-unit-proves-a-written-file": (
+        {"first": WRITE_THEN_READ, "second": 0},
+        (64, [(1, "seed"), (2, "written")]),
+    ),
+    # a read unit whose proofs read other files attaches to the writer's instance: the writer after
+    # it opens nothing, on every platform
+    "session-a-read-unit-of-other-files-between-writes": (
+        {"first": 1, "second": 0},
+        [[(1, "seed"), (2, "written")], [(1, "seed"), (2, "written"), (3, "again")]],
+    ),
+    # read-only first, so the writer reopens the file writable: the access-mode rule's one reopen
+    "session-a-schema-change-by-the-writer": (
+        {"first": 2, "second": 0},
+        (True, ["id", "note", "extra"]),
+    ),
+    "session-a-thread-pools-readers": ({"first": 1, "second": 0}, (4, 4, True)),
+    "session-a-unit-hold-ends": ({"first": 1, "second": 0}, [[(1, "seed")]] * 2),
+    "session-a-narrower-grant-on-a-kept-instance": ({"first": 1, "second": 0}, 1),
+    "session-a-pinned-reader-keeps-its-catalog": (
+        {"first": 1, "second": 0},
+        ((), (("x", "INTEGER"),), ()),
+    ),
+    **{
+        f"session-a-writers-own-catalog{begun}": (
+            {"first": 1, "second": 0},
+            ((("x", "INTEGER"),), (), (("x", "INTEGER"),)),
+        )
+        for begun in ("", "-after-begin", *IN_ONE_CALL)
+    },
+    "session-a-writers-own-catalog-rolled-back": (
+        {"first": 1, "second": 0},
+        ((("x", "INTEGER"),), (), ()),
+    ),
+    # the session declares it writes the file: the read's instance serves the write, except on
+    # Windows, where a writable instance denies every other handle and the writer reopens it
+    "session-a-declared-write-after-a-read": (
+        {"first": 2 if os.name == "nt" else 1, "second": 0},
+        [[(1, "seed")], [(1, "seed"), (2, "written")]],
+    ),
+    # a call that opens only the other file leaves this one kept; one that opens it lets it go,
+    # and the read during the call opens an instance kept by none
+    # a file this process may not write takes no declared write: it opens read-only
+    "session-a-declared-write-on-a-read-only-file": ({"first": 1, "second": 0}, [(1, "seed")]),
+    "session-a-hand-off-of-another-file": ({"first": 1, "second": 0}, [[(1, "seed")]] * 3),
+    "session-a-hand-off-of-this-file": ({"first": 3, "second": 0}, [[(1, "seed")]] * 3),
+    # Windows refuses another handle's read of a file a writable instance holds: let go there
+    "session-a-digest-of-a-written-file": (
+        {"first": 2 if os.name == "nt" else 1, "second": 0},
+        (64, [(1, "seed"), (2, "written")]),
+    ),
+    "session-a-replaced-file": ({"first": 2, "second": 0}, [(9, "replaced")]),
+    "session-a-replacement-meets-live-connections": (
+        {"first": 2, "second": 0},
+        (True, "workspace_database.outside_access_meets_this_threads_connection"),
+    ),
+}
+"""Each session case's instances opened per file while the session lives, and what it saw."""
+DECLARED = frozenset(
+    {
+        "session-a-declared-write-after-a-read",
+        "session-a-declared-write-on-a-read-only-file",
+        "session-a-digest-of-a-written-file",
+    }
+)
+"""The session cases whose session declares it writes the first file."""
+
+
 @pytest.mark.proves("workspace_runtime.a_held_file_is_released_where_another_reader_needs_it")
 @pytest.mark.parametrize(
     "scenario",
@@ -585,25 +922,67 @@ def _attachable(database: WorkspaceDatabase) -> bool:
         "close-cannot-keep",
         "release-meets-a-close",
         "hand-off-meets-a-close",
+        "byte-access-meets-a-close",
+        "release-by-another-spelling",
+        "session-reads-in-one-task",
+        "session-a-second-data-root",
+        "session-a-reader-after-a-writer",
+        "session-a-schema-change-by-the-writer",
+        "session-a-thread-pools-readers",
+        "session-a-unit-hold-ends",
+        "session-a-narrower-grant-on-a-kept-instance",
+        "session-a-pinned-reader-keeps-its-catalog",
+        "session-a-writers-own-catalog",
+        "session-a-writers-own-catalog-in-one-call",
+        "session-a-writers-own-catalog-after-begin",
+        "session-a-writers-own-catalog-after-a-comment",
+        "session-a-writers-own-catalog-after-whitespace",
+        "session-a-writers-own-catalog-in-lower-case",
+        "session-a-writers-own-catalog-rolled-back",
+        "session-a-declared-write-after-a-read",
+        "session-a-declared-write-on-a-read-only-file",
+        "session-a-hand-off-of-another-file",
+        "session-a-hand-off-of-this-file",
+        "session-a-digest-of-a-written-file",
+        "session-a-read-unit-proves-a-written-file",
+        "session-a-read-unit-of-other-files-between-writes",
+        "session-a-replaced-file",
+        "session-a-replacement-meets-live-connections",
+        pytest.param(
+            "device-path",
+            marks=pytest.mark.skipif(os.name != "nt", reason="a device path is a Windows path"),
+        ),
+        "host-ended-with-its-workers-running",
+        "a-worker-still-writing-its-record",
     ],
 )
 def test_a_held_file_is_released_where_another_reader_needs_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
 ) -> None:
-    """A held file keeps one instance between its connections and lets it go wherever another
-    reader needs the file: another instance's attach, a writer, a call in another process, the
-    hold's end, a close that cannot keep it, and a release or hand-off meeting a close in flight."""
+    """A held file keeps one instance in its declared mode and lets it go only where a reader,
+    a replacement, a call or a close needs it, by any spelling, refusing a device path, and a
+    Host's start waits out the workers of one that ended."""
+    if scenario == "host-ended-with-its-workers-running":
+        _host_start_after_one_that_ended(tmp_path, monkeypatch)
+        return
+    if scenario == "a-worker-still-writing-its-record":
+        _host_start_meets_a_record_being_written(tmp_path)
+        return
     database = _prepared(tmp_path)
-    if scenario == "between-connections":
+    if scenario == "device-path":
+        _device_path_refused(database, monkeypatch)
+    elif scenario.startswith("session-"):
+        _kept_for_the_session(database, _prepared(tmp_path / "second"), scenario)
+    elif scenario == "between-connections":
         _kept_between_connections(database)
     elif scenario == "call-in-another-process":
         _released_for_a_call_in_another_process(database)
+    elif scenario == "release-by-another-spelling":
+        _released_by_another_spelling(database, monkeypatch)
     elif scenario == "close-cannot-keep":
         _closed_when_it_cannot_keep_its_instance(database, monkeypatch)
     else:
-        _letting_go_waits_for_a_last_close(
-            database, monkeypatch, "release" if scenario == "release-meets-a-close" else "hand_off"
-        )
+        _letting_go_waits_for_a_last_close(database, monkeypatch, scenario.partition("-meets")[0])
 
 
 def _kept_between_connections(database: WorkspaceDatabase) -> None:
@@ -624,6 +1003,121 @@ def _kept_between_connections(database: WorkspaceDatabase) -> None:
         assert not _attachable(database)
     assert _attachable(database)
     assert _rows(database) == [(1, "seed"), (2, "held"), (3, "writer")]
+
+
+def _released_by_another_spelling(
+    database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A release names the file by any spelling of its path: a Windows extended path lets go of
+    the instance an ordinary one opened, and the file's bytes can then be read."""
+    with database.hold():
+        with database.transaction() as connection:
+            connection.execute("INSERT INTO unit VALUES (2, 'held')")
+        assert not _attachable(database)
+        spelling = Path("\\\\?\\" + str(database.path)) if os.name == "nt" else database.path
+        release_workspace_database(spelling)
+        assert _attachable(database)
+        assert database.path.read_bytes()
+
+
+def _device_path_refused(database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A volume GUID's device path has no ordinary spelling, and DuckDB would open it as a file
+    relative to the working directory: it is refused by name, and nothing is opened there."""
+    relative = database.path.parent / "Volume{00000000-0000-0000-0000-000000000000}"
+    relative.mkdir()
+    monkeypatch.chdir(database.path.parent)
+    device = Path("\\\\?\\" + relative.name + "\\unit.duckdb")
+    with pytest.raises(RuntimeError, match=r"workspace_database\.device_path_unsupported"):
+        open_workspace_database(device, read_only=False)
+    assert list(relative.iterdir()) == []
+
+
+_ENDED_HOST = textwrap.dedent(
+    """
+    import os, subprocess, sys, threading
+    subprocess.Popen(
+        [sys.executable, "-c", sys.argv[1], *sys.argv[2:], str(os.getpid())],
+        stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    threading.Event().wait()  # until it is ended
+    """
+)
+_ITS_WORKER = textwrap.dedent(
+    f"""
+    import sqlite3, sys, threading
+    sys.path.insert(0, {str(Path("src").resolve())!r})
+    from pathlib import Path
+    from alphalattice.foundation.data_layer.log import record_worker
+    root, ready, host = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+    record_worker(root, host=host)
+    log = sqlite3.connect(root / "machine" / "log.sqlite", isolation_level=None)
+    log.execute("BEGIN EXCLUSIVE")  # it holds the log, as a Task worker reading it may
+    ready.write_text(str(host))
+    threading.Event().wait()  # it outlives its Host until the next Host's start ends it
+    """
+)
+
+
+def _host_start_after_one_that_ended(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Host is ended while its Task worker still holds the data root's log: the next Host's
+    start waits for the worker, ends it once the bound passes, and opens the log."""
+    import psutil
+
+    root = tmp_path / "root"
+    history_runtime.create_data_root(root)
+    ready = tmp_path / "ready"
+    monkeypatch.setattr(host_log, "WORKER_END_SECONDS", 1.0)
+    host = subprocess.Popen(
+        [sys.executable, "-c", _ENDED_HOST, _ITS_WORKER, str(root), str(ready)],
+        stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    tree: list[psutil.Process] = []
+    try:
+        _until(lambda: ready.is_file() and bool(ready.read_text()), seconds=60.0)
+        # each child behind its launcher where the interpreter has one (a Windows venv's)
+        tree = psutil.Process(host.pid).children(recursive=True)
+        (record,) = (root / "machine" / host_log.WORKERS).iterdir()
+        worker = psutil.Process(int(record.stem))
+        ended = psutil.Process(int(ready.read_text()))
+        ended.kill()
+        ended.wait(timeout=30)
+        history_runtime.close_history()
+        assert history_runtime.held(root) is not None
+        assert (worker.is_running(), list(record.parent.iterdir())) == (False, [])
+    finally:
+        history_runtime.close_history()
+        for process in (*tree, host):
+            with suppress(psutil.Error, OSError):
+                process.kill()
+        host.wait(timeout=30)
+
+
+def _host_start_meets_a_record_being_written(tmp_path: Path) -> None:
+    """A worker still writing its record has published nothing: the next Host's start leaves the
+    partial file to it and opens the log, and the record the worker then publishes is whole."""
+    root = tmp_path / "root"
+    history_runtime.create_data_root(root)
+    folder = root / "machine" / host_log.WORKERS
+    folder.mkdir(parents=True)
+    staged = folder / f".{os.getpid()}.json.{os.getpid()}.tmp"
+    with staged.open("w", encoding="utf-8") as writing:  # held open, as the writer holds it
+        writing.write('{"pid": ')
+        writing.flush()
+        history_runtime.close_history()
+        try:
+            assert history_runtime.held(root) is not None
+        finally:
+            history_runtime.close_history()
+        assert staged.is_file()
+    staged.unlink()
+    host_log.record_worker(root, host=os.getpid())
+    (record,) = folder.iterdir()
+    assert (record.name, json.loads(record.read_text(encoding="utf-8"))["pid"]) == (
+        f"{os.getpid()}.json",
+        os.getpid(),
+    )
 
 
 def _released_for_a_call_in_another_process(database: WorkspaceDatabase) -> None:
@@ -673,9 +1167,10 @@ def _closed_when_it_cannot_keep_its_instance(
 def _letting_go_waits_for_a_last_close(
     database: WorkspaceDatabase, monkeypatch: pytest.MonkeyPatch, letting_go: str
 ) -> None:
-    """A release, or a call handed to another process, that meets a held file's last close in
-    flight waits for it: no instance is kept once it returns, so another instance may attach the
-    file."""
+    """A release, a call handed to another process, or an access to the file's bytes, that meets
+    a held file's last close in flight waits for it: no instance is kept once it returns, so
+    another instance may attach the file. The access is a read on Windows, where the writable
+    instance refuses one, and a replacement elsewhere, where only a replacement needs it gone."""
     from alphalattice.control.workspace_runtime import database as owner
 
     entered, gate = threading.Event(), threading.Event()
@@ -698,8 +1193,12 @@ def _letting_go_waits_for_a_last_close(
         def let_go() -> None:
             if letting_go == "release":
                 release_workspace_database(database.path)
-            else:
+            elif letting_go == "hand-off":
                 ended.append(hand_off())
+            else:
+                access = ExitStack()
+                access.enter_context(storage.outside(database.path, replacing=os.name != "nt"))
+                ended.append(access.close)
 
         releaser = threading.Thread(target=let_go, daemon=True)
         releaser.start()
@@ -732,7 +1231,7 @@ def test_child_handles_end_with_their_parent_and_the_instance_is_released(
     assert _rows(database) == [(1, "seed")]
 
 
-@pytest.mark.parametrize("engine_form", ["file_lock", "file_handle"])
+@pytest.mark.parametrize("engine_form", ["file_lock", "file_handle", "file_handle_in_use"])
 def test_an_instance_of_this_process_still_letting_go_is_waited_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine_form: str
 ) -> None:
@@ -752,6 +1251,11 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
     def letting_go() -> duckdb.Error:
         if engine_form == "file_lock":
             return duckdb.IOException(lock_message(os.getpid()))
+        if engine_form == "file_handle_in_use":  # DuckDB 2.0's class for the same conflict
+            return duckdb.ResourceInUseException(
+                f'Unique file handle conflict: the database file "{database.path}" is already '
+                'attached by database "store"'
+            )
         return duckdb.BinderException(
             'Binder Error: Unique file handle conflict: Cannot attach "store" - the database '
             f'file "{database.path}" is already attached by database "store"'

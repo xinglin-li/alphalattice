@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -122,6 +123,11 @@ RULES = [
             "config/performance-baselines.json",
             "config/store-structural-baseline.json",
             "scripts/antipattern-" + "decisions.md",
+            "scripts/work_census.py",
+            "scripts/work_census_site/sitecustomize.py",
+            "src/alphalattice/capabilities/domain_contracts/work_census.*",
+            "config/registries/data-families-development.json",
+            "tests/*/shared_kernel/test_work_census.py",
         ],
         "reason": (
             "OW8 keeps development campaigns, measurement records, probes and private QA "
@@ -397,6 +403,8 @@ RULES = [
             ".claude/agents/**",
             ".claude/skills/**",
             ".claude/settings.json",
+            ".claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json",
             "skills/**",
         ],
         "reason": (
@@ -906,7 +914,7 @@ class _GitObjects:
     ROUND = 32
 
     def __init__(self, repo: Path, *, safe_directory: bool = False):
-        from alphalattice.kernel.shared_kernel import spawn
+        from alphalattice.capabilities.domain_contracts import spawn
 
         self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
         git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
@@ -999,7 +1007,7 @@ def validate_internal_id_history(
 def _validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
 ) -> None:
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     found = spawn.run(  # one start: the history's depth, then the source's commit
         ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
@@ -1151,6 +1159,36 @@ def _validate_internal_id_history(
                 raise ValueError(f"the test layout map is unreadable at {commit}") from None
         return moves[commit]
 
+    deltas: dict[tuple[str, str], dict[str, str]] = {}
+    carried: dict[tuple[str, str, str], str] = {}
+
+    def git_move(commit: str, parent: str, owner: str) -> dict[str, str]:
+        """A move Git's tree delta records byte for byte, as the staged moves pair exact blobs:
+        the owner is the one path the commit added with its blob, and the one path it deleted
+        with that blob is the old path."""
+        if (commit, parent) not in deltas:
+            fields = spawn.check_output(
+                ["git", "diff-tree", "-r", "-z", "--no-renames", parent, commit],
+                cwd=repo,
+                creationflags=_NO_WINDOW,
+                text=True,
+            ).split("\0")
+            gone: dict[str, list[str]] = {}
+            added: dict[str, list[str]] = {}
+            for status, path in zip(fields[0::2], fields[1::2], strict=False):
+                *_, old_blob, new_blob, kind = status.split()
+                if kind == "D":
+                    gone.setdefault(old_blob, []).append(path)
+                elif kind == "A":
+                    added.setdefault(new_blob, []).append(path)
+            deltas[commit, parent] = {
+                paths[0]: gone[blob][0]
+                for blob, paths in added.items()
+                if len(paths) == 1 and len(gone.get(blob, ())) == 1
+            }
+        old = deltas[commit, parent].get(owner)
+        return {} if old is None else {owner: old}
+
     for commit in commits:
         policy = policy_at(commit)
         if policy is None:
@@ -1210,7 +1248,17 @@ def _validate_internal_id_history(
                         "occurrences", {}
                     ).get(owner, {}).get(label):
                         continue
-                    why = _carry_refusal(owner, labels, policy, previous, mapped(commit))
+                    moved = mapped(commit)
+                    if owner not in moved:
+                        moved = {**moved, **git_move(commit, parent, owner)}
+                    why = _carry_refusal(owner, labels, policy, previous, moved)
+                    # Each old allowance carries to one new path, whichever path paired it.
+                    if (
+                        not why
+                        and carried.setdefault(claim := (commit, parent, moved[owner]), owner)
+                        != owner
+                    ):
+                        why = f"{moved[owner]}'s allowance was already carried to {carried[claim]}"
                     if why:
                         raise ValueError(
                             f"the frozen internal-label allowance increased at {commit}: "
@@ -1252,7 +1300,7 @@ def validate_path(path: str) -> None:
 
 def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     """Read each immutable blob once and refuse truncated or mismatched batch output."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     if not objects:
         return {}
@@ -1281,7 +1329,7 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
-    from alphalattice.kernel.shared_kernel import spawn
+    from alphalattice.capabilities.domain_contracts import spawn
 
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")
@@ -1373,29 +1421,87 @@ def _import_names(path: str, raw: bytes) -> frozenset[str]:
     return known
 
 
-def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
-    """Follow absolute and relative Python imports by parsing, never importing product code."""
+_HOST_ROUTES = "src/alphalattice/control/product_host/composition/operation_route_families.py"
+
+
+def _host_route_names(raw: bytes) -> set[str]:
+    """Read the Host's package-relative FamilyRoute registrations without executing them."""
+    package = _HOST_ROUTES[4:].rpartition("/")[0].replace("/", ".")
+    tree = ast.parse(raw.decode("utf-8-sig"), filename=_HOST_ROUTES)
+    tables = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_ROUTES" for target in node.targets)
+    ]
+    if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
+        raise ValueError(
+            f"public_release.door_route_nonliteral: {_HOST_ROUTES} needs one _ROUTES tuple"
+        )
+    names = set()
+    for route in tables[0].elts:
+        location = f"{_HOST_ROUTES}:{route.lineno}"
+        if not (
+            isinstance(route, ast.Call)
+            and isinstance(route.func, ast.Name)
+            and route.func.id == "FamilyRoute"
+            and 2 <= len(route.args) <= 3
+            and not route.keywords
+            and isinstance(module := route.args[1], ast.Constant)
+            and isinstance(value := module.value, str)
+        ):
+            raise ValueError(f"public_release.door_route_nonliteral: {location}")
+        parts = value.split(".")
+        if parts[0] == "alphalattice" or not all(part.isidentifier() for part in parts):
+            raise ValueError(f"public_release.door_route_outside_package: {location}")
+        names.add(f"{package}.{value}")
+    return names
+
+
+def import_closure(
+    blobs: dict[str, bytes],
+    roots: set[str],
+    *,
+    runtime_modes: dict[str, str] | None = None,
+    declared: frozenset[str] = frozenset(),
+) -> set[str]:
+    """Follow parsed imports, including the registered Door targets in the runtime closure."""
     modules = {
         p[4:-3].replace("/", ".").removesuffix(".__init__"): p
         for p in blobs
         if p.startswith("src/") and p.endswith(".py")
     }
-    edges = {}
-    for path, raw in blobs.items():
-        if not path.endswith(".py"):
-            continue
-        # A module is reached when it is a dotted prefix of an imported name (or the name itself):
-        # each prefix is looked up, not every module tested against every name.
-        edges[path] = {
+
+    def imported_paths(names: Iterable[str]) -> set[str]:
+        # Lookup the imported name and its dotted prefixes without scanning every module.
+        return {
             modules[prefix]
-            for name in _import_names(path, raw)
+            for name in names
             for prefix in (".".join(name.split(".")[:end]) for end in range(1, name.count(".") + 2))
             if prefix in modules
         }
+
+    edges = {
+        path: imported_paths(_import_names(path, raw))
+        for path, raw in blobs.items()
+        if path.endswith(".py")
+    }
     reached = set(roots)
     todo = list(roots)
     while todo:
-        for target in edges.get(todo.pop(), set()) - reached:
+        path = todo.pop()
+        next_paths = edges.get(path, set())
+        if path == _HOST_ROUTES and runtime_modes is not None and path not in declared:
+            names = _host_route_names(blobs[path])
+            for name in sorted(names):
+                if runtime_modes.get(modules.get(name, "")) not in {"100644", "100755"}:
+                    raise ValueError(f"public_release.door_route_untracked: {name}")
+            routed = imported_paths(names)
+            for target in sorted(routed):
+                if classify(target, {target}, set(), set(), declared=declared)[0] != "PUBLIC":
+                    raise ValueError(f"public_release.door_route_private: {target}")
+            next_paths = next_paths | routed
+        for target in next_paths - reached:
             reached.add(target)
             todo.append(target)
     return reached
@@ -1493,6 +1599,78 @@ def classify(
     )
 
 
+def published_test(path: str, docstring: str | None) -> bool:
+    """Whether the export publishes the test module at `path`, by `classify`'s rules for a test:
+    a private pattern, or a `PRIVATE_TEST:` docstring."""
+    declared = frozenset({path}) if "PRIVATE_TEST:" in (docstring or "") else frozenset()
+    return classify(path, set(), set(), set(), declared=declared)[0] == "PUBLIC"
+
+
+GITHUB_CANNOT_RUN = ("real_evidence", "paid_agent", "performance")
+"""A test's own mark that GitHub cannot run it: private evidence, money, or the performance run."""
+
+
+def declare_github(items: Iterable[Any], lane_contract: Callable[[Any], str | None]) -> None:
+    """Mark `github`, at collection (tests/conftest.py), each test GitHub's public Verify runs: one
+    in a module the export publishes, marked none of GITHUB_CANNOT_RUN, and not `nightly_only` by
+    its Large rule (`lane_contract`), which a run outside the nightly lane omits. The Verify
+    selects exactly these, and the nightly never runs them."""
+    published: dict[str, bool] = {}
+    for item in items:
+        path = item.nodeid.split("::", 1)[0]
+        if path not in published:
+            module = getattr(item, "module", None)
+            published[path] = module is not None and published_test(path, module.__doc__)
+        if (
+            published[path]
+            and lane_contract(item) != "nightly_only"
+            and not any(item.get_closest_marker(name) for name in GITHUB_CANNOT_RUN)
+        ):
+            item.add_marker("github")
+
+
+_REGISTRY_STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"')
+_DOTTED_NAME = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
+
+
+def _registry_private_modules(
+    blobs: dict[str, bytes], private_modules: dict[str, set[str]]
+) -> dict[str, set[str]]:
+    """Resolve physical module names and the registered logical aliases used by registries."""
+    raw = blobs.get("config/package-architecture.json", b"{}")
+    if not raw:
+        raise ValueError(
+            "public_release.registry_layout_missing: config/package-architecture.json; "
+            "load its pinned blob before scanning registry references"
+        )
+    layout = json.loads(raw)
+    owners = {
+        entry["physical_namespace_target"]: entry["package_id"]
+        for entry in layout.get("packages", ())
+    }
+    modules = {name: set(paths) for name, paths in private_modules.items()}
+    for name, paths in private_modules.items():
+        owner = name
+        while owner:
+            if owner in owners:
+                modules.setdefault(owners[owner] + name[len(owner) :], set()).update(paths)
+                break
+            owner = owner.rpartition(".")[0]
+    return modules
+
+
+def _registry_module_targets(line: str, modules: dict[str, set[str]]) -> set[str]:
+    """Private targets of module:attribute strings on a JSON registry line."""
+    targets: set[str] = set()
+    for token in _REGISTRY_STRING.findall(line):
+        if ":" not in token and "\\" not in token:
+            continue
+        module, _, attribute = json.loads(token).partition(":")
+        if module in modules and _DOTTED_NAME.fullmatch(attribute):
+            targets.update(modules[module])
+    return targets
+
+
 def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[dict], list[str]]:
     """Return location-only findings; never retain matched secrets, IDs or contact values."""
     private = {r["path"] for r in decisions if r["kind"] == "PRIVATE"}
@@ -1503,6 +1681,7 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
         for relative in {path, path.removeprefix("src/"), path.removeprefix("scripts/")}:
             module = relative[:-3].replace("/", ".").removesuffix(".__init__")
             private_modules.setdefault(module, set()).add(path)
+    registry_modules: dict[str, set[str]] | None = None
     findings = []
     binary = []
     for row in decisions:
@@ -1556,7 +1735,21 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                     ),
                 }
             )
+        is_registry = row["path"].startswith("config/") and row["path"].endswith(".json")
+        if is_registry and registry_modules is None:
+            registry_modules = _registry_private_modules(blobs, private_modules)
         for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+            if is_registry and (targets := _registry_module_targets(line, registry_modules or {})):
+                findings.append(
+                    {
+                        "kind": "FINDING",
+                        "path": row["path"],
+                        "line": number,
+                        "rule": "NO_PRIVATE_REFERENCE",
+                        "assessment": "PRIVATE_REGISTRY_MODULE",
+                        "private_targets": sorted(targets),
+                    }
+                )
             refs = private_references(row["path"], line, private, blobs.keys())
             findings.extend(
                 {
@@ -1835,7 +2028,10 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         raise ValueError("the source commit must contain the entry reachability census")
     er3 = json.loads(census_raw)
     runtime = import_closure(
-        blobs, {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs}
+        blobs,
+        {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs},
+        runtime_modes=modes,
+        declared=declared,
     )
     tests = import_closure(
         blobs,

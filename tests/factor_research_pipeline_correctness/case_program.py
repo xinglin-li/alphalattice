@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ExecutionOutcomeMethodSeal,
@@ -45,6 +46,13 @@ from tests.factor_research_pipeline_correctness.walk_forward_source import (
 )
 
 
+def _rows_in(table: pa.Table, column: str, sessions: tuple[date, ...]) -> pa.Table:
+    """The rows whose `column` is one of `sessions`, filtered in Arrow: a row-wise Python
+    copy converted every zoned timestamp through an import, 15k imports per read under the
+    unit contract (1.15 s over the 1 s budget, 11-23)."""
+    return table.filter(pc.is_in(table[column], pa.array(sessions, type=table[column].type)))
+
+
 class _FeatureReader:
     def __init__(self, sessions: tuple[date, ...], table: pa.Table) -> None:
         self._sessions = sessions
@@ -58,9 +66,9 @@ class _FeatureReader:
     def batches(self, request: FeaturePanelReadRequest) -> Iterator[pa.RecordBatch]:
         self.requests.append(request)
         assert request.exact_sessions is not None
-        requested = set(request.exact_sessions)
-        rows = [row for row in self._table.to_pylist() if row["session_date"] in requested]
-        yield from pa.Table.from_pylist(rows).to_batches(max_chunksize=512)
+        yield from _rows_in(self._table, "session_date", request.exact_sessions).to_batches(
+            max_chunksize=512
+        )
 
 
 class _OutcomeReader:
@@ -76,10 +84,7 @@ class _OutcomeReader:
     def read_development_sessions(self, manifest_ref: str, sessions: tuple[date, ...]) -> pa.Table:
         assert manifest_ref == "playpen://outcomes/manifest"
         self.requests.append(sessions)
-        requested = set(sessions)
-        return pa.Table.from_pylist(
-            [row for row in self._table.to_pylist() if row["formation_session"] in requested]
-        )
+        return _rows_in(self._table, "formation_session", sessions)
 
     def resolve_method_seal(self, snapshot_hash: str) -> ExecutionOutcomeMethodSeal:
         """Answer as a snapshot published before the outcome method seam existed.

@@ -13,10 +13,13 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.database import (
     WorkspaceDatabase,
     WorkspaceRepository,
     checkpoint_workspace_database,
+    table_columns,
+    table_info,
 )
 from alphalattice.control.workspace_runtime.storage.readiness import (
     WorkspaceReadinessRepository,
@@ -49,8 +52,8 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
     assert_current_catalog,
     assert_rows_carry_installed_catalog,
     canonical_cutoff_set,
+    classify_feature_storage_layout,
     ensure_feature_current_schema,
-    feature_storage_layout,
     refuse_before_0_2_7,
     runtime_view_hash,
 )
@@ -99,7 +102,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     _utc_naive,
     raw_bars_from_table,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
+from alphalattice.kernel.clock import observation_time
 
 if TYPE_CHECKING:
     import duckdb
@@ -327,10 +330,8 @@ def _first_by_identity(rows: Sequence[list[object]]) -> list[list[object]]:
 
 def _storage_shape(connection: duckdb.DuckDBPyConnection) -> tuple[FeatureStorageLayout, bool]:
     """The current table's layout and whether its rows carry a source verification receipt."""
-    return feature_storage_layout(connection), "source_verification_receipt_hash" in {
-        item[1]
-        for item in connection.execute("PRAGMA table_info('feature_daily_current')").fetchall()
-    }
+    columns = {name for _, name, *_ in table_info(connection, "feature_daily_current")}
+    return classify_feature_storage_layout(columns), "source_verification_receipt_hash" in columns
 
 
 @dataclass(frozen=True)
@@ -785,7 +786,7 @@ class FeatureStateRepository(WorkspaceRepository):
             connection,
             catalog_hash=layer.catalog.binding.catalog_hash,
             factor_ids=layer.catalog.factor_ids,
-            activated_at=_utc_naive(datetime.now(UTC)),
+            activated_at=_utc_naive(observation_time()),
             parts=layer.storage_parts(),
         )
 
@@ -1973,12 +1974,7 @@ class FeatureStateRepository(WorkspaceRepository):
         owns_connection = _connection is None
         try:
             if include_verification:
-                names = {
-                    row[1]
-                    for row in connection.execute(
-                        "PRAGMA table_info('feature_daily_runtime')"
-                    ).fetchall()
-                }
+                names = {name for _, name, *_ in table_info(connection, "feature_daily_runtime")}
                 verification = (
                     "source_verification_receipt_hash"
                     if "source_verification_receipt_hash" in names
@@ -2145,10 +2141,7 @@ class FeatureStateRepository(WorkspaceRepository):
             f'COALESCE("{factor}", 0::DOUBLE) AS value_{index}, "{factor}" IS NULL AS null_{index}'
             for index, factor in enumerate(factors)
         )
-        columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info('feature_daily_runtime')").fetchall()
-        }
+        columns = {name for _, name, *_ in table_info(connection, "feature_daily_runtime")}
         verification = (
             "source_verification_receipt_hash"
             if "source_verification_receipt_hash" in columns
@@ -3468,11 +3461,7 @@ class FeatureStateRepository(WorkspaceRepository):
             # the columns its writer adds on open; it holds no forward reclassification, as a
             # row written before the rule does (LS1's acceptance).
             columns = {
-                str(row[0])
-                for row in connection.execute(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = 'sector_classification_revision'"
-                ).fetchall()
+                name for name, _ in table_columns(connection, "sector_classification_revision")
             }
             rows = (
                 connection.execute(
@@ -4875,12 +4864,7 @@ class PanelStateRepository(WorkspaceRepository):
     ) -> tuple[str, ...]:
         """Exact stored catalogs; legacy summary-only cases require a fresh assessment."""
         with self._catalog_read("feature_input.case_store_unavailable") as connection:
-            columns = {
-                row[1]
-                for row in connection.execute(
-                    "PRAGMA table_info('feature_input_agent_case')"
-                ).fetchall()
-            }
+            columns = {name for _, name, *_ in table_info(connection, "feature_input_agent_case")}
             if "case_json" not in columns:
                 return ()
             if limit is not None and not 1 <= limit <= 51:
@@ -4921,12 +4905,7 @@ class PanelStateRepository(WorkspaceRepository):
         same record hashes every other reader checks.
         """
         with self._catalog_read("feature_input.case_store_unavailable") as connection:
-            columns = {
-                row[1]
-                for row in connection.execute(
-                    "PRAGMA table_info('feature_input_agent_case')"
-                ).fetchall()
-            }
+            columns = {name for _, name, *_ in table_info(connection, "feature_input_agent_case")}
             if "resolution_json" not in columns:
                 return None
             row = connection.execute(
@@ -5145,10 +5124,7 @@ class PanelStateRepository(WorkspaceRepository):
 
     @staticmethod
     def _quarantine_continuation_columns(connection: duckdb.DuckDBPyConnection) -> bool:
-        columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info('listing_quarantine')").fetchall()
-        }
+        columns = {name for _, name, *_ in table_info(connection, "listing_quarantine")}
         return "continued_from_quarantine_hash" in columns and "continuation_json" in columns
 
     @staticmethod
@@ -5209,10 +5185,7 @@ class PanelStateRepository(WorkspaceRepository):
             return ()
         connection = self._connect(read_only=True)
         try:
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info('listing_quarantine')").fetchall()
-            }
+            columns = {name for _, name, *_ in table_info(connection, "listing_quarantine")}
             dated = "effective_session" in columns
             rows = connection.execute(
                 f"""SELECT q.listing_id, q.reason_codes_json, q.quarantine_hash, q.lifecycle,

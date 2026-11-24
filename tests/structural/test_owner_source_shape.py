@@ -747,8 +747,9 @@ def test_no_newer_plan_and_no_admitted_task_waits_behind_an_update_that_has_not_
     assert "DATA_UPDATE_TASK_KIND" in way and "DecisionAdvancementApplication.task_kind" in way
     assert "operations._inputs_way(" in inspect.getsource(portfolio_operations.execute)
     held = dispatcher.LocalBackgroundDispatcher
-    assert "self._waits_its_turn(" in inspect.getsource(held._drain)
-    assert "self.drive_waiting()" in inspect.getsource(held._drain)
+    worker = inspect.getsource(held._run_command)
+    assert "self._waits_its_turn(" in worker
+    assert "self.drive_waiting()" in worker
     assert "self.drive_waiting()" in inspect.getsource(held.request_cancel)
     assert "self._waiting" in inspect.getsource(held.command_running)
     assert "self._tasks_wait()" in inspect.getsource(operations.sweep_if_due)

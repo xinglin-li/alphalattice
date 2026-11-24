@@ -1,9 +1,11 @@
 # Maintain data and the workspace
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 Updates preserve the exact inputs bound by earlier studies. Local Web shows the proposed change, progress and receipt; reusing an exact completed update can return its receipt without another Task. Source terms belong to the [third-party data guide](third-party-and-data.md). The [CLI guide](cli.md) describes commands and continuations. The [research-agent guide](../../AGENTS.md#what-only-a-person-decides) lists choices that need you.
 
 ## Updates and data issues
+
+The Data page in Workbench shows Daily data health for the latest recorded Daily or the selected update. The Host's update readback carries the same five results. Each result has a stable check ID, a verdict and a failure count when the catalog can be read. The five checks, by ID: `source_freshness`, raw bars for the requested market session; `not_null`, bars with a missing provider, listing or version key; `unique`, bars recorded twice under one key; `accepted_values`, corporate actions of an unknown kind on that date; and `relationships`, bars whose listing is not in the catalog. Unavailable results have no count. The results are advisory and leave the Daily's published inputs and positions intact.
 
 An unfinished update keeps its own plan. A provider deferral retains fetched listings and records when continuation is due. The offered continuation resumes that update; preparation has its own confirmation path. Timeouts or unreadable responses can instead leave failed listings and issues requiring review. Earlier published inputs remain available.
 
@@ -15,6 +17,8 @@ Maintenance follows exchange sessions and settlement policy; recent provider bar
 
 An older workspace's sessions generated from the pinned calendar rules remain reference data for historical reads. Their rule origin and version are retained. Recorded source observations keep their own times, and later calendar corrections become visible from their later knowledge time.
 
+The Host periodically rechecks the file digests it keeps for the workspace. The dispatcher starts the check during idle time, including at Host startup. It yields after the current file when a request or Task arrives and publishes its receipt during idle time. The last completed check records how many files it checked, skipped and found different in `runtime/file-trust-scrub.json`. The period defaults to seven days. Set `ALPHALATTICE_FILE_SCRUB_DAYS` to a positive whole number of days to change it. With `ALPHALATTICE_FILE_TRUST=0`, reads hash the files they need and the idle check stays off. After an interrupted scrub or a mismatch, the next Host rechecks file bytes before trusting earlier digests.
+
 ## Backup and restore
 
 ```powershell
@@ -25,7 +29,9 @@ alphalattice backup restore --dir workspaces/restored-research
 
 Backups hold market revisions and history, audits, Tasks, research programs and evidence, Evidence and CRO records, manifest and Host records outside the workspace. Rebuildable projections are not full duplicates; listed inputs and authority packages carry digests for recapture or reinstall.
 
-On Windows, the default root is `%LOCALAPPDATA%/AlphaLattice/backups/<workspace-id>`; `ALPHALATTICE_BACKUP_ROOT` changes it. Seven generations are retained by default; `backup run --keep <count>` selects another count. Protect this root alongside the workspace.
+On Windows, the default root is `%LOCALAPPDATA%/AlphaLattice/backups/<workspace-id>`; `ALPHALATTICE_BACKUP_ROOT` changes it. Seven generations are retained by default; `backup run --keep <count>` selects another count. Protect this root alongside the workspace. `backup list` and the Workbench's Backups panel show the bytes it holds.
+
+When a workspace's folder is gone, the Host records the workspace as missing at its next start; once the folder is back (a reconnected drive) or opened again, the workspace is active, with its backups. Thirty days after a workspace went missing or was deleted, the Host records how many generations and bytes its backups hold and then removes them; a removal interrupted is finished at a later start. Until then a restore works as before. A backup folder for a workspace this data root does not know is never touched.
 
 Restore targets a new or empty directory and can run without a Host. The restored workspace's Tasks move onto the log when a Host first opens it. It uses the newest generation unless `--generation <hash>` selects a whole or unique hash from `backup list`. On another machine, or from another folder, name the generation by its whole hash: the newest and a shortened hash only find generations taken in the same folder. If the original manifest is lost, name its recorded identity with `--workspace-id <id>` and backup root with `--root <path>`.
 
@@ -43,13 +49,13 @@ it into a fresh root:
 ```python
 from pathlib import Path
 
-from alphalattice.kernel.data_layer.backup import backup_data_root, restore_data_root
+from alphalattice.foundation.data_layer.backup import backup_data_root, restore_data_root
 
 generation = backup_data_root(Path("data-root"), Path("machine-backups"))
 restored = restore_data_root(generation, Path("restored-data-root"))
 ```
 
-Keep the whole backup repository: each generation contains its three SQLite snapshots,
+Keep the whole backup repository: each generation contains its two SQLite snapshots (the log and the catalog),
 file manifest and saved log chain head; its immutable files live in the shared `files/`
 pool. Later generations copy only new files into that pool.
 
@@ -60,7 +66,7 @@ against the copied catalog and admitted blob owners before publishing the new ro
 A changed file or an incomplete generation is refused by name. Generations without
 these file seals are refused; take a new backup to obtain a verified generation.
 
-Online backup copies the index, then the log, then the catalog, without holding the
+Online backup copies the log, then the catalog, without holding the
 Host writer for the backup's duration. The catalog may contain commits newer than the
 copied log. Restore first verifies the saved chain and its catalog references, then runs
 the store's existing startup repair to append owed events. It relocates the restored
@@ -102,10 +108,19 @@ At the first 0.2.8 start, the upgrade also copies and verifies Alpha's existing 
 
 Risk models use the catalog's factor covariance, factor loading and specific-risk tables. The catalog keys factors by their registered lineage IDs. The upgrade moves published covariance history into exact lower-triangle coordinates with each formation's original listing order and verifies the original matrix hashes. It leaves the packed files in place, and the catalog is the only covariance store. Workspace backups and workspace copies carry the exact packed bytes of published history and durable checkpoints. A restored workspace's covariance is read from the catalog once the Risk upgrade has admitted it, which waits for its market listings to be registered in the receiving catalog; the next start offers that upgrade once those listings are available.
 
-The data root keeps a result's body (a numerical lane, an execution outcome's rows) while something holds it: each workspace that cites it, or a pin. A body nothing holds is removed 7 days after it was produced, when the Host opens the data root; its profile and measures stay in the log, and a removed body is never held again (`data_layer.artifact_held_collected`): produce it again. The log records each removal before the body goes, so an interrupted one only keeps a body longer, and the next start finishes it. No removal runs while a machine backup copies, and the backup keeps its own copy of every body it names.
+The data root keeps a result's body (a numerical lane, an execution outcome's rows) while something holds it: each workspace that cites it, or a pin. The Host can collect an unheld body 7 days after production by default. Set `ALPHALATTICE_RETENTION_DAYS` to a positive whole number before starting the Host to choose another window. The profile and measures stay in the log. To use a collected body again, produce it again (`data_layer.artifact_held_collected`). The log records each removal before the body goes, so an interrupted one only keeps a body longer, and the next start finishes it. No removal runs while a machine backup copies, and the backup keeps its own copy of every body it names.
 
 A workspace's acquired evidence documents enter world too: when the Host opens the workspace, and when an acquisition ends. Each document is held once per machine, its body under the data root's `blobs/`, and the workspace's own copy is only read, never moved. An evidence read takes the version of a document world knew at its selection's cutoff; a document world knew only later is refused as missing for that cutoff. A document world does not hold is read from the workspace's own store. A body world holds but whose blob is gone is refused with `alternative_evidence.world_body_missing`: restore the data root from its last backup.
 
 The data dependencies include engine-matched DuckLake and SQLite scanner binaries. The data-root catalog loads these installed packages without downloading extensions. Workspace connections refuse runtime extension installation or loading. If an installed binary cannot load, restore the locked data dependencies with `uv sync --locked --extra data`.
 
-`storage show` describes storage; `storage plan` estimates retention and bytes before deletion. Current and rollback Panels and explicit pins are protected. A person decides whether to confirm the exact plan. They can confirm it in Local Web or answer the agent's one-line question; the agent then relays their words through `storage confirm` with `person_confirmation`. Review its scope and recovery status through the product controls. File bindings determine what can be rebuilt.
+`storage show` describes workspace storage. `task show <task> --section storage`
+reports allocated bytes by category for the whole data root, the workspace's
+reclaimable bytes, and the startup cleanup of ended Tasks' scratch. Scratch
+whose ownership cannot be proved is kept and reported.
+
+`storage reclaim` shows the exact plan and asks for confirmation in a terminal.
+Current and rollback Panels and explicitly pinned objects are protected. See the
+[CLI reference](cli.md#inspect-and-reclaim-storage) for delegated confirmation.
+Local Web and the separate `storage plan` and `storage confirm` commands also
+review and apply the exact plan. File bindings determine what can be rebuilt.

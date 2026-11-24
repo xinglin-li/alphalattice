@@ -22,11 +22,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.control.guanyin.tasks.supervision import (
     IncidentRecord,
     IncidentStore,
@@ -57,6 +58,8 @@ from alphalattice.interface.local_application.dispatcher import LocalBackgroundD
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.execution import TIMERS, Timers
 
 
 class _Host(Protocol):
@@ -92,12 +95,23 @@ Remedy = Literal["CANCEL", "RECOVER", "REPLAN"]
 class TaskSupervisor:
     """Guanyin's Supervisor thread and Recovery Center for one Host's workspace."""
 
-    def __init__(self, operations: _Host, *, interval: float = SUPERVISION_SECONDS) -> None:
-        """Supervise the Tasks this Host's operations serve."""
+    def __init__(
+        self,
+        operations: _Host,
+        *,
+        interval: float = SUPERVISION_SECONDS,
+        timers: Timers = TIMERS,
+    ) -> None:
+        """Supervise the Tasks this Host's operations serve, woken by its Host's timer."""
         self.operations = operations
         self.store = IncidentStore(operations.workspace_session.workspace)
         self.interval = interval
         self._stop = Event()
+        self._wake = Event()
+        # Each pass is woken by the Host's one timer, armed `interval` after the last on the
+        # clock owner's time: a Host whose dispatcher clock is held (an as-of Host) is still
+        # supervised every `interval` that passes.
+        self._timer = timers.job("guanyin-supervisor", utc_now, self._wake.set)
         self._thread: Thread | None = None
         self._lock = Lock()
 
@@ -110,20 +124,31 @@ class TaskSupervisor:
         self._stop.clear()
         self._thread = Thread(target=self._run, name="guanyin-supervisor", daemon=True)
         self._thread.start()
+        self._arm()
 
     def stop(self) -> None:
         """Stop supervising and join the thread."""
         self._stop.set()
+        self._timer.arm(None)
+        self._wake.set()
         thread, self._thread = self._thread, None
         if thread is not None:
             thread.join(timeout=max(self.interval, 1.0) * 2)
 
+    def _arm(self) -> None:
+        self._timer.arm(utc_now() + timedelta(seconds=self.interval))
+
     def _run(self) -> None:
-        while not self._stop.wait(self.interval):
-            try:
-                self.supervise_once()
-            except Exception:
+        while True:
+            # The timer at the next pass, or `stop`; an hour with neither blocks again.
+            if not self._wake.wait(CEILING):
                 continue
+            self._wake.clear()
+            if self._stop.is_set():
+                return
+            with suppress(Exception):  # a failed pass is tried again at the next
+                self.supervise_once()
+            self._arm()
 
     # ------------------------------------------------------------------ the rules' pass
 

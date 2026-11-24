@@ -13,6 +13,7 @@ from datetime import date, timedelta
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.engine import (
     run_portfolio_walk_forward,
 )
@@ -37,7 +38,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAttributionProjection,
     RiskDecompositionRecipe,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LISTINGS = 120
 RECIPE = TrancheBookRecipe.create(top_k=35, tranches=3, exit_rank=70)

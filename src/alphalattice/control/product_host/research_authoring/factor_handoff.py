@@ -44,6 +44,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 from alphalattice.control.research_program.authoring.document import load_authoring_document
 from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
 from alphalattice.control.task_control.child import ChildInterrupted, ChildRefused, run_in_child
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.factor_research.experiments.development_evidence import (
     FactorDevelopmentCurationReader,
     FactorDevelopmentReceipt,
@@ -67,7 +68,6 @@ from alphalattice.investment.alpha_research.experiments.development_execution im
     AlphaExperimentExecutor,
 )
 from alphalattice.investment.alpha_research.experiments.policies import load_alpha_split_policy
-from alphalattice.kernel.data_layer import history
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

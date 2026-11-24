@@ -19,6 +19,8 @@ from uuid import UUID
 import pytest
 from threadpoolctl import threadpool_limits
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -30,6 +32,8 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
     read_factor_bundle,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer import inputs as kept_inputs
 from alphalattice.interface.local_application.cli_contract import error_projection
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
@@ -37,10 +41,6 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer import inputs as kept_inputs
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from tests._support.alternative_evidence_desk_fixtures import (

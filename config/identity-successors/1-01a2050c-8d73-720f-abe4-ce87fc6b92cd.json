@@ -1,0 +1,153 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "e9ebd41a1d3e3dd2ff3f41e9265b4cd6885739a18f9342590ef02d966139705b",
+   "successor": "d069a0713026e856d8e7e0bb67a72a7372fdc081d3ca0d3504206838ffda3c46",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "62ec48d304bff6a5d11049e7f31b1fb3d4a3954f7f0711d281f451667b6155aa",
+   "successor": "ee71741ebcdf075a117bbd398e8a6fceb71839a5281a35bf236bf6ee34166c38",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "3cea082270da6c9d682f87bb4ea889d75b5d8652d7759f8beb3558082bb65e0b",
+   "successor": "be1283d831d679f654fadf60bfa2091c917804171b5a9b7e59e8547a4caad689",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "1385808bbbbd5700caf67d00c0c2f1b21624d2d4bd99b89fddc8fd025bb18f48",
+   "successor": "ef5f81176bd19a48e27814f3e9242bcfb916b7bf5ed792de0bd033f596a15c66",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "d3df967f7d7a7c35fc31912afd35df22878b241d1fd57b33ac26a518714d385e",
+   "successor": "35f2df388f72db0f54677339ead9deddbe1c2445d5677c453f4a74359bc0f712",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "9307b8a1dad7603f37ffa1d458e780120c7cccec755438df5c1d3c67b3a6f7f1",
+   "successor": "3f87e6cde6c900e97da5841665a2ca85e160bfb83e433f8ec0cf65a4eeb85ad7",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "49e33a68c9be130c9df00722564343bbad293006020f63ae2cd996fdeea2dc22",
+   "successor": "63512311ea4fe78e9fd5569038841cf98c6e6a5a8a1c62b0b8ab6ae3ac7933c3",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "ffba5f31ce947345ff06a7e85e8d59e148b24b5a41f7f9c9f3fd85e2afdb3d8b",
+   "successor": "c862370fd0d832d846f8070110d6e38f16620870983ed57f8f628d801fe4562a",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "e44b40e5b8ddea0138b59040f30f2cfc6987e33b426fea1f38c2b89a7a32acb1",
+   "successor": "c035b9c057d92acd628aeeea739ec054a6f822103fc8654036288500d44a9097",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "bcbf43e4c192543bce63c0e768c971be96cf6c363f418d5ed81fab92ed87e776",
+   "successor": "db43339edaff1b1a8d3eaf47a90cc19133773df44e3b64caa834226545a635f3",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "06b66910798ee97785b7b09d8cecfee8013ea8cfc2504684d6290bc7530472b3",
+   "successor": "8aa10dcdcbbc9106189f235d4668da5b1434448a0472779af5cfc1ee22145158",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "3fa90e2fe732cfb53a712c253477bebccd6d4a550c6182d4382466b477b785d3",
+   "successor": "30eba65f76ed9591adf4df1a4d4ffd67a4ecd9d4f1324e6680d72e0db5c77269",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "54e25e60d73a1de6ce2d8fc39d0811a5794b51d4bb094b68967c5b9772bc623d",
+   "successor": "f97ab0698730d8b4629ed2bab0cfe6e10bfea0f718846e7b2732540f82c551c2",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "b28150ba52136ecaf17de5de0829c248db98a7a5149c6e3a050a8b9098c3c190",
+   "successor": "98472e265dd544a1f6e66a2d2aa8434757bb503297037c545a3caa403f33f91b",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "245d86ca0720630aa3326d885bd3ea6b13c39183191e1492d2eb17744a768c34",
+   "successor": "981b17cc2517aafdaf541ff2ad54967ab006adfaede42dfdc4b7c5184aa0dc8b",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "93326202f6fc46cc8c2441ea8e373532befae4c04eede907100339cd225f01fb",
+   "successor": "a29c83fcbedcfed2171f3d4133992baa4d895aaf49b71f600a6cdaa1f7a44018",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "93326202f6fc46cc8c2441ea8e373532befae4c04eede907100339cd225f01fb",
+   "successor": "a29c83fcbedcfed2171f3d4133992baa4d895aaf49b71f600a6cdaa1f7a44018",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "6ecbcec8b7d852d1e7b50e88197d9507bcf7007642bb3230ab9545355075da0f",
+   "successor": "f549957b58dcd8567105014174897f8d10680407ac70d8068d29b4d5ba2d5d07",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "ef7b8fac9a88ac920e4be76b6aa100e5eeb0b0c2ad115675afbd9e8b03cd614d",
+   "successor": "8301bd01b4eb623fe73a7d15c95e0ed61c0945ea711df71d9adbf876ff2021da",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "076b5bd9676ab8fc94e124872357e24f939bde8afb71087ab7167fe528db6744",
+   "successor": "94712aa40d18e69c9b8f72ede749c89333eae04caf619001f59bf3bcfaaa5952",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "8b7b518df953d5890f346f9302d6cc99a6fed857d6b12438a197ff42f3662ebc",
+   "successor": "94e126c8d81c0e56cafcd4b03352076571c6eba5d4aaa7125653d6a0e5f11baf",
+   "change": "The Host opens each workspace database once while it serves",
+   "reason": "Each data root's database now opens once per process through one storage owner; the development replay reads ALL EQUAL over 185,251 records at this head, and develop's merges only joined import lists, so the moved roles change code fingerprints only."
+  }
+ ]
+}

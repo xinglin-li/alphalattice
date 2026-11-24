@@ -39,6 +39,8 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     BoundAlphaPredictionInput,
     BoundAlphaTrainingInput,
 )
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.research_foundation.contracts import ResearchFoundationBinding
 from alphalattice.investment.alpha_research.candidates.contracts import (
     AlphaExperimentBatch,
@@ -76,8 +78,6 @@ from alphalattice.investment.alpha_research.scores.refit import (
     fit_and_assess_current_model,
     fit_and_assess_current_regularized_linear,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alpha_research.fixtures import _ArrayWorkspace as _ArrayWorkspace
 from tests.alpha_research.fixtures import _bound_fold as _bound_fold
 from tests.alpha_research.fixtures import _current_refit_fixture as _current_refit_fixture

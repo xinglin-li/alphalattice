@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -16,6 +15,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
@@ -31,7 +31,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
-from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.identity import identity_sha256
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -1137,7 +1137,7 @@ def panel_content_identity(
     availability: Sequence[Mapping[str, object]],
 ) -> PanelContentIdentity:
     """Hash ordered Panel chunks and availability into content identity."""
-    digest = hashlib.sha256()
+    digest = identity_sha256()
     digest.update(
         json.dumps(
             {

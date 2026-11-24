@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import errno
-import hashlib
 import json
 import math
 import os
@@ -26,6 +25,19 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.persistence import replace_with_retry
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+)
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
+    NEW_BUILD_RECIPE,
+    RECIPE_MINILM_CPU,
+    SUPPORTED_RECIPES,
+    setup_recipe,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -123,19 +135,8 @@ from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    NEW_BUILD_RECIPE,
-    RECIPE_MINILM_CPU,
-    SUPPORTED_RECIPES,
-    setup_recipe,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import replace_with_retry
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-)
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -343,7 +344,7 @@ def _publish(
             raise ValueError("evidence_review.immutable_package_conflict")
         return EvidenceReviewArtifactBinding(
             relative_path=path.relative_to(workspace).as_posix(),
-            file_sha256=hashlib.sha256(payload).hexdigest(),
+            file_sha256=integrity_sha256(payload).hexdigest(),
             content_hash=identity,
         )
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", delete=False) as handle:
@@ -358,7 +359,7 @@ def _publish(
             temporary.unlink()
     return EvidenceReviewArtifactBinding(
         relative_path=path.relative_to(workspace).as_posix(),
-        file_sha256=hashlib.sha256(payload).hexdigest(),
+        file_sha256=integrity_sha256(payload).hexdigest(),
         content_hash=identity,
     )
 
@@ -677,7 +678,7 @@ class _Setup:
         session: WorkspaceApplicationSession,
         *,
         official_source: OfficialSourceAdmission | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         """Read the workspace, its research input, universe and recipe, and the model profile."""
         workspace = arguments.workspace.resolve()
@@ -1050,7 +1051,7 @@ def run_setup(
     session: WorkspaceApplicationSession,
     *,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
 ) -> dict[str, object]:
     """Run the setup on a session the caller holds: its preflight answer or its installation."""
     setup, held = (
@@ -1491,7 +1492,7 @@ def _acquire_sec_sources(
     *,
     recipe: str,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
     cutoff: datetime | None = None,
     accession_scopes: dict[str, frozenset[str]] | None = None,
     cancelled: Callable[[], bool] | None = None,
@@ -1970,7 +1971,7 @@ def main(argv: list[str] | None = None) -> int:
         result = materialize(arguments)
     except Exception as error:
         arguments.legacy_indent = None
-        result = setup_refusal(arguments, error, now=datetime.now(UTC), script=True)
+        result = setup_refusal(arguments, error, now=utc_now(), script=True)
     return emit_owner(arguments, result)
 
 

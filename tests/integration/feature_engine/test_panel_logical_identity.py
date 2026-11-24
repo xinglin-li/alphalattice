@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -18,7 +19,6 @@ from alphalattice.foundation.feature_engine.panels.logical_identity import (
     PanelLogicalArtifactStore,
     PanelLogicalIdentityPublisher,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")

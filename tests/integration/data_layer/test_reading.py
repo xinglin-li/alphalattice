@@ -18,19 +18,88 @@ from unittest.mock import patch
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, history, reading, return_series
-from alphalattice.kernel.data_layer import log as log_module
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog, uuid7
-from alphalattice.kernel.data_layer.project import lineage, recipe_key
-from alphalattice.kernel.data_layer.reading import compare, reading_session
-from alphalattice.kernel.data_layer.store import StorePort, as_columns, stage
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import (
+    create_data_root,
+    history,
+    market_health,
+    reading,
+    return_series,
+)
+from alphalattice.foundation.data_layer import log as log_module
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog, uuid7
+from alphalattice.foundation.data_layer.project import lineage, recipe_key
+from alphalattice.foundation.data_layer.reading import compare, reading_session
+from alphalattice.foundation.data_layer.store import StorePort, as_columns, stage
 from tests.integration.data_layer import test_project as project_fixture
 from tests.integration.data_layer.analytics_view_values import EXPECTED
 from tests.integration.data_layer.test_project import AGENT, T0, _aftermath, _define, _research
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/reading.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/reading.py"
+
+
+@pytest.mark.proves("data_layer.daily_market_health_counts_catalog_failures")
+@pytest.mark.parametrize(
+    ("bars", "actions", "expected"),
+    [
+        pytest.param([("l1", 0)], ["split"], (0, 0, 0, 0, 0), id="fresh"),
+        pytest.param([("l1", -1)], [], (1, 0, 0, 0, 0), id="stale"),
+        pytest.param([(None, 0)], [], (0, 1, 0, 0, 0), id="null-key"),
+        pytest.param([("l1", 0), ("l1", 0)], [], (0, 0, 1, 0, 0), id="duplicate-key"),
+        pytest.param([("l1", 0)], ["UNKNOWN"], (0, 0, 0, 1, 0), id="invalid-value"),
+        pytest.param([("orphan", 0)], [], (0, 0, 0, 0, 1), id="missing-listing"),
+    ],
+)
+def test_daily_market_health_counts_the_named_catalog_failures(
+    monkeypatch, bars, actions, expected
+):
+    """The Daily projection distinguishes five bounded checks on generated world rows."""
+    import duckdb
+
+    day = date(2026, 8, 3)
+    connection = duckdb.connect(config={"threads": 1})
+    reader = reading.CatalogReader(connection)
+    monkeypatch.setattr(market_health, "catalog_projection", reader.projection)
+    try:
+        connection.execute("ATTACH ':memory:' AS lake").complete()
+        connection.execute("CREATE SCHEMA lake.world").complete()
+        connection.execute(
+            "CREATE TABLE lake.world.raw_bar "
+            "(provider_id VARCHAR, listing_id VARCHAR, session_date DATE, version_id VARCHAR)"
+        ).complete()
+        connection.execute(
+            "CREATE VIEW raw_bar_latest AS SELECT * FROM lake.world.raw_bar"
+        ).complete()
+        connection.execute(
+            "CREATE TABLE lake.world.listing AS SELECT 'l1' AS listing_id"
+        ).complete()
+        connection.execute(
+            "CREATE TABLE lake.world.corporate_action (effective_date DATE, kind VARCHAR)"
+        ).complete()
+        for listing, offset in bars:
+            connection.execute(
+                "INSERT INTO lake.world.raw_bar VALUES ('source', ?, ?, 'v1')",
+                (listing, day + timedelta(days=offset)),
+            ).complete()
+        for action in actions:
+            connection.execute(
+                "INSERT INTO lake.world.corporate_action VALUES (?, ?)", (day, action)
+            ).complete()
+        results = market_health.market_health(day)
+    finally:
+        reader.close()
+    assert tuple(row["id"] for row in results) == (
+        "source_freshness",
+        "not_null",
+        "unique",
+        "accepted_values",
+        "relationships",
+    )
+    assert tuple(row["count"] for row in results) == expected
+    assert tuple(row["status"] for row in results) == tuple(
+        "PASS" if count == 0 else "FAIL" for count in expected
+    )
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +114,7 @@ def analytics_log(tmp_path_factory):
         return str(uuid.UUID(int=next(minted)))
 
     with (
-        patch.object(log_module, "time", SimpleNamespace(time_ns=lambda: T0 * 1000)),
+        patch.object(log_module, "wall_time_ns", lambda: T0 * 1000),
         patch.object(log_module, "uuid", ids),
         patch.object(project_fixture, "uuid", ids),
         patch.object(project_fixture, "uuid7", uuid7),

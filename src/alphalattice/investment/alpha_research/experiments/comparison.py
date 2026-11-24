@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from hashlib import sha256
 from typing import Any
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 from .development_evidence import AlphaDevelopmentVerifiedGraph
@@ -225,7 +225,7 @@ def _availability_hash(available: Any) -> str:
     rows or making a saved-evidence readback proportional to JSON serialization.
     """
 
-    return sha256(available.astype("uint8", copy=False).tobytes(order="C")).hexdigest()
+    return identity_sha256(available.astype("uint8", copy=False).tobytes(order="C")).hexdigest()
 
 
 def _target_values(binding: Any) -> dict[str, object]:

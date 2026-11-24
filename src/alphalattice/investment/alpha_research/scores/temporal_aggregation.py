@@ -74,7 +74,6 @@ evidence; the executable selector and numerical replay runtime were retired.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date
 from typing import Final, Literal, Self
 
@@ -86,11 +85,12 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     AnchoredInstantPolicy,
     SessionAnchor,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_feature_availability_policy,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.research_authoring.contracts import MarketPhase
 
 type FloatArray = npt.NDArray[np.float64]
@@ -327,7 +327,7 @@ class AlphaScoreAggregationSurface(_Contract):
 
 def score_value_hash(values: FloatArray) -> str:
     """Byte identity of a score vector, non-finite values included."""
-    return hashlib.sha256(np.ascontiguousarray(values, dtype=np.float64).tobytes()).hexdigest()
+    return identity_sha256(np.ascontiguousarray(values, dtype=np.float64).tobytes()).hexdigest()
 
 
 def row_axis_hash(row_sessions: tuple[date, ...], row_listing_ids: tuple[str, ...]) -> str:

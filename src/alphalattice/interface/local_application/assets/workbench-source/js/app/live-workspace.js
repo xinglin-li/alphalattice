@@ -924,6 +924,29 @@ const LiveWorkspace = (() => {
     const asOfWords=i.data_through && i.panel_through && i.data_through!==i.panel_through ? t('Features through {f}; market data through {d}',{f:i.panel_through,d:i.data_through}) : t('Market data and Features through this session');
     return measureStrip(html`${figureTile(t('As of'),asOf || '',b.task_id ? {action:'workspace-task',value:b.task_id} : null,asOfWords)}${figureTile(t('Listings'),listings==null ? '' : count(listings),{action:'facts-open',value:membership.id},t('The listings the data owner maintains; the initial cohort is backfilled, not point-in-time membership.'))}${store && store.budget?.research_session_count == null ? '' : figureTile(t('Market sessions'),pending(sessions),{action:'facts-open',value:membership.id},b.membership?.bootstrap?.history_start ? t('Market sessions from {d}',{d:b.membership.bootstrap.history_start}) : '')}${membership.template}`, t('Data figures'), 'data-figures');
   }
+  const HEALTH_CHECK = {
+    source_freshness: 'data.health.source_freshness',
+    not_null: 'data.health.not_null',
+    unique: 'data.health.unique',
+    accepted_values: 'data.health.accepted_values',
+    relationships: 'data.health.relationships'
+  };
+  const HEALTH_STATUS = {PASS:'data.health.passed',FAIL:'Failed',UNAVAILABLE:'Unavailable'};
+  function dataHealth(receipt) {
+    if (!receipt?.checks?.length) return '';
+    const rows=receipt.checks.map(row=>tr([
+      t(HEALTH_CHECK[row.id] || row.id),
+      html`<code>${row.id}</code>`,
+      t(HEALTH_STATUS[row.status] || row.status),
+      row.count==null ? '—' : count(row.count)
+    ]));
+    return panel(t('data.health.title'),receipt.target_session || '',table([
+      {label:t('Check'),type:'text',absorb:true},
+      {label:t('data.health.check_id'),type:'text'},
+      {label:t('Status'),type:'text'},
+      {label:t('data.health.failure_count'),type:'num'}
+    ],rows,'',{report:true,countLine:false,classes:'compact'}),'','data-box="table"');
+  }
   /* What the last update did to each listing (N6; the user, 2026-09-24: the figure, its legend and
    * the update were one update's facts in three places): the maintenance runner's own counts, said
    * on the completed update itself under its row -- a count of none is not said; the (i) says whose
@@ -985,7 +1008,7 @@ const LiveWorkspace = (() => {
     const blocker=between ? banner(t('The workspace is between states'),t('The data owner asks for a new update plan before anything else; previewing one names the pending transition.'),'warning',primary('Preview update','preview','update')) : b.current_input_failure ? notRead(t('Current inputs not readable'),b.current_input_failure,t('The working store\'s current inputs could not be read; the update owner names the cause. Nothing is inferred from it.')) : '';
     const membership=membershipFacts(b);
     const updates=!b.task_id ? emptyState(t('No update recorded yet'),between ? '' : primary('Preview update','preview','update')) : v ? updateRows(b,v,state) : notRead(t('Task not read'),state.viewError,t('The update owner names a Task, but its recovery view was not read. Tasks and the activity feed are unaffected; refresh to ask again.'));
-    return html`${head}${notices}${dataFigures(b,membership)}${blocker}${removedMemberTails(b)}${updates}${issuesSection()}${detail({readback:b,recovery:v},'Exact identity, scope and receipt')}`;
+    return html`${head}${notices}${dataFigures(b,membership)}${blocker}${removedMemberTails(b)}${updates}${dataHealth(b.daily_health)}${issuesSection()}${detail({readback:b,recovery:v},'Exact identity, scope and receipt')}`;
   }
   /* Data issues are Data maintenance's (N5 of the open-issues plan; the user, 2026-09-24): the owner's cases
    * as the lobby's groups -- a Task waiting for the reader before them, the recorded ones folded -- where it
@@ -1240,7 +1263,7 @@ const LiveWorkspace = (() => {
     // a restore is the client's own command onto a new directory, with no Host: named in its code dialog, never run here
     const restore=[t('Restore'),html`${t('A command of the client, onto a new or empty directory, with no Host')}${codeRef(t('Restore command'),command,'text')}`];
     // MA2, MA4: the generations are a table's box; a warning or a refusal stands on the ground above it
-    return html`${refused}${refusedGenerations}${failed}${panel(t('Backups'),caption,html`${kv([[t('Backup root'),locatorCell(bk.backup_root)],[t('Last automatic backup'),last],restore],'kv-columns')}${list}${notHeld}${detail(bk,'Exact backup listing')}`,make,gens.length ? 'data-storage="backups" data-box="table"' : 'data-storage="backups"')}`;
+    return html`${refused}${refusedGenerations}${failed}${panel(t('Backups'),caption,html`${kv([[t('Backup root'),locatorCell(bk.backup_root)],[t('storage.backup_bytes'),bytesText(bk.bytes)],[t('Last automatic backup'),last],restore],'kv-columns')}${list}${notHeld}${detail(bk,'Exact backup listing')}`,make,gens.length ? 'data-storage="backups" data-box="table"' : 'data-storage="backups"')}`;
   }
   const turnBackups=(way)=>{S.backupPage=Math.max(0,(S.backupPage || 0)+(way==='next' ? 1 : -1));patchMain();};
   function storage(b) {

@@ -1,0 +1,289 @@
+"""The environment a result was computed in: provenance beside it, never its identity.
+
+The interpreter, the platform and the installed library versions are read here (LAWS.md ID6).
+A result records them beside itself and no identity folds them, so adding, removing or
+upgrading a dependency moves no identity; whether it moves a number is answered by U0 on both
+corpora, and the release locks the environment. A cache whose content they decide (an
+embedding index) keeps them as its rebuild key.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import os
+import platform
+import sys
+import threading
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager, suppress
+from functools import cache
+from typing import Any
+
+from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.egress import (
+    OFFLINE_SWITCH,
+    held_offline,
+    offline,
+    running_held_offline,
+)
+from alphalattice.kernel.resources import cpu_width, current_resource_lease
+
+FILE_TRUST_SWITCH = "ALPHALATTICE_FILE_TRUST"
+"""The operator's file-trust switch: ``=0`` hashes every file on every read; unset, a file's digest
+is trusted until its stamp changes."""
+
+THREAD_SHARE = "OMP_NUM_THREADS"
+"""The operator's thread share for each process: OpenMP's variable, which Arrow reads too."""
+
+
+def thread_share(environment: Mapping[str, str] | None = None) -> int | None:
+    """The threads the operator gives each process (`OMP_NUM_THREADS`), or None when it names none.
+
+    A machine running many processes at once, as a test node does, sets it so that no process
+    sizes a pool to every core. The product's DuckDB instances take it, as Arrow's CPU pool does,
+    and a budget applied later never widens it (`reader_threads.apply_reader_threads`).
+
+    Args:
+        environment: The environment to read, the process's own when omitted.
+
+    Returns:
+        A positive count, or None when the variable is unset or not one positive integer.
+    """
+    if environment is None:
+        return process_config().settings.cpu_cores
+    value = environment.get(THREAD_SHARE, "").strip()
+    return int(value) if value.isdigit() and int(value) > 0 else None
+
+
+def duckdb_thread_config(environment: Mapping[str, str] | None = None) -> dict[str, int]:
+    """A DuckDB instance's pools under the operator's share; empty when it names none.
+
+    Both pools: its worker threads, and its async I/O pool, which DuckDB sizes to four times the
+    cores in every instance (`async_threads`; 163 threads for one default instance on 32 cores,
+    5 under a share of one, 11-19).
+    """
+    share = thread_share(environment)
+    return {"threads": share, "async_threads": share} if share else {}
+
+
+def file_trust(environment: Mapping[str, str] | None = None) -> bool:
+    """Whether a file's digest is trusted until its stamp changes: the one reader of
+    `ALPHALATTICE_FILE_TRUST`. Only ``0`` turns trust off, so every read hashes again."""
+    if environment is None:
+        return process_config().get(FILE_TRUST_SWITCH) != "0"
+    return environment.get(FILE_TRUST_SWITCH) != "0"
+
+
+def set_duckdb_pool_width(connection: Any, width: int) -> None:
+    """Resize both pools of an existing instance through an owned cursor."""
+    connection.execute("SET threads TO ?", (width,)).complete()
+    connection.execute("SET async_threads TO ?", (width,)).complete()
+
+
+def package_versions(names: Iterable[str]) -> tuple[tuple[str, str], ...]:
+    """The installed version of each named distribution, by name; one not installed says so.
+
+    Each distinct name is looked up once a process: the lookup scans the installed
+    distributions' metadata, and a running process keeps the versions it imported.
+    """
+    return tuple((name, _installed_version(name)) for name in sorted(set(names)))
+
+
+@cache
+def _installed_version(name: str) -> str:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "absent"
+
+
+def recorded_environment(packages: Iterable[str] = ()) -> dict[str, object]:
+    """The interpreter, the platform and the named packages, as a result records them."""
+    return {
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "architecture": platform.machine(),
+        "byte_order": sys.byteorder,
+        "packages": dict(package_versions(packages)),
+    }
+
+
+def numerical_thread_counts() -> tuple[tuple[str, int], ...]:
+    """Each loaded numerical library's thread count, by its API (a BLAS, OpenMP), as recorded.
+
+    A sum a BLAS splits by thread count can move a number's last bits, so a result keeps the
+    counts it ran at beside it (LAWS PA3, V68); the most any library of one API runs at.
+
+    Returns:
+        ``(api, threads)`` pairs, in API order; empty when no such library is loaded.
+    """
+    found: dict[str, int] = {}
+    for library in numerical_thread_pools():
+        api, threads = library.get("internal_api"), library.get("num_threads")
+        if isinstance(api, str) and type(threads) is int:
+            found[api] = max(found.get(api, 0), threads)
+    return tuple(sorted(found.items()))
+
+
+_THREAD_POOLS_LOCK = threading.Lock()
+_THREAD_POOLS: tuple[tuple[int, ...], Any] | None = None
+
+
+@cache
+def _module_lister() -> Any:
+    """kernel32's module enumeration with its declared signature (pointer-sized handles)."""
+    if sys.platform != "win32":
+        raise OSError("Windows module enumeration is unavailable")
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.GetCurrentProcess.argtypes = []
+    lister = kernel.K32EnumProcessModulesEx
+    lister.restype = wintypes.BOOL
+    lister.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HMODULE),
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.DWORD,
+    ]
+    return kernel
+
+
+def _loaded_module_handles() -> tuple[int, ...] | None:
+    """Every module the process has loaded, in one Windows call; None where it is not offered."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = _module_lister()
+    process = kernel.GetCurrentProcess()
+    width = ctypes.sizeof(wintypes.HMODULE)
+    count = 1024
+    while True:
+        handles = (wintypes.HMODULE * count)()
+        needed = wintypes.DWORD()
+        if not kernel.K32EnumProcessModulesEx(
+            process, handles, count * width, ctypes.byref(needed), 3
+        ):
+            return None
+        if needed.value <= count * width:
+            return tuple(int(handle or 0) for handle in handles[: needed.value // width])
+        count = needed.value // width + 64
+
+
+def _thread_pool_controller() -> Any:
+    """The threadpoolctl view of the loaded numerical libraries, reused while no module loads.
+
+    Building the view asks every loaded module for its path, about 10 ms on Windows, and a
+    model scope builds it twice for each fit or prediction. On Windows, reuse requires a
+    matching module snapshot; a change during discovery is retried. If snapshots stay
+    unstable or unavailable, discovery refuses. Elsewhere the view is built each time.
+    """
+    global _THREAD_POOLS
+    from threadpoolctl import ThreadpoolController  # type: ignore[import-untyped]  # lazy: quant.
+
+    with _THREAD_POOLS_LOCK:
+        for attempt in range(16):
+            loaded = _loaded_module_handles()
+            if loaded is None and os.name == "nt":
+                _THREAD_POOLS = None
+                if attempt == 15:
+                    raise RuntimeError("numerical thread-pool module snapshot unavailable")
+                continue
+            if loaded is not None and _THREAD_POOLS is not None and _THREAD_POOLS[0] == loaded:
+                return _THREAD_POOLS[1]
+            try:
+                controller = ThreadpoolController()
+            except OSError as error:
+                # A DLL unloaded between threadpoolctl's module list and its path lookup.
+                # Retry the complete discovery, never use a partial controller.
+                _THREAD_POOLS = None
+                if str(error) != "GetModuleFileNameEx failed" or attempt == 15:
+                    raise
+                continue
+            after = _loaded_module_handles() if loaded is not None else None
+            if loaded is not None and loaded != after:
+                _THREAD_POOLS = None
+                if attempt == 15:
+                    raise RuntimeError("numerical thread-pool modules changed during discovery")
+                continue
+            _THREAD_POOLS = (loaded, controller) if loaded is not None else None
+            return controller
+    raise AssertionError("unreachable thread-pool discovery")
+
+
+def numerical_thread_pools() -> list[dict[str, Any]]:
+    """Each loaded numerical library, its API and live threads, as ``threadpool_info()`` lists."""
+    return list(_thread_pool_controller().info())
+
+
+_LIMITS: list[int] = []
+_UNLIMITED: list[Any] = []
+_LIMITS_LOCK = threading.Lock()
+
+
+def _load_limited_libraries(*, preload_models: bool) -> None:
+    """Load the numerical libraries a limit holds before it is set: one first loaded inside a
+    limited block would start at its own default threads, which the limit never reaches."""
+    import scipy.linalg  # noqa: F401  # lazy: SciPy's BLAS
+
+    if not preload_models:
+        return
+    import sklearn  # noqa: F401  # lazy: the OpenMP runtime scikit-learn's estimators use
+
+    with suppress(ImportError, OSError):  # LightGBM needs its OpenMP runtime to load at all
+        import lightgbm  # noqa: F401  # lazy: LightGBM's own OpenMP runtime
+
+
+@contextmanager
+def numerical_thread_limit(limits: int, *, preload_models: bool = True) -> Iterator[None]:
+    """Limit the numerical libraries' threads in the block, as ``threadpool_limits`` does.
+
+    The libraries it holds are loaded first, so one an adapter imports at its first fit runs
+    at the limit too. The limit is the process's, so the scopes of Tasks running at once share
+    it: the libraries run at the fewest threads any open scope asks for, and only the last
+    scope to close restores the counts from before the first, so a scope closing early leaves
+    no other unlimited.
+    """
+    if current_resource_lease() is not None:
+        limits = cpu_width(limits)
+    _load_limited_libraries(preload_models=preload_models)
+    with _LIMITS_LOCK:
+        if not _LIMITS:
+            _UNLIMITED.append(_thread_pool_controller().limit(limits=limits))
+        elif limits < min(_LIMITS):
+            _thread_pool_controller().limit(limits=limits)
+        _LIMITS.append(limits)
+    try:
+        yield
+    finally:
+        with _LIMITS_LOCK:
+            _LIMITS.remove(limits)
+            if not _LIMITS:
+                _UNLIMITED.pop().restore_original_limits()
+            elif limits < min(_LIMITS):
+                _thread_pool_controller().limit(limits=min(_LIMITS))
+
+
+__all__ = [
+    "FILE_TRUST_SWITCH",
+    "OFFLINE_SWITCH",
+    "THREAD_SHARE",
+    "duckdb_thread_config",
+    "file_trust",
+    "held_offline",
+    "numerical_thread_counts",
+    "numerical_thread_limit",
+    "numerical_thread_pools",
+    "offline",
+    "package_versions",
+    "recorded_environment",
+    "running_held_offline",
+    "set_duckdb_pool_width",
+    "thread_share",
+]

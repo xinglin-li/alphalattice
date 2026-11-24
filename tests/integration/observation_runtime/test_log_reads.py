@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationDraft,
@@ -28,8 +29,7 @@ from alphalattice.control.product_host.composition.workspace_activity import (
     trace_record,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 
 TEST_SOURCE = "src/alphalattice/control/observation_runtime/log_reads.py"
 NOW = datetime(2026, 8, 8, 12, tzinfo=UTC)

@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.foundation.factor_research.evaluation.oos_evidence import (
     FactorEvidenceClassification,
 )
@@ -55,7 +56,6 @@ from alphalattice.foundation.factor_research.research_loop.decisions import (
     seal_factor_research_review_decision,
     verify_factor_research_curation,
 )
-from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from tests.factor_research_pipeline_correctness.case_program import (
     CASE_REVIEW_BINDING_HASH,

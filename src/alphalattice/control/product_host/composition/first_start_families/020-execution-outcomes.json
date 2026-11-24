@@ -1,4 +1,11 @@
 {
  "factory": ":execution_outcomes",
- "mode": "direct"
+ "mode": "direct",
+ "name": "execution-outcomes",
+ "trust_paths": [
+  "*/execution-outcomes/*"
+ ],
+ "shared_inputs": [
+  "*/execution-outcomes/*/chunks/*.parquet"
+ ]
 }

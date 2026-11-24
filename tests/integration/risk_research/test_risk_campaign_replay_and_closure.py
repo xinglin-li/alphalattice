@@ -153,6 +153,7 @@ def _publish_feature_lineage(
 
     import json
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
         PanelClosureArtifactStore,
@@ -167,7 +168,6 @@ def _publish_feature_lineage(
         FeatureClosureLedger,
         identified,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     listing_ids = tuple(sorted(sector_by_listing_id))
     entries = tuple(

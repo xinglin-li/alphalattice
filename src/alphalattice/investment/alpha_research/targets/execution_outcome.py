@@ -13,19 +13,19 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.cross_section import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
+    SECTOR_HISTORY_BACKFILLED,
+    SectorHistoryTreatment,
+)
+from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
     MIN_COVERAGE,
     MIN_SECTOR_SAMPLE,
     WINSOR_MULTIPLIER,
     median_mad_winsor,
 )
-from alphalattice.kernel.quant.sector_history import sector_positions
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import (
-    SECTOR_HISTORY_BACKFILLED,
-    SectorHistoryTreatment,
-)
+from alphalattice.capabilities.quant.sector_history import sector_positions
 
 from .catalog import AlphaTargetCatalog, build_installed_alpha_target_catalog
 from .sector_runs import below_sector_sample, demean_by_run

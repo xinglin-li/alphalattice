@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -13,27 +12,26 @@ from alphalattice.interface.local_application.client import (
     workspace_connection_key,
 )
 from alphalattice.interface.local_application.web import LocalWebApplication
+from alphalattice.kernel.clock import utc_now
 
 
 def publish_client_connection(
     connection: LocalResearchConnection, *, serving_host: dict[str, object] | None = None
 ) -> None:
-    """Atomically publish an exact local connection after checking workspace ownership.
+    """Atomically publish an exact local connection beside the data root's lock.
+
+    The publishing Host holds its data root's lock, so no other Host serves on that root: a
+    record already under this workspace's key is a stopped Host's, whichever workspace identity
+    it named (a workspace recreated at the same path), and this publication retires it.
 
     Args:
         connection: Explicit live service connection metadata.
         serving_host: Optional observer provenance, captured before discovery is published.
 
     Raises:
-        LocalResearchClientError: Existing connection belongs to another workspace.
         OSError: Temporary write, fsync or atomic replacement fails; temporary cleanup is attempted.
     """
-    root = Path(connection.workspace)
-    path = connection.path(root)
-    if path.exists():
-        prior = LocalResearchConnection.read(root)
-        if prior.workspace_id != connection.workspace_id:
-            raise LocalResearchClientError("local_client.connection_owner_mismatch")
+    path = connection.path(Path(connection.workspace))
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=path.parent, prefix=".client-", delete=False) as stream:
         temporary = Path(stream.name)
@@ -50,7 +48,7 @@ def publish_client_connection(
             serving_host.update(
                 instance=connection.instance,
                 pid=os.getpid(),
-                started_at=datetime.now(UTC).isoformat(),
+                started_at=utc_now().isoformat(),
             )
         temporary.replace(path)
     finally:

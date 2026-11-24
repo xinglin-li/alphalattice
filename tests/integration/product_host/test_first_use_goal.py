@@ -21,14 +21,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import alphalattice.interface.local_application.portfolio_research as research_requests
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     short_source_action,
     source_ways,
 )
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.composition.portfolio_research_operations import (
-    PortfolioResearchOperations,
-)
 from alphalattice.control.product_host.composition.research_update_automation import (
     first_update,
 )
@@ -41,6 +39,7 @@ from alphalattice.control.product_host.data_preparation.application import (
 )
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.network_access import NetworkAccess, network_access
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.cli_contract import (
     REQUEST_PROVENANCE,
     RequestProvenance,
@@ -51,8 +50,6 @@ from alphalattice.interface.local_application.goals import (
     FIRST_USE_HOURS,
     target_sessions,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel import spawn
 from tests._support.history_fixtures import native_first_use
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.node_runner import run_node
@@ -85,10 +82,15 @@ def _cli(
 ) -> tuple[int, dict[str, Any]]:
     """One agent session's command, as its CLI sends it; `traced`, under the caller's PASSED."""
     passed = {"TRACEPARENT": f"00-{PASSED[0]}-{PASSED[1]}-01"} if traced else {}
+    command = [sys.executable, str(SCRIPT)]
+    if os.environ.get("ALPHALATTICE_TEST_FIRST_USE_WHEEL") == "1":
+        cli = Path(sys.executable).with_name(
+            "alphalattice.exe" if os.name == "nt" else "alphalattice"
+        )
+        command = [str(cli)]
     result = spawn.run(
         [
-            sys.executable,
-            str(SCRIPT),
+            *command,
             "--workspace",
             str(live.workspace),
             "--view",
@@ -784,9 +786,14 @@ def test_a_first_use_delegates_only_its_steps_for_its_hours_and_is_never_revised
 
 
 def test_a_delegated_activation_runs_forward_without_the_history_review(
+    live: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Delegated activation also admits the date's update without requiring historical review."""
+    """Delegated activation admits its update and leaves direct-person approval to the person."""
+
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
 
     owner = SimpleNamespace(
         activations=SimpleNamespace(activate=lambda _task: {"status": "ACTIVATED"}),
@@ -805,6 +812,30 @@ def test_a_delegated_activation_runs_forward_without_the_history_review(
     finally:
         REQUEST_PROVENANCE.reset(scope)
     assert answer["status"] == "ACTIVATED" and answer["update"] == {"run": {"task_id": "u"}}
+
+    operations = live.operations
+    code = "strategy_activation.research_strategy_required"
+
+    def refuse_activation(_task: UUID) -> None:
+        raise ValueError(code)
+
+    monkeypatch.setattr(operations, "activations", SimpleNamespace(activate=refuse_activation))
+    scope = REQUEST_PROVENANCE.set(
+        RequestProvenance(goal_id=str(UUID(int=7)), delegation=f"first-use-goal:{UUID(int=7)}")
+    )
+    try:
+        delegated = operations._execute_observed(request, caller="EXTERNAL_AUTOMATION")
+    finally:
+        REQUEST_PROVENANCE.reset(scope)
+    assert delegated["status"] == "REFUSED" and delegated["failure_code"] == code
+    decisions = operations.goals.store.decisions.path
+    assert not decisions.exists()
+    direct = operations.execute(request, caller="HUMAN")
+    assert direct["status"] == "REFUSED" and direct["failure_code"] == code
+    with closing(sqlite3.connect(decisions)) as ledger:
+        assert ledger.execute(
+            "SELECT kind, operation, answer, consumed FROM decision"
+        ).fetchall() == [("activation", "STRATEGY_ACTIVATE", "approve", 1)]
 
 
 def test_an_activation_admits_the_first_uses_dated_update_in_the_same_act(tmp_path: Path) -> None:
@@ -929,6 +960,7 @@ def test_a_first_use_is_the_one_before_the_first_preparation(
 def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Past the Host rule's cap the first use's agent decides each case, recorded and shown; its
     last decision resumes the same stopped Task in place (OP4, OP19)."""
@@ -947,13 +979,27 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
     from tests._support import development_universe as universe
     from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 
-    # The development universe, three of whose members move with no event that explains them.
-    provider = universe.development_provider(moved=universe.MOVED)
+    # Keep the named cases and give Factor shared observations after the longest
+    # lookback and before the sealed holdout.
+    standard = replace(universe.STANDARD, minimum_history_calendar_years=5)
+    listings = universe.LISTINGS + tuple(
+        universe.Listing(f"DX{letter}", "SP500", sector)
+        for letter, sector in zip("ABCDEF", ("Technology", "Healthcare") * 3, strict=True)
+    )
+    sessions = universe.calendar_sessions(standard=standard)
+    provider = universe.DevelopmentProvider(
+        moved=("DXA", "DXB", "DXC"),
+        sessions=sessions,
+        listings=listings,
+        row_cap=(len(listings) + 1) * len(sessions),
+    )
     live = LocalPortfolioWebSession.from_workspace(
         tmp_path / "first-use", clock=lambda: OBSERVED_AT
     )
     live.data_provider = provider
-    live.data_source_loader = universe.source_loader
+    live.data_source_loader = lambda **context: universe.bootstrap(
+        context["observed_at"], listings=listings, standard=standard
+    )
 
     def send(document: dict[str, Any], session: str = SESSION) -> tuple[int, dict[str, Any]]:
         path = tmp_path / f"request-{len(list(tmp_path.glob('request-*')))}.json"
@@ -1047,14 +1093,21 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             (tmp_path / "data-bundle" / file["name"]).read_text("utf-8")
             for file in prepared["files"][1:]
         )
-        view = json.loads(material[material.index("{") :])
+        payload = material.split("Current data issue readback for this Task\n", 1)[1]
+        view = json.loads(
+            "\n".join(
+                line
+                for line in payload.splitlines()
+                if not line.startswith("The Task's data and issues (part ")
+            )
+        )
         assert view["delegated_by"] == issues["delegated_by"] == delegation
         assert str(stopped.task_id) in material
         for issue in issues["issues"]:
             case = issue["case"]
             assert case["case_token"] in material and case["evidence_hash"] in material
             assert all(option["option_id"] in material for option in case["options"])
-        # Three of seventeen names move at once, past the rule's 2%: each is left to the agent.
+        # Three names move at once, past the rule's 2%: each is left to the agent.
         assert issues["escalated_by_rule"]["listing_count"] == 3, issues
         escalated = [
             e
@@ -1214,8 +1267,8 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
             and value["data_issue_option_id"] == "retain_isolated_raw_move_with_caveat"
         ]
         assert len(confirmations) == 2
-        for index, request in enumerate(confirmations):
-            code, last = send(request)
+        for index, confirmation in enumerate(confirmations):
+            code, last = send(confirmation)
             assert code == (0 if index == 0 else 3) and _code(last) is None, last
         assert last["decisions_complete"] is True, last
         assert last["continued"]["status"] == "ADMITTED"
@@ -1265,6 +1318,40 @@ def test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation
         assert (step["case_token"], step["option_id"]) == (
             preview["next_requests"]["confirm"]["data_issue_case_token"],
             preview["next_requests"]["confirm"]["data_issue_option_id"],
+        )
+
+        code, controls = send({"operation": "EXPERIMENT_CONTROLS"})
+        assert code == 0 and controls["template"], controls
+        code, plan = send(
+            {"operation": "EXPERIMENT_PLAN", "experiment_document": controls["template"]}
+        )
+        assert code == 0 and plan["status"] == "PLANNED", plan
+        _, admitted = send(
+            {"operation": "EXPERIMENT_RUN", "experiment_plan_hash": plan["plan_hash"]}
+        )
+        assert admitted["status"] == "ADMITTED", admitted
+        live.dispatcher.drain_for_tests(timeout=900)
+        code, study = _cli(live, "study", "show", admitted["task_id"])
+        assert code == 0 and study["status"] == "EXPERIMENT_PUBLISHED", (
+            study.get("failure_code"),
+            [
+                (item.stage_id, item.failure_code, item.failure_cause)
+                for item in registry.work_items(UUID(admitted["task_id"]))
+            ],
+        )
+        assert study["standing"]["execution"] == "SUCCEEDED", study["standing"]
+        assert study["standing"]["evidence"] == "DEVELOPMENT", study["standing"]
+        assert study["evidence"]["artifact_uris"], study["evidence"]
+        code, experience = send({"operation": "EXPERIENCE_READ"})
+        assert code == 0, experience
+        (trial,) = [row for row in experience["trials"] if row["task_id"] == study["task_id"]]
+        assert trial["outcome"] == "completed" and trial["artifact_id"], trial
+        assert trial["method"] == study["program"]["kind"], trial
+        request.node.user_properties.extend(
+            [
+                ("first_use_result", study["standing"]["evidence"]),
+                ("first_use_trial", trial["trial_id"]),
+            ]
         )
 
 

@@ -2,12 +2,32 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from itertools import count
 from types import SimpleNamespace
 from typing import cast
+from uuid import UUID
 
 import pytest
 
 from alphalattice.control.task_control import child
+from alphalattice.kernel.execution import (
+    CANCELLED,
+    cancel_execution,
+    child_process,
+    execution_cancellation,
+    stop_reason,
+)
 
 TEST_SOURCE = "src/alphalattice/control/task_control/child.py"
+
+
+@pytest.mark.proves("execution.cancellation_matches_one_execution")
+def test_cancellation_belongs_to_the_named_execution():
+    """Only an accepted signal naming the active execution reaches its work."""
+    execution = UUID(int=1)
+    with execution_cancellation(execution):
+        cancel_execution(UUID(int=2))
+        assert stop_reason() is None
+        cancel_execution(execution)
+        assert stop_reason() == CANCELLED
+    assert stop_reason() is None
 
 
 class _Ended(Exception):
@@ -30,11 +50,11 @@ def test_a_kept_worker_ends_when_its_parent_ends(monkeypatch, parent):
     def ended(code: int) -> None:
         raise _Ended(code)
 
-    monkeypatch.setattr(child.multiprocessing, "parent_process", lambda: parent)
-    monkeypatch.setattr(child.multiprocessing.connection, "wait", waited.append)
-    monkeypatch.setattr(child, "os", SimpleNamespace(_exit=ended))  # its exit, recorded
+    monkeypatch.setattr(child_process.multiprocessing, "parent_process", lambda: parent)
+    monkeypatch.setattr(child_process.multiprocessing.connection, "wait", waited.append)
+    monkeypatch.setattr(child_process, "os", SimpleNamespace(_exit=ended))  # its exit, recorded
     with pytest.raises(_Ended, match="3"):
-        child._watch_parent()
+        child_process.watch_parent()
     assert waited == ([] if parent is None else [[7]])
 
 
@@ -55,6 +75,7 @@ def test_a_worker_that_makes_no_progress_is_ended_and_its_call_interrupted(
     clock, cpu, ends = count(0, 100), iter(used), []
     monkeypatch.setattr(child.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(child, "cpu_seconds_of", lambda _pid: next(cpu))
+    monkeypatch.setattr(child.spawn, "stop_pool", lambda _pool: ends.append("terminated"))
 
     class _Running:
         def result(self, timeout: float) -> dict:
@@ -64,9 +85,7 @@ def test_a_worker_that_makes_no_progress_is_ended_and_its_call_interrupted(
 
     class _Pool:
         def __init__(self) -> None:
-            self._processes = {
-                7: SimpleNamespace(pid=7, terminate=lambda: ends.append("terminated"))
-            }
+            self._processes = {7: SimpleNamespace(pid=7)}
 
         def shutdown(self, *, wait: bool, cancel_futures: bool) -> None:
             ends.append("shut down")

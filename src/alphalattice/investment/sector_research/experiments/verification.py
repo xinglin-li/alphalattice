@@ -29,10 +29,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 
 from ..contracts import SectorResearchError
 from ..models.catalog import SECTOR_CATALOG_ROLE, numerical_binding_role

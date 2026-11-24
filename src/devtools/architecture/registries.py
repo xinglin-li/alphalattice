@@ -20,12 +20,13 @@ import string
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.message_catalog import english_message_ids
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.kernel.resources import cache_bound
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
@@ -405,9 +406,25 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     return out
 
 
+def load_data_family_registry(root: Path) -> dict[str, Any]:
+    """Read the families for this tree, including development-only writers when present."""
+    directory = root / REGISTRIES
+    registry: dict[str, Any] = json.loads((directory / "data-families.json").read_text("utf-8"))
+    try:
+        private = json.loads((directory / "data-families-development.json").read_text("utf-8"))
+    except FileNotFoundError:
+        return registry
+    if overlap := registry["families"].keys() & private["families"].keys():
+        raise ValueError(
+            f"data families repeated in the development registry: {', '.join(sorted(overlap))}"
+        )
+    registry["families"].update(private["families"])
+    return registry
+
+
 def data_family_problems(root: Path, sources: Sequence[Path]) -> tuple[str, ...]:
     """A persisting writer in ``sources`` that no data family lists (the census, LAWS.md DA2)."""
-    registry = json.loads((root / REGISTRIES / "data-families.json").read_text("utf-8"))
+    registry = load_data_family_registry(root)
     sites = discover_persistence_sites(tuple(sources), source_root=root / "src")
     return data_family_violations(sites, registry, whole_tree=False)
 
@@ -1203,6 +1220,22 @@ def _has_description(row: Any) -> bool:
     )
 
 
+CACHES_REGISTRY = "config/registries/caches.json"
+
+
+def _undescribed(_path: str, _key: str, row: Any) -> bool:
+    return not _has_description(row)
+
+
+def _unbounded_cache(path: str, key: str, row: Any) -> bool:
+    """A cache registry row whose size_bound names no bound (the cache register's grammar)."""
+    return (
+        path == CACHES_REGISTRY
+        and key.startswith("entries:")
+        and cache_bound(row.get("size_bound") if isinstance(row, dict) else None) is None
+    )
+
+
 def _description_census(
     inputs: CensusInputs,
     data: dict[str, Any],
@@ -1210,6 +1243,28 @@ def _description_census(
     moves: Moves | None,
 ) -> tuple[list[str], list[str]]:
     """Read staged declarations once and ratchet their remaining explanation debt."""
+    return _debt_census(
+        inputs,
+        data,
+        base,
+        moves,
+        dimension="undescribed_registry_entries",
+        debt=_undescribed,
+        refusal="registry-description: {} needs one purpose sentence.",
+    )
+
+
+def _debt_census(
+    inputs: CensusInputs,
+    data: dict[str, Any],
+    base: dict[str, Any],
+    moves: Moves | None,
+    *,
+    dimension: str,
+    debt: Callable[[str, str, Any], bool],
+    refusal: str,
+) -> tuple[list[str], list[str]]:
+    """Read staged declarations once and ratchet one kind of their remaining debt."""
     root, stage, blobs, paths = inputs.root, inputs.stage, inputs.blobs, inputs.registries
     missing: set[str] = set()
     for path in paths:
@@ -1218,11 +1273,10 @@ def _description_census(
         missing.update(
             path + "::" + key
             for key, row in _description_rows(data[path]).items()
-            if not _has_description(row)
+            if debt(path, key, row)
         )
-    if missing <= set(base.get("undescribed_registry_entries", [])):
+    if missing <= set(base.get(dimension, [])):
         return [], sorted(missing)
-    dimension = "undescribed_registry_entries"
     bootstrap = dimension not in base
     basis = "HEAD:"
     if inputs.pending or len(inputs.parents) > 2:
@@ -1246,15 +1300,12 @@ def _description_census(
             previous.update(
                 path + "::" + key
                 for key, row in _description_rows(json.loads(blobs.get(basis + path, "{}"))).items()
-                if not _has_description(row)
+                if debt(path, key, row)
             )
     allowed = set(base.get(dimension, [])) | previous
     # A byte-identical move carries its rows; a caller that read the pairing passes it once.
     allowed |= carried(allowed, staged_moves(root) if moves is None else moves)
-    return [
-        f"registry-description: {key} needs one purpose sentence."
-        for key in sorted(missing - allowed)
-    ], sorted(missing)
+    return [refusal.format(key) for key in sorted(missing - allowed)], sorted(missing)
 
 
 def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
@@ -1276,6 +1327,30 @@ def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
         else set()
     )
     return CensusInputs(root, baseline, fixed, _CENSUS_INPUT_PATHS)
+
+
+def _module(path: str) -> str:
+    return path.removeprefix("src/").removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+
+
+def moved_allowances(held: Mapping[str, int], moves: Moves) -> dict[str, int]:
+    """Each retained import allowance where the change's moves put it: a moved file's path, and
+    in its statement each module the change moved, so a move neither grows nor drops one."""
+    renamed = {
+        _module(old): _module(new)
+        for new, old in moves.items()
+        if old.startswith("src/") and old.endswith(".py") and new.endswith(".py")
+    }
+    names = "|".join(re.escape(name) for name in sorted(renamed, key=len, reverse=True))
+    module = re.compile(rf"(?<![\w.])({names})(?![\w])") if names else None
+    forward = {old: new for new, old in moves.items()}
+    carried_rows: dict[str, int] = {}
+    for key, count in held.items():
+        path, scope, statement = key.split("::", 2)
+        if module is not None:
+            statement = module.sub(lambda m: renamed[m[1]], statement)
+        carried_rows[f"{forward.get(path, path)}::{scope}::{statement}"] = count
+    return carried_rows
 
 
 def census_check(
@@ -1310,6 +1385,8 @@ def census_check(
     except ValueError as error:
         return [*out, f"import-hygiene: {error}"]
     prior = json.loads(blobs.get("HEAD:" + legacy_path, "{}")).get("legacy_lazy_imports", legacy)
+    pairing = staged_moves(root, pairs=inputs.changes) if moves is None else moves
+    prior = moved_allowances(prior, pairing)
     out.extend(
         f"import-hygiene: retained import allowance grew {key}"
         for key, count in legacy.items()
@@ -1318,10 +1395,20 @@ def census_check(
     if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
-    description_errors, undescribed = _description_census(
-        inputs, data, base, staged_moves(root, pairs=inputs.changes) if moves is None else moves
-    )
+    description_errors, undescribed = _description_census(inputs, data, base, pairing)
     out.extend(description_errors)
+    # Develop's caches that name no bound stay for 0.2.10; a new one is refused.
+    bound_errors, unbounded = _debt_census(
+        inputs,
+        data,
+        base,
+        pairing,
+        dimension="unbounded_cache_rows",
+        debt=_unbounded_cache,
+        refusal="cache-bound: {} names no bound; give its size_bound a count, a capacity or an"
+        " admission.",
+    )
+    out.extend(bound_errors)
     for path in sorted(sources):
         facts[path] = _census_file_facts(path, blobs[stage + path])
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
@@ -1356,6 +1443,8 @@ def census_check(
         "legacy_lazy_imports": legacy,
         "undescribed_registry_entries": undescribed,
     } | catalog
+    if unbounded or "unbounded_cache_rows" in base:  # a tree with no cache registry keeps none
+        expected["unbounded_cache_rows"] = unbounded
 
     def sync_baseline() -> None:
         for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):

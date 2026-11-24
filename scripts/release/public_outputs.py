@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 _BUILDER = "scripts/build_local_web_ui.py"
 _SETUP = "src/alphalattice/interface/local_application/native_setup.py"
 _BRIDGE = "src/alphalattice/interface/local_application/native_bridge.py"
-_PERSISTENCE = "src/alphalattice/kernel/shared_kernel/persistence.py"
+_PERSISTENCE = "src/alphalattice/capabilities/domain_contracts/persistence.py"
 _ASSETS = "src/alphalattice/interface/local_application/assets"
 
 
@@ -105,7 +105,7 @@ def _asset_writer(build: ast.FunctionDef, tree: ast.Module, persistence: ast.Mod
         for node in ast.walk(replace)
     )
     imported = _imported(
-        tree, "alphalattice.kernel.shared_kernel.persistence", "replace_with_retry"
+        tree, "alphalattice.capabilities.domain_contracts.persistence", "replace_with_retry"
     )
     for loop in ast.walk(build):
         if not isinstance(loop, ast.For) or ast.unparse(loop.iter) != "outputs.items()":

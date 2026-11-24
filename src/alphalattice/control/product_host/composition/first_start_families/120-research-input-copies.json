@@ -1,4 +1,8 @@
 {
  "factory": "alphalattice.control.product_host.research_authoring.factor_inputs:research_input_copies_family",
- "mode": "machine-backup"
+ "mode": "machine-backup",
+ "name": "research-input-copies",
+ "trust_paths": [
+  "/research-inputs/*"
+ ]
 }

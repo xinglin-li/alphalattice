@@ -27,6 +27,7 @@ from alphalattice.capabilities.alpha_modeling.catalog import (
 from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.experiments.campaign import (
     CuratedFactorCheckpoint,
 )
@@ -71,7 +72,6 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     row_axis_hash,
     score_value_hash,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
@@ -1431,7 +1431,7 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
         compression="zstd",
     )
 
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     history.keep_alpha_part(
         surface.surface_hash, "development/score-aggregation/surfaces", parquet.read_bytes()

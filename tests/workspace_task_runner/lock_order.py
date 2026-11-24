@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 
 from alphalattice.control.workspace_runtime import database, mutation_gate
-from alphalattice.kernel.data_layer import history, log
+from alphalattice.foundation.data_layer import history, log
 
 
 @dataclass
@@ -126,10 +126,10 @@ def record_lock_order(monkeypatch: pytest.MonkeyPatch) -> Iterator[LockOrder]:
     monkeypatch.setattr(log, "RLock", lambda: _RecordedRLock(recorder, "registry"))
     acquire = database._acquire
 
-    def recorded_acquire(path: Path, *, read_only: bool, wait_seconds: float) -> Any:
+    def recorded_acquire(path: Path, *, read_only: bool, **options: Any) -> Any:
         if not read_only:  # a writer waits for the file's read-only holders
             recorder.taking(f"instance:{path.name}")
-        return acquire(path, read_only=read_only, wait_seconds=wait_seconds)
+        return acquire(path, read_only=read_only, **options)
 
     monkeypatch.setattr(database, "_acquire", recorded_acquire)
     try:

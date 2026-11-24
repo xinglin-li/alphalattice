@@ -7,7 +7,6 @@ from bisect import bisect_left
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -17,15 +16,16 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 from .contracts import (
     HistoryProofParts,
@@ -373,7 +373,8 @@ class _WorkspaceObservationHistoryStore:
             parquet = pq.ParquetFile(pa.BufferReader(payload))
             metadata = parquet.metadata
             if key not in verified:
-                table = parquet.read()
+                # A single Arrow worker cannot parallelize these column reads.
+                table = parquet.read(use_threads=pa.cpu_count() > 1)
                 verified[key] = {
                     name: np.ascontiguousarray(table.column(name).to_numpy())
                     for name in table.column_names
@@ -746,7 +747,9 @@ class _WorkspaceObservationHistoryStore:
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:
             payload = path.read_bytes()
-            return WorkspaceObservationHistoryFile(path, sha256(payload).hexdigest(), len(payload))
+            return WorkspaceObservationHistoryFile(
+                path, integrity_sha256(payload).hexdigest(), len(payload)
+            )
 
         return WorkspaceObservationHistoryRetention(
             roots=tuple(fact(path) for path in sorted(protected)),

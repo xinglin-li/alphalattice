@@ -23,6 +23,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
@@ -45,10 +46,17 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
 from alphalattice.interface.local_application.labels import label
 from alphalattice.interface.local_application.portfolio_research import (
-    PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.kernel.door import (
+    Decisions,
+    Door,
+    DoorRefusal,
+    FamilyRoute,
+    answer_bytes,
+    request_bytes,
+)
+from alphalattice.kernel.door import port as door_port
 from devtools.evaluation.forms import Scenario
 from tests._support.history_fixtures import recording_history as recording_history
 from tests.portfolio_strategy_lab.cli_support import (
@@ -56,7 +64,6 @@ from tests.portfolio_strategy_lab.cli_support import (
     _cli,
     _inprocess_cli,
     _session_cli,
-    strategy_readback_operations,
 )
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.structural.refusal_support import rerun_refusal_codes
@@ -667,6 +674,120 @@ def test_an_unknown_operation_is_answered_with_the_nearest_names(tmp_path: Path)
     assert items[0]["classification"] == "string"
 
 
+@pytest.mark.proves("door.named_operations_preserve_bytes_and_person_authority")
+@pytest.mark.parametrize(
+    ("case", "code"),
+    [
+        ("known", None),
+        ("unknown", "door.operation_unknown"),
+        ("question", None),
+        ("unattended", "door.person_unavailable"),
+        ("unattended update", "door.person_unavailable"),
+        ("paid unattended", "door.paid_run_approval_required"),
+        ("duplicate", "door.operation_duplicate"),
+        ("unavailable family", "door.family_import_failed"),
+    ],
+)
+def test_the_door_keeps_operation_bytes_and_names_its_refusals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, code: str | None
+) -> None:
+    """Resolve the named family once and give the person's decision a durable answer."""
+    imports = []
+
+    def load(module: str) -> SimpleNamespace:
+        imports.append(module)
+        if module == "unavailable":
+            raise ImportError(module)
+        return SimpleNamespace(execute=lambda document: answer_bytes(json.loads(document)))
+
+    monkeypatch.setattr(door_port, "importlib", SimpleNamespace(import_module=load))
+    route = FamilyRoute(("SHOW", "READBACK"), "family")
+    door: Door[bytes, bytes] = Door([route, FamilyRoute(("BROKEN",), "unavailable")])
+    assert door.operations == {"SHOW", "READBACK", "BROKEN"}
+    document = request_bytes({"z": "你好", "operation": "SHOW"})
+    assert document == b'{"z": "\\u4f60\\u597d", "operation": "SHOW"}'
+    expected = b'{"operation": "SHOW", "z": "\\u4f60\\u597d"}'
+    queue = Decisions(tmp_path / "decisions.sqlite3", uuid4)
+    if case == "known":
+        assert imports == []
+        assert door.dispatch("SHOW", document) == expected
+        assert door.dispatch("READBACK", document) == expected
+        assert imports == ["family"]
+    elif case == "question":
+        prompt = {"prompt": "Which input?"}
+        first, later = "DATA_UPDATE_PLAN", "RESEARCH_UPDATE_PLAN"
+        question = queue.ask("question", first, prompt, attended=True, key="scope")
+        assert queue.ask("question", first, prompt, attended=True, key="scope") == question
+        reopened = Decisions(queue.path, uuid4)
+        assert reopened.take(question) is None
+        reopened.answer(question, "the generated copy", by_person=True)
+        assert queue.take(question) == "the generated copy"
+        assert reopened.take(question) is None
+        reopened_again = queue.ask("question", later, prompt, attended=True, key="scope")
+        assert reopened_again.id != question.id and reopened_again.operation == later
+        assert queue.ask("question", later, prompt, attended=True, key="scope") == reopened_again
+        with pytest.raises(DoorRefusal, match=r"^door\.decision_not_pending$"):
+            queue.answer(question, "stale", by_person=True)
+        try:
+            queue.answer(reopened_again, "the new copy", by_person=True)
+        except DoorRefusal as error:
+            pytest.fail(f"The reopened ticket refused its own operation: {error.failure_code}")
+        assert queue.ask("question", first, prompt, attended=True, key="scope") == reopened_again
+        assert reopened.take(reopened_again) == "the new copy"
+    elif case == "unattended update":
+        from alphalattice.control.product_host.composition import portfolio_research_operations
+        from alphalattice.interface.local_application.portfolio_research import (
+            PortfolioResearchOperationRequest,
+        )
+
+        owner = SimpleNamespace(goals=SimpleNamespace(store=SimpleNamespace(decisions=queue)))
+        try:
+            answer = portfolio_research_operations.PortfolioResearchOperations._deliver_questions(
+                owner,
+                PortfolioResearchOperationRequest(
+                    operation="RESEARCH_UPDATE_PLAN", strategy_package_id="example"
+                ),
+                {
+                    "status": "REFUSED",
+                    "failure_code": "local_application.network_access_required",
+                    "person_questions": [{"code": "network.workspace_access"}],
+                },
+                "SERVICE_AUTOMATION",
+            )
+        except DoorRefusal as error:
+            pytest.fail(f"The operation did not return its refusal: {error.failure_code}")
+        assert answer["status"] == "REFUSED" and answer["failure_code"] == code
+        assert "person_questions" not in answer and not queue.path.exists()
+    else:
+        actions = {
+            "unknown": lambda: door.dispatch("UNKNOWN", document),
+            "duplicate": lambda: Door([route, route]),
+            "unavailable family": lambda: door.dispatch("BROKEN", document),
+            "unattended": lambda: queue.ask("question", "SHOW", {}, attended=False),
+            "paid unattended": lambda: queue.ask("paid_run", "SHOW", {}, attended=False),
+        }
+        with pytest.raises(DoorRefusal, match=f"^{re.escape(str(code))}$") as raised:
+            actions[case]()
+        assert raised.value.operation == {
+            "unknown": "UNKNOWN",
+            "unavailable family": "BROKEN",
+        }.get(case, "SHOW")
+        assert imports == (["unavailable"] if case == "unavailable family" else [])
+        assert not queue.path.exists()
+        if case == "paid unattended":
+            paid = queue.ask("paid_run", "SHOW", {"limit": 1}, attended=True)
+            with pytest.raises(DoorRefusal, match=r"^door\.person_required$"):
+                queue.answer(paid, "approve", by_person=False)
+            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
+                queue.spend_approval(paid, {"limit": 1})
+            queue.answer(paid, "approve", by_person=True)
+            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
+                queue.spend_approval(paid, {"limit": 2})
+            queue.spend_approval(paid, {"limit": 1})
+            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
+                queue.spend_approval(paid, {"limit": 1})
+
+
 def test_a_metric_read_alone_carries_its_unit(tmp_path: Path, capsys: Any, fake_host: Any) -> None:
     """Section reads preserve the owner's outcome, available parts and each metric's unit."""
     fake_host.answer = {"status": "OK", "tasks": []}
@@ -1013,16 +1134,6 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         ] + ([values.get(shown, "a" * 64)] if shown in fields(operation)[0] else [])
         code, body, _ = _inprocess_cli(live.workspace, noun, verb, *arguments, capsys=capsys)
         assert body["outcome"] == "REFUSED" and "human" in body["failure_code"], (operation, body)
-
-
-def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> None:
-    """Control: Every read of work planned per strategy is keyed by its strategy."""
-
-    contract = PortfolioResearchOperationRequest.field_contract
-    readbacks = strategy_readback_operations()
-    for operation in readbacks:
-        required, allowed = contract(operation)
-        assert not required and {"task_id", "strategy_package_id"} <= allowed, operation
 
 
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task() -> None:

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
@@ -66,6 +68,7 @@ from alphalattice.foundation.causal_outcomes.execution.artifacts import (
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.feature_engine.panels.retention_residue import (
     PanelRetentionResidueOwner,
 )
@@ -73,10 +76,8 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import integrity_sha256
 
 
 def _strings(value: object) -> set[str]:
@@ -148,7 +149,7 @@ class ResearchInputStorage:
         self.workspace = session.workspace
         self.owner = BoundedStorageRetentionOwner(self.workspace)
         self.evidence = evidence
-        self.clock = clock or (lambda: datetime.now(UTC))
+        self.clock = clock or (utc_now)
         self._capacity_sampled = False
 
     def _all_pins(self) -> dict[str, int]:
@@ -474,25 +475,7 @@ class ResearchInputStorage:
         """
         with self.session.mutation_gate.hold():
             require_no_pending_cleanup(self.workspace)
-            evidence = self._references()
-            files = managed_file_inventory(self.workspace)
-            targets = {
-                p: h
-                for p, h in evidence["source"]["targets"].items()
-                if confined(self.workspace, p).is_file()
-            }
-            retained = tuple(v for v in files if v[0] not in targets)
-            relinks = self._model_relinks()
-            values: dict[str, object] = {
-                "references_hash": canonical_hash(evidence),
-                "targets": dict(sorted(targets.items())),
-                "bindings": [],  # deprecated in 0.2.8: no input is a cleanup target
-                "retained_bytes": unique_managed_bytes(retained) - sum(relinks.values()),
-                "reclaimable_bytes": unique_managed_bytes(files)
-                - unique_managed_bytes(retained)
-                + sum(relinks.values()),
-                **({"relinks": relinks} if relinks else {}),
-            }
+            values = self._cleanup_values()
             identity = self.owner.publish_input_plan(values)
             return {
                 "status": "CONFIRMATION_REQUIRED",
@@ -516,6 +499,50 @@ class ResearchInputStorage:
                 ],
             }
 
+    def status(self) -> dict[str, object]:
+        """Measure the data root and estimate the current plan without publishing it."""
+        from alphalattice.control.workspace_runtime.storage.footprint import (  # lazy: status
+            allocated_by_category,
+        )
+
+        unavailable: dict[str, str] = {}
+        try:
+            categories = allocated_by_category(history.data_root())
+        except OSError:
+            categories = None
+            unavailable["bytes_by_category"] = "storage.footprint_unreadable"
+        try:
+            reclaimable = self._cleanup_values()["reclaimable_bytes"]
+        except (OSError, ValueError, StorageRetentionError):
+            reclaimable = None
+            unavailable["reclaimable_bytes"] = "storage.cleanup_estimate_unavailable"
+        return {
+            "bytes_by_category": categories,
+            "reclaimable_bytes": reclaimable,
+            "scratch_cleanup": self.session.scratch_cleanup,
+            **({"unavailable": unavailable} if unavailable else {}),
+        }
+
+    def _cleanup_values(self) -> dict[str, object]:
+        evidence = self._references()
+        files = managed_file_inventory(self.workspace)
+        targets = {
+            path: digest
+            for path, digest in evidence["source"]["targets"].items()
+            if confined(self.workspace, path).is_file()
+        }
+        retained = tuple(row for row in files if row[0] not in targets)
+        relinks = self._model_relinks()
+        retained_bytes = unique_managed_bytes(retained) - sum(relinks.values())
+        return {
+            "references_hash": canonical_hash(evidence),
+            "targets": dict(sorted(targets.items())),
+            "bindings": [],  # deprecated in 0.2.8: no input is a cleanup target
+            "retained_bytes": retained_bytes,
+            "reclaimable_bytes": unique_managed_bytes(files) - retained_bytes,
+            **({"relinks": relinks} if relinks else {}),
+        }
+
     def _model_relinks(self) -> dict[str, int]:
         """The retained retrieval recipe's own model copy, when the machine's store holds its
         verified packs: offered to be linked to them, never deleted. Its bytes, which
@@ -527,7 +554,7 @@ class ResearchInputStorage:
         if binding is None:
             return {}
         payload = confined(self.workspace, binding.relative_path).read_bytes()
-        if hashlib.sha256(payload).hexdigest() != binding.file_sha256:
+        if integrity_sha256(payload).hexdigest() != binding.file_sha256:
             return {}
         manifest = EvidenceReviewWorkspaceManifest.model_validate_json(payload)
         root = confined(self.workspace, manifest.semantic_model_relative_path)

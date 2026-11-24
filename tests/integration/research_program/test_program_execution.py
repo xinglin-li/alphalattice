@@ -535,13 +535,13 @@ def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
 ) -> None:
     """A run is held offline and a plan over budget is refused at plan."""
 
+    from alphalattice.capabilities.domain_contracts.environment import offline
     from alphalattice.control.workspace_runtime.network_access import (
         CONTROL_PATH,
         NetworkAccess,
         network_access,
         set_network_access,
     )
-    from alphalattice.kernel.shared_kernel.environment import offline
 
     workspace = real_risk_workspace.workspace
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))

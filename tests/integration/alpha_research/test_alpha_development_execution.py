@@ -36,6 +36,7 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel im
     DynamicPanelLightGBMAdapter,
     build_dynamic_panel_lightgbm_recipe,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.research_authoring.execution import (
     build_installed_desk_executors,
 )
@@ -109,7 +110,6 @@ from alphalattice.investment.alpha_research.targets.standardization import (
     RANK_GAUSS_STANDARDIZATION_ID,
     ROBUST_Z_STANDARDIZATION_ID,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -412,7 +412,7 @@ def test_an_authored_alpha_document_reaches_the_real_model_runtime(
         score_reads.append(reference.content_hash)
         return resolve(store, reference)
 
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     with monkeypatch.context() as standalone:
         standalone.setattr(
@@ -801,11 +801,11 @@ def test_a_chunk_read_again_is_checked_again_and_changed_bytes_are_refused(
     import pyarrow as pa
     import pyarrow.parquet as pq
 
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.alpha_research.experiments import development_artifacts as owner
     from alphalattice.investment.alpha_research.experiments import (
         development_chunk_identity as proof,
     )
-    from alphalattice.kernel.data_layer import history
 
     request.addfinalizer(proof.configure_chunk_proof_memo)
     proof.configure_chunk_proof_memo(capacity=1)
@@ -1556,7 +1556,7 @@ def test_saved_alpha_comparison_reads_two_real_ridge_receipts_without_recomputin
     score_chunk = next(
         value.score_chunk for value in left_graph.folds if value.score_chunk is not None
     )
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     target = history.alpha_part_body_path(
         score_chunk.content_hash, "current/numerical-development-score-chunks"

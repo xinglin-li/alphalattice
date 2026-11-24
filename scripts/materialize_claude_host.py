@@ -29,7 +29,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, runtime_json
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix, runtime_json
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))

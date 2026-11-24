@@ -11,16 +11,16 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 from pydantic_core.core_schema import SerializerFunctionWrapHandler
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.investment.alpha_research.calibration.stock_returns import (
     StockCalibrationEvidence,
 )
 from alphalattice.investment.alpha_research.scaling.evaluation import (
     CrossSectionalScaleComparisonEvidence,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution import (
     ActorSubmissionBinding,
 )

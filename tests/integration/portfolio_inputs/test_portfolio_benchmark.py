@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.portfolio_inputs import benchmark as benchmark_owner
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
@@ -61,7 +61,10 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
 
     import numpy as np
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
     from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
         LEDGER_LEGACY_OPTIONAL_FIELDS,
         PortfolioExecutionLedger,
@@ -72,9 +75,6 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     from alphalattice.investment.portfolio_strategy_lab.reporting.risk import (
         PortfolioRiskAttributionFacts,
     )
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     fields = {
         "formation_sessions": (*sessions, date(2024, 1, 3)),
@@ -173,7 +173,7 @@ def test_benchmark_value_surface_refuses_a_source_authority_substitution(
     finally:
         history.close_history()
 
-    from alphalattice.kernel.data.errors import DataError
+    from alphalattice.capabilities.data.errors import DataError
 
     unavailable = tmp_path / "unavailable-artifacts"
     for publish in (

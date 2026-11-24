@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelMembership,
@@ -22,7 +23,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelCrossSectionKernel,
     cross_section_policy_hash,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FACTORS = ("factor_a", "factor_b")
 SECTORS = ("Energy", "Health", "Tech")

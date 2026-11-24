@@ -8,27 +8,43 @@ second store (a graph checkpoint) holds a Task's progress.
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from contextlib import AbstractContextManager, suppress
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
-from threading import Event, Thread
 from typing import Final, Protocol
 from uuid import UUID, uuid4
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    StageDigests,
+    stage_digests,
+)
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping, checkpoint
+from alphalattice.capabilities.domain_contracts.spans import SpanLedger, collect
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
-from alphalattice.kernel.data_layer.history import held
-from alphalattice.kernel.shared_kernel.bounded_memo import StageDigests, stage_digests
-from alphalattice.kernel.shared_kernel.host_stop import HostStopping, checkpoint
-from alphalattice.kernel.shared_kernel.spans import SpanLedger, collect
+from alphalattice.foundation.data_layer.history import held
+from alphalattice.kernel.clock import carry_observation, task_observation, utc_now
+from alphalattice.kernel.execution import (
+    CANCELLED,
+    TIMED_OUT,
+    ExecutionHeartbeat,
+    ExecutionStopped,
+    carry_cancellation,
+    execution_port,
+    stop_reason,
+)
+from alphalattice.kernel.resources import (
+    carry_resource_lease,
+    worker_width,
+)
 
-from .child import ChildStartFailed
+from .child import ChildInterrupted, ChildStartFailed, stop_task_workers
 from .contracts import (
     FAILURE_CODE_MAX_LENGTH,
     StageFailureCause,
@@ -44,6 +60,7 @@ from .contracts import (
     WorkItemLifecycle,
 )
 from .registry import DuckDbTaskControlRegistry, TaskTransitionRejected
+from .scratch import carry_task_scratch
 from .timing import record_stage_spans
 from .upgrade import import_heartbeats, read_heartbeat, write_heartbeat
 
@@ -163,12 +180,16 @@ def _bounded_raise(
     """Run one stage, inside `scope` when one is given; on its last allowed attempt, an
     unnamed raise blocks it with its type."""
     try:
-        if scope is None:
-            return call()
-        with scope():
-            return call()
+        with scope() if scope is not None else nullcontext():
+            result = call()
+        if (reason := stop_reason()) is not None:
+            raise ExecutionStopped(reason)
+        return result
     except Exception as error:
-        if isinstance(error, ChildStartFailed):
+        reason = stop_reason()
+        if reason is not None and not isinstance(error, ExecutionStopped):
+            raise ExecutionStopped(reason) from error
+        if isinstance(error, (ChildStartFailed, ExecutionStopped)):
             raise
         if getattr(error, "failure_class", None) or attempt < REPEATED_STAGE_RAISES:
             raise
@@ -196,7 +217,7 @@ def _spanned[T](
     """
     ledger: SpanLedger | None = None
     try:
-        with stage_digests(digests), collect() as ledger:
+        with stage_digests(digests), collect((str(task_id), stage_id, phase)) as ledger:
             return call()
     finally:
         if ledger is not None and ledger.readout_value is not None:
@@ -227,7 +248,10 @@ class _WorkPool:
         self.width = max(1, width)
         self._ordinals = ordinals
         self._executor = (
-            ThreadPoolExecutor(self.width, thread_name_prefix="task-work-item")
+            execution_port().register_pool(
+                ThreadPoolExecutor(self.width, thread_name_prefix="task-work-item"),
+                name="task-work-item",
+            )
             if self.width > 1
             else None
         )
@@ -255,7 +279,14 @@ class _WorkPool:
             self._finished.append((definition, call()))
             self.failed_stage_id = None
         else:
-            self._running[self._executor.submit(carry_background(call))] = definition
+            future = self._executor.submit(
+                carry_task_scratch(
+                    carry_cancellation(
+                        carry_resource_lease(carry_observation(carry_background(call)))
+                    )
+                )
+            )
+            self._running[future] = definition
 
     def next_done(self) -> tuple[WorkItemDefinition, StageExecutionResult]:
         """The next finished item, the earliest in the plan among those that
@@ -414,13 +445,15 @@ class TaskControlRunner:
         registry: DuckDbTaskControlRegistry,
         adapters: Mapping[str, TaskDomainAdapter],
         runtime_path: str,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         heartbeat_seconds: float = 5.0,
         projection_sink: Callable[[TaskSafeProjection], None] | None = None,
         heartbeat_sink: Callable[[TaskHeartbeatSignal], None] | None = None,
         width: int | None = None,
+        task_scope: Callable[[TaskRecord], AbstractContextManager[object]] | None = None,
         stage_gate: Callable[[TaskRecord], str | None] | None = None,
         stage_scope: Callable[[], AbstractContextManager[object]] | None = None,
+        execution_timeout: float | None = None,
     ) -> None:
         """Bind the installed adapters, business authority and operational heartbeat owner.
 
@@ -434,6 +467,8 @@ class TaskControlRunner:
             heartbeat_sink: Optional callback receiving operational heartbeat signals.
             width: The cores a Task may use at once, its workspace's CPU budget as found when
                 it starts (an execution parameter, PA2); the host's processors when None.
+            task_scope: Holds the Host's grant before claiming or recovering a Task until
+                the invocation including worker and heartbeat settlement has ended.
             stage_gate: Asked before each stage starts; a refusal code it returns blocks the
                 stage, recoverably, before any of its work (an execution check, never a
                 result: the Host's memory check).
@@ -453,8 +488,10 @@ class TaskControlRunner:
         self.projection_sink = projection_sink
         self.heartbeat_sink = heartbeat_sink
         self.width = width
+        self.task_scope = task_scope
         self.stage_gate = stage_gate
         self.stage_scope = stage_scope
+        self.execution_timeout = execution_timeout
         self.worker_instance_id = uuid4()
         # The runtime file's name names the heartbeat sidecar beside it; its folder keeps the
         # stages' spans.
@@ -485,30 +522,32 @@ class TaskControlRunner:
         if expected_task_id is not None and queued.task_id != expected_task_id:
             raise ValueError("task_control.queued_task_identity_mismatch")
         adapter = self._adapter(queued)
-        started = self.registry.start_next(
-            compatibility=adapter.compatibility(queued),
-            worker_instance_id=self.worker_instance_id,
-            observed_at=self._now(),
-            expected_task_id=queued.task_id,
-            expected_task_hash=expected_task_hash,
-        )
-        if started is None:
-            return None
-        task, execution = started
-        return self._invoke(task, execution, adapter)
+        with self.task_scope(queued) if self.task_scope else nullcontext():
+            started = self.registry.start_next(
+                compatibility=adapter.compatibility(queued),
+                worker_instance_id=self.worker_instance_id,
+                observed_at=self._now(),
+                expected_task_id=queued.task_id,
+                expected_task_hash=expected_task_hash,
+            )
+            if started is None:
+                return None
+            task, execution = started
+            return self._invoke(task, execution, adapter)
 
     def recover(self, task_id: UUID, *, expected_task_hash: str | None = None) -> TaskRecord:
         """Resume from the verified prefix; a confirmed version is enforced by the registry."""
         task = self.registry.task(task_id)
         adapter = self._adapter(task)
-        task, execution = self.registry.restart_recovery(
-            task_id=task_id,
-            compatibility=adapter.compatibility(task),
-            worker_instance_id=self.worker_instance_id,
-            observed_at=self._now(),
-            expected_task_hash=expected_task_hash,
-        )
-        return self._invoke(task, execution, adapter, verify_prefix=True)
+        with self.task_scope(task) if self.task_scope else nullcontext():
+            task, execution = self.registry.restart_recovery(
+                task_id=task_id,
+                compatibility=adapter.compatibility(task),
+                worker_instance_id=self.worker_instance_id,
+                observed_at=self._now(),
+                expected_task_hash=expected_task_hash,
+            )
+            return self._invoke(task, execution, adapter, verify_prefix=True)
 
     def _invoke(
         self,
@@ -518,23 +557,23 @@ class TaskControlRunner:
         *,
         verify_prefix: bool = False,
     ) -> TaskRecord:
-        stop = Event()
-        heartbeat = Thread(
-            target=self._heartbeat,
-            args=(execution, stop),
-            name=f"task-heartbeat-{task.task_id}",
-            daemon=True,
-        )
-        heartbeat.start()
         # One task's execution is one bounded unit of registry work: every
         # stage's begin, receipt, projection and the adapter's own reads share
         # the instance opened here rather than each reopening the file.
-        try:
-            with self.registry.retain(read_only=False):
-                return self._execute(task, execution, adapter, verify_prefix=verify_prefix)
-        finally:
-            stop.set()
-            heartbeat.join(timeout=max(self.heartbeat_seconds * 2, 1.0))
+        with (
+            execution_port().running(
+                execution.execution_id,
+                self.execution_timeout,
+                ExecutionHeartbeat(
+                    partial(self._publish_heartbeat, execution),
+                    self.heartbeat_seconds,
+                    f"task-heartbeat-{task.task_id}",
+                ),
+            ),
+            task_observation(execution.started_at),
+            self.registry.retain(read_only=False),
+        ):
+            return self._execute(task, execution, adapter, verify_prefix=verify_prefix)
 
     def _execute(
         self,
@@ -547,6 +586,8 @@ class TaskControlRunner:
         pool: _WorkPool | None = None
         try:
             if verify_prefix:
+                if self.registry.task(task.task_id).lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+                    raise ExecutionStopped(CANCELLED)
                 definitions = {item.stage_id: item for item in task.plan.work_items}
                 for item in self.registry.work_items(task.task_id):
                     if item.lifecycle is not WorkItemLifecycle.VERIFIED:
@@ -606,6 +647,27 @@ class TaskControlRunner:
             self._publish_projection(task.task_id)
             return task
         except BaseException as error:
+            reason = stop_reason()
+            if reason == CANCELLED or (
+                isinstance(error, ExecutionStopped) and str(error) == CANCELLED
+            ):
+                current = self.registry.task(task.task_id)
+                if current.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
+                    stop_task_workers()
+                    stopped = self.registry.apply_cancel(
+                        task_id=task.task_id, observed_at=self._now()
+                    )
+                    self._publish_projection(task.task_id)
+                    return stopped
+            if reason == TIMED_OUT:
+                stopped = self.registry.mark_recovery_required(
+                    task_id=task.task_id,
+                    failure_code=TIMED_OUT,
+                    failed_stage_id=pool.failed_stage_id if pool is not None else None,
+                    observed_at=self._now(),
+                )
+                self._publish_projection(task.task_id)
+                return stopped
             declared_class = getattr(error, "failure_class", None)
             failure_code = (
                 f"{declared_class}:{error}"[:120]
@@ -615,7 +677,9 @@ class TaskControlRunner:
             self.registry.mark_recovery_required(
                 task_id=task.task_id,
                 failure_code=failure_code,
-                failure_cause=_untyped_stage_cause(error)
+                failure_cause=_untyped_stage_cause(
+                    error, detail=str(error) if isinstance(error, ChildInterrupted) else ""
+                )
                 if failure_code == "TASK_EXECUTION_INTERRUPTED"
                 else None,
                 failed_stage_id=pool.failed_stage_id if pool is not None else None,
@@ -623,13 +687,6 @@ class TaskControlRunner:
             )
             self._publish_projection(task.task_id)
             raise
-
-    def _heartbeat(self, execution: TaskExecution, stop: Event) -> None:
-        sequence = 1
-        self._publish_heartbeat(execution, sequence)
-        while not stop.wait(self.heartbeat_seconds):
-            sequence += 1
-            self._publish_heartbeat(execution, sequence)
 
     def _publish_heartbeat(self, execution: TaskExecution, sequence: int) -> None:
         signal = TaskHeartbeatSignal.from_identity(
@@ -708,13 +765,12 @@ class TaskControlRunner:
         pool = context.pool
         task = registry.task(task_id)
         if task.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
-            pool.drain()
-            registry.apply_cancel(task_id=task_id, observed_at=self._now())
-            self._publish_projection(task_id)
-            return False
+            raise ExecutionStopped(CANCELLED)
         if task.lifecycle is not TaskLifecycle.RUNNING:
             pool.drain()
             return False
+        if stop_reason() == TIMED_OUT:
+            raise ExecutionStopped(TIMED_OUT)
         checkpoint()
         work_states = registry.work_items(task_id)
         running = pool.stage_ids()
@@ -754,16 +810,13 @@ class TaskControlRunner:
                 # the run RECOVERY_REQUIRED and the queue behind it waiting).
                 moved = registry.task(task_id)
                 if moved.lifecycle is TaskLifecycle.CANCEL_REQUESTED:
-                    pool.drain()
-                    registry.apply_cancel(task_id=task_id, observed_at=self._now())
-                    self._publish_projection(task_id)
-                    return False
+                    raise ExecutionStopped(CANCELLED) from None
                 raise
             self._publish_projection(task_id)
             # This attempt, after the stage's interrupted ones in a row.
             attempt = registry.consecutive_interruptions(task_id, definition.stage_id) + 1
             refused = None if self.stage_gate is None else self.stage_gate(task)
-            digests: StageDigests = {}
+            digests: StageDigests = BoundedMemo()
             pool.digests[definition.stage_id] = digests
             pool.start(
                 definition,
@@ -810,17 +863,14 @@ class TaskControlRunner:
             # none of their work (the cancel covers them), a blocked one keeps
             # what completed -- a later run carries a completed item, and one
             # that did not complete is left as it stood.
-            finished = pool.drain()
             if result.disposition is StageDisposition.CANCELLED:
                 current_task = registry.task(task_id)
                 if current_task.lifecycle is not TaskLifecycle.CANCEL_REQUESTED:
                     raise RuntimeError(
                         "stage reported cancellation without a pending task cancellation"
                     )
-                registry.apply_cancel(task_id=task_id, observed_at=self._now())
-                self._publish_projection(task_id)
-                return False
-            for other, value in finished:
+                raise ExecutionStopped(CANCELLED)
+            for other, value in pool.drain():
                 if value.disposition is StageDisposition.READY:
                     self._complete(context, task_id, execution, other, value)
             # A domain adapter's refusal is recorded as the refusal it is,
@@ -968,7 +1018,7 @@ def _declared_width(adapter: TaskDomainAdapter, task: TaskRecord, width: int | N
     declared = getattr(adapter, "concurrent_work_items", None)
     if declared is None:
         return 1
-    return max(1, min(int(declared(task)), width or os.cpu_count() or 1))
+    return max(1, min(int(declared(task)), worker_width(width)))
 
 
 class _LogHeartbeatStore:

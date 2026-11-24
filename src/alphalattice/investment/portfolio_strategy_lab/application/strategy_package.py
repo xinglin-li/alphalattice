@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 from typing import ClassVar, Literal, Protocol, Self, runtime_checkable
 
@@ -30,6 +30,12 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import effective_moves
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     BoolArray,
     FloatArray,
@@ -58,9 +64,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import effective_moves
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
 
 type MergeSemantics = Literal[
     "SINGLE_COMPONENT_BOOK",
@@ -99,7 +102,11 @@ recipe and its policy binding and catalog (NM1). Their recorded moves are what a
 stored before a move is read through."""
 
 
-@cache
+_ROOTS_HELD = 8
+"""The data roots whose recorded moves one process keeps."""
+
+
+@lru_cache(maxsize=_ROOTS_HELD)
 def _value_moves(root: Path | None = None) -> dict[str, dict[str, str]]:
     """Each value role's moves in force (`effective_moves`), by the value each moves from."""
     roles: dict[str, dict[str, str]] = {}

@@ -111,8 +111,18 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   views[UPDATE]=view(UPDATE,'RUNNING','maintain_data_feature');projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'RUNNING',verified_stage_count:1}];await w.refresh('data');
   // ---- completed: what changed and what was reused, in the owner's receipt; exact reuse afterwards ----
   bodies.byTask[UPDATE]={...bodies.byTask[UPDATE],status:'PUBLISHED',task_lifecycle:'SUCCEEDED',inputs:inputs('2026-08-03','2026-08-03'),receipt,partition_reuse:{composed_partition_count:1,reused_partition_count:10,source:'RECEIPT_PANEL',panel_hash:'cc93b42d'},cycle:cycle('completed','completed',{change_set:changeSet}),maintenance:maintenance(120),work_progress:{availability:'NOT_CURRENT',stage:'maintain_data_feature',stage_id:'panel_year_finalize',status:'SUCCEEDED',completed_units:11,total_units:11,unit_name:'years',age_seconds:40}};
+  bodies.byTask[UPDATE].daily_health={task_id:UPDATE,target_session:'2026-08-03',checks:[
+    {id:'source_freshness',status:'PASS',count:0},
+    {id:'not_null',status:'FAIL',count:2},
+    {id:'unique',status:'PASS',count:0},
+    {id:'accepted_values',status:'UNAVAILABLE',count:null},
+    {id:'relationships',status:'PASS',count:0}
+  ]};
   views[UPDATE]=view(UPDATE,'SUCCEEDED',null);projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'SUCCEEDED',verified_stage_count:3}];
   w.observe();await settle();markup=w.page();
+  assert.ok(markup.includes('ROW(data.health.source_freshness|<code>source_freshness</code>|data.health.passed|0)'));
+  assert.ok(markup.includes('ROW(data.health.not_null|<code>not_null</code>|Failed|2)'));
+  assert.ok(markup.includes('ROW(data.health.accepted_values|<code>accepted_values</code>|Unavailable|—)'));
   assert.ok(markup.includes('2026-07-31 → 2026-08-03') && markup.includes('<p class="data-update-counts">') && !markup.includes('Listings in the last update') && markup.includes('FIG(As of:2026-08-03') && !markup.includes('data-scene="update"'),'the completed update is its row -- the change it made -- with the runner counts under it, no separate figure; its work is folded (N6, laws 72, 98; the user, 2026-09-24)');
   assert.equal(c.app.data,'2026-08-03','the shell\'s data cutoff follows the readback');
   const caught=reads.length;w.observe();await settle();assert.equal(reads.length,caught,'once the readback carries the receipt nothing more is read');

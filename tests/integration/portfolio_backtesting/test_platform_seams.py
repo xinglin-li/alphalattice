@@ -16,6 +16,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     ActiveMetricsError,
     active_path_metrics,
@@ -30,7 +31,6 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioCostPolicy,
     PortfolioWalkForwardError,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     require_selection_only_document,

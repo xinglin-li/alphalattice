@@ -8,10 +8,11 @@ no conversation body, token record or member-key command is read here.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from alphalattice.kernel.config import current as process_config
 
 HOST_CLAUDE_CODE = "claude-code"
 HOST_CODEX = "codex"
@@ -46,7 +47,7 @@ def session_root(
     Returns:
         The root directory; Claude Code honours ``CLAUDE_CONFIG_DIR`` and Codex ``CODEX_HOME``.
     """
-    environ = os.environ if environ is None else environ
+    environ = process_config().public if environ is None else environ
     if host == HOST_CLAUDE_CODE:
         return (
             Path(home or environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"

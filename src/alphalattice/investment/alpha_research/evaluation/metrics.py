@@ -11,7 +11,7 @@ from typing import Final, Literal
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.validation.screening_statistics import (
+from alphalattice.capabilities.validation.screening_statistics import (
     average_ranks,
     gross_decile_spread,
     spearman_rank_correlation,

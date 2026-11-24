@@ -166,10 +166,10 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
 ) -> None:
     """legacy outer/inner seals and derivation hold; admission reads the live cap."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
     from alphalattice.control.task_control.runner import StageDisposition
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
@@ -260,8 +260,8 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
 ) -> None:
     """Publication retries preserve bytes, clean staging and reach Task failure codes."""
 
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("retry"))
@@ -462,9 +462,9 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 ) -> None:
     """An exact live grant resumes the same Task after data and storage stops."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
     # Its preparation runs a Factor study, whose walk-forward policy needs FACTOR_SCALE's history.
@@ -662,6 +662,9 @@ def test_optional_progress_delivery_never_governs_the_stage(
     typed cause and the work goes on; a file that cannot be read, is malformed or is
     another Task's is never promoted, and the last valid observation is kept."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.observation_runtime.telemetry.progress import (
         WorkProgressUpdate,
         WorkspaceProgressPublisher,
@@ -669,9 +672,6 @@ def test_optional_progress_delivery_never_governs_the_stage(
     from alphalattice.control.product_host.maintenance.data_update import (
         WorkspaceDataUpdateApplication,
     )
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
@@ -866,9 +866,9 @@ def test_listing_activity_is_bound_bounded_and_optional(
 ) -> None:
     """Listing activity telemetry is bound to its listing, bounded in size, and optional."""
 
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
     from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     symbols = ("AAA", "BBB", "CCC", "FAIL")
@@ -1149,14 +1149,14 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
 ) -> None:
     """Listing delivery stays cheap under persistent refusal."""
 
+    from alphalattice.capabilities.domain_contracts import persistence
+    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
         CurrentUniverseOnboardingOutcome,
         CurrentUniverseOnboardingStatus,
         ListingUnitObservation,
     )
-    from alphalattice.kernel.shared_kernel import persistence
-    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cost"))
@@ -1532,6 +1532,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         inspect_existing_data_workspace,
     )
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+    from alphalattice.kernel import storage
     from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
     from tests.workspace_readiness.storage_support import future_sample
 
@@ -1559,10 +1560,16 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         def __getattribute__(self, name):
             raise AssertionError(f"qualified local preparation accessed sources: {name}")
 
+    def held_bytes() -> bytes:
+        # The live Host holds the file, and Windows refuses a bare read of it: a byte reader
+        # names the file to its owner first, as every reader outside the engine does.
+        with storage.outside(root / "market-data.duckdb"):
+            return (root / "market-data.duckdb").read_bytes()
+
     start = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     start.data_provider = NoSources()
     with start as live:
-        before_read = (root / "market-data.duckdb").read_bytes()
+        before_read = held_bytes()
         too_late = live.operations.preparation.plan(
             requested_formation_session=datetime.fromisoformat(
                 inspection["inputs"]["panel_through"]
@@ -1570,7 +1577,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
             - timedelta(days=1),
         )
         assert too_late["failure_code"] == "workspace_preparation.local_inputs_after_requested_date"
-        assert (root / "market-data.duckdb").read_bytes() == before_read
+        assert held_bytes() == before_read
         assert not live.session.task_control_registry.tasks()
         through = datetime.fromisoformat(inspection["inputs"]["panel_through"]).date()
         late = through + timedelta(days=7)
@@ -1588,7 +1595,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
             with future_sample(market, live.session.mutation_gate, table, listing_id, late):
                 # The later row is world's, where the Host serves it, not only the stage's buffer.
                 assert late in {row.session_date for row in served(listing_id, through=late)}
-                mutated = (root / "market-data.duckdb").read_bytes()
+                mutated = held_bytes()
                 refused = live.operations.preparation.plan(requested_formation_session=through)
                 assert refused["source_inputs"][field] == str(through)
                 assert refused["source_through"] == str(late)
@@ -1597,7 +1604,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
                     == "workspace_preparation.local_inputs_after_requested_date"
                 )
                 assert not live.session.task_control_registry.tasks()
-                assert (root / "market-data.duckdb").read_bytes() == mutated
+                assert held_bytes() == mutated
         perform = live.operations.preparation._perform
 
         def interrupt_before_publication(task, plan, stage, execution):
@@ -2152,7 +2159,8 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         class Owners(PortfolioResearchOperations):
             """The operations entry over a real plan answer and a recording admission."""
 
-            def _execute(self, request, *, caller, agent_execution):
+            def _execute(self, request, *, caller, agent_execution, direct_person):
+                assert not direct_person
                 reached.append(request.operation)
                 if request.operation == "WORKSPACE_PREPARE_PLAN":
                     return app.plan()
@@ -2164,6 +2172,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_PLAN"),
             caller="EXTERNAL_AUTOMATION",
             agent_execution=None,
+            direct_person=False,
         )
         estimate = plan["resource_estimate"]
         assert estimate["label"] == "ESTIMATE" and estimate["peak_memory_bytes"] > 0
@@ -2174,6 +2183,9 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             "EXECUTION_ONLY",
         )
         assert datetime.fromisoformat(estimate["cpu_sampled_at"]).utcoffset().total_seconds() == 0
+        assert (
+            estimate["cpu_load"]["busy_processors"] is not None
+        )  # automatic sizing reads the load
         assert estimate["basis_details"]["reference_units"] == 520
         assert estimate["basis_details"]["reference_wall_seconds"] == 390
         assert estimate["basis_details"]["plan_units"] is None
@@ -2185,7 +2197,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         peak = estimate["peak_memory_bytes"]
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak - 1)
         refused = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
         )
         assert refused["status"] == "REFUSED"
         assert refused["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT
@@ -2198,7 +2210,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
 
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak)
         admitted = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
         )
         assert admitted["status"] == "ADMITTED" and reached[-1] == "WORKSPACE_PREPARE_CONFIRM"
 
@@ -2231,6 +2243,8 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
                 gate.plan_answered("EXPERIMENT_PLAN", alpha)
                 assert alpha["resource_estimate"]["wall_seconds"] == expected
                 assert alpha["resource_estimate"]["cpu_budget"] == budget
+                # A fixed budget never waits for a load sample it does not use (each stage checks).
+                assert alpha["resource_estimate"]["cpu_load"]["busy_processors"] is None
                 assert alpha["plan_hash"] == component
                 assert alpha["resource_estimate"]["basis_details"]["cpu_scaling_cap"] == 1.5
             assert alpha["resource_estimate"]["peak_memory_bytes"] == int(3.3 * 2**30)

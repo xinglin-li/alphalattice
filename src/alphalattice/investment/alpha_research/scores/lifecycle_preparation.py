@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
@@ -31,7 +32,6 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     ModelLifecycle,
     resolve_alpha_refit_plan,
 )
-from alphalattice.kernel.shared_kernel.spans import span
 
 
 def prepare_component_lifecycle(

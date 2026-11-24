@@ -11,8 +11,10 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.interface.local_application import thin_cli
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel import storage
+from alphalattice.kernel.config import current as process_config
 
 
 def serve(arguments: list[str]) -> int:
@@ -82,7 +84,7 @@ def serve(arguments: list[str]) -> int:
         # The checkout shim's sys.path bootstrap does not reach a new interpreter.
         # Give that child the same checkout source, even when its environment has
         # dependencies installed without an editable package installation.
-        environment = dict(os.environ)
+        environment = process_config().child_environment()
         source = str(root / "src")
         inherited_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = (
@@ -100,7 +102,7 @@ def serve(arguments: list[str]) -> int:
     return (
         start(arguments, new_research=selected.new_research)
         if "--detach" in arguments
-        else start(arguments)
+        else start(arguments, own_process_tree=True)
     )
 
 
@@ -149,8 +151,23 @@ def _closed_output_pipe(error: OSError) -> bool:
         return False
 
 
+def _install_storage_driver() -> None:
+    """The process's DuckDB driver, installed in the storage port before the CLI or Host opens a
+    file; the thin path above loads no DuckDB."""
+    from alphalattice.control.workspace_runtime import reader_threads  # lazy: past the thin path
+
+    storage.install_driver(reader_threads.DRIVER)
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run the declared command and return its exit status."""
+    """Run the declared command and return its exit status: one command, which makes one Host
+    start attempt whichever path reaches it (`thin_cli.one_command`)."""
+    with thin_cli.one_command():
+        return _run(argv)
+
+
+def _run(argv: list[str] | None) -> int:
+    process_config()
     arguments = sys.argv[1:] if argv is None else argv
     try:
         if argv is None:
@@ -163,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
                 return delivery_lost(arguments, error)
+        _install_storage_driver()
         from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
 
         result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
@@ -210,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.8",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.9",
                         ]
                     ),
                     "interpreter": sys.executable

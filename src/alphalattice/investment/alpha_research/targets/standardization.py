@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.quant.cross_section import (
+from alphalattice.capabilities.quant.cross_section import (
     robust_zscore,
 )
-from alphalattice.kernel.validation.screening_statistics import average_ranks
+from alphalattice.capabilities.validation.screening_statistics import average_ranks
 
 from .contracts import StandardizedTargetLane
 

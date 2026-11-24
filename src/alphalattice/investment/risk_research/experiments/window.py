@@ -32,6 +32,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
 from alphalattice.investment.risk_research.experiments.formation_selection import (
     DEVELOPMENT_FORMATION_CAPACITY,
@@ -40,7 +41,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnWindow,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,

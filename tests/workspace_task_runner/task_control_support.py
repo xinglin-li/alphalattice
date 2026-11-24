@@ -13,6 +13,7 @@ from uuid import uuid4
 import duckdb
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -32,8 +33,8 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import history
+from alphalattice.interface.local_application.thin_cli import connection_path
 
 
 def set_tasks_waiting(workspace: Path, count: int, at: datetime) -> None:
@@ -180,7 +181,8 @@ def lose_the_log_keeping_frozen_requests(
 ) -> DuckDbTaskControlRegistry:
     """A 0.2.7 workspace whose Task store was lost but whose frozen requests stayed: its requests
     written out as 0.2.7 kept them, and the process moved to the empty data root `root`, where
-    opening the registry again lists each Task again from its request (`ledger_rebuilt`)."""
+    opening the registry again lists each Task again from its request (`ledger_rebuilt`). A Host
+    serving the workspace serves on `root` too, so its endpoint record moves there."""
     with history.held().reading() as connection:
         rows = connection.execute(
             "SELECT t.text FROM event e JOIN event_text t ON t.seq = e.seq"
@@ -192,8 +194,13 @@ def lose_the_log_keeping_frozen_requests(
     for (text,) in rows:
         (requests / f"{canonical_hash(json.loads(text))}.json").write_text(text, encoding="utf-8")
     history.close_history()
-    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
     folder = registry.database_path.parent.parent
+    record = connection_path(folder)
+    served = record.read_bytes() if record.is_file() else None
+    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
+    if served is not None:
+        (moved := connection_path(folder)).parent.mkdir(parents=True, exist_ok=True)
+        moved.write_bytes(served)
     history.workspace_on_log(folder, folder.name, registry.workspace_id)
     return DuckDbTaskControlRegistry(registry.database_path, gate=gate)
 

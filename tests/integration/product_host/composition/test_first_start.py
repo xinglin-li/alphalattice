@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from collections.abc import Callable
@@ -20,19 +21,21 @@ from alphalattice.control.product_host.composition.local_web_session import (
 from alphalattice.control.product_host.composition.research_workspace import (
     initialize_research_workspace,
     named_workspace_id,
+    publish_research_workspace_manifest,
+    read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
+from alphalattice.foundation.data_layer import history, history_execution_outcomes, history_startup
+from alphalattice.foundation.data_layer.upgrade import PROGRESS, Family, UpgradeRunner
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.client import LocalResearchConnection
-from alphalattice.kernel.data_layer import history, history_execution_outcomes, history_startup
-from alphalattice.kernel.data_layer.upgrade import PROGRESS, Family
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 
 TEST_SOURCE = "src/alphalattice/control/product_host/composition/first_start.py"
 OUTCOMES = Path("artifacts/data-operations/execution-outcomes")
 
 
-def _held_family(stops: list[str]) -> Callable[[], Family]:
+def _held_family(stops: list[str], asked: list[str] | None = None) -> Callable[[], Family]:
     """A family whose old data is `old-store.json`; it stops once after its first workspace."""
 
     def make() -> Family:
@@ -52,10 +55,19 @@ def _held_family(stops: list[str]) -> Callable[[], Family]:
             )
 
         def holds(workspace: Path) -> bool:  # old data its new store lacks
+            if asked is not None:
+                asked.append("held")
             old, new = workspace / "old-store.json", workspace / "new-store.json"
             return old.is_file() and (not new.is_file() or new.read_bytes() != old.read_bytes())
 
-        return Family("held", step, verify, holds)
+        return Family(
+            "held",
+            step,
+            verify,
+            holds,
+            trust_paths=("/old-store.json", "/new-store.json"),
+            shared_inputs=("/old-store.json",),
+        )
 
     return make
 
@@ -308,7 +320,140 @@ def test_a_workspace_holding_no_old_data_is_asked_once_per_folder(
     monkeypatch.setattr(first_start, "DECLARATIONS", first_start.DECLARATIONS + " 130-added.json")
     opened(plain)
     assert asked == ["plain", "other", "plain", "plain"]
-    assert [e["kind"] for e in _progress("0.2.8")] == ["none_due"] * 4
+    assert [e["kind"] for e in _progress(first_start.CLEAN)] == ["none_due"] * 4
+
+
+@pytest.mark.proves("product_host.first_start_upgrades_every_old_workspace")
+@pytest.mark.parametrize("witness", ("manifest-rewrite", "bounded-history"))
+def test_first_start_reuses_only_the_recorded_family_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, witness: str
+) -> None:
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.foundation.data_layer import create_data_root
+    from alphalattice.foundation.data_layer.log import HostLog
+
+    root, workspace, manifestless = (tmp_path / name for name in ("data", "workspace", "unnamed"))
+    create_data_root(root)
+    _old(None, workspace, "first")
+    manifestless.mkdir()
+    monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(tmp_path / "backups"))
+    asked: list[str] = []
+    stops: list[str] = []
+
+    def other() -> Family:
+        def step(runner: Any) -> None:
+            for folder in runner.workspaces:
+                output = folder / "new-store.json"
+                stamp = output.stat()
+                os.utime(output, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+
+        def holds(_workspace: Path) -> bool:
+            asked.append("other")
+            return False
+
+        return Family("other", step, lambda _runner: True, holds)
+
+    monkeypatch.setattr(first_start, "FAMILIES", (_held_family(stops, asked), other))
+    cases = (
+        ("fresh", workspace, None, ("held",), ("held", "other")),
+        ("steady", workspace, None, (), ()),
+        ("shared view added", workspace, None, (), ()),
+        ("changed", workspace, "other", ("held",), ("held",)),
+        ("manifestless", manifestless, None, ("held", "other"), ()),
+        ("manifestless reopened", manifestless, None, (), ()),
+        ("steady after history", workspace, None, (), ()),
+        ("interrupted", workspace, "interrupted source", ("held",), ("held",)),
+        ("resumed", workspace, None, (), ("held",)),
+    )
+    with HostLog.open(root) as log:
+        read = log.read
+        progress_reads: list[tuple[int, int]] = []
+        steady_rows = 0
+
+        def observe(sql: str, args: tuple[Any, ...] = ()) -> Any:
+            if "FROM event" not in sql or not args or args[0] != PROGRESS:
+                return read(sql, args)
+            steps = 0
+
+            def tick() -> int:
+                nonlocal steps
+                steps += 1
+                return 0
+
+            with log.reading() as db:
+                db.set_progress_handler(tick, 1)
+                try:
+                    rows = read(sql, args)
+                finally:
+                    db.set_progress_handler(None, 0)
+            progress_reads.append((len(rows), steps))
+            return rows
+
+        monkeypatch.setattr(log, "read", observe)
+        for case, folder, changed, probes, families in cases:
+            source = folder / "old-store.json"
+            if case == "shared view added":
+                os.link(source, tmp_path / "kept-input-view.json")
+            if changed is not None:
+                prior_time = source.stat()
+                source.write_text(json.dumps({"rows": [changed]}), encoding="utf-8")
+                if case == "changed":
+                    # A byte change with size and write time preserved still ends its trust.
+                    os.utime(source, ns=(prior_time.st_atime_ns, prior_time.st_mtime_ns))
+                    if witness == "manifest-rewrite":
+                        manifest = read_research_workspace_manifest(folder)
+                        publish_research_workspace_manifest(
+                            folder, manifest.with_bindings(committee_agenda_limit=1)
+                        )
+                        assert named_workspace_id(folder) == manifest.workspace_id
+            if case == "steady after history" and witness == "bounded-history":
+                progress_reads.clear()
+                assert first_start.FirstStart(root, log, folder).plan is None
+                [before_history] = progress_reads
+                prefix = first_start.workspace_plan_prefix(folder)
+                for attempt in range(64):
+                    runner = UpgradeRunner(
+                        root,
+                        log,
+                        (folder,),
+                        (Family("other", lambda _: None, lambda _: True),),
+                        lambda *_, scope=folder: {"workspaces": [{"workspace": str(scope)}]},
+                        subject=f"{prefix}fixture-{attempt}",
+                    )
+                    assert runner.run()
+            asked.clear()
+            progress_reads.clear()
+            start = first_start.FirstStart(root, log, folder)
+            assert len(progress_reads) == 1, case
+            assert tuple(asked) == probes, case
+            if case == "steady":
+                steady_rows = progress_reads[0][0]
+            if case == "steady after history" and witness == "bounded-history":
+                assert progress_reads[0][0] <= steady_rows, case
+                assert progress_reads[0] == before_history, "completed plans under this workspace"
+            if not families:
+                assert start.plan is None, case
+                continue
+            assert start.plan is not None and start.plan.families == families, case
+            if case == "resumed":
+                assert start.plan.recorded and start.state == "RUNNING"
+            else:
+                start.admit(start.plan.plan_hash)
+            if case == "interrupted":
+                stops.append("stopped before verification")
+                with pytest.raises(DataError, match="stopped at step"):
+                    start.run()
+                assert not start.view()["first_start"]["families_done"]
+            else:
+                start.run()
+                receipt = start.view()["first_start"]
+                assert tuple(receipt["families_done"]) == families
+                assert receipt["upgrade_seconds"] >= 0
+                if case == "fresh":
+                    current = first_start.FirstStart(root, log, workspace)
+                    facts = current._trusted[str(workspace.resolve()), "held"]
+                    committed = facts["files"]["/new-store.json"]["metadata"]
+                    assert committed == list(first_start.file_stamp(workspace / "new-store.json"))
 
 
 @pytest.mark.proves("product_host.first_start_asks_nothing_of_catalog_held_outcomes")
@@ -334,13 +479,13 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
 
     import pyarrow as pa
 
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.foundation.causal_outcomes.execution.contracts import (
         CausalExecutionOutcomeChunk,
         CausalExecutionOutcomeManifest,
         CausalExecutionOutcomeMarker,
     )
-    from alphalattice.kernel.data.errors import DataError
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     outcomes, address = tmp_path / OUTCOMES, "playpen://data-operations/execution-outcomes/"
 
@@ -396,7 +541,7 @@ def test_a_committed_chunk_with_no_file_is_upgraded_only_if_the_catalog_lacks_it
     publish("markers", marker.model_dump(mode="json"), "marker_hash")
 
     if case == "no catalog reader":
-        monkeypatch.setattr(history_startup, "duckdb_session", lambda _root: None)
+        monkeypatch.setattr(history_startup, "duckdb_session", lambda *_args, **_kwargs: None)
     history.open_history("first-start", "first start", tmp_path, tmp_path / "data-root")
     try:
         family = first_start.execution_outcomes()

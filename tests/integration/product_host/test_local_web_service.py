@@ -25,6 +25,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     HANDLED_OPERATION_ROUTES,
     OPERATION_ROUTES,
@@ -45,6 +47,9 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 )
 from alphalattice.control.task_control.queue import write_queue_setting
 from alphalattice.control.task_control.registry import TaskQueueFull
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.log import COMMIT_TIMER, HostLog
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.interface.local_application import client, native_bridge
 from alphalattice.interface.local_application.answers import continuation_problem
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -72,11 +77,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.log import COMMIT_TIMER, HostLog
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel import spawn
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
@@ -681,12 +681,14 @@ def test_cancellation_is_requested_not_enacted(
     )
 
 
-@pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup"])
+@pytest.mark.parametrize("failure", ["socket", "upgrade-verify", "upgrade-backup", "timer-start"])
 def test_a_failed_start_leaves_no_lease_worker_or_socket(
     tmp_path: Path, failure: str, monkeypatch
 ) -> None:
-    "A stopped upgrade never serves; a completed one is reused after a later bind failure."
-    from alphalattice.kernel.data_layer import history_runtime
+    """A stopped upgrade never serves; a completed one is reused after a later bind failure. A
+    start that fails before its timer starts (an upgrade), after (the socket) or as the system
+    refuses the timer's thread leaves no thread, and a stop called twice answers as the first."""
+    from alphalattice.foundation.data_layer import history_runtime
 
     # An experience render runs only once the failed start's check has run, as a slow one on a
     # loaded runner would: a start that fails must have started none.
@@ -723,7 +725,8 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
             {"fixture": "verified backup"} if checks["backup"] else {}
         ),
     )
-    before = {thread.name for thread in threading.enumerate()}
+    # The threads themselves, not their names: one an earlier test left running is not this one's.
+    before = set(threading.enumerate())
     session = LocalPortfolioWebSession(
         workspace=workspace,
         workspace_manifest=_manifest("qa-failed-start"),
@@ -731,17 +734,28 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
         port=taken,
         upgrade=upgrade,
     )
+    if failure == "timer-start":  # the system refuses the timer's thread at its first arming
+
+        class Refused(threading.Thread):
+            def start(self) -> None:
+                raise RuntimeError("can't start new thread")
+
+        monkeypatch.setattr("alphalattice.kernel.execution.timers.Thread", Refused)
     try:
-        expected = OSError if failure == "socket" else DataError
+        expected = {"socket": OSError, "timer-start": RuntimeError}.get(failure, DataError)
         with pytest.raises(
-            expected, match=r"[Aa]ddress|socket|port|Upgrade family|pre-upgrade backup"
+            expected,
+            match=r"[Aa]ddress|socket|port|Upgrade family|pre-upgrade backup|can't start new",
         ):
             session.start()
+        monkeypatch.setattr("alphalattice.kernel.execution.timers.Thread", threading.Thread)
         assert session.session is None
         assert session.dispatcher is None
         assert session.web is None
         # A Host a wider fixture serves may share this process's log, whose batch timer is its own.
-        assert {thread.name for thread in threading.enumerate()} - before <= {COMMIT_TIMER}
+        assert {thread.name for thread in set(threading.enumerate()) - before} <= {COMMIT_TIMER}
+        session.stop()
+        session.stop()
         checked.set()
         assert steps == ([] if failure == "upgrade-backup" else ["step"])
         checks.update(backup=True, verify=True)
@@ -759,43 +773,112 @@ def test_a_failed_start_leaves_no_lease_worker_or_socket(
             assert steps == (["step", "step"] if failure == "upgrade-verify" else ["step"])
         finally:
             second.stop()
+        second.stop()
+        assert "timers" not in {thread.name for thread in set(threading.enumerate()) - before}
     finally:
         checked.set()
         blocker.close()
         log.close()
 
 
-def test_shutdown_joins_a_slow_authenticated_handler(live: LocalPortfolioWebSession) -> None:
-    "A request thread is a writer, so stopping waits for it rather than past it."
-    entered = threading.Event()
-    release = threading.Event()
+@pytest.mark.parametrize("held", ["handler", "source"])
+def test_shutdown_joins_a_slow_authenticated_handler(
+    live: LocalPortfolioWebSession, monkeypatch, held: str
+) -> None:
+    """The Host waits for a live request and can refuse a RUN still reading its sources."""
+    entered, release = threading.Event(), threading.Event()
     order: list[str] = []
+    answers: list[tuple[int, dict[str, str], bytes]] = []
 
-    def _slow(_query: object, _payload: object) -> object:
+    def slow_handler(_query: object, _payload: object) -> object:
         entered.set()
-        release.wait(timeout=20.0)
+        assert release.wait(10)
         order.append("handler")
         return {"slow": True}
 
-    live.web.application.route("GET", "/api/qa-slow")(_slow)
-    caller = threading.Thread(target=lambda: _request(live, "/api/qa-slow"), daemon=True)
-    caller.start()
-    assert entered.wait(timeout=20.0)
+    def call():
+        if held == "handler":
+            answers.append(_request(live, "/api/qa-slow"))
+        else:
+            answers.append(_request(live, "/api/run", method="POST", payload={"spec": {}}))
 
-    def _stop() -> None:
+    def stop() -> None:
         live.stop()
         order.append("stop")
 
-    stopper = threading.Thread(target=_stop, daemon=True)
-    stopper.start()
-    time.sleep(0.4)
-    assert stopper.is_alive()
-    assert live.session is not None
-    release.set()
-    stopper.join(timeout=30.0)
-    caller.join(timeout=30.0)
-    assert not stopper.is_alive()
-    assert order == ["handler", "stop"], order
+    live.web.application.route("GET", "/api/qa-slow")(slow_handler)
+    if held == "source":
+        from stat import S_IFREG, S_ISREG
+
+        from alphalattice.capabilities.domain_contracts import source_identity
+        from alphalattice.control.product_host.composition import portfolio_research_operations
+
+        source_package = Path(source_identity.__file__).resolve().parents[2]
+        windows = source_identity.os_name == "nt"
+        source_stat = source_identity.file_stamp if windows else Path.stat
+        reading_source = False
+
+        def watch_source_admission(check):
+            entered_scope = False
+
+            def mark_source_read():
+                nonlocal entered_scope, reading_source
+                check()
+                reading_source = entered_scope
+                entered_scope = True
+
+            return source_identity.source_read_admission(mark_source_read)
+
+        def finish_one_source_read(path, **kwargs):
+            facts = source_stat(path, **kwargs)
+            if (
+                reading_source
+                and threading.current_thread().name == "local-web-request"
+                and S_ISREG(getattr(facts, "st_mode", S_IFREG))
+                and path.suffix == ".py"
+                and path.is_relative_to(source_package)
+            ):
+                if entered.is_set():
+                    raise ValueError("qa.source_read_continued")
+                entered.set()
+                assert release.wait(10)
+            return facts
+
+        monkeypatch.setattr(
+            portfolio_research_operations, "source_read_admission", watch_source_admission
+        )
+        if windows:
+            monkeypatch.setattr(source_identity, "file_stamp", finish_one_source_read)
+        else:
+            monkeypatch.setattr(Path, "stat", finish_one_source_read)
+
+    dispatcher = live.dispatcher
+    before = dispatcher.admissions
+    caller = threading.Thread(target=call, daemon=True)
+    stopper = threading.Thread(target=stop, daemon=True)
+    caller.start()
+    try:
+        assert entered.wait(10)
+        dispatcher._begin_drain()
+        stopper.start()
+        stopper.join(0.1)
+        assert stopper.is_alive() and live.session is not None
+    finally:
+        release.set()
+        caller.join(15)
+        if stopper.ident is not None:
+            stopper.join(15)
+    assert not caller.is_alive() and not stopper.is_alive()
+    status, _, raw = answers[0]
+    if held == "source":
+        answer = json.loads(raw)
+        assert answer.get("failure_code") == "local_application.dispatcher_closed", answer
+        assert status == 400 and answer["status"] == "REFUSED"
+        assert dispatcher.admissions == before
+        assert order == ["stop"]
+    else:
+        assert status == 200
+        assert order == ["handler", "stop"]
     assert live.web is None
     assert live.session is None
 
@@ -1871,6 +1954,7 @@ def test_the_evidence_and_cro_section_names_why_it_waits(
 
 def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
     """A cleanup preview offers its exact confirmation and asks the person once."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from tests.portfolio_strategy_lab.node_runner import read_in_chinese
 
     with LocalPortfolioWebSession.from_workspace(tmp_path) as live:
@@ -1890,6 +1974,21 @@ def test_storage_cleanup_offers_its_exact_confirmation(tmp_path: Path) -> None:
             payload={key: value for key, value in continued.items() if key != "operation"},
         )
         assert applied["status"] == "COMPLETED" and applied["plan_hash"] == plan["plan_hash"]
+
+        pending = tmp_path / "artifacts/storage-governance/input-cleanup-started"
+        pending.mkdir(parents=True, exist_ok=True)
+        intent = {"plan_hash": plan["plan_hash"]}
+        (pending / f"{canonical_hash(intent)}.json").write_text(
+            json.dumps(intent), encoding="utf-8"
+        )
+        blocked = _json(
+            live,
+            "/api/workspace/storage/pin",
+            method="POST",
+            payload={"input_binding_hash": "a" * 64, "input_pinned": True},
+        )
+        assert blocked["status"] == "REFUSED"
+        assert blocked["failure_code"] == "storage.cleanup_recovery_required"
 
 
 def test_history_and_discovery_keep_peers_without_advancing_unreadable_authority(
@@ -1977,6 +2076,20 @@ def test_task_record_collections_keep_readable_rows_and_offer_named_authority_ro
             assert refusal["next_requests"]["backups"] == {"operation": "WORKSPACE_BACKUPS"}
         assert str(alien.task_id) not in json.dumps(answer)
     assert any(row["task_id"] == str(peer.task_id) for row in answers["TASKS"]["tasks"])
+
+    from alphalattice.control.product_host.composition import task_operations
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        WorkspaceOperationCall,
+    )
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    operations = data.live.operations
+    request = PortfolioResearchOperationRequest(operation="TASKS")
+    named_route = task_operations.route(WorkspaceOperationCall(operations, request, "HUMAN"))
+    assert named_route["tasks"] == answers["TASKS"]["tasks"]
+    assert named_route["refusals"] == answers["TASKS"]["refusals"]
 
 
 def test_unreadable_task_authority_refuses_recovery_and_writes(unreadable_task_records) -> None:
@@ -2168,6 +2281,19 @@ def test_a_feature_listing_page_is_read_as_its_number(tmp_path: Path) -> None:
     # Pagination reads the extension records, not market rows or a bound study.
     publish_research_workspace_manifest(root, _manifest("feature-page"))
     with _session(root) as live:
+        from alphalattice.control.product_host.composition import feature_operations
+        from alphalattice.control.product_host.composition.operation_route_families import (
+            WorkspaceOperationCall,
+        )
+        from alphalattice.interface.local_application.portfolio_research import (
+            PortfolioResearchOperationRequest,
+        )
+
+        request = PortfolioResearchOperationRequest(operation="FEATURE_TRIALS")
+        owned = feature_operations.route(WorkspaceOperationCall(live.operations, request, "HUMAN"))
+        assert _json(live, "/api/feature-trials") == owned
+        assert owned["trials"] == []
+
         first = _json(live, "/api/feature-research?extensions_page=1")
         assert (first["status"], first["page"]) == ("FEATURE_EXTENSIONS", 1)
         past = first["page_count"] + 1

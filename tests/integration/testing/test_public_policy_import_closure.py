@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 ROOT = Path(__file__).resolve().parents[3]
 SOLVERS = ("cvxpy", "osqp", "optuna")
@@ -235,7 +235,7 @@ def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash
         "loaded = sorted(n for n in sys.modules if n.split('.')[0] in heavy or n == 'scipy.stats');"
         "assert not loaded, loaded; "
         "assert not installed_strategies.installed_strategy_source_hash.cache_info().currsize\n"
-        "from alphalattice.kernel.shared_kernel import environment\n"
+        "from alphalattice.capabilities.domain_contracts import environment\n"
         "from alphalattice.investment.risk_research.estimators import covariance\n"
         "with covariance.risk_numerical_thread_policy():\n"  # cold: LedoitWolf's first estimate
         "    import sklearn.covariance\n"

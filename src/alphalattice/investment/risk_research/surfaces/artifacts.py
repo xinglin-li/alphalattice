@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Iterator, Mapping, Sequence
@@ -15,22 +14,23 @@ from uuid import uuid4
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
+from alphalattice.foundation.data_layer import history, risk_history
 from alphalattice.foundation.market_data_ops.storage.world import world_listing
 from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceBuildCheckpoint,
     HistoricalCovarianceChunk,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, risk_history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://risk-research/"
 
 
 def _packed_digest(content: bytes | memoryview) -> str:
-    return hashlib.sha256(content).hexdigest()
+    return integrity_sha256(content).hexdigest()
 
 
 class RiskArtifactError(ValueError):
@@ -115,7 +115,7 @@ class RiskArtifactStore:
         return ArtifactDescriptor(
             kind=f"risk-research-{category.replace('/', '-')}",
             content_hash=content_hash,
-            metadata_hash=hashlib.sha256(content).hexdigest(),
+            metadata_hash=integrity_sha256(content).hexdigest(),
             uri=self.uri(category, content_hash),
         )
 

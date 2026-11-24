@@ -11,6 +11,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
 from alphalattice.investment.risk_research.contracts import (
     CausalRiskReturnSurface,
@@ -38,7 +39,6 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,

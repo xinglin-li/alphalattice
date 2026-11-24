@@ -153,8 +153,8 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
     tmp_path: Path, evidence_roots, monkeypatch, capsys, caplog
 ) -> None:
     """Activation reuses sealed studies and publishes their held sessions through a real update."""
+    from alphalattice.capabilities.domain_contracts.spans import absorb, collect, readout
     from alphalattice.interface.local_application.client import LocalResearchClient
-    from alphalattice.kernel.shared_kernel.spans import absorb, collect, readout
 
     root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
@@ -1269,6 +1269,7 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
     tmp_path, monkeypatch
 ):
     """CONTRACT: the current view reads the book/cost-bound realized window separately."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition import portfolio_result_context
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
@@ -1282,7 +1283,6 @@ def test_current_performance_follows_exact_books_daily_publications_and_keeps_hi
     from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
         REBOUND_RETURN_BOOK_RECIPE,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.portfolio_strategy_lab.activation_review_support import activation_review_host
     from tests.portfolio_strategy_lab.synthetic_numerical import (
         build_numerical,

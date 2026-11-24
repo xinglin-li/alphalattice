@@ -84,7 +84,13 @@ def test_real_teardowns_judge_own_hosts_and_say_foreign_ones(tmp_path: Path) -> 
     result = subprocess.run(  # pytest's own teardown is the behaviour under test
         [sys.executable, "-m", "pytest", *inner],
         cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": path},
+        # The inner run selects its own cases, independently of the outer lane and required nodes.
+        env={
+            **os.environ,
+            "PYTHONPATH": path,
+            "ALPHALATTICE_TEST_LANE": "",
+            "ALPHALATTICE_PIPELINE_REQUIRED_TESTS": "[]",
+        },
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -93,6 +99,8 @@ def test_real_teardowns_judge_own_hosts_and_say_foreign_ones(tmp_path: Path) -> 
         check=False,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    warned = result.stdout + result.stderr
+    (tmp_path / "inner.log").write_text(warned, encoding="utf-8")  # kept beside its JUnit
     cases = {
         case.get("name"): [
             (child.tag, child.get("message", ""))
@@ -102,11 +110,12 @@ def test_real_teardowns_judge_own_hosts_and_say_foreign_ones(tmp_path: Path) -> 
         for case in ElementTree.parse(tmp_path / "inner.xml").iter("testcase")
     }
     task = "Task 00000000-0000-0000-0000-000000000001"
+    # A case the inner run never ran fails with the inner run's own words.
+    assert "test_a_module_hosts_stopped_answer" in cases, warned[-4000:]
     [(kind, message)] = cases.pop("test_a_module_hosts_stopped_answer")
     assert kind == "error" and f"offers no way on ({task}" in message, cases
     assert "Host of test_cases.py)" in message, message
     assert cases == {"test_keeps_its_own_host": [], "test_hears_the_kept_host_answer": []}
-    warned = result.stdout + result.stderr
     assert (
         "a Host of 'test_cases.py::test_keeps_its_own_host', "
         "during test_cases.py::test_hears_the_kept_host_answer)" in warned

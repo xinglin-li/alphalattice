@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
 from typing import Any, Literal
 
+from alphalattice.capabilities.domain_contracts.environment import numerical_thread_limit
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
     PanelResearchMethodologyRequest,
 )
@@ -28,8 +29,7 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     InstalledPanelViewId,
     PanelFeatureSourceArrays,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
+from alphalattice.kernel.config import Change, declare
 
 
 class PanelAlphaFoldExecutionError(ValueError):
@@ -90,6 +90,7 @@ class PanelFeatureSourcePayload:
         )
 
     def restore(self) -> PanelFeatureSourceArrays:
+        """Restore the source with read-only arrays regardless of worker transport."""
         # Small arrays may cross the process boundary by pickle rather than
         # read-only memmap. Restore the input contract in either transport.
         for values in (
@@ -163,15 +164,15 @@ def split_panel_inner_sessions(
 def _pin_worker_process() -> None:
     """Pin the environment of a process that runs folds and nothing else."""
 
-    for name in (
+    thread_variables = (
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         "BLIS_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
-    ):
-        os.environ[name] = "1"
-    os.environ["ALPHALATTICE_NETWORK_DISABLED"] = "1"
+    )
+    values = dict.fromkeys(thread_variables, "1") | {"ALPHALATTICE_NETWORK_DISABLED": "1"}
+    declare(Change("panel-alpha-fold-worker", values), native=True)
 
 
 def execute_panel_alpha_fold_worker(

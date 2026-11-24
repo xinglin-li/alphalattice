@@ -8,11 +8,11 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
     carried_chunk_check,
     chunk_identity,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 TEST_SOURCE = "src/alphalattice/foundation/causal_outcomes/execution/artifacts.py"
 

@@ -1,4 +1,9 @@
 {
  "factory": "alphalattice.investment.alpha_research.experiments.development_artifacts:alpha_array_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "alpha-arrays",
+ "trust_paths": [
+  "*/alpha-research/*.bin",
+  "*/alpha-research/*.parquet"
+ ]
 }

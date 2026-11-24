@@ -6,11 +6,11 @@ import json
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.admit import admit
-from alphalattice.kernel.data_layer.chain import digest
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.admit import admit
+from alphalattice.foundation.data_layer.chain import digest
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/admit.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/admit.py"
 OPTIONAL = {"required": [], "text": "optional"}
 KEY = "sk-" + "a" * 24
 

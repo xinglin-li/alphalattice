@@ -42,9 +42,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current, latest
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current, latest
 
 from ..analysis.contracts import (
     CONTEXT_COMPLETE_SELECTION_RULES_ID,

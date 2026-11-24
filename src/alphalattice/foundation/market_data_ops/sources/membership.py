@@ -26,8 +26,8 @@ from functools import lru_cache
 from itertools import pairwise
 from typing import Literal
 
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 INITIAL_COHORT_BACKFILL = "INITIAL_COHORT_BACKFILL_NOT_POINT_IN_TIME"
 """The one initialization assumption: the initial cohort stands in for every session before T0."""

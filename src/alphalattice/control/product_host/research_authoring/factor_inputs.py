@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, BinaryIO, Final, Literal, Self, cast
 from uuid import UUID
@@ -19,6 +18,8 @@ from uuid import UUID
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     current_allowed_logical_processors,
 )
@@ -41,6 +42,7 @@ from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_asi
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
 from alphalattice.foundation.causal_outcomes.execution.publication import (
@@ -52,6 +54,14 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 from alphalattice.foundation.causal_outcomes.selection.listing_set import (
     resolve_published_execution_outcome,
 )
+from alphalattice.foundation.data_layer import history, inputs
+from alphalattice.foundation.data_layer.backup import (
+    backup_data_root,
+    generation_reads,
+    verify_data_root,
+)
+from alphalattice.foundation.data_layer.inputs import folder_files
+from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     INSTALLED_REDUNDANCY_POLICIES,
@@ -86,16 +96,9 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history, inputs
-from alphalattice.kernel.data_layer.backup import (
-    backup_data_root,
-    generation_reads,
-    verify_data_root,
-)
-from alphalattice.kernel.data_layer.inputs import folder_files
-from alphalattice.kernel.data_layer.upgrade import Family
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel import storage
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import worker_width
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -146,17 +149,8 @@ def confined(root: Path, relative: str) -> Path:
     return path
 
 
-def _digest_stream(stream: BinaryIO) -> str:
-    """The content digest of one open file object, read whole from its start."""
-
-    digest = sha256()
-    for block in iter(lambda: stream.read(1024 * 1024), b""):
-        digest.update(block)
-    return digest.hexdigest()
-
-
 def file_digest(path: Path) -> str:
-    """Stream the exact file bytes into their SHA-256 identity.
+    """The file's SHA-256 identity, through the trust record: hashed only when its stamp changed.
 
     Args:
         path: Explicit file to read.
@@ -164,8 +158,8 @@ def file_digest(path: Path) -> str:
     Returns:
         Lowercase SHA-256 digest.
     """
-    with path.open("rb") as stream:
-        return _digest_stream(stream)
+    digest: str = file_sha256(path)
+    return digest
 
 
 _DIGEST_WORKERS = 4
@@ -184,7 +178,8 @@ def _file_object(stream: BinaryIO) -> tuple[int, int] | None:
 
 
 def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
-    """Digest several files at once; every file object is read whole, by the same digest.
+    """Digest several files at once; every file object by the same digest, through the trust
+    record, so an object whose stamp holds is not read again.
 
     Every path is opened first and held open until the call returns; the
     grouping, the reads and the check below all concern those open objects,
@@ -192,7 +187,10 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     the pooled DuckDB object and the bundle's link to it -- are read once
     and answer the same digest, because one object holds one set of bytes
     while it is held open; a platform that reports no object identity reads
-    every path itself. Hashing releases the interpreter lock, so the objects
+    every path itself. The paths are read outside the engine (`storage.outside`), so
+    a workspace database instance of this process that would deny the reads is let
+    go first.
+    Hashing releases the interpreter lock, so the objects
     of one verification are read in parallel.
 
     The boundary of what a returned digest states: at the end of the call
@@ -204,6 +202,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     ordered = tuple(dict.fromkeys(paths))
     with ExitStack() as stack:
         streams: dict[Path, BinaryIO] = {}
+        stack.enter_context(storage.outside(*ordered))
         for path in ordered:
             try:
                 streams[path] = stack.enter_context(path.open("rb"))
@@ -217,13 +216,16 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
             first_of[path] = path if identity is None else representative.setdefault(identity, path)
         distinct = tuple(dict.fromkeys(first_of.values()))
         if len(distinct) <= 1:
-            digests = {path: _digest_stream(streams[path]) for path in distinct}
+            digests = {path: file_sha256(path, handle=streams[path]) for path in distinct}
         else:
-            with ThreadPoolExecutor(max_workers=min(_DIGEST_WORKERS, len(distinct))) as pool:
+            with execution_port().register_pool(
+                ThreadPoolExecutor(max_workers=worker_width(min(_DIGEST_WORKERS, len(distinct)))),
+                name="factor-inputs",
+            ) as pool:
                 digests = dict(
                     zip(
                         distinct,
-                        pool.map(lambda path: _digest_stream(streams[path]), distinct),
+                        pool.map(lambda path: file_sha256(path, handle=streams[path]), distinct),
                         strict=True,
                     )
                 )
@@ -432,8 +434,9 @@ def _inputs_root(workspace: Path, binding_hash: str) -> Path:
 
 def _copy_input(workspace: Path, source: Path, target: Path) -> None:
     """Stage one input file: a workspace-owned immutable Parquet linked where the volume allows,
-    anything else (the mutable database first) copied. The binding is then kept on the data root,
-    which keeps equal bytes once (kernel.data_layer.inputs), so the workspace pools nothing."""
+    anything else (the mutable database first) copied, read outside the engine (`storage.outside`).
+    The binding is then kept on the data root, which keeps equal bytes once
+    (kernel.data_layer.inputs), so the workspace pools nothing."""
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix == ".parquet" and source.resolve().is_relative_to(workspace.resolve()):
         try:
@@ -442,7 +445,8 @@ def _copy_input(workspace: Path, source: Path, target: Path) -> None:
         except OSError:  # another volume, or no links: a copy
             pass
     require_storage_capacity(workspace, additional_bytes=source.stat().st_size)
-    shutil.copy2(source, target)
+    with storage.outside(source):
+        shutil.copy2(source, target)
 
 
 def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:
@@ -555,7 +559,7 @@ def bind_factor_inputs(
     workspace, source = workspace.resolve(), source.resolve()
     with ExitStack() as stack:
         for root in sorted({workspace, source}):
-            lease = WorkspaceWriterLease.acquire(root)
+            lease = WorkspaceWriterLease.acquire(root, keep_facts=root == workspace)
             stack.callback(lease.close)
         return _bind_factor_inputs(
             workspace=_windows_long_path(workspace),

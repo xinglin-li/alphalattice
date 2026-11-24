@@ -9,7 +9,6 @@ return surface supplies the causal open-to-open history.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -18,8 +17,9 @@ from typing import Any, Final, Protocol
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 from .decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
@@ -36,7 +36,7 @@ RISK_PRODUCER_ID: Final = "SECTOR_DEGARCH_504_EXACT_CLOSURE"
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return hashlib.sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
 
 
 def _require_hash(value: str, *, code: str) -> None:

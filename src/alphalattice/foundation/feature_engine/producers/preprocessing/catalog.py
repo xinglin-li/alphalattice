@@ -16,6 +16,14 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import cast
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    WINSOR_MULTIPLIER,
+)
 from alphalattice.foundation.feature_engine.producers.preprocessing.adapters import (
     PanelPreprocessingAdapter,
     RobustSectorNeutralZAdapter,
@@ -36,14 +44,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.joint_primar
 from alphalattice.foundation.feature_engine.producers.preprocessing.robust_universe import (
     RobustUniverseZAdapter,
 )
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    WINSOR_MULTIPLIER,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 
 ROBUST_SECTOR_NEUTRAL_Z = "ROBUST_SECTOR_NEUTRAL_Z"
 ROBUST_UNIVERSE_Z = "ROBUST_UNIVERSE_Z"

@@ -12,19 +12,19 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
     FeaturePanelReadRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 if TYPE_CHECKING:
     pass
@@ -72,7 +72,7 @@ class BaseFeatureReader(Protocol):
 
 def sha256_file(path: Path) -> str:
     """The SHA-256 of a file's bytes, read in blocks."""
-    digest = sha256()
+    digest = integrity_sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)

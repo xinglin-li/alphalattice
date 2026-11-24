@@ -1,4 +1,9 @@
 {
  "factory": "alphalattice.investment.sector_research.experiments.development_artifacts:sector_results_upgrade_family",
- "mode": "direct"
+ "mode": "direct",
+ "name": "sector-results",
+ "trust_paths": [
+  "*/sector-research/*.json",
+  "*/sector-research/*.parquet"
+ ]
 }

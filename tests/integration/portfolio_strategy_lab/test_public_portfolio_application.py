@@ -13,6 +13,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     ActiveMetricsError,
     active_path_metrics,
@@ -72,7 +73,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
 from alphalattice.investment.portfolio_strategy_lab.reporting.units import (
     project_report_unit_rows,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from run_public_portfolio_research import build_parser, spec_from_args
 from tests.portfolio_strategy_lab.local_web_support import (
     _HASH,

@@ -384,6 +384,13 @@ def test_staged_registry_census_refuses_new_unregistered_items(
         assert "stale-legacy-import" in retained({invented: 1}, 1, "--update")
         retained({import_key: 1})
         commit("Freeze the reviewed pre-existing lazy site")
+        moved = client + "/moved.py"  # a move carries its allowance to the new path
+        git("mv", existing, moved)
+        assert "allowance grew" not in retained(
+            {moved + "::existing::import json": 1}, 0, "--update"
+        )
+        git("mv", moved, existing)
+        retained({import_key: 1}, 0, "--update")
         assert "allowance grew" in retained({import_key: 2}, 1, "--update")
         write(existing, "def existing():\n    import json  # lazy: optional fixture\n")
         retained({}, 0, "--update")
@@ -855,7 +862,7 @@ def test_a_new_host_module_is_refused_unless_registered_as_composition(tmp_path:
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     }
-    assert job_owners == {"src/alphalattice/kernel/shared_kernel/spawn.py"}
+    assert job_owners == {"src/alphalattice/kernel/execution/spawn.py"}
 
 
 def test_message_ids_keep_chinese_when_english_changes_and_refuse_invalid_forms(

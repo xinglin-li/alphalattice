@@ -17,7 +17,7 @@ from typing import Any
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY_INPUTS = (
@@ -30,7 +30,8 @@ TEMPLATE_INPUTS = (
     "config/telemetry-templates/reference/telemetry.md.j2",
 )
 GENERATED = {
-    "telemetry_names.py": ROOT / "src/alphalattice/kernel/shared_kernel/telemetry_names.py",
+    "telemetry_names.py": ROOT
+    / "src/alphalattice/capabilities/domain_contracts/telemetry_names.py",
     "telemetry.md": ROOT / "docs/public-source/telemetry.md",
 }
 

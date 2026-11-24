@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import gzip
-import hashlib
 from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
@@ -14,7 +13,8 @@ import tiktoken
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tiktoken_ext import openai_public
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 ENCODING = Path(__file__).with_name("cl100k_base.tiktoken.gz")
 """The cl100k encoding the package ships: tiktoken's rank file (NOTICE), gzipped, read in memory
@@ -38,7 +38,7 @@ _SPECIAL = {
 def _cl100k() -> tiktoken.Encoding:
     """The encoding, built once on the first count from the ranks the package ships."""
     data = gzip.decompress(ENCODING.read_bytes())
-    if hashlib.sha256(data).hexdigest() != _RANKS_SHA256:
+    if integrity_sha256(data).hexdigest() != _RANKS_SHA256:
         raise ValueError("actor_execution.encoding_damaged")
     ranks = {
         base64.b64decode(token): int(rank)

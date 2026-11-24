@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.storage.contracts import (
     GIB,
     StorageBudgetResolution,
@@ -18,7 +19,6 @@ from alphalattice.control.product_host.storage.inventory import (
     workspace_storage_capacity,
 )
 from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def test_historical_budget_receipts_keep_their_exact_derivation() -> None:

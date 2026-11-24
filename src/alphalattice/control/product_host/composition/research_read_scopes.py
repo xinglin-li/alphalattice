@@ -8,10 +8,12 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+
 TRIALS_DIRECTORY = Path("runtime") / "feature-trials"
 
 
-_VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+_VERIFIED_EVIDENCE: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
     "research_experiment_verified_evidence", default=None
 )
 
@@ -38,7 +40,7 @@ def verified_study_evidence() -> Iterator[None]:
     if _VERIFIED_EVIDENCE.get() is not None:
         yield
         return
-    token = _VERIFIED_EVIDENCE.set({})
+    token = _VERIFIED_EVIDENCE.set(BoundedMemo())
     try:
         yield
     finally:
@@ -48,7 +50,7 @@ def verified_study_evidence() -> Iterator[None]:
         _VERIFIED_EVIDENCE.reset(token)
 
 
-_TRIAL_READS: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
+_TRIAL_READS: ContextVar[BoundedMemo[str, dict[str, Any]] | None] = ContextVar(
     "feature_trial_reads", default=None
 )
 
@@ -65,7 +67,7 @@ def trial_reads_once() -> Iterator[None]:
     if _TRIAL_READS.get() is not None:
         yield
         return
-    token = _TRIAL_READS.set({})
+    token = _TRIAL_READS.set(BoundedMemo())
     try:
         yield
     finally:

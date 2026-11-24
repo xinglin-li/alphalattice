@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import sys
 import uuid
 from contextlib import closing
 from importlib import import_module
@@ -12,23 +13,24 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root
-from alphalattice.kernel.data_layer.project import lineage, register, uuid7
-from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import create_data_root
+from alphalattice.foundation.data_layer.project import lineage, register, uuid7
+from alphalattice.foundation.data_layer.reading import reading_session
+from alphalattice.foundation.data_layer.root import (
+    LAKE_THREAD_CEILING,
     SCHEMA_VERSION,
-    THREADS,
     catalog,
     duckdb_session,
     seed_rows,
 )
+from alphalattice.kernel.resources import cpu_width
 from tests.integration.data_layer.root_knowledge import assert_knowledge_tables
 from tests.integration.data_layer.root_protected_validation import (
     assert_old_receipt_catalog_opens,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/root.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/root.py"
 N = 10**9
 T0 = 1_767_225_600_000_000
 SPAN = "a" * 16
@@ -433,15 +435,37 @@ def test_a_data_root_created_twice_is_all_equal_and_refuses_another_version(tmp_
 
 
 @pytest.mark.proves("data_layer.a_lake_scan_holds_files_by_thread")
-def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path):
-    """A session over the lake reads a table of 1,100 small files, as a first use's admissions
-    leave, holding open a few Parquet files per thread, never one per file: DuckDB's default
-    read-ahead held hundreds open at a scan's start, past macOS's default of 256 per process."""
+@pytest.mark.parametrize(
+    "count_held",
+    [
+        pytest.param(
+            False,
+            id="rows",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="elsewhere the held-files case scans every row"
+            ),
+        ),
+        pytest.param(
+            True,
+            id="held-files",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32",
+                reason="guards macOS's default of 256 open files per process; psutil's "
+                "open_files() blocked a Windows worker past its timeout in the public Verify",
+            ),
+        ),
+    ],
+)
+def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path, count_held):
+    """A scan of 1,100 small files reads every row, holding a few Parquet files open per thread,
+    never one per file (macOS stops at 256 open files per process)."""
     import psutil
 
     session = duckdb_session(tmp_path)
     assert session is not None
     with closing(session):
+        threads = session.execute("SELECT current_setting('threads')").fetchone()
+        assert threads == (cpu_width(LAKE_THREAD_CEILING),)
         path, data = (tmp_path / "catalog.sqlite").as_posix(), (tmp_path / "data").as_posix()
         session.execute(f"ATTACH 'ducklake:sqlite:{path}' AS lake (DATA_PATH '{data}/')")
         session.execute("CREATE TABLE lake.bar (listing INTEGER, day INTEGER, version_id UUID)")
@@ -452,10 +476,10 @@ def test_a_lake_scan_holds_files_by_its_threads_not_by_its_files(tmp_path):
         held, rows = [], 0  # the read-ahead queue fills at a scan's start; a listing is slow
         for at, batch in enumerate(session.sql("SELECT * FROM lake.bar").to_arrow_reader(2048)):
             rows += batch.num_rows
-            if at < 10:
+            if count_held and at < 10:
                 files = psutil.Process().open_files()
                 held.append(sum(1 for file in files if file.path.endswith(".parquet")))
     assert rows == 275_000 and len(list((tmp_path / "data").rglob("*.parquet"))) == 1_100
     # Bounded, a scan's peak at 8 threads was 8 to 11 on Windows and 24 to 28 on macOS, over whole
     # scans; unbounded, it held 334 here and stopped at macOS's 256 with too many open files.
-    assert max(held) <= 8 * THREADS, held
+    assert not count_held or max(held) <= 8 * threads[0], held

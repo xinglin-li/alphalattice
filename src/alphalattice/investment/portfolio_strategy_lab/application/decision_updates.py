@@ -10,6 +10,7 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     FloatArray,
     PortfolioCostPolicy,
@@ -46,7 +47,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
 from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_authority import (
     FrozenHistoricalBookRecipe,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class _Sealed(BaseModel):  # type: ignore[misc]

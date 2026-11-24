@@ -15,13 +15,13 @@ from datetime import date, timedelta
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.shared_kernel.arrow_identity import (
+from alphalattice.capabilities.domain_contracts.arrow_identity import (
     canonical_hash_with_row_lists,
     canonical_hash_with_rows,
     canonical_hash_with_values,
     canonical_row_hashes,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 _SPECIAL_FLOATS = (
     0.0,
@@ -132,7 +132,7 @@ def _batched_row_encoder_hash(payload: dict[str, object], table: pa.Table, batch
 
     from hashlib import sha256
 
-    from alphalattice.kernel.shared_kernel.identity import canonical_json
+    from alphalattice.capabilities.domain_contracts.identity import canonical_json
 
     digest = sha256()
     digest.update(f'{{"identity":{canonical_json(payload["identity"])},"rows":['.encode())

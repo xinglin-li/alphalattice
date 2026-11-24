@@ -9,6 +9,7 @@ from typing import Literal
 
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressUpdate,
     WorkspaceProgressPublisher,
@@ -65,7 +66,6 @@ from alphalattice.foundation.research_foundation.runtime.delta import (
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PRE_RESEARCH_DELTA_POLICY_HASHES = (
     canonical_hash(

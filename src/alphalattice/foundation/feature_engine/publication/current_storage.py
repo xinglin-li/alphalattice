@@ -12,14 +12,15 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from hashlib import sha256
 from typing import Literal
 
 import duckdb
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.workspace_runtime.database import table_columns, table_info
 from alphalattice.control.workspace_runtime.verified_facts import ensure_year_fact_schema
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import change_sha256, identity_sha256
 
 FeatureStorageLayout = Literal["CURRENT_BY_ROW_CATALOG", "CURRENT_ONLY", "LEGACY_BY_CATALOG"]
 _HEX = re.compile(r"[0-9a-f]{64}")
@@ -79,7 +80,7 @@ def cutoff_set_hash(canonical_payload: str) -> str:
     keys and writes the mapping exactly as ``payload`` already spells it --
     without encoding the mapping a second time.
     """
-    return sha256(
+    return identity_sha256(
         f'{{"cutoffs":{canonical_payload},"kind":"FeatureInputCutoffSet"}}'.encode()
     ).hexdigest()
 
@@ -101,15 +102,13 @@ def refuse_before_0_2_7(tables: Mapping[str, str]) -> None:
 
 def feature_storage_layout(connection: duckdb.DuckDBPyConnection) -> FeatureStorageLayout:
     """Classify the existing Feature current table by its recorded identity columns."""
-    columns = {
-        str(row[0])
-        for row in connection.execute(
-            """
-            SELECT column_name FROM information_schema.columns
-            WHERE table_schema = 'main' AND table_name = 'feature_daily_current'
-            """
-        ).fetchall()
-    }
+    return classify_feature_storage_layout(
+        {name for name, _ in table_columns(connection, "feature_daily_current")}
+    )
+
+
+def classify_feature_storage_layout(columns: set[str]) -> FeatureStorageLayout:
+    """Classify the Feature current layout from its declared columns."""
     if not columns:
         return "CURRENT_BY_ROW_CATALOG"
     if "cutoff_set_hash" in columns and "catalog_hash" in columns:
@@ -205,10 +204,7 @@ def ensure_feature_current_schema(
     # A catalog that gains a factor (a person's activation) gains its column. A row an earlier
     # catalog computed holds nothing in it and names that catalog, so it answers no reader of
     # this one until a build computes it again.
-    present = {
-        str(row[1])
-        for row in connection.execute("PRAGMA table_info('feature_daily_current')").fetchall()
-    }
+    present = {name for _, name, *_ in table_info(connection, "feature_daily_current")}
     for factor_id in factors:
         if factor_id not in present:
             connection.execute(f'ALTER TABLE feature_daily_current ADD COLUMN "{factor_id}" DOUBLE')
@@ -248,7 +244,7 @@ def runtime_view_hash(connection: duckdb.DuckDBPyConnection) -> str:
     row = connection.execute(
         "SELECT sql FROM duckdb_views() WHERE view_name = 'feature_daily_runtime' AND NOT internal"
     ).fetchone()
-    return sha256(str(row[0] if row is not None else "").encode()).hexdigest()
+    return change_sha256(str(row[0] if row is not None else "").encode()).hexdigest()
 
 
 def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
@@ -264,7 +260,7 @@ def layered_row_hash(catalog_hash: str, part_row_hashes: Sequence[str]) -> str:
     Returns:
         The composed row's hash.
     """
-    return sha256(
+    return identity_sha256(
         "|".join(("FeatureLayeredRow", catalog_hash, *part_row_hashes)).encode()
     ).hexdigest()
 
@@ -362,9 +358,9 @@ def _key_rows_by_catalog(connection: duckdb.DuckDBPyConnection) -> None:
         return
     definitions = ", ".join(
         f'"{name}" {kind}{" NOT NULL" if not_null else ""}'
-        for _position, name, kind, not_null, _default, _key in connection.execute(
-            "PRAGMA table_info('feature_daily_current')"
-        ).fetchall()
+        for _position, name, kind, not_null, _default, _key in table_info(
+            connection, "feature_daily_current"
+        )
     )
     connection.execute("BEGIN TRANSACTION")
     try:
@@ -402,6 +398,7 @@ __all__ = [
     "assert_current_catalog",
     "assert_rows_carry_installed_catalog",
     "canonical_cutoff_set",
+    "classify_feature_storage_layout",
     "cutoff_set_hash",
     "ensure_feature_current_schema",
     "feature_storage_layout",

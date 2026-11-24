@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
@@ -70,7 +71,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
 from alphalattice.foundation.market_data_ops.returns.sector_revision_identity import (
     sector_revision_hash,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @dataclass(frozen=True)

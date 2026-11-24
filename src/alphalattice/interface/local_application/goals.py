@@ -10,13 +10,12 @@ from __future__ import annotations
 import re
 import struct
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from blake3 import blake3
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -27,13 +26,15 @@ from pydantic import (
 )
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.portfolio_research import (
     PersonConfirmation,
     decision_hash,
 )
 from alphalattice.interface.local_application.questions import person_question, relayed_question
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import identity_blake3
 
 type ResearchStage = Literal[
     "DATA_FEATURES", "FACTOR_FOUNDATION", "ALPHA", "RISK", "PORTFOLIO", "EVIDENCE_CRO"
@@ -283,7 +284,7 @@ def declaration_hash(declaration: GoalDeclaration, opener: object) -> str:
     DECLARATION_ENCODING, never JSON text; the digest is BLAKE3's."""
     head = b"alphalattice.goal-declaration" + bytes(1) + DECLARATION_ENCODING.to_bytes(2, "big")
     body = _typed(declaration.model_dump(mode="python")) + _typed(opener)
-    return blake3(head + body).hexdigest()
+    return identity_blake3(head + body).hexdigest()
 
 
 def _typed(value: object) -> bytes:
@@ -390,7 +391,7 @@ def target_sessions(
     if point is None:
         raise ValueError("first_use.date_outside_calendar")
     ready = information_available_at(point.formation_close_at)
-    available = ready <= (now or datetime.now(UTC))
+    available = ready <= (now or utc_now())
     exchange, mine = ready.astimezone(ZoneInfo("America/New_York")), ready.astimezone(here)
     yours = (
         ""
@@ -447,10 +448,10 @@ def _earliest_entry(formation: date) -> str | None:
     """The first entry whose formation's ten-year history the calendars plan, when this
     formation's history would start before their first session; else nothing."""
 
+    from alphalattice.capabilities.data.calendar import SUPPORTED_CALENDARS
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
         history_floor,
     )
-    from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)

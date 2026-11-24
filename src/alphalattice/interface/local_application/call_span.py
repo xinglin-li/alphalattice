@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import re
 import secrets
-import time
 from collections.abc import Mapping, MutableMapping
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import Any, Final
 from urllib.parse import quote, unquote, urlsplit
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
 from alphalattice.interface.local_application.cli_contract import (
     CLIENT_HEADER,
     INSTANCE_HEADER,
@@ -29,7 +29,8 @@ from alphalattice.interface.local_application.cli_contract import (
     RequestProvenance,
     agent_provenance_headers,
 )
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
+from alphalattice.kernel.clock import wall_time_ns
+from alphalattice.kernel.config import Change, declare
 
 CALL_PATH: Final = "/api/client/call"
 """Where a command ends its span at the Host its requests reached."""
@@ -63,20 +64,40 @@ REQUEST_CALL: ContextVar[CallSpan | None] = ContextVar("alphalattice_request_cal
 """The invocation the request the Host's boundary is running comes from: set by `web.py`."""
 
 
-def begin(environ: MutableMapping[str, str], command: str) -> None:
+def _trace_environment(
+    environ: Mapping[str, str], values: Mapping[str, str | None], *, kind: str
+) -> None:
+    """Change the forwarded caller's mapping or declare the local process's trace settings."""
+    if isinstance(environ, MutableMapping):
+        for name, value in values.items():
+            if value is None:
+                environ.pop(name, None)
+            else:
+                environ[name] = value
+    else:
+        declare(Change(kind, values), native=True)
+
+
+def begin(environ: Mapping[str, str], command: str) -> None:
     """Begin this invocation's span and name it in `environ` for every request it sends, keeping
     the TRACEPARENT and BAGGAGE it replaces for `end` to restore."""
     named = _TRACEPARENT.match(environ.get("TRACEPARENT", "").strip())
     trace, parent = (named.group(1), named.group(2)) if named else (secrets.token_hex(16), None)
     form = "".join(c for c in command if " " <= c <= "~")[:200] or "-"
-    call = CallSpan(trace, secrets.token_hex(8), parent, time.time_ns() // 1000, form)
-    CALL.set(call)
+    call = CallSpan(trace, secrets.token_hex(8), parent, wall_time_ns() // 1000, form)
     saved = {name: environ.get(name) for name in ("TRACEPARENT", "BAGGAGE")}
     own = zip(_KEYS, (str(call.started_us), parent or "-", quote(form, safe="")), strict=True)
     entries = [f"{key}={value}" for key, value in own]
-    environ["TRACEPARENT"] = f"00-{trace}-{call.span}-01"
-    environ["BAGGAGE"] = ",".join(filter(None, (saved["BAGGAGE"], *entries)))
+    _trace_environment(
+        environ,
+        {
+            "TRACEPARENT": f"00-{trace}-{call.span}-01",
+            "BAGGAGE": ",".join(filter(None, (saved["BAGGAGE"], *entries))),
+        },
+        kind="cli-trace-start",
+    )
     _REPLACED.set(saved)
+    CALL.set(call)
 
 
 def at(workspace: Path) -> None:
@@ -85,7 +106,7 @@ def at(workspace: Path) -> None:
         CALL.set(replace(call, workspace=workspace))
 
 
-def end(environ: MutableMapping[str, str], code: int, *, reached: bool = True) -> None:
+def end(environ: Mapping[str, str], code: int, *, reached: bool = True) -> None:
     """End this invocation's span at its workspace's Host with its exit code, then restore what
     `begin` replaced. A command with no workspace, one that found no Host (`reached` False), or
     whose Host is gone, ends nothing: the span stays started, and the answer stands."""
@@ -96,11 +117,7 @@ def end(environ: MutableMapping[str, str], code: int, *, reached: bool = True) -
         if call.workspace is not None and reached:
             _send_end(call, call.workspace, code, environ)
     finally:
-        for name, value in _REPLACED.get().items():
-            if value is None:
-                environ.pop(name, None)
-            else:
-                environ[name] = value
+        _trace_environment(environ, _REPLACED.get(), kind="cli-trace-end")
 
 
 def _send_end(call: CallSpan, workspace: Path, code: int, environ: Mapping[str, str]) -> None:
@@ -121,7 +138,7 @@ def _send_end(call: CallSpan, workspace: Path, code: int, environ: Mapping[str, 
         INSTANCE_HEADER: connection.instance,
         **agent_provenance_headers(environ),
     }
-    ended = {"ended_us": max(time.time_ns() // 1000, call.started_us), "exit_code": code}
+    ended = {"ended_us": max(wall_time_ns() // 1000, call.started_us), "exit_code": code}
     exchange = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
     try:
         exchange.request("POST", CALL_PATH, body=client.request_body(ended), headers=headers)
@@ -158,7 +175,7 @@ def record(
 ) -> None:
     """Record an invocation's span in the Host's history: live at its first request, ended with
     its end and exit code. Its caller's session and vendor carry their GenAI names."""
-    from alphalattice.kernel.data_layer.history import call as recorded  # lazy: the Host's
+    from alphalattice.foundation.data_layer.history import call as recorded  # lazy: the Host's
 
     who = provenance or RequestProvenance()
     ids: dict[str, Any] = {telemetry.COMMAND: call.command}

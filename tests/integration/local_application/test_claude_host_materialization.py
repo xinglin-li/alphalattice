@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 
 ROOT = Path(__file__).resolve().parents[3]
 

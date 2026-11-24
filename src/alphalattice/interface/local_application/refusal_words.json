@@ -1,4 +1,54 @@
 {
+ "door.operation_unknown": {
+  "message_id": "door.operation_unknown",
+  "detail": "door.operation_unknown",
+  "next_action": "READ_CAPABILITIES_AND_RETRY"
+ },
+ "door.operation_duplicate": {
+  "message_id": "door.operation_duplicate",
+  "detail": "door.operation_duplicate",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.operation_unregistered": {
+  "message_id": "door.operation_unregistered",
+  "detail": "door.operation_unregistered",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.operation_unrecognized": {
+  "message_id": "door.operation_unrecognized",
+  "detail": "door.operation_unrecognized",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.family_import_failed": {
+  "message_id": "door.family_import_failed",
+  "detail": "door.family_import_failed",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.person_unavailable": {
+  "message_id": "door.person_unavailable",
+  "detail": "door.person_unavailable",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.person_required": {
+  "message_id": "door.person_required",
+  "detail": "door.person_required",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.paid_run_approval_required": {
+  "message_id": "door.paid_run_approval_required",
+  "detail": "door.paid_run_approval_required",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.decision_not_pending": {
+  "message_id": "door.decision_not_pending",
+  "detail": "door.decision_not_pending",
+  "next_action": "READ_PENDING_DECISIONS"
+ },
+ "door.decisions_unavailable": {
+  "message_id": "door.decisions_unavailable",
+  "detail": "door.decisions_unavailable",
+  "next_action": "CHECK_WORKSPACE"
+ },
  "upgrade.refused": {"detail": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.", "next_action": "VERIFY_BACKUPS_AND_REPAIR_THE_NAMED_FAMILY"},
  "upgrade.in_progress": {"detail": "The Host is upgrading this machine's data to 0.2.8 and serves only the upgrade until it completes. Read the plan and its progress with alphalattice upgrade show (or on /api/upgrade), and acknowledge it with alphalattice upgrade acknowledge if it waits for you.", "next_action": "READ_THE_UPGRADE_PLAN"},
  "upgrade.acknowledged": {"detail": "This upgrade plan is already acknowledged and running. Read its progress on /api/upgrade.", "next_action": "READ_THE_UPGRADE_PLAN"},

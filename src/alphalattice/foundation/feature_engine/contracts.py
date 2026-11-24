@@ -8,9 +8,9 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import ClassVar
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sector_treatment import SECTOR_HISTORY_BACKFILLED
 from alphalattice.foundation.market_data_ops.sources.membership import membership_identity
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import SECTOR_HISTORY_BACKFILLED
 
 PANEL_ROW_IDENTITY_BY_BINDING = "PANEL_BINDING"
 """The row-identity rule of Panels built before temporal membership.

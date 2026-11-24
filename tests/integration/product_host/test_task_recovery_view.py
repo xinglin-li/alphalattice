@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
@@ -59,7 +60,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
@@ -1216,11 +1216,11 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
 
 def test_every_declared_failure_keeps_its_owner_words_in_task_recovery():
     """Any declared refusal keeps its explanation when read as a Task stop."""
-    from alphalattice.control.product_host.composition.task_recovery import stop_detail
-    from alphalattice.kernel.shared_kernel.project_layout import (
+    from alphalattice.capabilities.domain_contracts.project_layout import (
         REFUSAL_WORDS_RESOURCE,
         runtime_json,
     )
+    from alphalattice.control.product_host.composition.task_recovery import stop_detail
 
     unknown = stop_detail("evidence_install", "owner.future_stop", "TASK_CONTROL")
     for code in runtime_json(REFUSAL_WORDS_RESOURCE):

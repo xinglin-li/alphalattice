@@ -27,6 +27,8 @@ import numpy.typing as npt
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.recipe_identity import recipe_identity
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioWalkForwardState
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -132,8 +134,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity
 from alphalattice.oversight.model_validation.protected_gate import (
     ProtectedValidationGate,
     ProtectedValidationGateError,
@@ -346,8 +346,8 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
         )
 
     # A legacy workspace upgrades; the gate then reads the catalog alone.
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
     from alphalattice.oversight.model_validation.protected_gate import (
         PermitClaimRecord,
         validation_upgrade_family,
@@ -782,7 +782,7 @@ def test_the_default_declared_path_produces_its_own_report_with_no_winner(
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     root = history.data_root()
     history.open_history("portfolio-test", "portfolio", workspace, root)
@@ -806,7 +806,7 @@ def test_the_default_declared_path_produces_its_own_report_with_no_winner(
     finally:
         history.close_history()
 
-    from alphalattice.kernel.data.errors import DataError
+    from alphalattice.capabilities.data.errors import DataError
 
     unavailable = PortfolioLedgerStore(tmp_path / "unavailable-artifacts")
     for publish in (

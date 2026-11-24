@@ -20,7 +20,6 @@ set by construction, and the ratio cannot straddle an adjustment boundary.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -36,14 +35,15 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_row_hashes
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ProjectedBar,
     project_research_series,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -391,7 +391,7 @@ def _metadata_identity(metadata: Mapping[bytes, bytes]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    return hashlib.sha256(serialized).hexdigest()
+    return identity_sha256(serialized).hexdigest()
 
 
 class SessionMarkArtifactStore:

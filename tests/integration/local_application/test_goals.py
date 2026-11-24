@@ -19,6 +19,8 @@ from uuid import UUID, uuid4, uuid5
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore, session_work_declaration
@@ -37,8 +39,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
     NOW,
@@ -1716,6 +1717,7 @@ def _cli(live: Any, *arguments: str) -> tuple[int, dict[str, Any]]:
         text=True,
         encoding="utf-8",
         timeout=60,
+        env=cli_environment(),
     )
     return result.returncode, json.loads(result.stdout)
 

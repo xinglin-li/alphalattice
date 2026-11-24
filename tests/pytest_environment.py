@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.research_workspace import (
         ResearchWorkspaceManifest,
     )
+    from alphalattice.interface.local_application.client import LocalResearchClient
 
 PROJECT_ROOT: ContextVar[Path | None] = ContextVar("pytest_project_root", default=None)
 # The running test, set by the root conftest: the session seeds it copies read their market data
@@ -49,7 +50,7 @@ MODEL_ROOTS: list[Path] = []
 # set, is never its own authority, whatever its path.
 SHARED_MODEL_KIT = "ALPHALATTICE_TEST_MODEL_KIT"
 PERSON_RESOLVERS = (  # module, resolver, the variable naming its root, whether it reads home
-    ("alphalattice.kernel.data_layer.history", "data_root", "ALPHALATTICE_DATA_ROOT", False),
+    ("alphalattice.foundation.data_layer.history", "data_root", "ALPHALATTICE_DATA_ROOT", False),
     (
         "alphalattice.control.product_host.storage.backup",
         "default_backup_root",
@@ -57,7 +58,7 @@ PERSON_RESOLVERS = (  # module, resolver, the variable naming its root, whether 
         False,
     ),
     (
-        "alphalattice.kernel.knowledge.model_store",
+        "alphalattice.capabilities.knowledge.model_store",
         "default_store_root",
         "ALPHALATTICE_MODEL_STORE",
         True,  # its pointer file lies under the home folder
@@ -272,16 +273,77 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
         lambda: tempfile.mkdtemp(prefix="alphalattice-test-models-", dir=backup_parent),
     )
     os.environ["ALPHALATTICE_MODEL_STORE"] = str(MODEL_STORE)
+    _declare_environment(
+        {
+            "ALPHALATTICE_SHELL",
+            "ALPHALATTICE_DATA_ROOT",
+            "ALPHALATTICE_BACKUP_ROOT",
+            "ALPHALATTICE_MODEL_STORE",
+        },
+        "test-worker-roots",
+    )
     OWNED_ROOTS[:] = [backup_parent, Path(tempfile.gettempdir())]
     if basetemp is not None:
         OWNED_ROOTS.append(Path(os.path.abspath(str(basetemp))).parent)
     MODEL_ROOTS[:] = [*OWNED_ROOTS, MODEL_STORE]
 
 
+def _declare_environment(names: set[str], kind: str) -> None:
+    """Keep pytest's explicit OS overrides visible to the frozen product configuration."""
+    from alphalattice.kernel.config import Change, declare
+
+    declare(Change(kind, {name: os.environ.get(name) for name in names}))
+
+
+class ConfigMonkeyPatch(pytest.MonkeyPatch):
+    """Apply existing pytest env fixtures as their own declared configuration changes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._environment_names: set[str] = set()
+
+    def setitem(self, mapping: Any, name: Any, value: Any) -> None:
+        super().setitem(mapping, name, value)
+        self._note(mapping, name)
+
+    def delitem(self, mapping: Any, name: Any, raising: bool = True) -> None:
+        super().delitem(mapping, name, raising)
+        self._note(mapping, name)
+
+    def _note(self, mapping: Any, name: Any) -> None:
+        if mapping is os.environ:
+            name = name.upper() if os.name == "nt" else name
+            self._environment_names.add(name)
+            _declare_environment({name}, "test-override")
+
+    def undo(self) -> None:
+        super().undo()
+        if self._environment_names:
+            _declare_environment(self._environment_names, "test-override-restored")
+            self._environment_names.clear()
+
+
+@pytest.fixture
+def monkeypatch() -> Iterator[pytest.MonkeyPatch]:
+    """Expose existing test overrides to Python children and the product's settings port."""
+    with ConfigMonkeyPatch.context() as patcher:
+        yield patcher
+
+
 def served_root(workspace: Path) -> Path:
     """The data root of a Host served from `workspace` in another process: its own, beside the
     workspace, since a process holds one data root and this one may hold its own."""
     return workspace.parent / f"{workspace.name}.data-root"
+
+
+def served_client(workspace: Path) -> LocalResearchClient:
+    """A client of the Host served apart from `workspace`: the product's own reader finds that
+    Host's endpoint record where it writes it, on its data root, never on this process's."""
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.interface.local_application.client import LocalResearchClient
+
+    with history.own_root(served_root(workspace)):  # the client reads its record once, here
+        return LocalResearchClient(workspace)
 
 
 def serve_apart(workspace: Path) -> Path:
@@ -292,7 +354,7 @@ def serve_apart(workspace: Path) -> Path:
 
     require_isolated_roots()
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a served Host's only
-    from alphalattice.kernel.data_layer.history import (
+    from alphalattice.foundation.data_layer.history import (
         carry_arrays,
         carry_knowledge_snapshots,
         carry_research_inputs,
@@ -309,7 +371,7 @@ def serve_apart(workspace: Path) -> Path:
 def released(root: Path) -> None:
     """Return once a killed Host's hold on the data root `root` is gone: Windows frees a dead
     process's file locks a moment after the process ends (about 16 ms idle, more under load)."""
-    from alphalattice.kernel.data_layer.log import LOCK_NAME, hold  # lazy: a killed Host's only
+    from alphalattice.foundation.data_layer.log import LOCK_NAME, hold  # lazy: a killed Host's only
 
     lock, deadline = root / "machine" / LOCK_NAME, time.monotonic() + 30
     if not lock.is_file():
@@ -324,7 +386,7 @@ def with_its_tasks(workspace: Path) -> Path:
     """Carry the served Host's records and Evidence originals into the workspace to seal."""
     from alphalattice.control.task_control.upgrade import carry_tasks  # lazy: a golden seal's only
     from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
-    from alphalattice.kernel.data_layer.history import (
+    from alphalattice.foundation.data_layer.history import (
         carry_arrays,
         carry_knowledge_snapshots,
         carry_research_inputs,
@@ -342,7 +404,7 @@ def with_its_tasks(workspace: Path) -> Path:
 
 def golden_payload(workspace: Path, parent: Path | None) -> Path:
     """Carry the Host's records and give the golden its own copies of the Host's file aliases."""
-    from alphalattice.kernel.data_layer.inputs import folder_files
+    from alphalattice.foundation.data_layer.inputs import folder_files
 
     def linked(root: Path) -> Iterator[tuple[Path, tuple[int, int]]]:
         for _, file in folder_files(payload_path(root)):
@@ -386,7 +448,7 @@ moves into the catalog."""
 
 def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
     """The Portfolio results `copy`'s files name: kind, digest and table, in a fixed order."""
-    from alphalattice.kernel.data_layer.upgrade import workspace_files  # lazy: a copy's only
+    from alphalattice.foundation.data_layer.upgrade import workspace_files  # lazy: a copy's only
 
     found = set()
     for path in workspace_files(copy):
@@ -398,6 +460,30 @@ def _portfolio_results(copy: Path) -> list[tuple[str, str, str]]:
     return sorted(found)
 
 
+def _carry_recorded_review(copy: Path, source: Path, target: Path) -> None:
+    """Keep the nested recorded-review originals at the root that will serve the copy."""
+    from alphalattice.evidence.alternative_evidence.storage.world import (
+        keep_original,
+        original_locator_bodies,
+    )
+
+    evidence = copy / "recorded-review/evidence"
+    for _, body in original_locator_bodies(
+        evidence / "artifacts", evidence / "workspace", root=source
+    ):
+        keep_original(target, body)
+
+
+def carry_served_copy(workspace: Path, copy: Path) -> None:
+    """Carry a copied Host workspace and the originals its recorded-review fixture reads."""
+    from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
+
+    source, target = served_root(workspace), served_root(copy)
+    with owning(source, target):
+        carry_copy(workspace, copy, root=source)
+        _carry_recorded_review(copy, source, target)
+
+
 def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
     and catalog-held Risk and Portfolio results carried into `root`, the copy's own served root
@@ -407,19 +493,15 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
     )
-    from alphalattice.evidence.alternative_evidence.storage.world import (
-        keep_original,
-        original_locator_bodies,
-    )
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         committed_outcome_chunks,
     )
+    from alphalattice.foundation.data_layer import history
     from alphalattice.foundation.market_data_ops.storage.world import admit_universe
     from alphalattice.investment.risk_research.experiments.development_artifacts import (
         covariance_chunks,
     )
     from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactError
-    from alphalattice.kernel.data_layer import history
 
     held = sorted(
         {c.content_hash for _store, c, file in committed_outcome_chunks(copy) if not file.exists()}
@@ -435,10 +517,7 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
         return copy
     target = served_root(copy) if root is None else root
     with owning(source, target):
-        for _, body in original_locator_bodies(
-            evidence / "artifacts", evidence / "workspace", root=source
-        ):
-            keep_original(target, body)
+        _carry_recorded_review(copy, source, target)
         with history.own_root(source):
             bodies = [(digest, history.read_execution_outcome(digest)) for digest in held]
             workspace = str(named_workspace_id(copy))
@@ -479,7 +558,7 @@ def served_here(copy: Path) -> Path:
     from tests._support import require_isolated_roots
 
     require_isolated_roots()
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     return with_its_outcomes(copy, served_root(copy), history.data_root())
 
@@ -499,8 +578,8 @@ def upgraded(workspace: Path) -> Path:
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
     )
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 
     copy = workspace.resolve()
     checks = carried_result_checks()  # the results it carries, as its Host admits them
@@ -523,9 +602,9 @@ def closure_on_log(workspace: Path) -> Path:
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
     )
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
     from alphalattice.foundation.feature_engine.panels.closure_files import closure_upgrade_family
-    from alphalattice.kernel.data_layer import history
-    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
 
     copy, family = workspace.resolve(), closure_upgrade_family(named_workspace_id)
     if not family.holds(copy):
@@ -551,7 +630,7 @@ def admitted(workspace: Path) -> Path:
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
     )
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     history.move_carried(workspace.resolve(), str(named_workspace_id(workspace)))
     return workspace

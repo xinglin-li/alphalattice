@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    WINSOR_MULTIPLIER,
+)
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelAdmissionSummary,
 )
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    WINSOR_MULTIPLIER,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .robust_cross_section import (
     PanelCrossSectionKernel,

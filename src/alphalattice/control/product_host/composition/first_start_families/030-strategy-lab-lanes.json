@@ -1,4 +1,9 @@
 {
  "factory": "alphalattice.investment.portfolio_strategy_lab.publication.artifacts:lane_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "strategy-lab-lanes",
+ "trust_paths": [
+  "*/portfolio-strategy-lab/*.bin",
+  "*/portfolio-strategy-lab/*.parquet"
+ ]
 }

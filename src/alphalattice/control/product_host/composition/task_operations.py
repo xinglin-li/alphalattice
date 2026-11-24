@@ -18,15 +18,21 @@ if TYPE_CHECKING:
     from alphalattice.interface.local_application import portfolio_research as requests
 
     from . import portfolio_research_operations as host
+    from .operation_route_families import WorkspaceOperationCall
 
 
-def execute(call: host.WorkspaceOperationCall) -> dict[str, object] | None:
+def execute(
+    call: WorkspaceOperationCall[host.PortfolioResearchOperations],
+) -> dict[str, object] | None:
     """Dispatch a Task or supervised-run operation."""
-    operations, request, caller = call
+    operations, request, caller = call.operations, call.request, call.caller
     match request.operation:
         case "STATUS":
             assert request.task_id is not None
-            return operations.status(request.task_id, wait_seconds=request.wait_seconds)
+            result = operations.status(request.task_id, wait_seconds=request.wait_seconds)
+            if request.status_section == "storage":
+                return {**result, "storage": operations.storage.status()}
+            return result
         case "TASK_RECOVERY":
             assert request.task_id is not None
             return operations.recovery_view(request.task_id)
@@ -159,3 +165,10 @@ def _cancel(
     if stale is not None:
         return stale
     return operations.cancel(request.task_id, expected_task_hash=request.expected_task_hash)
+
+
+def route(call: WorkspaceOperationCall[host.PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a task family operation."""
+    result = execute(call)
+    assert result is not None
+    return result

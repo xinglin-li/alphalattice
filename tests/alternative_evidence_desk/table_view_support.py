@@ -6,7 +6,7 @@ footnote under the table -- none of it a real issuer's text."""
 from __future__ import annotations
 
 from alphalattice.evidence.alternative_evidence.documents.canonicalization import SecTableCarry
-from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
 INSTRUMENTS = (
     ("2.750% Senior Notes due 2027", "500", "500", "2027"),

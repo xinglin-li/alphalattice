@@ -1,5 +1,5 @@
 # Design principles
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 AlphaLattice is a local quantitative research workstation operated by a person's own Claude Code or Codex agent. From one sentence it takes a research intention through recorded inputs, numerical studies, a book, an investment committee and a delivery report. Its positions are research results, never investment advice or orders.
 
@@ -93,7 +93,7 @@ Every product is recorded under an identity, kept where its kind belongs, and fo
 - verify fully at the edges: where a record enters (its write, an import, a stage's check), where it leaves (export, publication, replay, an exact readback), and in an idle scrub that finds a file changed under its name; never on an ordinary read;
 - keep the hashing in compiled code.
 
-Measurement leads the work. In one early profile, nearly half of a publication's time went to hashing the same objects up to five times; removing the repeats left every digest byte-identical.
+Measurement leads the work. In one early profile, a publication hashed the same objects more than once; removing the repeats left every digest byte-identical.
 
 ## 6. Quick where someone waits, patient and watched everywhere else
 

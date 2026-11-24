@@ -12,14 +12,25 @@ from datetime import date, datetime
 from functools import partial
 from pathlib import Path
 from threading import Lock
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID
 
 import yaml  # type: ignore[import-untyped]
+from pydantic import ValidationError
 
 from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
     LightGBMThreads,
     lightgbm_threads,
+)
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_rule_closure_hash,
+    switched_identity,
 )
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -29,6 +40,7 @@ from alphalattice.control.product_host.composition.experience_read import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import (
     explain,
+    refused,
     task_record_refusal,
 )
 from alphalattice.control.product_host.composition.research_authoring import (
@@ -93,6 +105,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.result_standing import study_standing
+from alphalattice.control.product_host.composition.task_kinds import VERIFICATION_LEDGER_DIRECTORY
 from alphalattice.control.product_host.data_preparation.feature_research import (
     ResearchFeatureBuildApplication,
 )
@@ -157,8 +170,10 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PreviewRegistry,
     RetainedPreview,
 )
+from alphalattice.control.product_host.storage.retention import StorageRetentionError
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
 from alphalattice.control.research_program.authoring.document import (
+    convert_authoring_document,
     load_authoring_document,
     require_authoring_document,
 )
@@ -196,6 +211,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     budget_cores,
     machine_load,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     INSTALLED_REDUNDANCY_POLICIES,
@@ -239,6 +255,7 @@ from alphalattice.interface.local_application.failure_codes import (
     safe_failure_code,
 )
 from alphalattice.interface.local_application.portfolio_research import (
+    OperationCaller,
     PortfolioResearchOperationRequest,
 )
 from alphalattice.investment.alpha_research.candidates.qualification_task import (
@@ -302,17 +319,6 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -330,7 +336,6 @@ _LEDGER_ENTRIES = 8
 """Studies whose verification is kept; each keeps only what a read shows (an Alpha study's
 verified graph holds about 130 MB of chunk tables on the real workspace, none of it kept)."""
 
-VERIFICATION_LEDGER_DIRECTORY = "verification-ledger"
 """Under the workspace's `runtime/`: each study's last full verification, kept on disk as a read
 shows it, so a restart or a copy does not verify it in full again (EV2: a sealed file is proved
 at entry, at export and by the scrub, never on a read)."""
@@ -2953,12 +2958,13 @@ class ResearchExperimentApplication:
 
         scope = _VERIFIED_EVIDENCE.get()
         key = (task.task_id, task.record_hash, recorded_readback)
-        if scope is not None and key in scope:
+        held = scope.get(key) if scope is not None else None
+        if held is not None:
             return cast(
                 tuple[
                     ResearchExecutionEvidence, ResearchProgramWorkflow, ResearchExecutionEvidence
                 ],
-                scope[key],
+                held,
             )
         plan, actor = plan_actor if plan_actor is not None else self._of(task)
         stored: list[ResearchExecutionEvidence] = []
@@ -4376,3 +4382,164 @@ def verify_task_evidence(
             recorded_readback=False,
             stored_sink=[],
         )[0]
+
+
+def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:
+    """The Alpha study and candidate a refused Portfolio declaration named."""
+    try:
+        document = (
+            load_authoring_document(request.experiment_yaml)
+            if request.experiment_yaml is not None
+            else request.experiment_document
+        )
+    except ValueError:
+        document = None
+    section = document.get("portfolio") if isinstance(document, Mapping) else None
+    if not isinstance(section, Mapping):
+        return {}
+    bindings = {
+        "task_id": section.get("alpha_task_id"),
+        "candidate_id": section.get("candidate_id"),
+    }
+    return {
+        key: value if isinstance(value, str) and value else None for key, value in bindings.items()
+    }
+
+
+def refused_document(operation: str, error: ValidationError) -> dict[str, object]:
+    """The refusal for an invalid document in an EXPERIMENT operation.
+
+    Args:
+        operation: The refused operation.
+        error: Its validation error.
+
+    Returns:
+        In a delivery export, the product's fault: nothing changed, send once more, then report
+        it. Elsewhere, the declaration to correct and replan.
+    """
+    if operation == "EXPERIMENT_DELIVERY_EXPORT":
+        return {
+            "status": "REFUSED",
+            **located_failure(error, "research_delivery.export_failed"),
+            "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM",
+        }
+    return {
+        "status": "REFUSED",
+        **located_failure(error, "research_experiment.document_invalid"),
+        "next_action": "CORRECT_DECLARATION_AND_REPLAN",
+        "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
+    }
+
+
+class _ExperimentHost(Protocol):
+    """The Host operations used by the experiment route."""
+
+    @property
+    def experiments(self) -> ResearchExperimentApplication: ...
+
+    @property
+    def workspace_manifest(self) -> ResearchWorkspaceManifest: ...
+
+    @property
+    def workspace_session(self) -> WorkspaceApplicationSession: ...
+
+    def verify_all(self) -> dict[str, object]: ...
+
+    def _delivery_export(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]: ...
+
+
+def route(call: WorkspaceOperationCall[_ExperimentHost]) -> dict[str, object]:
+    """Run an experiment request and keep the experiment owner's refusal fields."""
+
+    operations, request, caller = call.operations, call.request, call.caller
+    agent_execution = call.agent_execution
+    if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
+        return cast(
+            dict[str, object],
+            convert_authoring_document(
+                document=request.experiment_document, text=request.experiment_yaml
+            ),
+        )
+    try:
+        if request.operation == "EXPERIMENT_FOUNDATION_SUMMARY":
+            from .foundation_summary import (  # lazy: Foundation summary requests only
+                read_foundation_summary,
+            )
+
+            assert request.foundation_admission_hash is not None
+            return read_foundation_summary(
+                operations.workspace_session.workspace, request.foundation_admission_hash
+            )
+        if request.operation == "EXPERIMENT_VERIFY_ALL":
+            return operations.verify_all()
+        if request.operation == "EXPERIMENT_DELIVERY_EXPORT":
+            return operations._delivery_export(request, caller)
+        return operations.experiments.operate(
+            request, caller=caller, agent_execution=agent_execution
+        )
+    except ValidationError as error:
+        return refused_document(request.operation, error)
+    except (ValueError, KeyError, OSError, StorageRetentionError) as error:
+        code = (
+            "task_control.task_not_found"
+            if isinstance(error, TaskNotFoundError)
+            else str(getattr(error, "failure_code", None))
+            if getattr(error, "failure_code", None)
+            else public_failure(error, "research_experiment.refused")
+        )
+        if code in {
+            "research_experiment.input_not_admitted",
+            "research_experiment.input_selection_required",
+        }:
+            offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
+            if (
+                code == "research_experiment.input_not_admitted"
+                and request.operation == "EXPERIMENT_CONTROLS"
+                and request.experiment_kind == "risk.covariance-development"
+            ):
+                inputs = operations.workspace_manifest.experiment_inputs or ()
+                if len(inputs) == 1 and inputs[0].binding_hash == request.input_binding_hash:
+                    offers["valid_values"] = {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+            return {
+                "status": "REFUSED",
+                "failure_code": code,
+                "fields": [["research_input_id"]],
+                "message": (
+                    "Use a research input ID from RESEARCH_INPUTS; "
+                    "the Universe handle is a different declaration field."
+                    if code == "research_experiment.input_not_admitted"
+                    and request.research_input_id is not None
+                    else "Choose one admitted research input ID from RESEARCH_INPUTS; "
+                    "prepare the workspace first if none exists."
+                ),
+                "next_action": "RESEARCH_INPUTS",
+                "next_requests": offers,
+            }
+        located = getattr(error, "document_location", None)
+        return {
+            **refused(
+                code,
+                origin=str(request.origin_task_id) if request.origin_task_id else None,
+                portfolio=_portfolio_source(request),
+                **operations.experiments.study_facts(
+                    request.task_id,
+                    moved=code == "research_experiment.execution_binding_changed",
+                ),
+            ),
+            # Where a declaration sent as text stopped parsing.
+            **({"document_location": located} if located else {}),
+            # What the refusing owner knows each field may hold.
+            **(
+                {"expected": error.expected}
+                if isinstance(error, AuthoringError) and error.expected
+                else {}
+            ),
+            # A missing prerequisite result names the flow's and the way on.
+            **operations.experiments.refusal_prerequisites(code, request),
+        }
+
+
+if TYPE_CHECKING:
+    from .operation_route_families import WorkspaceOperationCall

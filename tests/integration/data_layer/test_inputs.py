@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import governance, history, inputs
-from alphalattice.kernel.data_layer.store import StorePort
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import governance, history, inputs
+from alphalattice.foundation.data_layer.store import StorePort
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/inputs.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/inputs.py"
 
 
 def _binding(folder: Path, files: dict[str, bytes]) -> Path:

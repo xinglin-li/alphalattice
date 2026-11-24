@@ -6,7 +6,6 @@ import json
 import re
 import subprocess
 import sys
-import textwrap
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,15 +13,17 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline import definition
 from release.public_manifest import (
+    _HOST_ROUTES,
     INTERNAL_ID_BASELINE,
     RULES,
     _carry_refusal,
     attach_reviews,
     classify,
     content_keys,
+    declare_github,
     declared_private,
     generate,
     internal_id_label,
@@ -35,6 +36,7 @@ from release.public_manifest import (
 from release.public_manifest import (
     main as public_manifest_main,
 )
+from tests._support.process_starts import observe_starts
 
 _REVIEW_FIXTURE = "sk-" + "X" * 40 + " x@example.invalid"
 _CHANGED_REVIEW_FIXTURE = "sk-" + "Y" * 40 + " x@example.invalid"
@@ -127,6 +129,40 @@ def test_public_manifest_prioritizes_private_rules_and_never_guesses(path, kind,
     assert decision[2]
 
 
+PUBLISHED, PRIVATE = (
+    "tests/unit/x/test_ids.py::test_one",
+    "tests/unit/agent_eval/test_x.py::test_one",
+)
+
+
+@pytest.mark.proves("pipeline.github_declared_on_published_tests")
+@pytest.mark.parametrize(
+    ("node", "docstring", "marks", "contract", "declared"),
+    [
+        pytest.param(PUBLISHED, None, (), None, True, id="published"),
+        pytest.param(PRIVATE, None, (), None, False, id="private-by-rule"),
+        pytest.param(
+            PUBLISHED, "PRIVATE_TEST: an inventory", (), None, False, id="private-by-docstring"
+        ),
+        pytest.param(
+            PUBLISHED, None, ("real_evidence",), None, False, id="published-real-evidence"
+        ),
+        pytest.param(PUBLISHED, None, ("paid_agent",), None, False, id="published-paid-agent"),
+        pytest.param(PUBLISHED, None, ("performance",), None, False, id="published-performance"),
+        pytest.param(PUBLISHED, None, (), "nightly_only", False, id="published-nightly-only"),
+    ],
+)
+def test_github_is_declared_on_exactly_the_published_tests_github_can_run(
+    node, docstring, marks, contract, declared
+):
+    """Each test has one runner: GitHub's public Verify (-m github), or else the nightly."""
+    added = []
+    item = SimpleNamespace(nodeid=node, module=SimpleNamespace(__doc__=docstring))
+    item.add_marker, item.get_closest_marker = added.append, lambda name: name in marks or None
+    declare_github([item], lambda _: contract)
+    assert added == (["github"] if declared else [])
+
+
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_the_full_release_closure_check_names_its_private_inventory_input():
     assert classify("tests/structural/test_public_release_closure.py", set(), set(), set()) == (
@@ -172,14 +208,21 @@ def test_public_manifest_rejects_unsafe_paths(path):
         validate_path(path)
 
 
+def _runtime_census(*roots: str) -> dict[str, bytes]:
+    """Build the synthetic entry inventory for the release scanner fixtures."""
+    census = {"base": "b" * 40, "modules": [{"path": root, "class": "LIVE"} for root in roots]}
+    return {
+        "census/entry_reach.json": json.dumps(census).encode(),
+    }
+
+
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_public_manifest_hashes_supplied_git_bytes_and_covers_every_file():
     sha = "a" * 40
-    census = {"base": "b" * 40, "modules": [{"path": "src/alphalattice/main.py", "class": "LIVE"}]}
     blobs = {
         "LICENSE": b"license\n",
         "AGENTS.override.md": b"internal instructions\n",
-        "census/entry_reach.json": json.dumps(census).encode(),
+        **_runtime_census("src/alphalattice/main.py"),
         "src/alphalattice/main.py": b"from alphalattice.new import calculate\n",
         "src/alphalattice/new.py": b"def calculate():\n    return 1\n",
         "unexamined.bin": b"unknown\x00payload",
@@ -285,7 +328,11 @@ def test_public_manifest_records_locations_without_copying_disclosures():
             "experience/one.md",
         ]
     )
-    blobs = {"src/public.py": text.encode(), "experience/one.md": b"private content"}
+    blobs = {
+        "src/public.py": text.encode(),
+        "experience/one.md": b"private content",
+        "config/package-architecture.json": b"",  # a sparse changed-file scan
+    }
     rows = [
         {"path": "src/public.py", "kind": "PUBLIC"},
         {"path": "experience/one.md", "kind": "PRIVATE"},
@@ -302,6 +349,45 @@ def test_public_manifest_records_locations_without_copying_disclosures():
     serialized = json.dumps(findings)
     assert secret not in serialized and session not in serialized and "person@" not in serialized
     assert all(r["path"] == "src/public.py" and r["line"] > 0 for r in findings)
+
+    # The same scan also resolves fully qualified and logical JSON writer references.
+    families = "config/registries/example.json"
+    identity = "config/identity-roles.json"
+    private = "src/alphalattice/kernel/probe/dev_only.py"
+    public = "src/alphalattice/kernel/probe/reader.py"
+    blobs = {
+        private: b"",
+        public: b"",
+        "config/package-architecture.json": json.dumps(
+            {
+                "packages": [
+                    {
+                        "package_id": "probe",
+                        "physical_namespace_target": "alphalattice.kernel.probe",
+                    }
+                ],
+            }
+        ).encode(),
+    }
+    modules = [{"path": private, "kind": "PRIVATE"}, {"path": public, "kind": "PUBLIC"}]
+    for registry, field, value, target in (
+        (families, "writers", '"probe.dev_only:Writer"', private),
+        (families, "writers", r'"probe.\u0064ev_only:Writer"', private),
+        (families, "writers", '"probe.reader:Reader"', None),
+        (identity, "installed", '"alphalattice.kernel.probe.dev_only:Writer.open"', private),
+        (identity, "installed", '"alphalattice.kernel.probe.reader:Reader"', None),
+    ):
+        blobs[registry] = ('{\n  "' + field + '": ' + value + "\n}\n").encode()
+        findings, binary = scan_public(blobs, [{"path": registry, "kind": "PUBLIC"}, *modules])
+        assert not binary
+        assert [
+            (row["path"], row["line"], row["rule"], row["private_targets"]) for row in findings
+        ] == ([(registry, 2, "NO_PRIVATE_REFERENCE", [target])] if target else [])
+    with pytest.raises(ValueError, match=r"registry_layout_missing.*package-architecture\.json"):
+        scan_public(
+            {**blobs, "config/package-architecture.json": b""},
+            [{"path": identity, "kind": "PUBLIC"}, *modules],
+        )
 
 
 @pytest.mark.proves("pipeline.development_labels_cannot_grow_in_public")
@@ -522,6 +608,47 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
             else:
                 with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
                     validate_internal_id_history(tmp_path, candidate)
+        # A move Git records byte for byte carries its allowance without a map row; edited, not.
+        mapped = table.read_text(encoding="utf-8")
+        table.write_text(json.dumps({"files": {}}), encoding="utf-8", newline="\n")
+        baseline.write_text(json.dumps(policy), encoding="utf-8", newline="\n")
+        (tmp_path / owner).parent.mkdir(exist_ok=True)
+        (tmp_path / owner).write_text("text = 1\n", encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        holding = _git("commit-tree", _git("write-tree"), "-p", base, "-m", "Hold the file")
+        (tmp_path / owner).unlink()
+        twin = "src/twin.py"  # the same bytes added twice: no unique move, so neither carries
+        for text, twins, refusal in (
+            ("text = 1\n", (), None),
+            ("text = 2\n", (), "map does not name it"),
+            ("text = 1\n", (twin,), "map does not name it"),
+        ):
+            claims = {path: {label: 1} for path in (moved, *twins)}
+            baseline.write_text(json.dumps({**policy, "occurrences": claims}))
+            for path in (moved, *twins):
+                (tmp_path / path).write_text(text, encoding="utf-8", newline="\n")
+            _git("add", "--all")
+            candidate = _git("commit-tree", _git("write-tree"), "-p", holding, "-m", "Git mv")
+            if refusal is None:
+                validate_internal_id_history(tmp_path, candidate)
+            else:
+                with pytest.raises(ValueError, match=rf"allowance increased.*{refusal}"):
+                    validate_internal_id_history(tmp_path, candidate)
+        # An edited move the map names and a byte-for-byte copy Git pairs, each a carry alone,
+        # both claim the one old allowance: it carries to one of them only.
+        row = {"domain": "d", "old": owner, "reason": "r"}
+        table.write_text(json.dumps({"files": {moved: row}}), encoding="utf-8", newline="\n")
+        claims = {moved: {label: 1}, twin: {label: 1}}
+        baseline.write_text(json.dumps({**policy, "occurrences": claims}))
+        (tmp_path / moved).write_text("text = 2\n", encoding="utf-8", newline="\n")
+        (tmp_path / twin).write_text("text = 1\n", encoding="utf-8", newline="\n")
+        _git("add", "--all")
+        candidate = _git("commit-tree", _git("write-tree"), "-p", holding, "-m", "Mixed")
+        with pytest.raises(ValueError, match=r"allowance increased.*already carried to"):
+            validate_internal_id_history(tmp_path, candidate)
+        for path in (moved, twin):
+            (tmp_path / path).unlink()
+        table.write_text(mapped, encoding="utf-8", newline="\n")
         held = {**policy, "occurrences": {owner: {label: 1}, moved: {label: 1}}}
         baseline.write_text(json.dumps(held), encoding="utf-8", newline="\n")
         _git("add", "--all")
@@ -567,12 +694,12 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
         merged = _git("commit-tree", _git("write-tree"), "-p", tip, "-p", side, "-m", "Merge")
         check_output, responses = spawn.check_output, {}
         run, resolved = spawn.run, {}
-        popen, sent = subprocess.Popen, bytearray()
+        sent = bytearray()
 
         def recorded(
-            command, **kwargs
+            start, command, **kwargs
         ):  # the object session's commands, kept for the replays below
-            process = popen(command, **kwargs)
+            process = start(command, **kwargs)
             if "--batch-command" in command:
                 stdin, sent[:] = process.stdin, b""
                 write = lambda data: sent.extend(data) or stdin.write(data)
@@ -588,7 +715,7 @@ def test_committed_development_label_allowance_cannot_grow_or_reset(
 
         with monkeypatch.context() as patch:
             starts = Mock(wraps=recorded)
-            patch.setattr(subprocess, "Popen", starts)
+            observe_starts(patch, starts)
             patch.setattr(spawn, "run", record_run)
             patch.setattr(
                 spawn,
@@ -782,6 +909,60 @@ def test_candidate_script_needs_a_consumer_outside_release_policy():
     assert script in {row["path"] for row in manifest["public"]}
 
 
+@pytest.mark.proves("pipeline.public_manifest_follows_registered_host_routes")
+@pytest.mark.parametrize(
+    ("module", "target_mode", "private", "refusal"),
+    [
+        pytest.param('"handler"', "100644", False, None, id="public-handler-and-imports"),
+        pytest.param('"handler"', "100644", True, "door_route_private", id="private-handler"),
+        pytest.param("module_name", "100644", False, "door_route_nonliteral", id="nonliteral"),
+        pytest.param(
+            '"alphalattice.kernel.handler"',
+            "100644",
+            False,
+            "door_route_outside_package",
+            id="outside-package",
+        ),
+        pytest.param('"handler"', None, False, "door_route_untracked", id="untracked"),
+    ],
+)
+def test_public_runtime_closure_follows_the_registered_door_routes(
+    monkeypatch, module, target_mode, private, refusal
+):
+    """The real scanner follows literal public routes and refuses invalid targets by name."""
+    registry = _HOST_ROUTES
+    package = registry.rsplit("/", 1)[0]
+    handler, dependency = f"{package}/handler.py", f"{package}/dependency.py"
+    blobs = {
+        **_runtime_census(registry),
+        registry: f'_ROUTES = (FamilyRoute(("SHOW",), {module}),)\n'.encode(),
+        dependency: b"answer = 1\n",
+    }
+    if target_mode is not None:
+        blobs[handler] = b"from .dependency import answer\n"
+    modes = dict.fromkeys(blobs, "100644")
+    if private:
+        monkeypatch.setattr(
+            "release.public_manifest.RULES",
+            [
+                {
+                    "rule": "PRIVATE_FIXTURE",
+                    "kind": "PRIVATE",
+                    "patterns": [handler],
+                    "reason": "private fixture",
+                },
+                *RULES,
+            ],
+        )
+    if refusal:
+        with pytest.raises(ValueError, match=f"public_release\\.{refusal}:"):
+            generate("a" * 40, blobs, modes)
+    else:
+        manifest, _ = generate("a" * 40, blobs, modes)
+        public = {row["path"]: row["rule"] for row in manifest["public"]}
+        assert public[handler] == public[dependency] == "PUBLIC_RUNTIME"
+
+
 @pytest.mark.proves("pipeline.public_manifest_settles_every_file_by_rule")
 def test_candidate_script_reference_composed_from_path_parts_is_public():
     script = "scripts/run_alpha_model_adapter_parity.py"
@@ -911,11 +1092,8 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     # every public test runs nightly and on dispatch, collected at run time, never a file list
     assert re.search(r"^  schedule:\n    - cron: ", workflow, re.M)
     assert "\n  workflow_dispatch:\n" in workflow
-    assert 'python -m pytest tests -m "not real_evidence"' in workflow
-    assert "--splits 4 --group ${{ matrix.group }}" in " ".join(workflow.split())
     assert "public-tests-junit-${{ matrix.os }}-${{ matrix.group }}" in workflow
     assert "public-tests-result-${{ matrix.os }}-${{ github.run_id }}" in workflow
-    assert "--durations-path .test_durations" in workflow
     # every workflow's actions are pinned to a full commit, never a tag or branch
     uses = [
         found
@@ -945,6 +1123,18 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
     import yaml
 
     jobs = yaml.safe_load(workflow)["jobs"]
+    shard_command = next(
+        step["run"]
+        for step in jobs["public-tests-shard"]["steps"]
+        if step.get("name") == "Run this shard of every public test"
+    )
+    launcher, pytest_options = " ".join(shard_command.split()).split(" -- ", 1)
+    assert "python scripts/release/public_test_shard.py " in launcher
+    assert pytest_options.startswith(
+        "tests -m github -n 4 "
+    )  # exactly the tests declared for GitHub
+    assert "--splits 4 --group ${{ matrix.group }}" in pytest_options
+    assert "--durations-path .test_durations" in pytest_options
     assert not jobs["public-tests-shard"].get("continue-on-error", False)
     assert not jobs["public-tests"].get("continue-on-error", False)
     supply = yaml.safe_load((root / ".github/workflows/supply-chain.yml").read_text("utf-8"))
@@ -978,16 +1168,28 @@ def test_every_test_path_the_public_ci_runs_exists_and_is_public(tmp_path):
 
 
 @pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
-@pytest.mark.parametrize("failure", ("timeout", "crash", "prior-timeout", "malformed"))
+@pytest.mark.parametrize(
+    "failure", ("timeout", "timeout-end-blocked", "crash", "prior-timeout", "malformed")
+)
 def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, failure):
-    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash."""
+    """The workflow's real worker plugin reports a timed-out worker but not an ordinary crash, and
+    ends a worker whose timeout recorded itself but then blocked (Windows' thread method, the
+    public Verify shards cancelled at their 60-minute limit on 11-21)."""
     from tests.structural.pytest_support import child_environment
 
-    workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text("utf-8")
-    plugin = workflow.split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0]
-    plugin = textwrap.dedent(plugin).replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    root = Path(__file__).resolve().parents[2]
+    plugin = (root / "scripts/release/public_test_shard.py").read_text("utf-8")
+    plugin = plugin.replace("HANG_SECONDS = 900", "HANG_SECONDS = 2", 1)
+    plugin = plugin.replace("HANG_GRACE = 60", "HANG_GRACE = 2", 1)
     (tmp_path / "ci_worker_diagnostics.py").write_text(plugin, encoding="utf-8")
-    body = "Event().wait()" if failure == "timeout" else "os._exit(5)"
+    if failure == "timeout-end-blocked":  # pytest-timeout's own end never reaches os._exit
+        (tmp_path / "conftest.py").write_text(
+            "import pytest_timeout\nfrom threading import Event\n\n\n"
+            "def pytest_configure(config):\n"
+            "    pytest_timeout.timeout_timer = lambda item, settings: Event().wait()\n",
+            encoding="utf-8",
+        )
+    body = "Event().wait()" if failure.startswith("timeout") else "os._exit(5)"
     if failure == "prior-timeout":
         body = (
             "log = Path(os.environ['PYTEST_WORKER_DIAGNOSTICS']) / "
@@ -1051,12 +1253,226 @@ def test_public_worker_timeout_is_visible_without_relabeling_a_crash(tmp_path, f
     )
     visible = run.stdout + run.stderr
     assert run.returncode != 0 and "crashed while running" in visible
-    assert ('"event": "timeout"' in visible) == (failure == "timeout")
-    if failure == "timeout":
+    assert ('"event": "timeout"' in visible) == failure.startswith("timeout")
+    if failure.startswith("timeout"):
         assert "test_probe.py::test_probe" in visible and '"seconds": 2.0' in visible
         assert visible.index('"event": "timeout"') < visible.index("crashed while running")
     if failure == "malformed":
         assert "timeout diagnostic unavailable" in visible and "INTERNALERROR" not in visible
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize(
+    ("phase", "node", "expected"),
+    [
+        ("worker startup", None, "gw0: worker startup"),
+        ("collection", None, "gw0: collection"),
+        (
+            "fixture setup",
+            "test_probe.py::test_probe",
+            "gw0: fixture setup test_probe.py::test_probe",
+        ),
+        ("test call", "test_probe.py::test_probe", "gw0: test call test_probe.py::test_probe"),
+        (
+            "fixture teardown",
+            "test_probe.py::test_probe",
+            "gw0: fixture teardown test_probe.py::test_probe",
+        ),
+        (
+            "worker handoff",
+            "test_probe.py::test_probe",
+            "gw0: worker handoff test_probe.py::test_probe",
+        ),
+        ("session finish", None, "gw0: session finish"),
+        ("worker shutdown", None, "gw0: worker shutdown"),
+    ],
+    ids=(
+        "startup",
+        "collection",
+        "setup",
+        "call",
+        "teardown",
+        "handoff",
+        "session-finish",
+        "shutdown",
+    ),
+)
+def test_a_shard_timeout_names_the_process_phase(phase, node, expected):
+    """A phase has a deadline, and a test transition keeps its original deadline."""
+    from release.public_test_shard import HANG_SECONDS, ShardWatch
+
+    watch = ShardWatch(began=0)
+    watch.observe(
+        dict(
+            event="phase",
+            owner="controller",
+            phase="worker coordination",
+            tick=1,
+            until=None,
+            node=None,
+            pid=1,
+        )
+    )
+    watch.observe(
+        dict(
+            event="phase",
+            owner="gw0",
+            phase="test protocol" if node else phase,
+            tick=2,
+            until=10,
+            node=node,
+            pid=2,
+        )
+    )
+    deadline = 10
+    if phase == "worker handoff":
+        watch.observe(dict(event="end", owner="gw0", node=node, tick=9))
+        deadline = 9 + HANG_SECONDS
+        watch.observe(
+            dict(
+                event="phase",
+                owner="gw1",
+                phase="test call",
+                tick=deadline - 1,
+                until=deadline + 1,
+                node="test_probe.py::test_healthy",
+                pid=3,
+            )
+        )
+    elif node is not None:
+        watch.observe(dict(event="test phase", owner="gw0", phase=phase, node=node, tick=9))
+    before = deadline - 0.1
+    assert watch.expired(deadline, cutoff=deadline + 10, alive=lambda _pid: True) == expected
+    assert watch.expired(before, cutoff=deadline + 10, alive=lambda _pid: True) is None
+    assert watch.expired(deadline, cutoff=deadline + 10, alive=lambda pid: pid == 1) is None
+    assert watch.expired(before, cutoff=before, alive=lambda _pid: True) == expected
+
+
+@pytest.mark.proves("pipeline.public_worker_timeout_diagnostic")
+@pytest.mark.parametrize(
+    "escaped",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux process sessions"),
+            id="detached-host",
+        ),
+    ],
+)
+def test_a_stalled_shard_keeps_the_failure_that_preceded_worker_session_finish(tmp_path, escaped):
+    """A real xdist worker that hangs after its last report leaves a failed JUnit."""
+    from xml.etree import ElementTree as ET
+
+    from tests.structural.pytest_support import child_environment
+
+    probe = "def test_prior_failure():\n"
+    if escaped:
+        detached = (
+            "import json, os, subprocess, sys\n"
+            "from pathlib import Path\n"
+            "import psutil\n"
+            "from alphalattice.capabilities.domain_contracts import spawn\n"
+            "child = spawn.detached(\n"
+            "    [sys.executable, '-c', 'from threading import Event; Event().wait(60)'],\n"
+            "    log=subprocess.DEVNULL, env=dict(os.environ),\n"
+            ")\n"
+            "birth = psutil.Process(child.pid).create_time()\n"
+            "Path('host.json').write_text(json.dumps([child.pid, birth]), encoding='utf-8')\n"
+        )
+        probe += (
+            "    import sys\n"
+            "    from alphalattice.capabilities.domain_contracts import spawn\n"
+            f"    spawn.run([sys.executable, '-c', {detached!r}], timeout=8, check=True)\n"
+        )
+    line = probe.count("\n") + 1
+    probe += "    assert False, 'child output stays out'\n"  # a message quoting a child's output
+    probe += "\ndef test_value_only():\n    import pytest\n"
+    probe += (
+        "    pytest.fail('child output stays out', pytrace=False)\n"  # no frame, only its crash
+    )
+    value_line = probe.count("\n")
+    (tmp_path / "test_probe.py").write_text(probe, encoding="utf-8")
+    # Import and syntax errors reach pytest as text alone; their own error names the line.
+    (tmp_path / "test_broken.py").write_text("import child_output_stays_out\n", encoding="utf-8")
+    (tmp_path / "test_syntax.py").write_text("def broken(:\n", encoding="utf-8")
+    (tmp_path / "conftest.py").write_text(
+        "from threading import Event\n"
+        "import pytest\n\n"
+        "@pytest.hookimpl(tryfirst=True)\n"
+        "def pytest_sessionfinish(session):\n"
+        "    if hasattr(session.config, 'workerinput'):\n"
+        "        Event().wait()\n",
+        encoding="utf-8",
+    )
+    junit = tmp_path / "junit.xml"
+    env = child_environment(
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+        PYTEST_WORKER_DIAGNOSTICS=str(tmp_path / "diagnostics"),
+    )
+    root = Path(__file__).resolve().parents[2]
+    guard = (root / "scripts/release/public_test_shard.py").read_text("utf-8")
+    # Shorten the phase bound without changing which lifecycle hooks arm it.
+    guard = guard.replace("HANG_SECONDS = 900", "HANG_SECONDS = 4", 1)
+    launcher = tmp_path / "public_test_shard.py"
+    launcher.write_text(guard, encoding="utf-8")
+    run = spawn.run(
+        [
+            sys.executable,
+            str(launcher),
+            "--budget",
+            "20",
+            "--junit",
+            str(junit),
+            "--",
+            "-p",
+            "xdist",
+            "-p",
+            "pytest_timeout",
+            "-n",
+            "1",
+            "--max-worker-restart=0",
+            "--continue-on-collection-errors",
+            "-q",
+            "test_probe.py",
+            "test_broken.py",
+            "test_syntax.py",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=25,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if escaped:
+        import psutil
+
+        pid, created = json.loads((tmp_path / "host.json").read_text("utf-8"))
+        try:
+            host = psutil.Process(pid)
+            same_host = host.create_time() == created and host.status() != psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            same_host = False
+        if same_host:
+            host.kill()  # Clean only the identified planted process, even on the red base.
+        assert not same_host, f"shard-owned Host {pid} survived the stop"
+    assert run.returncode == 1, run.stdout + run.stderr
+    assert "public shard timeout: gw0: session finish" in run.stderr
+    rows = {row.get("name"): row for row in ET.parse(junit).findall(".//testcase")}
+    assert len(rows) == 5, rows
+    failure, value_only = rows["test_prior_failure"], rows["test_value_only"]
+    assert failure.get("classname") == "test_probe"
+    # Each keeps its type, then the failing file and line, and never its message or child text.
+    assert failure.findtext("failure").splitlines() == ["AssertionError", f"test_probe.py:{line}"]
+    assert value_only.findtext("failure").splitlines() == ["Failed", f"test_probe.py:{value_line}"]
+    assert rows["test_broken"].findtext("error").splitlines()[-1] == "test_broken.py:1"
+    assert rows["test_syntax"].findtext("error").splitlines()[-1] == "test_syntax.py:1"
+    diagnostics = [log.read_text("utf-8") for log in (tmp_path / "diagnostics").glob("*.log")]
+    kept = [junit.read_text("utf-8"), *diagnostics]
+    assert diagnostics and not any(re.search("stays.out", text) for text in kept)
+    timeout = rows["public shard timeout: gw0: session finish"]
+    assert timeout.find("error").get("message") == timeout.get("name")
 
 
 @pytest.mark.proves("pipeline.public_durations_come_from_junit")

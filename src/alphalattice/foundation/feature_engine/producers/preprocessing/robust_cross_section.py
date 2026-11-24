@@ -5,17 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from alphalattice.foundation.feature_engine.contracts import (
-    FeaturePanelBinding,
-    PanelAdmissionSummary,
-    canonical_hash,
-)
-from alphalattice.kernel.quant.cross_section import (
+from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
     MIN_COVERAGE,
     MIN_SECTOR_SAMPLE,
@@ -24,6 +18,12 @@ from alphalattice.kernel.quant.cross_section import (
     median_mad_winsor,
     robust_zscore,
 )
+from alphalattice.foundation.feature_engine.contracts import (
+    FeaturePanelBinding,
+    PanelAdmissionSummary,
+    canonical_hash,
+)
+from alphalattice.kernel.identity import identity_sha256
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -62,8 +62,8 @@ def _array_digest(values: np.ndarray) -> str:
                 "kind": "PanelArrayDigest",
                 "dtype": str(values.dtype),
                 "shape": list(values.shape),
-                "finite_mask": sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": sha256(
+                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
+                "finite_values": identity_sha256(
                     np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
                 ).hexdigest(),
             }

@@ -8,20 +8,31 @@ before anything is applied both engines keep their own defaults. Under the opera
 (`thread_share`, which Arrow reads itself), every instance a reader opens is created with it for
 its worker and async I/O pools, so neither starts wider, and no budget applied later widens it.
 Every product opener of a file is this one, with one creation config, so a second opener in the
-process matches it; a budget's later `SET` keeps that match. The product's queries order
-their rows and sum no floating-point values, so no result depends on the count (a fixed query
-set gave the same bytes at 1 and 8 threads, 2026-09-26).
+process matches it; a budget's later `SET` keeps that match. It opens through the storage port
+(kernel.storage), whose driver is `DRIVER`, installed when this module is imported and by each
+process's entry. Importing it loads neither engine: DuckDB loads at the first open, Arrow at the
+first grant, so a CLI command that opens nothing pays for neither.
+The product's queries order their rows and sum no floating-point values, so no result depends on
+the count (a fixed query set gave the same bytes at 1 and 8 threads, 2026-09-26).
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from threading import Lock
+from typing import TYPE_CHECKING
 
-import duckdb
-import pyarrow as pa
+from alphalattice.capabilities.domain_contracts.environment import (
+    duckdb_thread_config,
+    set_duckdb_pool_width,
+    thread_share,
+)
+from alphalattice.kernel import storage
+from alphalattice.kernel.resources import cpu_width, current_resource_lease
 
-from alphalattice.kernel.shared_kernel.environment import duckdb_thread_config, thread_share
+if TYPE_CHECKING:
+    import duckdb
 
 _LOCK = Lock()
 _THREADS: list[int] = []
@@ -38,6 +49,8 @@ def apply_reader_threads(threads: int) -> int:
     threads = max(1, min(int(threads), thread_share() or int(threads)))
     with _LOCK:
         _THREADS[:] = [threads]
+        import pyarrow as pa  # lazy: Arrow loads at the first grant, not at the driver's install
+
         pa.set_cpu_count(threads)
     return threads
 
@@ -47,22 +60,41 @@ def configure_duckdb(connection: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyCo
     threads = reader_threads()
     if threads is not None:
         connection.execute(f"SET threads TO {threads}").complete()
+    elif current_resource_lease() is not None:
+        set_duckdb_pool_width(connection, cpu_width())
     return connection
+
+
+class _DuckDB:
+    """The DuckDB driver the storage port opens every instance through (kernel.storage)."""
+
+    def connect(
+        self, target: str, *, read_only: bool, config: Mapping[str, object]
+    ) -> duckdb.DuckDBPyConnection:
+        """Open `target` with `config`; a file takes the applied threads."""
+        import duckdb  # lazy: DuckDB loads at the first open, not at the driver's install
+
+        connection = duckdb.connect(target, read_only=read_only, config=dict(config))
+        return connection if target == storage.MEMORY else configure_duckdb(connection)
+
+
+DRIVER = _DuckDB()
+"""The product's driver: installed in the storage port when this module is imported."""
+storage.install_driver(DRIVER)
 
 
 def connect_duckdb(path: Path | str, *, read_only: bool) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB file created within the operator's share, with the applied threads."""
-    return configure_duckdb(
-        duckdb.connect(
-            str(path),
-            read_only=read_only,
-            config={
-                "autoinstall_known_extensions": False,
-                "autoload_known_extensions": False,
-                **duckdb_thread_config(),
-            },
-        )
+    connection: duckdb.DuckDBPyConnection = storage.connect(
+        str(path),
+        read_only=read_only,
+        config={
+            "autoinstall_known_extensions": False,
+            "autoload_known_extensions": False,
+            **duckdb_thread_config(),
+        },
     )
+    return connection
 
 
-__all__ = ["apply_reader_threads", "configure_duckdb", "connect_duckdb", "reader_threads"]
+__all__ = ["DRIVER", "apply_reader_threads", "configure_duckdb", "connect_duckdb", "reader_threads"]

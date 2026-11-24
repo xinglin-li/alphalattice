@@ -32,22 +32,23 @@ from dataclasses import fields as dataclass_fields
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts import source_identity
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    IDENTITY_ROLES_PATH,
+    current_module_name,
+    number_deciding_closure,
+    number_deciding_rule,
+)
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     control_arithmetic_rule_identity,
     installed_method_family_owners,
     method_family_rule_identity,
 )
-from alphalattice.kernel.shared_kernel import source_identity
-from alphalattice.kernel.shared_kernel.source_identity import (
-    IDENTITY_ROLES_PATH,
-    number_deciding_closure,
-    number_deciding_rule,
-)
 from devtools.architecture import structural
 
 PRIMITIVES = frozenset({"source_rule_closure_hash"})
 _LISTED = frozenset({"source_rule_closure_hash"})
-_DEFINITIONS = "src/alphalattice/kernel/shared_kernel/source_identity.py"
+_DEFINITIONS = "src/alphalattice/capabilities/domain_contracts/source_identity.py"
 _PLATFORM = (
     ("BUILD", ("pyproject.toml", "uv.lock")),
     ("COMPOSITION", ("/composition/",)),
@@ -177,10 +178,14 @@ def _by_rule(root: Path, site: ClosureSite) -> ClosureSite:
         if path.startswith("src/") and path.endswith(".py")
     )
     added = []
-    for module in number_deciding_closure(entries, root=root, rule=number_deciding_rule(root)):
-        base = "src/" + module.replace(".", "/")
+    rule = number_deciding_rule(root)
+    for module in number_deciding_closure(entries, root=root, rule=rule):
+        base = "src/" + current_module_name(module, rule).replace(".", "/")
         added.append(base + ".py" if (root / (base + ".py")).is_file() else base + "/__init__.py")
-    return replace(site, tracked_paths=tuple(sorted({*site.tracked_paths, *added})))
+    other = set(site.tracked_paths) - {
+        "src/" + entry.replace(".", "/") + ".py" for entry in entries
+    }
+    return replace(site, tracked_paths=tuple(sorted(other.union(added))))
 
 
 def closures_tracking(sites: Iterable[ClosureSite], path: str) -> tuple[ClosureSite, ...]:

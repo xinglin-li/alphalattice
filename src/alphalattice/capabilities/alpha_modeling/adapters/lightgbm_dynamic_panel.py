@@ -25,7 +25,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
 from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
     SINGLE_THREAD_RUNTIME_CAPABILITY,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 from ..runtime.lightgbm_threads import lightgbm_fit_threads, model_trees, sequential_l2
 from .lightgbm_chronological import (

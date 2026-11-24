@@ -4,9 +4,9 @@ import threading
 
 import pytest
 
-from alphalattice.kernel.shared_kernel import waits
+from alphalattice.capabilities.domain_contracts import waits
 
-TEST_SOURCE = "src/alphalattice/kernel/shared_kernel/waits.py"
+TEST_SOURCE = "src/alphalattice/capabilities/domain_contracts/waits.py"
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def paused(monkeypatch):
     return pauses
 
 
-@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+@pytest.mark.proves("domain_contracts.a_wait_ends_by_its_deadline_or_its_stop")
 def test_a_wait_returns_its_result_or_ends_by_name_at_its_deadline_or_stop(paused):
     """requirement: a wait hands each check the time left, backs off, and ends by name."""
     seen, results = [], iter([None, 0, "ready"])
@@ -46,7 +46,7 @@ def test_a_wait_returns_its_result_or_ends_by_name_at_its_deadline_or_stop(pause
     assert len(checks) == 1
 
 
-@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+@pytest.mark.proves("domain_contracts.a_wait_ends_by_its_deadline_or_its_stop")
 @pytest.mark.parametrize(
     "seconds",
     [float("inf"), float("nan"), 0, -1, 3601, None, True],
@@ -60,7 +60,7 @@ def test_a_wait_without_a_finite_capped_bound_is_refused_before_it_starts(second
         waits.pause(seconds)
 
 
-@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+@pytest.mark.proves("domain_contracts.a_wait_ends_by_its_deadline_or_its_stop")
 def test_a_pause_lasts_its_bound_or_ends_at_once_at_a_set_stop(monkeypatch):
     """requirement: a pause sleeps its bounded length and says False; a set stop ends it at once
     and says True."""
@@ -72,7 +72,7 @@ def test_a_pause_lasts_its_bound_or_ends_at_once_at_a_set_stop(monkeypatch):
     assert waits.pause(30, stop=stop) is True and slept == [2.5]
 
 
-@pytest.mark.proves("shared_kernel.a_wait_ends_by_its_deadline_or_its_stop")
+@pytest.mark.proves("domain_contracts.a_wait_ends_by_its_deadline_or_its_stop")
 @pytest.mark.parametrize(
     ("phase", "share"),
     [

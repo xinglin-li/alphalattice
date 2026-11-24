@@ -10,7 +10,6 @@ SEC source is admitted into the same composition only by explicit consent
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -20,6 +19,11 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
+    RECIPE_MINILM_CPU,
+    SUPPORTED_RECIPES,
+)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceEvidenceReview,
@@ -45,11 +49,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    RECIPE_MINILM_CPU,
-    SUPPORTED_RECIPES,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
 )
@@ -548,7 +548,7 @@ def _confined(root: Path, relative_path: str) -> Path:
 
 
 def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
+    digest = integrity_sha256()
     try:
         with path.open("rb") as handle:
             for block in iter(lambda: handle.read(1024 * 1024), b""):

@@ -1,7 +1,12 @@
 # Upgrading AlphaLattice
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
-Use this guide to upgrade from 0.2.0 to a later 0.2.x patch. Keep using your
+Use this guide to upgrade from 0.2.0 or later to 0.2.9. A workspace from before 0.2.8
+has its data moved once, at its first start on 0.2.8 or later
+([the 0.2.8 data move](#the-028-data-move)). A workspace last opened by a release before
+0.2.7 still holds tables 0.2.7 retired and is refused with
+`feature_storage.workspace_before_0_2_7`: open it with 0.2.7 first, then upgrade. From
+0.2.8 to 0.2.9 no data moves: 0.2.9 uses a 0.2.8 data root as it is. Keep using your
 existing agent project and research workspace. [Getting started](getting-started.md)
 and the [operating reference](../../.agents/skills/alphalattice-research/references/operating.md)
 cover installation requirements and setup repairs.
@@ -68,8 +73,8 @@ Replace the example filename in both commands with the new wheel you downloaded.
 It must contain both runtime files:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.8-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
-uv tool install --force --compile-bytecode --python 3.12 ./alphalattice-0.2.8-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.9-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
+uv tool install --force --compile-bytecode --python 3.12 ./alphalattice-0.2.9-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel
@@ -140,8 +145,10 @@ names that family and leaves its reader on the old store; the Host does not
 serve a partial upgrade. Repair the named problem before starting again. A
 completed family does not migrate again on the next start.
 
-The runner is the startup mechanism; individual family moves are added
-separately. This mechanism alone moves no existing workspace data.
+The runner moves these families, in this order: market data, execution
+outcomes, Strategy Lab lanes, Alpha arrays, protected validation, risk covariance,
+sector results, the portfolio benchmark, portfolio results, panel closures,
+research inputs and the machine backup's copies of research inputs.
 
 ## If a command refuses
 

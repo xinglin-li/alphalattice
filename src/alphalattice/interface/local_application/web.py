@@ -40,7 +40,6 @@ supply chain.
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 import re
@@ -48,7 +47,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Collection, Iterator, Mapping
-from contextlib import contextmanager, suppress
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from functools import partial
 from http import HTTPStatus
@@ -58,6 +57,8 @@ from select import select
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.call_span import (
     CALL_PATH,
     REQUEST_CALL,
@@ -83,9 +84,15 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
-from alphalattice.interface.local_application.thin_cli import CLI_OPERATION, OPERATIONS_PATH
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.kernel.config import consume_secret
+from alphalattice.kernel.door import (
+    CLI_OPERATION,
+    OPERATIONS_PATH,
+    DoorRefusal,
+    answer_bytes,
+    refusal_fields,
+)
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 if TYPE_CHECKING:
@@ -263,7 +270,7 @@ def _step(
     if not traced:
         yield
         return
-    from alphalattice.kernel.data_layer.history import step  # lazy: the Host's, never the CLI's
+    from alphalattice.foundation.data_layer.history import step  # lazy: the Host's, never the CLI's
 
     named = operation if isinstance(operation, str) else route.path
     who = admitted.provenance or RequestProvenance()
@@ -283,6 +290,11 @@ LAUNCH_KEY_VARIABLE = "ALPHALATTICE_LAUNCH_KEY"
 """Where a detached launch hands the Host the launch key it made (`web_launcher`)."""
 
 
+def _launch_key() -> str:
+    handed = consume_secret(LAUNCH_KEY_VARIABLE)
+    return (handed.reveal() if handed is not None else None) or secrets.token_urlsafe(32)
+
+
 @dataclass
 class LocalWebApplication:
     """Routing, authorisation and encoding. It owns no domain logic.
@@ -294,12 +306,7 @@ class LocalWebApplication:
     """
 
     session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
-    launch_key: str = field(
-        default_factory=lambda: (
-            os.environ.pop(LAUNCH_KEY_VARIABLE, None) or secrets.token_urlsafe(32)
-        ),
-        repr=False,
-    )
+    launch_key: str = field(default_factory=_launch_key, repr=False)
     """Held in memory and put only in the launch URL; never on disk or in an answer. A detached
     launch makes it and hands it over in `LAUNCH_KEY_VARIABLE`, taken from the environment once."""
     offered: set[tuple[str, str]] = field(default_factory=set, init=False, repr=False)
@@ -324,6 +331,9 @@ class LocalWebApplication:
     served: int = 0
     admission: Callable[[Callable[[], object], bool], object] | None = field(
         default=None, repr=False
+    )
+    request_scope: Callable[[], AbstractContextManager[None]] = field(
+        default=nullcontext, repr=False
     )
     withheld: Callable[[], dict[str, object]] | None = field(default=None, repr=False)
     """While set, every path with no route or asset is refused with this refusal, not as
@@ -651,7 +661,7 @@ class LocalWebApplication:
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         payload: dict[str, Any] = {}
         if route.otlp:
-            from alphalattice.kernel.data_layer.telemetry import decode  # lazy: Host ingest only
+            from alphalattice.foundation.data_layer.telemetry import decode  # lazy: Host ingest
 
             try:
                 payload = {
@@ -701,7 +711,11 @@ class LocalWebApplication:
             # Refusal identity belongs to the owner, not to ValueError's inheritance.
             code = owner_failure_code(error)
             if code is not None:
-                return self._refuse(HTTPStatus.BAD_REQUEST, code)
+                return self._refuse(
+                    HTTPStatus.BAD_REQUEST,
+                    code,
+                    door=error if isinstance(error, DoorRefusal) else None,
+                )
             if isinstance(error, (ValueError, KeyError)):
                 return self._refuse(
                     HTTPStatus.BAD_REQUEST,
@@ -728,14 +742,23 @@ class LocalWebApplication:
             answer = {**answer, "yaml": rewrite_in_declaration_dialect(answer["yaml"])}
         return LocalWebResponse(
             HTTPStatus.OK,
-            json.dumps(answer, default=str, sort_keys=True).encode("utf-8"),
+            answer_bytes(answer),
             "application/json; charset=utf-8",
         )
 
     def _refuse(
-        self, status: HTTPStatus, reason: str, *, next_action: str | None = None
+        self,
+        status: HTTPStatus,
+        reason: str,
+        *,
+        next_action: str | None = None,
+        door: DoorRefusal | None = None,
     ) -> LocalWebResponse:
-        body: dict[str, object] = {"refused": reason}
+        body = refusal_fields(reason)
+        if door is not None:
+            body["operation"] = door.operation
+            if door.module is not None:
+                body["family_module"] = door.module
         # A raised refusal carries its code's words and way on, as a returned one does (OP4).
         words = refusal_words(reason)
         if next_action is not None or words:
@@ -771,7 +794,9 @@ def report_policy(page: str) -> str:
     `'unsafe-inline'`, which would permit any style anyone later injected.
     """
     digests = [
-        "'sha256-" + base64.b64encode(hashlib.sha256(block.encode("utf-8")).digest()).decode() + "'"
+        "'sha256-"
+        + base64.b64encode(integrity_sha256(block.encode("utf-8")).digest()).decode()
+        + "'"
         for block in re.findall(r"<style[^>]*>(.*?)</style>", page, flags=re.DOTALL)
     ]
     if not digests:
@@ -925,8 +950,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond(outcome, set_session=False)
             self._discard_announced_body()
             return
-        body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
-        self._respond(self.application.dispatch(outcome, body), set_session=outcome.issues_session)
+        application = self.application
+        with application.request_scope():
+            body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
+            self._respond(application.dispatch(outcome, body), set_session=outcome.issues_session)
 
     def do_GET(self) -> None:
         self._serve("GET")

@@ -24,6 +24,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -34,8 +35,7 @@ from alphalattice.control.task_control.registry import (
 )
 from alphalattice.control.workspace_runtime import database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+from alphalattice.foundation.data_layer import history
 from tests.workspace_task_runner.lock_order import LockOrder, lock_order, record_lock_order
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -306,13 +306,13 @@ def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
 
 @pytest.mark.proves("workspace_runtime.host_stop_reaches_parallel_work_items")
 def test_host_stop_reaches_a_concurrent_task_and_keeps_it_recoverable(tmp_path: Path) -> None:
+    from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
     from alphalattice.control.task_control.contracts import TaskLifecycle
     from alphalattice.control.task_control.runner import TaskControlRunner
     from alphalattice.interface.local_application.dispatcher import (
         CommandAdmission,
         LocalBackgroundDispatcher,
     )
-    from alphalattice.kernel.shared_kernel.host_stop import checkpoint
     from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter
 
     now = datetime.now(UTC)
@@ -396,8 +396,8 @@ def test_a_held_seal_record_stops_no_worker(tmp_path: Path, monkeypatch) -> None
 
 @pytest.mark.proves("task_control.host_stop_preserves_recovery")
 def test_host_stop_preserves_verified_work_for_resume(tmp_path: Path) -> None:
+    from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
     from alphalattice.control.task_control.runner import TaskControlRunner
-    from alphalattice.kernel.shared_kernel.host_stop import host_stop_scope
     from tests.workspace_task_runner.task_control_support import (
         FixtureTaskAdapter as _FixtureTaskAdapter,
     )
@@ -440,7 +440,7 @@ def test_host_stop_preserves_verified_work_for_resume(tmp_path: Path) -> None:
         assert resumed.lifecycle is TaskLifecycle.SUCCEEDED
         assert adapter.executed == ["resolve_inputs", "publish_result"]
 
-        from alphalattice.kernel.shared_kernel.host_stop import checkpoint
+        from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
 
         class Interrupting(_FixtureTaskAdapter):
             interrupt = True

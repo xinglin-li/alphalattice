@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.producers.factors.catalog import extension_factor_specs
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     FactorDevelopmentAdmissionReceipt,
@@ -20,7 +21,6 @@ from alphalattice.foundation.feature_engine.producers.factors.specifications imp
     build_installed_factor_development_capabilities,
     build_installed_factor_formula_specifications,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FactorAuthoringEntry(BaseModel):  # type: ignore[misc]

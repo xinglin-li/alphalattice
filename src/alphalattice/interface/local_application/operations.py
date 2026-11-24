@@ -1156,6 +1156,7 @@ FLAGS: Final[dict[str, str]] = {
     "positions_date": "date",
     "origin_task_id": "origin",
     "person_confirmation": "person-said",
+    "status_section": "section",
     "portfolio_session": "session",
     "position_basis": "basis",
     "preparation_binding_hash": "preparation",

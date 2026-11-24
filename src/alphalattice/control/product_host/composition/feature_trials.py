@@ -32,6 +32,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_experiments import (
     ENVELOPE_SCHEMA_ID,
@@ -60,7 +61,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     FactorCurationRequest,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")
@@ -356,8 +356,9 @@ class FeatureTrials:
         request and its later reads answer from it.
         """
         reads = _TRIAL_READS.get()
-        if reads is not None and trial_id in reads:
-            return copy.deepcopy(reads[trial_id])
+        held = reads.get(trial_id) if reads is not None else None
+        if held is not None:
+            return copy.deepcopy(held)
         body = self._readback(trial_id)
         if reads is not None and body["state"] == "COMPLETED":
             reads[trial_id] = copy.deepcopy(body)

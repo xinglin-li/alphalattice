@@ -21,7 +21,7 @@ HOOK_BUDGET_SECONDS = 30
 """The hook's budget (the person, 11-19): every guard step runs at commit, six at once."""
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 
 GITLEAKS_SHA256 = {
     "darwin-arm64": "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",

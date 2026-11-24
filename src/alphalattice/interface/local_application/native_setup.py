@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
 from ctypes.util import find_library
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import cache, partial
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -26,6 +26,18 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.environment import (
+    offline,
+    package_versions,
+    recorded_environment,
+)
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application import client, workbench_assets
@@ -80,18 +92,9 @@ from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
     setup_environment,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.environment import (
-    offline,
-    package_versions,
-    recorded_environment,
-)
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-    runtime_json,
-)
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.resources import logical_cpu_count
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
 """The matcher of the product's retired lifecycle hooks; configure removes groups with it."""
@@ -448,7 +451,7 @@ def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | 
         return "package_changed" if package is not None and package(subject) != at.strip() else None
     if at.strip() != version:
         return "verified_at_another_version"
-    old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
+    old = kind == "method" and (utc_now().date() - day).days > REVIEW_DAYS
     return "verified_over_30_days" if old else None
 
 
@@ -531,7 +534,7 @@ def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
+    from alphalattice.capabilities.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
     # What the agent fills is read from the first use's own source, so the two never disagree.
@@ -569,7 +572,11 @@ def host_readiness(
             python_version.split(".")[:2] == ["3", "12"],
             {"version": python_version, "interpreter": sys.executable},
         ),
-        ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
+        (
+            "uv",
+            (uv := command_readiness([process_config().get("UV", "uv"), "--version"]))["present"],
+            uv,
+        ),
         (
             "installed_leg",
             (tool := fillable["installed_leg"]).pop("present"),
@@ -593,9 +600,9 @@ def host_readiness(
         ),
         (
             "cpu",
-            (os.cpu_count() or 0) > 0,
+            (logical_cpu_count() or 0) > 0,
             {
-                "logical_cores": os.cpu_count(),
+                "logical_cores": logical_cpu_count(),
                 "host": facts.get("cpu"),
                 "host_scope": facts["scope"],
             },
@@ -696,7 +703,7 @@ def problem_report(
         f"Report the {op} problem to the developers." for op in operations
     }:
         raise NativeBridgeError("local_client.report_sentence_not_admitted")
-    session = agent_session(os.environ)
+    session = agent_session(process_config().public)
     binding = None
     try:
         found = session_binding(project, workspace, session)
@@ -753,7 +760,7 @@ def problem_report(
         "scenario": {
             "id": "reported-problem",
             "sentence": sentence or f"Report the {last} problem to the developers.",
-            "now": datetime.now(UTC).isoformat(),
+            "now": utc_now().isoformat(),
             "injected_faults": [],
             "expected_route": [[op] for op in expected_route],
             "decider": "person",
@@ -1221,7 +1228,7 @@ def bind_session(
     selected = (host, session_id)
     existing = NativeResearchBinding.read(project, session=selected)
     if existing is None:
-        document["observation_started_at"] = datetime.now(UTC).isoformat()
+        document["observation_started_at"] = utc_now().isoformat()
     else:
         if (
             existing.session_id != session_id
@@ -1800,7 +1807,7 @@ def main() -> int:
             # The checkout's shim of `alphalattice session unbind`, by the session it names.
             result = unbind_session(ROOT, session_id=args.session_id, host=args.host)
         else:
-            session = agent_session(os.environ)
+            session = agent_session(process_config().public)
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")
             binding = NativeResearchBinding.read(ROOT, session=session)

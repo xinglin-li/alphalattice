@@ -55,6 +55,14 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
     alpha_model_numerical_scope,
     resolve_alpha_model_numerical_environment,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitSpec,
+    ValidationTimeline,
+)
+from alphalattice.capabilities.validation.enums import SplitMode
+from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.investment.alpha_research.experiments.contracts import (
     AlphaFoldCommitment,
 )
@@ -69,14 +77,6 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitSpec,
-    ValidationTimeline,
-)
-from alphalattice.kernel.validation.enums import SplitMode
-from alphalattice.kernel.validation.splitting import build_research_split
 from tests.alpha_research.fixtures import research_foundation_binding
 
 FACTOR_IDS = ("nonlinear-a", "nonlinear-b", "size", "trend")
@@ -910,7 +910,9 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
     with chronological_lightgbm_dataset_cache():
         original, key = adapter._dataset(Backend, **arguments)
         assert adapter._dataset(Backend, **deepcopy(arguments)) == (original, key)
-        for field, value in parameters.items():
+        # The fields that keep reuse are asked first, while the bounded scope holds the original.
+        preserving = ("num_threads", "verbosity")
+        for field, value in sorted(parameters.items(), key=lambda item: item[0] not in preserving):
             altered = deepcopy(arguments)
             altered["dataset_params"][field] = changed(value)
             result, other_key = adapter._dataset(Backend, **altered)

@@ -9,13 +9,13 @@ from datetime import date
 
 import pyarrow as pa
 
+from alphalattice.capabilities.data.enums import ExecutionSessionStatus, ExecutionVenueStatus
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.returns.execution import open_to_open_simple_return
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.data.enums import ExecutionSessionStatus, ExecutionVenueStatus
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import CausalExecutionSchedulePoint
 from .methods import (

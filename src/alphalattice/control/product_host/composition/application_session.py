@@ -7,14 +7,24 @@ import sys
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
+from uuid import uuid4
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.observation_runtime.telemetry.process_metrics import (
+    current_allowed_logical_processors,
+    worker_processes,
+)
 from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.product_host.composition.resource_estimates import gate_for
 from alphalattice.control.product_host.storage.backup import WorkspaceBackups
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
+from alphalattice.control.task_control.child import warm_child_workers
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.ledger import SubmittingAgent
 from alphalattice.control.task_control.queue import read_queue_setting, running_places
@@ -23,6 +33,7 @@ from alphalattice.control.task_control.registry import (
     resolve_task_control_database,
 )
 from alphalattice.control.task_control.runner import TaskControlRunner, TaskDomainAdapter
+from alphalattice.control.task_control.scratch import own_task_scratch, reclaim_task_scratch
 from alphalattice.control.workspace_runtime.database import (
     WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
     retain_workspace_database,
@@ -42,17 +53,28 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     process_priority,
 )
 from alphalattice.evidence.alternative_evidence.storage import world as evidence_world
+from alphalattice.foundation.data_layer.backup import verify_data_root
+from alphalattice.foundation.data_layer.history import open_history
+from alphalattice.foundation.data_layer.history_carried_results import CarriedCheck
+from alphalattice.foundation.data_layer.history_runtime import start_log_reader
+from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application.cli_contract import REQUEST_PROVENANCE
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.backup import verify_data_root
-from alphalattice.kernel.data_layer.history import open_history
-from alphalattice.kernel.data_layer.history_carried_results import CarriedCheck
-from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.clock import utc_now
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
+
+_TASK_READER_POLICY = Lock()
+
+
+def _apply_task_reader_policy() -> int:
+    """Apply the widest remaining grant to Arrow and workspace database opens."""
+    with _TASK_READER_POLICY:
+        widest = TASK_LEASES.widest()
+        if widest is None:
+            return 1  # No Task remains to use the pool; the next admission sets its width.
+        threads: int = apply_reader_threads(widest)
+        return threads
 
 
 def verify_upgrade_backups(
@@ -177,16 +199,21 @@ class WorkspaceApplicationSession:
     task_control_registry: DuckDbTaskControlRegistry
     runtime_path: Path
     processor: str
+    scratch_epoch: str
+    scratch_cleanup: dict[str, object]
 
     @staticmethod
     def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
         """Open Host history with the workspace's network control at the export boundary."""
+        budget = CpuBudgetStore(workspace / "runtime").read().cpu_budget
+        processors = len(current_allowed_logical_processors()) or 1
         open_history(
             workspace_id,
             workspace.name,
             workspace,
             can_export=lambda: network_access(workspace, now=clock()).allowed,
             carried_checks=carried_result_checks(),
+            duckdb_threads=processors if budget == "auto" else min(processors, budget),
         )
 
     def execute_admitted(
@@ -199,27 +226,46 @@ class WorkspaceApplicationSession:
         """Run or recover one admitted Host task with this session's runner."""
         if task.lifecycle not in {TaskLifecycle.QUEUED, TaskLifecycle.RECOVERY_REQUIRED}:
             return None
-        with self._cpu_lease(task, clock) as cores:
-            runner = TaskControlRunner(
-                registry=self.task_control_registry,
-                adapters={adapter.task_kind: adapter},
-                runtime_path=str(self.runtime_path),
-                clock=clock,
-                width=cores,
-                stage_gate=gate_for(self.workspace).stage_refusal,
-                stage_scope=storage_capacity_scope,
+        gate = gate_for(self.workspace)
+        start: Callable[[], None] | None = None
+
+        @contextmanager
+        def resources(record: TaskRecord) -> Iterator[None]:
+            nonlocal start
+            with self.task_resources(record, clock) as start:
+                yield
+
+        def stage_gate(record: TaskRecord) -> str | None:
+            nonlocal start
+            refused = gate.stage_refusal(record)
+            if refused is None and start is not None:
+                # The runner has claimed the Task and owns child-start recovery here.
+                launch, start = start, None
+                launch()
+            return refused
+
+        runner = TaskControlRunner(
+            registry=self.task_control_registry,
+            adapters={adapter.task_kind: adapter},
+            runtime_path=str(self.runtime_path),
+            clock=clock,
+            task_scope=resources,
+            stage_gate=stage_gate,
+            stage_scope=storage_capacity_scope,
+        )
+        try:
+            if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
+                return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
+            return runner.run_next(
+                expected_task_id=task.task_id, expected_task_hash=expected_task_hash
             )
-            try:
-                if task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED:
-                    return runner.recover(task.task_id, expected_task_hash=expected_task_hash)
-                return runner.run_next(
-                    expected_task_id=task.task_id, expected_task_hash=expected_task_hash
-                )
-            finally:
-                runner.close()
+        finally:
+            runner.close()
 
     @contextmanager
-    def _cpu_lease(self, task: TaskRecord, clock: Callable[[], datetime]) -> Iterator[int]:
+    def task_resources(
+        self, task: TaskRecord, clock: Callable[[], datetime]
+    ) -> Iterator[Callable[[], None] | None]:
         """The CPU budget's cores this Task holds while it runs: its reads' threads and the work
         items it runs at once.
 
@@ -232,7 +278,8 @@ class WorkspaceApplicationSession:
 
         store = CpuBudgetStore(self.workspace / "runtime")
         budget = store.read()
-        machine = machine_load()
+        # A fixed budget needs affinity, while automatic sizing also samples load.
+        machine = machine_load(sample_busy=budget.cpu_budget == "auto")
         cores, reason = budget_cores(budget, machine)
         ceiling = (
             machine.processors
@@ -244,16 +291,20 @@ class WorkspaceApplicationSession:
             cores = max(1, min(cores, ceiling // places))
             reason += f"; its share of {places} running places"
         with (
+            ExitStack() as after_release,
+            own_task_scratch(self.workspace, task.task_id, self.scratch_epoch),
             TASK_LEASES.lease(task.task_id, cores, ceiling) as beside,
             below_normal_thread() if beside else nullcontext(False) as lowered,
         ):
+            after_release.callback(_apply_task_reader_policy)
+            reader_threads = _apply_task_reader_policy()
             store.record(
                 TaskReaderExecution(
                     task_id=task.task_id,
                     task_kind=task.task_kind,
                     cpu_budget=budget.cpu_budget,
                     cores=cores,
-                    reader_threads=apply_reader_threads(TASK_LEASES.widest()),
+                    reader_threads=reader_threads,
                     reason=reason,
                     machine=machine,
                     started_at=clock(),
@@ -264,7 +315,13 @@ class WorkspaceApplicationSession:
                     priority=f"{process_priority()}{', thread below_normal' if lowered else ''}",
                 )
             )
-            yield cores
+            start_log_reader()
+            prepare = task.task_kind == "workspace_preparation"
+            with warm_child_workers(
+                worker_processes(cores) if prepare else 0,
+                modules=("alphalattice.foundation.feature_engine.runtime.service", "pandas"),
+            ) as start_workers:
+                yield start_workers if prepare else None
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.
@@ -333,7 +390,8 @@ class WorkspaceApplicationSession:
             # This process just acquired the exclusive workspace lease: an old
             # RUNNING record cannot still belong to a live workspace writer.
             # Registry construction outside this lease boundary stays passive.
-            registry.reconcile_after_writer_acquisition(observed_at=datetime.now(UTC))
+            registry.reconcile_after_writer_acquisition(observed_at=utc_now())
+            scratch_epoch = str(uuid4())
             return cls(
                 workspace=root,
                 writer_lease=lease,
@@ -341,6 +399,8 @@ class WorkspaceApplicationSession:
                 task_control_registry=registry,
                 runtime_path=runtime / PORTFOLIO_PUBLIC_RUNTIME_FILENAME,
                 processor=processor,
+                scratch_epoch=scratch_epoch,
+                scratch_cleanup=reclaim_task_scratch(root, scratch_epoch),
             )
         except Exception:
             lease.close()

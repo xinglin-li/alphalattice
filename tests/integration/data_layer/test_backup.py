@@ -17,14 +17,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, backup, create_data_root
-from alphalattice.kernel.data_layer.chain import canonical, digest
-from alphalattice.kernel.data_layer.log import HostLog, uuid7, verify_whole
-from alphalattice.kernel.data_layer.project import recipe_key
-from alphalattice.kernel.data_layer.store import SETTLE_FILES, StorePort, as_columns, stage
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import arrays, backup, create_data_root
+from alphalattice.foundation.data_layer.chain import canonical, digest
+from alphalattice.foundation.data_layer.log import HostLog, uuid7, verify_whole
+from alphalattice.foundation.data_layer.project import recipe_key
+from alphalattice.foundation.data_layer.store import SETTLE_FILES, StorePort, as_columns, stage
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/backup.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/backup.py"
 
 
 def _admit(root, port, close=1.0, count=1500):
@@ -83,8 +83,14 @@ def sample(tmp_path_factory):
     base = tmp_path_factory.mktemp("machine-backup")
     root, repository = base / "source", base / "backups"
     create_data_root(root)
-    with HostLog.open(root) as log:
-        port = StorePort.open(root, log)
+    with (
+        HostLog.open(root) as log,
+        closing(StorePort.open(root, log)) as port,
+        port.lake.cursor() as reader,
+    ):
+        reader.execute("BEGIN").complete()
+        count_docs = "SELECT count(*) FROM lake.world.evidence_doc"
+        assert reader.execute(count_docs).fetchall() == [(0,)]
         _admit(root, port)
         arrays.keep(root, log, {"value": np.array([1.0, 2.0])}, workspace=None)
         arrays.keep_packed(root, log, b"retained packed array", workspace=None)
@@ -138,9 +144,11 @@ def sample(tmp_path_factory):
             },
         )
         log.flush()
+        assert (root / "machine/catalog.sqlite-wal").stat().st_size > 32
         generation = backup.backup_data_root(root, repository)
+        assert reader.execute(count_docs).fetchall() == [(0,)]
+        reader.execute("ROLLBACK").complete()
         catalog = _catalog_rows(port)
-        port.close()
     expected = {name: _sqlite_rows(root / "machine" / name) for name in ("log.sqlite",)}
     return generation, repository, expected, catalog, first
 
@@ -150,6 +158,8 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
     """Integration: real SQLite/vec and DuckLake readback cannot be proved by an in-memory unit."""
     generation, repository, expected, catalog, first = sample
     restored = backup.restore_data_root(generation, tmp_path / "unused/../restored")
+    assert {p.name for p in (generation / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
+    assert {p.name for p in (restored / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
     assert {name: _sqlite_rows(restored / "machine" / name) for name in expected} == expected
     with HostLog.open(restored) as log:
         port = StorePort.open(restored, log)
@@ -251,6 +261,7 @@ def test_a_relocated_root_backs_up_and_cleans_up_only_its_own_folder(tmp_path, c
         log.flush()
         rows = _catalog_rows(port)
         port.close()
+    assert {p.name for p in (original / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
     if case == "a backup that fails midway":  # a file outside the root: refused by name
         with closing(sqlite3.connect(original / "machine/catalog.sqlite")) as con:
             con.execute("UPDATE ducklake_data_file SET path = '/x.parquet', path_is_relative = 0")
@@ -281,6 +292,7 @@ def test_a_relocated_root_backs_up_and_cleans_up_only_its_own_folder(tmp_path, c
         assert _left(root)
         assert bool(_cleaned(root)) == (RELOCATIONS[case] == "drops")
     again = backup.restore_data_root(generation, tmp_path / "again")
+    assert {p.name for p in (again / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
     with HostLog.open(again) as log:
         port = StorePort.open(again, log)
         assert _catalog_rows(port) == rows

@@ -25,6 +25,8 @@ PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 if str(PLAYPEN_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
 
+from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.control.product_host.composition.research_workspace import (  # noqa: E402
     ResearchWorkspaceArtifact,
     ResearchWorkspaceManifest,
@@ -47,8 +49,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_autho
     PostObservedStrategyAuthorityManifest,
     admit_post_observed_strategy_authority,
 )
-from alphalattice.kernel.shared_kernel import spawn  # noqa: E402
-from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 SOURCE_FILES = {
     "descriptor": (

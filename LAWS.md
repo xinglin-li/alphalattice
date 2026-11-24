@@ -84,7 +84,7 @@ One helper records interpreter/libraries, dependencies/lock and threads beside r
 
 *Held by:*
 `test: tests/structural/test_source_identity.py::test_the_environment_is_read_by_one_helper_and_the_named_keys`,
-which admits `kernel/shared_kernel/environment.py` and names every other reader and why.
+which admits `capabilities/domain_contracts/environment.py` and names every other reader and why.
 
 **ID7. An agent's judgment is identified by its content.**
 

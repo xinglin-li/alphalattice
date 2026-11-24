@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,11 +17,26 @@ from uuid import UUID, uuid4
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
-from alphalattice.control.product_host.composition import committee, committee_materials
+from alphalattice.control.product_host.composition import (
+    committee,
+    committee_materials,
+    review_operations,
+)
 from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition import portfolio_result_context as context
+from alphalattice.control.product_host.composition.decision_advancement import SCHEMA
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    EvidenceReviewBundles,
+)
+from alphalattice.control.product_host.composition.evidence_review_delivery import (
+    EvidenceReviewDelivery,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.portfolio_research_operations import (
+    PortfolioResearchOperations,
+)
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
 from alphalattice.control.product_host.composition.research_delivery import (
     export_update_delivery,
@@ -31,7 +47,10 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
+from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.control.workspace_runtime.verified_readbacks import VerifiedReadbacks
+from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
@@ -56,8 +75,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
-from alphalattice.kernel.data_layer import history as data_history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
 from tests.portfolio_strategy_lab.node_runner import run_node
@@ -116,9 +133,9 @@ def _registered(listings: tuple[str, ...]) -> None:
     catalog keeps Risk only over listings it holds."""
     import pyarrow as pa
 
+    from alphalattice.foundation.data_layer.chain import canonical
+    from alphalattice.foundation.data_layer.store import stage
     from alphalattice.foundation.market_data_ops.storage.world import world_listing
-    from alphalattice.kernel.data_layer.chain import canonical
-    from alphalattice.kernel.data_layer.store import stage
 
     log, port = data_history.held(), data_history.store()
     key = {"family": "provider", "name": "committee-fixture", "version": 1}
@@ -225,8 +242,8 @@ def risk_source(
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
     """A wider or differently ordered book never borrows another book's cached label axis."""
+    from alphalattice.capabilities.quant.sector_history import SectorHistory
     from alphalattice.control.product_host.research_authoring import execution
-    from alphalattice.kernel.quant.sector_history import SectorHistory
 
     context.configure_projection_memos(capacity=1)
     request.addfinalizer(context.configure_projection_memos)
@@ -276,7 +293,7 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
 
     # A collision in the index is not a collision in the full canonical key.
     unavailable.clear()
-    monkeypatch.setattr(context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
+    monkeypatch.setattr(context, "change_xxh3_128_hex", lambda _data: "0" * 32)
     for axis in (["one"], ["two"]):
         body["portfolio_source"]["ordered_listing_ids"] = axis
         assert context.book_sectors(tmp_path, body)["by_listing"] == {
@@ -380,7 +397,7 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
     ) == ("Renamed listing")
     assert s.risk() == inside
     request.getfixturevalue("monkeypatch").setattr(
-        context.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32
+        context, "change_xxh3_128_hex", lambda _data: "0" * 32
     )
     assert s.risk(renamed) == changed and s.risk() == inside
     s.sessions = s.days[: s.k - 2]
@@ -1643,6 +1660,119 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert any(
         "no name" in line for line in committee.role_lines("RISK", readback, {}, emptied, NOW) or []
     )
+
+    first, later = UUID(TASK), UUID(int=12)
+    publication = PortfolioUpdatePublication.model_validate(readback["publication"])
+    later_publication = PortfolioUpdatePublication.create(
+        **(dict(publication) | {"plan_hash": "c" * 64})
+    )
+    later_book = {
+        **readback,
+        "task_id": str(later),
+        "publication": later_publication.model_dump(mode="json"),
+        "review_selector": {
+            **readback["review_selector"],
+            "update_task_id": str(later),
+            "update_publication_hash": later_publication.content_hash,
+        },
+    }
+    later_store, _ = _floor(tmp_path / "advanced", later_book)
+    books = {first: readback, later: later_book}
+    verified = []
+
+    def verify(task_id, *, publication_hash=None):
+        verified.append((task_id, publication_hash))
+        return books[task_id]
+
+    app = SimpleNamespace(
+        readbacks=VerifiedReadbacks(),
+        review=object(),
+        research_updates=SimpleNamespace(readback=verify),
+        updates=object(),
+        dispatcher=SimpleNamespace(clock=lambda: NOW),
+        goals=SimpleNamespace(store=store),
+        _date_risk=lambda *_: {},
+        _file_floor=lambda *_: None,
+        workspace_session=SimpleNamespace(
+            task_control_registry=SimpleNamespace(
+                task=lambda task_id: SimpleNamespace(
+                    task_kind=ADVANCEMENT_TASK_KIND,
+                    lifecycle=TaskLifecycle.SUCCEEDED,
+                    record_hash=canonical_hash(str(task_id)),
+                    input=SimpleNamespace(input_schema_id=SCHEMA, payload={"plan": {}}),
+                ),
+                work_items=lambda _: (),
+                daily_health=lambda _: None,
+            ),
+        ),
+    )
+    host = PortfolioResearchOperations
+    app._dated = partial(host._dated, app)
+    app._advancement_readback = partial(host._advancement_readback, app)
+    app._research_update_way = partial(host._research_update_way, app)
+    app._read_review_update = partial(host._read_review_update, app)
+
+    def read(request):
+        if request.operation == "RESEARCH_UPDATE_READBACK":
+            answer = host._research_update_readback(app, request.task_id)
+            assert answer["daily_health"]["task_id"] == str(request.task_id)
+            assert "daily_health" not in books[request.task_id]
+            return host._positions(app, answer)
+        assert request.operation == "EVIDENCE_CRO"
+        return review_operations.execute(app, request, **caller)
+
+    def current_standing(_, selector, *, read_update):
+        exact = selector.update_publication_hash
+        origin = read_update(selector.update_task_id, exact)
+        assert origin["publication"]["content_hash"] == exact, label
+        standing_reads.append((selector.update_task_id, status))
+        return status
+
+    def current_generation(selector, *_args, **_kwargs):
+        assert selector.update_task_id == task_id, label
+        generation_reads.append(generation)
+        return generations[generation]
+
+    app.execute = read
+    app.evidence_cro = current_generation
+    caller = {"caller": "HUMAN", "read_files": None, "agent_run": None, "accepted_bundle": None}
+    rebuilt = {**EVIDENCE, "explanation": "Read the rebuilt generation's Evidence gaps."}
+    generations = {"original": EVIDENCE, "rebuilt": rebuilt}
+    generation_reads, standing_reads = [], []
+    readings = {}
+    with (
+        patch.object(EvidenceReviewDelivery, "review_standing", current_standing),
+        patch.object(
+            EvidenceReviewBundles,
+            "prepare_agent_bundle",
+            lambda _, **given: {"view": given["view"]},
+        ),
+    ):
+        for index, (label, task_id, role, generation, status, read_count) in enumerate(
+            (
+                ("same sealed book ALPHA", first, "ALPHA", "original", {}, 1),
+                ("same sealed book RISK", first, "RISK", "original", {}, 1),
+                ("advanced book", later, "ALPHA", "original", {}, 2),
+                ("review re-ask", later, "CRO", "original", standing, 2),
+                ("new generation", later, "CRO", "rebuilt", standing, 2),
+            ),
+            1,
+        ):
+            app.goals.store = store if task_id == first else later_store
+            request = Request(
+                operation="AGENT_BUNDLE_PREPARE",
+                task_id=task_id,
+                agent_role=role,
+                bundle_directory=str(directory),
+            )
+            actual = review_operations.execute(app, request, **caller)
+            assert len(verified) == read_count, label
+            assert len(standing_reads) == len(generation_reads) == index, label
+            assert standing_reads[-1] == (task_id, status) and generation_reads[-1] == generation
+            assert "review_standing" not in books[task_id], label
+            readings[label] = actual["view"]
+    assert any(at in line for line in readings["review re-ask"] or ())
+    assert readings["new generation"] != readings["review re-ask"]
 
 
 def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback: dict) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from typing import Literal, Self, cast
 
 import numpy as np
@@ -12,10 +11,11 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.cross_section import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 from .execution_outcome import AlphaTargetBoundaryError
 
@@ -167,7 +167,7 @@ def total_return_array_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": list(contiguous.shape),
-                "content": sha256(contiguous.tobytes()).hexdigest(),
+                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

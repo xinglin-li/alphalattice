@@ -1,4 +1,8 @@
 {
  "factory": "alphalattice.foundation.feature_engine.panels.closure_files:closure_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "panel-closure",
+ "trust_paths": [
+  "/artifacts/feature-panel/closure/*"
+ ]
 }

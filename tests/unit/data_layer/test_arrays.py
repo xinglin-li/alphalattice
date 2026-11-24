@@ -15,10 +15,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import arrays
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/arrays.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/arrays.py"
 NAN = np.frombuffer(struct.pack("<Q", 0x7FF8000000000123), dtype="<f8")[0]  # a NaN with a payload
 KINDS: dict[str, dict[str, Any]] = {
     "float64 NaN payload, -0": {"value": np.array([1.0, -0.0, NAN, np.inf])},

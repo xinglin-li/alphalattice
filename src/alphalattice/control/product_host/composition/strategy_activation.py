@@ -37,6 +37,9 @@ from uuid import UUID
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.data.errors import DataQualityError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.readiness import _latest_common_us_session
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -113,9 +116,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data.errors import DataQualityError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 FORWARD_HORIZON: Final = timedelta(days=330)
 """How far past the latest completed session an activation runs its strategy: the installed

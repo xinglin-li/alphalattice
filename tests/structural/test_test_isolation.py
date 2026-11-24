@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from alphalattice.control.task_control import upgrade
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 from devtools.testing import isolation
 from tests import conftest
 from tests import pytest_environment as environment

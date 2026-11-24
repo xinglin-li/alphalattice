@@ -12,6 +12,7 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceReadingDepth,
     seal_contract,
@@ -19,7 +20,6 @@ from alphalattice.evidence.alternative_evidence.contracts import (
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     HybridV4RetrievalGeneration,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 TEST_SOURCE = "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py"
 FIELDS: dict[str, object] = {

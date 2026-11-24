@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import desktop_core_feature_bundle
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FeatureObservationClock,
@@ -17,8 +19,6 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_source_availability_catalog,
     observation_clock_for,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .catalog import default_extension_kernel_registry, extension_factor_specs
 from .core_bundle import numerical_spec_hash

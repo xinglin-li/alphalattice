@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from tests.portfolio_strategy_lab.synthetic_numerical import HASH, build_numerical
 
 

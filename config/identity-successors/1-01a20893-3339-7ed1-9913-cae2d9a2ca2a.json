@@ -1,0 +1,104 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "36743cf0bf688a6d42f4cc0862e90a96a771db3601694ceee8e5c6c97a506670",
+   "successor": "4824b259753ec7419a39fcad9af713848aaf6483b2535236a341ab5b62b38a17",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "25bd6fd1e29c2dab7071e7b07ef5f9f318d11beb47ba719ae5e38d9012ca8241",
+   "successor": "adc324055949c952a80914a98b330da89d79ce7bac118f720b1f46f1f81aec25",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "4749af4d0e4349121caf47dec06dd51dbd12bbadaba990502169c27481309945",
+   "successor": "3a6a3afb8e23809b1eb6386cc0e57b318c6a5ff5b31ed022e582dfa48077ad98",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "ff89515b321028f55d1a1a48c24e07695b2493c7b0c61d5601f25fb7e4130630",
+   "successor": "13dcdf6e6e3ba3a2d1452ca0d95e23c53fc121e8b39e4128c8a9eefd10d746af",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "46627affac7cdd03d8187c8d30ddc275fbca1cb7217ecce95fade5d6b727f206",
+   "successor": "b7b9bd27d5f9eaf6fab1f1a4d5b6ad06f38c870a58521616b6f71266702ff7b0",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "db43339edaff1b1a8d3eaf47a90cc19133773df44e3b64caa834226545a635f3",
+   "successor": "58d358b55466e683ecb6afdcd721e36e9c5ce5c916ee887859083566eac49465",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "112a279d83367e07efb0807845290d4f44ff1645a3053faedbfbc5320730d63a",
+   "successor": "c00cee854eb09f70aa2e3198af95628426f401a9d99bd767e74f7414691b5d57",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "8561a0eef789e66654c80c1336f211016eb5aca9f2bd79845bec8cc658ada5c6",
+   "successor": "78c6bfa4a0dc392d32dd6ba0b6c6c73e7d645c7b46902182e908afbdeb206e3f",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "5de407b5cf01480980702ab229b8da22b05512a8651a77b9e4e2b4c5e42f4018",
+   "successor": "333577c0cc3037554a89726984a0e180ae381d666d41f3f5139caf5ef372c88b",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "65aca5f96fba6fe1549b3446b28d73a5ec9d733aacdc73c8733a3892e4cdd285",
+   "successor": "b8e2816f0d05568035f78cde9373fc69f9c33807a5583544981f43a1a7ac3a13",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f9159d5bf8f72f1dc7743cd4e6b29d80e1a174a845675021cf0aebdbf4fda5c9",
+   "successor": "f5e4e91105c246d78d0d3910a83ce38e7c133538738214de1e2020fbb037d517",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f9159d5bf8f72f1dc7743cd4e6b29d80e1a174a845675021cf0aebdbf4fda5c9",
+   "successor": "f5e4e91105c246d78d0d3910a83ce38e7c133538738214de1e2020fbb037d517",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "2f23eefa19327adaec3658e26c265a3f917ad0e2b9ba39894f506ea55ab19513",
+   "successor": "90b9da6af24aa90ea930a6332e41c6b197f85bba83377ee5987efe582296ab02",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "311c93ec725a097af0572fd2a26a8a35cef9cda76684ce7ab236912a96f32d09",
+   "successor": "fcf5b2593a64f04727be5c4f3b5deddc6557c747a067379e82eaa05e4d13a25f",
+   "change": "Reuse Daily history and settled schema reads",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records and 11 typed listings, with every successor row present. The 14 moved roles are implementation fingerprints of reads that now reuse already verified declarations instead of checking them twice; first use and sealing take the same time as before."
+  }
+ ]
+}

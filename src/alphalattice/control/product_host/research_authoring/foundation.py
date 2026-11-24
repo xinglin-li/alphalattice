@@ -25,6 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.control.research_program.authoring.workflow import ResearchEvidenceStore
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.methods import (
@@ -57,7 +58,6 @@ from alphalattice.investment.alpha_research.inputs.development_foundation import
     AlphaDevelopmentExecutionOutcomeRef,
     AlphaDevelopmentFoundationBinding,
 )
-from alphalattice.kernel.validation.enums import RebalanceFrequency
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,

@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.kernel.data.enums import ExecutionSessionStatus
+from alphalattice.capabilities.data.enums import ExecutionSessionStatus
 
 from .contracts import (
     DecisionTradabilityStatus,

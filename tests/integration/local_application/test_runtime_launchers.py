@@ -22,6 +22,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    resolve_playpen_root,
+    runtime_json,
+)
 from alphalattice.control.product_host.composition import saved_object_readback
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -29,9 +34,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.web_launcher import OPEN_THE_WORKBENCH
 from alphalattice.interface.local_application import client as local_client
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.clocks import ReplayClock
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
+from alphalattice.kernel.clock import ReplayClock
+from tests._support.process_starts import observe_starts
 
 WINDOWS = pytest.mark.skipif(sys.platform != "win32", reason="Windows process control")
 _FLAGS = 0x08004000 if sys.platform == "win32" else 0  # no window, below normal
@@ -92,8 +96,11 @@ def _can_escape():
         return False
 
 
-def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(tmp_path: Path) -> None:
-    """Requirement: sandbox readback starts actual product sessions with no harness."""
+def test_product_probe_reopens_a_workspace_and_reads_saved_object_indexes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The direct Host readback still works when outbound requests are disabled."""
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     harvest = tmp_path / "harvest"
     workspace = harvest / "workspace"
     publish_research_workspace_manifest(workspace, ResearchWorkspaceManifest.research_only("probe"))
@@ -528,18 +535,27 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     a new workspace or an initialized one, serves a later client until `host stop`, with its
     key in no log; a second launch is refused by name and leaves no log."""
     if workspace_state == "attached":
+        from alphalattice.capabilities.domain_contracts import spawn
         from alphalattice.control.product_host.composition import web_launcher
-        from alphalattice.kernel.shared_kernel import spawn
 
         calls = []
         monkeypatch.setattr(spawn, "attached", lambda *a, **k: calls.append((a, k)) or 7)
         env = {"EXAMPLE": "value"}
         assert web_launcher.attached_child(["tool"], env=env) == 7
-        assert calls == [((["tool"],), {"env": env, "job_factory": web_launcher.ChildJob})]
+        assert calls == [
+            (
+                (["tool"],),
+                {
+                    "env": env,
+                    "job_factory": web_launcher.ChildJob,
+                    "process_kind": "attached_retrieval_host_child",
+                },
+            ),
+        ]
         return
     if workspace_state == "timeout":
+        from alphalattice.capabilities.domain_contracts import spawn
         from alphalattice.control.product_host.composition import web_launcher
-        from alphalattice.kernel.shared_kernel import spawn
 
         stopped = []
         monkeypatch.setattr(spawn, "stop_tree", stopped.append)
@@ -559,7 +575,7 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
     if workspace_state == "cp1252":
         from alphalattice.control.product_host.composition import web_launcher
 
-        monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("output spawned"))
+        observe_starts(monkeypatch, lambda *a, **k: pytest.fail("output spawned"))
         data = BytesIO()
         args = SimpleNamespace(workspace=tmp_path, no_browser=True, pid=1)
         token = web_launcher.ANSWER_LANGUAGE.set("zh")
@@ -653,6 +669,7 @@ class _ExitedHost:
 
     pid = 4242
     returncode = 1
+    stdin = None
     _handle = 0x4242  # the handle a Windows job proof reads
 
     def poll(self):
@@ -672,10 +689,9 @@ def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace
     """
     from alphalattice.control.product_host.composition import web_launcher
 
-    native = subprocess.Popen
     record = SimpleNamespace(spawned=[], flags=[], fault_handlers=[])
 
-    def spawn(*args, **kwargs):
+    def spawn(native, *args, **kwargs):
         if web_launcher.LAUNCH_KEY_VARIABLE not in kwargs.get("env", {}):
             return native(*args, **kwargs)  # any other child runs as it would
         if "alphalattice.control.product_host.composition.web_launcher" in args[0]:
@@ -691,7 +707,7 @@ def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace
             record.spawned.append(_ExitedHost())
         return record.spawned[-1]
 
-    monkeypatch.setattr(subprocess, "Popen", spawn)
+    observe_starts(monkeypatch, spawn)
     if os.name == "nt":
 
         def proof(_child, _job, inside):
@@ -775,12 +791,12 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
         refused = json.loads(capsys.readouterr().out)
         assert refused["failure_code"] == "local_web.service_not_started"
         assert refused["next_action"] == "RESTORE_WORKSPACE_ACCESS" and not spawns.flags
-    # A folder with a Host's connection record is the launch's to read: that Host may serve it.
+    # A folder whose Host left its connection record is the launch's to read: it may serve it.
     record = local_client.LocalResearchConnection.path(taken)
-    record.parent.mkdir()
+    record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text("{}", encoding="utf-8")
     assert web_launcher._workspace_refusal(taken) is None
-    shutil.rmtree(record.parent)
+    record.unlink()
     with monkeypatch.context() as escaping:
         escaping.setattr(
             local_client.LocalResearchConnection,
@@ -856,8 +872,8 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     assert tied["failure_code"] == "local_web.detach_with_stop_on_stdin"
     if os.name == "nt":
 
-        def denied():
-            raise OSError("private operating-system detail")
+        def denied(*, memory):
+            raise OSError(f"private operating-system detail: {memory.kind}")
 
         monkeypatch.setattr(web_launcher, "ChildJob", denied, raising=False)
         token = web_launcher.ANSWER_LANGUAGE.set(lang)

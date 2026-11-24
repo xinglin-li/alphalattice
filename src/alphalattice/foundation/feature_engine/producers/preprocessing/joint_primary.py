@@ -6,12 +6,19 @@ import warnings
 from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
-from hashlib import sha256
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    equal_sector_demean,
+    median_mad_winsor,
+)
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelAdmissionSummary,
@@ -20,14 +27,7 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
     PREPROCESSING_WALK_EXCLUDED,
     feature_component_identity,
 )
-from alphalattice.kernel.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    equal_sector_demean,
-    median_mad_winsor,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 from .adapters import require_uniform_membership
 from .contracts import PanelPreprocessingImplementationBinding
@@ -77,8 +77,8 @@ def _array_digest(values: np.ndarray) -> str:
                 "kind": "PanelArrayDigest",
                 "dtype": str(values.dtype),
                 "shape": list(values.shape),
-                "finite_mask": sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": sha256(
+                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
+                "finite_values": identity_sha256(
                     np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
                 ).hexdigest(),
             }

@@ -28,7 +28,7 @@ from functools import lru_cache
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from devtools.architecture.git_inputs import read_blobs as _blobs
 from devtools.architecture.git_inputs import staged_changes, staged_moves, unique_moves
 from devtools.testing import os_marks
@@ -67,7 +67,7 @@ WORD_CATALOGS = frozenset(
 # third-party data the package ships whole, never edited: tiktoken's cl100k encoding (NOTICE), kept
 # so a token count needs no download; its size is the upstream file's, checked by its SHA-256
 VENDORED_DATA = frozenset({"src/alphalattice/protocols/actor_execution/cl100k_base.tiktoken.gz"})
-CONTROL_OWNER = "src/alphalattice/kernel/shared_kernel/environment.py"
+CONTROL_OWNER = "src/alphalattice/capabilities/domain_contracts/environment.py"
 WRITE = re.compile(
     r'\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+([\w."`]+)',
     re.I,
@@ -218,39 +218,48 @@ DOCSTRING_RULES = ("D10", "D419")
 change answers for the definitions it writes; the rest is counted by the code health report."""
 
 
+ARGUMENTS = 16_000
+"""The characters of paths one Ruff call names: Windows refuses a command line past 32,767."""
+
+
 def ruff_docstrings(
     snapshots: dict[str, str], config: str
 ) -> dict[str, tuple[tuple[str, int], ...]]:
     """Each source snapshot's docstring findings (rule, line), keyed by its path: one Ruff
-    invocation under the repository's own configuration, each snapshot at its own path so the
-    per-file-ignores apply as they do in the tree."""
+    invocation per batch of paths under the repository's own configuration, each snapshot at its
+    own path so the per-file-ignores apply as they do in the tree."""
     if not snapshots:
         return {}
     with tempfile.TemporaryDirectory(prefix="docstrings-") as folder:
         root = Path(folder)
         (root / "pyproject.toml").write_text(config, encoding="utf-8", newline="\n")
+        batches: list[list[str]] = [[]]
         for path, text in snapshots.items():
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             (root / path).write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
-        done = spawn.run(
-            [
-                *(sys.executable, "-m", "ruff", "check", "--config", "pyproject.toml"),
-                *("--select", ",".join(DOCSTRING_RULES), "--no-cache"),
-                *("--output-format", "json", *snapshots),
-            ],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=120,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        if done.returncode not in (0, 1):
-            raise ValueError("ruff could not read the staged sources' docstrings")
+            if batches[-1] and sum(len(p) + 1 for p in batches[-1]) + len(path) > ARGUMENTS:
+                batches.append([])
+            batches[-1].append(path)
         found: dict[str, list[tuple[str, int]]] = {path: [] for path in snapshots}
-        for row in json.loads(done.stdout):
-            path = Path(row["filename"]).resolve().relative_to(root.resolve()).as_posix()
-            found[path].append((row["code"], row["location"]["row"]))
+        for batch in batches:
+            done = spawn.run(
+                [
+                    *(sys.executable, "-m", "ruff", "check", "--config", "pyproject.toml"),
+                    *("--select", ",".join(DOCSTRING_RULES), "--no-cache"),
+                    *("--output-format", "json", *batch),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=120,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if done.returncode not in (0, 1):
+                raise ValueError("ruff could not read the staged sources' docstrings")
+            for row in json.loads(done.stdout):
+                path = Path(row["filename"]).resolve().relative_to(root.resolve()).as_posix()
+                found[path].append((row["code"], row["location"]["row"]))
     return {path: tuple(sorted(rows)) for path, rows in found.items()}
 
 
@@ -1005,7 +1014,8 @@ def load_antipattern_baseline(root: Path) -> dict[str, int]:
 
 
 def relocated_antipatterns(held: dict[str, int], moves: dict[str, str]) -> dict[str, int]:
-    """Move a file's allowance only with Git's byte-identical move."""
+    """Move a file's allowance with its move: Git's byte-identical one, or a row of the change's
+    move table, whose findings are still measured against the allowance it carries."""
     back = {old: new for new, old in moves.items()}
     return {
         back.get(path, path) + "::" + rule: count
@@ -2384,7 +2394,7 @@ def main(argv: list[str] | None = None) -> int:
                 texts,
                 parents,
                 head,
-                moves=identical,
+                moves=moved,
                 semgrep=args.semgrep,
                 readers=readers,
             ),

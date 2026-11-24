@@ -6,6 +6,7 @@ from dataclasses import replace
 from functools import partial
 from typing import Any, cast
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.answer_turns import (
     SUBMISSION_DEADLINE,
     bounded_answer_turn,
@@ -17,7 +18,6 @@ from alphalattice.evidence.alternative_evidence.analysis.submissions import (
 from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     SubmittedEvidenceAnalysis,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     PortfolioEvidenceReviewError,
 )

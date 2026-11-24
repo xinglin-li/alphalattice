@@ -16,6 +16,7 @@ from typing import Literal
 
 import numpy as np
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -33,7 +34,6 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
     ResearchWhitelistStandard,
     candidate_manifest_document,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 
 AS_OF = date(2026, 7, 31)
 OBSERVED_AT = datetime(2026, 8, 2, tzinfo=UTC)

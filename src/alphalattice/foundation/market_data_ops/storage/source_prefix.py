@@ -8,7 +8,6 @@ proof moved (`market_data_source_prefix_proofs`).
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Sequence
 from datetime import date
 from functools import cache
@@ -23,6 +22,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     _selected_provider_sql,
     _source_prefix_arrow_hash,
 )
+from alphalattice.kernel.identity import identity_sha256
 
 if TYPE_CHECKING:
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -41,7 +41,7 @@ def _listing_arrow_hashes(table: pa.Table) -> dict[str, str]:
     stops: list[int] = np.asarray(np.searchsorted(ids, keys, side="right"), np.int64).tolist()
     hashes: dict[str, str] = {}
     for listing, first, stop in zip(map(str, keys), bounds, stops, strict=True):
-        digest = hashlib.sha256(table.schema.to_string().encode())
+        digest = identity_sha256(table.schema.to_string().encode())
         for column in columns:
             part = column[first:stop]
             digest.update(

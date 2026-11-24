@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
@@ -44,7 +45,6 @@ from alphalattice.investment.alpha_research.targets.canonical import (
     CanonicalAlphaTargetRecipeBinding,
     seal_canonical_alpha_target_evidence,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests._support.researcher_methodology_session_fixtures import (
     outcome_catalog_root as outcome_catalog_root,
 )

@@ -14,6 +14,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.task_control.contracts import TaskEvidence, TaskStageReceipt
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.client import LocalResearchClient
@@ -21,8 +23,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
@@ -96,7 +97,7 @@ def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,t
         text=True,
         encoding="utf-8",
         timeout=120,
-        env=env,
+        env=cli_environment() if env is None else env,
     )
     assert done.returncode == 0, done.stdout + done.stderr
     answer = json.loads(done.stdout)["data"]

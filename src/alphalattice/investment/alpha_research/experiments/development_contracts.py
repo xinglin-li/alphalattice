@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from datetime import date
 from enum import StrEnum
-from hashlib import sha256
 from itertools import pairwise
 from typing import Any, Literal, Self
 
@@ -13,8 +12,9 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.kernel.identity import identity_sha256
 
 from ..evaluation.contracts import AlphaCandidateMetrics, AlphaFoldMetrics
 from ..targets.authority import InstalledAlphaTargetMethodBinding
@@ -1262,7 +1262,7 @@ def canonical_score_value_identity(values: _ScoreArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": sha256(contiguous.tobytes()).hexdigest(),
+                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

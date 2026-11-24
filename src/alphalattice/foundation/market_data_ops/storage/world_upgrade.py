@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.workspace_runtime.database import hold_workspace_database
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 
 
 def market_upgrade_family(identify: Callable[[Path], str | None]) -> Family:

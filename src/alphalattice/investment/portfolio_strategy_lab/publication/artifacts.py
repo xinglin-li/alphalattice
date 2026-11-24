@@ -13,10 +13,14 @@ from typing import Any, Final, cast
 import numpy.typing as npt
 from pydantic import BaseModel
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer import arrays, history
+from alphalattice.foundation.data_layer.arrays import CARRIED
+from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.investment.portfolio_strategy_lab.contracts import (
     CurrentPortfolioResearchMarker,
     CurrentPortfolioResearchPointer,
@@ -82,10 +86,6 @@ from alphalattice.investment.risk_research.calibration.diagnostic_contracts impo
 from alphalattice.investment.risk_research.contracts import HistoricalCovarianceSurface
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnArtifactStore
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import arrays, history
-from alphalattice.kernel.data_layer.arrays import CARRIED
-from alphalattice.kernel.data_layer.upgrade import Family
 
 LAB: Final = "portfolio-strategy-lab"
 _NOT_LANES: Final = frozenset({"public", "pending-finalization", "carried", "current"})

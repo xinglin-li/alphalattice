@@ -11,8 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 
 
 @cache

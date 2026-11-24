@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
@@ -13,6 +12,10 @@ from typing import Literal, cast
 
 import pyarrow as pa
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.enums import RebalanceFrequency
+from alphalattice.capabilities.validation.schedule_contracts import cadence_threshold_profile
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
@@ -27,10 +30,8 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     RawDailyBar,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.enums import RebalanceFrequency
-from alphalattice.kernel.validation.schedule_contracts import cadence_threshold_profile
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import worker_width
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,
@@ -219,8 +220,7 @@ def _derivation_workers(configured: int | None) -> int:
     Host that knows its allowance passes it as ``derivation_workers`` and
     never gets more workers than that allowance.
     """
-    allowed = configured if configured is not None else (os.cpu_count() or 1)
-    return max(1, min(DERIVATION_WORKER_CEILING, allowed))
+    return min(DERIVATION_WORKER_CEILING, worker_width(configured))
 
 
 class CausalExecutionOutcomePublisher:
@@ -484,10 +484,13 @@ class CausalExecutionOutcomePublisher:
             if parallel:
                 workers = min(workers, len(listings))
                 try:
-                    pool = ProcessPoolExecutor(
-                        max_workers=workers,
-                        initializer=_initialize_derivation_worker,
-                        initargs=(derivation,),
+                    pool = execution_port().register_pool(
+                        ProcessPoolExecutor(
+                            max_workers=workers,
+                            initializer=_initialize_derivation_worker,
+                            initargs=(derivation,),
+                        ),
+                        name="causal-derivation",
                     )
                 except (OSError, MemoryError) as error:
                     raise ChildStartFailed(error) from error

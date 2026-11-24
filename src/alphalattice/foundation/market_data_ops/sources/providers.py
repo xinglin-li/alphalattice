@@ -7,7 +7,6 @@ with deterministic AlphaLattice-owned code.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import time
@@ -21,6 +20,7 @@ from threading import Lock
 from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
+from alphalattice.capabilities.domain_contracts.spans import spanned
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -29,7 +29,8 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     SplitAdjustedPriceIntegrityError,
     validate_split_adjusted_history,
 )
-from alphalattice.kernel.shared_kernel.spans import spanned
+from alphalattice.kernel.egress import EgressRefusal, HttpSource, require_network, yahoo_session
+from alphalattice.kernel.identity import identity_sha256
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "actions": True,
@@ -37,7 +38,7 @@ YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "repair": True,
     "split_integrity": "action-aligned-open-ratio-and-unexplained-fivefold-discontinuity",
 }
-YFINANCE_PRICE_POLICY_HASH = hashlib.sha256(
+YFINANCE_PRICE_POLICY_HASH = identity_sha256(
     json.dumps(YFINANCE_PRICE_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
 
@@ -168,6 +169,8 @@ def _plain_number(value: object) -> float | None:
 
 def _error(exc: Exception) -> ProviderFetchError:
     detail = str(exc).strip()
+    if isinstance(exc, EgressRefusal):
+        return ProviderFetchError(exc.failure_code, detail, retryable=False)
     normalized = detail.casefold()
     if isinstance(exc, TimeoutError) or "timeout" in normalized:
         return ProviderFetchError(
@@ -205,12 +208,13 @@ class YFinanceMarketDataProvider:
     cache_root: Path
     name: str = "yfinance"
     _runtime_module: Any = field(default=None, init=False, repr=False)
+    _session: Any = field(default=None, init=False, repr=False)
     _initialization_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
-    @staticmethod
-    def _ticker(yf: Any, symbol: str) -> Any:
+    def _ticker(self, yf: Any, symbol: str) -> Any:
         """Coalesce native GETs only within this acquisition; never reuse older bodies."""
-        ticker = yf.Ticker(symbol)
+        require_network(HttpSource.YAHOO_FINANCE)
+        ticker = yf.Ticker(symbol, session=self._session)
         get = yf.data.lru_cache_freezeargs(cache(ticker._data.get))
         ticker._data = SimpleNamespace(get=get, cache_get=get)
         return ticker
@@ -257,6 +261,7 @@ class YFinanceMarketDataProvider:
                     getattr(yf.cache, getter_name)().initialise()
             except Exception as exc:
                 raise _error(exc) from exc
+            self._session = yahoo_session(yf._http.new_session)
             self._runtime_module = yf
             return yf
 
@@ -577,7 +582,7 @@ class YFinanceMarketDataProvider:
         """Read Yahoo's current sector label without calling it GICS or PIT truth."""
         yf = self._module()
         try:
-            payload = yf.Ticker(provider_symbol).get_info()
+            payload = yf.Ticker(provider_symbol, session=self._session).get_info()
         except Exception as exc:
             raise _error(exc) from exc
         if not isinstance(payload, Mapping):
@@ -604,7 +609,7 @@ class YFinanceMarketDataProvider:
             provider_symbol=provider_symbol,
             sector_name=normalized["sector"],
             sector_key=normalized["sectorKey"],
-            payload_hash=hashlib.sha256(
+            payload_hash=identity_sha256(
                 json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest(),
         )

@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 
 if TYPE_CHECKING:
     pass

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
+import http.client
 import json
 import os
 import re
 import shutil
 import time
-import urllib.error
-import urllib.request
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -18,11 +16,7 @@ from typing import Any
 
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.evidence.alternative_evidence.storage.world import carry_originals
-from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
-from alphalattice.investment.risk_research.experiments.development_artifacts import (
-    carry_risk_covariance,
-)
-from alphalattice.kernel.data_layer.history import (
+from alphalattice.foundation.data_layer.history import (
     carry_arrays,
     carry_knowledge_snapshots,
     carry_research_inputs,
@@ -30,6 +24,16 @@ from alphalattice.kernel.data_layer.history import (
     data_root,
     own_root,
 )
+from alphalattice.interface.local_application.web import (
+    LOOPBACK_HOST,
+    SESSION_COOKIE,
+    SESSION_HEADER,
+)
+from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    carry_risk_covariance,
+)
+from alphalattice.kernel.config import Change, process_override
+from alphalattice.kernel.identity import integrity_sha256
 
 
 def _request(
@@ -38,19 +42,21 @@ def _request(
     application = session.web.application
     base = session.url.rstrip("/")
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(f"{base}{path}", data=body, method=method)
-    request.add_header(SESSION_HEADER, application.session_token)
-    request.add_header("Cookie", f"{SESSION_COOKIE}={application.session_token}")
+    headers = {
+        SESSION_HEADER: application.session_token,
+        "Cookie": f"{SESSION_COOKIE}={application.session_token}",
+    }
     if method == "POST":
-        request.add_header("Origin", base)
+        headers["Origin"] = base
     if body is not None:
-        request.add_header("Content-Type", "application/json")
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        headers["Content-Type"] = "application/json"
+    connection = http.client.HTTPConnection(LOOPBACK_HOST, session.web.bound_port, timeout=timeout)
     try:
-        with opener.open(request, timeout=timeout) as response:
-            return response.status, dict(response.headers), response.read()
-    except urllib.error.HTTPError as error:
-        return error.code, dict(error.headers), error.read()
+        connection.request(method, path, body=body, headers=headers)
+        with connection.getresponse() as response:
+            return response.status, dict(response.getheaders()), response.read()
+    finally:
+        connection.close()
 
 
 def verdict(status: int, body: bytes) -> str:
@@ -133,7 +139,7 @@ def numbers(status: int, body: bytes) -> dict[str, str]:
 
     walk(data, ())
     return {
-        section: hashlib.sha256("\n".join(leaves).encode("utf-8")).hexdigest()[:16]
+        section: integrity_sha256("\n".join(leaves).encode("utf-8")).hexdigest()[:16]
         + f":{len(leaves)}"
         for section, leaves in sorted(sections.items())
     }
@@ -293,16 +299,8 @@ def _upgraded(session: Any) -> None:
 
 @contextmanager
 def _environment(**values: str) -> Iterator[None]:
-    before = {name: os.environ.get(name) for name in values}
-    os.environ.update(values)
-    try:
+    with process_override(Change("saved-object-readback", values)):
         yield
-    finally:
-        for name, value in before.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
 
 
 def _reader(live: Any, name: str, rows: list[dict[str, Any]]) -> Callable[..., Any]:

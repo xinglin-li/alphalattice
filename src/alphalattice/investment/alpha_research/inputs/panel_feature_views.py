@@ -17,7 +17,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from types import MappingProxyType
 from typing import Final, Literal, Self, cast
 
@@ -25,8 +24,9 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.sector_history import sector_ids, sector_slices
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import sector_ids, sector_slices
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -176,8 +176,8 @@ def panel_array_hash(values: npt.NDArray[np.generic]) -> str:
             {
                 "dtype": array.dtype.str,
                 "shape": list(array.shape),
-                "finite_mask": sha256(finite.tobytes()).hexdigest(),
-                "finite_values": sha256(
+                "finite_mask": identity_sha256(finite.tobytes()).hexdigest(),
+                "finite_values": identity_sha256(
                     np.ascontiguousarray(np.where(finite, array, 0), dtype=array.dtype).tobytes()
                 ).hexdigest(),
             }

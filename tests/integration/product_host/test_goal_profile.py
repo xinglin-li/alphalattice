@@ -22,8 +22,8 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel import clocks
-from alphalattice.kernel.shared_kernel.clocks import ReplayClock
+from alphalattice.kernel import clock as clocks
+from alphalattice.kernel.clock import ReplayClock
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.workspace_task_runner.task_control_support import task_contract
 

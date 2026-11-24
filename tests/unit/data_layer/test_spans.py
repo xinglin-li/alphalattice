@@ -14,8 +14,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
 from opentelemetry.trace import SpanContext, Status, StatusCode, TraceFlags, TraceState
 
-from alphalattice.kernel.data_layer import spans
-from alphalattice.kernel.data_layer.spans import (
+from alphalattice.foundation.data_layer import spans
+from alphalattice.foundation.data_layer.spans import (
     RowsExporter,
     carrier,
     context_of,
@@ -25,7 +25,7 @@ from alphalattice.kernel.data_layer.spans import (
     tracer_provider,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/spans.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/spans.py"
 TRACE, CLIENT_SPAN = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"
 
 

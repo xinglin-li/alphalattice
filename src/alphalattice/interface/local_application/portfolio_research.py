@@ -24,12 +24,13 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from functools import cache
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, cast, get_args
 from uuid import UUID
 
 from pydantic import ConfigDict, create_model, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
 from alphalattice.interface.local_application.portfolio_research_fields import field_contract
 from alphalattice.interface.local_application.questions import (
@@ -50,7 +51,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioSupportCoverage,
     ScoreSourceMode,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import AgentRole
 
 from .portfolio_request_fields import FIELD_OWNER, request_fields
@@ -376,6 +376,8 @@ class PortfolioResearchOperationRequest:
     wait_seconds: float | None = None
     """How long a Task's status may wait for the Task to move on (a stage, a lifecycle)
     before it answers; at most 20 seconds. A follow asks with it instead of polling."""
+    status_section: Literal["storage"] | None = None
+    """The optional Task status section to compute on an explicit read."""
     after: str | None = None
     limit: int | None = None
     watch: tuple[UUID, ...] | None = None
@@ -644,7 +646,11 @@ class _RequestDocument(RequestFieldModel):
         return PortfolioResearchOperationRequest(operation=self.operation, **values)
 
 
-@cache
+_DOCUMENTS_HELD = 256
+"""Request document models kept: above one per operation's admitted fields plus the full set."""
+
+
+@lru_cache(maxsize=_DOCUMENTS_HELD)
 def _request_document(fields_to_read: frozenset[str]) -> type[_RequestDocument]:
     definitions = {}
     for name, family in FIELD_OWNER.items():

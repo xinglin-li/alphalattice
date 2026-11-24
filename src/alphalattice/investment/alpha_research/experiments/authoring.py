@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaModelCapabilityAuthority,
     AlphaModelRecipeProposal,
@@ -34,7 +35,6 @@ from alphalattice.investment.alpha_research.targets.authority import (
     AlphaTargetMethod,
     AlphaTargetMethodCatalog,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskProgramCompilation,

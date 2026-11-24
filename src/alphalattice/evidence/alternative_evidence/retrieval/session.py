@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -10,7 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NamedTuple
 
-from alphalattice.kernel.live_evidence.online_sources import not_carried_tables
+from alphalattice.evidence.live_evidence.online_sources import not_carried_tables
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.resources import worker_width
 
 from ..documents.canonicalization import SecTableCarry
 from ..documents.contracts import AlternativeEvidenceDocumentSet
@@ -148,7 +150,7 @@ def passage_hash(text: str, start: int, end: int) -> str:
     so a sealed candidate is proved by it when a later session names the
     range again.
     """
-    return hashlib.sha256(" ".join(text[start:end].split()).encode("utf-8")).hexdigest()
+    return integrity_sha256(" ".join(text[start:end].split()).encode("utf-8")).hexdigest()
 
 
 OriginalReader = Callable[[str], tuple[bytes, str, str] | None]
@@ -325,9 +327,12 @@ class AlternativeEvidenceRetrievalSession:
         Chinese query or a rerank past its deadline."""
         self.read_handles: list[str] = []
         self._references = {value.workspace_document_id: value for value in document_set.documents}
-        self._worker = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="alternative-evidence-retrieval",
+        self._worker = execution_port().register_pool(
+            ThreadPoolExecutor(
+                max_workers=worker_width(1),
+                thread_name_prefix="alternative-evidence-retrieval",
+            ),
+            name="evidence-retrieval",
         )
         self._closed = False
 
@@ -515,7 +520,7 @@ class AlternativeEvidenceRetrievalSession:
             content_sha256=revision.content_sha256,
             character_start=start,
             character_end=end,
-            chunk_id=hashlib.sha256(
+            chunk_id=identity_sha256(
                 f"{document_id}:{reference.workspace_revision}:{revision.content_sha256}"
                 f":{start}:{end}".encode()
             ).hexdigest(),
@@ -761,7 +766,7 @@ class AlternativeEvidenceRetrievalSession:
                 "alternative_evidence.table_view_original_unavailable" for _ in placeholders
             )
         content, content_sha256, _media_type = original
-        if hashlib.sha256(content).hexdigest() != content_sha256:
+        if integrity_sha256(content).hexdigest() != content_sha256:
             raise ValueError("alternative_evidence.table_view_original_tampered")
         tables = not_carried_tables(
             content,
@@ -848,7 +853,7 @@ class AlternativeEvidenceRetrievalSession:
                     f"original behind {reference.semantic_handle}"
                 )
             content, content_sha256, media_type = original
-            if hashlib.sha256(content).hexdigest() != content_sha256:
+            if integrity_sha256(content).hexdigest() != content_sha256:
                 raise ValueError("alternative_evidence.table_view_original_tampered")
             if media_type != "text/html":
                 raise TableViewError(

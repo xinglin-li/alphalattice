@@ -21,6 +21,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -51,6 +52,8 @@ from alphalattice.evidence.alternative_evidence.publication.contracts import (
 from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.history_knowledge import CARRIED_KNOWLEDGE
 from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
@@ -59,9 +62,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     BROAD_FEATURE_PACKAGE,
     PRODUCT_EVIDENCE_ROOT_KEY,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.history_knowledge import CARRIED_KNOWLEDGE
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )

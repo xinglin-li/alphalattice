@@ -35,16 +35,15 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Final
 
-from blake3 import blake3
-
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.persistence import fsync_directory, write_new
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.data_layer.root import data_root
-from alphalattice.kernel.data_layer.store import as_columns, newest, stage
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
-from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
+from alphalattice.foundation.data_layer.root import data_root
+from alphalattice.foundation.data_layer.store import as_columns, newest, stage
+from alphalattice.kernel.identity import change_blake3, identity_blake3
 
 from ..documents.contracts import AlternativeEvidenceDocumentReference
 from ..publication.artifacts import AlternativeEvidenceArtifactStore
@@ -235,7 +234,7 @@ def _fingerprint(marks: Iterable[str]) -> str:
     unsigned byte, then each id in sorted order as its UTF-8 bytes, each preceded by their length
     as an unsigned 32-bit big-endian integer. It answers only whether a later admission sees the
     same artifacts; its reader is that admission, and it is never a key."""
-    hasher = blake3(struct.pack(">B", MARKS_VERSION))
+    hasher = change_blake3(struct.pack(">B", MARKS_VERSION))
     for mark in sorted(marks):
         raw = mark.encode("utf-8")
         hasher.update(struct.pack(">I", len(raw)) + raw)
@@ -349,7 +348,7 @@ def _admit(port: Any, bodies: list[_Body], amended: dict[str, str]) -> dict[str,
     next version: no body is read for it."""
     providers = {name: port.log.require_lineage("provider", name) for name in PROVIDERS}
     readable = [
-        (body.reference, body.content, blake3(body.content).hexdigest())
+        (body.reference, body.content, identity_blake3(body.content).hexdigest())
         for body in bodies
         if body.content is not None
     ]
@@ -554,7 +553,7 @@ def _import_original(
     content = member.read_bytes()
     if len(content) != reference.content_bytes or sha256_hex(content) != name:
         raise ValueError(f"alternative_evidence.source_object_tampered: {name}")
-    digest = blake3(content).hexdigest()
+    digest = identity_blake3(content).hexdigest()
     locator = WORLD_OBJECT + digest.encode("ascii")
     _keep(root / "blobs", digest, content)
     locator_body(locator, root)
@@ -569,7 +568,7 @@ def _import_original(
 
 def keep_original(root: Path, content: bytes) -> bytes:
     """Durably place a new Host original once and return its workspace locator."""
-    digest = blake3(content).hexdigest()
+    digest = identity_blake3(content).hexdigest()
     with _ADMITTING:
         _keep(root / "blobs", digest, content)
     return WORLD_OBJECT + digest.encode("ascii")

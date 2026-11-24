@@ -1,0 +1,13 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "05b7e448500408ea559761deae6d8fc0c118880c4eff6898c1372973521b0dd2",
+   "successor": "c0ac7093b4652d2fa96c4b56c06ea92ff1b0f31d6d7d22b9d3d3fe7f1d290ea4",
+   "change": "Show five market data health checks after each Daily",
+   "reason": "One role moves through its source closure with an edge from the merged develop's value to the head's; the development replay is ALL EQUAL over 185,251 records and the mac1 book replay matches on both days."
+  }
+ ]
+}

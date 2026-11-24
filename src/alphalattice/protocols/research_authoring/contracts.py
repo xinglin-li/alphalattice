@@ -21,7 +21,7 @@ from typing import Any, Literal, Protocol, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 _HASH = r"^[0-9a-f]{64}$"
 _HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}$"

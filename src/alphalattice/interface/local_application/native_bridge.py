@@ -18,14 +18,17 @@ import sys
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
-from hashlib import sha256
+from datetime import datetime
 from itertools import islice
 from pathlib import Path
 from typing import Any, Final, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     client_refusal,
@@ -49,9 +52,8 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -66,7 +68,11 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
         return {**result, "reason": "COMMAND_MISSING"}
     try:
         completed = spawn.run(
-            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
+            [executable, *command[1:]],
+            process_kind="dependency_command_probe",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return {**result, "reason": "COMMAND_TIMED_OUT"}
@@ -151,6 +157,7 @@ def codex_queue_reach(path: str | None = None) -> dict[str, Any]:
     try:
         done = spawn.run(
             [command, "queue", "--thread", CODEX_REACH_THREAD, "--message", "reach probe"],
+            process_kind="codex_queue_reach_probe",
             capture_output=True,
             timeout=30,
             check=False,
@@ -298,7 +305,7 @@ class NativeResearchBinding:
         if host not in HOSTS:
             raise NativeBridgeError("native_bridge.binding_invalid")
         _text(session_id, CORRELATION_CHARACTERS)
-        key = sha256(f"{host}\0{session_id}".encode()).hexdigest()
+        key = identity_sha256(f"{host}\0{session_id}".encode()).hexdigest()
         return project / ".codex" / BINDING_DIRECTORY / f"{key}.json"
 
     @classmethod
@@ -658,7 +665,7 @@ def pin_differs(pins: dict[str, str], usage: ModelUsage) -> list[str]:
 
 def _digest(event: object) -> str:
     encoded = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256(encoded.encode("utf-8")).hexdigest()
+    return identity_sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _subject_bounded(subject: dict[str, str]) -> dict[str, str]:
@@ -890,7 +897,7 @@ def observation_request(
             event["usage"],
             None if usage_goal_id is None else str(UUID(usage_goal_id)),
         ]
-        occurred_at = _aware(event["usage"]["last_at"]) or datetime.now(UTC).isoformat()
+        occurred_at = _aware(event["usage"]["last_at"]) or utc_now().isoformat()
     else:
         raise NativeBridgeError("native_bridge.event_source_invalid")
     if len(binding.session_id) > CORRELATION_CHARACTERS:
@@ -1183,8 +1190,8 @@ def read_session_usage(
     committee's member identity is never inferred from native telemetry.
     The serving Host supplies its catalog workspace id explicitly on every read.
     """
-    from alphalattice.kernel.data_layer.history import agent_telemetry  # lazy: Host log only
-    from alphalattice.kernel.data_layer.telemetry import usage  # lazy: Host log only
+    from alphalattice.foundation.data_layer.history import agent_telemetry  # lazy: Host log only
+    from alphalattice.foundation.data_layer.telemetry import usage  # lazy: Host log only
 
     if binding.usage == "OFF" or not usage_reading(binding.workspace):
         return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
@@ -1340,7 +1347,7 @@ OFF_PATH: Final = "setup.tool.command"
 
 def tool_setup() -> dict[str, Any]:
     """Only an absent launcher needs installation; an off-PATH launcher remains executable."""
-    prefix = command_prefix()
+    prefix = cli_invocation.command_prefix()
     if shutil.which(prefix[0], path=fresh_path()) is not None:
         return {
             "present": True,
@@ -1376,19 +1383,20 @@ def tool_setup() -> dict[str, Any]:
 
 
 def fresh_path() -> str | None:
-    """This shell's PATH as a fresh shell has it, for the bare-command check.
+    """The command's shell PATH as a fresh shell has it, for the bare-command check.
 
     `uv run` puts its environment's folder first, whose checkout command no specialist's own
-    shell reaches.
+    shell reaches. A forwarded command reads its caller's shell, never the Host's.
 
     Returns:
-        PATH without that folder under `uv run`; otherwise None, PATH as it is.
+        PATH without that folder under `uv run`; otherwise PATH as it is (None: this process's).
     """
-    venv = os.environ.get("VIRTUAL_ENV")
-    if venv is None or "UV_RUN_RECURSION_DEPTH" not in os.environ:
-        return None
+    caller = cli_invocation.environment()
+    venv = caller.get("VIRTUAL_ENV")
+    if venv is None or "UV_RUN_RECURSION_DEPTH" not in caller:
+        return cli_invocation.search_path()
     own = {Path(venv) / "Scripts", Path(venv) / "bin"}
-    parts = os.environ.get("PATH", "").split(os.pathsep)
+    parts = caller.get("PATH", "").split(os.pathsep)
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
 
 
@@ -1408,7 +1416,10 @@ def codex_system_config(environ: Mapping[str, str]) -> Path:
         `/etc/codex/config.toml`, or on Windows `OpenAI/Codex/config.toml` under `ProgramData`.
     """
     if os.name == "nt":
-        return Path(environ.get("ProgramData") or "C:/ProgramData") / "OpenAI/Codex/config.toml"
+        program_data = next(
+            (value for name, value in environ.items() if name.upper() == "PROGRAMDATA"), ""
+        )
+        return Path(program_data or "C:/ProgramData") / "OpenAI/Codex/config.toml"
     return Path("/etc/codex/config.toml")
 
 
@@ -1534,7 +1545,9 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
         answer = attachment_preflight(project, binding, session[0])
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
     if session is not None and session[0] == "codex":
-        trust = codex_project_trust(project, os.environ)  # missing gates; unknown never does
+        trust = codex_project_trust(
+            project, cli_invocation.environment()
+        )  # missing gates; unknown never does
         answer.update({} if trust["present"] is True else {"project_trust": trust})
     return answer
 
@@ -1596,7 +1609,7 @@ def declaration_setup(project: Path, host: str) -> list[str]:
     python = python if (checkout / "pyproject.toml").is_file() else Path(sys.executable)
     module = "alphalattice.interface.local_application.native_setup"
     configure = [str(python), "-m", module, "--project", str(project), "configure", "--host", host]
-    bind = [*command_prefix(), "--workspace", "<dir>", "session", "bind"]
+    bind = [*cli_invocation.command_prefix(), "--workspace", "<dir>", "session", "bind"]
     return [join(configure, shell()), join(bind, shell())]
 
 
@@ -1666,7 +1679,8 @@ def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | N
     Fail fast: each missing item is named with its commands, under `missing` only (never an
     offered command a walk would run), and nothing opens until the same command runs again.
     """
-    setup = setup_reading(Path.cwd(), workspace, agent_session(os.environ))
+    caller = cli_invocation.environment()  # a forwarded command's own, not the Host's
+    setup = setup_reading(cli_invocation.cwd(), workspace, agent_session(caller))
     missing = {k: setup[k] for k in SETUP_GATE if (setup.get(k) or {}).get("present") is False}
     if not missing:
         return setup, None

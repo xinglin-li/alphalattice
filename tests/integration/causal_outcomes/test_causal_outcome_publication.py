@@ -222,7 +222,7 @@ def test_risk_publication_reads_only_its_declared_contiguous_window(tmp_path, mo
 
 @pytest.fixture
 def outcome_host(tmp_path):
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     def start():
         history.open_history("outcome-fixture", "outcome fixture", tmp_path / "host")
@@ -697,6 +697,7 @@ def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(
     tmp_path: Path, outcome_host
 ) -> None:
     """Outcomes and risk keep the historical members of a ragged panel."""
+    from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
         WorkspaceMaintenanceRequest,
@@ -727,7 +728,6 @@ def test_outcomes_and_risk_keep_the_historical_members_of_a_ragged_panel(
         CausalRiskReturnReader,
         CausalRiskReturnSurfacePublisher,
     )
-    from alphalattice.kernel.data.calendar import materialize_calendar_schedule
     from alphalattice.protocols.research_authoring.contracts import ResearchExperimentEnvelope
     from tests.researcher_methodology_surface.real_workspace import (
         MARKET_PROFILE_ID,

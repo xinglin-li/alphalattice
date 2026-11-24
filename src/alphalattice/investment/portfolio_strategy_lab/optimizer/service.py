@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 if TYPE_CHECKING:
     import osqp

@@ -8,13 +8,15 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
-from typing import TYPE_CHECKING, Protocol, Self, get_args
+from typing import Protocol, Self, get_args
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.egress import HttpEgress, HttpResponse, HttpSource
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -38,9 +40,6 @@ from .contracts import (
     SecFilingSelectionPlan,
     SecMaterialForm,
 )
-
-if TYPE_CHECKING:
-    import httpx
 
 _SEC_DATA = "https://data.sec.gov"
 _MATERIAL_FORMS = frozenset(get_args(SecMaterialForm))
@@ -216,7 +215,7 @@ class HttpxSecOfficialTransport:
         user_agent: str,
         timeout_seconds: float = 15.0,
         maximum_attempts: int = 3,
-        transport: httpx.BaseTransport | None = None,
+        transport: object | None = None,
         requests_per_second: float = 5.0,
         monotonic: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], None] = time.sleep,
@@ -225,8 +224,6 @@ class HttpxSecOfficialTransport:
         ledger: SecCampaignLedger | None = None,
     ) -> None:
         """Configure the official client, rate limit, and campaign budgets."""
-        import httpx  # lazy: not at the Host's start
-
         if "@" not in user_agent:
             raise ValueError("alternative_evidence.sec_user_agent_invalid")
         if ledger is not None:
@@ -263,9 +260,9 @@ class HttpxSecOfficialTransport:
         self.retry_count = 0
         self.rate_limited_count = 0
         self.response_bytes = 0
-        self._client = httpx.Client(
-            timeout=self._timeout_seconds,
-            follow_redirects=False,
+        self._client = HttpEgress(
+            HttpSource.SEC,
+            timeout_seconds=self._timeout_seconds,
             headers={"User-Agent": self._user_agent, "Accept-Encoding": "gzip"},
             transport=transport,
         )
@@ -304,7 +301,7 @@ class HttpxSecOfficialTransport:
         self._last_request_started = now
 
     @staticmethod
-    def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    def _retry_delay(response: HttpResponse, attempt: int) -> float:
         value = response.headers.get("retry-after")
         if value is not None:
             try:
@@ -314,7 +311,7 @@ class HttpxSecOfficialTransport:
                     parsed = parsedate_to_datetime(value)
                     if parsed.tzinfo is None:
                         parsed = parsed.replace(tzinfo=UTC)
-                    return min(max((parsed - datetime.now(UTC)).total_seconds(), 0.0), 30.0)
+                    return min(max((parsed - utc_now()).total_seconds(), 0.0), 30.0)
                 except (TypeError, ValueError, OverflowError):
                     pass
         return float(min(0.25 * (2**attempt), 1.0))
@@ -358,13 +355,11 @@ class HttpxSecOfficialTransport:
 
     def get(self, url: str, *, maximum_bytes: int) -> SecOfficialResponse:
         """Fetch a bounded official response with budgeted retries."""
-        import httpx  # lazy: not at the Host's start
-
         _require_official_url(url)
         error: Exception | None = None
         resource = "body" if url.startswith(_SEC_ARCHIVES) else "metadata"
         for attempt in range(self._maximum_attempts):
-            response: httpx.Response | None = None
+            response: HttpResponse | None = None
             reservation: int | None = None
             read = 0
             outcome = "failed"
@@ -378,7 +373,7 @@ class HttpxSecOfficialTransport:
                     )
                 self._throttle()
                 self.request_count += 1
-                with self._client.stream("GET", url) as response:
+                with self._client.stream(url) as response:
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
                     if response.status_code == 429 or 500 <= response.status_code < 600:
                         if response.status_code == 429:
@@ -415,9 +410,9 @@ class HttpxSecOfficialTransport:
                     status_code=response.status_code,
                     content_type=content_type,
                     content=content,
-                    retrieved_at=datetime.now(UTC),
+                    retrieved_at=utc_now(),
                 )
-            except (httpx.HTTPError, RuntimeError) as caught:
+            except RuntimeError as caught:
                 error = caught
                 if attempt + 1 < self._maximum_attempts:
                     self.retry_count += 1

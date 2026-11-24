@@ -392,7 +392,7 @@ def test_a_code_closure_no_longer_moves_the_binding_and_an_earlier_one_reads_as_
             }
         )
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     earlier["development_binding_hash"] = canonical_hash(
         {k: v for k, v in earlier.items() if k != "development_binding_hash"}

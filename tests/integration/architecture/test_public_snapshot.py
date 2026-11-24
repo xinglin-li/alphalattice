@@ -13,7 +13,7 @@ import pytest
 from scripts.release.public_manifest import project_public
 from scripts.release.public_snapshot import SnapshotRefused, build
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 
 SCANNER = "scripts/release/public_manifest.py"  # each source's own scanner and projection
 

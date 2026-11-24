@@ -5,15 +5,15 @@ from __future__ import annotations
 import json
 import os
 import re
-from hashlib import file_digest
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.storage.contracts import (
     PhysicalAvailability,
     StorageEvictionPlan,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 
@@ -41,8 +41,9 @@ def require_available_input(workspace: Path, relative: str) -> None:
 
 
 def file_content_hash(path: Path) -> str:
-    with path.open("rb") as stream:
-        return file_digest(stream, "sha256").hexdigest()
+    """The file's SHA-256 through the trust record: a plan's hash serves its cleanup's check."""
+    digest: str = file_sha256(path)
+    return digest
 
 
 def pending_input_cleanups(workspace: Path) -> tuple[str, ...]:

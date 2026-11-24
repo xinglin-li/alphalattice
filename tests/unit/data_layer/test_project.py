@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.project import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.project import (
     definition_names,
     dims,
     input_digest,
@@ -17,7 +17,7 @@ from alphalattice.kernel.data_layer.project import (
     task_parent,
 )
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/project.py"
 MOMENTUM = "fixture-lineage-a"
 
 

@@ -17,16 +17,20 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
+from fnmatch import fnmatchcase
 from functools import cached_property, partial
 from importlib import import_module, resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
+from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Final, Literal
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     verify_upgrade_backups,
 )
@@ -42,11 +46,20 @@ from alphalattice.control.product_host.storage.backup import (
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStoreError
 from alphalattice.control.workspace_runtime.storage.capacity import FREE_FLOOR_BYTES
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.backup import backup_data_root, verify_data_root
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.data_layer.upgrade import PROGRESS, TARGET, Family, UpgradeRunner
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer.backup import backup_data_root, verify_data_root
+from alphalattice.foundation.data_layer.log import HostLog, uuid7
+from alphalattice.foundation.data_layer.upgrade import (
+    CLEAN,
+    PROGRESS,
+    TARGET,
+    Family,
+    InputStamp,
+    UpgradeRunner,
+    start_records,
+    workspace_files,
+    workspace_plan_prefix,
+)
+from alphalattice.kernel.identity import Stamp, file_stamp, handle_stamp, integrity_sha256_stream
 
 UNHELD: Final = ("data_layer.outcome_missing",)
 """The refusal that says only that the catalog holds no body for a chunk: no profile for its
@@ -116,16 +129,49 @@ def _declared_family(declaration: dict[str, str]) -> Callable[[], Family]:
     raise ValueError(f"unknown first-start adapter {mode} for {name}")
 
 
-def _registered_family(path: Traversable) -> Family:
-    """Resolve one declaration when discovery or recovery needs its family."""
+@dataclass(frozen=True)
+class _Registration:
+    """A family's input declaration can be read without loading its migration."""
+
+    name: str
+    trust_paths: tuple[str, ...]
+    shared_inputs: tuple[str, ...]
+    declaration: dict[str, str]
+
+    def __call__(self) -> Family:
+        try:
+            family = _declared_family(self.declaration)()
+            if family.name != self.name:
+                raise ValueError("the declared name differs from the family owner")
+        except (AttributeError, ImportError, KeyError, TypeError, ValueError) as error:
+            raise DataError(
+                f"cannot resolve the first-start family {self.name}",
+                code="data_layer.schema_mismatch",
+            ) from error
+        return replace(family, trust_paths=self.trust_paths, shared_inputs=self.shared_inputs)
+
+
+def _registration(path: Traversable) -> _Registration:
+    """Read one installed family declaration."""
     try:
-        factory = _declared_family(json.loads(path.read_text(encoding="utf-8")))
+        row = json.loads(path.read_text(encoding="utf-8"))
+        paths, shared = row["trust_paths"], row.get("shared_inputs", [])
+        for patterns in (paths, shared):
+            if not isinstance(patterns, list) or not all(
+                isinstance(pattern, str) and pattern.startswith(("/", "*/")) for pattern in patterns
+            ):
+                raise ValueError("invalid family trust paths")
+        return _Registration(
+            row["name"],
+            tuple(paths),
+            tuple(shared),
+            {"factory": row["factory"], "mode": row["mode"]},
+        )
     except (AttributeError, ImportError, KeyError, OSError, TypeError, ValueError) as error:
         raise DataError(
             f"cannot read first-start family registration {path.name}",
             code="data_layer.schema_mismatch",
         ) from error
-    return factory()
 
 
 def _declarations() -> list[Traversable]:
@@ -138,29 +184,98 @@ def _declarations() -> list[Traversable]:
     ]
 
 
-FAMILIES: Final = tuple(partial(_registered_family, path) for path in _declarations())
+_DECLARATION_FILES: Final = _declarations()
+FAMILIES: Final = tuple(_registration(path) for path in _DECLARATION_FILES)
 """Every upgrade family in migration order. Research-input copies go last, after the families
 that read them. The Task store and its telemetry move at first use by their own seams."""
 
-DECLARATIONS: Final = " ".join(path.name for path in _declarations())
-"""The numbered declarations in order: a workspace recorded as holding no family's old data is
-asked again when a family is added, removed or renumbered."""
+DECLARATIONS: Final = " ".join(path.name for path in _DECLARATION_FILES)
+"""The installed declarations in order. Changed declarations need new trust decisions."""
 
 
-def _examined(workspace: Path) -> str | None:
-    """What a clean answer for `workspace` covers: the declarations asked, and its manifest as
-    the file it is now. A restore writes every file of a workspace anew, into a fresh folder or
-    an empty one another workspace held, so its manifest is another file and it is asked again;
-    so is a workspace whose manifest the Host rewrote. The device, file number, change time and
-    write time together tell two files apart where any one of them can repeat. None when no
-    manifest file names the workspace (a Host given its manifest in memory): it is asked at
-    every start and nothing is recorded."""
-    try:
-        written = (workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).stat()
-    except FileNotFoundError:
-        return None
-    file = (written.st_dev, written.st_ino, written.st_ctime_ns, written.st_mtime_ns)
-    return f"{DECLARATIONS}|{':'.join(map(str, (*file, written.st_size)))}"
+def _examined(workspace: Path) -> list[object]:
+    """Use the workspace ID and the folder identity for restores and manifest-less opens."""
+    folder = workspace.stat()
+    return [named_workspace_id(workspace), folder.st_dev, folder.st_ino]
+
+
+def _shared_content(path: Path, stamp: Stamp) -> str:
+    """A hard link can change the file's change clock without touching its bytes."""
+    with path.open("rb") as stream:
+        digest = integrity_sha256_stream(stream).hexdigest()
+        if handle_stamp(stream) != stamp:
+            raise OSError(f"Upgrade input changed while being read: {path}")
+    return digest
+
+
+def _input_stamps(
+    workspace: Path,
+    owners: Mapping[str, _Registration | Family],
+    previous: Mapping[str, InputStamp],
+) -> dict[str, InputStamp]:
+    """Inventory the declared files once, using the last digest for unchanged shared files."""
+    examined = _examined(workspace)
+    found: dict[str, InputStamp] = {
+        name: {
+            "basis": [
+                DECLARATIONS,
+                owner.declaration if isinstance(owner, _Registration) else None,
+                list(owner.trust_paths),
+                list(owner.shared_inputs),
+                examined,
+            ],
+            "files": {},
+        }
+        for name, owner in owners.items()
+    }
+    if not any(owner.trust_paths for owner in owners.values()):
+        return found
+    for path in workspace_files(workspace):
+        key = "/" + path.relative_to(workspace).as_posix()
+        matching = [
+            name
+            for name, owner in owners.items()
+            if any(fnmatchcase(key, pattern) for pattern in owner.trust_paths)
+        ]
+        if not matching:
+            continue
+        stamp, linked = file_stamp(path), path.is_symlink()
+        metadata = list(stamp)
+        for name in matching:
+            content = None
+            if any(fnmatchcase(key, pattern) for pattern in owners[name].shared_inputs):
+                entry = previous.get(name)
+                prior = entry["files"].get(key) if entry is not None else None
+                if (
+                    prior is not None
+                    and prior["linked"] == linked
+                    and prior["metadata"] == metadata
+                ):
+                    content = prior["content"]
+                if content is None:
+                    content = _shared_content(path, stamp)
+            found[name]["files"][key] = {"linked": linked, "metadata": metadata, "content": content}
+    return found
+
+
+def _same_inputs(previous: InputStamp | None, current: InputStamp) -> bool:
+    if previous is None or previous["basis"] != current["basis"]:
+        return False
+    older, files = previous["files"], current["files"]
+    if older.keys() != files.keys():
+        return False
+    for path, stamp in files.items():
+        prior = older[path]
+        if prior == stamp:
+            continue
+        if (
+            stamp["content"] is None
+            or prior["content"] != stamp["content"]
+            or prior["linked"] != stamp["linked"]
+            or prior["metadata"][:-1] != stamp["metadata"][:-1]
+        ):
+            return False
+    return True
 
 
 State = Literal["PENDING", "RUNNING", "FAILED", "COMPLETED"]
@@ -179,11 +294,6 @@ def candidates(workspace: Path) -> tuple[Path, ...]:
             and (path / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
         }
     return tuple(sorted(found))
-
-
-def discover(workspaces: tuple[Path, ...], families: tuple[Family, ...]) -> tuple[Path, ...]:
-    """Those of `workspaces` holding a family's old data."""
-    return tuple(path for path in workspaces if any(f.holds(path) for f in families))
 
 
 @dataclass(frozen=True)
@@ -327,15 +437,36 @@ class FirstStart:
         """Read what the started workspace's Host owes: a recorded run, a new plan, or none."""
         self.root, self.log, self.workspace = root.resolve(), log, workspace.resolve()
         self.failure: str | None = None
+        self._candidates = candidates(self.workspace)
+        self._records, self._trusted = start_records(
+            log,
+            self.workspace,
+            self._candidates,
+            tuple(self._owners),
+            named_workspace_id(self.workspace),
+        )
+        self._loaded: dict[str, Family] = {}
         self.plan = self._due()
         self.state: State = "PENDING"
         if self.plan is not None and self.plan.recorded:
             self.state = "RUNNING"  # acknowledged when it started: it resumes as recorded
 
     @cached_property
+    def _owners(self) -> dict[str, _Registration | Family]:
+        """Installed signatures stay available even when their owners need not be imported."""
+        owners = [make if isinstance(make, _Registration) else make() for make in FAMILIES]
+        return {owner.name: owner for owner in owners}
+
+    def _family(self, name: str) -> Family:
+        if name not in self._loaded:
+            owner = self._owners[name]
+            self._loaded[name] = owner() if isinstance(owner, _Registration) else owner
+        return self._loaded[name]
+
+    @property
     def families(self) -> tuple[Family, ...]:
         """Open the upgrade families when the recorded progress leaves work to inspect or run."""
-        return tuple(make() for make in FAMILIES)
+        return tuple(self._family(name) for name in self._owners)
 
     def _runner(
         self,
@@ -344,6 +475,7 @@ class FirstStart:
         check: Any = None,
         *,
         families: tuple[Family, ...] = (),
+        startup: bool = False,
     ) -> UpgradeRunner:
         return UpgradeRunner(
             self.root,
@@ -352,6 +484,9 @@ class FirstStart:
             families,
             check or (lambda *_: {}),
             subject=subject,
+            records=self._records.get(subject, ()) if startup else None,
+            completion_inputs=self._completion_inputs if not startup else None,
+            settled_inputs=self._settled_inputs if not startup else None,
         )
 
     def _new_plan(self, subject: str, workspaces: tuple[Path, ...]) -> Plan:
@@ -362,62 +497,115 @@ class FirstStart:
         )
         return plan(subject, workspaces, families, self.root)
 
-    def _deferred_plan(self, subject: str, earlier: dict[str, Any]) -> Plan | None:
-        """An omitted family remains eligible after the workspace's other migrations finish."""
-        for family in self.families:
-            if family.deferred is None or family.name in earlier["families"]:
-                continue
-            own = f"{subject}/{family.name}"
-            workspaces = (self.workspace,)
-            follow = self._runner(own, workspaces, families=(family,))
-            if follow.complete:
-                continue
-            if follow.started is not None:
-                return recorded(own, follow.started)
-            if family.holds(self.workspace):
-                return plan(own, workspaces, (family,), self.root)
-        return None
+    def _completion_inputs(
+        self, family: Family, workspaces: tuple[Path, ...]
+    ) -> dict[str, InputStamp]:
+        """Seal what the family just verified under the workspace writer leases."""
+        declarations = {family.name: self._owners[family.name]}
+        return {
+            str(workspace): _input_stamps(workspace, declarations, {})[family.name]
+            for workspace in workspaces
+        }
+
+    def _settled_inputs(
+        self,
+        families: tuple[Family, ...],
+        workspaces: tuple[Path, ...],
+        verified: Mapping[str, dict[str, InputStamp]],
+    ) -> dict[str, dict[str, InputStamp]]:
+        """Recheck any verified input another family changed during the same upgrade."""
+        declarations = {family.name: self._owners[family.name] for family in families}
+        settled: dict[str, dict[str, InputStamp]] = {}
+        for workspace in workspaces:
+            folder = str(workspace)
+            previous = {
+                name: self._trusted[folder, name]
+                for name in declarations
+                if (folder, name) in self._trusted
+            }
+            previous.update(
+                {name: stamps[folder] for name, stamps in verified.items() if folder in stamps}
+            )
+            stamps = _input_stamps(workspace, declarations, previous)
+            for family in families:
+                stamp = stamps[family.name]
+                prior = previous.get(family.name)
+                if prior == stamp:
+                    continue
+                if family.deferred is not None and family.deferred(workspace):
+                    continue
+                if not _same_inputs(prior, stamp) and family.holds(workspace):
+                    raise DataError(
+                        f"Upgrade family {family.name} needs work after the recorded verification; "
+                        "restore the verified inputs before resuming.",
+                        code="upgrade.refused",
+                    )
+                settled.setdefault(folder, {})[family.name] = stamp
+        return settled
 
     def _due(self) -> Plan | None:
-        machine = self._runner(TARGET, ())
+        machine = self._runner(TARGET, (), startup=True)
         started = machine.started
-        if not machine.complete:
-            if started is not None:
-                return recorded(TARGET, started)
-            # a workspace asked once and holding nothing is not asked again in the same state:
-            # only an older version writes old data, and its way back is a restore
-            examined = {path: _examined(path) for path in candidates(self.workspace)}
-            asked = tuple(
-                path
-                for path, state in examined.items()
-                if state is None or not machine.none_due(path, state)
-            )
-            found = discover(asked, self.families) if asked else ()
-            if found:
-                return self._new_plan(TARGET, found)
-            for path in asked:
-                if (state := examined[path]) is not None:
-                    machine.record_none_due(path, state)
-            return None
-        subject = f"{TARGET}/{named_workspace_id(self.workspace)}"
-        if started is not None and any(
-            self.workspace == Path(row["workspace"]) for row in started["backups"]["workspaces"]
-        ):
-            return self._deferred_plan(subject, started)
-        alone = self._runner(subject, (self.workspace,))
-        started = alone.started
-        if started is not None:
-            if alone.complete:
-                return self._deferred_plan(subject, started)
-            return recorded(subject, started)
-        state = _examined(self.workspace)
-        if state is not None and alone.none_due(self.workspace, state):
-            return None
-        if not any(f.holds(self.workspace) for f in self.families):
-            if state is not None:
-                alone.record_none_due(self.workspace, state)
-            return None
-        return self._new_plan(subject, (self.workspace,))
+        if started is not None and not machine.complete:
+            return recorded(TARGET, started)
+        if machine.complete:
+            for subject in self._records:
+                if subject == TARGET:
+                    continue
+                other = self._runner(subject, (self.workspace,), startup=True)
+                pending = other.started
+                if (
+                    pending is not None
+                    and not other.complete
+                    and any(
+                        self.workspace == Path(row["workspace"])
+                        for row in pending["backups"]["workspaces"]
+                    )
+                ):
+                    return recorded(subject, pending)
+
+        holding: dict[Path, list[Family]] = {}
+        initial: set[Path] = set()
+        checked: dict[Path, dict[str, InputStamp]] = {}
+        workspaces = (self.workspace,) if machine.complete else self._candidates
+        for workspace in workspaces:
+            previous = {
+                name: self._trusted[str(workspace), name]
+                for name in self._owners
+                if (str(workspace), name) in self._trusted
+            }
+            if not machine.complete or not previous:
+                initial.add(workspace)
+            stamps = _input_stamps(workspace, self._owners, previous)
+            for name, stamp in stamps.items():
+                prior = previous.get(name)
+                if prior == stamp:
+                    continue
+                if _same_inputs(prior, stamp):
+                    checked.setdefault(workspace, {})[name] = stamp
+                    continue
+                family = self._family(name)
+                if family.deferred is not None and family.deferred(workspace):
+                    continue
+                if family.holds(workspace):
+                    holding.setdefault(workspace, []).append(family)
+                    if workspace in initial:
+                        break  # the first upgrade runs all eligible families in their order
+                else:
+                    checked.setdefault(workspace, {})[name] = stamp
+        if holding:
+            if not machine.complete:
+                return self._new_plan(TARGET, tuple(holding))
+            families = tuple(holding[self.workspace])
+            subject = f"{workspace_plan_prefix(self.workspace)}{uuid7()}"
+            if self.workspace in initial:
+                return self._new_plan(subject, (self.workspace,))
+            return plan(subject, (self.workspace,), families, self.root)
+        if checked:
+            recorder = self._runner(CLEAN, (), startup=True)
+            for workspace, stamps in checked.items():
+                recorder.record_none_due(workspace, DECLARATIONS, inputs=stamps)
+        return None
 
     def admit(self, plan_hash: object) -> None:
         """Take the acknowledgement of the plan shown; running it is the caller's next step."""
@@ -440,6 +628,7 @@ class FirstStart:
         """Write and verify the plan's missing backups, then run its families, each workspace held
         by its writer lease. A refusal is kept for the progress and the Host stays restricted."""
         assert self.plan is not None and self.state == "RUNNING"
+        began = perf_counter()
         try:
             with ExitStack() as leases:
                 for workspace in self.plan.workspaces:
@@ -450,7 +639,7 @@ class FirstStart:
                 runner = self._runner(
                     self.plan.subject, self.plan.workspaces, self._backups(), families=families
                 )
-                runner.run()
+                runner.run(began=began)
         except Exception as error:
             self.state, self.failure = "FAILED", refusal_reason(error)
             raise
@@ -489,7 +678,7 @@ class FirstStart:
         """The plan and progress /api/upgrade answers, in the upgrade overview's form: the
         acknowledgement it offers carries the plan hash as its `upgrade_set_hash`."""
         assert self.plan is not None
-        done, failed = [], None
+        done, failed, upgrade_seconds = [], None, None
         for (attrs,) in self.log.read(
             "SELECT attrs FROM event WHERE type = ? AND subject_id = ? ORDER BY seq",
             (PROGRESS, self.plan.subject),
@@ -499,6 +688,8 @@ class FirstStart:
                 done.append(event["family"])
             elif event["kind"] == "family_failed":
                 failed = event["family"]
+            elif event["kind"] == "completed":
+                upgrade_seconds = event.get("upgrade_seconds")
         pending = self.state == "PENDING"
         return {
             "status": "UPGRADE_OVERVIEW",
@@ -517,6 +708,7 @@ class FirstStart:
                 "families": list(self.plan.families),
                 "families_done": done,
                 "family_failed": failed,
+                "upgrade_seconds": upgrade_seconds,
                 "backups": list(self.plan.backups),
                 "refusal": self.failure or self.plan.refusal,
             },

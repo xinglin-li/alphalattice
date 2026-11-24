@@ -48,6 +48,9 @@ from uuid import UUID, uuid4
 
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
@@ -76,7 +79,6 @@ from alphalattice.control.observation_runtime.policy import (
     default_observation_policies,
 )
 from alphalattice.control.observation_runtime.profile import align_clock_inputs, stage_profile
-from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.native_usage_reader import UNVERIFIED_LIMIT
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
@@ -89,6 +91,10 @@ from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.timing import read_stage_spans, stage_spans_path
 from alphalattice.control.task_control.upgrade import set_aside
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.admit import SECRET_NAME
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
     ExternalActivityEventDocument,
@@ -131,14 +137,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.questions import asked_questions, person_question
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.admit import SECRET_NAME
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import ATTRS_CHARACTERS
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel import telemetry_names as telemetry
-from alphalattice.kernel.shared_kernel.clocks import clock_metadata
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.clock import clock_metadata, utc_now
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import worker_width
 
 """Under `<workspace>/runtime`, the same store the Desk publishers use."""
 
@@ -227,7 +228,7 @@ class WorkspaceActivity:
     workspace_id: str
     gate: WorkspaceMutationGate
     instance: str
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    clock: Callable[[], datetime] = utc_now
     native_usage_state: Callable[[], dict[str, object]] | None = None
     serving_host: dict[str, object] = field(default_factory=dict, init=False)
     """Optional Host-owned usage health read; only its safe status and reason are exposed."""
@@ -302,7 +303,10 @@ class WorkspaceActivity:
                 goal, operations.heartbeats.runtime_paths
             )
         dispatcher.on_command_returned = self.command_returned
-        self._wake_sender = ThreadPoolExecutor(max_workers=1, thread_name_prefix="codex-wake")
+        self._wake_sender = execution_port().register_pool(
+            ThreadPoolExecutor(max_workers=worker_width(1), thread_name_prefix="codex-wake"),
+            name="codex-wake",
+        )
         for held in registry.interrupt_wakes(observed_at=self.clock()):
             self._isolated(functools.partial(self._record_wake, held))
 
@@ -1271,6 +1275,8 @@ class WorkspaceActivity:
                         observations += checked
                     else:  # a hook's, or a review thread's acceptance: its Task from the thread
                         if subject.get("input_channel") == "PRODUCT_REVIEW":
+                            from . import committee  # lazy: research review on the activity feed
+
                             task = committee.accepted_task(
                                 operations.goals.store, str(subject.get("reference"))
                             )
@@ -1672,6 +1678,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     try:
         spawn.run(
             [codex, "queue", "--thread", thread, "--message", message],
+            process_kind="codex_wake_queue",
             check=True,
             capture_output=True,
             timeout=60,

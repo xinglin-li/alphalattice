@@ -8,10 +8,10 @@ import struct
 import numpy as np
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer.encoders import head, safetensors
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer.encoders import head, safetensors
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/encoders.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/encoders.py"
 
 
 def _file(path, tensors: dict[str, tuple[str, list[int], bytes]]) -> None:

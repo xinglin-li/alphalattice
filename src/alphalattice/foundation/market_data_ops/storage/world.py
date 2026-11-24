@@ -42,10 +42,22 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any, Final
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.quant.sector_history import SectorReclassification
 from alphalattice.control.workspace_runtime.database import (
     open_workspace_database,
     release_workspace_database,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.chain import canonical, digest
+from alphalattice.foundation.data_layer.log import attach
+from alphalattice.foundation.data_layer.project import (
+    ADMISSION_SUMMARY_TEXT_VERSION,
+    lineage,
+    require_lineage,
+)
+from alphalattice.foundation.data_layer.store import KNOWN, as_columns, newest, stage
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
     MarketProfile,
@@ -61,18 +73,6 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     UniverseWorkspaceReader,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.data_layer.chain import canonical, digest
-from alphalattice.kernel.data_layer.log import attach
-from alphalattice.kernel.data_layer.project import (
-    ADMISSION_SUMMARY_TEXT_VERSION,
-    lineage,
-    require_lineage,
-)
-from alphalattice.kernel.data_layer.store import KNOWN, as_columns, newest, stage
-from alphalattice.kernel.quant.sector_history import SectorReclassification
-from alphalattice.kernel.shared_kernel.environment import package_versions
 
 DATASET: Final = "market"
 WORKSPACE_MARKET_FORMAT: Final = "alphalattice.world-market.v1"

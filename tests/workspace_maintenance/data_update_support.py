@@ -9,12 +9,14 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
 )
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
 from alphalattice.evidence.alternative_evidence.runtime.execution import CpuBudgetStore
+from alphalattice.foundation.data_layer.history import carry_arrays
 from alphalattice.foundation.factor_research.publication.artifacts import (
     FactorResearchArtifactStore,
 )
@@ -31,8 +33,6 @@ from alphalattice.foundation.research_foundation.contracts import (
     PreResearchDeskSafeProjection,
     ResearchFoundationBinding,
 )
-from alphalattice.kernel.data_layer.history import carry_arrays
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     _resolved,
@@ -183,10 +183,14 @@ def maintenance_workspace(
 
 
 def _formula(factor_id: str, formula: str):
+    from alphalattice.capabilities.quant.factor_contracts import (
+        FactorFamily,
+        FactorSpec,
+        FactorTrack,
+    )
     from alphalattice.foundation.feature_engine.producers.factors.formula import (
         formula_specification,
     )
-    from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
     return formula_specification(
         FactorSpec(

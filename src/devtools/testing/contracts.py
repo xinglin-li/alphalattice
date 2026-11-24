@@ -13,6 +13,7 @@ import sys
 import sysconfig
 import tempfile
 import threading
+import time
 import zoneinfo
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -68,6 +69,54 @@ _INSTALLED = tuple(
     )
 )
 """What the interpreter installed: packages, its library and the timezone database."""
+_LIBRARIES = tuple(os.path.normcase(str(root)) + os.sep for root in _INSTALLED)
+"""Where an installed library's modules are compiled from, as a module's file name starts."""
+
+
+class _LibraryImportClock:
+    """A meta path finder timing an installed library's first import while a unit test runs: the
+    library's own execution, outermost only and paid by the measured phase's own thread, so the
+    test's own-phase budget leaves out only what delayed that phase
+    (`LayerContract.library_import_seconds`). Another thread's import is not timed. It finds each
+    module as the finders after it would and changes nothing they find."""
+
+    def __init__(self, contract: LayerContract) -> None:
+        self.contract = contract
+        self.phase = threading.get_ident()  # the thread the measured phase runs on
+        self.timing = False
+
+    def find_spec(self, name: str, path: Any = None, target: Any = None) -> Any:
+        if threading.get_ident() != self.phase or self.timing or self not in sys.meta_path:
+            return None  # another thread's, or inside a timed import whose imports are its time
+        for finder in sys.meta_path[sys.meta_path.index(self) + 1 :]:
+            find = getattr(finder, "find_spec", None)
+            spec = None if find is None else find(name, path, target)
+            if spec is not None:
+                break
+        else:
+            return None
+        loader = spec.loader
+        if (
+            spec.origin is None
+            or not os.path.normcase(spec.origin).startswith(_LIBRARIES)
+            or isinstance(loader, type)
+            or not hasattr(loader, "__dict__")
+        ):
+            return spec
+        inner = loader.exec_module
+
+        def exec_module(module: ModuleType) -> None:
+            del loader.exec_module  # the loader's own method again
+            self.timing = True
+            started = time.perf_counter()
+            try:
+                inner(module)
+            finally:
+                self.timing = False
+                self.contract.library_import_seconds += time.perf_counter() - started
+
+        loader.exec_module = exec_module
+        return spec
 
 
 class LayerContract:
@@ -79,6 +128,8 @@ class LayerContract:
         self._descriptors: dict[int, tuple[Path, tuple[int, int, int]]] = {}
         self._descriptor_lock = threading.RLock()
         self._opening = threading.local()
+        self.library_import_seconds = 0.0
+        """The time a library's first import took while this test ran (`_LibraryImportClock`)."""
         self.backends = (
             backend_catalog() if layer == "unit" and backends is None else backends or ()
         )
@@ -92,7 +143,7 @@ class LayerContract:
         )
 
     def dependency(self, name: str) -> None:
-        if self.layer != "unit":
+        if self.layer != "unit" or self.library_importing():
             return
         if violations := import_violations((name,), self.layer, self.backends):
             raise AssertionError(violations[0])
@@ -232,6 +283,10 @@ class LayerContract:
         if event == "import":
             self.dependency(str(args[0]))
         elif event in {"subprocess.Popen", "os.system", "os.startfile", "ctypes.dlopen"}:
+            if event == "ctypes.dlopen" and (
+                self.file_stamp_load(args[0]) or self.library_importing()
+            ):
+                return
             self.refuse(event + ": " + str(args[0]))
         elif event in {"os.listdir", "os.scandir"}:
             if not self.import_read():
@@ -289,6 +344,48 @@ class LayerContract:
         return isinstance(raw, int) or Path(os.fsdecode(raw)).resolve().is_relative_to(
             self.report_temp
         )
+
+    def file_stamp_load(self, raw: Any) -> bool:
+        """The identity owner's file stamp reading the Windows change clock: a file stat, which
+        needs kernel32 for GetFileInformationByHandleEx. Only that library, loaded directly by
+        that one caller; every other native load stays refused."""
+        if str(raw).lower() not in {"kernel32", "kernel32.dll"}:
+            return False
+        frame: FrameType | None = sys._getframe(1)
+        while frame and frame.f_globals.get("__name__") in {
+            __name__,
+            "devtools.testing.audit",
+            "ctypes",
+        }:
+            frame = frame.f_back
+        return bool(
+            frame
+            and frame.f_globals.get("__name__") == "alphalattice.kernel.identity.file_facts"
+            and frame.f_code.co_name == "handle_stamp"
+        )
+
+    def library_importing(self) -> bool:
+        """Whether an installed library (never the product's src/) is being imported, so the
+        native load or import now made is that library's own, as pandas loads user32 through
+        dateutil and imports subprocess at its import: a library's first use, which lands in
+        whichever test imports it first. The module whose import is nearest decides; what a
+        product module's import makes, and every load or import outside an import, stay
+        refused."""
+        frame: FrameType | None = sys._getframe(1)
+        while frame:
+            caller = frame.f_back
+            if (
+                frame.f_code.co_name == "<module>"
+                and caller is not None
+                and caller.f_globals.get("__name__", "").startswith(
+                    ("importlib.", "_frozen_importlib")
+                )
+            ):
+                # The import system compiles a module from its absolute file name; a name
+                # spelled otherwise matches no root and stays refused.
+                return os.path.normcase(frame.f_code.co_filename).startswith(_LIBRARIES)
+            frame = caller
+        return False
 
     def import_read(self) -> bool:
         """Only the importing reader itself, not arbitrary code called during an import."""
@@ -371,6 +468,9 @@ class LayerContract:
                 for name in ("socket", "getaddrinfo", "gethostbyname"):
                     stack.callback(setattr, socket, name, getattr(socket, name))
                 disable_socket()
+                clock = _LibraryImportClock(self)
+                sys.meta_path.insert(0, clock)
+                stack.callback(sys.meta_path.remove, clock)
 
                 def importing(
                     name: str,

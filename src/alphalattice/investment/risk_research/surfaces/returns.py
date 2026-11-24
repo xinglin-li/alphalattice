@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -18,6 +17,11 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.domain_contracts.arrow_identity import (
+    canonical_hash_with_row_lists,
+    canonical_row_hashes,
+)
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
@@ -43,11 +47,7 @@ from alphalattice.investment.risk_research.contracts import (
     RiskUniverseEpoch,
     seal_contract,
 )
-from alphalattice.kernel.shared_kernel.arrow_identity import (
-    canonical_hash_with_row_lists,
-    canonical_row_hashes,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 type FloatArray = NDArray[np.float64]
 _PREFIX = "playpen://data-operations/risk-returns/"
@@ -214,7 +214,7 @@ class RiskReturnArtifactStore:
             first_formation_session=sessions[0],
             last_formation_session=sessions[-1],
             content_hash=content_hash,
-            metadata_hash=hashlib.sha256(serialized_metadata).hexdigest(),
+            metadata_hash=integrity_sha256(serialized_metadata).hexdigest(),
             uri=self.chunk_uri(content_hash),
         )
 
@@ -241,7 +241,7 @@ class RiskReturnArtifactStore:
         return ArtifactDescriptor(
             kind="causal-risk-return-surface",
             content_hash=surface.surface_hash,
-            metadata_hash=hashlib.sha256(content).hexdigest(),
+            metadata_hash=integrity_sha256(content).hexdigest(),
             uri=self.manifest_uri(surface.surface_hash),
         )
 
@@ -342,7 +342,7 @@ class RiskReturnArtifactStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
-        if hashlib.sha256(serialized).hexdigest() != chunk.metadata_hash:
+        if integrity_sha256(serialized).hexdigest() != chunk.metadata_hash:
             raise RiskReturnSurfaceError("risk_research.return_chunk_metadata_tampered")
         ordered = table.sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
         if ordered.num_rows == 0 or ordered.num_rows != chunk.row_count:

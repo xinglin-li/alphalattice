@@ -1,5 +1,8 @@
 # Getting started
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
+
+For the versioned wheel command and Claude Code plugin, see
+[Install and start](install.md) / [安装并启动](install.md).
 
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
@@ -178,6 +181,8 @@ alphalattice cpu-budget set --cores auto
 `show` reports capacity, load and work. `auto` uses processors not already
 busy when work starts; a positive count bounds preparation CPU use without
 changing the calculation. Queue capacity is a separate `--queue` setting.
+The Host sizes its shared catalog's DuckDB pools at startup. Restart the Host
+to apply a changed budget to those pools.
 
 After preparation publishes an input, [Research flows](research-flows.md)
 explains the research choices. [CLI](cli.md) explains answers and continuations,

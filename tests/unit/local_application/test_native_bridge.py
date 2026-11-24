@@ -6,6 +6,7 @@ import os
 import pytest
 
 from alphalattice.interface.local_application import native_bridge
+from alphalattice.kernel.config import Config
 
 TEST_SOURCE = "src/alphalattice/interface/local_application/native_bridge.py"
 
@@ -35,7 +36,9 @@ def test_codex_trust_is_read_at_the_project_root_with_the_persons_step(
     (project / "research").mkdir()
     home.mkdir()
     system.parent.mkdir(parents=True)
-    monkeypatch.setattr(native_bridge, "codex_system_config", lambda _env: system, raising=False)
+    folds = os.name == "nt"  # Windows paths are case-insensitive; Codex folds them there only
+    if not folds:
+        monkeypatch.setattr(native_bridge, "codex_system_config", lambda _env: system)
     root = str(project.resolve())
     keyed = {
         "trusted-folded": root.swapcase(),
@@ -46,11 +49,13 @@ def test_codex_trust_is_read_at_the_project_root_with_the_persons_step(
         level = "untrusted" if entry in {"untrusted", "system-untrusted"} else "trusted"
         text = f'[projects.{json.dumps(keyed)}]\ntrust_level = "{level}"\n'
         layer.write_text("[[not toml" if entry == "unreadable" else text, encoding="utf-8")
-    environ = {"CODEX_HOME": str(home), "ProgramData": str(tmp_path / "system")}
+    program_data = "PROGRAMDATA" if entry == "system-untrusted" else "ProgramData"
+    environ = Config({"CODEX_HOME": str(home), program_data: str(tmp_path / "system")}).public
+    if folds:
+        assert native_bridge.codex_system_config(environ) == system
 
     trust = native_bridge.codex_project_trust(project / "research", environ)
 
-    folds = os.name == "nt"  # Windows paths are case-insensitive; Codex folds them there only
     if entry == "unreadable":
         named = trust["config"] in str(trust.get("words"))
         assert (trust["present"], trust["config"], named) == (None, str(layer), True)

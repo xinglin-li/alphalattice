@@ -19,6 +19,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
     BoundPolicyDecisionInput,
     CausalRankReturnCurveSlice,
@@ -36,7 +37,6 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAllocationProjection,
 )
-from alphalattice.kernel.shared_kernel import spawn
 
 LISTINGS = 120
 BUCKETS = 4

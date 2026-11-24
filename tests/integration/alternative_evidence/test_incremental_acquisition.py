@@ -31,7 +31,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecEdgarSource,
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
-from alphalattice.kernel.data_layer import recall
+from alphalattice.foundation.data_layer import recall
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     EIGHT_K,

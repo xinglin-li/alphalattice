@@ -7,13 +7,15 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
     ONE_THREAD_VARIABLES,
@@ -23,7 +25,15 @@ from alphalattice.control.task_control.child import (
     child_calls,
     run_in_child,
 )
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.foundation.data_layer import create_data_root, reading
+from alphalattice.foundation.data_layer.log import HostLog
+from alphalattice.kernel.execution import (
+    CANCELLED,
+    cancel_execution,
+    execution_cancellation,
+    stop_reason,
+)
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 
 HERE = __spec__.name if __spec__ else __name__
 
@@ -92,6 +102,7 @@ def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> Non
     )
     from alphalattice.control.task_control.runner import TaskControlRunner
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+    from alphalattice.foundation.data_layer import history
     from alphalattice.investment.alpha_research.candidates.contracts import (
         AlphaExperimentBatch,
         seal_contract,
@@ -102,7 +113,6 @@ def _check_alpha_child_parts(tmp_path: Path, *, interruption: str | None) -> Non
     from alphalattice.investment.alpha_research.experiments.development_execution import (
         AlphaDevelopmentCancelled,
     )
-    from alphalattice.kernel.data_layer import history
     from tests.alpha_research.fixtures import _plan_and_workspace
     from tests.integration.alpha_research.test_model_adapter_boundary import _batch, _program
     from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter, task_contract
@@ -223,7 +233,7 @@ def _no_kept_workers():
 
 @pytest.mark.parametrize("spread", [False, True])
 @pytest.mark.parametrize("at", ["constructor", "start"])
-@pytest.mark.parametrize("error_type", [OSError, MemoryError])
+@pytest.mark.parametrize("error_type", [OSError, MemoryError], ids=lambda error: error.__name__)
 def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
     monkeypatch, spread, at, error_type
 ):
@@ -259,7 +269,7 @@ class _Declared(RuntimeError):
 
 
 def doubled(*, value: int, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
-    from alphalattice.kernel.data_layer.root import data_root
+    from alphalattice.foundation.data_layer.root import data_root
 
     return {"value": value * 2, "pid": os.getpid(), "root": str(data_root())}
 
@@ -271,16 +281,23 @@ def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-
 def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
     import numpy as np
 
-    from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
+    from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
+    from alphalattice.kernel.resources import current_resource_lease
 
+    grant = current_resource_lease()
     values = np.arange(64, dtype=np.float64).reshape(8, 8)
     before = numerical_thread_counts()
     product = values @ values.T
-    return {"counts": before, "after": numerical_thread_counts(), "product": product.tolist()}
+    return {
+        "counts": before,
+        "after": numerical_thread_counts(),
+        "product": product.tolist(),
+        "granted_cpu": grant.amounts.cpu if grant is not None else None,
+    }
 
 
 def limited_once(*, cancelled) -> None:  # type: ignore[no-untyped-def]
-    from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
+    from alphalattice.capabilities.domain_contracts.environment import numerical_thread_limit
 
     with numerical_thread_limit(1):  # loads the libraries a limit holds, as a fit's first does
         pass
@@ -342,7 +359,7 @@ def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
         _check_alpha_child_parts(tmp_path, interruption=None if case == "complete" else case)
         return
 
-    from alphalattice.kernel.data_layer.root import DATA_ROOT_ENV
+    from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV
 
     monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "first"))
     first = run_in_child(f"{HERE}:doubled", {"value": 21})
@@ -372,19 +389,24 @@ def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() 
 
     answer = run_in_child(f"{HERE}:until_cancelled", {"seconds": 30.0}, cancelled=cancelled)
     assert answer == "cancelled"
+    from alphalattice.control.task_control import child
+
+    processes = tuple(child._WORKERS[0]._processes.values())
+    assert len(processes) == 1
     with pytest.raises(ChildInterrupted, match="child_process_ended"):
         run_in_child(f"{HERE}:ended", {})
+    assert processes[0].exitcode == 7
     assert run_in_child(f"{HERE}:doubled", {"value": 5})["value"] == 10
 
 
 def test_stage_plans_keep_both_consumers_canonical_work_items() -> None:
     """The shared stage constructor preserves both consumers' complete plans and work items."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition import (
         research_experiments,
         strategy_calibration,
     )
     from alphalattice.control.task_control.contracts import ResearchPlan, WorkItemDefinition
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     for owner, namespace in (
         (research_experiments, "research_experiment"),
@@ -444,17 +466,17 @@ def test_a_fit_log_records_the_numerical_thread_counts(tmp_path: Path) -> None:
 
     import numpy  # noqa: F401 -- the Host's numerical libraries are loaded when it fits
 
-    from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
-    from alphalattice.kernel.shared_kernel.environment import (
+    from alphalattice.capabilities.domain_contracts.environment import (
         numerical_thread_counts,
         numerical_thread_limit,
     )
+    from alphalattice.evidence.alternative_evidence.runtime.execution import ModelFitExecution
 
     # Exercise a fresh process: no prior cached pool view may hide the Windows race.
     probe = """import importlib
 import numpy
 import threadpoolctl
-from alphalattice.kernel.shared_kernel import environment
+from alphalattice.capabilities.domain_contracts import environment
 # Fit loads its numerical libraries before reading their thread pools.
 with environment.numerical_thread_limit(1):
     pass
@@ -587,7 +609,16 @@ def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged
         assert answer["product"] == expected
         assert answer["counts"] and all(threads == 1 for _api, threads in answer["counts"])
         assert answer["after"] == answer["counts"]
+    from alphalattice.kernel.resources import ResourceAmounts, ResourceLeases, use_resource_lease
+
+    amounts = ResourceAmounts(cpu=1, workers=1)
+    with use_resource_lease(ResourceLeases(amounts).grant("child-test", amounts)):
+        scoped = run_in_child(f"{HERE}:numerical_product", {})
+    assert scoped["granted_cpu"] == 1, "the kept child carries the Task's CPU grant"
+    assert scoped["counts"] and all(threads == 1 for _api, threads in scoped["counts"])
+    assert scoped["counts"] == scoped["after"] and scoped["product"] == expected
     again = run_in_child(f"{HERE}:numerical_product", {})
+    assert again["granted_cpu"] is None
     assert ordinary["counts"] and ordinary["counts"] == ordinary["after"]
     assert again["counts"] == again["after"] == ordinary["counts"]
     assert ordinary["product"] == again["product"] == expected
@@ -616,9 +647,10 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     stopped = tmp_path / "stopped"
     with monkeypatch.context() as patch:
         patch.setattr(multiprocessing.get_context("spawn").Process, "start", fail_second)
-        with child_calls(f"{HERE}:thread_variables", workers=2) as preparation:
-            preparation.make({})
-            preparation.answer()
+        # The worker reports its own PID: on Linux the started process is its pool guardian.
+        with child_calls(f"{HERE}:doubled", workers=2) as preparation:
+            preparation.make({"value": 0})
+            worker = preparation.answer()["pid"]
         with (
             pytest.raises(ChildStartFailed, match=r"^task_control\.child_start_failed$"),
             child_calls(f"{HERE}:observe_cancellation", workers=2) as calls,
@@ -633,7 +665,7 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     assert time.monotonic() - refused_at < 3
     assert stopped.read_text(encoding="utf-8") == "cancelled"
     # The first worker is intentionally kept idle; its next answer proves no owned call remains.
-    assert run_in_child(f"{HERE}:doubled", {"value": 21})["pid"] == processes[0].pid
+    assert run_in_child(f"{HERE}:doubled", {"value": 21})["pid"] == worker
     with child_calls(f"{HERE}:doubled", workers=2) as calls:
         calls.make({"value": 21})
         calls.make({"value": 22})
@@ -657,7 +689,7 @@ def shared_length(value: int, payload: _Counted, cancelled) -> dict[str, int]:
     return {"value": value, "length": len(payload.data)}
 
 
-def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypatch) -> None:
+def _check_idle_worker_retirement(monkeypatch) -> None:
     """Kept workers are capped however many cores, and one idle past its wait ends; the next
     call starts it again with the same answer."""
     from alphalattice.control.observation_runtime.telemetry.process_metrics import (
@@ -679,6 +711,88 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(monkeypat
     with child_calls(f"{HERE}:doubled", workers=1) as calls:
         calls.make({"value": 5})
         assert calls.answer()["value"] == 10
+
+
+@pytest.mark.proves("task_control.ahead_children_follow_their_owner")
+@pytest.mark.parametrize(
+    "case", ["idle", "used", "unused", "cancelled-during-start", "worker-dies", "reader-dies"]
+)
+def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path, monkeypatch, case):
+    """Start ahead, use the same leased worker, and join or replace at the owner's boundary."""
+    if case == "idle":
+        _check_idle_worker_retirement(monkeypatch)
+        return
+    if case == "reader-dies":
+        create_data_root(tmp_path)
+        with HostLog.open(tmp_path):
+            reader = reading.LogReader(tmp_path)
+            try:
+                reader.start_ahead()
+                first = reader._child
+                assert first is not None
+                first.kill()
+                first.wait(timeout=10)
+                reader.start_ahead()
+                assert reader._child is first
+                assert reader.read("goal_notes") == []
+                replacement = reader._child
+                assert replacement is not None and replacement is not first
+            finally:
+                reader.close()
+        assert replacement.poll() is not None
+        return
+
+    pools = []
+
+    class Pool:
+        def __init__(self, **_):
+            self._processes = {1: self}
+            self.broken = False
+            self.started = False
+            self.stopped = False
+            self.joined = False
+            pools.append(self)
+
+        def submit(self, call, *_):
+            future = Future()
+            if call is child.os.getpid:
+                self.started = True
+                return future  # the start can still be in flight when the Task ends
+            if self.broken:
+                raise child.BrokenProcessPool
+            future.set_result({"status": "OK", "result": self})
+            return future
+
+        def terminate(self):
+            self.stopped = True
+
+        def shutdown(self, *, wait, cancel_futures):
+            self.joined = wait
+            self._processes.clear()
+
+    monkeypatch.setattr(child, "ProcessPoolExecutor", Pool)
+    monkeypatch.setattr(child.spawn, "stop_pool", lambda pool: pool.terminate())
+    execution = UUID(int=3)
+    lease = ResourceLease(execution, ResourceAmounts(cpu=4, workers=3))
+    with use_resource_lease(lease), execution_cancellation(execution):
+        with child.warm_child_workers(4, modules=("fixture",)) as start:
+            start()
+            assert len(pools) == 3 and all(pool.started for pool in pools)
+            if case == "cancelled-during-start":
+                cancel_execution(execution)
+                assert stop_reason() == CANCELLED
+            elif case == "worker-dies":
+                pools[0].broken = True
+                with pytest.raises(
+                    child.ChildInterrupted, match=r"^task_control\.child_process_ended$"
+                ):
+                    child.run_in_child("fixture:work", {})
+                assert child.run_in_child("fixture:work", {}) is pools[3]
+            elif case == "used":
+                assert child.run_in_child("fixture:work", {}) is pools[0]
+                assert len(pools) == 3
+        assert all(pool.joined and not pool._processes for pool in pools)
+        assert all(pool.stopped for pool in pools[1:])
 
 
 def test_a_shared_argument_ships_once_to_each_worker_of_a_call_set() -> None:

@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import json
 import os
-from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
 import pyarrow.parquet as pq
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 from .contracts import SectorContextManifest
 from .surface import SectorContextBoundaryError, SectorContextSurface
@@ -57,7 +57,7 @@ class SectorContextStore:
             SectorContextBoundaryError: Payload digest is invalid or an existing identity has
                 different bytes.
         """
-        if sha256(payload).hexdigest() != manifest.payload_sha256:
+        if integrity_sha256(payload).hexdigest() != manifest.payload_sha256:
             raise SectorContextBoundaryError("alpha_research.sector_context_payload_invalid")
         data = self.root / "surfaces" / f"{manifest.manifest_hash}.parquet"
         meta = self.root / "manifests" / f"{manifest.manifest_hash}.json"
@@ -91,7 +91,7 @@ class SectorContextStore:
         try:
             manifest = SectorContextManifest.model_validate_json(meta.read_bytes())
             payload = data.read_bytes()
-            if sha256(payload).hexdigest() != manifest.payload_sha256:
+            if integrity_sha256(payload).hexdigest() != manifest.payload_sha256:
                 raise SectorContextBoundaryError("alpha_research.sector_context_payload_tampered")
             table = pq.read_table(data).combine_chunks()
             table_hash = str(

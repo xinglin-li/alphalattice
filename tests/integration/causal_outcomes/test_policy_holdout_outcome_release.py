@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
     _ExecutionOutcomeArtifactStore,
 )
@@ -24,7 +25,6 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
     CausalExecutionOutcomePolicyHoldoutReader,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
@@ -32,7 +32,7 @@ PLAYPEN_SRC = PLAYPEN_ROOT / "src"
 
 @pytest.fixture
 def outcome_catalog(tmp_path, monkeypatch):
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     root = tmp_path / "data-root"
     monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
@@ -290,8 +290,8 @@ def test_existing_release_index_requires_an_exact_schema(
     # An outcome is catalog-backed and repeat publication keeps one artifact.
     import pyarrow as pa
 
-    from alphalattice.kernel.data.errors import DataError
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.foundation.data_layer import history
 
     root = history.data_root()
 
@@ -345,7 +345,7 @@ def test_existing_release_index_requires_an_exact_schema(
     from alphalattice.foundation.causal_outcomes.execution.readers import (
         execution_outcome_upgrade_family,
     )
-    from alphalattice.kernel.data_layer.upgrade import UpgradeRunner
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
 
     old_workspace = tmp_path / "old-workspace"
     old = _ExecutionOutcomeArtifactStore(old_workspace / "artifacts")
@@ -503,7 +503,7 @@ def test_policy_holdout_reader_rejects_value_tamper_with_preserved_metadata(
     outcome_catalog,
 ) -> None:
     reader, sealed = _reader(tmp_path)
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     artifact = history.holding().read(
         "SELECT artifact_id FROM artifact WHERE content_digest = ?", (sealed.content_hash,)

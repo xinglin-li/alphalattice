@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 from collections import Counter
@@ -17,6 +16,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -49,8 +50,8 @@ from alphalattice.foundation.feature_engine.panels.logical_semantic_index import
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
 )
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.identity import identity_sha256
 
 _Model = TypeVar("_Model", bound=BaseModel)
 _RESERVED_COLUMNS = frozenset(
@@ -217,7 +218,7 @@ class PanelLogicalIdentityPublisher:
         existing = self._store.marker_for_snapshot(snapshot_hash)
         if existing is not None:
             return existing
-        observed = published_at or datetime.now(UTC)
+        observed = published_at or observation_time()
         if observed.tzinfo is None or observed.utcoffset() is None:
             raise ValueError("Panel logical publication clock must be timezone-aware")
         built = self._build_logical_authorities(manifest)
@@ -742,7 +743,7 @@ def _column_mask_and_bits(column: pa.ChunkedArray) -> tuple[np.ndarray, np.ndarr
 def _logical_column_digest(
     *, factor_id: str, key_hash: str, valid: np.ndarray, bits: np.ndarray
 ) -> str:
-    digest = hashlib.sha256(b"PanelLogicalValueColumn\0")
+    digest = identity_sha256(b"PanelLogicalValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
@@ -769,13 +770,13 @@ def logical_session_digest(
         raise ValueError("logical Panel session matrix differs from its axes")
     axis = (factor_axis_hash or canonical_hash(factor_ids)).encode("ascii")
     session_text = session.isoformat().encode("ascii")
-    digest = hashlib.sha256(b"FeaturePanelLogicalSession\0")
+    digest = identity_sha256(b"FeaturePanelLogicalSession\0")
     digest.update(session_text)
     digest.update(struct.pack(">I", len(listing_ids)))
     # Each row's hash is the same bytes in the same order as one update per field: its
     # session's prefix hashed once and copied, and its validity and bits sliced from the
     # session's matrices, row by row as they lie.
-    prefix = hashlib.sha256(b"FeaturePanelLogicalRow\0" + session_text)
+    prefix = identity_sha256(b"FeaturePanelLogicalRow\0" + session_text)
     valid_cells = np.ascontiguousarray(valid)
     bits_cells = np.ascontiguousarray(bits)
     valid_width = valid_cells.itemsize * len(factor_ids)

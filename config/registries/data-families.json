@@ -1149,6 +1149,25 @@
         "task_control.runner"
       ]
     },
+    "task-scratch": {
+      "summary": "temporary child calls and their directory ownership record for one workspace Task",
+      "class": "cache-scratch",
+      "tier": 4,
+      "home": "staging/task-scratch/<task-id>",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "retire": "released when the Task closes or when the workspace writer proves its recorded lease ended",
+      "authority_owners": [
+        "task_control.scratch.own_task_scratch"
+      ],
+      "writers": [
+        "task_control.scratch:own_task_scratch"
+      ],
+      "readers": [
+        "product_host.composition.application_session",
+        "task_control.child"
+      ]
+    },
     "task-heartbeats": {
       "summary": "a running Task's lease and deadline on the held log; old sidecars are verified and set aside",
       "class": "cache-scratch",
@@ -2415,6 +2434,26 @@
       "store_step": "Portfolio research pipeline log store",
       "placement_reason": "The Host writes research pipeline and update transitions for Portfolio operations and history; their registered home is log task and event."
     },
+    "workspace-decisions": {
+      "summary": "pending questions, scoped person decisions and one-use approvals",
+      "class": "authority-setting",
+      "tier": 3,
+      "home": "workspace runtime decisions.sqlite3, table decision",
+      "location": "workspace-runtime",
+      "bytes": null,
+      "covers": [
+        "table:decision"
+      ],
+      "authority_owners": [
+        "door.decisions.Decisions"
+      ],
+      "persistence_owner": "door.decisions:Decisions",
+      "writers": [],
+      "readers": [
+        "product_host.composition.portfolio_research_operations",
+        "product_host.publication.goals"
+      ]
+    },
     "goals": {
       "summary": "the Host's Goals",
       "class": "event-log",
@@ -3121,15 +3160,18 @@
       ]
     },
     "verified-file-facts": {
-      "summary": "verified file facts kept for re-proof on read",
+      "summary": "verified file facts and each file's trusted digest, kept until the file's stamp changes",
       "class": "cache-scratch",
       "tier": 3,
       "retire": "re-proof on read retires in the 0.2.8 data layer: reads trust the catalog's registration, so no reader needs the stored proof",
       "location": "workspace-runtime",
       "bytes": null,
       "writers": [
-        "workspace_runtime.verified_facts:keep_file_facts",
-        "workspace_runtime.verified_facts:record_file_fact"
+        "identity.file_facts:FileDigestTrust",
+        "workspace_runtime.verified_facts:FileTrustScrub",
+        "workspace_runtime.verified_facts:_TrustJournal",
+        "workspace_runtime.verified_facts:_append",
+        "workspace_runtime.verified_facts:_journal"
       ],
       "readers": [
         "feature_engine.panels.closure",
@@ -3139,6 +3181,7 @@
         "feature_engine.storage.repositories",
         "market_data_ops.storage.duckdb",
         "product_host.composition.strategy_score_inputs",
+        "product_host.composition.verification_sweep",
         "workspace_runtime.content_store",
         "workspace_runtime.writer_lease"
       ]
@@ -3232,7 +3275,7 @@
       "location": "workspace-runtime",
       "bytes": null,
       "writers": [
-        "product_host.composition.entry:main",
+        "product_host.composition.entry:_run",
         "product_host.composition.web_launcher:_detach",
         "task_control.child:_call"
       ],
@@ -3724,15 +3767,17 @@
       "summary": "the 0.2.8 data root's databases: the event log with its definition registry, the search index, and the Host's lock",
       "class": "event-log",
       "tier": 1,
-      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, with the knowledge store's tables, the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<artifact_id>, each research-input file and binding manifest the input door keeps (data_layer.inputs), and views/research-inputs/<pin_id>/, each kept binding linked as its folder, rebuilt on a miss",
+      "home": "the data root itself: log.sqlite (log.sql), written only by the Host's append, with the knowledge store's tables, the DuckLake catalog (catalog.sql) with its data/ files, written only by StorePort after its Parquet is staged under staging/, machine/host.lock, the one Host's lock naming its holder, machine/workers/<pid>.json, each Task worker a Host started (its pid and start time and its Host's), removed by a later Host's start once it ends, blobs/<BLAKE3 hex>, each experience body the renderer keeps, blobs/<artifact_id>, each array body the array door keeps (data_layer.arrays), staged beside its place as blobs/.<artifact_id>.<pid>.staging, and blobs/<artifact_id>, each research-input file and binding manifest the input door keeps (data_layer.inputs), and views/research-inputs/<pin_id>/, each kept binding linked as its folder, rebuilt on a miss",
       "location": "machine-data-root",
       "bytes": null,
       "writers": [
         "data_layer.log:HostLog",
         "data_layer.log:_sync",
         "data_layer.log:hold",
+        "data_layer.log:record_worker",
         "data_layer.log:replay",
         "data_layer.root:_database",
+        "data_layer.root:enable_catalog_wal",
         "data_layer.store:stage",
         "data_layer.backup:restore_data_root",
         "data_layer.backup:_relocate_catalog",
@@ -3756,9 +3801,9 @@
     }
   },
   "helpers": {
-    "shared_kernel.persistence:write_new": "the shared create-only write; each caller is a family's writer",
-    "shared_kernel.persistence:replace_with_retry": "the shared atomic replace; each caller is a family's writer",
-    "workspace_runtime.reader_threads:connect_duckdb": "opens the workspace database for its repositories, whose tables the storage authorities list"
+    "domain_contracts.persistence:write_new": "the shared create-only write; each caller is a family's writer",
+    "domain_contracts.persistence:replace_with_retry": "the shared atomic replace; each caller is a family's writer",
+    "workspace_runtime.reader_threads:_DuckDB": "the storage port's driver, which opens every DuckDB instance: the workspace database for its repositories, whose tables the storage authorities list, and the in-memory sessions"
   },
   "not_persisting": {
     "data_layer.backup:verify_data_root": "opens the source log with mode=ro to bind the verified backup to its saved history prefix; it reads seals and objects and never writes a store",
@@ -3777,8 +3822,10 @@
     "product_host.composition.research_update_automation:ResearchUpdateAutomation": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "portfolio_strategy_lab.publication.finalization_ledger:PortfolioFinalizationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
     "model_validation.protected_gate:ProtectedValidationStore": "reopens a committed record by its kind and key through CommittedIndex.open; the committed index's own writes are the content-store family's",
-    "product_host.composition.saved_object_readback:_request": "opens an HTTP request with urllib's opener",
-    "product_host.composition.web_launcher:main": "opens the person's browser at a URL with webbrowser.open",
+    "product_host.composition.web_launcher:_serve": "opens the person's browser at a URL with webbrowser.open",
+    "execution.linux_scope:LinuxScope": "reads Linux cgroup counters and signals the kernel through cgroup.kill without writing application data",
+    "execution.linux_scope:attach": "sets cgroup controller values and process membership under an owned transient Linux scope without writing application data",
+    "execution.linux_scope:worker_scope": "enrolls a worker in its kernel cgroup without writing application data",
     "alternative_evidence.sources.admission:admit_official_source": "opens the SEC campaign ledger through SecCampaignLedger.open, whose class is the sec-campaign-ledger family's writer",
     "feature_engine.panels.development_overlay:_prepared_raw_columns": "reads a formula column by its content hash (ResearchFormulaValues.open)",
     "data_layer.history_runtime:held": "opens the data root through HostLog.open, whose class is the data-root family's writer",

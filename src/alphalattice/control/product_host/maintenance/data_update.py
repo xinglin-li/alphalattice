@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
-from hashlib import sha256
 from os.path import lexists
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -14,6 +13,8 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.maintenance.contracts import (
     ListingMarketDataChange,
@@ -139,8 +140,7 @@ from alphalattice.foundation.research_foundation.contracts import (
 )
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.identity import integrity_sha256
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"
@@ -176,7 +176,7 @@ _RECOVERABLE_BLOCKS = {
 def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDataUpdateBinding:
     """Bind the profile, data policy and workspace's catalog, or the shipped catalog (EX)."""
     return WorkspaceDataUpdateBinding.seal(
-        profile_file_hash=sha256(PROFILE.read_bytes()).hexdigest(),
+        profile_file_hash=integrity_sha256(PROFILE.read_bytes()).hexdigest(),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
         feature_catalog_hash=workspace_feature_catalog(workspace).binding.catalog_hash,
     )
@@ -226,8 +226,9 @@ def read_workspace_inputs(
         raise ValueError("workspace_data_update.installed_binding_mismatch")
     market = MarketDataRepository(root)
     # Dozens of small reads over one database: one retained read-only instance serves them all;
-    # a write inside is refused, not upgraded.
-    with market.database.retain(read_only=True):
+    # a write inside is refused, not upgraded. Its byte proofs read the Panel's chunk files, never
+    # the store's, so it attaches to a kept writable instance and the update's writer reuses it.
+    with market.database.retain(read_only=True, proves_bytes=False):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
             with market.market_reads() as (connection, tables):
@@ -2312,7 +2313,18 @@ class WorkspaceDataUpdateApplication:
         Returns:
             Unchanged verified evidence.
         """
-        return self.verify_step(self._plan_of(task), work_item.stage_id, evidence)
+        from .daily_health import record_daily_health  # lazy: after verifying the update receipt
+
+        plan = self._plan_of(task)
+        verified = self.verify_step(plan, work_item.stage_id, evidence)
+        if work_item.stage_id == _STAGES[-1]:
+            record_daily_health(
+                self.session.task_control_registry,
+                task,
+                plan.request.target_market_session,
+                self.clock(),
+            )
+        return verified
 
     def verify_step(
         self,

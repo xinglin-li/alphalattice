@@ -20,6 +20,8 @@ from uuid import UUID, uuid5
 import yaml  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.data_platform.contracts import (
     DataRemediationActorSubmission,
     DataRemediationExecutionReceipt,
@@ -55,6 +57,7 @@ from alphalattice.control.product_host.publication.goals import (
     GoalStore,
     sessions_of,
 )
+from alphalattice.foundation.data_layer.log import uuid7
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputAgentCase
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.interface.local_application import goal_history
@@ -94,9 +97,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     validate_request_document,
 )
-from alphalattice.kernel.data_layer.log import uuid7
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
@@ -1020,7 +1020,7 @@ class GoalApplication:
             "agent_session": session.session_id,
             "nonce": token_hex(16),
         }
-        used = self.store.reserve_relay(key, record)
+        used = self.store.reserve_relay(key, record, operation=request.operation)
         if used is not None:
             raise ValueError(f"person_confirmation.already_used:{used['nonce']}")
         return {**record, "key": key}

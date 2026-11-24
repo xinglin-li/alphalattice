@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -25,6 +24,8 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -81,8 +82,8 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests._support.process_starts import observe_starts
+from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.node_runner import run_node
 
@@ -169,6 +170,7 @@ def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str
         text=True,
         encoding="utf-8",
         timeout=60,
+        env=cli_environment(),
     )
     assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
     return result.returncode, json.loads(result.stdout)
@@ -636,7 +638,7 @@ def _harness(tmp_path: Path) -> Iterator[_Harness]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
     resolver = _Resolver(_resolved())
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
 
     workspace_id = named_workspace_id(workspace) or "synthetic"
     history.open_history(workspace_id, "portfolio", workspace)
@@ -674,9 +676,9 @@ def _manifest(workspace_id: str) -> ResearchWorkspaceManifest:
 def admit_market_fixture(workspace: Path, workspace_id: str) -> None:
     """Give a freshly seeded workspace its market admission before testing the ordinary Host."""
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.foundation.data_layer import history
     from alphalattice.foundation.market_data_ops.storage import world
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data_layer import history
 
     lease = WorkspaceWriterLease.acquire(workspace)
     try:
@@ -799,5 +801,5 @@ def serve_conflict(workspace, monkeypatch):
         raise PermissionError("local_web.detached_breakaway_denied")
 
     with monkeypatch.context() as build:
-        build.setattr(subprocess, "Popen", denied)
+        observe_starts(build, denied)
         return main(["--workspace", str(workspace), "--no-browser", "--detach"])

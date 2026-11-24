@@ -1,10 +1,11 @@
 # Use the CLI
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most
 operations need the workspace's Host; an agent session binds itself by working
-on that workspace. [Getting started](getting-started.md) covers installation;
+on that workspace. A command that needs the Host starts an initialized
+workspace's Host when none answers; later commands reuse it. [Getting started](getting-started.md) covers installation;
 the [agent guide](../../AGENTS.md) owns procedures and person decisions.
 
 ```powershell
@@ -34,7 +35,7 @@ references and follow that continuation.
 | `INVALID_INPUT` | 1 | Correct the named request or declaration. |
 | `REFUSED` | 2 | Read the allowed continuation or person decision. |
 | `PENDING` | 3 | Follow admitted work or its decision. |
-| `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
+| `NO_HOST` | 4 | No Host answers and none could start; follow the named connection route. |
 
 An accepted `bundle submit` exits `OK` (0). Its `task_lifecycle` and offered Task
 read report the review's continuing work; `--wait` can follow that Task.
@@ -108,6 +109,22 @@ Reads accept `summary`, `compact` and `full`. `summary` keeps the complete envel
 within 32 KiB, with whole offers and a `full_answer` pointer; full stdout from
 `--view full` is deprecated in favour of the summary and a saved answer
 ([0.2.4 notes](release-notes.md#024)).
+
+## Inspect and reclaim storage
+
+`alphalattice task show <task> --section storage` shows the data root's
+allocated bytes by category and how many bytes the current workspace can
+reclaim. It also reports which Task scratch directories the Host removed at
+startup and which it kept because it could not prove their ownership or removal.
+
+Run `alphalattice storage reclaim` in a terminal to review the workspace's
+exact cleanup plan and confirm it once. In a non-interactive session, save the
+plan with `alphalattice storage reclaim --output cleanup.json`. After the
+person approves that plan, apply it with
+`alphalattice storage reclaim --confirm <plan-hash> --asked "QUESTION_AS_ASKED" --person-said "YES_AS_SAID"`
+using the full saved `plan_hash`, the question as asked, and the person's own
+words. The Host checks that the plan is still eligible before removing
+anything. See [storage and workspace care](data-and-care.md#storage).
 
 ## Dates and network permission
 

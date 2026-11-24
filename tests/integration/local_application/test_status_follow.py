@@ -11,7 +11,6 @@ import json
 import os
 import shlex
 import shutil
-import time
 from contextlib import chdir, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,6 +21,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import waits
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
     analyst_reads_answer,
     set_analyst_reads,
@@ -47,46 +48,12 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.review_evidence import REVIEW_DETAIL
-from alphalattice.kernel.shared_kernel import waits
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 
 @pytest.mark.parametrize("wait", [0, -1, 20.5, True, "5"])
 def test_a_status_wait_outside_zero_to_twenty_seconds_is_refused(wait: Any) -> None:
     with pytest.raises(LocalApplicationError, match="wait_seconds_invalid"):
         PortfolioResearchOperationRequest(operation="STATUS", task_id=uuid4(), wait_seconds=wait)
-
-
-def _projection(lifecycle: TaskLifecycle, verified: int) -> SimpleNamespace:
-    return SimpleNamespace(lifecycle=lifecycle, verified_stage_count=verified)
-
-
-def _host(sequence: list[SimpleNamespace]) -> SimpleNamespace:
-    reads = iter(sequence)
-    last = {"value": sequence[0]}
-
-    def status(_task_id: object) -> SimpleNamespace:
-        last["value"] = next(reads, last["value"])
-        return last["value"]
-
-    return SimpleNamespace(dispatcher=SimpleNamespace(status=status))
-
-
-def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> None:
-    running = _projection(TaskLifecycle.RUNNING, 0)
-    host = _host([running, running, _projection(TaskLifecycle.RUNNING, 1)])
-    begun = time.monotonic()
-    moved = PortfolioResearchOperations._moved_on(host, uuid4(), running, 5.0)  # type: ignore[arg-type]
-    assert moved.verified_stage_count == 1 and time.monotonic() - begun < 1.0
-
-    begun = time.monotonic()
-    still = PortfolioResearchOperations._moved_on(_host([running]), uuid4(), running, 0.3)  # type: ignore[arg-type]
-    assert still is running and 0.3 <= time.monotonic() - begun < 1.0
-
-    done = _projection(TaskLifecycle.SUCCEEDED, 2)
-    begun = time.monotonic()
-    assert PortfolioResearchOperations._moved_on(_host([done]), uuid4(), done, 5.0) is done  # type: ignore[arg-type]
-    assert time.monotonic() - begun < 0.05
 
 
 def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch, tmp_path) -> None:
@@ -325,17 +292,50 @@ def test_a_wait_on_each_stage_returns_as_a_stage_is_verified(monkeypatch) -> Non
         client_module._wait(stub, SimpleNamespace(**vars(goal), each_stage=True))  # type: ignore[arg-type]
 
 
-def test_max_wait_is_the_waiters_only_timer(monkeypatch) -> None:
+def test_max_wait_is_the_waiters_only_timer(monkeypatch, tmp_path, capsys) -> None:
     """requirement (WK): --max-wait, set just under a command cap, ends the wait as pending;
     it is refused when not above zero."""
 
     task_id = str(uuid4())
     running = {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id}
-    stub = _Stub(itertools.repeat(running))  # type: ignore[arg-type]
+    storage = {"reclaimable_bytes": 7}
+    stub = _Admitting(
+        {},
+        [
+            running,
+            running,
+            dict(running, status="SUCCEEDED", lifecycle="SUCCEEDED", storage=storage),
+        ],
+        tmp_path,
+    )
+    now = 0.0
+    read = stub.request
+
+    def request(document, timeout=None):
+        nonlocal now
+        if document.get("wait_seconds"):
+            now += 1.0
+        return read(document, timeout)
+
+    monkeypatch.setattr(stub, "request", request)
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: stub)
+    output = tmp_path / "answer.json"
+    command = ["--workspace", str(tmp_path), "task", "show", task_id, "--wait", "--max-wait", "1"]
+    exit_code = main(
+        [*command, "--section", "storage", "--output", str(output)],
+        serve=lambda _: pytest.fail("no serve"),
+    )
+    final = json.loads(output.read_text("utf-8"))
+    assert final.get("wait_status") == "MAX_WAIT_TASK_CONTINUES"
+    event = final["wait_event"]
+    assert event["event"] == "MAX_WAIT_REACHED" and task_id in event["read"]
+    assert final["lifecycle"] == "RUNNING" and outcome_of(final) == "PENDING"
+    assert final["storage"] == storage and exit_code == 3
+    assert json.loads(capsys.readouterr().out)["data"]["value"] == storage
+    assert [d.get("status_section") for d in stub.sent] == [None, None, "storage"]
+
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    final = client_module._follow(stub, admitted, 0.05)  # type: ignore[arg-type]
-    assert final["wait_event"]["event"] == "MAX_WAIT_REACHED"
-    assert final["wait_status"] == "MAX_WAIT_TASK_CONTINUES" and outcome_of(final) == "PENDING"
     with pytest.raises(client_module.LocalResearchClientError, match="max_wait_invalid"):
         client_module._follow(stub, admitted, 0)  # type: ignore[arg-type]
     # A chain's omitted --max-wait is the hour. Read where its deadline less the clock rounds

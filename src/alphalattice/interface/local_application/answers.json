@@ -8817,6 +8817,12 @@
  "DATA_UPDATE_READBACK": {
   "fields": [
    {
+    "name": "daily_health",
+    "kind": "object",
+    "required": false,
+    "meaning": "The selected Task's or workspace's latest Daily health observation. It names the Task and target session and carries five checks with stable IDs, verdicts and counts. An unavailable count is null."
+   },
+   {
     "name": "status",
     "kind": "string",
     "required": true,
@@ -10023,6 +10029,12 @@
  "RESEARCH_UPDATE_READBACK": {
   "fields": [
    {
+    "name": "daily_health",
+    "kind": "object",
+    "required": false,
+    "meaning": "The Daily health observation for this Task. It names the target session and carries five checks with stable IDs, verdicts and counts. An unavailable count is null."
+   },
+   {
     "name": "summary",
     "kind": "object",
     "required": false,
@@ -11183,6 +11195,12 @@
     "meaning": "The directory outside the workspace that holds the backups."
    },
    {
+    "name": "bytes",
+    "kind": "integer",
+    "required": true,
+    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
+   },
+   {
     "name": "last_automatic_attempt",
     "kind": "object|null",
     "required": true,
@@ -11221,6 +11239,12 @@
     "kind": "string",
     "required": true,
     "meaning": "The directory outside the workspace that holds the backups."
+   },
+   {
+    "name": "bytes",
+    "kind": "integer",
+    "required": true,
+    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
    },
    {
     "name": "last_automatic_attempt",

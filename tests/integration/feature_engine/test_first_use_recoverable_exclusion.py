@@ -22,9 +22,20 @@ from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
 def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, monkeypatch):
     """First use continues after recoverable sector exclusion."""
 
+    from alphalattice.foundation.feature_engine.producers.reference_data import SectorRefreshStager
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+    from alphalattice.kernel.resources import current_resource_lease
 
+    sector_workers = []
+    acquire = SectorRefreshStager.acquire
+
+    def observe_acquisition(stager, **kwargs):
+        lease = current_resource_lease()
+        sector_workers.append(None if lease is None else lease.amounts.workers)
+        return acquire(stager, **kwargs)
+
+    monkeypatch.setattr(SectorRefreshStager, "acquire", observe_acquisition)
     symbols = {item.symbol for item in development_universe.LISTINGS} - {"DVM", "DVQ", "DVR", "DVS"}
     provider = development_universe.development_provider()
     missing = "DVK"
@@ -44,8 +55,8 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, 
         development_universe.source_loader,
     )
     with live:
-        budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
-        assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 2
+        budget = live.operations.set_cpu_budget("1", chosen_by="EXTERNAL_AUTOMATION")
+        assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 1
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
         admitted = _json(
             live,
@@ -61,6 +72,9 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, 
             record.failure_code,
             live.dispatcher.failure(task_id),
             app.readback(),
+        )
+        assert sector_workers and set(sector_workers) == {1}, (
+            "the sector coordinator carries its grant"
         )
         parent_revision = app._load(task_id, "prepare_data")["manifest_revision"]
         progress = app._load(task_id, "progress", optional=True) or {}

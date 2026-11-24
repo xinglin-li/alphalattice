@@ -36,6 +36,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceDirection,
     EvidenceLifecycle,
@@ -46,7 +47,6 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceContract,
     seal_contract,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     BookAuthority,
     ExposureBand,

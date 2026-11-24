@@ -43,9 +43,10 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from alphalattice.kernel.shared_kernel import spawn
-from alphalattice.kernel.shared_kernel.source_identity import source_bytes_syntax_sha256
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.source_identity import source_bytes_syntax_sha256
 from devtools.architecture import structural
+from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.identity_closures import closure_sites
 
 _BYTE_PRIMITIVES = frozenset(
@@ -68,7 +69,7 @@ _SOURCE_READERS = frozenset({"getsource", "getsourcelines", "getsourcefile"})
 _BYTE_READERS = frozenset({"read_bytes", "read_text"})
 _SCANNED = ("src", "scripts")
 _PREFILTER = ("getsource", "__file__", "__doc__", "tool", ".py")
-_PRIMITIVES_MODULE = "src/alphalattice/kernel/shared_kernel/source_identity.py"
+_PRIMITIVES_MODULE = "src/alphalattice/capabilities/domain_contracts/source_identity.py"
 """The primitives' own module reads every file a rule closure hashes, as syntax: not a text read."""
 
 
@@ -767,26 +768,23 @@ def _bare_string(statement: ast.stmt) -> bool:
 # -- the command ------------------------------------------------------------------------------
 
 
-def git_previous(root: Path, revision: str) -> Callable[[str], bytes | None]:
-    """Read each path's bytes at `revision`, None where it did not exist.
+def git_previous(
+    root: Path, revision: str, changed: Iterable[str]
+) -> Callable[[str], bytes | None]:
+    """Batch the previous Python bytes used by both verdict passes.
 
-    Args:
-        root: The checkout.
-        revision: The commit the change is measured against.
-
-    Returns:
-        The reader.
+    Paths absent at the revision read as None. Preserve the stored source encoding.
     """
-
-    def read(path: str) -> bytes | None:
-        completed = spawn.run(
-            ("git", "-C", str(root), "show", f"{revision}:{path}"),
-            capture_output=True,
-            check=False,
-        )
-        return completed.stdout if completed.returncode == 0 else None
-
-    return read
+    prefix = f"{revision}:"
+    specs = [prefix + path for path in changed if path.endswith(".py")]
+    if bad := next((spec for spec in specs if "\n" in spec), None):
+        raise ValueError(f"Git batch input contains a newline: {bad!r}")
+    blobs = read_blobs(specs, root)
+    previous = {
+        spec[len(prefix) :]: source.encode("utf-8", errors="surrogateescape")
+        for spec, source in blobs.items()
+    }
+    return previous.get
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -810,8 +808,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         diff.append("--cached")
     elif args.base:
         diff.append(args.base)
-    changed = spawn.run(diff, capture_output=True, text=True, check=True).stdout.split()
-    previous = git_previous(root, args.base or "HEAD")
+    changed = spawn.run([*diff, "-z"], capture_output=True, text=True, check=True).stdout.split(
+        "\0"
+    )
+    previous = git_previous(root, args.base or "HEAD", changed)
     for verdict in neutral_verdicts(root, changed, previous):
         print(f"{'NEUTRAL' if verdict.neutral else 'CHANGED'} {verdict.path}: {verdict.reason}")
     for path, names in sorted(moved_files(root, changed, previous).items()):

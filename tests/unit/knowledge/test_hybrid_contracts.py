@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from alphalattice.kernel.knowledge.hybrid_contracts import (
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
     NEW_BUILD_RECIPE,
     RECIPE_MINILM_CPU,
     RECIPE_MINILM_INT8_CPU,

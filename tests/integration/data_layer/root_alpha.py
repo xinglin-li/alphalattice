@@ -1,6 +1,6 @@
 """Alpha's historical seed boundaries."""
 
-from alphalattice.kernel.data_layer.root import seed_rows
+from alphalattice.foundation.data_layer.root import seed_rows
 
 
 def assert_seed_history(_named: dict[str, set[str]]) -> None:

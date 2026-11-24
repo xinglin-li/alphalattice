@@ -15,12 +15,13 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import date
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING as WAIT_CEILING
+from alphalattice.capabilities.domain_contracts.waits import pause, spaced
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
@@ -76,24 +77,26 @@ from alphalattice.interface.local_application.review_evidence import (
     select_preparation,
 )
 from alphalattice.interface.local_application.thin_cli import (
-    CONNECTION_NAME as CONNECTION_NAME,
+    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
 )
 from alphalattice.interface.local_application.thin_cli import (
-    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
+    ENDPOINT_FOLDER as ENDPOINT_FOLDER,
 )
 from alphalattice.interface.local_application.thin_cli import (
     OPERATIONS_PATH,
     agent_session_values,
+    answers,
     connection_path,
     connection_port,
+    endpoint_path,
+    start_host,
 )
 from alphalattice.interface.local_application.thin_cli import (
     workspace_connection_key as workspace_connection_key,
 )
 from alphalattice.interface.local_application.wire import _json_value as _json_value
 from alphalattice.interface.local_application.wire import request_body as request_body
-from alphalattice.kernel.shared_kernel.waits import CEILING as WAIT_CEILING
-from alphalattice.kernel.shared_kernel.waits import pause, spaced
+from alphalattice.kernel.identity import integrity_sha256
 
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""
@@ -147,31 +150,33 @@ class LocalResearchConnection:
         )
 
     @staticmethod
-    def path(workspace: Path) -> Path:
-        """Locate the connection descriptor within the workspace runtime.
+    def path(workspace: Path, *, root: Path | None = None) -> Path:
+        """Locate the endpoint record of `workspace`'s Host, beside its data root's lock.
 
         Args:
-            workspace: The served workspace root.
+            workspace: The workspace whose Host's record is read.
+            root: The Host's data root when it is not this process's (a Host served apart).
 
         Returns:
-            The contained connection-file path.
+            The record's path in the data root's machine folder.
 
         Raises:
-            LocalResearchClientError: If the path is a symlink or escapes the root.
+            LocalResearchClientError: If the path is a symlink or leaves that folder.
         """
         try:
-            return connection_path(workspace)
+            return connection_path(workspace) if root is None else endpoint_path(root, workspace)
         except ValueError as error:
             raise LocalResearchClientError(
                 "local_client.connection_path_escapes_workspace"
             ) from error
 
     @classmethod
-    def read(cls, workspace: Path) -> Self:
+    def read(cls, workspace: Path, *, root: Path | None = None) -> Self:
         """Read a bounded descriptor for this exact workspace.
 
         Args:
             workspace: The workspace expected by the client.
+            root: The Host's data root when it is not this process's (a Host served apart).
 
         Returns:
             A validated connection to its running Host.
@@ -179,7 +184,7 @@ class LocalResearchConnection:
         Raises:
             LocalResearchClientError: If the Host or descriptor is unavailable or unsafe.
         """
-        path = cls.path(workspace)
+        path = cls.path(workspace, root=root)
         try:
             if path.stat().st_size > 4096:
                 raise ValueError("oversized connection")
@@ -196,6 +201,21 @@ class LocalResearchConnection:
         return value
 
 
+def attached(workspace: Path, **options: Any) -> LocalResearchClient:
+    """A client of `workspace`'s Host for a Host-backed command, starting its data root's Host
+    once when none answers for it (`thin_cli.start_host`): a bound session's commands, and every
+    command the thin path leaves to this client. No record, or a record no Host answers at (a
+    crashed one's), starts it; the root's lock decides whether the start is this workspace's."""
+    try:
+        return LocalResearchClient(workspace, answering=True, **options)
+    except LocalResearchClientError as error:
+        if str(error) != "local_client.service_not_running":
+            raise
+    if not start_host(Path(workspace).resolve()):
+        raise LocalResearchClientError("local_client.service_not_running")
+    return LocalResearchClient(workspace, **options)
+
+
 class LocalResearchClient:
     """Read the connection anew per invocation; never keep a last spec or result."""
 
@@ -205,11 +225,17 @@ class LocalResearchClient:
         *,
         timeout: float = DEFAULT_HTTP_WAIT_SECONDS,
         goal: str | None = None,
+        answering: bool = False,
     ):
-        """Bind a client to one served workspace, its HTTP wait limit and a named goal."""
+        """Bind a client to one served workspace, its HTTP wait limit and a named goal.
+
+        `answering` refuses `service_not_running` at once when no Host answers at the record,
+        which a crashed Host leaves behind, so a caller can start one before its request."""
         self.workspace = workspace.resolve()
         self.connection = LocalResearchConnection.read(workspace)
         self.timeout = timeout
+        if answering and not answers(self.connection.url, timeout):
+            raise LocalResearchClientError("local_client.service_not_running")
         named = {"goal_id": goal}
         whole_references(named, self.workspace)  # `--goal` as the compact view shows it
         self.goal = named["goal_id"]
@@ -1671,6 +1697,7 @@ _IMPORTANT: Final = frozenset(
         "execution_preview",
         "progress",
         "stage_timing",
+        "storage",
         "stage_updated_at",
         "activity_timing",
         "work_progress",
@@ -1724,7 +1751,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
             omitted = {
                 "_omitted": "text",
                 "utf8_bytes": len(encoded),
-                "text_sha256": sha256(encoded).hexdigest(),
+                "text_sha256": integrity_sha256(encoded).hexdigest(),
             }
             if (path == "json" or path.endswith(".json")) and depth < 5 and available:
                 with suppress(ValueError):
@@ -3314,6 +3341,68 @@ AGENT_VERBS: Final[dict[str, _Verb]] = {
 come from here alone."""
 
 
+def reclaim_storage(
+    client: LocalResearchClient, confirmation: tuple[str, str, str] | None
+) -> dict[str, Any]:
+    """Present the Host's exact plan and relay consent only for that offered request."""
+    from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
+        decision_hash,
+    )
+
+    def confirm(plan_hash: str, question: str, words: str) -> dict[str, Any]:
+        offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
+        return client.request(
+            {
+                **offer,
+                "person_confirmation": {
+                    "question": question,
+                    "words": words,
+                    "decision_hash": decision_hash(offer),
+                },
+            }
+        )
+
+    if confirmation is not None:
+        # The person already saw this retained plan. Confirming it lets the Host
+        # recheck eligibility without replacing the approved plan with a new one.
+        return confirm(*confirmation)
+    plan = client.request({"operation": "STORAGE_PLAN"})
+    plan_hash = plan.get("plan_hash")
+    if plan.get("status") != "CONFIRMATION_REQUIRED" or not isinstance(plan_hash, str):
+        return plan
+    if not plan.get("targets") and not plan.get("relinks"):
+        return {"status": "COMPLETED", "plan_hash": plan_hash, "deleted_paths": 0}
+    offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
+    question = plan.get("ask_now")
+    if offered_requests(plan).get("confirm") != offer or not isinstance(question, str):
+        return plan
+    if not cli_invocation.interactive():
+        return plan
+    stderr = cli_invocation.stream(error=True)
+    print(
+        answer_json(
+            {
+                field: plan[field]
+                for field in (
+                    "plan_hash",
+                    "targets",
+                    "relinks",
+                    "reclaimable_bytes",
+                    "retained_bytes",
+                )
+                if field in plan
+            },
+            default=_json_value,
+        ),
+        file=stderr,
+    )
+    print(f"{question} [y/N] ", end="", file=stderr, flush=True)
+    words = sys.stdin.readline().rstrip("\r\n")
+    if words.strip().casefold() not in {"y", "yes", "是", "同意"}:
+        return {"status": "DECLINED", "plan_hash": plan_hash, "deleted_paths": 0}
+    return confirm(plan_hash, question, words)
+
+
 def run(
     args: argparse.Namespace,
     *,
@@ -3419,7 +3508,7 @@ def run(
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
         replaced_output = output_replacement(output, line=getattr(args, "command_line", ()))
-        client = LocalResearchClient(
+        client = attached(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
         args._follow_receipt = partial(
@@ -3433,11 +3522,23 @@ def run(
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
+        elif args.command == "storage-reclaim":
+            body = reclaim_storage(client, args.storage_reclaim_confirmation)
         elif args.command in AGENT_VERBS:
             body = AGENT_VERBS[args.command].steps(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)
+            storage_read = document.get("operation") == "STATUS" and (
+                document.get("status_section") == "storage"
+                or (getattr(args, "section", None) or "").partition(".")[0] == "storage"
+            )
+            if storage_read:
+                document = dict(document)
+                if args.wait:
+                    document.pop("status_section", None)
+                else:
+                    document["status_section"] = "storage"
             if (
                 document.get("operation") == "REPORT"
                 and document.get("portfolio_session")
@@ -3471,6 +3572,11 @@ def run(
                     receipt=partial(args._follow_receipt, raw=raw_body),
                 )
                 raw_body = None  # The answer is the final read, not the transport bytes.
+                if storage_read:
+                    document = {**document, "status_section": "storage"}
+                    storage_answer, _ = client.exchange(document)
+                    if "storage" in storage_answer:
+                        body = {**body, "storage": storage_answer["storage"]}
             if (
                 document.get("operation") == "AGENT_BUNDLE_PREPARE"
                 and directory is not None

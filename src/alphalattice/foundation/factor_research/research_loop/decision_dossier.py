@@ -6,10 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.programs.program import (
     FactorResearchDeterministicEvidence,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.projections import (
     ModelFacingProjection,
     build_model_facing_projection,

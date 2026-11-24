@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 from collections import OrderedDict
@@ -17,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
@@ -61,7 +61,7 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     allows_missing_source_rows,
     panel_ordered_members_identity,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
+from alphalattice.kernel.identity import identity_sha256
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -303,7 +303,7 @@ class ArtifactOnlyPanelRematerializer:
                 }
                 output = temp_root / f"{expected.chunk_hash}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
-                physical_sha = file_sha256(output, written=True)
+                physical_sha = file_sha256(output)  # a temporary file: read once, never kept
                 metadata_hash = _metadata_hash(output)
                 if metadata_hash != expected.metadata_hash:
                     raise PanelRematerializationMismatch(
@@ -1035,7 +1035,7 @@ def _metadata_hash(path: Path) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def recipe_sector_history(

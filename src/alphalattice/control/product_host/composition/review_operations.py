@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.evidence_review_application import ReviewOutcome
 from alphalattice.control.product_host.composition.evidence_review_bundles import (
@@ -30,8 +32,8 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 from alphalattice.control.product_host.composition.research_review_outcome import (
     _review_outcome_body,
 )
+from alphalattice.control.product_host.composition.review_updates import bundle_update
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.data.errors import DataError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -44,6 +46,8 @@ if TYPE_CHECKING:
     from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
     from . import portfolio_research_operations as host
+    from .operation_route_families import WorkspaceOperationCall
+    from .portfolio_research_operations import PortfolioResearchOperations
 
 
 def execute(
@@ -63,7 +67,10 @@ def execute(
         case "AGENT_BUNDLE_PREPARE":
             assert request.agent_role is not None and request.bundle_directory is not None
             # A role's view of the date's positions, its floor or review route.
-            dated = None if request.task_id is None else operations._dated(str(request.task_id))
+            dated = None
+            if request.task_id is not None:
+                with bundle_update(request.task_id):
+                    dated = operations._dated(str(request.task_id))
             now, store, file = (
                 operations.dispatcher.clock(),
                 operations.goals.store,
@@ -368,3 +375,19 @@ def _review_bundle_refusal(
     if unit is None:
         return None
     return unit
+
+
+def route(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a Review operation, keeping direct submissions' original error handling."""
+    run = partial(
+        execute,
+        call.operations,
+        call.request,
+        caller=call.caller,
+        read_files=call.read_files,
+        agent_run=call.agent_run,
+        accepted_bundle=call.accepted_bundle,
+    )
+    if call.raw_review:
+        return run()
+    return call.operations._execute_review(call.request, run)

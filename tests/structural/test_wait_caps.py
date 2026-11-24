@@ -110,6 +110,9 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             ),
             ("control/product_host/composition/portfolio_research_operations.py", "_moved_on"),
             ("control/workspace_runtime/database.py", "_acquire"),
+            # An access outside the engine waits for a live instance on the one deadline it sets,
+            # re-reading the books at each wake, and refuses by name at its end.
+            ("control/workspace_runtime/database.py", "_outside"),
             ("control/workspace_runtime/database.py", "wait"),
             # Sets and restores the request's deadline; it does not wait itself.
             ("control/workspace_runtime/mutation_gate.py", "request_deadline"),

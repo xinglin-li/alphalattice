@@ -19,7 +19,7 @@ from pydantic import (
 )
 from pydantic_core import to_jsonable_python
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 
 def _hash(value: object) -> str:

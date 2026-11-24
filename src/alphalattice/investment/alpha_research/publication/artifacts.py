@@ -7,7 +7,6 @@ import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from io import BytesIO
 from types import MappingProxyType
 from typing import Any, Literal, cast
@@ -17,20 +16,21 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     verified_npz_arrays,
     verified_request_proof,
     verified_request_value,
     verified_source_value,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 from ..experiments.contracts import AlphaCandidateRole, AlphaCandidateStatus
 from ..experiments.development_artifacts import (
@@ -367,7 +367,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         values differ from it only by rounding, else these values' own."""
         packed = _packed_block(payload)
         category = "current/frozen-observation-arrays"
-        digest = sha256(packed).hexdigest()
+        digest = integrity_sha256(packed).hexdigest()
         if earlier is not None and history.alpha_part_body_digest(digest, category) is None:
             block = earlier.block(index)
             if block is not None:

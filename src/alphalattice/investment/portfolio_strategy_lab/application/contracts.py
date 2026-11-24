@@ -19,6 +19,7 @@ from typing import Final, Literal, Self
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioPerSideCostAssumption,
 )
@@ -58,7 +59,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
 from alphalattice.investment.portfolio_strategy_lab.reporting.risk import (
     PortfolioRiskAttributionFacts,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ScoreSourceMode = Literal["HISTORICAL_ARRAY_REPLAY", "CURRENT_MODEL_SCORING"]
 """How the selected frozen package supplies formation scores."""

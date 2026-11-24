@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.panels.closure_contracts import (
     SectorRevisionEntry,
@@ -22,8 +24,6 @@ from alphalattice.foundation.market_data_ops.returns.sector_revision_identity im
     sector_revision_hash,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _utc(value: datetime) -> datetime:

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from scripts import build_local_web_ui
 
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.capabilities.domain_contracts import spawn
 from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]

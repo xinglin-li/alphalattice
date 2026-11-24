@@ -18,14 +18,13 @@ import base64
 import copy
 import ctypes
 import functools
-import hashlib
 import json
 import marshal
 import os
 import shutil
 import sys
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import Context, ContextVar
@@ -47,16 +46,18 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.control.workspace_runtime.verified_facts import (
     _FULL_PROOF,
-    _content_sha256,
     file_fact,
     full_content_proof,
     full_proof,
     record_file_fact,
 )
-from alphalattice.kernel.shared_kernel.environment import recorded_environment
-from alphalattice.kernel.shared_kernel.spans import span
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
+from alphalattice.kernel.resources import worker_width
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
 _VERIFIED_MODEL_CACHE_LIMIT = 128
@@ -152,7 +153,7 @@ def verified_source_value[T](
     read of the same sealed bytes in this process. Inside ``full_content_proof()`` the builder
     runs once per proof and its value replaces what was kept. Concurrent readers of one key share
     one producer; waiting never holds the cache lock. A builder owns every source it declares:
-    helpers nested in it build in full and keep nothing of their own.
+    nested source builders read in full and leave retention to the enclosing builder.
     """
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
@@ -172,8 +173,9 @@ def verified_source_value[T](
     proved = _FULL_PROOF.get()
     while True:
         with _VERIFIED_ARRAY_CACHE_LOCK:
-            if proved is not None and key in proved:
-                return cast(T, proved[key])
+            held = proved.get(key, _ABSENT) if proved is not None else _ABSENT
+            if held is not _ABSENT:
+                return cast(T, held)
             cached = _VERIFIED_ARRAY_CACHE.get(key)
             if cached is not None and proved is None:
                 _VERIFIED_ARRAY_CACHE.move_to_end(key)
@@ -234,7 +236,7 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
             check()
 
     failure: BaseException | None = None
-    if _VERIFIED_SOURCE_CHECK_RUNNING.get():
+    if _VERIFIED_SOURCE_CHECK_RUNNING.get() or worker_width(_VERIFIED_SOURCE_CHECK_WORKERS) == 1:
         try:
             for check in checks:
                 try:
@@ -252,9 +254,12 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
     global _VERIFIED_SOURCE_CHECK_POOL
     with _VERIFIED_SOURCE_CHECK_POOL_LOCK:
         if _VERIFIED_SOURCE_CHECK_POOL is None:
-            _VERIFIED_SOURCE_CHECK_POOL = ThreadPoolExecutor(
-                max_workers=_VERIFIED_SOURCE_CHECK_WORKERS,
-                thread_name_prefix="content-source-check",
+            _VERIFIED_SOURCE_CHECK_POOL = execution_port().register_pool(
+                ThreadPoolExecutor(
+                    max_workers=_VERIFIED_SOURCE_CHECK_WORKERS,
+                    thread_name_prefix="content-source-check",
+                ),
+                name="content-source-check",
             )
         pool = _VERIFIED_SOURCE_CHECK_POOL
     pending: list[Future[None]] = []
@@ -323,13 +328,14 @@ def verified_request_proof(identity: tuple[object, ...], check: Callable[[], Non
     """
     proved = _FULL_PROOF.get()
     if proved is not None:
-        if ("request-proof", identity) in proved:
+        if proved.get(("request-proof", identity), _ABSENT) is not _ABSENT:
             return
         with span("verify", "request_proof"):
             check()
         proved["request-proof", identity] = None
         return
-    scope = _VERIFIED_PROOF_SCOPE.get()
+    # An enclosing source build owns the version check and stores the complete proof.
+    scope = None if _VERIFIED_SOURCE_BUILD.get() else _VERIFIED_PROOF_SCOPE.get()
     if scope is not None:
         if identity in scope:
             return
@@ -368,6 +374,7 @@ def verified_request_value[T](
     *,
     nbytes: int | Callable[[T], int],
     copy_mutable: bool = False,
+    file_snapshot: tuple[str, ...] | None = None,
 ) -> T:
     """Memoize one immutable, validated value under local and optional process byte bounds.
 
@@ -376,16 +383,22 @@ def verified_request_value[T](
     Values larger than either cache's byte limit are returned uncached. The two limits apply
     separately; active requests and caller-held references can keep evicted bytes alive.
 
+    A descriptor snapshot from the owner's verified read binds the parsed value to that read.
+    It can share validation with another reader even inside a composite source build.
+
     A value that is not deeply immutable is returned uncached, unless the owner passes
     ``copy_mutable``: then it is kept too, and every caller, the first included, receives
     its own deep copy, so no caller can change what another reads. An owner opts in only
     where that copy is cheap against rebuilding the value.
     """
-    key = tuple(identity)
+    key = tuple(identity) if file_snapshot is None else (*identity, file_snapshot)
     proved = _FULL_PROOF.get()
     if proved is not None:
         return _proved_request_value(proved, key, builder, nbytes, copy_mutable=copy_mutable)
+    # A nested key cannot reuse a value from before the enclosing source changed.
     scope = _VERIFIED_ARRAY_SCOPE.get()
+    if _VERIFIED_SOURCE_BUILD.get() and file_snapshot is None:
+        scope = None
     if scope is not None and key in scope:
         value, _ = scope[key]
         scope.move_to_end(key)
@@ -420,13 +433,17 @@ def verified_request_value[T](
         return value
     if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         _remember_request_value(scope, key, kept, size)
-    if not _VERIFIED_SOURCE_BUILD.get() and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
+    if size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
         _remember_process_value(key, kept, size)
     return cast(T, _handed(kept))
 
 
+_ABSENT = object()
+"""What a held store answers for a key it does not hold, apart from a held None."""
+
+
 def _proved_request_value[T](
-    proved: dict[tuple[object, ...], object],
+    proved: MutableMapping[tuple[object, ...], object],
     key: tuple[object, ...],
     builder: Callable[[], T],
     nbytes: int | Callable[[T], int],
@@ -434,21 +451,24 @@ def _proved_request_value[T](
     copy_mutable: bool,
 ) -> T:
     """One full proof's value: built once inside it, never answered from what was kept before."""
-    if ("request-value", key) in proved:
-        return cast(T, _handed(proved["request-value", key]))
+    held = proved.get(("request-value", key), _ABSENT)
+    if held is not _ABSENT:
+        return cast(T, _handed(held))
     value = builder()
     size = nbytes(value) if callable(nbytes) else nbytes
     if size < 0:
         raise ValueError("content_store.verified_value_size_invalid")
     if size > _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         return value
+    kept: object
     if _immutable_request_value(value):
-        proved["request-value", key] = value
+        kept = value
     elif copy_mutable:
-        proved["request-value", key] = _Copied(value)
+        kept = _Copied(value)
     else:
         return value
-    return cast(T, _handed(proved["request-value", key]))
+    proved["request-value", key] = kept
+    return cast(T, _handed(kept))
 
 
 def _remember_request_value(
@@ -706,7 +726,7 @@ def columns_digest(columns: Mapping[str, npt.NDArray[Any]]) -> str:
     lane keeps its identity across the type change.
     """
     with span("hash", "columns"):
-        digest = hashlib.sha256()
+        digest = integrity_sha256()
         for values in columns.values():
             digest.update(np.ascontiguousarray(values).tobytes())
         return digest.hexdigest()
@@ -748,7 +768,7 @@ def _column_kind(store: ContentAddressedStore) -> str | None:
         columns_digest,
         store._columns,
         store._stable_columns,
-        _content_sha256,
+        integrity_sha256_path,
     )
     if any(
         getattr(getattr(function, "__func__", function), "__closure__", None)
@@ -888,13 +908,12 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.json"
-        scope = _VERIFIED_MODEL_SCOPE.get()
-        fact = _file_identity(target) if scope is not None else None
-        cacheable = fact is not None and model.model_config.get("frozen")
-
-        key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
 
         def verify() -> ContractT:
+            scope = _VERIFIED_MODEL_SCOPE.get()
+            fact = _file_identity(target) if scope is not None else None
+            cacheable = fact is not None and model.model_config.get("frozen")
+            key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
             if cacheable:
                 kept = _verified_model_get(key)
                 if kept is not None:
@@ -975,7 +994,7 @@ class ContentAddressedStore:
                 kind,
                 content_hash,
                 written=True,
-                _content=hashlib.sha256(payload).hexdigest(),
+                _content=integrity_sha256(payload).hexdigest(),
             )
         return content_hash
 
@@ -1021,7 +1040,7 @@ class ContentAddressedStore:
             if kind is not None and file_fact(target, kind, _content=content) == content_hash:
                 return payload
         with span("hash", "packed"):
-            if hashlib.sha256(payload).hexdigest() != content_hash:
+            if integrity_sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
         if stat is not None and kind is not None:
             record_file_fact(target, kind, content_hash, stat=stat, _content=content)
@@ -1031,7 +1050,7 @@ class ContentAddressedStore:
         """Write one JSON document or rendered page, named by the digest of its bytes."""
         if extension not in {"json", "html"}:
             raise ContentAddressedStoreError("content_store.document_type_invalid")
-        content_hash = hashlib.sha256(payload).hexdigest()
+        content_hash = integrity_sha256(payload).hexdigest()
         target = self.root / category / f"{content_hash}.{extension}"
         if target.is_file() and target.read_bytes() != payload:
             raise ContentAddressedStoreError("content_store.identity_reused")
@@ -1054,7 +1073,7 @@ class ContentAddressedStore:
         if _FULL_PROOF.get() is None:
             return payload
         with span("hash", "document"):
-            if hashlib.sha256(payload).hexdigest() != content_hash:
+            if integrity_sha256(payload).hexdigest() != content_hash:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
         return payload
 
@@ -1080,9 +1099,9 @@ class ContentAddressedStore:
     def _stable_columns(self, target: Path) -> tuple[dict[str, npt.NDArray[Any]], str]:
         """Bind a decoded table to its bytes without keeping a changed read as a proof."""
         try:
-            before = _content_sha256(target)
+            before = integrity_sha256_path(target)
             columns = self._columns(target)
-            if _content_sha256(target) != before:
+            if integrity_sha256_path(target) != before:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
             return columns, before
         except FileNotFoundError as error:

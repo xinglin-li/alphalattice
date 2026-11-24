@@ -2,6 +2,7 @@
 
 import pytest
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -12,8 +13,7 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import b
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.data_layer.history import carry_arrays, carry_research_inputs
+from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,

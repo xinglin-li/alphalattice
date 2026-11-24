@@ -37,7 +37,7 @@ an existing Feature, never a new one. Entry and exit belong to the execution
 method.
 
 One integer used to answer four of these questions at once. ``FactorSpec`` is a
-frozen wire contract owned by the parent ``alphalattice.kernel.quant`` package, so its
+frozen wire contract owned by the parent ``alphalattice.capabilities.quant`` package, so its
 ``lag_sessions`` field cannot be renamed here; it is bridged into successor
 semantics through exactly one function, :func:`formula_skip_sessions`, and every
 active Feature-owned surface speaks of ``formula_skip_sessions`` instead.
@@ -52,8 +52,8 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
 
 FEATURE_OBSERVATION_CLOCK_POLICY_ID = "feature-observation-clock.true-observation-session"
@@ -321,7 +321,7 @@ class FeatureAvailabilityPolicy(_Contract):
 def formula_skip_sessions(specification: FactorSpec) -> int:
     """Read the frozen wire field using successor skip semantics.
 
-    ``FactorSpec`` belongs to the parent ``alphalattice.kernel.quant`` package and is
+    ``FactorSpec`` belongs to the parent ``alphalattice.capabilities.quant`` package and is
     shared by every worktree, so the field cannot be renamed here. This is the
     only place the Feature domain reads it, which is what keeps
     ``lag_sessions`` from drifting back into a general-purpose knob: every other

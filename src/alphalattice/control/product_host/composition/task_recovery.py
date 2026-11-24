@@ -35,6 +35,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.guanyin.data.workspace_maintenance import (
     maintenance_failure_detail,
     maintenance_words,
@@ -79,7 +80,6 @@ from alphalattice.interface.local_application.failure_codes import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 STALE_HEARTBEAT_SECONDS = 30.0
 """The runner's own stale-execution threshold (`TaskControlRunner.stale_active_tasks`), reused,

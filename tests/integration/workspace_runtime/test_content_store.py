@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import sys
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -22,7 +24,7 @@ from io import BytesIO
 from pathlib import Path
 from queue import Queue
 from threading import Barrier, BoundedSemaphore, Event, Lock, Semaphore, Thread, current_thread
-from types import SimpleNamespace
+from time import time_ns
 from typing import ClassVar, Literal
 from uuid import uuid4
 
@@ -32,6 +34,7 @@ import pyarrow.parquet as pq
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.capabilities.domain_contracts.spans import collect
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
@@ -44,7 +47,11 @@ from alphalattice.control.workspace_runtime.content_store import (
     verified_source_value,
     verify_source_checks,
 )
-from alphalattice.kernel.shared_kernel.spans import collect
+from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, table_columns
+from alphalattice.foundation.data_layer import backup
+from alphalattice.kernel.config import Change, override
+from alphalattice.kernel.identity import file_facts as digests
+from alphalattice.kernel.identity import file_stamp
 
 
 def _store(tmp_path: Path) -> ContentAddressedStore:
@@ -567,18 +574,88 @@ def _proved(read):
 
 
 @pytest.mark.proves("workspace_runtime.sealed_value_built_once_per_process")
-def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(tmp_path, kept_here):
-    """requirement: a value built from sealed sources answers every later read in the process;
-    full proof (an export, a stage's check, the scrub) builds it from the bytes again."""
-    read, calls = _reader(tmp_path / "sealed.bin")
-    first = read()
-    assert (first is read()) is kept_here  # where nothing is kept, every read builds
-    assert first == b"sealed"
-    assert len(calls) == (1 if kept_here else 2)
-    assert _proved(read) == b"sealed"
-    assert len(calls) == (2 if kept_here else 3)
-    read()
-    assert len(calls) == (2 if kept_here else 4)
+@pytest.mark.parametrize(
+    "case",
+    [
+        "full-proof",
+        "same-task",
+        "replaced-file",
+        "replaced-file-request-proof",
+        "replaced-file-request-value",
+        "open-writer-transaction",
+    ],
+)
+def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(
+    tmp_path, kept_here, case
+):
+    """Verify source versions and committed schemas, including full proof and private writes."""
+    if case == "full-proof":
+        read, calls = _reader(tmp_path / "sealed.bin")
+        first = read()  # Each read opens and closes its own Task's read scope.
+        assert (first is read()) is kept_here  # where nothing is kept, every read builds
+        assert first == b"sealed"
+        assert len(calls) == (1 if kept_here else 2)
+        assert _proved(read) == b"sealed"
+        assert len(calls) == (2 if kept_here else 3)
+        read()
+        assert len(calls) == (2 if kept_here else 4)
+        return
+
+    if case in {"same-task", "replaced-file"}:
+        path = tmp_path / "sealed.bin"
+        read, calls = _reader(path)
+        if case == "same-task":
+            with verified_model_read_scope():
+                assert read() == read() == b"sealed"
+        else:
+            assert read() == b"sealed"
+            replacement = path.with_suffix(".new")
+            replacement.write_bytes(b"changed")
+            replacement.replace(path)
+            with pytest.raises(ValueError, match="sealed bytes changed"):
+                read()
+        assert len(calls) == (2 if case == "replaced-file" or not kept_here else 1)
+        return
+
+    if case in {"replaced-file-request-proof", "replaced-file-request-value"}:
+        path = tmp_path / "nested.bin"
+        path.write_bytes(b"sealed")
+        identity = (_RUN[0], case, path)
+
+        def verify():
+            value = path.read_bytes()
+            if value != b"sealed":
+                raise ValueError("sealed bytes changed")
+            return value
+
+        def build():
+            if case == "replaced-file-request-proof":
+                verified_request_proof(identity, verify)
+                return b"sealed"
+            return verified_request_value(identity, verify, nbytes=6)
+
+        with verified_model_read_scope():
+            assert verified_source_value(identity, (path,), build, nbytes=6) == b"sealed"
+            replacement = path.with_suffix(".new")
+            replacement.write_bytes(b"broken")
+            replacement.replace(path)
+            with pytest.raises(ValueError, match="sealed bytes changed"):
+                verified_source_value(identity, (path,), build, nbytes=6)
+        return
+
+    database = WorkspaceDatabase(tmp_path / "catalog")
+    with database.hold():
+        with database.transaction() as writer:
+            writer.execute("CREATE TABLE content_check (prior INTEGER)")
+        with database.connect(read_only=True) as reader:
+            before = (("prior", "INTEGER"),)
+            after = (*before, ("next_value", "VARCHAR"))
+            assert table_columns(reader, "content_check") == before
+            with database.transaction() as writer:
+                writer.execute("ALTER TABLE content_check ADD COLUMN next_value VARCHAR")
+                assert table_columns(writer, "content_check") == after
+                assert table_columns(reader, "content_check") == before
+            assert table_columns(reader, "content_check") == after
 
 
 @pytest.mark.proves("workspace_runtime.full_proof_refuses_a_changed_sealed_file")
@@ -1131,14 +1208,15 @@ def test_every_source_in_a_proof_is_proved_and_mutable_results_are_not_retained(
 
 
 @contextmanager
-def _kept_facts(tmp_path: Path):
-    """A workspace whose file facts this process keeps, and one file in it, written now."""
+def _kept_facts(tmp_path: Path, name: str = "workspace"):
+    """A workspace whose file digests and facts this process keeps, and one file in it."""
     from alphalattice.control.workspace_runtime import verified_facts as facts
 
-    workspace = tmp_path / "workspace"
+    workspace = tmp_path / name
     target = workspace / "store" / "part.parquet"
-    target.parent.mkdir(parents=True)
-    target.write_bytes(b"one")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_bytes(b"one")
     facts.keep_file_facts(workspace)
     try:
         yield facts, workspace, target
@@ -1150,197 +1228,646 @@ def _aged(target: Path) -> None:
     os.utime(target, (target.stat().st_atime - 10, target.stat().st_mtime - 10))
 
 
-def _advance_file_fact_clock(facts, target: Path, monkeypatch) -> None:
-    """Move past both the modification and change clocks without waiting."""
-    now = max(facts._stamp(target)[-2:]) + 10**10
-    monkeypatch.setattr(facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now))
+class _Clock:
+    """The trust record's clock, moved past a file's racy tick without waiting."""
+
+    def __init__(self, facts, monkeypatch) -> None:
+        self.now = time_ns()
+        monkeypatch.setattr(facts, "wall_time", lambda: self.now / 1e9)
+        monkeypatch.setattr(facts, "wall_time_ns", lambda: self.now)
+
+    def settle(self, target: Path) -> None:
+        self.now = max(self.now, max(file_stamp(target)[-2:]) + 10**10)
 
 
-def _hashed(timing) -> int:
-    """How many sealed files the verifier hashed inside `timing`."""
-    return sum(row["count"] for row in timing.rows() if row["detail"] == "sealed_file")
+def _counted_hashes(monkeypatch) -> list[bool]:
+    calls: list[bool] = []
+    digest = digests.integrity_sha256_stream
+
+    def counted(*args, **kwargs):
+        calls.append(True)
+        return digest(*args, **kwargs)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", counted)
+    return calls
+
+
+_ONE = hashlib.sha256(b"one").hexdigest()
+_TWO = hashlib.sha256(b"two").hexdigest()
+
+
+def _write_then_read(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.file_sha256(target, written=True)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _read_twice(facts, target, clock, tmp_path, monkeypatch) -> str:
+    clock.settle(target)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assert list(pool.map(facts.file_sha256, [target] * 4)) == [_ONE] * 4
+    return facts.file_sha256(target)
+
+
+def _racy_rewrite(facts, target, clock, tmp_path, monkeypatch) -> str:
+    # A same-size rewrite inside one clock tick leaves the whole stamp unchanged.
+    stamp = file_stamp(target)
+    facts.record_sealed_file(target, _ONE)
+    monkeypatch.setattr(digests, "handle_stamp", lambda _handle: stamp)
+    target.write_bytes(b"two")
+    return facts.file_sha256(target)
+
+
+def _file_scrub(facts, workspace):
+    from datetime import UTC, datetime, timedelta
+
+    return facts.FileTrustScrub(
+        workspace, clock=lambda: datetime(2026, 11, 22, tzinfo=UTC), period=timedelta(days=7)
+    )
+
+
+def _scrubbed_rewrite(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    target.write_bytes(b"two")
+    clock.settle(target)
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    receipt = json.loads((workspace / facts.FILE_TRUST_SCRUB).read_bytes())
+    assert (receipt["checked"], receipt["mismatches"]) == (1, 1)
+    assert not facts.sealed_file_holds(target, _ONE)
+    return facts.file_sha256(target)
+
+
+def _scrub_interrupted_append(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    captured = Event()
+    release = Event()
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    clock.settle(other)
+    stamp = file_stamp(target)
+    real_stamp = digests.handle_stamp
+    monkeypatch.setattr(
+        digests,
+        "handle_stamp",
+        lambda handle: stamp if Path(handle.name) == target else real_stamp(handle),
+    )
+    target.write_bytes(b"two")
+    assert facts.file_sha256(target) == _ONE
+    open_path = Path.open
+    journal = workspace / facts.FILE_TRUST
+    appends = 0
+
+    def interrupt(path, mode="r", **kwargs):
+        nonlocal appends
+        if path == journal and mode == "a":
+            appends += 1
+            if appends == 2:  # the mismatch invalidation after the scan's opening record
+                captured.set()
+                assert release.wait(5)
+                raise OSError("trust journal unavailable")
+        return open_path(path, mode, **kwargs)
+
+    monkeypatch.setattr(Path, "open", interrupt)
+    scrub = _file_scrub(facts, workspace)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        interrupted = pool.submit(scrub.run, lambda: True)
+        try:
+            assert captured.wait(5)
+            assert pool.submit(facts.file_sha256, other).result(timeout=2) == _ONE
+        finally:
+            release.set()
+        with pytest.raises(OSError, match="trust journal unavailable"):
+            interrupted.result(timeout=5)
+    assert not facts.sealed_file_holds(target, _ONE)
+    assert not (workspace / facts.FILE_TRUST_SCRUB).exists()
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert not facts.sealed_file_holds(target, _ONE)
+    return facts.file_sha256(target)
+
+
+def _mtime_changed(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    stat = target.stat()
+    os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _renamed_over(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    stat = target.stat()
+    staged = target.with_name("staged.parquet")
+    staged.write_bytes(b"two")
+    os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    os.replace(staged, target)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _switch_off(facts, target, clock, tmp_path, monkeypatch) -> str:
+    with override(Change("file-trust-off", {"ALPHALATTICE_FILE_TRUST": "0"})):
+        facts.file_sha256(target, written=True)
+        clock.settle(target)
+        facts.file_sha256(target)
+        return facts.file_sha256(target)
+
+
+def _copied_root(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    workspace = target.parents[1]
+    facts.release_file_facts(workspace)
+    shutil.copytree(workspace, tmp_path / "copy")  # its trust journal with it
+    with _kept_facts(tmp_path, "copy") as (_facts, _copy, copied):
+        clock.settle(copied)
+        return facts.file_sha256(copied)
+
+
+def _foreign_write(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _TWO)  # the writer's digest; the path holds other bytes
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _edited_while_hashed(facts, target, clock, tmp_path, monkeypatch) -> str:
+    counted = digests.integrity_sha256_stream
+
+    def then_edited(*args, **kwargs):
+        held = counted(*args, **kwargs)
+        with target.open("r+b") as other:  # the same file, edited in place after its hash
+            other.write(b"two")
+        stat = target.stat()
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+        return held
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", then_edited)
+    facts.file_sha256(target, written=True)
+    monkeypatch.setattr(digests, "integrity_sha256_stream", counted)
+    clock.settle(target)
+    return facts.file_sha256(target)
+
+
+def _backup(facts, target, clock, tmp_path, monkeypatch) -> str:
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    stamp = file_stamp(target)
+    monkeypatch.setattr(digests, "handle_stamp", lambda _handle: stamp)
+    target.write_bytes(b"two")  # a byte change that kept its stamp, as a restored timestamp
+    with facts.full_content_proof():
+        assert not facts.sealed_file_holds(target, _ONE)
+        assert facts.file_sha256(target) == _TWO
+    return backup._file_digest(target, "sha256").removeprefix("sha256:")
+
+
+def _scrub_yields_between_files(facts, target, clock, tmp_path, monkeypatch) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    workspace = target.parent.parent
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    for path in (target, other):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+
+    today = datetime(2026, 11, 22, tzinfo=UTC)
+    period = timedelta(days=7)
+    scrub = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    hash_bytes = digests.integrity_sha256_stream
+    seen = []
+    idle = False
+
+    def task_arrives(handle):
+        nonlocal idle
+        seen.append(handle.name)
+        idle = False
+        return hash_bytes(handle)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", task_arrives)
+    assert not scrub.run(lambda: idle)
+    with override(Change("file-trust-off", {"ALPHALATTICE_FILE_TRUST": "0"})):
+        assert scrub.run(lambda: True)
+    assert seen == []
+    idle = True
+    assert not scrub.run(lambda: idle)
+    assert len(seen) == 1
+    idle = True
+    assert not scrub.run(lambda: idle)  # a request during the last file also defers publication
+    assert not (workspace / facts.FILE_TRUST_SCRUB).exists()
+    assert not (workspace / facts.FILE_TRUST_SCRUB.with_suffix(".partial")).exists()
+    assert set(seen) == {str(target), str(other)}
+    idle = True
+    assert scrub.run(lambda: idle)
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert facts.file_sha256(target) == _ONE
+
+    restarted = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    assert restarted.run(lambda: True)
+    assert len(seen) == 2
+    today += period
+    idle = True
+    assert not restarted.run(lambda: idle)
+    assert len(seen) == 3
+    restarted = facts.FileTrustScrub(workspace, clock=lambda: today, period=period)
+    assert restarted.run(lambda: True)
+    assert len(seen) == 5
+    assert set(seen[-2:]) == {str(target), str(other)}
+    return facts.file_sha256(target)
+
+
+def _next_scrub(facts, workspace):
+    """The workspace's scrub a period after `_file_scrub`'s pass: due again."""
+    from datetime import UTC, datetime, timedelta
+
+    return facts.FileTrustScrub(
+        workspace, clock=lambda: datetime(2026, 11, 29, tzinfo=UTC), period=timedelta(days=7)
+    )
+
+
+def _removed_file_compacted(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)  # the next process: its load leaves the journal as it was
+    journal = workspace / facts.FILE_TRUST
+    assert "gone.parquet" in journal.read_text(encoding="utf-8")
+    published = []
+    publish = lambda action: (published.append(action.__name__), action(), True)[2]
+    assert facts._TRUST_JOURNAL.compact(workspace, publish)
+    assert published == ["replace"]  # read, probed and staged outside admission
+    assert "gone.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
+def _request_during_the_fsync(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    journal = workspace / facts.FILE_TRUST
+    journal.write_text(journal.read_text(encoding="utf-8") * 1100, encoding="utf-8")
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    other = target.with_name("other.parquet")
+    other.write_bytes(b"one")
+    before = journal.read_bytes()
+    facts.file_sha256(other, written=True)  # a foreground fact only appends, however long
+    grown = journal.read_bytes()
+    assert grown.startswith(before) and len(grown) > len(before)
+    requests, sync, replace, replaced = [], os.fsync, os.replace, []
+    staged = journal.with_name(f"{journal.name}.{os.getpid()}.partial")
+
+    def request_admitted(fd):  # a read-only request starts during the staged journal's sync
+        if staged.exists() and not requests:
+            requests.append("running")
+        sync(fd)
+
+    def counted(src, dst):
+        replaced.append(Path(dst)) if Path(dst) == journal else None
+        return replace(src, dst)
+
+    def idle(action) -> bool:  # the Host's boundary: no visible write while a request runs
+        if "running" in requests:
+            return False
+        action()
+        return True
+
+    monkeypatch.setattr(facts.os, "fsync", request_admitted)
+    monkeypatch.setattr(facts.os, "replace", counted)
+    scrub = _file_scrub(facts, workspace)
+    assert not scrub.run(lambda: "running" not in requests, publish=idle)
+    assert requests == ["running"] and replaced == []  # no replace while it is in flight
+    assert journal.read_bytes().startswith(grown)
+    requests[0] = "ended"
+    assert scrub.run(lambda: True, publish=idle)
+    assert len(journal.read_bytes()) < len(grown)
+    return facts.file_sha256(target)
+
+
+def _seal_compacts_once(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()  # trusted in this process; its scrub finds it gone
+    journal = workspace / facts.FILE_TRUST
+    replaced, replace = [], os.replace
+    monkeypatch.setattr(
+        facts.os, "replace", lambda src, dst: (replaced.append(Path(dst)), replace(src, dst))[1]
+    )
+    scrub = _file_scrub(facts, workspace)
+    published = lambda action: (action(), True)[1]
+    assert scrub.run(lambda: True, publish=published)
+    assert scrub.run(lambda: True, publish=published)  # sealed and compacted: nothing due
+    assert replaced.count(journal) == 1 and "gone.parquet" not in journal.read_text(
+        encoding="utf-8"
+    )
+    return facts.file_sha256(target)
+
+
+def _own_priority() -> int:
+    """The calling thread's scheduling priority or class, as its OS reads it."""
+    if sys.platform == "win32":
+        import ctypes  # lazy: the Windows thread reader
+
+        kernel = ctypes.WinDLL("kernel32")
+        kernel.GetCurrentThread.restype = ctypes.c_void_p
+        kernel.GetThreadPriority.argtypes = (ctypes.c_void_p,)
+        return kernel.GetThreadPriority(kernel.GetCurrentThread())
+    if sys.platform == "darwin":
+        import ctypes  # lazy: the macOS thread QoS reader
+
+        libc = ctypes.CDLL(None)
+        libc.pthread_self.restype = ctypes.c_void_p
+        qos, relative = ctypes.c_uint(), ctypes.c_int()
+        libc.pthread_get_qos_class_np(
+            ctypes.c_void_p(libc.pthread_self()), ctypes.byref(qos), ctypes.byref(relative)
+        )
+        return qos.value
+    return os.sched_getscheduler(0)
+
+
+def _growth_arms_nothing(facts, target, clock, tmp_path, monkeypatch) -> str:
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from alphalattice.control.product_host.maintenance.file_trust_scrub import IdleFileTrustScrub
+    from alphalattice.kernel.execution import Timers
+
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    now = [datetime(2026, 11, 22, tzinfo=UTC)]
+    published = lambda action: (action(), True)[1]
+    priorities = []  # the cycle's thread, before it and where the cycle asks if the Host is idle
+    host = SimpleNamespace(
+        clock=lambda: now[0],
+        foreground_idle=lambda: (priorities.append(_own_priority()), True)[1],
+        publish_when_idle=published,
+    )
+    timers = Timers()
+    try:
+        job = IdleFileTrustScrub(workspace, host, timers)
+        cycle = Thread(target=lambda: (priorities.append(_own_priority()), job._run()))
+        cycle.start()
+        cycle.join(30)
+        assert job.scrub.next_due == now[0] + timedelta(days=7)  # a scheduled cycle completed
+        # A lowered thread holding the interpreter's lock on a busy machine stalls every request
+        # thread of its Host: the cycle keeps its thread's own priority.
+        assert len(priorities) > 1 and set(priorities) == {priorities[0]}, priorities
+        armed = job.wake.seconds_until_due(now[0])
+        journal = workspace / facts.FILE_TRUST
+        base = target.stat().st_mtime_ns - 10**10
+        for tick in range(1100):  # a rewritten file's foreground facts outgrow the bound
+            os.utime(target, ns=(base, base + tick * 1000))
+            clock.settle(target)
+            facts.record_sealed_file(target, _ONE)
+        job.idle()
+        assert job.wake.seconds_until_due(now[0]) == armed  # the crossing arms nothing
+        assert len(journal.read_text(encoding="utf-8").splitlines()) > 1100
+        now[0] += timedelta(days=7)
+        assert job.scrub.run(lambda: True, publish=published)  # the next scheduled cycle
+        assert len(journal.read_text(encoding="utf-8").splitlines()) < 10
+    finally:
+        timers.close()
+    return facts.file_sha256(target)
+
+
+def _discard_survives_compaction(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    other, gone = target.with_name("other.parquet"), target.with_name("gone.parquet")
+    for path in (target, other, gone):
+        path.write_bytes(b"one")
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    stamp, real_stamp = file_stamp(other), digests.handle_stamp
+    monkeypatch.setattr(
+        digests, "handle_stamp", lambda h: stamp if Path(h.name) == other else real_stamp(h)
+    )
+    other.write_bytes(b"two")  # its stamp kept, its bytes changed: the scrub's mismatch
+    hashed = digests.integrity_sha256_stream
+
+    def removed_during_the_scan(*args, **kwargs):
+        gone.unlink(missing_ok=True)  # the pass then skips it, so a compaction is due at its seal
+        return hashed(*args, **kwargs)
+
+    monkeypatch.setattr(digests, "integrity_sha256_stream", removed_during_the_scan)
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    monkeypatch.setattr(digests, "integrity_sha256_stream", hashed)
+    journal = workspace / facts.FILE_TRUST
+    assert facts._SCRUB_DISCARDED in journal.read_text(encoding="utf-8")  # within its bound
+    fresh = target.with_name("fresh.parquet")
+    fresh.write_bytes(b"one")
+    base = fresh.stat().st_mtime_ns - 10**10
+    for tick in range(1100):  # the same Host's later facts outgrow the bound
+        os.utime(fresh, ns=(base, base + tick * 1000))
+        clock.settle(fresh)
+        facts.record_sealed_file(fresh, _ONE)
+    assert _next_scrub(facts, workspace).run(lambda: True)  # its next scheduled cycle
+    text = journal.read_text(encoding="utf-8")
+    assert "gone.parquet" not in text and facts._SCRUB_DISCARDED not in text  # compacted
+    facts.release_file_facts(workspace)
+    facts.keep_file_facts(workspace)
+    assert facts.file_fact(target, "sha256") is None  # the discard holds across the reopen
+    return facts.file_sha256(target)
+
+
+def _failed_replace_stays_due(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    gone = target.with_name("gone.parquet")
+    gone.write_bytes(b"one")
+    for path in (target, gone):
+        facts.record_sealed_file(path, _ONE)
+        clock.settle(path)
+    gone.unlink()
+    journal = workspace / facts.FILE_TRUST
+    replace, failed = os.replace, []
+
+    def shared_once(src, dst):
+        if Path(dst) == journal and not failed:
+            failed.append(dst)
+            raise PermissionError("the journal is open elsewhere")
+        return replace(src, dst)
+
+    monkeypatch.setattr(facts.os, "replace", shared_once)
+    scrub = _file_scrub(facts, workspace)
+    with pytest.raises(PermissionError, match="open elsewhere"):
+        scrub.run(lambda: True)
+    assert "gone.parquet" in journal.read_text(encoding="utf-8")
+    assert [name for name in os.listdir(journal.parent) if name.endswith(".partial")] == []
+    assert scrub.run(lambda: True)  # still due: the retry compacts
+    assert "gone.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
+def _load_probes_no_file(facts, target, clock, tmp_path, monkeypatch) -> str:
+    workspace = target.parent.parent
+    facts.record_sealed_file(target, _ONE)
+    clock.settle(target)
+    journal = workspace / facts.FILE_TRUST
+    line = json.loads(journal.read_text(encoding="utf-8").splitlines()[-1])
+    (workspace.parent / "outside.parquet").write_bytes(b"one")
+    with journal.open("a", encoding="utf-8") as stream:  # an entry the confined resolver refuses
+        stream.write(json.dumps(["../outside.parquet", *line[1:]]) + "\n")
+    facts.release_file_facts(workspace)
+    probes, is_file = [], Path.is_file
+
+    def denied(path):
+        probes.append(path)
+        raise PermissionError("its parent denies traversal")
+
+    monkeypatch.setattr(Path, "is_file", denied)
+    facts.keep_file_facts(workspace)  # the lease's load opens the workspace with no probe
+    monkeypatch.setattr(Path, "is_file", is_file)
+    assert probes == []
+    assert _file_scrub(facts, workspace).run(lambda: True)
+    assert "outside.parquet" not in journal.read_text(encoding="utf-8")
+    return facts.file_sha256(target)
+
+
+# Each input, the trust record's hashes it costs (a writer's hash of the file it renamed into
+# place included, backup's own hashlib digest not) and the digest its last read gives.
+_TRUST_TABLE = {
+    "write then read": (_write_then_read, 1, _ONE),
+    "read twice": (_read_twice, 1, _ONE),
+    "bytes changed, same size, mtime inside the racy tick": (_racy_rewrite, 2, _TWO),
+    "mtime changed": (_mtime_changed, 2, _ONE),
+    "replaced by rename": (_renamed_over, 2, _TWO),
+    "switch off": (_switch_off, 3, _ONE),
+    "copied to another root": (_copied_root, 2, _ONE),
+    "a writer's digest of bytes the path does not hold": (_foreign_write, 2, _ONE),
+    "edited in place while its writer hashes it": (_edited_while_hashed, 2, _TWO),
+    "backup": (_backup, 3, _TWO),
+    "scrub detects a settled changed stamp": (_scrubbed_rewrite, 3, _TWO),
+    "scrub interruption leaves no stale journal on restart": (_scrub_interrupted_append, 4, _TWO),
+    "scrub yields between files and keeps its period": (_scrub_yields_between_files, 7, _ONE),
+    "entries for removed files are compacted at idle": (_removed_file_compacted, 2, _ONE),
+    "a request during the staged journal's sync defers its replace": (
+        _request_during_the_fsync,
+        4,
+        _ONE,
+    ),
+    "a scrub sealed with immediate publication compacts once": (_seal_compacts_once, 3, _ONE),
+    "a foreground crossing arms nothing; the next scrub compacts": (
+        _growth_arms_nothing,
+        1103,
+        _ONE,
+    ),
+    "a discard sealed with a compaction due holds on reopen": (
+        _discard_survives_compaction,
+        1109,
+        _ONE,
+    ),
+    "a failed replace keeps the compaction due": (_failed_replace_stays_due, 3, _ONE),
+    "the lease's load probes no file": (_load_probes_no_file, 2, _ONE),
+}
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-@pytest.mark.parametrize("case", ["just-written", "young-rewrite", "stamp-ages-during-hash"])
-def test_a_fresh_files_digest_is_kept_from_its_writer_never_from_a_reader(
+@pytest.mark.proves("product_host.an_idle_scrub_never_stalls_the_hosts_requests")
+@pytest.mark.parametrize("case", list(_TRUST_TABLE), ids=list(_TRUST_TABLE))
+def test_a_files_digest_is_trusted_until_its_stamp_changes(
     tmp_path: Path, monkeypatch, case: str
 ) -> None:
-    """A young reader hashes immediately and rehashes after a rewrite."""
+    """Each input's hash count and digest: a stamp's change, the racy tick, a copy and the
+    switch hash again; the full proof and backup hash every file."""
+    run, hashes, digest = _TRUST_TABLE[case]
     with _kept_facts(tmp_path) as (facts, _workspace, target):
-        young = now = max(facts._stamp(target)[-2:])
-
-        def unexpected_wait(_seconds: float) -> None:
-            pytest.fail("a reader must not wait for a file stamp")
-
-        def finish_hash_after_window(handle, algorithm):
-            nonlocal now
-            digest = hashlib.file_digest(handle, algorithm)
-            now += int((facts.RACY_SECONDS + 1) * 10**9)
-            return digest
-
-        monkeypatch.setattr(
-            facts,
-            "time",
-            SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now, sleep=unexpected_wait),
-        )
-        with monkeypatch.context() as hashing:
-            if case == "stamp-ages-during-hash":
-                hashing.setattr(
-                    facts, "hashlib", SimpleNamespace(file_digest=finish_hash_after_window)
-                )
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-        assert facts.file_fact(target, "sha256") is None
-        now = young
-        if case == "young-rewrite":
-            target.write_bytes(b"two")
-            assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
-            target.write_bytes(b"one")
-
-        facts.record_file_fact(target, "columns", "a" * 64)
-        assert facts.file_fact(target, "columns") is None
-        facts.record_file_fact(target, "columns", "a" * 64, written=True)
-        assert facts.file_fact(target, "columns") == "a" * 64
-        sealed = hashlib.sha256(b"one").hexdigest()
-        assert facts.file_sha256(target, written=True) == sealed
-        assert facts.file_fact(target, "sha256") == sealed
-        facts.record_sealed_file(target, sealed)
-        stat = target.stat()
-        target.write_bytes(b"two")  # same size, in the same tick as far as its stat says
-        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-        assert not facts.sealed_file_holds(target, sealed)
+        clock = _Clock(facts, monkeypatch)
+        calls = _counted_hashes(monkeypatch)
+        with collect() as timing:
+            assert run(facts, target, clock, tmp_path, monkeypatch) == digest
+    assert len(calls) == hashes
+    off = any(row["detail"] == "file_trust_off" for row in timing.rows())
+    assert off == (case == "switch off")
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-def test_a_file_fact_outlives_its_process_for_the_lease_holders_workspace(
-    tmp_path: Path,
-    monkeypatch,
+def test_a_files_digest_outlives_its_process_for_the_lease_holders_workspace(
+    tmp_path: Path, monkeypatch
 ) -> None:
-    """requirement: a digest verified once is kept for the next process of the workspace, and
-    a sealed file's writer's digest lets that process read it with no hash."""
+    """requirement: a writer's digest is kept for the next process of the workspace, which
+    reads the file with no hash; older journal lines cost a hash, and a long journal is
+    compacted to its latest entries."""
     with _kept_facts(tmp_path) as (facts, workspace, target):
         _aged(target)
-        _advance_file_fact_clock(facts, target, monkeypatch)
-        sealed = hashlib.sha256(b"one").hexdigest()
-        facts.record_sealed_file(target, sealed)
+        clock = _Clock(facts, monkeypatch)
+        clock.settle(target)
+        facts.record_sealed_file(target, _ONE)
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)  # the next process: only the writer's journal
-        with collect() as timing:
-            assert facts.sealed_file_holds(target, sealed)
-        assert _hashed(timing) == 0
-        # A legacy metadata-only fact is readable but never used as a byte proof.
-        stat = target.stat()
-        journal = workspace / facts.FILE_FACTS
-        journal.parent.mkdir(parents=True, exist_ok=True)
+        calls = _counted_hashes(monkeypatch)
+        assert facts.sealed_file_holds(target, _ONE)
+        assert facts.file_fact(target, "sha256") == _ONE
+        assert calls == []
+        journal = workspace / facts.FILE_TRUST
+        line = journal.read_bytes().splitlines(keepends=True)[-1]
+        malformed = [*json.loads(line)[:-1], ""]  # the held stamp, with no SHA-256
         journal.write_text(
-            json.dumps(
-                [
-                    target.relative_to(workspace).as_posix(),
-                    "columns",
-                    stat.st_size,
-                    stat.st_mtime_ns,
-                    stat.st_ino,
-                    "a" * 64,
-                ]
-            )
+            json.dumps([target.relative_to(workspace).as_posix(), "sealed-sha256", _ONE])
+            + "\n"
+            + json.dumps(malformed)
             + "\n",
             encoding="utf-8",
         )
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
-        assert facts.file_fact(target, "columns") is None
-        facts.record_file_fact(target, "columns", "a" * 64)
+        assert facts.file_fact(target, "sha256") is None
+        assert facts.file_sha256(target) == _ONE
+        assert len(calls) == 1
+        with journal.open("ab") as stream:
+            stream.write(line * 1100)
+        before = journal.stat().st_size
         facts.release_file_facts(workspace)
         facts.keep_file_facts(workspace)
-        assert facts.file_fact(target, "columns") == "a" * 64
-        facts.configure_file_facts(capacity=1)
-        try:
-            for _ in range(2):
-                facts.file_sha256(target)
-                facts.record_file_fact(target, "columns", "a" * 64)
-                assert facts.file_fact(target, "sha256") is None
-                assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-                facts.release_file_facts(workspace)
-            journal = (workspace / facts.FILE_FACTS).read_bytes()
-            facts.keep_file_facts(workspace)
-            assert (workspace / facts.FILE_FACTS).read_bytes() == journal
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-            # Compaction keeps the latest content proof while bounding historical rows.
-            path = workspace / facts.FILE_FACTS
-            with path.open("ab") as stream:
-                stream.write(journal.splitlines(keepends=True)[-1] * 1100)
-            before = path.stat().st_size
-            facts.release_file_facts(workspace)
-            facts.keep_file_facts(workspace)
-            assert path.stat().st_size < before
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-        finally:
-            facts.configure_file_facts()
+        assert journal.stat().st_size == before  # the load reads it; its idle job compacts it
+        assert _file_scrub(facts, workspace).run(lambda: True)
+        assert journal.stat().st_size < before
+        assert facts.file_fact(target, "sha256") == _ONE
 
 
 @pytest.mark.proves("workspace_runtime.changed_file_ends_its_fact")
-def test_a_change_to_the_file_ends_its_fact(tmp_path: Path, monkeypatch) -> None:
-    """tamper: a file rewritten in place, same size, loses its fact and is digested again; a
-    sealed file's read hashes it again once its stat changed, and only full proof refuses a
-    rewrite whose stat was put back."""
-    with _kept_facts(tmp_path) as (facts, _workspace, target):
-        _aged(target)
-        digest = hashlib.file_digest
-        calls = []
-
-        def counted(*args, **kwargs):
-            calls.append(True)
-            return digest(*args, **kwargs)
-
-        with monkeypatch.context() as counting:
-            _advance_file_fact_clock(facts, target, counting)
-            counting.setattr(hashlib, "file_digest", counted)
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                assert (
-                    list(pool.map(facts.file_sha256, [target] * 4))
-                    == [hashlib.sha256(b"one").hexdigest()] * 4
-                )
-            assert facts.file_fact(target, "sha256") == hashlib.sha256(b"one").hexdigest()
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-            assert calls == [True]
+def test_a_value_derived_from_a_files_bytes_is_kept_by_their_digest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A young reader's value is not kept and its writer's is; a copy shares it by digest; a
+    rewrite, or a forced index collision, finds none; an unreadable stamp still hashes."""
+    with _kept_facts(tmp_path) as (facts, workspace, target):
+        clock = _Clock(facts, monkeypatch)
+        facts.record_file_fact(target, "columns", "a" * 64)
+        assert facts.file_fact(target, "columns") is None
+        facts.record_file_fact(target, "columns", "a" * 64, written=True)
+        assert facts.file_fact(target, "columns") == "a" * 64
+        facts.release_file_facts(workspace)
+        facts.keep_file_facts(workspace)
+        assert facts.file_fact(target, "columns") == "a" * 64
+        copy = target.with_name("copy.parquet")
+        copy.write_bytes(target.read_bytes())
+        assert facts.file_fact(copy, "columns") == "a" * 64
+        original = target.stat()
+        target.write_bytes(b"two")
+        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+        clock.settle(target)
+        assert facts.file_fact(target, "columns") is None
+        monkeypatch.setattr(facts, "change_xxh3_128_hex", lambda _data: "0" * 32)
+        facts.record_file_fact(target, "columns", "b" * 64, written=True)
+        target.write_bytes(b"one")
+        clock.settle(target)
+        assert facts.file_fact(target, "columns") is None
 
         def unavailable(_path):
             raise OSError("stamp unavailable")
 
         with monkeypatch.context() as blocked, collect() as timing:
-            blocked.setattr(facts.os, "fstat", unavailable)
-            assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
+            blocked.setattr(digests.os, "fstat", unavailable)
+            assert facts.file_sha256(target) == _ONE
         assert any(row["detail"] == "file_stamp_unavailable" for row in timing.rows())
-        facts.record_file_fact(target, "columns", "a" * 64)
-        copy = target.with_name("copy.parquet")
-        copy.write_bytes(target.read_bytes())
-        assert facts.file_fact(copy, "columns") == "a" * 64
-        stat = target.stat()
-        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
-        assert facts.file_fact(target, "columns") == "a" * 64
-        original = target.stat()
-        assert facts.file_sha256(target) == hashlib.sha256(b"one").hexdigest()
-        target.write_bytes(b"two")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        assert facts.file_fact(target, "columns") is None
-        assert facts.file_sha256(target) == hashlib.sha256(b"two").hexdigest()
-        sealed = hashlib.sha256(b"two").hexdigest()
-        _aged(target)
-        facts.record_sealed_file(target, sealed)
-        aged = target.stat()
-        target.write_bytes(b"TWO")
-        with collect() as timing:
-            assert not facts.sealed_file_holds(target, sealed)  # its stat changed: hashed
-        assert _hashed(timing) == 1
-        os.utime(target, ns=(aged.st_atime_ns, aged.st_mtime_ns))
-        assert facts.sealed_file_holds(target, sealed)  # stat put back: trusted, as git does
-        with facts.full_content_proof():
-            assert not facts.sealed_file_holds(target, sealed)
-        target.write_bytes(b"two")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        # Even a forced index collision cannot match a different full content key.
-        monkeypatch.setattr(facts.xxhash, "xxh3_128_hexdigest", lambda _data: "0" * 32)
-        facts.record_file_fact(target, "columns", "b" * 64, written=True)
-        target.write_bytes(b"one")
-        os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
-        assert facts.file_fact(target, "columns") is None

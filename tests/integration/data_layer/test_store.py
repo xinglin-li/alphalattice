@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -19,13 +20,14 @@ import duckdb
 import pyarrow as pa
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, governance
-from alphalattice.kernel.data_layer import log as host
-from alphalattice.kernel.data_layer import store as storeport
-from alphalattice.kernel.data_layer.chain import canonical
-from alphalattice.kernel.data_layer.log import HostLog, envelope
-from alphalattice.kernel.data_layer.store import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.foundation.data_layer import create_data_root, governance
+from alphalattice.foundation.data_layer import log as host
+from alphalattice.foundation.data_layer import store as storeport
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import HostLog, envelope
+from alphalattice.foundation.data_layer.store import (
     RESULTS_KEYS,
     WORLD_KEYS,
     Derivation,
@@ -36,10 +38,10 @@ from alphalattice.kernel.data_layer.store import (
     repair,
     stage,
 )
-from alphalattice.kernel.data_layer.telemetry import decode
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.foundation.data_layer.telemetry import decode
+from alphalattice.kernel.config import Change, override
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/store.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/store.py"
 LISTING, MOVED = str(uuid.UUID(int=7)), str(uuid.UUID(int=8))
 WRITTEN = {"source_observed_at": "2024-02-01 00:00:00+00"}  # a source's own write
 CHILD = {
@@ -137,8 +139,71 @@ def owe(port: StorePort) -> dict:
     return owed
 
 
+def _telemetry_during_task_admission(root, monkeypatch, rows):
+    """Admit a Task while the Host's shared DuckLake instance is writing telemetry."""
+    from alphalattice.control.product_host.composition import application_session
+    from alphalattice.foundation.data_layer import history
+
+    workspace = root.parent / "workspace"
+    workspace.mkdir()
+    now = datetime(2025, 1, 1, tzinfo=UTC)
+    application_session.CpuBudgetStore(workspace / "runtime").write(
+        1, chosen_by="HUMAN", chosen_at=now
+    )
+    with history.own_root(root):
+        application_session.WorkspaceApplicationSession.open_history("w1", workspace, lambda: now)
+        port = history.store()
+        assert port is not None
+        settings = "SELECT current_setting('threads'), current_setting('async_threads')"
+        opened = port.lake.execute(settings).fetchone()
+        monkeypatch.setattr(application_session, "apply_reader_threads", int)
+        resume = threading.Event()
+
+        def admit():
+            with application_session.TASK_LEASES.lease(uuid.uuid4(), 1, 1):
+                return application_session._apply_task_reader_policy()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            execute = duckdb.DuckDBPyConnection.execute
+
+            def at_transaction(connection, sql, *args, **kwargs):
+                if sql.startswith("INSERT INTO lake.telemetry.event"):
+                    try:
+                        assert pool.submit(admit).result(timeout=5) == 1
+                    except TimeoutError as error:
+                        raise AssertionError("Task admission stalled during telemetry") from error
+                    finally:
+                        resume.set()
+                if sql.startswith("SET threads TO ?"):
+                    # DuckDB's native resize can get stuck here. Model that wait so
+                    # the red replay releases the transaction and its test thread.
+                    assert resume.wait(10)
+                    raise AssertionError("Task admission tried to resize the shared lake")
+                return execute(connection, sql, *args, **kwargs)
+
+            with monkeypatch.context() as transaction:
+                transaction.setattr(duckdb.DuckDBPyConnection, "execute", at_transaction)
+                assert port.telemetry_batch(rows) == 1
+        (record,) = port.agent_telemetry("codex", "c", workspace_id="w1")
+        assert record["output_tokens"] == 3
+        assert port.lake.execute(settings).fetchone() == opened == (1, 1)
+
+
 @pytest.mark.proves("data_layer.agent_otlp_is_one_catalog_batch")
-@pytest.mark.parametrize("case", ("conversation", "workspace", "stopping"))
+@pytest.mark.parametrize(
+    "case",
+    (
+        "conversation",
+        "workspace",
+        "stopping",
+        "unfinished-result",
+        "held-reader-on-reopen",
+        "failed-commit",
+        "concurrent-batches",
+        "daily-admission",
+        "task-admission",
+    ),
+)
 def test_native_observations_commit_once_and_read_only_their_conversation(root, monkeypatch, case):
     """One sanitized export survives restart, without duplicate delivery or invented scope, and
     a Host stop that meets a batch in the catalog's session waits for it to commit."""
@@ -177,6 +242,85 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
             workspace_id=workspace,
         )
 
+    if case == "task-admission":
+        _telemetry_during_task_admission(root, monkeypatch, batch("c"))
+        return
+
+    if case in {"held-reader-on-reopen", "failed-commit"}:
+        from alphalattice.foundation.data_layer import history, history_runtime, reading
+        from alphalattice.foundation.data_layer import root as catalog_owner
+
+        if case == "held-reader-on-reopen":
+            catalog_owner.catalog(root)
+            with closing(sqlite3.connect(root / "machine/catalog.sqlite")) as catalog:
+                assert catalog.execute("PRAGMA journal_mode = DELETE").fetchone() == ("delete",)
+        else:
+            monkeypatch.setattr(
+                catalog_owner, "enable_catalog_wal", lambda root: None, raising=False
+            )
+        driver = """
+import sys
+from pathlib import Path
+import alphalattice.control.workspace_runtime.reader_threads
+from alphalattice.foundation.data_layer import reading
+
+requests, answers = sys.stdin.buffer, sys.stdout.buffer
+matches = reading.catalog_matches
+
+def hold_after_attach(connection, *, name):
+    connection.execute("BEGIN").complete()
+    matches(connection, name=name)
+    count = f"SELECT count(*) FROM {name}.telemetry.event"
+    assert connection.execute(count).fetchall() == [(0,)]
+    reading._send(answers, "holding the catalog snapshot")
+    assert requests.read(1) == b"r"
+    assert connection.execute(count).fetchall() == [(0,)]
+    connection.execute("ROLLBACK").complete()
+
+reading.catalog_matches = hold_after_attach
+reading.serve(Path(sys.argv[1]), requests, answers)
+"""
+        start = reading.child_process.start_piped
+
+        def hold_reader(args):
+            if args == [sys.executable, "-m", reading.__name__, str(root)]:
+                args = [sys.executable, "-c", driver, str(root)]
+            return start(args)
+
+        monkeypatch.setattr(reading.child_process, "start_piped", hold_reader)
+        workspace = root.parent / "workspace"
+        workspace.mkdir()
+        history.open_history("w1", "workspace", workspace, root=root)
+        try:
+            history_runtime.start_log_reader()
+            port = history.store()
+            assert port is not None
+            reader = history_runtime._open["reading"]
+            child = reader._child
+            assert child is not None and child.stdin is not None and child.stdout is not None
+            reading._send(child.stdin, ("experience", {}))
+            held = reader._answers.submit(reading._receive, child.stdout)
+            assert held.result(timeout=20) == "holding the catalog snapshot"
+            if case == "failed-commit":
+                with pytest.raises(
+                    duckdb.TransactionException, match='"COMMIT": database is locked'
+                ):
+                    port.telemetry_batch(batch("c"))
+            else:
+                try:
+                    assert port.telemetry_batch(batch("c")) == 1
+                except duckdb.TransactionException as error:
+                    pytest.fail(f"the ahead reader blocked telemetry: {error}")
+            child.stdin.write(b"r")
+            child.stdin.flush()
+            answer = reader._answers.submit(reading._receive, child.stdout)
+            assert answer.result(timeout=20) == (True, [])
+            rows = port.agent_telemetry("codex", "c", workspace_id="w1")
+            assert len(rows) == (0 if case == "failed-commit" else 1)
+        finally:
+            history.close_history()
+        return
+
     if case == "stopping":  # the batch holds the session's writer at its clock, then commits
         entered, release, done = threading.Event(), threading.Event(), {}
         with HostLog.open(root) as log:
@@ -205,6 +349,60 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
         try:
+            if case == "concurrent-batches":
+                starting = threading.Barrier(2)
+
+                def send(session):
+                    starting.wait(timeout=10)
+                    return port.telemetry_batch(batch(session))
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    assert list(pool.map(send, ("c1", "c2"))) == [1, 1]
+                for session in ("c1", "c2"):
+                    assert len(port.agent_telemetry("codex", session, workspace_id="w1")) == 1
+                return
+            if case == "daily-admission":
+                entered = threading.Event()
+
+                def send():
+                    entered.set()
+                    return port.telemetry_batch(batch("c"))
+
+                with (
+                    ThreadPoolExecutor(max_workers=1) as pool,
+                    stage(
+                        root, "raw_bar", log.require_lineage("provider", "yf"), bars(1)
+                    ) as staged,
+                ):
+                    with port.admitting():
+                        port.commit(staged)
+                        pending = pool.submit(send)
+                        assert entered.wait(10)
+                        with pytest.raises(TimeoutError):
+                            pending.result(timeout=0.2)
+                    assert pending.result(timeout=10) == 1
+                assert port.lake.execute("SELECT count(*) FROM lake.world.raw_bar").fetchall() == [
+                    (1,)
+                ]
+                assert len(port.agent_telemetry("codex", "c", workspace_id="w1")) == 1
+                return
+            if case == "unfinished-result":
+                pending = port.lake.execute("SELECT i FROM range(2) AS test_rows(i) ORDER BY i")
+                assert pending.fetchone() == (0,)
+                try:
+                    assert port.telemetry_batch(batch("conversation-1")) == 1
+                    (row,) = port.agent_telemetry("codex", "conversation-1", workspace_id="w1")
+                    assert row["output_tokens"] == 3
+                    assert port.unplaced_telemetry(workspace_id="w1") == 0
+                    assert (
+                        port.trial_agent_usage("trial-1", workspace_id="w1")["output_tokens"] == 3
+                    )
+                    assert pending.fetchall() == [(1,)]
+                except duckdb.ResourceInUseException as error:
+                    pytest.fail(f"telemetry used a connection with an unfinished result: {error}")
+                finally:
+                    pending.complete()
+                return
             if case == "workspace":
                 first, second = batch("conversation-1"), batch("conversation-1", "w2")
                 # The catalog's idle check can precede an incoming observation.
@@ -238,11 +436,11 @@ def test_native_observations_commit_once_and_read_only_their_conversation(root, 
                 "status": "UNMEASURED",
                 "incomplete": 0,
             }
+            from alphalattice.foundation.data_layer import history
             from alphalattice.interface.local_application.native_bridge import (
                 NativeResearchBinding,
                 read_session_usage,
             )
-            from alphalattice.kernel.data_layer import history
 
             monkeypatch.setattr(
                 history,
@@ -312,13 +510,16 @@ KILL = """
 import json, os, sys
 from pathlib import Path
 import pyarrow as pa
-from alphalattice.kernel.data_layer import store
-from alphalattice.kernel.data_layer.log import HostLog
+from alphalattice.control.workspace_runtime import reader_threads
+from alphalattice.kernel import storage
+from alphalattice.foundation.data_layer import store
+from alphalattice.foundation.data_layer.log import HostLog
+storage.install_driver(reader_threads.DRIVER)  # this process's entry installs its DuckDB driver
 root, point, batch = Path(sys.argv[1]), sys.argv[2], json.loads(Path(sys.argv[3]).read_text())
 lag = batch["lag"] and tuple(batch["lag"])
 if batch.get("array"):
     import numpy as np
-    from alphalattice.kernel.data_layer import arrays
+    from alphalattice.foundation.data_layer import arrays
     log = HostLog.open(root)
     if point == "commit":  # the body staged, its profile not committed
         log.flush = lambda: os._exit(9)
@@ -327,7 +528,7 @@ if batch.get("array"):
     arrays.keep(root, log, {"value": np.array(batch["rows"])}, workspace=None)
 elif batch.get("owner"):
     from datetime import date, datetime
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
     rows = batch["rows"]
     for row in rows:
         row.pop("artifact_id")
@@ -348,7 +549,7 @@ elif batch.get("market"):
     from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
     from alphalattice.foundation.market_data_ops.storage import world
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel.data_layer import history
+    from alphalattice.foundation.data_layer import history
     from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
     workspace, manifest = root.parent / "workspace", acquisition_manifest()
     market = MarketDataRepository(workspace, universe_reader="workspace")
@@ -522,7 +723,7 @@ def test_a_kill_at_each_point_of_the_write_order_recovers_at_start(
     if batch == "results":
         from datetime import datetime
 
-        from alphalattice.kernel.data_layer import history, history_execution_outcomes
+        from alphalattice.foundation.data_layer import history, history_execution_outcomes
 
         records = [{k: v for k, v in row.items() if k != "artifact_id"} for row in given]
         for row in records:
@@ -595,8 +796,8 @@ def _a_market_publish_after_a_kill(root, rows, published):
     killed publish left, world holds the workspace's bars once, the batch's commit is recorded
     once, and the journal is empty. A publish killed before its catalog commit is made by the
     open (`published`); one killed after it is judged `same` there and commits nothing again."""
+    from alphalattice.foundation.data_layer import history
     from alphalattice.foundation.market_data_ops.storage import world
-    from alphalattice.kernel.data_layer import history
 
     workspace = root.parent / "workspace"
     history.open_history("w1", "workspace", workspace, root=root)
@@ -625,7 +826,7 @@ def _an_array_after_a_kill(root, point, given):
     one whose profile committed is placed, and the lane reads back whole or is missing by name."""
     import numpy as np
 
-    from alphalattice.kernel.data_layer import arrays
+    from alphalattice.foundation.data_layer import arrays
 
     lane = {"value": np.array(given)}
     artifact, kept = arrays.describe(lane).artifact_id, point != "commit"
@@ -756,8 +957,8 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
     steps back; the as-of read sees them before their correction and the correction after it."""
     root = root.parent / "o'brien" / "data"
     create_data_root(root)
-    wall = [host.time.time_ns()]
-    monkeypatch.setattr(host, "time", type("Wall", (), {"time_ns": staticmethod(lambda: wall[0])}))
+    wall = [host.wall_time_ns()]
+    monkeypatch.setattr(host, "wall_time_ns", lambda: wall[0])
     with HostLog.open(root) as log:
         key = {"family": "provider", "name": "yf", "version": 1}
         log.record(
@@ -1015,22 +1216,29 @@ def _check_maintenance_keeps_owed_snapshots(root, log, port):
 
 @pytest.mark.proves("data_layer.maintenance_bounds_the_catalog")
 @pytest.mark.parametrize("listings", [None, 108, 1080], ids=["owed", "inlined", "parquet"])
-def test_maintenance_bounds_catalog_and_preserves_its_readers(root, listings):
+def test_maintenance_bounds_catalog_and_preserves_its_readers(root, listings, monkeypatch):
     """A real catalog keeps recovery snapshots and equal as-of rows through maintenance."""
     with HostLog.open(root) as log, closing(StorePort.open(root, log)) as port:
         if listings is None:
             _check_maintenance_keeps_owed_snapshots(root, log, port)
         else:
-            _check_idle_maintenance_preserves_world_rows(root, log, port, listings)
+            _check_idle_maintenance_preserves_world_rows(root, log, port, listings, monkeypatch)
 
 
-def _check_idle_maintenance_preserves_world_rows(root, log, port, listings):
+def _check_idle_maintenance_preserves_world_rows(root, log, port, listings, monkeypatch):
     """The idle write and age triggers compact both physical forms without moving as-of rows."""
     now = datetime.now(UTC)
     image = "SELECT * FROM raw_bar_asof(epoch_us(?)) ORDER BY listing_id, session_date"
     at = datetime(2024, 4, 1, tzinfo=UTC)
     run = port.lake.execute
     run("SET threads TO 6").complete()
+    maintain = port.maintain
+
+    def maintain_at_open_width(when):
+        assert run("SELECT current_setting('threads')").fetchone() == (6,)
+        return maintain(when)
+
+    monkeypatch.setattr(port, "maintain", maintain_at_open_width)
     provider = log.require_lineage("provider", "yf")
     for day in range(126):
         run(
@@ -1648,9 +1856,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 from contextlib import closing
-from alphalattice.kernel.data_layer.log import attach
-from alphalattice.kernel.data_layer.project import require_lineage
-from alphalattice.kernel.data_layer.store import as_columns, stage
+from alphalattice.foundation.data_layer.log import attach
+from alphalattice.foundation.data_layer.project import require_lineage
+from alphalattice.foundation.data_layer.store import as_columns, stage
 rows = [{"listing_id": str(uuid.UUID(int=i % 500)), "session_date": f"{2000 + i // 500}-01-01",
          "close": float(i), "source_observed_at": "2024-02-01 00:00:00+00"}
         for i in range(100_000)]
@@ -1721,32 +1929,145 @@ def _holds(log: HostLog, holder: str) -> None:
         log.record("workspace.status_changed", ("workspace", "w1"), {"status": "deleted"})
 
 
+_REMOVAL = {
+    "missing within grace": "missing",
+    "missing after grace": "deleted",
+    "unreadable after grace": "missing",
+    "returned within grace": "active",
+    "returned after deletion": "deleted",
+    "collection twice": "deleted",
+    "interrupted after deletion": "deleted",
+}
+
+
+def _removed_workspace(root, monkeypatch, case, kept):
+    from alphalattice.control.product_host.storage.backup import REMOVED_GRACE
+    from alphalattice.foundation.data_layer import history_runtime
+
+    folder, other = root.parent / "removed", root.parent / "shared"
+    unreadable = case == "unreadable after grace"
+    status_sql = "SELECT status FROM workspace WHERE workspace_id = 'w1'"
+    other.mkdir()
+    folders = {"w1": folder, "w2": other}
+    owners = {"a": "w1", "b": "w1"}
+    if unreadable:
+        folders["w3"] = root.parent / "also-removed"
+        owners["c"] = "w3"
+    with HostLog.open(root) as log, closing(StorePort.open(root, log)) as port:
+        for workspace, path in folders.items():
+            log.record(
+                "workspace.created",
+                ("workspace", workspace),
+                {"name": workspace, "folder": str(path)},
+            )
+        for artifact, workspace in owners.items():
+            _produced(log, artifact, "blob")
+            (root / "blobs" / artifact).write_bytes(b"model")
+            log.record("artifact.held", ("artifact", artifact), {}, workspace=workspace)
+        log.record("artifact.held", ("artifact", "b"), {}, workspace="w2")
+        monkeypatch.setattr(history_runtime, "opened_log", lambda: (log, "w2"))
+        assert history_runtime.mark_missing() == (["w1", "w3"] if unreadable else ["w1"])
+        if case == "returned within grace":
+            folder.mkdir()
+        wall = host.wall_time_ns()
+        days = -1 if kept and not unreadable else 1
+        elapsed = (REMOVED_GRACE + timedelta(days=days)) // timedelta(microseconds=1)
+        monkeypatch.setattr(host, "wall_time_ns", lambda: wall + elapsed * 1000)
+        if unreadable:
+            stat = Path.stat
+
+            def deny_traversal(path, **kwargs):
+                if path == folder:
+                    raise PermissionError("fixture workspace cannot be traversed")
+                return stat(path, **kwargs)
+
+            monkeypatch.setattr(Path, "stat", deny_traversal)
+        if case == "interrupted after deletion":
+
+            def interrupted(*_):
+                raise RuntimeError("before collecting bodies")
+
+            with monkeypatch.context() as scoped:
+                scoped.setattr(governance, "unheld", interrupted)
+                with pytest.raises(RuntimeError, match="before collecting bodies"):
+                    port.collect_unheld()
+            with closing(host.attach(root)) as reader:
+                assert reader.execute(status_sql).fetchone()[0] == "deleted"
+            assert (root / "blobs" / "a").is_file()
+
+        try:
+            collected = port.collect_unheld()
+        except PermissionError as error:
+            pytest.fail(f"workspace collection stopped at an unreadable folder: {error}")
+        assert collected == (["c"] if unreadable else ([] if kept else ["a"]))
+        assert log.read(status_sql)[0][0] == _REMOVAL[case]
+        refs = log.read("SELECT artifact_id, root_id FROM live_ref ORDER BY artifact_id, root_id")
+        assert [tuple(row) for row in refs] == (
+            [("a", "w1"), ("b", "w1"), ("b", "w2")] if kept else [("b", "w2")]
+        )
+        assert (root / "blobs" / "a").is_file() is kept
+        assert (root / "blobs" / "b").is_file()
+        if unreadable:
+            assert (
+                log.read("SELECT status FROM workspace WHERE workspace_id = 'w3'")[0][0]
+                == "deleted"
+            )
+            assert not (root / "blobs" / "c").exists()
+            assert not history_runtime.admit_removal("w1", "workspace.backups_pruned", {})
+        if not kept:
+            eligible = history_runtime.removed_since(REMOVED_GRACE, "workspace.backups_pruned")
+            assert eligible == [("w1", [])]
+        if case == "returned after deletion":
+            folder.mkdir()
+            monkeypatch.setattr(history_runtime, "held", lambda *_: log)
+            with pytest.raises(DataError) as refused:
+                history_runtime.workspace_on_log(folder, folder.name, "w1")
+            assert refused.value.failure.code == "data_layer.workspace_deleted"
+        if case in ("collection twice", "returned after deletion"):
+            tip = log.read("SELECT max(seq) FROM event")[0][0]
+            assert port.collect_unheld() == []
+            assert log.read("SELECT max(seq) FROM event")[0][0] == tip
+
+
 @pytest.mark.proves("data_layer.a_body_goes_only_when_nothing_holds_it")
 @pytest.mark.parametrize(
-    ("holder", "unheld", "kept"),
+    ("holder", "unheld", "retention_days", "kept"),
     [
-        pytest.param("workspace", timedelta(0), True, id="held by its workspace"),
-        pytest.param("pin", timedelta(0), True, id="held by a pin"),
-        pytest.param("none", timedelta(days=7), True, id="held by the window"),
-        pytest.param("none", timedelta(0), False, id="collected when none holds it"),
-        pytest.param("unpinned", timedelta(0), False, id="collected once unpinned"),
+        pytest.param("workspace", timedelta(0), None, True, id="held by its workspace"),
+        *(
+            pytest.param(case, timedelta(0), None, status != "deleted", id=case)
+            for case, status in _REMOVAL.items()
+        ),
+        pytest.param("pin", timedelta(0), None, True, id="held by a pin"),
+        pytest.param("none", timedelta(days=7), None, True, id="held by the window"),
+        pytest.param("none", timedelta(days=7), "30", True, id="held by the configured window"),
+        pytest.param("none", timedelta(0), None, False, id="collected when none holds it"),
+        pytest.param("unpinned", timedelta(0), None, False, id="collected once unpinned"),
         pytest.param(
-            "deleted workspace", timedelta(0), False, id="collected once unheld by delete"
+            "deleted workspace", timedelta(0), None, False, id="collected once unheld by delete"
         ),
     ],
+    ids=str,
 )
 def test_the_collector_takes_a_body_only_when_no_reference_pin_or_window_holds_it(
-    root, monkeypatch, holder, unheld, kept
+    root, monkeypatch, holder, unheld, retention_days, kept
 ):
     """The collector takes a body no live reference, pin or window holds: its event first, then
     its file; a held one, or one younger than the window, stays."""
     monkeypatch.setattr(governance, "UNHELD", unheld)
+    if holder in _REMOVAL:
+        _removed_workspace(root, monkeypatch, holder, kept)
+        return
     with HostLog.open(root) as log:
         _produced(log, "a", "blob")
         _holds(log, holder)
         (root / "blobs" / "a").write_bytes(b"model")
         port = StorePort.open(root, log)
-        collected = port.collect_unheld()
+        if retention_days is not None:
+            in_two_weeks = log.clock() + timedelta(days=14) // timedelta(microseconds=1)
+            monkeypatch.setattr(log, "clock", lambda: in_two_weeks)
+        with override(Change("test-retention", {"ALPHALATTICE_RETENTION_DAYS": retention_days})):
+            collected = port.collect_unheld()
         port.close()
         state = log.read("SELECT body_state FROM artifact WHERE artifact_id = 'a'")[0][0]
     assert collected == ([] if kept else ["a"])

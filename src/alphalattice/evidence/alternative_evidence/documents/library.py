@@ -14,10 +14,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from alphalattice.kernel.data_layer.knowledge import KnowledgeStore, SourceOrigin
-from alphalattice.kernel.data_layer.log import HostLog
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.foundation.data_layer.knowledge import KnowledgeStore, SourceOrigin
+from alphalattice.foundation.data_layer.log import HostLog
 
 
 class EvidenceDocumentUnverifiable(ValueError):

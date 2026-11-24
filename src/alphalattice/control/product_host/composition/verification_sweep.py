@@ -21,21 +21,19 @@ import os
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.research_experiments import (
-    TASK_KIND as STUDY_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.research_experiments import (
-    VERIFICATION_LEDGER_DIRECTORY,
-    ResearchExperimentApplication,
+from alphalattice.control.product_host.composition.task_kinds import (
+    RESEARCH_EXPERIMENT_TASK_KIND as STUDY_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.task_kinds import (
     STUDY_VERIFICATION_TASK_KIND,
+    VERIFICATION_LEDGER_DIRECTORY,
 )
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -52,7 +50,10 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+
+if TYPE_CHECKING:
+    from .research_experiments import ResearchExperimentApplication
+
 
 SWEEP_TASK_KIND = STUDY_VERIFICATION_TASK_KIND
 SWEEP_STAGE = "verify_saved_studies"
@@ -110,7 +111,7 @@ class StudyVerificationSweep:
         self,
         *,
         session: WorkspaceApplicationSession,
-        experiments: ResearchExperimentApplication,
+        experiments: Callable[[], ResearchExperimentApplication],
         installed: Callable[[], str],
         clock: Callable[[], datetime],
     ) -> None:
@@ -212,11 +213,11 @@ class StudyVerificationSweep:
                 remaining = len(studies) - index
                 break
             try:
-                self.experiments.verify_saved_study(study)
+                self.experiments().verify_saved_study(study)
             except (ValueError, KeyError) as error:
                 code = public_failure(error, "study_verification_sweep.study_unverified")
                 failed.append({"task_id": str(study.task_id), "failure_code": code})
-                self.experiments.refuse_verification(study.task_id, code)
+                self.experiments().refuse_verification(study.task_id, code)
                 continue
             verified.append(str(study.task_id))
         report = {

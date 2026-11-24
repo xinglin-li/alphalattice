@@ -22,11 +22,11 @@ from typing import Any
 
 import psutil
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     _process_tree_ids,
 )
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel import spawn
+from alphalattice.foundation.data_layer import history
 from tests.pytest_environment import released, serve_apart, with_its_tasks
 
 

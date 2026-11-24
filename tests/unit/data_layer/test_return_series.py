@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import return_series
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import return_series
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/return_series.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/return_series.py"
 
 
 @pytest.mark.proves("data_layer.a_return_series_is_kept_in_its_form")

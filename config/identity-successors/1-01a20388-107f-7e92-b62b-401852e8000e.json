@@ -1,0 +1,167 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "be3267ccab218272eeb760177dd5f814d687295aeaf12b98bce44f990f1c75a9",
+   "successor": "14391ff068dcb242fa6c326a11c2f071ccebdfc05bc6118f6c4113a1a4a7f5cc",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "cb3a5af81ef11dd573f09f737bd8ba48ef66383de5f01cf051fdb05ca0bd0c6b",
+   "successor": "e4800fefc557a898c1165550a792106fca01caa3369d05b8b11386bdceb7563f",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "a14a55eb00505be2fb504be0b19bd114857000f3061a200d6e4134ef4bb8d28b",
+   "successor": "122cc2df709f06f79b68f741bb82a0dca07684932c129340472a282a34a6dfd7",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "4fcb6f55036215c5fbce6bf37561ef04f92c06c959eaae6dc9bbc27d9f6f7d24",
+   "successor": "b757941b4ece1eeaa4c127fea19eac3f75368e60e42c962e9bb76546da54699c",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "d40aa9d1d591a08aa5600dc5d143104e8ee1ae486d8421d757f28572c6d67c78",
+   "successor": "12e3514308707ced84b249e4dd7c1b33daba7e517b3992265ab359c8807ea506",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b8c73679f3bde8073ac09648187a7bdc3265da8222312c8c9a0418d5cf239f93",
+   "successor": "3cb60ce5681da4d6712a0ab2430b032284c8075753fe8b0f06990c5b10a4eff3",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "47b73c8e7e2c57923e73038a9fa0ff362efc6cf358d0e59ab2d6f909282097ac",
+   "successor": "2d18e4722179f773fc5bc8830beb00c1a90d29b9362161828576b49cd57c9477",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "18401bd26814b4fce3ae455b2a85223c0e273c5f725e5fb23a75493511eb8c1b",
+   "successor": "eacdd730b66609a2651e364d8a1112bda9079816378bea0927cbdf8756ff322d",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "d86c222088fd3afe005ffe1c10b93bfae96595cb615ccbb10ca11905f027283c",
+   "successor": "ffba5f31ce947345ff06a7e85e8d59e148b24b5a41f7f9c9f3fd85e2afdb3d8b",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "da5c855fcffcf98b192d375419679c60ef1de66b14ccd4a0f54525fb8121eef7",
+   "successor": "b9802ce8d6f198daff9f7403da602a7fefd132495cee4ded595900dca529856f",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "bc4bd026a84c9a9aa1c56d9e0072513499873dd90566e71895031212087491ce",
+   "successor": "c812579a07ab04b147a20b0b0c1c273b936d46fcde64078c602586141c15e2b7",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6d898b157b8f0677a6cfce138d58f51df78ceb831e806bbad91c3c372192f6f9",
+   "successor": "0e1ed032f80abb384a1fd099f606f12613cf6899face5ca0fd7a238bc4d38b14",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "8aa8124ea228b846db588b5f3954aa78a8acc85c35292fa0ce2d7f9ab60df705",
+   "successor": "f7a4d2d2852e34a9909b3281bd629f3f2ae1effe7eae4385eba79c50b2a1f9c0",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "66577d3769581312fb508dea59b5ec4b6597823d13fe98c5ea960199aab89aac",
+   "successor": "70c21da802424ce722fed9483f9dc40ef695c8a593eb97986e318b529b6c975e",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "cf23bf9722f49837f183d0e3c77e8744821cc009c39883cec0cdd7c8bead1710",
+   "successor": "1e98646b10daa2e0c4cea2bb27b42b4eeb2820ee755553be7d62dc3eb98467f2",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "c66c9aa5556db1902c827abf64e2a4527b131407acd9fee455d0febe4580c7d7",
+   "successor": "4969a14e95b68796bb7936f698f6d6ea82f0c4f6a695ddc858486be29d1c1eab",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "f43793fb8752cba17c1a0529c0274c0cf4eac369f216f95899552748b56a0075",
+   "successor": "28c3229ff31004b90573176d06999271dc1bd37dd296109682c3bace21855a14",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "f43793fb8752cba17c1a0529c0274c0cf4eac369f216f95899552748b56a0075",
+   "successor": "28c3229ff31004b90573176d06999271dc1bd37dd296109682c3bace21855a14",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "3d643cbfbd9ceb2016854e659315b7fb5a690e13ef67eccc8d2b3169d07bb0cd",
+   "successor": "b20e23f51842c804bbc254118e9eca49941281a8f0047cc8d882f24eb299bffb",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "adbc220b5c7fab148188aacc674a2a55c8580f57a4146e3cb1cb12c0878e5726",
+   "successor": "a5c0977588cc0a5fd426e1c476244b6c3ce5c6a163b458a27eb96f29406f94de",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "619d5c28505eb0d1735f56de46b0948c9f93375f65d2c344c1ea9a4a82444089",
+   "successor": "fa32ec8eea722af8cbe2719c957ed58c505679b1f95736ad08c1428006dcb9fa",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "ec52e6ceb7494d6e72f2ba18d5f68181f0e06b9f0497b9fc13817ac4af20b1ee",
+   "successor": "8b7b518df953d5890f346f9302d6cc99a6fed857d6b12438a197ff42f3662ebc",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "29a66aa18761dc91fb863bceb0897d218ddba731ff6f7ad0cb7daea58c028b72",
+   "successor": "d14fdcdd2af4cec7db368918959f4c9f90781ac2e3fef0cf52171b6aea51e37e",
+   "change": "Route task timestamps through the kernel clock",
+   "reason": "Twenty-three roles move only through their source closures, continuing from the landed egress values with each successor row matching the commit stage; the exact-head development replay is ALL EQUAL over 185,251 records."
+  }
+ ]
+}

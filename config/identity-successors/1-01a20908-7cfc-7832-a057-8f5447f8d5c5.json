@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "adc324055949c952a80914a98b330da89d79ce7bac118f720b1f46f1f81aec25",
+   "successor": "b86e79f47aca20d7abbf012c76db47e56d8a085fe861710ab556ff3253e077e2",
+   "change": "A restored backup's workspace starts again on the same machine",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records, and the source behind the four moved roles has not changed since that replay. The four roles move only by their source fingerprint, because a restored workspace now keeps its market format marker, so a restore no longer stops the next start."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "58d358b55466e683ecb6afdcd721e36e9c5ce5c916ee887859083566eac49465",
+   "successor": "ca1178bb3fe885a34cdd738d25b0a4fd790237d14f52dd019538b582debda18e",
+   "change": "A restored backup's workspace starts again on the same machine",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records, and the source behind the four moved roles has not changed since that replay. The four roles move only by their source fingerprint, because a restored workspace now keeps its market format marker, so a restore no longer stops the next start."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "78c6bfa4a0dc392d32dd6ba0b6c6c73e7d645c7b46902182e908afbdeb206e3f",
+   "successor": "4f05bc69ec8fc1157ff65fb1692abdbcd470cb33214345a38d9f2530d380d829",
+   "change": "A restored backup's workspace starts again on the same machine",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records, and the source behind the four moved roles has not changed since that replay. The four roles move only by their source fingerprint, because a restored workspace now keeps its market format marker, so a restore no longer stops the next start."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "333577c0cc3037554a89726984a0e180ae381d666d41f3f5139caf5ef372c88b",
+   "successor": "f4e81076999f3d0db60e541437de122a66ec45b2f2b27e6de041adcdd9e5fada",
+   "change": "A restored backup's workspace starts again on the same machine",
+   "reason": "Results are unchanged: replaying the development set gives equal values for all 185,251 generated records, and the source behind the four moved roles has not changed since that replay. The four roles move only by their source fingerprint, because a restored workspace now keeps its market format marker, so a restore no longer stops the next start."
+  }
+ ]
+}

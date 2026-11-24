@@ -23,6 +23,8 @@ property of what happened to be on the path.
 
 from __future__ import annotations
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     DesktopCoreFeatureBundle,
     FeatureCatalog,
@@ -142,8 +144,6 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
     SESSION_OBSERVATION_METHOD_FAMILY,
     session_observation_factor_specs,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def catalog_implementation_hashes(

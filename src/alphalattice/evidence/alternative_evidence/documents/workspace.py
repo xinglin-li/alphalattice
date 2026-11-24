@@ -8,12 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.persistence import fsync_directory, write_new
 from alphalattice.control.workspace_runtime.core import Workspace
 from alphalattice.control.workspace_runtime.paths import make_confined_parents, resolve_confined
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import fsync_directory, write_new
+from alphalattice.foundation.data_layer import history
 
 from ..contracts import AlternativeEvidenceReadingDepth, seal_contract
 from ..sources.contracts import (

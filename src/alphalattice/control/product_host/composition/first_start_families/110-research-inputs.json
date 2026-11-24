@@ -1,4 +1,8 @@
 {
  "factory": "alphalattice.control.product_host.research_authoring.factor_inputs:research_input_upgrade_family",
- "mode": "workspace"
+ "mode": "workspace",
+ "name": "research-inputs",
+ "trust_paths": [
+  "/research-inputs/*"
+ ]
 }

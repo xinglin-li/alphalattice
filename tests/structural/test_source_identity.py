@@ -3,16 +3,13 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 
 import pytest
 
-from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
-    VALUE_ROLE_PREFIXES,
-    recipe_hashes_match,
-)
-from alphalattice.kernel.shared_kernel.identity_successors import (
+from alphalattice.capabilities.domain_contracts.identity_successors import (
     IdentitySuccessorError,
     is_current,
     latest,
@@ -20,8 +17,14 @@ from alphalattice.kernel.shared_kernel.identity_successors import (
     recorded_moves,
     recorded_origin,
 )
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    current_module_name,
+    number_deciding_rule,
     source_component_id_from_tracked_path,
+)
+from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+    VALUE_ROLE_PREFIXES,
+    recipe_hashes_match,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -360,40 +363,168 @@ def test_every_factor_value_has_a_readout_role_and_binds_its_recorded_origin() -
     )
 
 
-def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores_prose(
-    tmp_path: Path,
-) -> None:
-    """A rule closure follows imports inside the deciding packages and ignores prose."""
+MODEL = (
+    '"""Fit."""\n'
+    "from typing import TYPE_CHECKING\n\n"
+    "from . import helper\n"
+    "from .storage import reader\n"
+    "from .storage import writer\n"
+    "from .helper import offset\n"
+    "from .helper import offset as step\n"
+    "from .helper import scale as rate\n\n"
+    "if TYPE_CHECKING:\n    from .helper import Y\n\n"
+    "SHIFT = 1\n\n\n"
+    "def fit():\n"
+    "    total: int = SHIFT\n"
+    "    return rate() + total + helper.Y + offset()\n\n\n"
+    "def twice():\n"
+    "    helper.scale()\n"
+    "    return offset() + step()\n\n\n"
+    "READY = twice()\n"
+)
 
-    from alphalattice.kernel.shared_kernel.source_identity import (
+
+class Seen(StrEnum):
+    SAME = "same"
+    ROTATES = "rotates"
+
+
+def _replaced(relative: str, *pairs: tuple[str, str]) -> Callable[[Path], None]:
+    def edit(source: Path) -> None:
+        path = source / relative
+        text = path.read_text(encoding="utf-8")
+        for old, new in pairs:
+            assert old in text
+            text = text.replace(old, new)
+        path.write_text(text, encoding="utf-8")
+
+    return edit
+
+
+def _moved(source: Path) -> None:
+    desk = source / "investment" / "desk"
+    (desk / "model.py").rename(desk / "fitting.py")
+    for relative in ("control/host/entry.py", "investment/desk/__init__.py"):
+        _replaced(relative, (".model import", ".fitting import"))(source)
+
+
+MODEL_PATH = "investment/desk/model.py"
+EDITS: dict[str, tuple[Callable[[Path], None], Seen]] = {
+    "unchanged": (lambda _source: None, Seen.SAME),
+    "module shared by two roles": (lambda _source: None, Seen.ROTATES),
+    "same-tick rewrite": (_replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")), Seen.ROTATES),
+    "rewrite with restored mtime": (
+        _replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")),
+        Seen.ROTATES,
+    ),
+    "comment": (_replaced(MODEL_PATH, ("SHIFT = 1\n", "SHIFT = 1  # a shift\n")), Seen.SAME),
+    "docstring": (_replaced(MODEL_PATH, ('"""Fit."""', '"""Fit, in other words."""')), Seen.SAME),
+    "import moved into a function": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import scale as rate\n", ""),
+            ("def fit():\n", "def fit():\n    from .helper import scale as rate\n\n"),
+        ),
+        Seen.SAME,
+    ),
+    "import alias renamed": (
+        _replaced(MODEL_PATH, ("scale as rate", "scale as speed"), ("rate()", "speed()")),
+        Seen.SAME,
+    ),
+    "import through a re-export": (
+        _replaced("control/host/entry.py", ("desk.model import fit", "desk import fit")),
+        Seen.ROTATES,
+    ),
+    "module moved, same body": (_moved, Seen.SAME),
+    "constant changed": (_replaced(MODEL_PATH, ("SHIFT = 1", "SHIFT = 2")), Seen.ROTATES),
+    "called body changed": (
+        _replaced("investment/desk/helper.py", ("return 2", "return 3")),
+        Seen.ROTATES,
+    ),
+    "operator changed": (_replaced(MODEL_PATH, ("rate() + total", "rate() - total")), Seen.ROTATES),
+    "import moved into one of its two readers": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset\n", ""),
+            ("def fit():\n", "def fit():\n    from .helper import offset\n\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "imports kept for their effect reordered": (
+        _replaced(
+            MODEL_PATH,
+            (
+                "from .storage import reader\nfrom .storage import writer\n",
+                "from .storage import writer\nfrom .storage import reader\n",
+            ),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below a guard": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset\n", ""),
+            ("import Y\n\n", "import Y\nfrom .helper import offset\n\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below an annotation": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import scale as rate\n", ""),
+            ("total: int = SHIFT\n", "total: int = SHIFT\n    from .helper import scale as rate\n"),
+        ),
+        Seen.ROTATES,
+    ),
+    "import moved below a call": (
+        _replaced(
+            MODEL_PATH,
+            ("from .helper import offset as step\n", ""),
+            ("helper.scale()\n", "helper.scale()\n    from .helper import offset as step\n"),
+        ),
+        Seen.ROTATES,
+    ),
+}
+
+
+@pytest.mark.parametrize("edit", EDITS, ids=list(EDITS))
+def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores_prose(
+    tmp_path: Path, edit: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rule closure follows the deciding imports and moves only with the code that runs."""
+
+    from alphalattice.capabilities.domain_contracts.source_identity import (
         NumberDecidingRule,
         number_deciding_closure,
         source_rule_closure_hash,
     )
 
-    def write(relative: str, text: str) -> Path:
-        path = tmp_path / "src" / "alphalattice" / relative
+    source = tmp_path / "src" / "alphalattice"
+
+    def write(relative: str, text: str) -> None:
+        path = source / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        return path
 
-    for package in ("investment", "investment/desk", "investment/desk/storage", "control"):
+    for package in ("investment", "investment/desk/storage", "control"):
         write(f"{package}/__init__.py", "")
+    write("investment/desk/__init__.py", "from .model import fit\n")
     write(
         "control/host/entry.py",
         "from typing import TYPE_CHECKING\n"
         "from alphalattice.investment.desk.model import fit\n"
         "from alphalattice.control.host import other\n"
-        "if TYPE_CHECKING:\n    from alphalattice.investment.desk import typing_only\n",
+        "if TYPE_CHECKING:\n    from alphalattice.investment.desk import typing_only\n\n\n"
+        "def run():\n    return fit()\n",
     )
     write("control/host/other.py", "X = 1\n")
-    model = write(
-        "investment/desk/model.py",
-        '"""Fit."""\nfrom . import helper\nfrom .storage import reader\n\n\n'
-        "def fit():\n    return 1\n",
+    write(MODEL_PATH, MODEL)
+    write(
+        "investment/desk/helper.py",
+        "Y = 2\n\n\ndef scale():\n    return 2\n\n\ndef offset():\n    return 1\n",
     )
-    write("investment/desk/helper.py", "Y = 2\n")
     write("investment/desk/storage/reader.py", "W = 4\n")
+    write("investment/desk/storage/writer.py", "V = 5\n")
     write("investment/desk/typing_only.py", "Z = 3\n")
     (tmp_path / "config").mkdir()
     (tmp_path / "config" / "identity-roles.json").write_text(
@@ -404,37 +535,150 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     )
     entry = ("alphalattice.control.host.entry",)
     rule = NumberDecidingRule(frozenset({"desk"}), frozenset({"storage"}))
-    closure = number_deciding_closure(entry, root=tmp_path, rule=rule)
-    assert sorted(closure) == [
+    modules = [
         "alphalattice.control.host.entry",
         "alphalattice.investment.desk",
         "alphalattice.investment.desk.helper",
         "alphalattice.investment.desk.model",
     ]
+    assert sorted(number_deciding_closure(entry, root=tmp_path, rule=rule)) == modules
 
-    def identity() -> str:
+    from alphalattice.capabilities.domain_contracts import source_identity
+    from alphalattice.kernel.clock import wall_time_ns
+
+    clock = wall_time_ns() + 10_000_000_000  # a settled scratch tree without waiting on its clock
+    monkeypatch.setattr(source_identity, "wall_time_ns", lambda: clock, raising=False)
+    if edit == "same-tick rewrite":
+        model = source / MODEL_PATH
+        # A same-size rewrite sees the exact same stamp on a coarse filesystem within its tick.
+        file_stamp = source_identity.file_stamp
+        racy = (*file_stamp(model)[:3], clock, clock)
+        monkeypatch.setattr(source_identity, "os_name", "nt")
+        monkeypatch.setattr(
+            source_identity,
+            "file_stamp",
+            lambda path: racy if path == model else file_stamp(path),
+        )
+
+    closures: list[object] = []
+    source_reads: list[Path] = []
+    hash_closure = source_identity.canonical_hash
+    read_file = Path.read_bytes
+
+    def hashed(payload):
+        closures.append(payload)
+        return hash_closure(payload)
+
+    def read(path):
+        if path.is_relative_to(source):
+            source_reads.append(path)
+        return read_file(path)
+
+    monkeypatch.setattr(source_identity, "canonical_hash", hashed)
+    monkeypatch.setattr(Path, "read_bytes", read)
+
+    def identity(role="EXAMPLE") -> str:
         return source_rule_closure_hash(
             root=tmp_path,
             tracked_paths=("src/alphalattice/control/host/entry.py",),
             semantic_owner="host",
-            numerical_role="EXAMPLE",
+            numerical_role=role,
         )
 
     before = identity()
-    original = model.read_text(encoding="utf-8")
-    model.write_text(
-        original.replace('"""Fit."""', '"""Fit, in other words."""') + "# a comment\n",
-        encoding="utf-8",
+    if edit != "same-tick rewrite":
+        assert identity() == before
+        assert len(closures) == 1
+    initial_reads = source_reads.copy()
+    change, expected = EDITS[edit]
+    if edit == "rewrite with restored mtime":
+        from os import utime
+
+        model = source / MODEL_PATH
+        before_edit = model.stat()
+        change(source)
+        utime(model, ns=(before_edit.st_atime_ns, before_edit.st_mtime_ns))
+    else:
+        change(source)
+    role = "ALSO_EXAMPLE" if edit == "module shared by two roles" else "EXAMPLE"
+    assert (Seen.SAME if identity(role) == before else Seen.ROTATES) is expected
+    if edit == "unchanged":
+        assert len(closures) == 1 and source_reads == initial_reads
+        reached: list[dict[str, str]] = []
+        with source_identity.observe_source_closures(reached.append):
+            assert identity() == before
+        assert [sorted(closure) for closure in reached] == [modules]
+    elif edit == "module shared by two roles":
+        assert len(closures) == 2 and source_reads == initial_reads
+    elif edit in ("constant changed", "same-tick rewrite", "rewrite with restored mtime"):
+        assert len(closures) == 2 and source_reads[len(initial_reads) :] == [source / MODEL_PATH]
+
+
+@pytest.mark.proves("domain_contracts.source_identity_survives_relocation")
+@pytest.mark.parametrize("numerical", [False, True], ids=["external", "numerical"])
+def test_a_rule_closure_carries_the_semantic_binding_of_an_import(
+    tmp_path: Path, numerical: bool
+) -> None:
+    """Requirement (LAWS.md ID3): both closure forms preserve resolved source identity on a move."""
+    from alphalattice.capabilities.domain_contracts.source_identity import (
+        number_deciding_closure,
+        number_deciding_rule,
+        source_rule_closure_hash,
     )
-    assert identity() == before
-    model.write_text(original.replace("return 1", "return 2"), encoding="utf-8")
-    assert identity() != before
+
+    entry = "src/alphalattice/control/host/entry.py"
+    entry_module = "alphalattice.control.host.entry"
+    binding = "alphalattice.kernel.storage"
+    layouts = (
+        (binding, binding),
+        ("alphalattice.foundation.moved_storage", binding),
+        ("alphalattice.foundation.other_storage", "alphalattice.foundation.other_storage"),
+    )
+    values = []
+    for index, (package, semantic_name) in enumerate(layouts):
+        root = tmp_path / ("numerical" if numerical else "external") / str(index)
+        paths = {
+            entry: "from .bridge import value\n",
+            "src/alphalattice/control/host/bridge.py": (
+                f"from {package} import reader\nvalue = reader.load()\n"
+            ),
+            "src/" + package.replace(".", "/") + "/reader.py": "def load():\n    return 7\n",
+            "config/identity-roles.json": json.dumps(
+                {
+                    "number_deciding_packages": ["host", "storage"] if numerical else ["host"],
+                    "platform_segments": [],
+                    "module_bindings": {semantic_name: package},
+                }
+            ),
+        }
+        for name, text in paths.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        bound_entry = "src/" + semantic_name.replace(".", "/") + "/reader.py"
+        form_one = tuple(
+            number_deciding_closure(entries, root=root, rule=number_deciding_rule(root))
+            for entries in ((entry_module,), (entry_module, semantic_name + ".reader"))
+        )
+        form_two = tuple(
+            source_rule_closure_hash(
+                root=root, tracked_paths=entries, semantic_owner="host", numerical_role="EXAMPLE"
+            )
+            for entries in ((entry,), (entry, bound_entry))
+        )
+        values.append((*form_one, *form_two))
+    before, moved, different = values
+    assert (binding + ".reader" in before[0]) is numerical
+    assert before == moved
+    assert before[0] != different[0]
+    assert before[1] != different[1]
+    assert before[2] != different[2]
 
 
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     """A span moves no identity and any other form reads as written."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import (
+    from alphalattice.capabilities.domain_contracts.source_identity import (
         source_bytes_syntax_sha256 as digest,
     )
 
@@ -445,7 +689,7 @@ def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:
     )
     measured = (
         "import numpy as np\n"
-        "from alphalattice.kernel.shared_kernel.spans import span, spanned\n\n\n"
+        "from alphalattice.capabilities.domain_contracts.spans import span, spanned\n\n\n"
         "def fit(x):\n"
         '    with span("compute", detail="sum"):\n        total = np.sum(x)\n'
         '    with span("score"):\n        return total * 2\n\n\n'
@@ -467,8 +711,8 @@ def test_every_span_in_the_source_is_literal_and_names_a_category_its_ledger_cou
     class, with literal arguments, so it lands in its ledger class and reads as its body in every
     identity that holds its module."""
 
-    from alphalattice.kernel.shared_kernel.source_identity import SPAN_MODULE
-    from alphalattice.kernel.shared_kernel.spans import SPAN_CLASSES
+    from alphalattice.capabilities.domain_contracts.source_identity import SPAN_MODULE
+    from alphalattice.capabilities.domain_contracts.spans import SPAN_CLASSES
 
     found: list[str] = []
     for path in sorted((ROOT / "src").rglob("*.py")):
@@ -542,10 +786,12 @@ def test_the_recorded_reach_names_real_areas_and_roles() -> None:
 
 _ENVIRONMENT_READERS = {
     # The one helper (LAWS.md ID6).
-    "src/alphalattice/kernel/shared_kernel/environment.py": "the helper",
+    "src/alphalattice/capabilities/domain_contracts/environment.py": "the helper",
     # Rebuild keys of caches whose content the environment decides, and packs it gates.
-    "src/alphalattice/kernel/knowledge/model_store.py": "a stored model's rebuild key",
-    "src/alphalattice/kernel/knowledge/catalog.py": "a knowledge pack's installed distributions",
+    "src/alphalattice/capabilities/knowledge/model_store.py": "a stored model's rebuild key",
+    "src/alphalattice/capabilities/knowledge/catalog.py": (
+        "a knowledge pack's installed distributions"
+    ),
     "src/alphalattice/capabilities/alpha_modeling/runtime/lightgbm_threads.py": (
         "the LightGBM thread canary is sealed per installed version (PA3)"
     ),
@@ -625,7 +871,7 @@ def test_the_environment_is_read_by_one_helper_and_the_named_keys() -> None:
     assert _environment_readers(ROOT / "src" / "alphalattice") == set(_ENVIRONMENT_READERS)
 
 
-@pytest.mark.proves("shared_kernel.schema_hash_ignores_prose_and_binds_structure")
+@pytest.mark.proves("domain_contracts.schema_hash_ignores_prose_and_binds_structure")
 def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     """requirement (SH, LAWS.md SC3, V98): a schema's words -- a model's docstring, a
     field's description, an enum's docstring, a title, examples -- move no schema hash; a type,
@@ -633,7 +879,7 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
 
     from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 
     def contract(*, words: bool, bound: int = 3, default: str = "A", required: bool = True):
         class Colour(StrEnum):
@@ -674,6 +920,33 @@ def test_a_schema_hash_binds_the_structure_and_never_the_prose() -> None:
     assert schema_structure(whole.model_json_schema()) == base
     assert schema_structure(TypeAdapter(whole)) == base
 
+    schema = {
+        "title": "Original words",
+        "type": "object",
+        "properties": {"exposure": {"type": "number", "default": 1.0}},
+    }
+    same = "fd386cd7c291dda258a92802aa685ed951a6245cd709c93bb0e928408db072ef"
+    golden = [
+        (schema_structure(schema), same),
+        (schema_structure(schema), same),
+        (schema_structure({**schema, "title": "Other words"}), same),
+        (
+            schema_structure(
+                {
+                    **schema,
+                    "properties": {"exposure": {"type": "number", "default": 2.0}},
+                }
+            ),
+            "204ebfe014853d5dba669f524ff7131e08481e266034c76476c2c11c4ed154b0",
+        ),
+        (
+            {"fees": [float("nan"), -0.0]},
+            "608b43c138fe874c06e8d57d07e21b01ea8e6696fceb1b84d1896abf2614a46a",
+        ),
+    ]
+    for value, expected in golden:
+        assert canonical_hash(value) == expected
+
 
 # Raw schemas below are display-only; hashes use the kernel schema_structure (SH).
 _SCHEMA_DISPLAYS = frozenset(
@@ -708,8 +981,8 @@ _SCHEMA_DISPLAYS = frozenset(
             "full_request_document",
         ),
         ("src/alphalattice/interface/local_application/portfolio_research.py", "_request_document"),
-        ("src/alphalattice/kernel/shared_kernel/identity.py", "cast"),
-        ("src/alphalattice/kernel/shared_kernel/identity.py", "schema"),
+        ("src/alphalattice/capabilities/domain_contracts/identity.py", "cast"),
+        ("src/alphalattice/capabilities/domain_contracts/identity.py", "schema"),
         (
             "src/alphalattice/oversight/chief_risk_officer/decision/book_evidence.py",
             "PortfolioReviewAnswer",
@@ -767,8 +1040,10 @@ def test_preparation_identity_tracks_the_data_rule_and_not_grant_mechanics(tmp_p
     (tmp_path / "config/identity-roles.json").write_bytes(
         (ROOT / "config/identity-roles.json").read_bytes()
     )
+    bindings = number_deciding_rule(ROOT)  # a stable path's file sits where its binding puts it
     for relative in paths:
-        file = tmp_path / relative
+        module = relative.removeprefix("src/").removesuffix(".py").replace("/", ".")
+        file = tmp_path / "src" / (current_module_name(module, bindings).replace(".", "/") + ".py")
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text("VALUE = 1\n", encoding="utf-8")
     grant = tmp_path / "src/alphalattice/control/data_platform/delegation.py"

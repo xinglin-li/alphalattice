@@ -15,6 +15,7 @@ from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application import cli, client
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
@@ -32,7 +33,6 @@ from alphalattice.interface.local_application.native_setup import declare_projec
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from alphalattice.kernel.data_layer import history
 
 SECRET = "SYNTHETIC-PRIVATE-TRANSCRIPT-AND-ERROR"
 AT = datetime(2026, 10, 6, tzinfo=UTC)

@@ -44,7 +44,7 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     TemporalAdmissionError,
     TemporalAdmissionResult,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 _EVENT_COLUMNS: Mapping[str, str] = {
     "OFFICIAL_OPEN": "session_open_timestamp",

@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from alphalattice.control.product_host.composition import strategy_score_inputs
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
+    TRAINING_TARGET_METHOD_ID,
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
     read_workspace_component_inputs,
@@ -20,6 +21,10 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
 from alphalattice.control.workspace_runtime import verified_facts
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.investment.alpha_research.targets.component_training import (
+    compile_frozen_component_training_targets,
+)
+from alphalattice.kernel.identity import file_stamp
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
 )
@@ -139,9 +144,82 @@ def test_prepared_history_keeps_every_cutoff_array_and_observation_hash(
                 np.testing.assert_array_equal(
                     getattr(full_training, name), getattr(prefix_training, name)
                 )
+            # The training publish takes this view's target as its method's own compile.
+            size = len(full_training.formation_sessions)
+            values, ends = compile_frozen_component_training_targets(
+                source=full,
+                formation_sessions=full_training.formation_sessions,
+                holding_end_sessions=full_training.holding_end_sessions,
+                raw_log_returns=full_training.raw_log_execution_returns,
+                simple_returns=full_training.raw_simple_execution_returns,
+                target_method_id=TRAINING_TARGET_METHOD_ID,
+                reference_eligible=full.reference_eligible[:size],
+                nominal_member_count=full.nominal_member_count[:size],
+            )
+            np.testing.assert_array_equal(values, full_training.total_return_target_z)
+            assert ends == full_training.holding_end_sessions
         else:
             assert full_training is prefix_training is None
     assert len(set(hashes)) == len(DAYS), "different cutoffs remain different snapshots"
+
+
+@pytest.mark.proves("product_host.prepared_score_read_reuses_its_capture_world")
+@pytest.mark.parametrize(
+    ("formation", "changed", "world_reads"),
+    [
+        pytest.param(DAYS[-1], None, 0, id="the-capture-formation"),
+        pytest.param(DAYS[0], None, 1, id="an-earlier-formation"),
+        pytest.param(DAYS[-1], "world", 1, id="a-world-written-after-capture"),
+        pytest.param(DAYS[-1], "store", None, id="a-store-changed-after-capture"),
+    ],
+)
+def test_a_prepared_read_reuses_the_capture_world_only_at_its_formation(
+    input_workspace, input_features, monkeypatch, formation, changed, world_reads
+):
+    """requirement: a prepared read checks its store by the capture's proof alone, and takes the
+    capture's world only at the capture's formation while world has not moved; it equals the full
+    reader's at every cutoff, and a store changed since the capture is refused before any use."""
+    source_hash = workspace_score_source_identity(input_workspace)
+    prepared = prepare_workspace_component_inputs(
+        input_workspace,
+        through=DAYS[-1],
+        observed_at=OBSERVED_AT,
+        expected_source_hash=source_hash,
+        ordered_feature_ids=input_features,
+    )
+    request = dict(
+        formation=formation,
+        observed_at=OBSERVED_AT,
+        expected_source_hash=source_hash,
+        ordered_feature_ids=input_features,
+    )
+    full, _ = read_workspace_component_inputs(input_workspace, **request)
+    reads: Counter[str] = Counter()
+    for name in ("_formation_world", "workspace_score_source_identity"):
+        read = getattr(strategy_score_inputs, name)
+        monkeypatch.setattr(
+            strategy_score_inputs,
+            name,
+            lambda *args, _read=read, _name=name, **kwargs: (
+                reads.update([_name]),
+                _read(*args, **kwargs),
+            )[1],
+        )
+    if changed == "world":  # a capture whose world snapshot is no longer the current one
+        prepared = replace(prepared, world=prepared.world._replace(served=-1))
+    if changed == "store":
+        with MarketDataRepository(input_workspace).database.connect(read_only=False) as connection:
+            connection.execute(
+                "UPDATE raw_daily_bar_current SET open = open + 0.01 "
+                "WHERE listing_id = ? AND session_date = ?",
+                [prepared.ordered_listing_ids[0], formation],
+            )
+        with pytest.raises(ValueError, match=r"strategy_score.source_revision_changed"):
+            read_workspace_component_inputs(input_workspace, **request, prepared=prepared)
+        return
+    prefix, _ = read_workspace_component_inputs(input_workspace, **request, prepared=prepared)
+    assert (reads["_formation_world"], reads["workspace_score_source_identity"]) == (world_reads, 0)
+    _same_source(full, prefix, AlphaCurrentArtifactStore(input_workspace / "artifacts"))
 
 
 def test_inference_selects_the_same_context_bytes_as_complete_training(
@@ -262,10 +340,9 @@ def test_repeat_source_proofs_in_a_process_hash_no_unchanged_store_file(
     again only once its size or mtime moves (an edit is then refused, as the test above holds)."""
     market = MarketDataRepository(input_workspace)
     files = [path for path in (market.path, Path(str(market.path) + ".wal")) if path.exists()]
-    now = max(max(verified_facts._stamp(path)[-2:]) for path in files) + 10**10
-    monkeypatch.setattr(
-        verified_facts, "time", SimpleNamespace(time=lambda: now / 1e9, time_ns=lambda: now)
-    )
+    now = max(max(file_stamp(path)[-2:]) for path in files) + 10**10
+    monkeypatch.setattr(verified_facts, "wall_time", lambda: now / 1e9)
+    monkeypatch.setattr(verified_facts, "wall_time_ns", lambda: now)
     hashed: Counter[Path] = Counter()
     whole = strategy_score_inputs.file_sha256
 

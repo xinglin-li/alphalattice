@@ -15,6 +15,7 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological im
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DYNAMIC_PANEL_LIGHTGBM_SEEDS,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     AlphaDevelopmentArtifactStore,
@@ -47,7 +48,6 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     lifecycle_implementation_hash,
     resolve_alpha_refit_plan,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

@@ -20,7 +20,7 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 

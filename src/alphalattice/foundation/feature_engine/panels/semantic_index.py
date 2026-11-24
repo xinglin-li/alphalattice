@@ -8,10 +8,10 @@ import numpy as np
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import panel_member_counts
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SLICE_ALGORITHM_IDENTITY = "ordered-session-row-hash-digest"
 

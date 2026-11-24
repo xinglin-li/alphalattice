@@ -12,6 +12,8 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     AlternativeEvidenceAnswerFinding,
@@ -31,9 +33,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
-from alphalattice.kernel.data_layer import encoders, history, recall
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import encoders, history, recall
 from alphalattice.protocols.actor_execution import ActorKind
 
 _NOW = datetime(2026, 8, 12, 16, 0, tzinfo=UTC)

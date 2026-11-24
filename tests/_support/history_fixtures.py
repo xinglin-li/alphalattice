@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from alphalattice.kernel.data_layer import history
+from alphalattice.foundation.data_layer import history
 
 
 @pytest.fixture

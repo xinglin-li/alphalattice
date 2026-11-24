@@ -135,7 +135,7 @@ class NativeUsageReader:
 
     def receive(self, rows: list[dict[str, Any]]) -> int:
         """Admit sanitized exports only while the workspace and exact bindings allow it."""
-        from alphalattice.kernel.data_layer.history import (  # lazy: Host log only
+        from alphalattice.foundation.data_layer.history import (  # lazy: Host log only
             receive_agent_telemetry,
         )
 
@@ -312,7 +312,7 @@ class NativeUsageReader:
                 self._progress, self._sessions = {}, {}
                 self._read_at.clear()
                 return {"status": "OFF", "sessions": []}
-            from alphalattice.kernel.data_layer.history import (  # lazy: Host log only
+            from alphalattice.foundation.data_layer.history import (  # lazy: Host log only
                 unplaced_agent_telemetry,
             )
 

@@ -26,7 +26,7 @@ from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     AlternativeEvidenceResolvedSpan,
 )
 from alphalattice.evidence.alternative_evidence.storage import world_reads
-from alphalattice.kernel.live_evidence.online_sources import not_carried_tables, table_lines
+from alphalattice.evidence.live_evidence.online_sources import not_carried_tables, table_lines
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _open_recorded,

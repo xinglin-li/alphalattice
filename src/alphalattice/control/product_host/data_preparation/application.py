@@ -15,6 +15,16 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
+from alphalattice.capabilities.data.universe import FROZEN_UNIVERSE_SOURCES
+from alphalattice.capabilities.domain_contracts.domain.errors import (
+    AlphaLatticeError,
+    WorkspaceConflictError,
+)
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
@@ -127,16 +137,6 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
-from alphalattice.kernel.data.universe import FROZEN_UNIVERSE_SOURCES
-from alphalattice.kernel.shared_kernel.domain.errors import (
-    AlphaLatticeError,
-    WorkspaceConflictError,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")

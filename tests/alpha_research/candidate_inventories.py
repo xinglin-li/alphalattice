@@ -9,13 +9,13 @@ from typing import cast
 
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_management.mandates.research_effort import (
     DesktopAlphaModelCard,
     DesktopPortfolioScenarioCard,
     DesktopRiskCandidateCard,
     ResearchDeskCandidateInventory,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _with_hash[ContractT: BaseModel](

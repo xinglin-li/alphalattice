@@ -1,0 +1,293 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "a979533f1e2db88d5f77543897850f7111e708ed65e98c628578c3c1aa237cde",
+   "successor": "d7f5f2e480440db9a32651f9aaf2b8a534f19fb88194b7b3ef2314550e10119e",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "a4b7155d7813922632b4e93ad8ab35f15ee632d828da541ddebce548e96e0dc3",
+   "successor": "340f2226bfe10e89c87487bcfae9a20567569cc670114327c2a305d67983eaca",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "95ab4719c96e72baa5c33ffdb78d22236ffcbf58f721c62370707ae37f95d018",
+   "successor": "967d0a799d35256e0b0226c303677394ab69d69ddffc2a2dd67a8ee677f58d2c",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "dd1e6dfaf2efafbdf948398147b5a675d1f969545f754848d2c4f3476f2af4cb",
+   "successor": "c760b5d00470d40141b47ce780cfe981d37d6383f1b745b354beecb4d422dd69",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "alternative_evidence.retrieval_binding",
+   "predecessor": "2a3fe99c7eb2334568d7ded45b29b010d16c502871f10293b2801926001910bf",
+   "successor": "0fde3be517a7e9cd6ddf1bbff08795278236b0faed017c7a35147316be37860f",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "c0c948d030201366de7345f2d011af84bae2b18007035a1faf461e6b9e30165f",
+   "successor": "f1a78b37182761defa91b01ac1e2274c797199657323cc58011e38783acf35d6",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "89e66003293131fcf2220aa06950b2d8441cdf21cf06f4f4e462a70b302aa126",
+   "successor": "6fa1913defe8f80487116cd9152ad8829b4eec26c71a8a7f213ef7b445178db6",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "cf768399eef63aa634ddc00478d4e7dca410169cbae2e2e90dfd78ec3f0ca28d",
+   "successor": "a6b1d9ac4da811451d98d08324a3769895b28fc013364ddc678c1740ef80c45f",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "adf027ee0a26a9e27edeaab9bf29947e9e6e357a79b1d61ce93d7d1792b3c6de",
+   "successor": "bcd79750ad1e2461af36d3549a46e401451c85cd1571c26262e9cf501cf29429",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "244a9e9708aa72b93307088a9989564d6c3660e6ec0a76f689184ec04353645c",
+   "successor": "190f741eea096f7af0713cfe69b919e64eca53eeadeaa3bf2db48ce9914ed0c5",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "5c357a3e3361817d6475a51d40ab5c6fbf5dc3b8315c3db0778e66e9edb86d73",
+   "successor": "b392bbab957d690118db3a5f611913b7b899a9b4db26e4e01df7f830a62223de",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "77eba81cfb51ff96d11f15092f85dd7ead7d31e674342826e6003041c77aa617",
+   "successor": "6ca69ee48bf997ce5975b7e2bb6c7bfdeabb00608be02ef0ada17b65b8bcf0cd",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "67bfb46ffbb1de7aa2a32a052d581c2cd4d0050327911451305b94522a89ce7a",
+   "successor": "cd541c765ecf23c661464230fb74010574cabdcc280da0a78a2c80132ce97e7a",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "0c0df2752aae38ff21ff79d50a1480374ef70650dd8930d17044906ced0bcf6c",
+   "successor": "cfa6d14fc3206b2f59492e77db2d9e6c3a0f9cdfbcf38706d4a602a4cd4c27f0",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "5aa5e77ce3e71b28d367a1dd580ae648d5905a7f2e0604be815ab4770a2742ba",
+   "successor": "05b7e448500408ea559761deae6d8fc0c118880c4eff6898c1372973521b0dd2",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d95a10569c7ca6b15ccad5ec1f3ddd5714e438d7def277b2937b8666a5e1854c",
+   "successor": "0ceb39f447f47ae5437b598134d8525e91ac79ab0d5995d85c7cabf98f2b5884",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "0ca9b02c806dce3553cbc483c754dafc97c36b2d34d3570d0c2629a1a81e937f",
+   "successor": "43faf99219aa1cf5c481151ed414ae80c6ea34144790da0a57072584a2073b06",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "0ba66a78f2d14da9b0207b48399a9177b334b00440b601849c8a7629b64ac568",
+   "successor": "90547c8364b967d4cccc5cbcf18ba106510e8ae46e2bec2633a26cc9c90fc076",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "acdeab08ed27fcd6883daf531c44f1561263af05250151b6d4cefb919b4cd13b",
+   "successor": "b27df2dc4f2e0156585fd437fd8a30bbe5b8e855ca99f6d312c9c5ae63cc48c0",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "95b02986db79c4567ad9e3173b45c6ded888ec3637450913c7effff688b2b6e2",
+   "successor": "d155debc2aad6a48643d264f5bde24991f984b6b76e40b8da8108908c9b4844c",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "c043998c5a3935c6d9363ce723406f34bb925f9a6b5747bcc044e895773866fd",
+   "successor": "85748d52b8335220c135a8e578a5aab324fdcb9864d15e3e332668d72aacafa1",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "337c621a37a0b6b3ab1db3fca44a53f92684be37bc768d492a44ac0aef1526f9",
+   "successor": "50c7e27af321be35950701bd6c991185e05dc37258bf4cac33a613b94192d816",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "e564fca41cdc7059d034630fce781f0e8e6d0f0e1eb8ed5f5e87d66baa7dd494",
+   "successor": "2c9242b8a526f2f83b8b76f9fa67e48f87b3988d21e035f5790d24b448d47ba6",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "625ca262c8a8443b12aa8fb62bb3c22f0cfd8bc9f735eb12a433f08150176bd0",
+   "successor": "6a60834f302d193017a7e83804235f31d21ccaa4b55dffa4f1e35609ec6c2756",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "9f779f3fc4ba2d2c353abe3449537371ead762d12a9dddf466e23e610b738881",
+   "successor": "df17f0f422c2ca9a8e1f0101af50b4fe3b362ee6c9f53d01a060dc696288c004",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "c8296fde815dcb33555d6fd6fa39b4152e7726f94cf6243740ccb01415c32abb",
+   "successor": "10c8a544195bff0e6b286d09fc5a926ab9afe20bcacea7521e994f4fe36741bb",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "c8296fde815dcb33555d6fd6fa39b4152e7726f94cf6243740ccb01415c32abb",
+   "successor": "10c8a544195bff0e6b286d09fc5a926ab9afe20bcacea7521e994f4fe36741bb",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "39fc3f098a400ff851c2dae468e07ea963f26f3fbbdfa1bab255a1d7a9780596",
+   "successor": "69408fc7d008f5cc19fa08f163ee9f1d1bd1d738e919a9c63b341ea5c3159fd9",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "ae25864ef43f898b053a95c0f40b13f61be8b616a861ee197da75e80f35280d1",
+   "successor": "5fdd6a526aec8c1f518e5c2c63699ab59097eae0b3745641f3bd16f545eb4819",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "15c4f410474cf532e8de5b73b9b559069efe0ea5f562f47863ebfb70710630fd",
+   "successor": "6f1a297969c9db762e4da44afeec87219da04427c4eac0d38124acdf233ce259",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "02d9c725463756a6b24974fb9ce50964f8a72500e9b5b870a635eb4c5f5bb29c",
+   "successor": "4a6b3eeee45c5cb62a7aa55807eb25ecaaee59553e6643d7b37e6927781f125f",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-diagonal-shrunk-ledoit-wolf",
+   "predecessor": "3035ab56dcd68562e233f74ac8e13905f0cad1f5ce8f87a596e21749d5f55a9f",
+   "successor": "d8a363aee74bc3e186e1ba5d03877f19651635d539474c93e1333075c3f241ca",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-ewma-standardized-ledoit-wolf",
+   "predecessor": "053c2f4845c01bc91a275dd65866514457e29630dcdbb63ce931c5e9f08b7c1c",
+   "successor": "edb9046065fe7ecbf63b9822f148ecfb93e3703fa1b198d2a015d5003953f761",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "risk_research.estimator.risk-covariance-fast-slow-ledoit-wolf",
+   "predecessor": "817f2fdda3f75c9004722c615481cb1b4b6682b8808ee98f06dae3a58b25c5c8",
+   "successor": "85fce399e8749d16c96697eae3a28add36621492b85a04fe09322dac6409989c",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "risk_research.estimator_catalog",
+   "predecessor": "a8eeac6d61c75e757ae98296f8d5d54f96c9e962c687deb3f83d19c0458f8f15",
+   "successor": "971a1c6177c9521f14587ac5c229abd29a72981ea0b4cd3e9c39343036ee159a",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "4b4e6e66176f1f0421bfc56289eba29bd04e0842646de49105706c83cd41a0b9",
+   "successor": "c0fcdd8276960c14e9729103e51804d36400389085e10a6c21d4f863bd6c71ef",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.forecast_catalog",
+   "predecessor": "243784cb6f8d4873d37d37e45d6bc5b1bd67b7d6fb4548e52b96e3ca96896853",
+   "successor": "2c9678bf8de66f50d69e3606ed32d0241e40b9178e2cb9624e119d3b11550ae4",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.method.DISTRIBUTED_LAG_ELASTIC_NET",
+   "predecessor": "4d44bbdda06061a2bc75a247138bd0a483e1fb0315b00ee41ce9326e55d8b35b",
+   "successor": "3a2b66a88d5e45ee788250cda31af80b940da3c0c8bb5ce75d8379d117f59cc4",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.method.EWMA_SECTOR_MEAN",
+   "predecessor": "5f20323cab7169c2503fdbb15589958c4416ce75ab7b32f1c53a63ef7bf3f777",
+   "successor": "07cfa2c31de4bc9a736f5c769ce3e2a5d126c93a60a9898bde67c5f0a9d7c9d0",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.method.SECTOR_RELATIVE_STRENGTH_126",
+   "predecessor": "e3dda20902d0bc21cfdfbc196b12a768c7cd91800e005f096b2a9e064a90c121",
+   "successor": "d709c2937104730b246656d6b15463a9d4a4df84c3e0d5d068205da37d1d82ae",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  },
+  {
+   "role": "sector_research.method.ZERO_SECTOR_FORECAST",
+   "predecessor": "cf684e75203d62d9ce874e6bd5b4865a000db25e5850a0c0d30124d16303028b",
+   "successor": "4efb9f65b54659d7bceac9d75678219c57df27be5d95126996b3bcac454679fa",
+   "change": "Centralize runtime digest computation",
+   "reason": "A queue repair adding no product source: the same 41 approved roles move, their chains regenerated to continue from the values already landed, and the earlier equal-value evidence carries by the diff."
+  }
+ ]
+}

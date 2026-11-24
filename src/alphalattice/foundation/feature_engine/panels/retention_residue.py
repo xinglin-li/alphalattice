@@ -13,11 +13,11 @@ from typing import Literal, cast
 import duckdb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import PANEL_ROW_IDENTITY_BY_CROSS_SECTION
 from alphalattice.foundation.feature_engine.panels.artifacts import manifest_partition_origins
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class _Contract(BaseModel):  # type: ignore[misc]

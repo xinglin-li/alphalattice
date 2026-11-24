@@ -12,6 +12,8 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     CommittedKind,
@@ -19,6 +21,7 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStoreError,
 )
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioBenchmarkComparison,
     PortfolioDeclaredPathReport,
@@ -27,12 +30,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioExecutionProgram,
     PortfolioResearchResult,
 )
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import history
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
+    from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
     from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
         PortfolioDecisionCheckpoint,
         PortfolioUpdatePublication,
@@ -40,7 +41,6 @@ if TYPE_CHECKING:
     from alphalattice.investment.portfolio_strategy_lab.publication.rolling_history import (
         RollingReportHead,
     )
-    from alphalattice.kernel.data_layer.upgrade import Family, UpgradeRunner
 
 
 class PortfolioLedgerStoreError(ValueError):
@@ -1408,7 +1408,7 @@ def _carried_check(
 
 def portfolio_results_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
     """Migrate dated Portfolio ledger series and report holdings under one switch."""
-    from alphalattice.kernel.data_layer.upgrade import (  # lazy: first-start migration
+    from alphalattice.foundation.data_layer.upgrade import (  # lazy: first-start migration
         Family,
         workspace_files,
     )

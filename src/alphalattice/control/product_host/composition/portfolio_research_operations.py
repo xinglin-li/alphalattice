@@ -16,13 +16,12 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
-from time import monotonic, sleep
+from time import monotonic
 from typing import (
     TYPE_CHECKING,
     Any,
     Final,
     Literal,
-    NamedTuple,
     Protocol,
     TypeVar,
     cast,
@@ -32,9 +31,11 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.environment import file_trust
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import source_read_admission
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
-from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.answer_turns import (
     CURRENT_OPERATION as _CURRENT_OPERATION,
 )
@@ -44,15 +45,13 @@ from alphalattice.control.product_host.composition.answer_turns import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.experience_read import (
-    read_experience,
-    read_experience_brief,
-    read_experience_class,
-    recall_experience,
-    record_experience,
-)
 from alphalattice.control.product_host.composition.goal_check import goal_refusal
 from alphalattice.control.product_host.composition.goals import GoalApplication
+from alphalattice.control.product_host.composition.operation_route_families import (
+    WorkspaceOperationCall,
+    client_operation,
+    workspace_operation,
+)
 from alphalattice.control.product_host.composition.plain_refusals import (
     SELECTOR_CODES,
     deferral,
@@ -118,10 +117,6 @@ from alphalattice.control.product_host.storage.inventory import StorageInventory
 from alphalattice.control.product_host.storage.retention import (
     StorageRetentionError,
     require_no_pending_cleanup,
-)
-from alphalattice.control.research_program.authoring.document import (
-    convert_authoring_document,
-    load_authoring_document,
 )
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
@@ -245,12 +240,14 @@ from alphalattice.interface.local_application.portfolio_request_fields.contracts
     REVIEW_OPERATIONS,
 )
 from alphalattice.interface.local_application.portfolio_research import (
+    PERSON_DECISIONS,
     FrozenCandidateProjection,
     LocalApplicationError,
     LocalPortfolioResearchService,
     OperationCaller,
     PortfolioResearchOperationRequest,
     _spec_document,
+    decision_hash,
     full_request_document,
     public_control_document,
     request_document_schema,
@@ -280,14 +277,14 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.door import DoorPort, DoorRefusal, question_key
+from alphalattice.kernel.execution import EVENTS, TIMERS, EventDeadline, Timers
 from alphalattice.protocols.actor_execution.answers import (
     AgentAnswerRecord,
     AgentRun,
 )
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 from alphalattice.protocols.actor_execution.contracts import AgentExecutionBinding
-from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 if TYPE_CHECKING:
     from alphalattice.control.product_host.composition.decision_advancement import (
@@ -349,6 +346,7 @@ if TYPE_CHECKING:
     from alphalattice.control.product_host.maintenance.data_update import (
         WorkspaceDataUpdateApplication,
     )
+    from alphalattice.control.product_host.maintenance.file_trust_scrub import IdleFileTrustScrub
     from alphalattice.control.product_host.publication.portfolio_research import (
         PortfolioResearchPipelineStore,
     )
@@ -358,6 +356,7 @@ if TYPE_CHECKING:
     from alphalattice.evidence.alternative_evidence.publication.artifacts import (
         AlternativeEvidenceArtifactStore,
     )
+    from alphalattice.interface.local_application.cli_invocation import ForwardedCli
     from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 
@@ -496,37 +495,6 @@ def edge_proof(operation: str) -> AbstractContextManager[None]:
     return full_content_proof() if edge else nullcontext()
 
 
-class WorkspaceOperationCall(NamedTuple):
-    """The Host, typed request and caller delivered to a workspace route family."""
-
-    operations: PortfolioResearchOperations
-    request: PortfolioResearchOperationRequest
-    caller: OperationCaller
-
-
-class OperationRouteFamilies(Protocol):
-    """The Host composition's first-use dispatch to heavier route owners."""
-
-    def workspace(self, call: WorkspaceOperationCall) -> dict[str, object] | None:
-        """Dispatch a workspace operation if the family claims it."""
-        ...
-
-    def portfolio(self, call: WorkspaceOperationCall) -> dict[str, object]:
-        """Dispatch a Portfolio operation after the Host checks installation."""
-        ...
-
-    def review(
-        self,
-        call: WorkspaceOperationCall,
-        *,
-        read_files: tuple[str, ...] | None,
-        agent_run: AgentRun | None,
-        accepted_bundle: AgentBundleRecord | None,
-    ) -> dict[str, object]:
-        """Dispatch a review operation after the Host checks the operation."""
-        ...
-
-
 @dataclass(slots=True)
 class PortfolioResearchOperations:
     """One product operation owner for every human and Agent caller."""
@@ -537,7 +505,9 @@ class PortfolioResearchOperations:
     heartbeats: TaskHeartbeatReader
     """Read-only access to the runners' operational heartbeat sidecars, by execution id;
     what it reads never raises past its boundary and never changes what Task Control says."""
-    route_families: OperationRouteFamilies = field(kw_only=True, repr=False)
+    door: DoorPort[
+        WorkspaceOperationCall[PortfolioResearchOperations] | ForwardedCli, dict[str, object]
+    ] = field(kw_only=True, repr=False)
     review_factory: Callable[[], EvidenceReviewApplication] | None = field(
         default=None, kw_only=True, repr=False
     )
@@ -556,6 +526,9 @@ class PortfolioResearchOperations:
     data_update_factory: Callable[[], WorkspaceDataUpdateApplication] | None = field(
         default=None, kw_only=True, repr=False
     )
+    timers: Timers = field(default=TIMERS, kw_only=True, repr=False)
+    """The Host's timer: its supervision, update and file-trust jobs arm it, and the Host closes it
+    at its stop and on a failed start."""
     manifests: ResearchWorkspaceManifestHolder | None = None
     """The one holder of the workspace manifest the applications read; made from
     `workspace_manifest` when the composition passes none."""
@@ -651,6 +624,7 @@ class PortfolioResearchOperations:
     _sweep: StudyVerificationSweep | None = field(
         init=False, default=None, repr=False, metadata={"owner": "sweep"}
     )
+    _file_scrub: IdleFileTrustScrub | None = field(init=False, default=None, repr=False)
     _evidence_install: EvidenceInstall | None = field(
         init=False, default=None, repr=False, metadata={"owner": "evidence_install"}
     )
@@ -666,7 +640,7 @@ class PortfolioResearchOperations:
         if self.manifests is None:
             self.manifests = ResearchWorkspaceManifestHolder(self.workspace_manifest)
         self.readbacks = VerifiedReadbacks()
-        self.supervisor = TaskSupervisor(self)
+        self.supervisor = TaskSupervisor(self, timers=self.timers)
         self.goals = GoalApplication(
             GoalStore(
                 self.workspace_session.workspace / "artifacts", self.workspace_manifest.workspace_id
@@ -984,8 +958,8 @@ class PortfolioResearchOperations:
                         manifest=lambda: manifests.current,
                         packages=lambda: self._packages,
                         ledger=application.ledger,
-                        read_experiment=self.experiments.readback,
-                        read_information=self.experiments.summary,
+                        read_experiment=lambda task_id: self.experiments.readback(task_id),
+                        read_information=lambda task_id: self.experiments.summary(task_id),
                         read_review=self._book_review_standing,
                         clock=self.dispatcher.clock,
                         hold=self._hold_activation,
@@ -1076,7 +1050,7 @@ class PortfolioResearchOperations:
 
                     self._sweep = StudyVerificationSweep(
                         session=self.workspace_session,
-                        experiments=self.experiments,
+                        experiments=lambda: self.experiments,
                         installed=lambda: str(canonical_hash(self._installed_study_identities())),
                         clock=self.dispatcher.clock,
                     )
@@ -1142,6 +1116,7 @@ class PortfolioResearchOperations:
                     execute=lambda request: self.execute(request, caller="SERVICE_AUTOMATION"),
                     resume=partial(research_update_automation.resume_held, self),
                     admit=self.dispatcher._admit,
+                    timers=self.timers,
                 )
             return self._automation
 
@@ -1178,9 +1153,27 @@ class PortfolioResearchOperations:
         self._take_backup()
         self._maintain_catalog()
 
+    def start_file_scrub(self) -> None:
+        """Start the proof worker only when the workspace uses retained file trust."""
+        if self._file_scrub is None and file_trust():
+            from ..maintenance.file_trust_scrub import (  # lazy: retained trust enabled.
+                IdleFileTrustScrub,
+            )
+
+            scrub = IdleFileTrustScrub(
+                self.workspace_session.workspace, self.dispatcher, self.timers
+            )
+            scrub.start()
+            self._file_scrub = scrub
+            self.dispatcher.watch_foreground_idle(scrub.idle)
+
+    def stop_file_scrub(self, timeout: float | None) -> bool:
+        """Finish the current proof slice before the Host releases its workspace."""
+        return self._file_scrub is None or self._file_scrub.close(timeout)
+
     def _maintain_catalog(self) -> None:
         """Use the writer and backup holds after Tasks and automatic backup."""
-        from alphalattice.kernel.data_layer.history import store  # lazy: on use
+        from alphalattice.foundation.data_layer.history import store  # lazy: on use
 
         if self.dispatcher.stop_requested():
             return
@@ -1296,14 +1289,49 @@ class PortfolioResearchOperations:
         run = partial(
             self._execute_request, request, caller=caller, agent_execution=agent_execution
         )
-        if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
-            return run()
-        from .host_answer_submission import (  # lazy: keyed answer
-            answer_deadline,
+        with self.dispatcher.serving_request():
+            if request.operation == "AGENT_ANSWER_SUBMIT" and request.committee_key is not None:
+                from .host_answer_submission import answer_deadline  # lazy: a keyed agent answer
+
+                with request_deadline(answer_deadline()):
+                    return self._deliver_questions(request, run(), caller)
+            return self._deliver_questions(request, run(), caller)
+
+    def _deliver_questions(
+        self,
+        request: PortfolioResearchOperationRequest,
+        answer: dict[str, object],
+        caller: OperationCaller,
+    ) -> dict[str, object]:
+        """Queue the catalog's actual questions and keep the existing answer projection."""
+        proposed = answer.get("person_questions")
+        if not proposed:
+            return answer
+        from alphalattice.interface.local_application.questions import (  # lazy: person prompt
+            asked_questions,
         )
 
-        with request_deadline(answer_deadline()):
-            return run()
+        provenance = REQUEST_PROVENANCE.get()
+        # Interactive CLI and loopback requests can ask without an agent session.
+        attended = caller != "SERVICE_AUTOMATION"
+        for question in asked_questions(request.operation, proposed):
+            attributed = answer.get("attributed_goal_id")
+            key = question_key(
+                question["code"],
+                str(attributed) if attributed else (provenance.goal_id or "") if provenance else "",
+                (provenance.session or "") if provenance else "",
+            )
+            try:
+                self.goals.store.decisions.ask(
+                    "question", request.operation, question, attended=attended, key=key
+                )
+            except DoorRefusal as error:
+                if not attended:
+                    return refused(error.failure_code)
+                if refusal_code(answer) is None:
+                    raise
+                return answer
+        return answer
 
     def _execute_request(
         self,
@@ -1326,9 +1354,17 @@ class PortfolioResearchOperations:
                 or not research_operation(request.operation)
                 else self.goals.attributed_goal(provenance)
             )
-            member, goal = committee.member_goal(
-                self.goals.store, request, goal, provenance, self.goals.clock()
-            )
+            member = False
+            if request.operation in {
+                "AGENT_BUNDLE_PREPARE",
+                "COMMITTEE_SUBMIT",
+                "AGENT_ANSWER_SUBMIT",
+            }:
+                from . import committee  # lazy: these requests can carry a committee membership
+
+                member, goal = committee.member_goal(
+                    self.goals.store, request, goal, provenance, self.goals.clock()
+                )
             if goal is None and opens_goal(request.operation, provenance, member=member):
                 goal = self._open_session_goal(request.operation, provenance)
             if not request.operation.startswith("GOAL_"):
@@ -1398,6 +1434,21 @@ class PortfolioResearchOperations:
             if relayed is not None and refusal_code(body) is not None:
                 # A refused decision did not use the person's yes.
                 self.goals.store.release_relay(str(relayed["key"]))
+        confirmation = request.person_confirmation
+        if (
+            relayed is not None
+            and refusal_code(body) is None
+            and confirmation is not None
+            and confirmation.question_code is not None
+        ):
+            assert provenance is not None
+            self.goals.store.decisions.settle_question(
+                question_key(
+                    confirmation.question_code, str(goal.goal_id), provenance.session or ""
+                ),
+                request.operation,
+                confirmation.words,
+            )
         self._observe(
             lambda: self.goals.attribute(
                 goal, request, body, provenance, delegation=delegation, relayed=relayed
@@ -1664,7 +1715,10 @@ class PortfolioResearchOperations:
                 ):
                     body = typed_failures(
                         self._execute_within_memory(
-                            execution_request, caller=authority, agent_execution=agent_execution
+                            execution_request,
+                            caller=authority,
+                            agent_execution=agent_execution,
+                            direct_person=caller == "HUMAN",
                         )
                     )
                 if recovery is not None:
@@ -1741,6 +1795,7 @@ class PortfolioResearchOperations:
         *,
         caller: OperationCaller,
         agent_execution: AgentExecutionBinding | None,
+        direct_person: bool,
     ) -> dict[str, object]:
         """A heavy plan's answer with its resource estimate; a heavy run refused before
         admission when its estimated peak exceeds the machine's available memory."""
@@ -1756,7 +1811,13 @@ class PortfolioResearchOperations:
         )
         if refusal is not None:
             return refusal
-        action = partial(self._execute, request, caller=caller, agent_execution=agent_execution)
+        action = partial(
+            self._execute,
+            request,
+            caller=caller,
+            agent_execution=agent_execution,
+            direct_person=direct_person,
+        )
         with gate_subject(request.operation, request.task_id):
             body = self.dispatcher._admit(action) if request.operation == "RECOVER" else action()
         gate.plan_answered(request.operation, body)
@@ -1769,6 +1830,7 @@ class PortfolioResearchOperations:
         self, request: PortfolioResearchOperationRequest, caller: OperationCaller
     ) -> dict[str, object]:
         """Export dated sealed disclosures."""
+        from . import committee  # lazy: this operation reads the committee
         from .research_delivery import export_research_delivery, export_update_delivery
 
         if request.update_task_id is not None:
@@ -1823,6 +1885,7 @@ class PortfolioResearchOperations:
         *,
         caller: OperationCaller,
         agent_execution: AgentExecutionBinding | None,
+        direct_person: bool = False,
     ) -> dict[str, object]:
         if caller == "SERVICE_AUTOMATION":
             from .research_update_automation import (  # lazy: automation request
@@ -1830,9 +1893,45 @@ class PortfolioResearchOperations:
             )
 
             require_service_operation(request.operation, caller)
-        client = self._client_operation(request, caller=caller)
-        if client is not None:
-            return client
+        if (
+            request.operation in self.door.operations
+            and not client_operation(request.operation)
+            and (refusal := self._prepare_operation(request)) is not None
+        ):
+            return refusal
+        call = WorkspaceOperationCall(self, request, caller, agent_execution)
+        dispatch = partial(self.door.dispatch, request.operation, call)
+        try:
+            if direct_person and request.operation in PERSON_DECISIONS:
+                return self._confirmed(request, dispatch)
+            return dispatch()
+        except (StorageRetentionError, StorageInventoryError) as error:
+            if not workspace_operation(request.operation):
+                raise
+            return {"status": "REFUSED", "failure_code": error.failure_code}
+
+    def _confirmed(
+        self,
+        request: PortfolioResearchOperationRequest,
+        dispatch: Callable[[], dict[str, object]],
+    ) -> dict[str, object]:
+        """File the explicitly authorized request before entering its domain owner."""
+        decisions = self.goals.store.decisions
+        kind: Literal["activation", "confirmation"] = (
+            "activation"
+            if request.operation.endswith(("_ACTIVATE", "_DEACTIVATE"))
+            else "confirmation"
+        )
+        binding = decision_hash(
+            {field.name: getattr(request, field.name) for field in fields(request)}
+        )
+        decisions.approve_person(kind, request.operation, binding)
+        return dispatch()
+
+    def _prepare_operation(
+        self, request: PortfolioResearchOperationRequest
+    ) -> dict[str, object] | None:
+        """Refresh shared inputs before a non-client operation reads them."""
         self._refresh_prepared_inputs()
         try:
             if request.operation in {
@@ -1871,13 +1970,14 @@ class PortfolioResearchOperations:
                 "PORTFOLIO_UPDATE_RUN",
             }:
                 require_no_pending_cleanup(self.workspace_session.workspace)
-            common = self._workspace_operation(request, caller=caller)
         except (StorageRetentionError, StorageInventoryError) as error:
             return {"status": "REFUSED", "failure_code": error.failure_code}
-        if common is not None:
-            return common
-        if request.operation.startswith("GOAL_"):
-            return self._execute_goal(request, caller)
+        return None
+
+    def _execute_host(
+        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
+    ) -> dict[str, object]:
+        """Serve operations owned by the Host itself."""
         if request.operation == "PENDING_DECISIONS":
             return self.pending_decisions(caller=caller)
         if request.operation == "ACTIVITY_REFUSALS":
@@ -1938,16 +2038,6 @@ class PortfolioResearchOperations:
             )
         if request.operation in {"UPGRADE_OVERVIEW", "UPGRADE_ACKNOWLEDGE"}:
             return self.upgrade(request)
-        if request.operation == "EXPERIENCE_READ":
-            return read_experience(request)
-        if request.operation == "EXPERIENCE_BRIEF":
-            return read_experience_brief(request)
-        if request.operation == "EXPERIENCE_CLASS":
-            return read_experience_class(request)
-        if request.operation == "EXPERIENCE_RECALL":
-            return recall_experience(request)
-        if request.operation == "EXPERIENCE_RECORD":
-            return record_experience(request, caller)
         if request.operation == "RESEARCH_HISTORY":
             from .research_history import (  # lazy: research history requested
                 ResearchHistory,
@@ -2012,13 +2102,6 @@ class PortfolioResearchOperations:
             )
 
             return read_portfolio(self, request, caller=caller)
-        if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
-            return cast(
-                dict[str, object],
-                convert_authoring_document(
-                    document=request.experiment_document, text=request.experiment_yaml
-                ),
-            )
         if request.operation in {"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"}:
             return self._strategy_activation(request, caller)
         if request.operation in {
@@ -2028,91 +2111,14 @@ class PortfolioResearchOperations:
             "FEATURE_DEACTIVATE",
         }:
             return self._feature_extension_operation(request, caller)
-        if request.operation.startswith("COMMITTEE_"):
-            return self._committee(request, caller)
-        if request.operation.startswith("EXPERIMENT"):
-            try:
-                if request.operation == "EXPERIMENT_FOUNDATION_SUMMARY":
-                    from .foundation_summary import read_foundation_summary
+        raise DoorRefusal("door.operation_unregistered", request.operation)
 
-                    assert request.foundation_admission_hash is not None
-                    return read_foundation_summary(
-                        self.workspace_session.workspace, request.foundation_admission_hash
-                    )
-                if request.operation == "EXPERIMENT_VERIFY_ALL":
-                    return self.verify_all()
-                if request.operation == "EXPERIMENT_DELIVERY_EXPORT":
-                    return self._delivery_export(request, caller)
-                return self.experiments.operate(
-                    request, caller=caller, agent_execution=agent_execution
-                )
-            except ValidationError as error:
-                from .research_delivery import refused_document
-
-                return refused_document(request.operation, error)
-            except (ValueError, KeyError, OSError, StorageRetentionError) as error:
-                code = (
-                    "task_control.task_not_found"
-                    if isinstance(error, TaskNotFoundError)
-                    else str(getattr(error, "failure_code", None))
-                    if getattr(error, "failure_code", None)
-                    else public_failure(error, "research_experiment.refused")
-                )
-                if code in {
-                    "research_experiment.input_not_admitted",
-                    "research_experiment.input_selection_required",
-                }:
-                    offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
-                    if (
-                        code == "research_experiment.input_not_admitted"
-                        and request.operation == "EXPERIMENT_CONTROLS"
-                        and request.experiment_kind == "risk.covariance-development"
-                    ):
-                        inputs = self.workspace_manifest.experiment_inputs or ()
-                        if (
-                            len(inputs) == 1
-                            and inputs[0].binding_hash == request.input_binding_hash
-                        ):
-                            offers["valid_values"] = {"operation": "RESEARCH_STRATEGY_CONTROLS"}
-                    return {
-                        "status": "REFUSED",
-                        "failure_code": code,
-                        "fields": [["research_input_id"]],
-                        "message": (
-                            "Use a research input ID from RESEARCH_INPUTS; "
-                            "the Universe handle is a different declaration field."
-                            if code == "research_experiment.input_not_admitted"
-                            and request.research_input_id is not None
-                            else "Choose one admitted research input ID from RESEARCH_INPUTS; "
-                            "prepare the workspace first if none exists."
-                        ),
-                        "next_action": "RESEARCH_INPUTS",
-                        "next_requests": offers,
-                    }
-                located = getattr(error, "document_location", None)
-                return {
-                    **refused(
-                        code,
-                        origin=str(request.origin_task_id) if request.origin_task_id else None,
-                        portfolio=_portfolio_source(request),
-                        **self.experiments.study_facts(
-                            request.task_id,
-                            moved=code == "research_experiment.execution_binding_changed",
-                        ),
-                    ),
-                    # Where a declaration sent as text stopped parsing.
-                    **({"document_location": located} if located else {}),
-                    # What the refusing owner knows each field may hold.
-                    **(
-                        {"expected": error.expected}
-                        if isinstance(error, AuthoringError) and error.expected
-                        else {}
-                    ),
-                    # A missing prerequisite result names the flow's and the way on.
-                    **self.experiments.refusal_prerequisites(code, request),
-                }
+    def _execute_review(
+        self, request: PortfolioResearchOperationRequest, run: Callable[[], dict[str, object]]
+    ) -> dict[str, object]:
+        """Retain the review owner's selector and book refusal projection."""
         try:
-            review_result = self._review_operation(request, caller=caller)
+            return run()
         except ValueError as error:
             from ....oversight.chief_risk_officer.decision import (  # lazy: review refusal
                 book_evidence,
@@ -2131,12 +2137,6 @@ class PortfolioResearchOperations:
                 raise
             selector = _selector(request)
             return refused(code, book=None if selector is None else selector.request_fields())
-        if review_result is not None:
-            return review_result
-        if not self.installed():
-            return refused("research_workspace.strategy_not_installed")
-
-        return self.route_families.portfolio(WorkspaceOperationCall(self, request, caller))
 
     def _agent_run(self) -> AgentRun | None:
         """The Session that submitted an answer, recorded beside it (AU3, LAWS.md ID7).
@@ -2302,6 +2302,8 @@ class PortfolioResearchOperations:
         accepted_receipt: GoalAcceptedAnswerReceipt | None = None,
     ) -> dict[str, object]:
         """Keep observation optional at each accepted-answer door; a thread files its own."""
+        from . import committee  # lazy: this operation reads the committee
+
         if committee.threaded(self.goals.store, bundle):
             return body
         failures = self.observer_failures
@@ -2361,11 +2363,17 @@ class PortfolioResearchOperations:
         if request.operation not in REVIEW_OPERATIONS:
             return None
 
-        return self.route_families.review(
-            WorkspaceOperationCall(self, request, caller),
-            read_files=read_files,
-            agent_run=agent_run,
-            accepted_bundle=accepted_bundle,
+        return self.door.dispatch(
+            request.operation,
+            WorkspaceOperationCall(
+                self,
+                request,
+                caller,
+                raw_review=True,
+                read_files=read_files,
+                agent_run=agent_run,
+                accepted_bundle=accepted_bundle,
+            ),
         )
 
     def _refresh_prepared_inputs(self) -> None:
@@ -2624,6 +2632,8 @@ class PortfolioResearchOperations:
         self, request: PortfolioResearchOperationRequest, caller: str
     ) -> dict[str, object]:
         """The date's committee under its workspace's agenda rule, on the Goal's own ledger."""
+        from . import committee  # lazy: this operation reads the committee
+
         task, now = str(request.update_task_id), self.dispatcher.clock()
         return committee.operate(
             self.goals.store,
@@ -2651,6 +2661,8 @@ class PortfolioResearchOperations:
 
     def _dated(self, task: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """A research update's publication and the Evidence on it; None for another Task."""
+        from . import committee  # lazy: this operation reads the committee
+
         if not committee.research_update(self.workspace_session.task_control_registry, task):
             return None
         readback = self.execute(
@@ -2675,6 +2687,8 @@ class PortfolioResearchOperations:
         A wait's read takes the gate only when a row is due; the floor is read again under the
         lock, so two filings never file one message twice.
         """
+        from . import committee  # lazy: this operation reads the committee
+
         floor, observer = committee.thread_of(self.goals.store, task), self.observer
         if observer is None or floor is None or not committee.unfiled(floor, now):
             return
@@ -2700,7 +2714,9 @@ class PortfolioResearchOperations:
         *,
         caller: OperationCaller,
     ) -> dict[str, object] | None:
-        return self.route_families.workspace(WorkspaceOperationCall(self, request, caller))
+        if not workspace_operation(request.operation):
+            return None
+        return self.door.dispatch(request.operation, WorkspaceOperationCall(self, request, caller))
 
     @staticmethod
     def _stale_confirmation(
@@ -3293,7 +3309,8 @@ class PortfolioResearchOperations:
         # A preview's cache state can change after publication (or tamper).
         # Revalidate through the existing read-only owner once per RUN; pass the
         # resulting authorities to admission rather than resolving them again.
-        planned = self.application.plan(spec)
+        with source_read_admission(self.dispatcher.check_task_admission):
+            planned = self.application.plan(spec)
         # The one reuse rule, which the standalone script's run keeps too.
         reused = self.application.reused(spec, planned)
         if reused is not None:
@@ -3418,9 +3435,17 @@ class PortfolioResearchOperations:
     def _data_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A data update's readback; one the provider deferred says why, when, and how it
         resumes, and that the published inputs stand meanwhile."""
+        from ..maintenance.daily_health import (  # lazy: to project a Daily receipt
+            daily_health_body,
+        )
+
         if self.data_update is None:
             raise ValueError("workspace_data_update.not_configured")
         updated = self.data_update.readback(task_id)
+        if updated.get("status") != "REFUSED":
+            updated["daily_health"] = daily_health_body(
+                self.workspace_session.task_control_registry, task_id
+            )
         if updated.get("task_lifecycle") == "BLOCKED" and updated.get("task_id"):
             # A stop its plan's rerun resumes offers that rerun.
             offer = self._resume_offer(UUID(str(updated["task_id"])))
@@ -3456,8 +3481,33 @@ class PortfolioResearchOperations:
 
     def _research_update_readback(self, task_id: UUID | None) -> dict[str, Any]:
         """A research update's readback by its Task, with its way on (STATUS's deferral reader)."""
+        from ..maintenance.daily_health import (  # lazy: to project a Daily receipt
+            daily_health_body,
+        )
+
         assert self.research_updates is not None and task_id is not None
-        return self._research_update_way(task_id, self.research_updates.readback(task_id))
+        return {
+            **self._research_update_way(task_id, self._advancement_readback(task_id)),
+            "daily_health": daily_health_body(
+                self.workspace_session.task_control_registry, task_id
+            ),
+        }
+
+    def _advancement_readback(
+        self, task_id: UUID, *, publication_hash: str | None = None
+    ) -> dict[str, object]:
+        """Keep one verified advancement readback while the bundle reads its sealed book."""
+        from .review_updates import bundle_book_key  # lazy: dated update projection
+
+        def verify() -> dict[str, object]:
+            assert self.research_updates is not None
+            return self.research_updates.readback(task_id, publication_hash=publication_hash)
+
+        registry = self.workspace_session.task_control_registry
+        key = bundle_book_key(registry, task_id)
+        if key is None:
+            return verify()
+        return self.readbacks.book(key, publication_hash, verify)
 
     def _positions(
         self,
@@ -3469,6 +3519,7 @@ class PortfolioResearchOperations:
         """Owner position rows and Committee context at the Host clock, and a caller's offer."""
         # lazy: only this operation needs evidence review delivery.
 
+        from . import committee  # lazy: this operation reads the committee
         from .evidence_review_delivery import (  # lazy: this dependency belongs to the route.
             EvidenceReviewDelivery,
         )
@@ -3622,21 +3673,30 @@ class PortfolioResearchOperations:
         self, task_id: UUID, seen: TaskSafeProjection, wait_seconds: float
     ) -> TaskSafeProjection:
         """The Task's status once it moves on from ``seen`` (its lifecycle or a verified
-        stage), or after ``wait_seconds``: a follow learns of a change when it happens
-        instead of at its next poll. Read every tenth of a second, and
-        nothing is held between reads, so the Task's own writes never wait on a follower."""
+        stage), or after ``wait_seconds``: a follow learns of a change when it happens.
+        It reads again only on its Task's events (a Task Control row, or its command
+        returning), and nothing is held between reads, so the Task's own writes never wait
+        on a follower."""
 
+        if seen.lifecycle not in _LIVE_LIFECYCLES:
+            return seen
         deadline = monotonic() + wait_seconds
         mark = (seen.lifecycle, seen.verified_stage_count)
-        current = seen
-        while current.lifecycle in _LIVE_LIFECYCLES:
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                break
-            sleep(min(_FOLLOW_READ_SECONDS, remaining))
-            current = self.dispatcher.status(task_id)
-            if (current.lifecycle, current.verified_stage_count) != mark:
-                break
+        with EVENTS.subscribed(("task", str(task_id))) as moved:
+            heard = 0
+            current = self.dispatcher.status(task_id)  # what moved before the subscription
+            while (
+                current.lifecycle in _LIVE_LIFECYCLES
+                and (current.lifecycle, current.verified_stage_count) == mark
+            ):
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    heard = moved.wait(heard, timeout=remaining, what=f"Task {task_id}")
+                except EventDeadline:
+                    break
+                current = self.dispatcher.status(task_id)
         return current
 
     def pending_decisions(self, *, caller: OperationCaller = "HUMAN") -> dict[str, object]:
@@ -5499,6 +5559,8 @@ class PortfolioResearchOperations:
         self, request: PortfolioResearchOperationRequest, *, caller: OperationCaller
     ) -> dict[str, object]:
         """Read the workspace, all operations or one operation's form."""
+        from . import committee  # lazy: this operation reads the committee
+
         if request.operation == "OPERATION_LIST":
             contracts: dict[str, dict[str, object]] = {}
             selected = request.schema_operation
@@ -5574,6 +5636,8 @@ class PortfolioResearchOperations:
         Team's record and the goal's timeline are one record (GR2, OP13): the event keeps
         the goal its session holds, and an admitted one joins that goal's record.
         """
+        from . import committee  # lazy: this operation reads the committee
+
         try:
             document = ExternalActivityEventDocument.model_validate(event)
         except ValidationError as error:
@@ -5843,29 +5907,6 @@ def _request_fields(request: PortfolioResearchOperationRequest, *left: str) -> d
     }
 
 
-def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:
-    """The Alpha study and candidate a refused Portfolio declaration named."""
-    try:
-        document = (
-            load_authoring_document(request.experiment_yaml)
-            if request.experiment_yaml is not None
-            else request.experiment_document
-        )
-    except ValueError:
-        document = None
-    section = document.get("portfolio") if isinstance(document, Mapping) else None
-    if not isinstance(section, Mapping):
-        return {}
-    return {
-        "task_id": _text(section.get("alpha_task_id")),
-        "candidate_id": _text(section.get("candidate_id")),
-    }
-
-
-def _text(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
 def _runner_retry_reason(task: TaskRecord) -> str | None:
     """Why a Task the runner itself blocked may be reopened, or nothing."""
     if task.lifecycle is not TaskLifecycle.BLOCKED:
@@ -6028,9 +6069,6 @@ def _citation_page(
     }
 
 
-_FOLLOW_READ_SECONDS = 0.1
-"""How often a waiting status reads the Task again."""
-
 _TASK_PAGE_ROWS = 50
 """How many Tasks one page of an agent session's listing holds at most, and by default."""
 
@@ -6117,3 +6155,25 @@ __all__ = [
     "PortfolioRunCommand",
     "task_status_body",
 ]
+
+
+def route_client(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a client request without refreshing research inputs."""
+    result = call.operations._client_operation(call.request, caller=call.caller)
+    assert result is not None
+    return result
+
+
+def route_host(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve an operation owned by the Host."""
+    return call.operations._execute_host(call.request, call.caller)
+
+
+def route_goal(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a Goal operation."""
+    return call.operations._execute_goal(call.request, call.caller)
+
+
+def route_committee(call: WorkspaceOperationCall[PortfolioResearchOperations]) -> dict[str, object]:
+    """Serve a committee request through the Host's existing authority checks."""
+    return call.operations._committee(call.request, call.caller)

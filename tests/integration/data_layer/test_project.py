@@ -12,22 +12,22 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.data.errors import DataError
-from alphalattice.kernel.data_layer import create_data_root, experiences
-from alphalattice.kernel.data_layer import project as projections
-from alphalattice.kernel.data_layer.chain import CHAIN_VERSION
-from alphalattice.kernel.data_layer.log import HostLog, envelope, replay, uuid7, verify_whole
-from alphalattice.kernel.data_layer.project import (
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.foundation.data_layer import create_data_root, experiences
+from alphalattice.foundation.data_layer import project as projections
+from alphalattice.foundation.data_layer.chain import CHAIN_VERSION
+from alphalattice.foundation.data_layer.log import HostLog, envelope, replay, uuid7, verify_whole
+from alphalattice.foundation.data_layer.project import (
     PROJECTED,
     differences,
     lineage,
     recipe_key,
 )
-from alphalattice.kernel.data_layer.reading import reading_session
-from alphalattice.kernel.data_layer.root import seed_rows
-from alphalattice.kernel.data_layer.store import StorePort, feature_table
+from alphalattice.foundation.data_layer.reading import reading_session
+from alphalattice.foundation.data_layer.root import seed_rows
+from alphalattice.foundation.data_layer.store import StorePort, feature_table
 
-TEST_SOURCE = "src/alphalattice/kernel/data_layer/project.py"
+TEST_SOURCE = "src/alphalattice/foundation/data_layer/project.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC
 AGENT = {"workspace": "w1", "actor": ("agent", "claude"), "node": "research"}
 PERSON = {"workspace": "w1", "actor": ("person", "me")}
@@ -240,7 +240,7 @@ def _aftermath(root, log, artifacts):
 
 def _knowledge(log):
     """A reference revision the retrieval store publishes, and the snapshot that freezes it."""
-    from alphalattice.kernel.data_layer.knowledge import KnowledgeStore, SourceOrigin
+    from alphalattice.foundation.data_layer.knowledge import KnowledgeStore, SourceOrigin
 
     store, metadata = KnowledgeStore(log), {"document": {"document_id": "d1"}, "revision": 1}
     origin = SourceOrigin("d1", "1", "reference", T0)

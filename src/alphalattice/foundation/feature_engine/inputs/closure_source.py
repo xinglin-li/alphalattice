@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import struct
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -16,6 +15,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from alphalattice.control.workspace_runtime.database import open_workspace_database
+from alphalattice.kernel.identity import Sha256Digest, identity_sha256
 
 _CLOSURE_KEY_RELATION = "feature_closure_keys"
 _DIGEST_PREFIX = b"FeatureBaseClosureRowHashDigest\0"
@@ -33,7 +33,7 @@ def _row_hash_digest(rows: Sequence[tuple[date, str, str]]) -> str:
     as a big-endian 64-bit integer. ``_framed_rows`` produces the same bytes
     from an Arrow batch; both must stay identical to every stored digest.
     """
-    digest = hashlib.sha256(_DIGEST_PREFIX)
+    digest = identity_sha256(_DIGEST_PREFIX)
     for session, listing_id, row_hash in rows:
         listing = str(listing_id).encode("utf-8")
         digest.update(session.isoformat().encode("ascii"))
@@ -58,14 +58,14 @@ class FeatureRowHashDigestState:
     digest: str
     rows: int
     boundary: date | None
-    prefix: hashlib._Hash
+    prefix: Sha256Digest
     prefix_rows: int
-    marks: tuple[tuple[date, hashlib._Hash, int], ...] = ()
+    marks: tuple[tuple[date, Sha256Digest, int], ...] = ()
     """The running hash before a session's first row, at a session start every ``_MARK_ROWS``
     rows, with the rows framed before it: a re-seal starts at the last one before its writes."""
 
 
-def _sealed(frames: hashlib._Hash, rows: int) -> str:
+def _sealed(frames: Sha256Digest, rows: int) -> str:
     sealed = frames.copy()
     sealed.update(struct.pack(">Q", rows))
     return sealed.hexdigest()
@@ -78,10 +78,10 @@ def _split_at_boundary(batch: pa.RecordBatch, boundary: date) -> int:
 
 
 def _frame_marked(
-    frames: hashlib._Hash,
+    frames: Sha256Digest,
     batch: pa.RecordBatch,
     rows: int,
-    marks: list[tuple[date, hashlib._Hash, int]],
+    marks: list[tuple[date, Sha256Digest, int]],
     previous: object,
 ) -> tuple[int, object]:
     """Frame one ordered batch as framing it whole would, marking session starts.
@@ -201,12 +201,12 @@ class FeatureClosureSourceRepository:
         keeps writing rows from that session on can re-seal the digest with
         ``reseal_feature_row_hash_digest`` instead of streaming the closure.
         """
-        frames = hashlib.sha256(_DIGEST_PREFIX)
+        frames = identity_sha256(_DIGEST_PREFIX)
         rows = 0
         prefix = frames.copy()
         prefix_rows = 0
         before_boundary = boundary is not None
-        marks: list[tuple[date, hashlib._Hash, int]] = []
+        marks: list[tuple[date, Sha256Digest, int]] = []
         previous: object = None
         with self._connection(connection) as active:
             reader = active.execute(

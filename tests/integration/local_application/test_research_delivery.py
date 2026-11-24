@@ -145,7 +145,7 @@ def _reports():
 
 def test_delivery_preserves_sources_attribution_partial_states_and_revalidates(monkeypatch, live):
     """A sealed delivery crosses the served Host once with its exact retained references."""
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from tests.portfolio_strategy_lab.host_requests import _json
 
     primary, other, reports = _reports()
@@ -589,7 +589,7 @@ def test_an_invalid_document_in_a_delivery_export_is_the_products_fault() -> Non
     asks the agent to correct a declaration; elsewhere the declaration is still the agent's."""
     from pydantic import TypeAdapter, ValidationError
 
-    from alphalattice.control.product_host.composition.research_delivery import refused_document
+    from alphalattice.control.product_host.composition.research_experiments import refused_document
 
     with pytest.raises(ValidationError) as caught:
         TypeAdapter(int).validate_python("not a number")

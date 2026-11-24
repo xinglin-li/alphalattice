@@ -38,6 +38,10 @@ from functools import cache
 from pathlib import Path
 from typing import Final, cast
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.foundation.factor_research.inputs.research_input import (
     FactorHorizonResearchInput,
     FactorResearchProposal,
@@ -54,10 +58,6 @@ from alphalattice.foundation.factor_research.research_loop.contracts import (
 from alphalattice.foundation.factor_research.research_loop.decision_dossier import (
     build_factor_research_decision_dossier,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,

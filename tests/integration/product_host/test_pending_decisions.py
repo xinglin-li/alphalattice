@@ -32,7 +32,7 @@ def test_a_plan_outlives_the_host_that_answered_it_until_it_expires(tmp_path) ->
 
     from pydantic import BaseModel, model_validator
 
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     class _Plan(BaseModel):  # type: ignore[misc]
         value: int

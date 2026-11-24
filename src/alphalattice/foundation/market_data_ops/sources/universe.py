@@ -11,19 +11,20 @@ standard) records it as eligible in a frozen workspace manifest.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 
-from alphalattice.kernel.data.enums import UniverseIndex
-from alphalattice.kernel.data.universe import (
+from alphalattice.capabilities.data.enums import UniverseIndex
+from alphalattice.capabilities.data.universe import (
     FROZEN_UNIVERSE_SOURCES,
     FetchedUniverseSource,
     fetch_universe_source,
     parse_membership,
     provider_symbol,
 )
+from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.identity import identity_sha256
 
 
 @dataclass(frozen=True)
@@ -273,7 +274,7 @@ def bootstrap_from_candidate_manifest_document(
 
 def _canonical_hash(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _build_candidate_manifest(
@@ -355,7 +356,7 @@ def discover_current_universe_candidates(
     and fails closed on source/schema errors. The caller must persist the
     resulting manifest before it is used as a workspace's bootstrap scope.
     """
-    timestamp = observed_at or datetime.now(UTC)
+    timestamp = observed_at or observation_time()
     fetched: dict[UniverseIndex, FetchedUniverseSource] = {
         index: fetch_universe_source(config) for index, config in FROZEN_UNIVERSE_SOURCES.items()
     }
