@@ -57,10 +57,6 @@ def _guard_worker(
     parent_channel.close()
     with control:
         enable_child_subreaper()
-        pidfd_open = vars(os).get("pidfd_open")
-        if pidfd_open is None:
-            raise OSError("spawn.worker_tree_admission_unproved: Linux pidfd is unavailable")
-        os.close(pidfd_open(os.getpid()))
         # A forkserver would parent the job outside this subreaper. Its launch
         # arguments can travel through spawn, which also preserves spawn pools.
         context = multiprocessing.get_context("fork" if method == "fork" else "spawn")
@@ -69,24 +65,46 @@ def _guard_worker(
         assert worker.pid is not None
         with ExitStack() as opened:
             try:
-                departure = pidfd_open(worker.pid)
-            except OSError:
+                native = vars(os)
+                departure, wake = native["pipe2"](native["O_NONBLOCK"] | native["O_CLOEXEC"])
+                opened.callback(os.close, departure)
+                opened.callback(os.close, wake)
+                child_exit = vars(signal)["SIGCHLD"]
+                previous = signal.signal(child_exit, lambda *_: None)
+                opened.callback(signal.signal, child_exit, previous)
+                opened.callback(signal.set_wakeup_fd, signal.set_wakeup_fd(wake))
+            except (OSError, ValueError):
                 _drain_adopted()
                 raise
-            opened.callback(os.close, departure)
             try:
                 control.send_bytes(str(worker.pid).encode("ascii"))
-                # A forked descendant can inherit the worker's multiprocessing
-                # sentinel pipe. Its kernel pidfd still signals the worker's exit.
-                if control in wait([control, departure]):
-                    with suppress(EOFError):
-                        control.recv_bytes()
+                # SIGCHLD wakes the guardian even when a descendant holds the
+                # multiprocessing sentinel open. Only the worker's own exit counts.
+                native_select = vars(select)
+                events = native_select["poll"]()
+                controller = control.fileno()
+                events.register(controller, native_select["POLLIN"])
+                events.register(departure, native_select["POLLIN"])
+                while worker.exitcode is None:
+                    readable = dict(events.poll())
+                    if controller in readable:
+                        with suppress(EOFError):
+                            control.recv_bytes()
+                        break
+                    if departure in readable:
+                        os.read(departure, 4096)
             finally:
                 if worker.exitcode is None:
                     with suppress(ProcessLookupError):
                         worker.kill()
-                    if not wait([departure], timeout=_STOP_SECONDS):
-                        raise RuntimeError("spawn.tree_not_stopped: Linux pool worker still live")
+                    deadline = time.monotonic() + _STOP_SECONDS
+                    while worker.exitcode is None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0 or not wait([departure], timeout=remaining):
+                            raise RuntimeError(
+                                "spawn.tree_not_stopped: Linux pool worker still live"
+                            )
+                        os.read(departure, 4096)
                 worker.join(timeout=_STOP_SECONDS)
                 status = worker.exitcode
                 assert status is not None

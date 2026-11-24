@@ -872,8 +872,8 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     assert tied["failure_code"] == "local_web.detach_with_stop_on_stdin"
     if os.name == "nt":
 
-        def denied():
-            raise OSError("private operating-system detail")
+        def denied(*, memory):
+            raise OSError(f"private operating-system detail: {memory.kind}")
 
         monkeypatch.setattr(web_launcher, "ChildJob", denied, raising=False)
         token = web_launcher.ANSWER_LANGUAGE.set(lang)

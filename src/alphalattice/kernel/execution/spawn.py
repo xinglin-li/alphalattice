@@ -631,7 +631,7 @@ def own_pool_trees(pool: Any, processes: ProcessObservations, memory: TreeMemory
         )
 
     def start() -> None:
-        has_linux_scope = linux_scope_available()
+        has_linux_scope = memory.mode == "enforce" and linux_scope_available()
         if sys.platform == "linux" and not has_linux_scope:
             observe(start_guarded_worker(pool, launch, arguments))
             return
@@ -667,13 +667,11 @@ def _start_posix(
         process, lineage = start_darwin(args, options=options)
     elif (
         memory is not None
-        and memory.budget_bytes is not None
+        and memory.enforce
         and not options.get("shell")
         and linux_scope_available()
     ):
-        process, scope = start_linux_scope(
-            args, limit=memory.budget_bytes if memory.enforce else None, options=options
-        )
+        process, scope = start_linux_scope(args, limit=memory.budget_bytes, options=options)
     else:
         process = subprocess.Popen(
             args,

@@ -344,7 +344,11 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
         return
     if mode == "cancel-retired-pool":
         if sys.platform == "linux":
-            monkeypatch.setattr(execution_spawn, "linux_scope_available", lambda: False)
+
+            def unavailable_scope():
+                pytest.fail("observe consulted the optional Linux cgroup manager")
+
+            monkeypatch.setattr(execution_spawn, "linux_scope_available", unavailable_scope)
             monkeypatch.setattr(psutil.Process, "children", lambda self, recursive=False: [])
         _assert_pool_retains_escaped_child(tmp_path / "descendant")
         return
