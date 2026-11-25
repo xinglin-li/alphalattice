@@ -12,7 +12,8 @@
     },
     "kept_worker": {
       "owner": "src/alphalattice/control/task_control/child.py",
-      "tree_memory_bytes": "undeclared",
+      "tree_memory_bytes": 1700000000,
+      "tree_memory_reason": "about twice its largest measured tree peak, 817,528,832 B (the sufficient Daily on Windows, read from the worker's own Job; macOS RSS read 737,312,768 B). First Use on the sufficient fixture peaked at 411,222,016 B on Windows and 303,251,456 B on macOS: one worker's peak varied 1.5 times across the Tasks of one Daily and twice across workloads",
       "most": "RuntimeCapacityRequest.maximum_kept_workers spread workers and the Task's own",
       "idle_retire": "KEPT_WORKER_IDLE_SECONDS",
       "spread_commit_gib": 0.25
@@ -82,7 +83,8 @@
       }
     },
     "causal_derivation_worker": {
-      "tree_memory_bytes": "undeclared",
+      "tree_memory_bytes": 400000000,
+      "tree_memory_reason": "about twice its largest measured tree peak, 186,048,512 B (First Use on the sufficient fixture on Windows, read from the worker's own Job; the sufficient Daily read 185,839,616 B; macOS RSS read 126,337,024 B), as the kept worker's limit is set",
       "defined_by": "src/alphalattice/foundation/causal_outcomes/execution/publication.py::CausalExecutionOutcomePublisher.publish_daily",
       "spawn_sites": [
         {
@@ -98,7 +100,7 @@
         "wall_time_seconds": "undeclared"
       },
       "limits": {
-        "memory_bytes": "undeclared",
+        "memory_bytes": 400000000,
         "cpu": "undeclared",
         "wall_time_seconds": "undeclared"
       },
@@ -141,7 +143,7 @@
         }
       ],
       "note": "Large daily publications derive listing rows in a ProcessPoolExecutor; the serial path creates no child. The configured allowance is bounded by pool width and listing count.",
-      "resource_semantics": "Memory and CPU requests or quotas remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. No enforcement is added; 0.2.4 owns measurement.",
+      "resource_semantics": "Memory and CPU requests remain undeclared. Explicit subprocess.run timeouts are command-scoped wall-time limits in limits.wall_time_seconds; absent command timeouts remain undeclared. Pool width, affinity and wait/cancel are separate execution controls. The memory limit is tree_memory_bytes, from the measured peak; CPU and wall time stay undeclared.",
       "owner_status": "RESOLVED",
       "owner_basis": "Current defining package; canonical owners-map noun owner used for causal outcomes rather than its execution subpackage.",
       "owner": "src/alphalattice/foundation/causal_outcomes/execution/publication.py",
