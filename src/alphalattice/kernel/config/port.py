@@ -67,12 +67,12 @@ class Settings:
     retention_days: int | None
     network_disabled: bool
     file_scrub_days: int = 7
-    process_memory_mode: str = "observe"
+    process_memory_mode: str = "enforce"
 
     @classmethod
     def from_values(cls, values: Mapping[str, str]) -> Settings:
         """Project the operator's settings from an admitted environment snapshot."""
-        process_memory_mode = values.get(PROCESS_MEMORY_MODE, "observe")
+        process_memory_mode = values.get(PROCESS_MEMORY_MODE, "enforce")
         if process_memory_mode not in {"observe", "enforce"}:
             raise ValueError("spawn.memory_mode_invalid: use observe or enforce")
         return cls(

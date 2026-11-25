@@ -38,6 +38,9 @@ def test_the_environment_is_held_and_read_through_its_config_port(
                 assert current().get("OMP_NUM_THREADS") == "4"
                 policies = current().settings
                 assert (policies.cpu_cores, policies.retention_days) == (4, 7)
+                assert (
+                    policies.process_memory_mode == "enforce"
+                )  # unset: each declared tree is held
             case "secret-log":
                 logging.getLogger(__name__).warning(
                     "database=%s child=%s",

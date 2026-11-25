@@ -224,7 +224,7 @@
       "owner": "alphalattice.kernel.config",
       "type": "observe | enforce",
       "default": {
-        "value": "observe",
+        "value": "enforce",
         "source": "src/alphalattice/kernel/config/port.py::Settings"
       },
       "defined_by": [
