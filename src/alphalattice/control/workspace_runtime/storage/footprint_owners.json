@@ -10,6 +10,8 @@
   ["data-root", "blobs/*", "foundation.data_layer.arrays: artifact bodies", "stores"],
   ["data-root", "views/*", "foundation.data_layer.inputs: research input views", "stores"],
   ["data-root", "research-inputs/*", "foundation.data_layer.inputs: research inputs", "stores"],
+  ["data-root", "runtime/file-trust.jsonl", "workspace_runtime.verified_facts: file trust", "caches"],
+  ["data-root", "runtime/verified-files.jsonl", "workspace_runtime.verified_facts", "caches"],
   ["data-root", "staging/*", "foundation.data_layer.store: admission staging", "scratch"],
   ["backups", "*/generations/*", "product_host.storage.backup: generations", "backups"],
   ["backups", "*/objects/*", "product_host.storage.backup: objects", "backups"],

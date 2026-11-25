@@ -847,16 +847,27 @@ def _check_storage_status_categories(root: Path, storage: ResearchInputStorage) 
         PortfolioResearchRequestDocument as Request,
     )
 
-    for name, payload in (("blobs/body", b"body"), ("staging/temporary", b"scratch")):
+    for name, payload in (
+        ("blobs/body", b"body"),
+        ("staging/temporary", b"scratch"),
+        ("runtime/file-trust.jsonl", b"trust"),
+        ("runtime/verified-files.jsonl", b"proof"),
+    ):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
     expected: dict[str, int] = {}
     for path, (allocated, _length, _identity) in files(root):
-        owner = owner_for("data-root", path.relative_to(root).as_posix())
-        assert owner is not None
+        relative = path.relative_to(root).as_posix()
+        owner = owner_for("data-root", relative)
+        assert owner is not None, relative
         expected[owner[1]] = expected.get(owner[1], 0) + allocated
-    assert len(expected) == 2
+    assert set(expected) == {"stores", "scratch", "caches"}
+    assert owner_for("data-root", "runtime/verified-files.jsonl") == (
+        "workspace_runtime.verified_facts",
+        "caches",
+    )
+    assert owner_for("data-root", "runtime/unknown.jsonl") is None
     measured = []
 
     def storage_status():

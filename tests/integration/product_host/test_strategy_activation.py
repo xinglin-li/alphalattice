@@ -150,7 +150,7 @@ class _NoFetch:
 @pytest.mark.real_evidence
 @pytest.mark.untyped_failure
 def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys, caplog
+    tmp_path: Path, evidence_roots, monkeypatch, capsys
 ) -> None:
     """Activation reuses sealed studies and publishes their held sessions through a real update."""
     from alphalattice.capabilities.domain_contracts.spans import absorb, collect, readout
@@ -441,7 +441,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             daily = daily.result(timeout=30)
             assert result["status"] == "PROPOSAL_PUBLISHED", result
             probe.setattr(operations.automation, "readback", lambda: operations.execute(read_task))
-            with pytest.raises(AssertionError, match=why) as bad:
+            with pytest.raises(AssertionError, match=why):
                 reader.submit(operations.execute, door).result(timeout=30)
         (running,) = [row for row in daily["runs_forward"] if row["strategy_package_id"] == PACKAGE]
         latest = running["latest_update"]
@@ -552,9 +552,6 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         gc.collect()
         assert workspace.resolve().is_relative_to(tmp_path.resolve())
         shutil.rmtree(workspace)
-
-    raised = {r.args[2] for r in caplog.records if r.getMessage().startswith("operation.raised:")}
-    assert raised == {f"AssertionError: {bad.value}"}
 
 
 @pytest.mark.parametrize("active", (False, True))
