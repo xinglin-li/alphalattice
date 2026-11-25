@@ -843,6 +843,10 @@ def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrati
         + "    for row in rows:\n        cursor.execute('INSERT INTO records VALUES (?)', row)\n"
     )
     assert problems(path, None, write)
+    # a factory newly typed in the change reveals an existing write loop; it adds none
+    untyped = write.replace("def store() -> DB:", "def store():")
+    assert not problems(path, untyped, write)
+    assert problems(path, untyped, write + "        cursor.execute('DELETE FROM records')\n")
     for clean in (
         write.replace("INSERT INTO records VALUES (?)", "SELECT ?"),
         writer + "    cursor.executemany('INSERT INTO records VALUES (?)', rows)\n",

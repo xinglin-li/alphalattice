@@ -413,6 +413,17 @@ def retire_children() -> None:
         child._retire_worker(worker, pool)
 
 
+def carry_market(workspace: Path, root: Path) -> None:
+    """Write the market rows `workspace` published on `root` back into its own file, so a copy
+    outliving that root reads them, and its next publish selects them on its own root
+    (`world.carry_workspace`)."""
+    from alphalattice.foundation.market_data_ops.storage import world  # lazy: a seed's only
+
+    database = workspace / "market-data.duckdb"
+    if database.is_file():
+        world.carry_workspace(root, database)
+
+
 def restore_seed(source: Path) -> None:
     """Start the held data root, still fresh, on the machine a seed was built on: a copy's
     outcome bodies live in that machine's catalog alone."""

@@ -175,10 +175,16 @@ def open_history(
         raise
 
 
-def move_carried(folder: Path, workspace_id: str) -> int:
+def move_carried(
+    folder: Path,
+    workspace_id: str,
+    *,
+    input_check: Callable[[str, Mapping[str, Path]], object] | None = None,
+) -> int:
     """A Host's admission of a workspace copy: the lanes and research inputs it carries move onto
-    the log this process holds, held by the workspace, before admission reads them. Nothing when
-    it carries none."""
+    the log this process holds, held by the workspace, before admission reads them. A binding
+    naming a market selection is kept only once `input_check`, its owner's verification, passes
+    (`inputs.import_carried`). Nothing when it carries none."""
     import alphalattice.foundation.data_layer.arrays as arrays  # lazy: numpy, BLAKE3 and Parquet
     import alphalattice.foundation.data_layer.inputs as inputs  # lazy: BLAKE3
 
@@ -195,7 +201,7 @@ def move_carried(folder: Path, workspace_id: str) -> int:
         _import_alpha_parts(root, log, folder, held_id)
         _import_kept_files(log, folder, held_id)
     if bindings:
-        count += inputs.import_carried(root, log, folder, workspace=held_id)
+        count += inputs.import_carried(root, log, folder, workspace=held_id, check=input_check)
     if knowledge:
         count += import_carried_knowledge(log, folder, held_id)
     return count

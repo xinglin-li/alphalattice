@@ -1,0 +1,55 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "e3f529c0c0b3d8378bb0344dc1f64c4cb2a941ac1117752c396aa62e3099d9a6",
+   "successor": "2b3e2f7374eb8d25fe23d8ef8201582202271b238e7cc6fbd23911eebdfc6d59",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "7ea2f021ba1338a0ae277e0a87b3c1d65571147e6ee94fb947c4a58979eb8793",
+   "successor": "8a252c84f84ddaa767986c1e9ed56686720e796abfa1eb7cfe41a1eeb6a5c93e",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "6c54315df575a18bbffc4b3390314b799010e943b00d06c4982aad7578a5516f",
+   "successor": "8314f978cdd2d614f2f9946f6a2dc11bd6a530eedad67f5bba01ba64854f7c92",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "2e0010b30dc77584c447efa933776c0be47586bc55b81a646e76478ea423282f",
+   "successor": "3711ac7530bce4ba9f8a165f31d119904ccd2eee6b19230094ae5ec9a642c400",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "db0f1f1f0af9d66329e4afc7b1d4b153619356dd56f71cf2581fd3e7793d41de",
+   "successor": "3474d4b885f190412b417f35f19f770f4fce2ba56abeec5330ffacc326814122",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "605698ee9e84c866123042d87d5e46b942b47dcbd6a2544c12f9081ccc022950",
+   "successor": "fd2d8af275f7305356245305fcfba63d27cd124bc91396eb7991063bde227373",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "e77879e0edd39abb1c4cb8654222e4b92563e9ca174e1c5309322884a95e5108",
+   "successor": "a39379affc18b0c7bd7a5a24a9d1545947a2aa7ed84659805599720f1b50502e",
+   "change": "Market data is stored once and shared by every workspace",
+   "reason": "Market data is stored once: workspaces keep a version index into the shared catalog instead of their own copies, and a research input's key names the market data it was sealed from, as a BLAKE3 digest of its values. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  }
+ ]
+}

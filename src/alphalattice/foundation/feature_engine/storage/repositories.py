@@ -358,6 +358,29 @@ class FeatureSourceInputs:
     action_hash: str
 
 
+def projected_feature_frames(
+    feature: FeatureStateRepository,
+    manifest: UniverseManifest,
+    listing_ids: Sequence[str],
+    *,
+    through: date,
+    start: date,
+) -> dict[str, tuple[list[dict[str, object]], str, str]]:
+    """``FeatureStateRepository.projected_feature_frame`` of many listings, from one read per
+    table (``feature_source_inputs_by_listing``); a listing that read leaves out is read, or
+    refused by name, by its own."""
+    held = feature.feature_source_inputs_by_listing(
+        {listing_id: (manifest, start) for listing_id in listing_ids}, through=through
+    )
+    frames = {}
+    for listing_id in listing_ids:
+        inputs = held.get(listing_id) or feature.feature_source_inputs(
+            manifest, listing_id=listing_id, through=through, start=start
+        )
+        frames[listing_id] = (projected_feature_rows(inputs), inputs.raw_hash, inputs.action_hash)
+    return frames
+
+
 def projected_feature_rows(inputs: FeatureSourceInputs) -> list[dict[str, object]]:
     """One listing's feature input block, projected from its stored source inputs.
 
@@ -743,7 +766,7 @@ class FeatureStateRepository(WorkspaceRepository):
     @contextmanager
     def feature_build_connection(self):
         """Reuse one writer-compatible connection across a deterministic build."""
-        connection = self._connect()
+        connection = self._market_data._connect()
         try:
             yield connection
             checkpoint_workspace_database(connection)
@@ -870,7 +893,7 @@ class FeatureStateRepository(WorkspaceRepository):
                     [listing_id, provider, first_session, through],
                 ).to_arrow_table(),
             )
-        connection = _connection or self._connect(read_only=True)
+        connection = _connection or market._connect(read_only=True)
         try:
             raw_hash = market._raw_evidence_hash(
                 connection,
@@ -953,7 +976,7 @@ class FeatureStateRepository(WorkspaceRepository):
                     [held, min(firsts.values()), through],
                 ).to_arrow_table(),
             )
-        connection = _connection or self._connect(read_only=True)
+        connection = _connection or market._connect(read_only=True)
         try:
             raw_hashes = market._raw_evidence_hashes(
                 connection,
@@ -2490,7 +2513,7 @@ class FeatureStateRepository(WorkspaceRepository):
         if len(manifest.listings) != 1:
             raise ValueError("market-reference verification requires one listing")
         listing_id = manifest.listings[0].listing_id
-        connection = self._connect(read_only=True)
+        connection = self._market_data._connect(read_only=True)
         try:
             result = connection.execute(
                 """

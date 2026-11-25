@@ -38,6 +38,19 @@
     },
     {
       "tables": [
+        "market_catalog_anchor",
+        "market_catalog_version"
+      ],
+      "database": "workspace",
+      "semantic_role": "exact references to the catalog versions selected by a workspace",
+      "generation_model": "SINGLE_CURRENT",
+      "authority_owner": "market_data_ops.storage.MarketDataRepository",
+      "retention_owner": "market_data_ops; each binding freezes the referenced selection",
+      "rebuildability": "SOURCE_OR_DURABLE_EVIDENCE_REQUIRED",
+      "artifact_relationship": "MACHINE_AUTHORITY"
+    },
+    {
+      "tables": [
         "market_profile",
         "listing",
         "provider_symbol_mapping",

@@ -160,6 +160,9 @@ def test_a_machine_backup_restores_every_retained_result_all_equal(sample, tmp_p
     restored = backup.restore_data_root(generation, tmp_path / "unused/../restored")
     assert {p.name for p in (generation / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
     assert {p.name for p in (restored / "machine").glob("catalog.sqlite*")} == {"catalog.sqlite"}
+    restored_files = backup.catalog_table_files(restored / "machine/catalog.sqlite")
+    assert {"world.raw_bar"} <= {table for tables in restored_files.values() for table in tables}
+    assert all((restored / handle).is_file() for handle in restored_files)
     assert {name: _sqlite_rows(restored / "machine" / name) for name in expected} == expected
     with HostLog.open(restored) as log:
         port = StorePort.open(restored, log)

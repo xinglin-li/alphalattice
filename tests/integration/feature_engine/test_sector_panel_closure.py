@@ -261,6 +261,7 @@ def test_sector_staging_is_resumable_and_commits_only_at_fan_in(tmp_path, refres
         observed_at=due,
     )
     assert committed.status == "completed"
+    assert not stager.path.exists()
     assert feature_state.current_sector_state(manifest) is not None
     assert all(count == 1 for symbol, count in provider.calls.items() if symbol != "Y02")
     assert provider.calls["Y02"] == 2

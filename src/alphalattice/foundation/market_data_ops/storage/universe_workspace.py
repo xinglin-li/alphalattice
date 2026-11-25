@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,15 +51,17 @@ class UniverseWorkspaceReader(WorkspaceRepository):
         workspace: Path | WorkspaceDatabase,
         *,
         through: duckdb.DuckDBPyConnection | None = None,
+        open_read: Callable[[], duckdb.DuckDBPyConnection] | None = None,
     ) -> None:
         """Read the workspace's universe tables; `through` is a connection already reading its
         file (world's admission has it attached), which every read takes instead of opening it."""
         super().__init__(workspace)
         self._through = through
+        self._open_read = open_read or (lambda: self._connect(read_only=True))
 
     def _workspace_load_universe_manifest(self, manifest_id: str) -> UniverseManifest:
         """Restore a frozen manifest from workspace-owned durable membership rows."""
-        connection = self._through or self._connect(read_only=True)
+        connection = self._through or self._open_read()
         try:
             # Obligations arrived after workspaces existed: a manifest stored
             # before the column carries none, and a reader must not need the

@@ -198,8 +198,10 @@ REWRITTEN: Final = "rewritten"
 """A row of a TIMED table whose source wrote its key's newest value again, later: world.rewritten
 records the write against that version, which adds no version and moves its ordering time."""
 DROPPED: Final = ("older", "equal_time")
-"""Why a changed row of a held key was not admitted: its source wrote it before the newest version,
-or at the same time with another value, which keeps the held version."""
+"""Why a changed row did not win: its source wrote it before the newest version or at
+the same time with another value. Its distinct observation is still retained."""
+NEVER_CURRENT: Final = "TIMESTAMPTZ '-infinity'"
+"""An explicit version has no interval in the canonical World view."""
 PARTITION: Final = {"raw_bar": "session_date"}
 """The date column whose year partitions a table, as catalog.sql sets it; any other table is one
 part, `all`. An admission's event names the knowledge times it brought to each part."""
@@ -591,6 +593,7 @@ class StorePort:
         registers."""
         with self._writer:
             tables = staged.tables if isinstance(staged, StagedSet) else (staged,)
+            retained = False
             if isinstance(staged, StagedSet) or staged.table in RESULTS_KEYS:
                 for table in tables:
                     self._registered(table, _staged_rows(self.root, table))
@@ -600,22 +603,32 @@ class StorePort:
                 source = _staged_rows(self.root, staged)
                 columns = self._registered(staged, source)
                 lag = None if staged.lag is None else self._lag(*staged.lag)
-                count, dropped, rewritten = self._catalog_commit(
+                count, dropped, rewritten, retained = self._catalog_commit(
                     staged, self.log.clock(), lag, source, columns
                 )
             if self._block is not None:  # the block's one commit repairs and collects
                 self._block.staging.append(staged.admission_id)
                 return Committed(None, count, dropped, rewritten)
-            return self._committed(staged, count, dropped, rewritten, staging=True)
+            return self._committed(
+                staged, count, dropped, rewritten, staging=True, retained=retained
+            )
 
     def publish(
-        self, table: str, provider_id: str, rows: Any, lag: tuple[str, int] | None = None
+        self,
+        table: str,
+        provider_id: str,
+        rows: Any,
+        lag: tuple[str, int] | None = None,
+        *,
+        capture_versions: Callable[[Any], None] | None = None,
     ) -> Committed:
         """Commit a world batch held in memory, an Arrow table, as `commit` commits a staged one,
         with no staging file: its rows are judged once, against world as an open block
         (`admitting`) has written it, and written in that block's transaction, or in one snapshot
         of their own. A batch carrying KNOWN dates each row's change by its observed time, never by
-        this commit's clock. Refused by name as `admissible` and `commit` refuse."""
+        this commit's clock. A snapshot writer can receive the exact versions of the input rows
+        after the catalog commits, including shared and nonwinning versions. Refused by name as
+        `admissible` and `commit` refuse."""
         with self._writer:
             data = admissible(table, provider_id, rows, legacy=lag is not None)
             staged = Staged(uuid7(), table, provider_id, data.num_rows, lag)
@@ -623,14 +636,110 @@ class StorePort:
             try:
                 columns = self._registered(staged, PUBLISHED)
                 rule = None if lag is None else self._lag(*lag)
-                count, dropped, rewritten = self._catalog_commit(
-                    staged, self.log.clock(), rule, PUBLISHED, columns
+                count, dropped, rewritten, retained = self._catalog_commit(
+                    staged, self.log.clock(), rule, PUBLISHED, columns, capture_versions
                 )
             finally:
                 self.lake.unregister(PUBLISHED)
             if self._block is not None:  # the block's one commit repairs
                 return Committed(None, count, dropped, rewritten)
-            return self._committed(staged, count, dropped, rewritten)
+            return self._committed(staged, count, dropped, rewritten, retained=retained)
+
+    def carry(self, source: Path, versions: Any) -> int:
+        """Carry the world versions `versions` names, an Arrow table of world_table and
+        version_id, from the catalog of the data root `source` into this one, each as it is, its
+        version id and knowledge times included. A version this catalog lacks is retained as an
+        observation that never wins, so this root's own current values stay as they are, and one
+        it holds already is carried as nothing: a repeated carry adds no row. One snapshot per
+        table, owing its admission event. Refused by name, with nothing carried: a version
+        `source` does not hold (market_data_ops.catalog_selection_unavailable), and one this
+        catalog holds with other content (data_layer.carried_version_conflict). The rows carried."""
+        run = self.lake.execute
+        with self._writer:
+            run(
+                f"ATTACH 'ducklake:sqlite:{sql_path(source / 'machine' / 'catalog.sqlite')}'"
+                f" AS carried (DATA_PATH '{sql_path(source / 'data')}/', READ_ONLY)"
+            ).complete()
+            self.lake.register("carried_versions", versions)
+            try:
+                plans = []
+                for table in sorted(set(versions.column("world_table").to_pylist())):
+                    columns = self._catalog_columns(f"lake.world.{table}", ("admission_id",))
+                    rows = (
+                        f"SELECT {', '.join(columns)} FROM carried.world.{table} WHERE version_id"
+                        " IN (SELECT CAST(version_id AS UUID) FROM carried_versions"
+                        f" WHERE world_table = '{table}')"
+                    )
+                    wanted, held = run(
+                        "SELECT (SELECT count(DISTINCT version_id) FROM carried_versions"
+                        f" WHERE world_table = ?), (SELECT count(*) FROM ({rows}))",
+                        (table,),
+                    ).fetchone()
+                    if held != wanted:
+                        raise DataError(
+                            f"{source} holds {held} of the {wanted} {table} versions the selection"
+                            " names; carry it from the data root it was published on",
+                            code="market_data_ops.catalog_selection_unavailable",
+                        )
+                    same = " AND ".join(
+                        f"h.{name} IS NOT DISTINCT FROM c.{name}" for name in columns
+                    )
+                    if run(
+                        f"SELECT 1 FROM lake.world.{table} h JOIN ({rows}) c"
+                        f" ON h.version_id = c.version_id WHERE NOT ({same}) LIMIT 1"
+                    ).fetchall():
+                        raise DataError(
+                            f"this catalog holds a carried {table} version with other content;"
+                            " nothing was carried",
+                            code="data_layer.carried_version_conflict",
+                        )
+                    plans.append(
+                        (
+                            table,
+                            f"SELECT c.* FROM ({rows}) c ANTI JOIN"
+                            f" lake.world.{table} h USING (version_id)",
+                        )
+                    )
+                return sum(self._carried(table, rows) for table, rows in plans)
+            finally:
+                self.lake.unregister("carried_versions")
+                run("DETACH DATABASE IF EXISTS carried").complete()
+
+    def _carried(self, table: str, rows: str) -> int:
+        """Write one table's carried versions, never current, in a snapshot owing its event."""
+        run = self.lake.execute
+        run(f"CREATE OR REPLACE TEMP TABLE carrying AS {rows}").complete()
+        try:
+            parts, count = self._parts(table, "SELECT * FROM temp.carrying")
+            if not count:
+                return 0
+            staged = Staged(str(uuid7()), table, None, count, None)
+            owed = self._owed(staged, self.log.clock(), parts, count, {}, 0)
+            admission = staged.admission_id
+            run("BEGIN").complete()
+            try:
+                info = {"version": OWED_EVENTS_VERSION, "events": [owed]}
+                run(
+                    "CALL lake.set_commit_message('host', 'admission', extra_info => ?)",
+                    (canonical(info).decode(),),
+                ).complete()
+                run(
+                    f"INSERT INTO lake.world.{table} BY NAME"
+                    f" SELECT *, '{admission}' AS admission_id"
+                    f" FROM temp.carrying ORDER BY {', '.join(WORLD_KEYS[table])}"
+                ).complete()
+                run(
+                    f"INSERT INTO lake.world.superseded SELECT world_table_id('{table}'),"
+                    f" version_id, {NEVER_CURRENT}, '{admission}' FROM temp.carrying"
+                ).complete()
+                run("COMMIT").complete()
+            except BaseException:
+                run("ROLLBACK").complete()
+                raise
+        finally:
+            run("DROP TABLE IF EXISTS temp.carrying").complete()
+        self._committed(staged, count, {}, 0)
+        return count
 
     def _committed(
         self,
@@ -640,13 +749,14 @@ class StorePort:
         rewritten: int,
         *,
         staging: bool = False,
+        retained: bool = False,
     ) -> Committed:
         """What a commit outside a block did, once its owed event is appended and its `staging`
         folder, if it had one, deleted."""
         repair(self.log, self.lake, self._repaired)
         if staging:
             delete(self.root, self.log, f"staging/{staged.admission_id}")
-        if not count and not rewritten:
+        if not count and not rewritten and not retained:
             return Committed(None, 0, dropped, 0)
         found = self.log.read(
             "SELECT catalog_snapshot FROM admission WHERE admission_id = ?",
@@ -1041,11 +1151,12 @@ class StorePort:
         lag: tuple[int, str] | None,
         source: str,
         source_columns: set[str],
-    ) -> tuple[int, dict[str, int], int]:
+        capture_versions: Callable[[Any], None] | None = None,
+    ) -> tuple[int, dict[str, int], int, bool]:
         """One snapshot: the supersession of each world version the rows replace, then the rows and
         the later writes of held values, carrying the event it owes; the rows admitted, those
-        dropped and the rewrites recorded, with no snapshot when it admits and records none. A
-        batch whose changed rows were all dropped is recorded with no snapshot (`_judged`). Its
+        withheld from the current view, the rewrites and whether it retained a distinct
+        nonwinning observation. A batch with no new version or rewrite takes no snapshot. Its
         rows are read from `source`, a relation; a KNOWN column dates each one (`_known`)."""
         table, admission = staged.table, staged.admission_id
         key = WORLD_KEYS[table]
@@ -1057,6 +1168,7 @@ class StorePort:
         rule = None if staged.lag is None or lag is None else (*staged.lag, *lag)
         known_rows = self._known(table, source, columns, known, rule, carried)
         run(f"CREATE OR REPLACE TEMP TABLE admitting AS {known_rows}").complete()
+        dropped: dict[str, int] = {}
         try:
             fates = dict(run("SELECT fate, count(*) FROM temp.admitting GROUP BY ALL").fetchall())
             dropped = {fate: int(count) for fate, count in fates.items() if fate in DROPPED}
@@ -1066,15 +1178,55 @@ class StorePort:
             parts, count = self._parts(table, rows)
             if count or staged.lag is not None:
                 self._in_order(table, target, same, staged.lag)
-            if not count and not rewritten:
+            retained = self._retain_observations(table, excluded) if dropped else False
+            if not count and not rewritten and not retained:
                 if dropped:
                     self._judged(staged, known, dropped)
-                return 0, dropped, 0
-            owed = self._owed(staged, known, parts, count, dropped, rewritten)
-            self._write(admission, ((table, rows),), owed)
+            else:
+                owed = self._owed(staged, known, parts, count, dropped, rewritten)
+                self._write(admission, ((table, rows),), owed, retain=retained)
+            if capture_versions is not None:
+                versions = self._admitted_versions(table, dropped=bool(dropped))
+                self.after_commit(lambda: capture_versions(versions))
         finally:
             run("DROP TABLE IF EXISTS temp.admitting").complete()
-        return count, dropped, rewritten
+            if dropped:
+                run("DROP TABLE IF EXISTS temp.retaining_observations").complete()
+        return count, dropped, rewritten, retained
+
+    def _admitted_versions(self, table: str, *, dropped: bool) -> Any:
+        """Resolve winning, shared and retained bodies to immutable catalog version IDs."""
+        # A symbol's key names no listing; its listing places the version in a workspace.
+        named = (*WORLD_KEYS[table], *(("listing_id",) if table == "provider_symbol" else ()))
+        key = ", ".join(f"n.{name}" for name in named)
+        older = "NULL"
+        if dropped:
+            values = self._catalog_columns(f"lake.world.{table}", ADMITTED)
+            equal = " AND ".join(f"v.{name} IS NOT DISTINCT FROM n.{name}" for name in values)
+            older = (
+                f"(SELECT v.version_id FROM lake.world.{table} v WHERE {equal}"
+                " ORDER BY v.known_asof, v.version_id LIMIT 1)"
+            )
+        selected = " WHERE NOT n._opening" if table == "provider_symbol" else ""
+        return self.lake.execute(
+            f"SELECT {key}, CASE WHEN n.fate = 'admit' THEN n.version_id"
+            f" WHEN n.fate IN ('older', 'equal_time') THEN {older}"
+            f" ELSE n._held END AS version_id FROM temp.admitting n{selected}"
+            " ORDER BY ALL"
+        ).to_arrow_table()
+
+    def _retain_observations(self, table: str, excluded: str) -> bool:
+        """Keep each distinct nonwinning observation exactly once, including its source stamp."""
+        target = f"lake.world.{table}"
+        values = self._catalog_columns(target, ADMITTED)
+        equal = " AND ".join(f"v.{name} IS NOT DISTINCT FROM n.{name}" for name in values)
+        run = self.lake.execute
+        run(
+            f"CREATE TEMP TABLE retaining_observations AS SELECT n.* EXCLUDE ({excluded}, _opening)"
+            " FROM temp.admitting n WHERE n.fate IN ('older', 'equal_time')"
+            f" AND NOT EXISTS (SELECT 1 FROM {target} v WHERE {equal})"
+        ).complete()
+        return run("SELECT 1 FROM temp.retaining_observations LIMIT 1").fetchone() is not None
 
     def _catalog_results(
         self, staged: Staged | StagedSet, tables: tuple[Staged, ...], known: int
@@ -1092,14 +1244,19 @@ class StorePort:
         return count
 
     def _write(
-        self, admission: str, writes: Collection[tuple[str, str]], owed: dict[str, Any]
+        self,
+        admission: str,
+        writes: Collection[tuple[str, str]],
+        owed: dict[str, Any],
+        *,
+        retain: bool = False,
     ) -> None:
         """Put the owed event and every table's writes in the same catalog transaction. A results
         table's keys are checked inside it, so the checks and the writes read one catalog state."""
         block = self._block
         if block is not None:  # the block's transaction, which its end commits or rolls back
             block.writing = True
-            self._statements(admission, writes)
+            self._statements(admission, writes, retain=retain)
             block.writing = False
             block.owed.append(owed)
             return
@@ -1111,13 +1268,15 @@ class StorePort:
                 "CALL lake.set_commit_message('host', 'admission', extra_info => ?)",
                 (canonical(info).decode(),),
             ).complete()
-            self._statements(admission, writes)
+            self._statements(admission, writes, retain=retain)
             run("COMMIT").complete()
         except BaseException:
             run("ROLLBACK").complete()
             raise
 
-    def _statements(self, admission: str, writes: Collection[tuple[str, str]]) -> None:
+    def _statements(
+        self, admission: str, writes: Collection[tuple[str, str]], *, retain: bool
+    ) -> None:
         """One admission's supersessions and inserts, in its writes' order, in the open
         transaction."""
         run = self.lake.execute
@@ -1137,6 +1296,15 @@ class StorePort:
                     )
             order = ", ".join(WORLD_KEYS.get(table) or RESULTS_KEYS[table])
             run(f"INSERT INTO {target} BY NAME {rows} ORDER BY {order}").complete()
+            if retain:
+                run(
+                    f"INSERT INTO {target} BY NAME SELECT *, '{admission}' AS admission_id"
+                    f" FROM temp.retaining_observations ORDER BY {order}"
+                ).complete()
+                run(
+                    f"INSERT INTO lake.world.superseded SELECT world_table_id('{table}'),"
+                    f" version_id, {NEVER_CURRENT}, '{admission}' FROM temp.retaining_observations"
+                ).complete()
 
     def _supersede(self, table: str, target: str, rows: str, admission: str) -> None:
         """Record the world versions this batch replaces and later writes of held values."""
@@ -1175,9 +1343,14 @@ class StorePort:
                 " IS DISTINCT FROM n.lag_rule OR t.lag_rule_version IS DISTINCT FROM"
                 " n.lag_rule_version))"
             )
+        eligible = (  # a version that never wins, retained or carried, orders nothing
+            " AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
+            f" WHERE s.table_id = world_table_id('{table}') AND s.version_id = t.version_id"
+            f" AND s.superseded_asof = {NEVER_CURRENT})"
+        )
         late, other = self.lake.execute(
             "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
-            f" {moved} FROM {target} t, temp.admitting n WHERE {same}"
+            f" {moved} FROM {target} t, temp.admitting n WHERE {same}{eligible}"
         ).fetchone()
         if other:
             raise DataError(
@@ -1197,7 +1370,10 @@ class StorePort:
         a retried commit of it finds its event. Its event names the snapshot it was judged against:
         the newest committed one, recorded now and durably, before its staging goes, or, judged
         against a block's own writes, the block's, whose commit carries the event in its order
-        (`admitting`)."""
+        (`admitting`). A retry whose first attempt kept a nonwinning row finds that attempt's
+        event once the catalog's owed events are repaired."""
+        if self._block is None:
+            repair(self.log, self.lake, self._repaired)
         if self.log.read(
             "SELECT 1 FROM event WHERE type = 'admission.committed' AND subject_id = ?",
             (staged.admission_id,),

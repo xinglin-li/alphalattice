@@ -2745,6 +2745,39 @@
   ],
   "quarantine": [
     {
+      "node": "tests/integration/task_control/test_task_child.py::test_a_shared_argument_ships_once_to_each_worker_of_a_call_set",
+      "owner": "tests.workspace_task_runner",
+      "reason": "The module's tests leave their kept workers running, so its open descriptors climb about fifteen per test; under a 256-descriptor limit a worker that ran other files first refuses with too many open files. Held until each test retires its kept workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/task_control/test_task_child.py::test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again[unused]",
+      "owner": "tests.workspace_task_runner",
+      "reason": "The module's tests leave their kept workers running, so its open descriptors climb about fifteen per test; under a 256-descriptor limit a worker that ran other files first refuses with too many open files. Held until each test retires its kept workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/task_control/test_task_child.py::test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again[worker-dies]",
+      "owner": "tests.workspace_task_runner",
+      "reason": "The module's tests leave their kept workers running, so its open descriptors climb about fifteen per test; under a 256-descriptor limit a worker that ran other files first refuses with too many open files. Held until each test retires its kept workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
       "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",

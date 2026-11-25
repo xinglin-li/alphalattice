@@ -201,6 +201,12 @@
    "rule": "d03cac3abfecaf094e0c245467f6a9695498532d521f4152e339f940fd0c2c39"
   }
  },
+ "format_changes": {
+  "factor-input:3": {
+   "identity": "A new Factor input binds the market selection and catalog snapshot instead of a physical market database digest.",
+   "previous": "Existing unversioned and version 2 bindings keep their sealed bytes and identities."
+  }
+ },
  "note": "Each byte closure the rule replaced (LAWS.md ID3): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
  "schema": "alphalattice.playpen.identity-switch"
 }

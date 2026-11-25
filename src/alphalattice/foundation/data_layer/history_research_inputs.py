@@ -52,6 +52,14 @@ def research_input_kept(binding_hash: str) -> bool:
         return inputs.kept(root, read, binding_hash)
 
 
+def research_input_manifest_held(binding_hash: str, payload: bytes) -> bool:
+    """Whether the bytes are the binding document kept by the input door."""
+    import alphalattice.foundation.data_layer.inputs as inputs  # lazy: BLAKE3
+
+    with _array_reader() as (root, read):
+        return inputs.manifest_held(root, read, binding_hash, payload)
+
+
 def keep_research_input(binding_hash: str, files: Iterable[tuple[str, Path]]) -> None:
     """Keep a bound input's files at their paths under `research-inputs/` through the Host's log
     (data_layer.inputs.keep_binding), held by the Host's workspace."""

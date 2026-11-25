@@ -265,11 +265,13 @@ CREATE TABLE world.evidence_doc (
 -- half the history). A walk-forward read takes superseded_asof as the version's visible_to. Versions of one key are
 -- admitted in their known_asof order; a legacy row's derived known_asof and the superseded_asof its replacement gives
 -- move together when the lag rule's version moves.
+-- A retained source observation that did not win has superseded_asof = -infinity. Its body can be
+-- named by an explicit selection, and it has no visible interval in the canonical World view.
 CREATE TABLE world.superseded (
   table_id VARCHAR NOT NULL,             -- the world table's lineage (family world_table), such as raw_bar's
   version_id UUID NOT NULL,              -- the replaced version
-  superseded_asof TIMESTAMPTZ NOT NULL,  -- when its replacement became known
-  by_admission_id VARCHAR NOT NULL       -- the admission that replaced it
+  superseded_asof TIMESTAMPTZ NOT NULL,  -- when it ceased to be current, or -infinity
+  by_admission_id VARCHAR NOT NULL       -- the admission that set the visibility boundary
 );
 
 -- key: (table_id, version_id, source_observed_at)

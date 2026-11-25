@@ -537,6 +537,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.a_carried_binding_names_its_market_selection": {
+      "description": "A carried research input derives the market selection its document names only from its own sealed files, refusing another binding's document or files lacking its index or panel.",
+      "owner": "alphalattice.foundation.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.a_class_read_gives_its_effective_n": {
       "description": "If a class read gave no effective N, or counted series known only after its cut, a result's significance would be read against the raw trial count, or against later knowledge.",
       "lower_layer": "The series are inline bodies in the log read by DuckDB's SQLite scan, so only a real log shows them correlated.",
@@ -2043,6 +2049,13 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.a_moved_selection_is_carried_to_its_new_root": {
+      "description": "A workspace or research input copied to another data root refuses its open until carried, then reads as it read on its own root, and a repeated or conflicting carry changes nothing.",
+      "lower_layer": "The carry reads one root's DuckLake catalog into another's, through the Host's log, the store and a workspace database.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 10
+    },
     "market_data_ops.a_rate_limited_retry_backs_off": {
       "description": "If a rate-limited provider call were retried at once, the retry would hit the same limit and hammer the provider.",
       "owner": "alphalattice.foundation.market_data_ops",
@@ -2075,6 +2088,13 @@
       "layer": "integration",
       "seconds": 3,
       "lower_layer": "Admission reads a real workspace database into a real catalog, which only an opened data root holds."
+    },
+    "market_data_ops.a_sealed_index_hashes_its_values_never_its_file": {
+      "description": "If a sealed index's hash read its file's bytes, the same values written by another writer setting or library would bind as different inputs, and values under nulls would move it between reads.",
+      "lower_layer": "The proof writes two DuckDB files under different storage settings and reads them back through DuckDB's Arrow export.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "integration",
+      "seconds": 5
     },
     "market_data_ops.a_standard_names_its_history_floor": {
       "description": "If onboarding floored history at a fixed ten years, or a manifest named the original standard whatever floor was applied, a shorter standard would be refused or admitted under a false identity.",
@@ -2150,6 +2170,12 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "A real DuckDB store and Arrow result are needed to compare the persisted set query with its per-listing readers."
+    },
+    "market_data_ops.split_rebases_compose_in_session_order": {
+      "description": "Each stored bar before a split's ex-date is rebased by the factors after it, in session order, and a move no split explains is no rebase.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
     },
     "market_data_ops.world_holds_the_workspace_market_tables": {
       "description": "A workspace's market rows are published into world equal row for row, and a later correction is known from the time its writer observed it.",

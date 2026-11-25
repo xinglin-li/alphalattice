@@ -1157,7 +1157,7 @@ def selection(window: Mapping[str, Any], *, actor: tuple[str, str]) -> str | Non
     else a new one, named by a UUIDv7. Its universe is registered as a lineage first. None outside
     a Host, or while deferred."""
     if window.get("universe") is not None:
-        define("universe", str(window["universe"]), "A set of listings research reads, as named.")
+        define("universe", str(window["universe"]), project.UNIVERSE_TEXT)
     with _once:
         if not recording():
             return None

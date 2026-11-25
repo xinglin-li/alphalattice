@@ -313,10 +313,34 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     assert compatible_factor_inputs(old, new, read_legacy=read_old, read_catalog=read_new)
     assert not compatible_factor_inputs(old, changed, read_legacy=read_old, read_catalog=read_new)
     assert not compatible_factor_inputs(new, different_artifact)
+
+    def at_snapshot(
+        snapshot: int, index_hash: str = digest, content: str = "blake3:" + "c" * 64
+    ) -> FactorInputBundle:
+        return FactorInputBundle.create(
+            **common,
+            files=tuple(sorted((*new.files, ("market-data.duckdb", index_hash)))),
+            binding_version=3,
+            outcomes=new.outcomes,
+            market_selection_id=artifact,
+            market_catalog_snapshot=snapshot,
+            market_index_hash=content,
+        )
+
+    selected = at_snapshot(7)
+    assert "market_selection_id" not in new.model_dump()
+    assert FactorInputBundle.model_validate_json(selected.model_dump_json()) == selected
+    assert selected.binding_hash == at_snapshot(7, "a" * 64).binding_hash
+    assert compatible_factor_inputs(selected, at_snapshot(7, "a" * 64))
+    # The sealed index's rows bind it (its Feature values among them); its file's padding does not.
+    assert selected.binding_hash != at_snapshot(7, content="blake3:" + "d" * 64).binding_hash
+    assert not compatible_factor_inputs(selected, at_snapshot(7, content="blake3:" + "d" * 64))
+    assert selected.binding_hash != at_snapshot(8).binding_hash
+    assert not compatible_factor_inputs(selected, at_snapshot(8))
+    assert not compatible_factor_inputs(selected, new)
     assert not compatible_factor_inputs(
         old, new, read_legacy=read_old, read_catalog=lambda _: rows.slice(0, 1)
     )
-
     # A binding this data root does not keep is refused by name, never read from elsewhere.
     with pytest.raises(DataError) as missing:
         read_factor_bundle(tmp_path, "a" * 64, verify=False)

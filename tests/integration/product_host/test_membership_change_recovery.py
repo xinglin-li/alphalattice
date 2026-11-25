@@ -41,6 +41,7 @@ from tests.researcher_methodology_surface.real_workspace import SYMBOLS
 from tests.researcher_methodology_surface.session_workspace import (
     LINKED_SEEDS,
     copy_workspace,
+    on_seed_machine,
     restore_seed,
     session_workspace,
 )
@@ -211,7 +212,9 @@ def stopped_change_seed(tmp_path_factory, golden_cache) -> SimpleNamespace:  # t
     LINKED_SEEDS.add(seed)
     workspace = seed
     market = MarketDataRepository(workspace)
-    prior = market.load_universe_manifest_revision(str(built["prior"]))
+    with on_seed_machine(seed):  # its market rows live in the machine it was built on
+        prior = market.load_universe_manifest_revision(str(built["prior"]))
+        journal = market.manifest_transition(str(built["transition_id"]))
     provider, source = _change_source(market, prior, date.fromisoformat(str(built["restated"])))
     return SimpleNamespace(
         workspace=workspace,
@@ -220,7 +223,7 @@ def stopped_change_seed(tmp_path_factory, golden_cache) -> SimpleNamespace:  # t
         source=source,
         task_id=built["task_id"],
         cycle_id=built["cycle_id"],
-        journal=market.manifest_transition(str(built["transition_id"])),
+        journal=journal,
         prior=prior,
         audited=prior.listing_for_symbol(MEMBERS[1]),
         active=built["active"],

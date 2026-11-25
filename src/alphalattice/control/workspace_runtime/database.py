@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import threading
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ from uuid import uuid4
 import duckdb
 
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.environment import ducklake_extensions
 from alphalattice.capabilities.domain_contracts.persistence import (
     DURABLE_REPLACE_DELAYS,
     replace_with_retry,
@@ -197,6 +199,7 @@ class WorkspaceConnection:
         "_ddl",
         "_guarded",
         "_instance",
+        "_on_use",
         "_owner",
         "_path",
         "_pinned",
@@ -246,6 +249,8 @@ class WorkspaceConnection:
         # statement ran on the file since, so its transaction sees the latest committed catalog.
         self._since: int | None = None
         self._root: duckdb.DuckDBPyConnection | None = None  # the instance's, closed after this
+        # What runs before the first statement that names its relation (`bind_on_use`).
+        self._on_use: dict[str, Callable[[], None]] = {}
         if guarded:
             self._raw.execute("BEGIN TRANSACTION READ ONLY")
 
@@ -264,6 +269,129 @@ class WorkspaceConnection:
             return
         self._end_transaction()
         self._raw.execute("BEGIN TRANSACTION READ ONLY")
+
+    def attach_market_catalog(self, root: Path) -> None:
+        """Attach the installed read-only market catalog once to this workspace instance."""
+        if root == self._instance.catalog_named:  # every open asks: no path resolution once held
+            return
+        named, root = root, root.resolve()
+        with self._instance.catalog_lock:
+            if self._instance.catalog_root == root:
+                return
+            if self._instance.catalog_root is not None:
+                raise ValueError("workspace_database.market_catalog_root_changed")
+            catalog = root / "machine" / "catalog.sqlite"
+            if not catalog.is_file():  # refused by name, whether or not a transaction is open
+                raise ValueError("workspace_database.market_catalog_unavailable")
+            if self._pinned or self.in_transaction():
+                raise RuntimeError("workspace_database.market_catalog_attach_in_transaction")
+            catalog_name = catalog.as_posix().replace("'", "''")
+            data_path = (root / "data").as_posix().replace("'", "''")
+            if self._guarded:
+                self._end_transaction()
+            try:
+                for _, binary in ducklake_extensions():
+                    self._raw.execute(f"LOAD '{binary}'").complete()
+                self._raw.execute(
+                    f"ATTACH 'ducklake:sqlite:{catalog_name}' AS workspace_market"
+                    f" (DATA_PATH '{data_path}/', READ_ONLY)"
+                ).complete()
+                self._instance.catalog_root = root
+                self._instance.catalog_named = named
+            finally:
+                if self._guarded:
+                    self._arm()
+
+    def bind_on_use(self, binds: Mapping[str, Callable[[], None]]) -> None:
+        """Run each relation's bind on this handle before its first statement whose text names
+        that relation, and every one still pending before a statement that begins a transaction:
+        a handle pays only for the relations it reads, and none is bound inside a transaction
+        its rollback would undo."""
+        self._on_use = dict(binds)
+
+    def _bind_used(self, args: tuple[Any, ...], kwargs: dict[str, Any], *, now: bool) -> None:
+        """Run the pending `bind_on_use` binds this call's SQL or names reach. Before a
+        transaction begins each pending bind is tried: one that fails stays pending, so a
+        transaction that never reads its relation is not refused for it, and its first read
+        inside the transaction runs it again and refuses there."""
+        if not self._on_use:
+            return
+        names: Iterable[str] = self._on_use
+        if not now:
+            texts = [
+                text.lower()
+                for value in (*args, *kwargs.values())
+                for text in (
+                    value
+                    if isinstance(value, str)
+                    else value.query
+                    if isinstance(value, duckdb.Statement)
+                    else "",
+                )
+                if text
+            ]
+            now = any(_BEGINS.search(text) for text in texts)
+            if not now:
+                names = [name for name in names if any(name in text for text in texts)]
+        for name in list(names):
+            bind = self._on_use.pop(name, None)  # a bind's own statement may run another
+            if bind is None:
+                continue
+            if not now:
+                bind()
+                continue
+            try:
+                bind()
+            except (ValueError, RuntimeError, duckdb.Error):
+                self._on_use.setdefault(name, bind)  # its own read refuses, if one comes
+
+    def market_fact(self, fact: str, probe: Callable[[], bool]) -> bool:
+        """Whether `fact` holds of this file's market tables, `probed` until it does, once per
+        instance: a fact named here, once committed, is never undone while the file is open (its
+        version index installed, its selection published). A probe in a transaction may see its
+        own uncommitted change, so only one outside it is kept."""
+        if fact in self._instance.market_facts:
+            return True
+        found = probe()
+        if found and not self.in_transaction():
+            self._instance.market_facts.add(fact)
+        return found
+
+    def hold_market_selection(
+        self,
+        cache: str,
+        selection: Callable[[Any], object],
+        build: Callable[[duckdb.DuckDBPyConnection], None],
+    ) -> bool:
+        """Keep the published market selection in the instance's in-memory database `cache`,
+        attached once: `build` refills it, in a transaction of its own, when the `selection` read
+        there differs from the one it holds. A connection in a transaction cannot refill it and
+        answers False unless it holds that selection already; its reads then take the live rows."""
+        with self._instance.catalog_lock:
+            held = self._instance.market_selection
+            if self._instance.market_cache_attached and selection(self) == held:
+                return True
+            if self._pinned or self.in_transaction():
+                return False
+            if self._guarded:
+                self._end_transaction()
+            try:
+                if not self._instance.market_cache_attached:
+                    self._raw.execute(f"ATTACH ':memory:' AS {cache} (READ_WRITE)").complete()
+                    self._instance.market_cache_attached = True
+                self._raw.execute("BEGIN TRANSACTION")
+                try:
+                    held = selection(self._raw)
+                    build(self._raw)
+                    self._raw.execute("COMMIT")
+                except BaseException:
+                    self._raw.execute("ROLLBACK")
+                    raise
+                self._instance.market_selection = held
+            finally:
+                if self._guarded:
+                    self._arm()
+        return True
 
     def _refuse_unguardable(self, query: object) -> set[duckdb.StatementType]:
         """Refuse, by the engine's classification, what its read-only transaction cannot stop.
@@ -328,6 +456,7 @@ class WorkspaceConnection:
     @contextmanager
     def snapshot(self) -> Iterator[WorkspaceConnection]:
         """Read several statements from one consistent snapshot."""
+        self._bind_used((), {}, now=True)
         if self._guarded:
             self._arm()
             self._pinned = True
@@ -357,6 +486,7 @@ class WorkspaceConnection:
     def _call(self, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         """Run one of the engine's methods on this handle under the guard."""
 
+        self._bind_used(args, kwargs, now=name == "begin")
         attribute = getattr(self._raw, name)
         if not self._guarded and name in {"install_extension", "load_extension"}:
             raise RuntimeError(
@@ -594,6 +724,9 @@ class WorkspaceConnection:
         return guarded_call
 
 
+_BEGINS = re.compile(r"\b(?:begin|start\s+transaction)\b")
+"""A statement text that opens a transaction (`bind_on_use`)."""
+
 _SQL_DOORS = frozenset({"execute", "executemany", "sql", "query", "from_query"})
 """The engine's methods that take SQL: text or a statement object, positionally or as ``query=``."""
 
@@ -679,6 +812,14 @@ class _Instance:
     read_only: bool
     handles: set[WorkspaceConnection] = field(default_factory=set)
     root: duckdb.DuckDBPyConnection | None = None
+    catalog_root: Path | None = None
+    catalog_lock: threading.Lock = field(default_factory=threading.Lock)
+    market_facts: set[str] = field(default_factory=set)
+    catalog_named: Path | None = None  # `catalog_root` as its first attach named it
+    market_cache_attached: bool = False
+    market_selection: object = None
+    """The published market selection held by the instance's in-memory copy
+    (`hold_market_selection`)."""
 
     def held_by(self, thread: int) -> bool:
         return any(handle._owner == thread for handle in self.handles)
@@ -1056,6 +1197,20 @@ def _register(
     handle = WorkspaceConnection(raw, path=path, instance=instance, guarded=guarded, top_level=True)
     instance.handles.add(handle)
     return handle
+
+
+_CONNECTION_BINDS: list[Callable[[duckdb.DuckDBPyConnection, Path], None]] = []
+"""What each connection a `WorkspaceDatabase` opens runs first (`bind_each_connection`)."""
+
+
+def bind_each_connection(bind: Callable[[duckdb.DuckDBPyConnection, Path], None]) -> None:
+    """Run `bind(connection, path)` on each connection a `WorkspaceDatabase` opens from now on,
+    before its caller's first statement: an owner whose relations read through per-connection
+    views (the market version index) binds them for every repository reading the file, whichever
+    opened the connection. A direct open (`open_workspace_database`: a backup, the maintenance
+    registry, world's publish) reads the stored tables."""
+    if bind not in _CONNECTION_BINDS:
+        _CONNECTION_BINDS.append(bind)
 
 
 def open_workspace_database(
@@ -1507,7 +1662,14 @@ class WorkspaceDatabase:
         Returns:
             Tracked connection; the caller is responsible for closing it.
         """
-        return open_workspace_database(self.path, read_only=read_only)
+        connection = open_workspace_database(self.path, read_only=read_only)
+        try:
+            for bind in _CONNECTION_BINDS:
+                bind(connection, self.path)
+        except BaseException:
+            connection.close()
+            raise
+        return connection
 
     @contextmanager
     def retain(

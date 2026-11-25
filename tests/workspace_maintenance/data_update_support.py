@@ -41,7 +41,7 @@ from tests.portfolio_strategy_lab.local_web_support import (
 )
 from tests.pytest_environment import closure_on_log
 from tests.researcher_methodology_surface.real_workspace import AS_OF, OBSERVED_AT, SYMBOLS
-from tests.researcher_methodology_surface.session_workspace import on_seed_machine
+from tests.researcher_methodology_surface.session_workspace import carry_market, on_seed_machine
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
@@ -287,11 +287,12 @@ def activated_seed(qualified, qualified_seed, tmp_path_factory):
     workspace = tmp_path_factory.mktemp("first-activation") / "workspace"
     shutil.copytree(qualified, workspace)
     # A rebuilt fixture keeps the workspace identity, so it needs its own Task log.
-    with on_seed_machine(qualified_seed):
+    with on_seed_machine(qualified_seed) as machine:
         _activate(workspace, _formula("formula_reversal_5", "close / lag(close, 5) - 1"))
         _run_data_update(workspace)
         # Its copies outlive this Host's log and carry what the update kept there.
         carry_arrays(workspace, workspace)
+        carry_market(workspace, machine)
     return workspace
 
 

@@ -1431,7 +1431,9 @@ def _sql(node: ast.AST, values: dict[str, str]) -> str:
     return ""
 
 
-def _lint(path: str, tree: ast.Module) -> set[str]:
+def _lint(path: str, tree: ast.Module, judged_with: ast.Module | None = None) -> set[str]:
+    """Static findings in `tree`; its debt is read with the connection factories `judged_with`,
+    the changed tree, declares, so a newly typed factory reveals old writes, not added ones."""
     imports = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -1461,7 +1463,8 @@ def _lint(path: str, tree: ast.Module) -> set[str]:
     definitions = list(_definitions(tree))
     factories = {
         node.name
-        for _name, node in definitions
+        for source in ((tree,) if judged_with is None else (tree, judged_with))
+        for _name, node in _definitions(source)
         if called(getattr(node, "returns", None)) == "duckdb.DuckDBPyConnection"
     }
     for _name, unit in [("", tree), *definitions]:
@@ -2052,7 +2055,7 @@ def problems(
         if path.endswith(".py"):
             found += undocumented(path, old, new, docstrings)
             before, after = _tree(old or ""), _tree(new)
-            debt = Counter(line.split(": ", 1)[1] for line in _lint(path, before))
+            debt = Counter(line.split(": ", 1)[1] for line in _lint(path, before, after))
             current = sorted(_lint(path, after))
             counts = Counter(line.split(": ", 1)[1] for line in current)
             found += [

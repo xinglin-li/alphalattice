@@ -266,9 +266,9 @@ def _unreadable(error: OSError) -> None:
     ) from error
 
 
+_FILE_PARTS: Final = "s.path,s.path_is_relative,t.path,t.path_is_relative,f.path,f.path_is_relative"
 _REFERENCED: Final = (
-    "SELECT s.path,s.path_is_relative,t.path,t.path_is_relative,"
-    "f.path,f.path_is_relative FROM ducklake_{table} f "
+    " FROM ducklake_{table} f "
     "LEFT JOIN ducklake_table t ON t.table_id=f.table_id "
     "AND t.begin_snapshot<=f.begin_snapshot "
     "AND (t.end_snapshot IS NULL OR t.end_snapshot>f.begin_snapshot) "
@@ -276,6 +276,35 @@ _REFERENCED: Final = (
     "AND s.begin_snapshot<=f.begin_snapshot "
     "AND (s.end_snapshot IS NULL OR s.end_snapshot>f.begin_snapshot)"
 )
+
+
+def _catalog_data_path(con: sqlite3.Connection, catalog: Path) -> PurePosixPath:
+    bases = con.execute(
+        "SELECT value FROM ducklake_metadata WHERE key='data_path' AND scope IS NULL"
+    ).fetchall()
+    if len(bases) != 1 or not isinstance(bases[0][0], str):
+        raise _refuse(
+            "backup_catalog_invalid", f"{catalog} lacks one data path; use an intact backup"
+        )
+    return PurePosixPath(bases[0][0].replace("\\", "/"))
+
+
+def catalog_table_files(catalog: Path) -> dict[str, tuple[str, ...]]:
+    """Name retained data and delete files by table at the snapshot that registered the file."""
+    tables: dict[str, set[str]] = {}
+    with closing(sqlite3.connect(sqlite_read_only_uri(_real(catalog)), uri=True)) as con:
+        base = _catalog_data_path(con, catalog)
+        for kind in ("data_file", "delete_file"):
+            rows = con.execute(
+                "SELECT s.schema_name,t.table_name," + _FILE_PARTS + _REFERENCED.format(table=kind)
+            )
+            for schema, table, *parts in rows:
+                found: set[str] = set()
+                if refused := catalog_files((tuple(parts),), base, catalog, found):
+                    raise _refuse(*refused)
+                (path,) = found
+                tables.setdefault(path, set()).add(f"{schema}.{table}")
+    return {path: tuple(sorted(names)) for path, names in sorted(tables.items())}
 
 
 def _catalog_paths(catalog: Path) -> set[str]:
@@ -287,19 +316,11 @@ def _catalog_paths(catalog: Path) -> set[str]:
     one of this root's files and is never followed (``_relocate_catalog`` re-roots them)."""
     found: set[str] = set()
     with closing(sqlite3.connect(sqlite_read_only_uri(_real(catalog)), uri=True)) as con:
-        bases = con.execute(
-            "SELECT value FROM ducklake_metadata WHERE key='data_path' AND scope IS NULL"
-        ).fetchall()
-        if len(bases) != 1 or not isinstance(bases[0][0], str):
-            raise _refuse(
-                "backup_catalog_invalid", f"{catalog} lacks one data path; use an intact backup"
-            )
-        base = PurePosixPath(bases[0][0].replace("\\", "/"))
+        base = _catalog_data_path(con, catalog)
+        files = "SELECT " + _FILE_PARTS + _REFERENCED
         refused = catalog_files(
-            con.execute(_REFERENCED.format(table="data_file")), base, catalog, found
-        ) or catalog_files(
-            con.execute(_REFERENCED.format(table="delete_file")), base, catalog, found
-        )
+            con.execute(files.format(table="data_file")), base, catalog, found
+        ) or catalog_files(con.execute(files.format(table="delete_file")), base, catalog, found)
         scheduled = con.execute(  # the same parts as a file's, each empty one relative
             "SELECT '',true,'',true,path,path_is_relative"
             " FROM ducklake_files_scheduled_for_deletion"

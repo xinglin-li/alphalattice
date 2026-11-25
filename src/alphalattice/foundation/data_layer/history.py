@@ -55,6 +55,7 @@ from alphalattice.foundation.data_layer.history_research_inputs import (
     hold_research_input,
     keep_research_input,
     research_input_kept,
+    research_input_manifest_held,
     research_input_root,
     research_input_workspace,
 )
@@ -247,6 +248,7 @@ __all__ = [
     "render_in_background",
     "require_portfolio_result_store",
     "research_input_kept",
+    "research_input_manifest_held",
     "research_input_root",
     "research_input_workspace",
     "search_references",

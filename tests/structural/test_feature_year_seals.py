@@ -15,6 +15,8 @@ SCHEMA = {
 }
 ADJUSTED_WRITE = re.compile(
     r"\b(?:INSERT(?:\s+OR\s+REPLACE)?\s+INTO|MERGE\s+INTO|DELETE\s+FROM|UPDATE)\s+"
+    # the table by name, or the physical table its read overlay names (market_snapshots)
+    r"(?:\"\s*\+\s*market_snapshots\.pending_table\([^,]+,\s*\")?"
     r"provider_adjusted_close_current\b"
 )
 

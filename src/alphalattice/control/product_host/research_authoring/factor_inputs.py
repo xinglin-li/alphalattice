@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -61,6 +63,7 @@ from alphalattice.foundation.data_layer.backup import (
     verify_data_root,
 )
 from alphalattice.foundation.data_layer.inputs import folder_files
+from alphalattice.foundation.data_layer.root import sql_path
 from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
@@ -94,7 +97,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import PanelSta
 from alphalattice.foundation.market_data_ops.sources.universe import (
     bootstrap_from_candidate_manifest_document,
 )
-from alphalattice.foundation.market_data_ops.storage import world_reads
+from alphalattice.foundation.market_data_ops.storage import market_snapshots, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import execution_port
@@ -106,6 +109,17 @@ from alphalattice.protocols.research_authoring.contracts import (
 )
 
 PROFILE = "us-current-index-research"
+_NON_SELECTION_TABLES = frozenset({"onboarding_raw_stage", "onboarding_action_stage"})
+"""The pending onboarding feed is never selected. Stored feature values stay: a training read of
+the binding takes its formula rows from them (strategy_score_inputs `_rows_since`)."""
+_SEALED_INPUT_DOCUMENTS = (
+    "artifacts/feature-panel/manifests/",
+    "artifacts/feature-panel/semantic-index/",
+    "artifacts/data-operations/execution-outcomes/manifests/",
+    "artifacts/data-operations/execution-outcomes/markers/",
+    "artifacts/data-operations/execution-outcomes/method-bindings/",
+    "artifacts/data-operations/execution-outcomes/method-seal-markers/",
+)
 
 
 def _windows_long_path(path: Path) -> Path:
@@ -269,7 +283,21 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
         default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None
     )
     # A 0.2.7 file-bound bundle's manifest carries no binding version.
-    binding_version: Literal[2] | None = Field(default=None, exclude_if=lambda v: v is None)
+    binding_version: Literal[2, 3] | None = Field(default=None, exclude_if=lambda v: v is None)
+    # A version 3 binding names the catalog selection it read and that selection's snapshot.
+    market_selection_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        exclude_if=lambda v: v is None,
+    )
+    market_catalog_snapshot: int | None = Field(
+        default=None, gt=0, strict=True, exclude_if=lambda v: v is None
+    )
+    # A version 3 binding's sealed index, by what it holds (`market_snapshots.content_hash`): the
+    # rows a reader of it reads, Feature values among them, without the engine file's padding.
+    market_index_hash: str | None = Field(
+        default=None, pattern=r"^blake3:[0-9a-f]{64}$", exclude_if=lambda v: v is None
+    )
     outcomes: tuple[tuple[str, str], ...] | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
@@ -292,8 +320,25 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
         draft = cls.model_construct(**values, binding_hash="0" * 64)
         return cls(
             **values,
-            binding_hash=canonical_hash(draft.model_dump(mode="json", exclude={"binding_hash"})),
+            binding_hash=draft._binding_key(),
         )
+
+    @property
+    def market_selection(self) -> tuple[str, int] | None:
+        """The catalog selection and snapshot a version 3 binding read, or None."""
+        if self.market_selection_id is None or self.market_catalog_snapshot is None:
+            return None
+        return self.market_selection_id, self.market_catalog_snapshot
+
+    def _binding_key(self) -> str:
+        payload = self.model_dump(mode="json", exclude={"binding_hash"})
+        if self.market_selection is not None:
+            # The selection is the index's identity. Its engine-file seal is held by the input
+            # door along with this document, so nondeterministic DuckDB padding moves no binding.
+            payload["files"] = [
+                item for item in payload["files"] if item[0] != "market-data.duckdb"
+            ]
+        return str(canonical_hash(payload))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -312,12 +357,21 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
             or not self.files
             or self.files != tuple(sorted(set(self.files)))
             or len({p for p, _ in self.files}) != len(self.files)
-            or self.binding_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"binding_hash"}))
+            or self.binding_hash != self._binding_key()
         ):
             raise AuthoringError("research_experiment.input_manifest_invalid")
         if (self.binding_version is None) != (self.outcomes is None):
             raise AuthoringError("research_experiment.input_manifest_invalid")
+        if (
+            (self.market_selection_id is None) != (self.market_catalog_snapshot is None)
+            or (self.binding_version == 3) != (self.market_selection is not None)
+            or (self.market_index_hash is None) != (self.market_selection is None)
+        ):
+            raise AuthoringError("research_experiment.input_manifest_invalid")
+        if self.market_selection is not None and (
+            self.database_snapshot_hash is not None or "market-data.duckdb" not in dict(self.files)
+        ):
+            raise AuthoringError("research_experiment.input_database_binding_mismatch")
         if self.outcomes is not None and (
             not self.outcomes
             or self.outcomes != tuple(sorted(set(self.outcomes)))
@@ -382,7 +436,14 @@ def read_factor_bundle(
     bundle = FactorInputBundle.model_validate_json(manifest_bytes)
     if bundle.binding_hash != binding_hash:
         raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
+    selection = bundle.market_selection
+    if selection is not None and not history.research_input_manifest_held(
+        binding_hash, manifest_bytes
+    ):
+        raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
     if verify:
+        if selection is not None and not world_reads.market_selection_held(*selection):
+            raise AuthoringError("research_experiment.input_market_selection_unavailable")
         source = confined(root, "source")
         for name, _expected in bundle.files:
             target = confined(source, name)
@@ -399,13 +460,58 @@ def read_factor_bundle(
                 require_available_input(workspace, _released_name(inputs, database))
                 raise AuthoringError("research_experiment.input_database_unavailable")
         targets = {name: confined(source, name) for name, _expected in bundle.files}
-        digests = file_digests((*targets.values(), *((database,) if database else ())))
-        for name, expected in bundle.files:
-            if digests[targets[name]] != expected:
-                raise AuthoringError("research_experiment.input_file_tampered")
-        if database is not None and digests[database] != bundle.database_snapshot_hash:
-            raise AuthoringError("research_experiment.input_database_tampered")
+        _verify_sealed_files(bundle, targets, database)
     return cast(FactorInputBundle, bundle)
+
+
+def _verify_sealed_files(
+    bundle: FactorInputBundle, targets: Mapping[str, Path], database: Path | None
+) -> None:
+    """Each file the bundle names holds the bytes it seals, and its pooled database the snapshot
+    it names (`read_factor_bundle`, `carried_binding_check`)."""
+    digests = file_digests((*targets.values(), *((database,) if database else ())))
+    for name, expected in bundle.files:
+        if digests[targets[name]] != expected:
+            raise AuthoringError("research_experiment.input_file_tampered")
+    if database is not None and digests[database] != bundle.database_snapshot_hash:
+        raise AuthoringError("research_experiment.input_database_tampered")
+
+
+def carried_binding_check(binding_hash: str, members: Mapping[str, Path]) -> None:
+    """A copy's carried binding, before its open keeps it or logs the selection it names
+    (`inputs.import_carried`): its document is a bundle sealed under `binding_hash`; its files
+    are exactly those the bundle names, with the bytes it seals, as `read_factor_bundle` verifies
+    them; and its index holds the logical content `market_index_hash` names, the index's seal in
+    the key. `members` maps each path under the binding's folder to its carried body."""
+    document = members.get("manifest.json")
+    if document is None:
+        raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
+    try:
+        bundle = FactorInputBundle.model_validate_json(document.read_bytes())
+    except ValueError as error:
+        raise AuthoringError("research_experiment.input_manifest_invalid") from error
+    if bundle.binding_hash != binding_hash:
+        raise AuthoringError("research_experiment.input_manifest_identity_mismatch")
+    source = {
+        relative.removeprefix("source/"): body
+        for relative, body in members.items()
+        if relative.startswith("source/")
+    }
+    if set(source) != {name for name, _expected in bundle.files}:
+        raise AuthoringError("research_experiment.input_file_set_changed")
+    _verify_sealed_files(bundle, source, None)
+    if bundle.market_index_hash is not None:
+        alias = f"carried_{uuid.uuid4().hex}"
+        with storage.memory() as cursor:
+            cursor.execute(
+                f"ATTACH '{sql_path(source['market-data.duckdb'])}' AS {alias} (READ_ONLY)"
+            )
+            try:
+                held = market_snapshots.content_hash(cursor, alias)
+            finally:
+                cursor.execute(f"DETACH {alias}")
+        if held != bundle.market_index_hash:
+            raise AuthoringError("research_experiment.input_file_tampered")
 
 
 def factor_input_paths(workspace: Path, binding_hash: str) -> tuple[Path, Path]:
@@ -447,6 +553,32 @@ def _copy_input(workspace: Path, source: Path, target: Path) -> None:
     require_storage_capacity(workspace, additional_bytes=source.stat().st_size)
     with storage.outside(source):
         shutil.copy2(source, target)
+
+
+def _share_bound_artifacts(
+    workspace: Path,
+    kept: Path,
+    source_files: tuple[tuple[str, str], ...],
+    bundle: FactorInputBundle,
+) -> None:
+    """Share bytes of sealed files between the workspace and its verified binding."""
+    sealed = dict(bundle.files)
+    for relative, digest in source_files:
+        sealed_document = relative.startswith(_SEALED_INPUT_DOCUMENTS) and bool(
+            re.fullmatch(r"[0-9a-f]{64}\.json", Path(relative).name)
+        )
+        if sealed.get(relative) != digest or not (relative.endswith(".parquet") or sealed_document):
+            continue
+        local, body = confined(workspace, relative), confined(kept, relative)
+        try:
+            if not local.samefile(body):
+                with staging_directory(local.parent) as pending:
+                    alias = Path(pending) / local.name
+                    os.link(body, alias)
+                    os.replace(alias, local)
+        except OSError as error:
+            # The binding stays readable when the filesystem cannot share an inode.
+            logging.getLogger(__name__).warning("research_input.content_sharing_held: %s", error)
 
 
 def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:
@@ -512,8 +644,13 @@ def compatible_factor_inputs(
         original.panel_snapshot_hash == candidate.panel_snapshot_hash
         and original.outcome_snapshot_hash == candidate.outcome_snapshot_hash
         and original.sessions == candidate.sessions
-        and dict(original.files).get("market-data.duckdb", original.database_snapshot_hash)
-        == dict(candidate.files).get("market-data.duckdb", candidate.database_snapshot_hash)
+        and original.market_selection == candidate.market_selection
+        and original.market_index_hash == candidate.market_index_hash
+        and (
+            original.market_selection is not None
+            or dict(original.files).get("market-data.duckdb", original.database_snapshot_hash)
+            == dict(candidate.files).get("market-data.duckdb", candidate.database_snapshot_hash)
+        )
     ):
         return False
     if original.outcomes is None and candidate.outcomes is None:
@@ -726,18 +863,94 @@ def _bind_factor_inputs(
     )
     if include_alpha_handoff:
         paths.extend(_logical_files(source, panel_snapshot_hash))
-    source_digests = file_digests(paths)
-    files = tuple(
-        sorted({(p.resolve().relative_to(source).as_posix(), source_digests[p]) for p in paths})
-    )
+    sources = {p.resolve().relative_to(source).as_posix(): p for p in paths}
+    universe = str(panel["safe_summary"]["lineage"]["manifest_revision"])
+    parent = confined(workspace, "research-inputs")
+    parent.mkdir(parents=True, exist_ok=True)
+    with market.database.read_transaction() as connection:
+        snapshot = market_snapshots.closed_selection(connection, market.path)
+    index_hash: str | None = None
+    with staging_directory(parent, ".selection-") if snapshot else nullcontext() as temporary:
+        if temporary is not None:
+            index = Path(temporary) / "market-data.duckdb"
+            require_storage_capacity(workspace, additional_bytes=0)
+            with market.database.connect(read_only=False) as connection:
+                *selected, index_hash = market_snapshots.write_selection_index(
+                    connection, market.path, index, omit=_NON_SELECTION_TABLES
+                )
+            snapshot = (selected[0], selected[1])
+            sources["market-data.duckdb"] = index
+        return _seal_factor_inputs(
+            workspace=workspace,
+            source=source,
+            sources=sources,
+            manifest=manifest,
+            input_id=input_id,
+            panel_snapshot_hash=panel_snapshot_hash,
+            outcome_snapshot_hash=outcome.snapshot_hash,
+            sessions=sessions,
+            outcome_refs=tuple(sorted(outcome_refs)),
+            universe=universe,
+            snapshot=snapshot,
+            index_hash=index_hash if snapshot else None,
+            include_alpha_handoff=include_alpha_handoff,
+            gate=gate,
+            bind_configuration=bind_configuration,
+            claim=claim,
+        )
+
+
+def _seal_factor_inputs(
+    *,
+    workspace: Path,
+    source: Path,
+    sources: Mapping[str, Path],
+    manifest: ResearchWorkspaceManifest,
+    input_id: str,
+    panel_snapshot_hash: str,
+    outcome_snapshot_hash: str,
+    sessions: tuple[date, ...],
+    outcome_refs: tuple[tuple[str, str], ...],
+    universe: str,
+    snapshot: tuple[int, int] | None,
+    index_hash: str | None,
+    include_alpha_handoff: bool,
+    gate: WorkspaceMutationGate,
+    bind_configuration: bool,
+    claim: Callable[[ResearchWorkspaceManifest], None] | None,
+) -> ResearchWorkspaceExperimentInput:
+    """Verify and keep the selected input files, then publish one binding."""
+    source_digests = file_digests(sources.values())
+    files = tuple(sorted((name, source_digests[path]) for name, path in sources.items()))
+    database_hash = dict(files)["market-data.duckdb"]
+    selection_id, number = None, None
+    if snapshot is not None:
+        number, cutoff = snapshot
+        window = inputs.market_selection_window(
+            cutoff_us=cutoff,
+            universe=universe,
+            first=min(sessions).isoformat(),
+            last=max(sessions).isoformat(),
+            snapshot=number,
+            recipes={
+                "feature_panel": panel_snapshot_hash,
+                "execution_outcome": outcome_snapshot_hash,
+            },
+        )
+        selection_id = history.selection(window, actor=("host", "host"))
+        if selection_id is None:
+            raise AuthoringError("research_experiment.input_market_selection_unavailable")
     bundle = FactorInputBundle.create(
         panel_snapshot_hash=panel_snapshot_hash,
-        outcome_snapshot_hash=outcome.snapshot_hash,
+        outcome_snapshot_hash=outcome_snapshot_hash,
         sessions=tuple(sorted(set(sessions))),
         files=files,
-        database_snapshot_hash=dict(files)["market-data.duckdb"],
-        binding_version=2,
-        outcomes=tuple(sorted(outcome_refs)),
+        database_snapshot_hash=database_hash if selection_id is None else None,
+        binding_version=2 if selection_id is None else 3,
+        market_selection_id=selection_id,
+        market_catalog_snapshot=number,
+        market_index_hash=index_hash if selection_id is not None else None,
+        outcomes=outcome_refs,
     )
     # The explicitly named installed input is the idempotency anchor, not a
     # search for a latest compatible directory. Verify it before reuse.
@@ -763,7 +976,6 @@ def _bind_factor_inputs(
                 bundle = candidate
     binding = ResearchWorkspaceExperimentInput(input_id=input_id, binding_hash=bundle.binding_hash)
     parent = confined(workspace, "research-inputs")  # the binding's staging place only
-    parent.mkdir(parents=True, exist_ok=True)
     kept = history.research_input_kept(bundle.binding_hash)
     needs_logical = include_alpha_handoff and not _logical_files(
         factor_input_paths(workspace, bundle.binding_hash)[0] if kept else source,
@@ -772,9 +984,7 @@ def _bind_factor_inputs(
     if kept and not needs_logical:
         read_factor_bundle(workspace, bundle.binding_hash)
     else:
-        market.load_universe_manifest_revision(
-            str(panel["safe_summary"]["lineage"]["manifest_revision"])
-        )
+        MarketDataRepository(source).load_universe_manifest_revision(universe)
         with staging_directory(parent) as probe:
             first = Path(probe) / "first"
             first.write_bytes(b"")
@@ -785,12 +995,11 @@ def _bind_factor_inputs(
                 links_available = False
         # The staged copy: a workspace-owned Parquet is linked where the volume allows
         # (`_copy_input`); the binding is then kept on the data root, never pooled here.
-        staged_items = (confined(source, name) for name, _digest in files)
         required = sum(
             0
             if links_available and item.suffix == ".parquet" and item.is_relative_to(workspace)
             else item.stat().st_size
-            for item in staged_items
+            for item in sources.values()
         )
         require_storage_capacity(workspace, additional_bytes=required)
         with staging_directory(parent, ".binding-") as temporary:
@@ -800,7 +1009,7 @@ def _bind_factor_inputs(
             # whole, at the end of the binding; a change to it anywhere in
             # between is refused there.
             for name, expected in files:
-                src = confined(source, name)
+                src = sources[name]
                 target = confined(staged / "source", name)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 _copy_input(workspace, src, target)
@@ -808,7 +1017,9 @@ def _bind_factor_inputs(
                     raise AuthoringError("research_experiment.source_changed_during_binding")
             if include_alpha_handoff:
                 owner = logical_panel_owner(staged / "source")
-                owner.publish_snapshot(resolver.feature_panel_manifest_uri(panel_snapshot_hash))
+                owner.publish_snapshot(
+                    ArtifactResolver.feature_panel_manifest_uri(panel_snapshot_hash)
+                )
                 owner.verify_snapshot(panel_snapshot_hash)
                 # The publisher adds the logical files under the staged
                 # artifacts; the copied objects were verified above and are
@@ -840,6 +1051,9 @@ def _bind_factor_inputs(
                     files=files_with_logical,
                     database_snapshot_hash=bundle.database_snapshot_hash,
                     binding_version=bundle.binding_version,
+                    market_selection_id=bundle.market_selection_id,
+                    market_catalog_snapshot=bundle.market_catalog_snapshot,
+                    market_index_hash=bundle.market_index_hash,
                     outcomes=bundle.outcomes,
                 )
                 binding = ResearchWorkspaceExperimentInput(
@@ -847,8 +1061,8 @@ def _bind_factor_inputs(
                 )
             if (source / "market-data.duckdb.wal").exists():
                 raise AuthoringError("research_experiment.source_changed_during_binding")
-            final_digests = file_digests(confined(source, name) for name, _expected in files)
-            if any(final_digests[confined(source, name)] != expected for name, expected in files):
+            final_digests = file_digests(sources.values())
+            if any(final_digests[sources[name]] != expected for name, expected in files):
                 raise AuthoringError("research_experiment.source_changed_during_binding")
             require_storage_capacity(workspace, additional_bytes=0)
             (staged / "manifest.json").write_text(
@@ -860,12 +1074,10 @@ def _bind_factor_inputs(
                 )
             read_factor_bundle(workspace, bundle.binding_hash)
     history.hold_research_input(bundle.binding_hash)  # kept for another workspace: held here too
-    select_research_inputs(
-        factor_input_paths(workspace, bundle.binding_hash)[0].parent,
-        source,
-        bundle,
-        str(panel["safe_summary"]["lineage"]["manifest_revision"]),
-    )
+    bound_source, _ = factor_input_paths(workspace, bundle.binding_hash)
+    if source == workspace:
+        _share_bound_artifacts(workspace, bound_source, files, bundle)
+    select_research_inputs(bound_source.parent, source, bundle, universe)
     if not bind_configuration:
         return binding
 
@@ -1030,6 +1242,8 @@ def select_research_inputs(
     Host, or while world does not hold them as of now (the source's tables, which their stages
     publish, are not the copy's, or world holds another value of one of their keys, another
     workspace's later one), and the copy reads its own tables."""
+    if bundle.market_selection is not None:
+        return
     host = history.opened_log()
     copy = MarketDataRepository(destination / "source")
     if host is None or world_reads.selected(copy.path) is not None:

@@ -57,7 +57,8 @@ WHERE r.known_asof <= make_timestamptz(cutoff_us) AND NOT r.retracted;
 -- effective_date <= t.
 CREATE VIEW raw_bar_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.raw_bar r
-LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('raw_bar') AND s.version_id = r.version_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('raw_bar') AND s.version_id = r.version_id
+WHERE s.superseded_asof IS DISTINCT FROM TIMESTAMPTZ '-infinity';
 
 CREATE VIEW universe_member_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.universe_member r
@@ -65,7 +66,8 @@ LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('universe_membe
 
 CREATE VIEW corporate_action_versions AS
 SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.corporate_action r
-LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('corporate_action') AND s.version_id = r.version_id;
+LEFT JOIN lake.world.superseded s ON s.table_id = world_table_id('corporate_action') AND s.version_id = r.version_id
+WHERE s.superseded_asof IS DISTINCT FROM TIMESTAMPTZ '-infinity';
 
 -- What we know now.
 CREATE VIEW raw_bar_latest AS

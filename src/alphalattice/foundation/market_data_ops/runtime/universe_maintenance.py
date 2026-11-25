@@ -52,6 +52,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     SanitizedBatch,
     sanitize_payload,
 )
+from alphalattice.foundation.market_data_ops.storage import market_snapshots
 from alphalattice.foundation.market_data_ops.storage.action_audit import (
     ADJUSTMENT_SEGMENTS,
     PRECISION_KEPT,
@@ -486,7 +487,7 @@ class CurrentUniverseMaintenance:
     def _prepare_chunk(self, chunk: _Chunk, *, observed_at: datetime) -> list[_Job]:
         """Count the chunk's attempts in one commit before its fetch, reading each history there."""
         jobs: list[_Job] = []
-        with self.store.database.transaction() as connection:
+        with market_snapshots.transaction(self.store.database) as connection:
             for item in chunk:
                 prepared = self._prepare_listing(
                     item, observed_at=observed_at, connection=connection
@@ -639,7 +640,7 @@ class CurrentUniverseMaintenance:
         """
         apply = partial(self._apply_hydration, job, observed_at=observed_at)
         try:
-            with self.store.database.transaction() as connection:
+            with market_snapshots.transaction(self.store.database) as connection:
                 return self._drive(apply(connection=connection), connection)
         except Exception:
             return self._drive(apply(), None)
@@ -702,7 +703,7 @@ class CurrentUniverseMaintenance:
         if len(ready) > 1:
             apply = partial(self._apply_hydration, observed_at=observed_at)
             try:
-                with self.store.database.transaction() as connection:
+                with market_snapshots.transaction(self.store.database) as connection:
                     steps = [apply(job, connection=connection) for job in ready]
                     return self._audited(steps, connection)
             except Exception:

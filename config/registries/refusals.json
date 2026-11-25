@@ -101,6 +101,13 @@
 "upgrade.backup_space": {"owner": "alphalattice.control.product_host", "category": "RESOURCE_EXHAUSTED", "classification_note": "Writing the plan's backups would leave less than the free-space floor; nothing was written."},
 "workspace_database.runtime_extension_refused": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "Workspace connections use the installed data dependencies and refuse runtime extension installation or loading."},
 "workspace_database.derived_setup_absent": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "A workspace connection would serve a derived view with no data layer setup registered; import the data layer first, or unset the view's setting."},
+"workspace_database.market_catalog_unavailable": {"owner": "alphalattice.control.workspace_runtime", "category": "UNAVAILABLE", "classification_note": "A catalog-backed workspace connection could not attach the machine market catalog; check the data root and its catalog, then open the workspace again."},
+"workspace_database.market_catalog_root_changed": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "This connection already attached the market catalog of another data root; open a new connection for this data root."},
+"workspace_database.market_catalog_attach_in_transaction": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "The market catalog is attached before a transaction begins; attach it, then begin the transaction."},
+"market_data_ops.catalog_selection_unpublished": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "The workspace still holds market rows its catalog selection has not published; finish the stage that wrote them, then seal again."},
+"market_data_ops.catalog_selection_unavailable": {"owner": "market_data_ops", "category": "FAILED_PRECONDITION", "classification_note": "This data root's market catalog does not hold every version the workspace's or research input's market selection names, as after copying a workspace from another data root; carry them from the data root it was published on, a workspace with world.carry_workspace(<that root>, <its market database>) and a research input with world.carry_selection(<that root>, <its market database>), or restore the workspace from its backup."},
+"data_layer.carried_version_conflict": {"owner": "alphalattice.foundation.data_layer", "category": "FAILED_PRECONDITION", "classification_note": "A carried market version is already held in this data root's catalog with other content; nothing was carried, and the held version stays as it is; report the code."},
+"market_data_ops.catalog_version_count_moved": {"owner": "market_data_ops", "category": "INTERNAL", "classification_note": "The catalog versions a publication returned did not each match one of the workspace rows it published, so the workspace selection was not recorded; report the code."},
 "feature_panel.derived_reads_unserved": {"owner": "alphalattice.control.workspace_runtime", "category": "FAILED_PRECONDITION", "classification_note": "A derived Panel read with no data layer registered to read the data root; import the data layer, or unset ALPHALATTICE_PANEL_READS."},
 "feature_panel.chunk_unserved": {"owner": "alphalattice.control.workspace_runtime", "category": "NOT_FOUND", "classification_note": "A derived Panel read found neither the chunk's kept body nor its stored chunk to refill it from; rebuild the Panel, or restore the workspace from its last backup."},
 "feature_panel.panel_reads_unknown": {"owner": "alphalattice.control.workspace_runtime", "category": "INVALID_ARGUMENT", "classification_note": "ALPHALATTICE_PANEL_READS names neither stored nor derived."},
@@ -15340,6 +15347,10 @@
 "research_experiment.input_manifest_invalid": {
 "owner": "research_experiment",
 "category": "INVALID_ARGUMENT"
+},
+"research_experiment.input_market_selection_unavailable": {
+"owner": "research_experiment",
+"category": "FAILED_PRECONDITION"
 },
 "research_experiment.input_not_selected": {
 "owner": "research_experiment",

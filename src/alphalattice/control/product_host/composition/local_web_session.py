@@ -68,6 +68,9 @@ from alphalattice.control.product_host.maintenance.signals import (
     MaintenanceBackgroundHost,
     MaintenanceWakeController,
 )
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    carried_binding_check,
+)
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.control.task_control.queue import read_queue_setting, running_places
 from alphalattice.control.task_control.registry import (
@@ -715,7 +718,8 @@ class LocalPortfolioWebSession:
         """
         initialize_research_workspace(workspace)
         if (named := named_workspace_id(workspace)) is not None:
-            move_carried(workspace.resolve(), named)  # a copy's lanes, before admission reads them
+            # a copy's lanes and bindings, before admission reads them
+            move_carried(workspace.resolve(), named, input_check=carried_binding_check)
         admitted = admit_research_workspace(workspace)
         value = cls(
             workspace=admitted.root,

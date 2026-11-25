@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -550,6 +551,12 @@ class SectorRefreshStager:
             observations=tuple(payload["observations"]),
             observed_at=observed_at,
         )
+        # The admitted revision and receipt now own the evidence. The resumable
+        # transport body has no reader after successful activation.
+        try:
+            self.path.unlink(missing_ok=True)
+        except OSError as error:
+            logging.getLogger(__name__).warning("sector.staging_cleanup_held: %s", error)
         return SectorRefreshOutcome(
             "completed", revision, receipt, failure_code="sector.changed" if changed else None
         )

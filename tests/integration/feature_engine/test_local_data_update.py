@@ -37,7 +37,11 @@ from tests.researcher_methodology_surface.real_workspace import (
     SYMBOLS,
     _bootstrap,
 )
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    copy_workspace,
+    restore_seed,
+    session_workspace,
+)
 from tests.workspace_maintenance import data_update_support
 from tests.workspace_maintenance.data_update_support import _provider
 from tests.workspace_maintenance.local_data_provider import (
@@ -1152,6 +1156,7 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
     from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
     from tests.workspace_maintenance.local_data_provider import RecordingProvider
 
+    restore_seed(current_member_seed)  # its market rows live in the machine it was built on
     workspace = copy_workspace(current_member_seed, tmp_path / "excluded-candidate")
     binding = bind_existing_data_workspace(workspace)
     admit_market_fixture(workspace, binding.workspace_id)
@@ -1376,6 +1381,7 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
     from alphalattice.control.data_platform.readiness import WorkspaceReadinessGate
     from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
 
+    restore_seed(current_member_seed)  # its market rows live in the machine it was built on
     workspace = copy_workspace(current_member_seed, tmp_path / "unknown-source")
     binding = bind_existing_data_workspace(workspace).data_update
     assert binding is not None

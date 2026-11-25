@@ -14,13 +14,17 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+import duckdb
+import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     FactorInputBundle,
     file_digest,
     select_research_inputs,
 )
+from alphalattice.control.workspace_runtime.database import release_workspace_database
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.chain import digest as text_digest
 from alphalattice.foundation.data_layer.store import KNOWN
@@ -31,7 +35,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.sources.sanitization import sanitize_payload
 from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
-from alphalattice.foundation.market_data_ops.storage import world, world_reads
+from alphalattice.foundation.market_data_ops.storage import market_snapshots, world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
 from alphalattice.kernel.clock import task_observation
@@ -1151,7 +1155,15 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
         )[0][0]
 
     monkeypatch.setattr(world_reads, "relations", counted)
+    with store.database.connect(read_only=False) as connection:
+        market_snapshots.install(connection)
     world.publish_pending(store.path, "w1")  # the Host's open publishes what was written before it
+    with store._connect(read_only=True) as connection:
+        pending = market_snapshots.pending_table(database, "provider_symbol_mapping")
+        assert connection.execute(f"SELECT 1 FROM {pending} LIMIT 1").fetchone() is None
+        assert connection.execute(
+            "SELECT provider_symbol FROM provider_symbol_mapping ORDER BY provider_symbol"
+        ).fetchall() == [("AAPL",), ("MSFT",)]
     host = [read()]
     assert store.raw_bars("listing-aapl", cutoff_us=0) == ()
     receipt = store.latest_action_audit_receipt(listing_id="listing-aapl", provider="fixture")
@@ -1187,11 +1199,33 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
                 elsewhere = request.submit(read).result()
             bars(store, manifest, (NEW,), 105.0, 3)
         held = (admissions() - before, read())
+    with store._connect(read_only=True) as connection:
+        versions = connection.execute(
+            f"SELECT CAST(version_id AS VARCHAR) FROM {market_snapshots.VERSIONS}"
+            " WHERE world_table = 'raw_bar' AND day = ? ORDER BY listing_id",
+            [NEW],
+        ).fetchall()
+        anchor = connection.execute(f"SELECT snapshot_id FROM {market_snapshots.ANCHOR}").fetchone()
+        scoped = "WHERE session_date = ? ORDER BY listing_id"
+        bodies = market_snapshots.version_relations(market_snapshots.VERSIONS, "workspace_market")
+        committed = bodies["committed_raw_bars"]
+        pending = market_snapshots.pending_table(database, "raw_daily_bar_current")
+        assert connection.execute(f"SELECT * FROM {pending} {scoped}", [NEW]).fetchall() == []
+        assert (
+            connection.execute(f"SELECT * FROM ({committed}) {scoped}", [NEW]).fetchall()
+            == connection.execute(f"SELECT * FROM raw_daily_bar_current {scoped}", [NEW]).fetchall()
+        )
+    assert len(versions) == 2 and anchor is not None
+    assert history.store().lake.execute(
+        "SELECT close FROM lake.world.raw_bar WHERE version_id IN (?, ?) ORDER BY close",
+        [row[0] for row in versions],
+    ).fetchall() == [(105.0,), (105.0,)]
     # Import one source's live, delisted and re-listed intervals together. The real
     # StorePort/catalog boundary must retain their values and historical opening state.
+    mappings = market_snapshots.pending_table(database, "provider_symbol_mapping")
     with store._connect() as connection:
         connection.executemany(
-            "INSERT INTO provider_symbol_mapping VALUES (?, 'lifecycle-fixture', ?, ?, ?, ?)",
+            f"INSERT INTO {mappings} VALUES (?, 'lifecycle-fixture', ?, ?, ?, ?)",
             [
                 ("listing-msft", "LIVE", DAYS[0], None, "ACTIVE"),
                 ("listing-aapl", "OLD", DAYS[0], DAYS[2], "DELISTED"),
@@ -1200,7 +1234,7 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
         )
         # A recorded future end is known from its admission, never at that future date.
         connection.execute(
-            "INSERT INTO provider_symbol_mapping VALUES"
+            f"INSERT INTO {mappings} VALUES"
             " ('listing-msft', 'scheduled-fixture', 'LATER', ?, '2099-12-31', 'DELISTED')",
             [DAYS[0]],
         )
@@ -1241,7 +1275,7 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
     for state, equal in (("ACTIVE", False), ("DELISTED", True)):
         with store._connect() as connection:
             connection.execute(
-                "UPDATE provider_symbol_mapping SET lifecycle_state = ?"
+                f"UPDATE {mappings} SET lifecycle_state = ?"
                 " WHERE provider = 'lifecycle-fixture' AND provider_symbol = 'OLD'",
                 [state],
             )
@@ -1258,6 +1292,83 @@ def test_world_serves_every_read_outside_a_writing_stage_which_reads_its_buffer(
     assert (held[0], held[1][0][0]["listing-aapl"][-1].close, held[1][1]) == (1, 105.0, 4)
     # world serves it, without the write no Host published
     assert (unseen[0][0][0]["listing-aapl"][-1].close, unseen[0][1]) == (105.0, 4)
+
+
+@pytest.mark.proves("market_data_ops.a_moved_selection_is_carried_to_its_new_root")
+def test_a_selection_copied_to_another_root_reads_there_once_carried(
+    workspace: tuple[MarketDataRepository, UniverseManifest, Path], tmp_path: Path
+) -> None:
+    """A sealed selection and a published workspace copied to another data root refuse their
+    market reads until carried, then read there as they read on their own root; a transaction
+    that reads no market row does not wait for the carry."""
+    store, _manifest, database = workspace
+    with store.database.connect(read_only=False) as connection:
+        market_snapshots.install(connection)
+    world.publish_pending(store.path, "w1")
+    sealed = MarketDataRepository(tmp_path / "sealed", universe_reader="workspace")
+    with store.database.connect(read_only=False) as connection:
+        market_snapshots.write_selection_index(
+            connection, store.path, sealed.path, omit=frozenset()
+        )
+
+    def reads(market: MarketDataRepository) -> dict[str, list[tuple[object, ...]]]:
+        with market._connect(read_only=True) as connection:
+            return {
+                table: connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall()
+                for table in market_snapshots.OVERLAYS
+            }
+
+    there, published = reads(sealed), reads(store)
+    with sealed._connect(read_only=True) as connection:
+        named = connection.execute(
+            f"SELECT world_table, version_id FROM {market_snapshots.VERSIONS} ORDER BY ALL"
+        ).fetchall()
+    history.release_history()
+    for held in (database, sealed.path):
+        release_workspace_database(held)
+    moved = tmp_path / "moved"
+    shutil.copytree(database.parent, moved)
+    other = tmp_path / "other"
+    history.open_history("w2", "moved", moved, root=other)
+    unavailable = r"^market_data_ops\.catalog_selection_unavailable$"
+    lake = history.store().lake
+    copied = MarketDataRepository(moved, universe_reader="workspace")
+    for market in (sealed, copied):
+        with pytest.raises(ValueError, match=unavailable):
+            reads(market)
+    with copied.database.read_transaction() as connection:
+        assert connection.execute("SELECT count(*) FROM market_profile").fetchone() is not None
+    assert world.carry_selection(tmp_path / "data", sealed.path) == len(named)
+    assert reads(sealed) == there
+    held_ids = sorted(
+        (table, version)
+        for table in ("raw_bar", "corporate_action", "provider_symbol")
+        for (version,) in lake.execute(f"SELECT version_id FROM lake.world.{table}").fetchall()
+    )
+    assert held_ids == sorted(named)
+    assert lake.execute(
+        "SELECT count(*) FROM lake.world.superseded WHERE superseded_asof = '-infinity'"
+    ).fetchone() == (len(named),)
+    snapshot = lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
+    assert world.carry_selection(tmp_path / "data", sealed.path) == 0
+    assert lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone() == snapshot
+    (first,) = lake.execute("SELECT min(version_id) FROM lake.world.raw_bar").fetchone()
+    lake.execute("UPDATE lake.world.raw_bar SET close = -1.0 WHERE version_id = ?", [first])
+    with pytest.raises(DataError) as conflict:
+        world.carry_selection(tmp_path / "data", sealed.path)
+    assert conflict.value.failure.code == "data_layer.carried_version_conflict"
+    assert lake.execute(
+        "SELECT close FROM lake.world.raw_bar WHERE version_id = ?", [first]
+    ).fetchone() == (-1.0,)
+    assert world.carry_workspace(tmp_path / "data", copied.path) > 0
+    assert world.carry_workspace(tmp_path / "data", copied.path) == 0
+    assert reads(copied) == published
+    world.publish_pending(copied.path, "w2")  # the new root's open selects them under its own ids
+    with copied._connect(read_only=True) as connection:
+        assert market_snapshots.anchored(connection)
+        held = market_snapshots.pending_table(copied.path, "raw_daily_bar_current")
+        assert connection.execute(f"SELECT count(*) FROM {held}").fetchone() == (0,)
+    assert reads(copied) == published
 
 
 @pytest.mark.proves("market_data_ops.world_serves_the_workspace_market_reads")
@@ -1474,11 +1585,23 @@ def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
     after its revert, of a bar and of an action, copy their changed rows and only the revisions
     their inserts added; corrections days apart leave the day between unread; and two reference
     writes before one publish keep each row at its own write's time, never a later write's or
-    bar's, a new session at its own day's bars'. A Host's open with nothing pending opens the file
+    bar's, a new session at its own day's bars'. A workspace holding its bodies with no selection,
+    as an upgraded one does, selects them all at its open and keeps none itself, its reads
+    unchanged on any owner's connection. A Host's open with nothing pending opens the file
     read-only."""
     from alphalattice.foundation.market_data_ops.sources.manifest import ManifestListing
 
+    bars_read = "SELECT * FROM raw_daily_bar_current ORDER BY ALL"
+    with store._connect(read_only=True) as connection:
+        before = connection.execute(bars_read).fetchall()
     world.publish_pending(store.path, "w1")
+    held = market_snapshots.pending_table(store.path, "raw_daily_bar_current")
+    with store._connect(read_only=True) as connection:
+        assert market_snapshots.anchored(connection)
+        assert connection.execute(f"SELECT count(*) FROM {held}").fetchone() == (0,)
+        assert connection.execute(bars_read).fetchall() == before != []
+    with store.database.read_transaction() as connection:  # another owner's door reads them too
+        assert connection.execute(bars_read).fetchall() == before
     opened: list[bool] = []
     open_database = world.open_workspace_database
 
@@ -1493,7 +1616,7 @@ def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
     port, staged = history.store(), {}
     publish = port.publish
 
-    def staging(table: str, provider: str, batch: Any, lag: Any) -> Any:
+    def staging(table: str, provider: str, batch: Any, lag: Any, **named: Any) -> Any:
         if not read:  # the delta the publish read, which its first batch is built from
             counts = " UNION ALL ".join(
                 f"SELECT '{name}', count(*) FROM {world.WORKSPACE}.{name}"
@@ -1501,7 +1624,7 @@ def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
             )
             read.update(port.lake.execute(counts).fetchall())
         staged.setdefault(table, []).extend(batch.to_pylist())
-        return publish(table, provider, batch, lag)
+        return publish(table, provider, batch, lag, **named)
 
     monkeypatch.setattr(port, "publish", staging)
 
@@ -1598,3 +1721,59 @@ def _a_publish_takes_its_exact_keys_each_known_at_its_own_time(
         DAYS[-1]: us(NOW + timedelta(days=3)),
         NEW: us(NOW + timedelta(days=2)),  # its own bars', never the later corrections'
     }
+
+
+@pytest.mark.proves("market_data_ops.a_sealed_index_hashes_its_values_never_its_file")
+def test_a_sealed_index_hashes_the_values_it_holds_never_its_file(tmp_path: Path) -> None:
+    """A sealed index's content hash reads one table, nulls and NaN among its values, to one hash
+    each time, and the same values written under two writer settings to that hash; a null where
+    a zero was moves it."""
+    rows = [
+        (
+            i if i % 3 else None,
+            i % 2 == 0 if i % 5 else None,
+            date(2026, 1, 1 + i % 28) if i % 7 else None,
+            (float("nan") if i % 11 == 0 else i / 7) if i % 4 else None,
+            i if i % 6 else None,
+            datetime(2026, 1, 1, i % 24) if i % 8 else None,
+            f"0000000{i % 10}-0000-0000-0000-000000000000" if i % 9 else None,
+            "x" * (i % 13) if i % 10 else None,
+        )
+        for i in range(3000)
+    ]
+
+    def written(name: str, options: str, setting: str | None, parts: list[list[tuple]]) -> Path:
+        path = tmp_path / f"{name}.duckdb"
+        with duckdb.connect() as writer:
+            writer.execute(f"ATTACH '{path.as_posix()}' AS w {options}")
+            if setting is not None:
+                writer.execute(setting)
+            writer.execute(
+                "CREATE TABLE w.t (a BIGINT, b BOOLEAN, c DATE, d DOUBLE, e INTEGER,"
+                " f TIMESTAMP, g UUID, h VARCHAR)"
+            )
+            for part in parts:
+                writer.register(
+                    "part", pa.table(list(zip(*part, strict=True)), names=list("abcdefgh"))
+                )
+                writer.execute("INSERT INTO w.t BY NAME SELECT * REPLACE (g::UUID AS g) FROM part")
+                writer.unregister("part")
+        return path
+
+    def hashed(path: Path) -> str:
+        with duckdb.connect() as reader:
+            reader.execute(f"ATTACH '{path.as_posix()}' AS sealed (READ_ONLY)")
+            return market_snapshots.content_hash(reader, "sealed")
+
+    one = written("one", "", None, [rows])
+    two = written(
+        "two",
+        "(STORAGE_VERSION 'v1.0.0')",
+        "SET force_compression = 'uncompressed'",
+        [rows[1500:][::-1], rows[:1500]],
+    )
+    zero = written("zero", "", None, [[(0, *rows[0][1:]), *rows[1:]]])
+
+    assert one.read_bytes() != two.read_bytes()
+    assert hashed(one) == hashed(one) == hashed(two)
+    assert rows[0][0] is None and hashed(zero) != hashed(one)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import getpass
+import json
 import os
 import stat
 import sys
@@ -484,12 +485,45 @@ def carry_served_copy(workspace: Path, copy: Path) -> None:
         _carry_recorded_review(copy, source, target)
 
 
+def _with_its_market_selections(copy: Path, source: Path, target: Path) -> None:
+    """`copy` moved from `source` to `target` as a Host serving it there needs: the workspace
+    re-admitted (`world.carry_workspace`) and each binding it carries keeping its versions, carried
+    into `target`'s catalog (`world.carry_selection`)."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        named_workspace_id,  # lazy: a golden copy's only
+    )
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.inputs import CARRIED
+    from alphalattice.foundation.market_data_ops.storage import world
+
+    if (copy / "market-data.duckdb").is_file():
+        world.carry_workspace(source, copy / "market-data.duckdb")
+    carried = copy / CARRIED
+    bindings = [
+        carried / digest.partition(":")[2]
+        for manifest in sorted(carried.glob("*.json"))
+        for relative, digest in json.loads(manifest.read_bytes())
+        if relative.endswith("market-data.duckdb")
+    ]
+    if not bindings:
+        return
+    with history.own_root(target):
+        history.open_history(str(named_workspace_id(copy)), copy.name, copy.resolve())
+        try:
+            for database in bindings:
+                world.carry_selection(source, database)
+        finally:
+            history.close_history()
+
+
 def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Path:
     """`copy`, a copy of a workspace served on the data root `source`, its execution outcomes
     and catalog-held Risk and Portfolio results carried into `root`, the copy's own served root
-    unless named. A Host on a fresh root needs those catalog rows to read or back up the copied
-    workspace. The recorded review shares that root, so its nested Evidence locators need
-    their exact original bodies there too. An in-process Host names its data root explicitly."""
+    unless named, and the world rows its market selections name
+    (`_with_its_market_selections`). A Host on a fresh root needs those catalog rows to read or back
+    up the copied workspace. The recorded review shares that root, so its nested Evidence
+    locators need their exact original bodies there too. An in-process Host names its data root
+    explicitly."""
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,  # lazy: a golden copy's only
     )
@@ -503,6 +537,10 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
     )
     from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactError
 
+    target = served_root(copy) if root is None else root
+    if Path(os.path.realpath(target)) != Path(os.path.realpath(source)):
+        with owning(source, target):
+            _with_its_market_selections(copy, source, target)
     held = sorted(
         {c.content_hash for _store, c, file in committed_outcome_chunks(copy) if not file.exists()}
     )
@@ -515,7 +553,6 @@ def with_its_outcomes(copy: Path, source: Path, root: Path | None = None) -> Pat
     evidence = copy / "recorded-review/evidence"
     if not held and not results and not risk and not evidence.is_dir():
         return copy
-    target = served_root(copy) if root is None else root
     with owning(source, target):
         _carry_recorded_review(copy, source, target)
         with history.own_root(source):
@@ -630,9 +667,13 @@ def admitted(workspace: Path) -> Path:
     from alphalattice.control.product_host.composition.research_workspace import (
         named_workspace_id,
     )
+    from alphalattice.control.product_host.research_authoring.factor_inputs import (
+        carried_binding_check,
+    )
     from alphalattice.foundation.data_layer import history
 
-    history.move_carried(workspace.resolve(), str(named_workspace_id(workspace)))
+    named = str(named_workspace_id(workspace))
+    history.move_carried(workspace.resolve(), named, input_check=carried_binding_check)
     return workspace
 
 

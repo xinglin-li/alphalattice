@@ -4,6 +4,7 @@ numerical owners with recorded source adapters."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -11,9 +12,13 @@ from alphalattice.control.product_host.composition.local_web_session import Loca
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
+from alphalattice.control.product_host.research_authoring.factor_inputs import (
+    factor_input_paths,
+    read_factor_bundle,
+)
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
+from alphalattice.foundation.market_data_ops.storage import market_snapshots
 from tests._support import development_universe
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import OBSERVED_AT
@@ -109,6 +114,21 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, 
         manifest = read_research_workspace_manifest(tmp_path)
         bundle = read_factor_bundle(tmp_path, manifest.experiment_inputs[0].binding_hash)
         assert bundle.panel_snapshot_hash == str(snapshot["snapshot_hash"])
+        assert bundle.binding_version == 3 and bundle.market_selection is not None
+        bound = MarketDataRepository(factor_input_paths(tmp_path, bundle.binding_hash)[0])
+        selections = []
+        for held in (market, bound):
+            with held.database.read_transaction() as connection:
+                selections.append(market_snapshots.closed_selection(connection, held.path))
+        selection = selections[0]
+        assert selection is not None and selection == selections[1]
+        assert selection[0] == bundle.market_catalog_snapshot
+        listing = child.listings[0].listing_id
+        assert bound.raw_bars(listing) == market.raw_bars(listing) != ()
+        # A sealed Parquet body or manifest document is stored once, the binding's.
+        kept = factor_input_paths(tmp_path, bundle.binding_hash)[0]
+        sealed = [n for n, _ in bundle.files if re.search(r"(\.parquet|/[0-9a-f]{64}\.json)$", n)]
+        assert sealed and all((tmp_path / name).samefile(kept / name) for name in sealed)
         # One Panel is composed for the counterexample: the first pass
         # stops on the recoverable sector
         # exclusion over the parent, the baseline qualification applies from the rows it

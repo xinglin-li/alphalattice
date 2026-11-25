@@ -35,7 +35,7 @@ from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.history import catalog_session as session
 from alphalattice.foundation.data_layer.root import sql_path
 
-from . import world
+from . import market_snapshots, world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
 
 WORKSPACE: Final = {
@@ -108,6 +108,16 @@ def _serves(cursor: Any, database: Path) -> bool:
     return True
 
 
+def writes_to_world(database: Path) -> bool:
+    """Whether this database is the open Host's own workspace with a live StorePort."""
+    host = history.opened_log()
+    return (
+        host is not None
+        and history.store() is not None
+        and _folder(host[1]) == database.parent.resolve()
+    )
+
+
 @contextmanager
 def writing(
     database: Path, publish: Callable[[str], Any], *, dataset: str = DATASET
@@ -177,6 +187,17 @@ def selected(database: Path) -> int | None:
     return None
 
 
+def market_selection_held(selection: str, catalog_snapshot: int) -> bool:
+    """A binding's market selection and catalog snapshot must be recorded together."""
+    return bool(
+        _log_rows(
+            "SELECT 1 FROM selection WHERE selection_id = ?"
+            " AND json_extract(spec, '$.market_catalog_snapshot') = ?",
+            (selection, catalog_snapshot),
+        )
+    )
+
+
 def map_cutoff(map_hash: str) -> int | None:
     """The cutoff of the selection a sector map's publication recorded, its spec naming the map's
     `map_hash` (the first made, in any workspace: the map's names are world's at each); None for a
@@ -231,8 +252,25 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
         release_workspace_database(database)  # an instance of the file this process keeps open
         cursor.execute(f"ATTACH '{sql_path(database)}' AS {alias} (READ_ONLY)").fetchall()
         try:
+            has_index = cursor.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND table_name = ?",
+                [alias, market_snapshots.VERSIONS],
+            ).fetchone()
+            committed = (
+                market_snapshots.version_relations(
+                    f"{alias}.main.{market_snapshots.VERSIONS}", "lake"
+                )
+                if has_index
+                else {}
+            )
             for name, (table, rows, columns) in COMPARED.items():
-                own = f"SELECT {columns} FROM {alias}.{table}{rows}"
+                pending = f"{alias}.main.{table}"
+                source = pending
+                if committed and table in market_snapshots.OVERLAYS:
+                    view, key = market_snapshots.OVERLAYS[table]
+                    projected = market_snapshots.overlay(pending, f"({committed[view]})", key)
+                    source = f"({projected})"
+                own = f"SELECT {columns} FROM {source}{rows}"
                 held = f"SELECT {columns} FROM {named[name]}"
                 differ = cursor.execute(
                     f"SELECT EXISTS (({held}) EXCEPT ALL ({own}))"
@@ -379,7 +417,8 @@ def _asof(table: str, cutoff_us: int, held_us: int | None, *, versions: bool = F
     if versions:
         return (
             f"(SELECT r.*, s.superseded_asof AS visible_to FROM lake.world.{table} r"
-            f" LEFT JOIN ({held}) s ON s.version_id = r.version_id)"
+            f" LEFT JOIN ({held}) s ON s.version_id = r.version_id"
+            " WHERE s.superseded_asof IS DISTINCT FROM TIMESTAMPTZ '-infinity')"
         )
     at = f"make_timestamptz({cutoff_us})"
     return (

@@ -146,3 +146,26 @@ def test_a_collected_bindings_view_and_its_unlisted_database_are_dropped(tmp_pat
     assert sorted(p.name for p in folder.iterdir()) == sorted([kept, "databases"])
     assert sorted(p.name for p in (folder / "databases").iterdir()) == ["d"]
     assert inputs.drop_views(tmp_path, after_collection) == 0
+
+
+@pytest.mark.proves("data_layer.a_carried_binding_names_its_market_selection")
+def test_a_carried_binding_takes_its_selection_only_from_its_own_files(tmp_path: Path) -> None:
+    """A carried binding whose document names no market selection records none. One whose
+    document is another binding's, or whose files lack the sealed index or the panel manifest its
+    window is derived from, is refused by name before any database is read."""
+    held = "c" * 64
+    document = tmp_path / "manifest.json"
+    files = [(f"{held}/manifest.json", document)]
+    named = {"binding_hash": held, "market_selection_id": "s-1", "panel_snapshot_hash": "p"}
+    for body, refusal in (
+        ({"binding_hash": held}, None),
+        (named | {"binding_hash": "d" * 64}, "holds the document of another binding"),
+        (named, "names a selection its files do not hold"),
+    ):
+        document.write_text(json.dumps(body), encoding="utf-8")
+        if refusal is None:
+            assert inputs._sealed_selection(held, files) is None
+            continue
+        with pytest.raises(DataError, match=refusal) as refused:
+            inputs._sealed_selection(held, files)
+        assert refused.value.failure.code == "data_layer.input_invalid"

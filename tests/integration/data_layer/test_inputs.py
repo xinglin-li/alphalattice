@@ -7,15 +7,16 @@ from __future__ import annotations
 import errno
 import json
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import duckdb
 import pytest
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.foundation.data_layer import governance, history, inputs
+from alphalattice.foundation.data_layer import governance, history, inputs, project
 from alphalattice.foundation.data_layer.store import StorePort
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/inputs.py"
@@ -131,6 +132,138 @@ def test_a_binding_goes_with_its_last_workspace_and_its_views_with_it(
         assert sorted(p.name for p in view.iterdir()) == [stays]
         assert not inputs.kept(root, log.read, gone) and inputs.kept(root, log.read, stays)
         assert _tree(view / stays) == {"panel.parquet": b"two"}
+
+
+_CUTOFF = 1_700_000_000_000_000
+
+
+def _anchored_index(path: Path, snapshot: int, cutoff: int) -> Path:
+    """A sealed index holding only its anchor: the snapshot and cutoff of its selection."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(path)) as index:
+        index.execute(
+            "CREATE TABLE market_catalog_anchor (singleton BOOLEAN PRIMARY KEY,"
+            " snapshot_id BIGINT NOT NULL, cutoff_us BIGINT NOT NULL)"
+        )
+        index.execute("INSERT INTO market_catalog_anchor VALUES (true, ?, ?)", [snapshot, cutoff])
+    return path
+
+
+def _sealed_binding(
+    folder: Path, selection: str, *, snapshot: int, anchored: int, sealed_cutoff: int = _CUTOFF
+) -> tuple[str, list[tuple[str, Path]]]:
+    """A version 3 binding's files as a bind lays them out: its panel's manifest, its sealed index
+    anchored at `anchored`, and its document naming `selection` at catalog `snapshot`, sealing an
+    index anchored at `sealed_cutoff` (another member under the same snapshot when it is not the
+    carried index's cutoff)."""
+    from alphalattice.control.product_host.research_authoring.factor_inputs import (
+        FactorInputBundle,
+        file_digests,
+    )
+    from alphalattice.foundation.market_data_ops.storage import market_snapshots
+
+    panel, outcome = "a" * 64, "b" * 64
+    lineage = {"safe_summary": {"lineage": {"manifest_revision": "carried-universe"}}}
+    manifest = f"artifacts/feature-panel/manifests/{panel}.json"
+    _binding(folder, {f"source/{manifest}": json.dumps(lineage).encode()})
+    carried = _anchored_index(folder / "source" / "market-data.duckdb", anchored, _CUTOFF)
+    sealed = carried
+    if sealed_cutoff != _CUTOFF:
+        sealed = _anchored_index(
+            folder.with_name(f"{folder.name}-sealed.duckdb"), anchored, sealed_cutoff
+        )
+    named = {manifest: folder / "source" / manifest, "market-data.duckdb": sealed}
+    digests = file_digests(named.values())
+    with duckdb.connect() as reader:
+        reader.execute(f"ATTACH '{sealed.as_posix()}' AS sealed (READ_ONLY)")
+        index_hash = market_snapshots.content_hash(reader, "sealed")
+    bundle = FactorInputBundle.create(
+        panel_snapshot_hash=panel,
+        outcome_snapshot_hash=outcome,
+        sessions=(date(2024, 1, 2), date(2024, 1, 31)),
+        files=tuple(sorted((name, digests[path]) for name, path in named.items())),
+        binding_version=3,
+        outcomes=((str(project.uuid7()), "f" * 64),),
+        market_selection_id=selection,
+        market_catalog_snapshot=snapshot,
+        market_index_hash=index_hash,
+    )
+    (folder / "manifest.json").write_text(bundle.model_dump_json(indent=2), encoding="utf-8")
+    return bundle.binding_hash, _laid_out(bundle.binding_hash, folder)
+
+
+@pytest.mark.proves("data_layer.research_inputs_carried_into_a_copy")
+def test_a_carried_binding_brings_the_market_selection_it_names(tmp_path: Path) -> None:
+    """A version 3 binding's copy records its named selection only after its owner verifies each
+    member against the document's seals, refusing an unsealed member or another snapshot's index."""
+    from alphalattice.control.product_host.research_authoring.factor_inputs import (
+        carried_binding_check,
+    )
+    from alphalattice.protocols.research_authoring.contracts import AuthoringError
+
+    log, root = history.held(), history.data_root()
+    source = history.workspace_on_log(tmp_path / "source", "source")
+    window = inputs.market_selection_window(
+        cutoff_us=_CUTOFF,
+        universe="carried-universe",
+        first="2024-01-02",
+        last="2024-01-31",
+        snapshot=7,
+        recipes={"feature_panel": "a" * 64, "execution_outcome": "b" * 64},
+    )
+    selection, forged, moved = (str(project.uuid7()) for _ in range(3))
+    inputs._adopt_selection(log, source, {"selection_id": selection, **window})
+    held, files = _sealed_binding(tmp_path / "a", selection, snapshot=7, anchored=7)
+    inputs.keep_binding(root, log, held, files, workspace=source)
+    copy = tmp_path / "copy"
+    assert inputs.carry(log.read, root, source, copy) == 1
+    bodies = {inputs.file_digest(path).partition(":")[2] for _relative, path in files}
+    carried = {p.name for p in (copy / inputs.CARRIED).iterdir() if not p.name.startswith(".")}
+    assert carried == {f"{held}.json", *bodies}  # nothing beside the binding's own files
+    refused_copies = {}
+    for name, named, anchored, sealed_cutoff in (
+        ("forged", forged, 7, _CUTOFF + 1),  # another index under the same snapshot
+        ("moved", moved, 8, _CUTOFF),  # its own index, of another snapshot
+    ):
+        workspace = history.workspace_on_log(tmp_path / f"{name}-source", name)
+        bound, files = _sealed_binding(
+            tmp_path / name, named, snapshot=7, anchored=anchored, sealed_cutoff=sealed_cutoff
+        )
+        inputs.keep_binding(root, log, bound, files, workspace=workspace)
+        assert inputs.carry(log.read, root, workspace, tmp_path / f"{name}-copy") == 1
+        refused_copies[name] = (bound, named)
+    picked = (
+        "SELECT s.cutoff_us, d.name, s.valid_from, s.valid_to, s.spec FROM selection s"
+        " LEFT JOIN definition_lineage d ON d.definition_id = s.universe_id"
+        " WHERE s.selection_id = ?"
+    )
+    with history.own_root(tmp_path / "other") as other:
+        copied = history.held()
+        for name, error, words in (
+            ("forged", AuthoringError, "input_file_tampered"),
+            ("moved", DataError, "seals the index of another selection"),
+        ):
+            bound, named = refused_copies[name]
+            target = history.workspace_on_log(tmp_path / f"{name}-copy", f"{name}-copy")
+            with pytest.raises(error, match=words):
+                inputs.import_carried(
+                    other,
+                    copied,
+                    tmp_path / f"{name}-copy",
+                    workspace=target,
+                    check=carried_binding_check,
+                )
+            assert not inputs.kept(other, copied.read, bound)
+            assert not copied.read(picked, (named,))
+        target = history.workspace_on_log(copy, "copy")
+        with pytest.raises(DataError, match="names a market selection nothing verifies"):
+            inputs.import_carried(other, copied, copy, workspace=target)
+        assert not copied.read(picked, (selection,))
+        imported = inputs.import_carried(
+            other, copied, copy, workspace=target, check=carried_binding_check
+        )
+        assert imported == 1
+        assert copied.read(picked, (selection,)) == log.read(picked, (selection,))
 
 
 @pytest.mark.proves("data_layer.research_inputs_carried_into_a_copy")

@@ -27,7 +27,8 @@ import json
 import os
 import re
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import closing
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Final
 
@@ -37,7 +38,8 @@ from alphalattice.foundation.data_layer.arrays import STAGED, _settled, _unplace
 from alphalattice.foundation.data_layer.chain import canonical
 from alphalattice.foundation.data_layer.log import drop as drop_lock
 from alphalattice.foundation.data_layer.log import hold as hold_lock
-from alphalattice.foundation.data_layer.project import uuid7
+from alphalattice.foundation.data_layer.project import UNIVERSE_TEXT, uuid7
+from alphalattice.kernel import storage
 from alphalattice.kernel.identity import integrity_blake3
 
 if TYPE_CHECKING:
@@ -50,6 +52,11 @@ VIEWS: Final = Path("views") / "research-inputs"
 CARRIED: Final = Path("research-inputs") / "carried"
 """In a workspace copy: the bindings its workspace holds, each manifest as <binding_hash>.json and
 each body by its digest, which the copy's Host keeps on its own root at its open."""
+_ANCHOR: Final = "market_catalog_anchor"
+"""The table of a binding's sealed index naming the catalog snapshot and cutoff of its selection
+(market_snapshots.ANCHOR, written in the transaction that read them)."""
+_PANEL_MANIFESTS: Final = "source/artifacts/feature-panel/manifests"
+"""Where a binding's folder holds its Feature panel's manifest, <panel_snapshot_hash>.json."""
 _MEANING: Final = {
     INPUT: "One file of a bound Factor input, kept once by its bytes.",
     BINDING: "A bound Factor input: its 0.2.7 binding hash and its manifest's digest.",
@@ -146,6 +153,77 @@ def carry(read: Any, root: Path, workspace: str, copy: Path) -> int:
     return len(rows)
 
 
+def market_selection_window(
+    *, cutoff_us: int, universe: str, first: str, last: str, snapshot: int, recipes: dict[str, str]
+) -> dict[str, Any]:
+    """The window a version 3 binding's market selection records: the cutoff and catalog snapshot
+    of its sealed index, its panel's universe, its first and last session and its recipes. A bind
+    records it (`factor_inputs`) and a copy's open derives it again from the binding's own files
+    (`import_carried`), so the two record one window."""
+    spec = {"market_catalog_snapshot": snapshot, "recipes": recipes}
+    return {
+        "cutoff_us": cutoff_us,
+        "universe": universe,
+        "valid_from": first,
+        "valid_to": last,
+        "spec": spec,
+    }
+
+
+def _sealed_selection(binding_hash: str, files: list[tuple[str, Path]]) -> dict[str, Any] | None:
+    """The market selection a carried binding names, its id and window derived from the binding's
+    own verified files and never from anything carried beside them: its document names the id,
+    snapshot, sessions and recipes; its sealed index's anchor the cutoff, under the same snapshot;
+    its panel's manifest the universe. None for a binding naming none; a document of another
+    binding, an index of another snapshot, or a selection its files do not hold is refused by
+    name."""
+    found = dict(files)
+    document = found.get(f"{binding_hash}/manifest.json")
+    bundle = json.loads(document.read_bytes()) if document is not None else {}
+    if not isinstance(bundle, dict) or bundle.get("market_selection_id") is None:
+        return None
+
+    def refuse(what: str) -> DataError:
+        return DataError(
+            f"the research input {binding_hash} {what}", code="data_layer.input_invalid"
+        )
+
+    if bundle.get("binding_hash") != binding_hash:
+        raise refuse("holds the document of another binding")
+    unheld = "names a selection its files do not hold"
+    try:
+        index = found[f"{binding_hash}/source/market-data.duckdb"]
+        panel = found[f"{binding_hash}/{_PANEL_MANIFESTS}/{bundle['panel_snapshot_hash']}.json"]
+        universe = str(
+            json.loads(panel.read_bytes())["safe_summary"]["lineage"]["manifest_revision"]
+        )
+        sessions = [str(session) for session in bundle["sessions"]]
+        recipes = {
+            "feature_panel": str(bundle["panel_snapshot_hash"]),
+            "execution_outcome": str(bundle["outcome_snapshot_hash"]),
+        }
+    except (KeyError, TypeError, ValueError) as error:
+        raise refuse(unheld) from error
+    import duckdb  # lazy: a copy's open reads an index only for a binding naming a selection
+
+    try:
+        with closing(storage.connect(str(index), read_only=True)) as connection:
+            anchors = connection.execute(f"SELECT snapshot_id, cutoff_us FROM {_ANCHOR}").fetchall()
+    except duckdb.Error as error:
+        raise refuse(unheld) from error
+    if len(anchors) != 1 or anchors[0][0] != bundle.get("market_catalog_snapshot"):
+        raise refuse("seals the index of another selection")
+    window = market_selection_window(
+        cutoff_us=int(anchors[0][1]),
+        universe=universe,
+        first=min(sessions),
+        last=max(sessions),
+        snapshot=int(anchors[0][0]),
+        recipes=recipes,
+    )
+    return {"selection_id": str(bundle["market_selection_id"])} | window
+
+
 def _carry_manifest(target: Path, manifest: bytes, binding_hash: str) -> None:
     """Rename a complete sibling under a per-manifest hold, even on a linkless volume."""
     if not target.exists(follow_symlinks=False):
@@ -171,12 +249,22 @@ def _carry_manifest(target: Path, manifest: bytes, binding_hash: str) -> None:
         )
 
 
-def import_carried(root: Path, log: HostLog, folder: Path, *, workspace: str) -> int:
+def import_carried(
+    root: Path,
+    log: HostLog,
+    folder: Path,
+    *,
+    workspace: str,
+    check: Callable[[str, Mapping[str, Path]], object] | None = None,
+) -> int:
     """Keep the bindings a copy carries (`folder / CARRIED`) on `log`, held by `workspace`, then
     remove what it carried: the copy's Host does at its open. A manifest not named by a binding
     hash, a member whose digest is not a BLAKE3 seal or whose path leaves its binding, and a body
-    whose bytes are not its digest are each refused by name before anything is kept. Returns the
-    bindings kept."""
+    whose bytes are not its digest are each refused by name before anything is kept. So is a
+    binding naming a market selection that its owner's `check` (factor_inputs'
+    `carried_binding_check`, given each path under the binding and its body) refuses, or that no
+    check verifies, or whose own files do not hold it (`_sealed_selection`); the selection derived
+    from them is then recorded under its id. Returns the bindings kept."""
     carried = folder / CARRIED
     kept = []
     for name in sorted(n for n in os.listdir(carried) if n.endswith(".json")):
@@ -200,16 +288,83 @@ def import_carried(root: Path, log: HostLog, folder: Path, *, workspace: str) ->
                 )
             files.append((_confined(str(relative)), body))
         kept.append((name[:-5], files))
+    selections = []
+    for binding_hash, files in kept:
+        window = _sealed_selection(binding_hash, files)
+        if window is None:
+            continue
+        if check is None:
+            raise DataError(
+                f"the research input {binding_hash} names a market selection nothing verifies",
+                code="data_layer.input_invalid",
+            )
+        folder_of = f"{binding_hash}/"
+        check(
+            binding_hash,
+            {
+                relative.removeprefix(folder_of): body
+                for relative, body in files
+                if relative.startswith(folder_of)
+            },
+        )
+        selections.append(window)
     for binding_hash, files in kept:
         keep_binding(root, log, binding_hash, files, workspace=workspace, durable=False)
+    for window in selections:
+        _adopt_selection(log, workspace, window)
     log.flush()
     shutil.rmtree(carried, ignore_errors=True)
     return len(kept)
 
 
+def _adopt_selection(log: HostLog, workspace: str, window: dict[str, Any]) -> None:
+    """Record a carried binding's market selection on `log`, made by `workspace`, under the id
+    the binding names, so its verified read finds it (`world_reads.market_selection_held`); its
+    universe registered first, as a selection's is. A log that holds the id already keeps it."""
+    selection = window["selection_id"]
+    if log.read("SELECT 1 FROM selection WHERE selection_id = ?", (selection,)):
+        return
+    universe = window.get("universe")
+    if universe is not None and not log.read(
+        "SELECT 1 FROM definition WHERE family = 'universe' AND name = ? AND version = 1",
+        (universe,),
+    ):
+        key = {"family": "universe", "name": universe, "version": 1}
+        body = key | {"spec": {}, "status": "standard", "owner": "host", "text": UNIVERSE_TEXT}
+        log.record(
+            "definition.registered",
+            ("definition", f"universe/{universe}"),
+            key,
+            text=json.dumps(body, sort_keys=True),
+            node="host",
+        )
+    log.record(
+        "selection.made",
+        ("selection", selection),
+        {name: window.get(name) for name in ("cutoff_us", "universe", "valid_from", "valid_to")}
+        | {"spec": window.get("spec", {})},
+        workspace=workspace,
+        node="host",
+    )
+
+
 def members(root: Path, read: Any, binding_hash: str) -> list[tuple[str, Path]]:
     """A kept binding's files: each relative path and the blob holding its bytes, in path order."""
     return [(relative, body) for relative, _digest, body in _listed(root, read, binding_hash)]
+
+
+def manifest_held(root: Path, read: Any, binding_hash: str, payload: bytes) -> bool:
+    """Prove a binding document against the immutable member seal in the log's relation."""
+    digest = _manifest_digest(read, binding_hash)
+    body = _body(root, read, INPUT, digest) if digest else None
+    if body is None:
+        return False
+    listed = body.read_bytes()
+    if "blake3:" + integrity_blake3(listed).hexdigest() != digest:
+        return False
+    wanted = f"{binding_hash}/manifest.json"
+    actual = "blake3:" + integrity_blake3(payload).hexdigest()
+    return [seal for name, seal in json.loads(listed) if name == wanted] == [actual]
 
 
 def _manifest_digest(read: Any, binding_hash: str) -> str | None:

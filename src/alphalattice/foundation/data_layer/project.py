@@ -786,6 +786,9 @@ def _wait_resolved(con: Con, e: Row, a: Attrs, text: str | None) -> None:
             _task_status(con, task[0], e["seq"], "running")
 
 
+UNIVERSE_TEXT: Final = "A set of listings research reads, as named."
+"""The universe definition a selection registers its universe under (`selection`)."""
+
 SAME_WINDOW: Final = (
     "SELECT selection_id FROM selection WHERE workspace_id = ? AND cutoff_us = ?"
     " AND universe_id IS ? AND valid_from IS ? AND valid_to IS ? AND spec = ?"

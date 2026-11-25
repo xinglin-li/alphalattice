@@ -997,7 +997,7 @@ def test_an_admission_is_read_as_of_before_and_after_its_correction(root, monkey
 
 def _one_snapshot(root, refused: bool) -> None:
     """Admissions in one block share one snapshot, each keeping its own admission and event, one
-    whose rows all drop against the block's own writes included; a refusal inside commits those
+    whose rows never win against the block's own writes included; a refusal inside commits those
     made before it."""
     with HostLog.open(root) as log:
         port = StorePort.open(root, log)
@@ -1007,7 +1007,7 @@ def _one_snapshot(root, refused: bool) -> None:
 
         def block() -> None:
             with port.admitting():
-                for close, day in ((1.0, 1), (2.0, 2), (0.5, 1)):  # the last is older: dropped
+                for close, day in ((1.0, 1), (2.0, 2), (0.5, 1), (0.5, 1)):
                     with stage(root, "raw_bar", yf, bars(2, close=close, day=day)) as staged:
                         port.commit(staged)
                     made.append(staged.admission_id)
@@ -1033,14 +1033,19 @@ def _one_snapshot(root, refused: bool) -> None:
             "SELECT admission_id, count(*) FROM lake.world.raw_bar GROUP BY ALL ORDER BY ALL"
         ).fetchall()
         newest = port.lake.execute("SELECT max(close) FROM raw_bar_asof(?)", [2**62]).fetchone()
-        replaced = port.lake.execute("SELECT DISTINCT by_admission_id FROM lake.world.superseded")
-        superseded = replaced.fetchall()
+        superseded = port.lake.execute(
+            "SELECT DISTINCT isfinite(superseded_asof), by_admission_id"
+            " FROM lake.world.superseded ORDER BY ALL"
+        ).fetchall()
+        visible = port.lake.execute("SELECT DISTINCT close FROM raw_bar_versions ORDER BY 1")
+        history = visible.fetchall()
         port.close()
     assert len(snapshots) == 1
     assert [event["subject_id"] for event in owed_events(info)] == made
     assert sorted(admitted) == sorted((made_id, snapshots[0][0]) for made_id in made)
-    assert rows == sorted((made_id, 2) for made_id in made[:2])
-    assert newest == (2.0,) and superseded == [(made[1],)]
+    assert rows == sorted((made_id, 2) for made_id in made[:3])
+    assert newest == (2.0,) and history == [(1.0,), (2.0,)]
+    assert superseded == [(False, made[2]), (True, made[1])]
 
 
 def _published_once_they_commit(root) -> None:
@@ -1050,11 +1055,11 @@ def _published_once_they_commit(root) -> None:
         port = StorePort.open(root, log)
         yf = log.require_lineage("provider", "yf")
         published: list[int] = []
+        versions: list[pa.Table] = []
 
         def block(interrupted: bool) -> list[int]:
             with port.admitting():
-                with stage(root, "raw_bar", yf, bars(1)) as staged:
-                    port.commit(staged)
+                port.publish("raw_bar", yf, bars(1), capture_versions=versions.append)
                 count = "SELECT count(*) FROM admission"
                 port.after_commit(lambda: published.append(log.read(count)[0][0]))
                 inside = list(published)
@@ -1070,6 +1075,19 @@ def _published_once_they_commit(root) -> None:
             block(interrupted=True)
         rolled_back = list(published)
         inside = block(interrupted=False)
+        assert len(versions) == 1
+        retained = port.publish("raw_bar", yf, bars(1, close=2.0), capture_versions=versions.append)
+        repeated = port.publish("raw_bar", yf, bars(1, close=2.0), capture_versions=versions.append)
+        assert retained.snapshot is not None and repeated.snapshot is None
+        assert versions[1].equals(versions[2])
+        [(winner,), (older,)] = port.lake.execute(
+            "SELECT CAST(version_id AS VARCHAR) FROM lake.world.raw_bar ORDER BY close"
+        ).fetchall()
+        assert [str(receipt["version_id"][0].as_py()) for receipt in versions] == [
+            winner,
+            older,
+            older,
+        ]
         port.close()
     assert (rolled_back, inside, published) == ([], [], [1])
 
@@ -1641,7 +1659,8 @@ SAME = (None, 0, 0, {}, 1, 0)
             ([HELD], None),
             ([HELD | {"close": 6.0, "source_observed_at": "2024-01-31 00:00:00+00"}], None),
             None,
-            (None, 0, 0, {"older": 1}, 1, 0),
+            # the older value is kept once, its superseded row closing it before it opens
+            (None, 0, 0, {"older": 1}, 2, 1),
             id="an all-dropped batch",
         ),
         pytest.param(
@@ -1754,11 +1773,14 @@ def test_one_fact_is_one_version_however_it_is_staged(
             " AND epoch_us(known_asof) NOT IN (SELECT unnest(?::BIGINT[]))",
             (admission, sorted(known)),
         ).fetchone()[0]
+        written = read(
+            f"SELECT count(*) FROM lake.world.{table} WHERE admission_id = ?", (admission,)
+        ).fetchone()[0]
         port.close()
     got = (done.rows, done.rewritten, done.dropped) if done else (0, 0, {})
     assert (refused, *got, versions, replaced) == expected
     if (
-        done and not done.rows and not done.rewritten and done.dropped
+        done and not done.rows and not done.rewritten and done.dropped and not written
     ):  # no catalog commit carries it
         assert kept == 1, "an all-dropped admission's judgment is committed before its staging goes"
     assert most <= 1
@@ -1838,16 +1860,18 @@ def test_an_interval_keeps_its_history_and_a_source_supersedes_only_with_a_later
         [date(2024, 1, 5)],
         [date(2024, 1, 8)],
     ]
+    # A row that does not win is still kept once, as a version with no interval in the current
+    # view: its batch takes a snapshot, and the latest close is unchanged.
     assert [(d.snapshot is None, d.rows, d.dropped, d.rewritten) for d in done] == [
         (False, 1, {}, 0),
-        (True, 0, {"older": 1}, 0),
-        (True, 0, {"equal_time": 1}, 0),
+        (False, 0, {"older": 1}, 0),
+        (False, 0, {"equal_time": 1}, 0),
         (False, 1, {}, 0),
         (False, 0, {}, 1),
-        (True, 0, {"older": 1}, 0),
+        (False, 0, {"older": 1}, 0),
         (True, 0, {}, 0),
     ]
-    assert (closes, versions) == ([(2.0,)], [1.0, 2.0])
+    assert (closes, versions) == ([(2.0,)], [0.5, 0.7, 1.0, 2.0, 3.0])
 
 
 STAGE = r"""

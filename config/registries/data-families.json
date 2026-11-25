@@ -44,7 +44,8 @@
       "bytes": 150208512,
       "covers": [
         "table:market_profile",
-        "table:market_delta"
+        "table:market_delta",
+        "table:market_catalog_anchor"
       ],
       "authority_owners": [
         "market_data_ops.storage.MarketDataRepository"
@@ -2498,7 +2499,7 @@
         "product_host.research_authoring._bind_factor_inputs"
       ],
       "writers": [
-        "product_host.research_authoring.factor_inputs:_bind_factor_inputs"
+        "product_host.research_authoring.factor_inputs:_seal_factor_inputs"
       ],
       "readers": [
         "product_host.composition.evidence_authority_setup",
@@ -2698,9 +2699,10 @@
       "writers": [
         "data_layer.inputs:_carry_manifest",
         "data_layer.inputs:_place",
-        "product_host.research_authoring.factor_inputs:_bind_factor_inputs",
         "product_host.research_authoring.factor_inputs:_copy_input",
         "product_host.research_authoring.factor_inputs:_record_input_publication",
+        "product_host.research_authoring.factor_inputs:_seal_factor_inputs",
+        "product_host.research_authoring.factor_inputs:_share_bound_artifacts",
         "product_host.research_authoring.input_revisions:ResearchInputRevisions"
       ],
       "readers": [
@@ -3809,6 +3811,7 @@
     "data_layer.backup:verify_data_root": "opens the source log with mode=ro to bind the verified backup to its saved history prefix; it reads seals and objects and never writes a store",
     "data_layer.backup:_consistent": "opens the copied log and attaches the copied catalog with mode=ro to verify snapshot references; SQLite refuses writes",
     "data_layer.backup:_catalog_paths": "opens the copied catalog with mode=ro to resolve its immutable file references; SQLite refuses writes",
+    "data_layer.backup:catalog_table_files": "reads the catalog with mode=ro to attribute retained data files; SQLite refuses writes",
     "data_layer.backup:_owners": "reads copied SQLite owners with mode=ro and a DuckDB in-memory connection with a READ_ONLY catalog attach; no owner is written",
     "data_layer.backup:_head": "opens the copied log with mode=ro to verify the entire saved hash chain; SQLite refuses writes",
     "causal_outcomes.execution.artifacts:_local_qa_ipc": "serializes a table to an in-memory buffer (pa.BufferOutputStream)",

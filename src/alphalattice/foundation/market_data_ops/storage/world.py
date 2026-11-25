@@ -37,6 +37,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from importlib import import_module
 from itertools import groupby
 from pathlib import Path
@@ -46,6 +47,7 @@ from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.capabilities.quant.sector_history import SectorReclassification
 from alphalattice.control.workspace_runtime.database import (
+    hand_off,
     open_workspace_database,
     release_workspace_database,
 )
@@ -73,6 +75,8 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     UniverseWorkspaceReader,
 )
+
+from . import market_snapshots
 
 DATASET: Final = "market"
 WORKSPACE_MARKET_FORMAT: Final = "alphalattice.world-market.v1"
@@ -817,6 +821,46 @@ def admit_universe(database: Path, workspace_id: str) -> None:
     admit(database, workspace_id)
 
 
+def carry_workspace(source: Path, database: Path) -> int:
+    """Move the workspace whose market database is `database`, published on the data root
+    `source`, onto this one: its selection's bodies are written back into its own pending tables
+    from `source`'s catalog and the selection dropped (`market_snapshots.write_back`), so this
+    root's admission publishes them under its own providers and its next publish selects them
+    again. Content and source identity stay; version ids are this root's. A workspace with no
+    published selection is left as it is, so a repeated carry writes nothing. No instance of the
+    file is kept across it, since one would hold `source`'s catalog. Returns the rows written."""
+    end = hand_off([database])
+    try:
+        with closing(open_workspace_database(database, read_only=False)) as connection:
+            if not market_snapshots.anchored(connection):
+                return 0
+            connection.attach_market_catalog(source)
+            return market_snapshots.write_back(connection, database)
+    finally:
+        end()
+
+
+def carry_selection(source: Path, database: Path) -> int:
+    """Carry into this Host's catalog the world rows that the selection of `database`, a
+    workspace's market database or a research-input copy of one, names in the catalog of the data
+    root `source` it was published on (`StorePort.carry`): each version as it is, never current
+    here, so the selection reads on this root as it read there: a research input keeps every
+    version id. A repeated carry adds no row. The recovery a moved research input's refusal names
+    (market_data_ops.catalog_selection_unavailable); a workspace a Host serves moves by
+    `carry_workspace`. Returns the rows carried: none for a database with no selection."""
+    port = history.store()
+    if port is None:
+        raise ValueError("workspace_database.market_catalog_unavailable")
+    with closing(open_workspace_database(database, read_only=True)) as connection:
+        if not market_snapshots.enabled(connection):
+            return 0
+        versions = connection.execute(
+            "SELECT world_table, CAST(version_id AS VARCHAR) AS version_id"
+            f" FROM {market_snapshots.VERSIONS}"
+        ).to_arrow_table()
+    return int(port.carry(source, versions))
+
+
 def _admit_universe_contents(
     database: Path, workspace_id: str, connection: Any, scopes: Sequence[str] | None
 ) -> None:
@@ -918,8 +962,11 @@ def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
     world has not published (`publish`), a stage's writes committed before a crash or writes made
     outside a Host since its last publish. The file is opened read-only to find them and writable
     only when the journal holds rows, which the publish then empties; a workspace this machine's
-    log has not published is published whole from the read-only connection, journal left. None
-    with no Host history, no market database or nothing to publish."""
+    log has not published is published whole from the read-only connection, journal left. One
+    holding bodies with no published selection (`_bodies_unselected`) is published whole from a
+    writable connection, its version index installed if missing: its selection then references
+    every body and the copies leave the file, in the transaction that places them. None with no
+    Host history, no market database or nothing to publish."""
     if history.store() is None or not database.is_file():
         return None
     with closing(open_workspace_database(database, read_only=True)) as connection:
@@ -928,12 +975,33 @@ def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
             " AND table_name = ?",
             [JOURNAL],
         ).fetchone()[0]
-        if not (held and connection.execute(f"SELECT 1 FROM {JOURNAL} LIMIT 1").fetchone()):
+        moving = _bodies_unselected(connection)
+        if not moving and not (
+            held and connection.execute(f"SELECT 1 FROM {JOURNAL} LIMIT 1").fetchone()
+        ):
             if published(workspace_id):
                 return None
             return publish(database, connection, workspace_id, whole=True, emptying=False)
     with closing(open_workspace_database(database, read_only=False)) as connection:
-        return publish(database, connection, workspace_id)
+        if moving and not market_snapshots.enabled(connection):
+            market_snapshots.install(connection)
+        return publish(database, connection, workspace_id, whole=moving)
+
+
+def _bodies_unselected(connection: Any) -> bool:
+    """Whether the workspace holds market bodies with no published selection to reference them
+    instead: a 0.2.7 workspace upgraded (its file left as it was, `admit`), one written back to
+    move it (`carry_workspace`), or one with no version index yet. Its next writable whole
+    publish selects them and drops the copies (`publish`)."""
+    held = connection.execute(
+        "SELECT coalesce(list(table_name), []) FROM duckdb_tables()"
+        " WHERE database_name = current_database() AND schema_name = 'main'"
+    ).fetchone()[0]
+    return not market_snapshots.anchored(connection) and any(
+        connection.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None
+        for table in DELTA
+        if table in held
+    )
 
 
 def published(workspace_id: str) -> bool:
@@ -966,6 +1034,7 @@ def publish(
     *,
     whole: bool = False,
     emptying: bool = True,
+    capture_versions: Callable[[str, Any], None] | None = None,
 ) -> dict[str, Any] | None:
     """Publish into world, as `workspace_id`'s and in one catalog transaction, the market rows
     of the workspace in `database` its writers journaled (JOURNAL), then empty the journal
@@ -1000,6 +1069,19 @@ def publish(
     whole = whole or not published(workspace_id)
     if through is None and not whole:
         return None
+    snapshots = emptying and market_snapshots.VERSIONS in held
+    # A writable whole publish selects every row, so every body it references leaves the file.
+    moving = whole and snapshots
+    versions: dict[str, list[Any]] = {}
+
+    def remember(table: str, rows: Any) -> None:
+        if snapshots:
+            versions.setdefault(table, []).append(rows)
+        if capture_versions is not None:
+            capture_versions(table, rows)
+
+    if market_snapshots.VERSIONS in held and market_snapshots.anchored(connection):
+        market_snapshots.bind_pending_reads(connection, database, port.root, live=True)
     started = port.log.clock()
     run = port.lake.execute
     try:
@@ -1007,7 +1089,17 @@ def publish(
         providers = _register(run)
         with port.admitting():  # one catalog snapshot holds every batch this publish makes
             admitted = (
-                _admit(port, providers, observed, days) if kinds & MARKET_KINDS else {"rows": {}}
+                _admit(
+                    port,
+                    providers,
+                    observed,
+                    days,
+                    capture_versions=(
+                        remember if snapshots or capture_versions is not None else None
+                    ),
+                )
+                if kinds & MARKET_KINDS
+                else {"rows": {}}
             )
             if kinds & {"reference", "universe"}:
                 _admit_universe_contents(database, workspace_id, connection, scopes)
@@ -1024,7 +1116,42 @@ def publish(
         started,
     )
     history.flush()
-    if through is not None and emptying:
+    if (through is not None or moving) and emptying and versions:
+        names = dict(
+            port.log.read(
+                "SELECT definition_id, name FROM definition_lineage WHERE family = 'provider'"
+            )
+        )
+        snapshot = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()[0]
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            market_snapshots.place_versions(
+                connection, database, versions, names, world_listing, snapshot, port.log.clock()
+            )
+            for table, (kind, date_column) in DELTA.items():
+                physical = market_snapshots.pending_table(database, table)
+                version = "corporate_action" if kind == "actions" else "raw_bar"
+                action = " AND p.action_kind = v.action_key" if kind == "actions" else ""
+                journaled = (
+                    ""
+                    if moving
+                    else f" AND EXISTS (SELECT 1 FROM {JOURNAL} d WHERE d.seq <= ? AND d.kind = ?"
+                    " AND p.listing_id = d.listing_id AND p.provider = d.provider"
+                    f" AND p.{date_column} = d.day)"
+                )
+                connection.execute(
+                    f"DELETE FROM {physical} p USING {market_snapshots.VERSIONS} v"
+                    " WHERE v.world_table = ? AND p.listing_id = v.listing_id"
+                    f" AND p.provider = v.provider AND p.{date_column} = v.day{action}{journaled}",
+                    [version] if moving else [version, through, kind],
+                )
+            if through is not None:
+                connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+    elif through is not None and emptying:
         connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
     return admitted
 
@@ -1398,6 +1525,8 @@ def _admit(
     providers: set[str],
     observed: Mapping[str, int],
     days: Mapping[date, int] | None,
+    *,
+    capture_versions: Callable[[str, Any], None] | None = None,
 ) -> dict[str, Any]:
     """Every table's batches in world's order, from the rows `_delta` read; the rows each world
     table took, those StorePort dropped by reason, and the later writes of held values it
@@ -1445,7 +1574,14 @@ def _admit(
     def commit(table: str, provider: str, batch: Any, lag: Any) -> None:
         if not batch.num_rows:
             return
-        done = port.publish(table, provider_ids[provider], batch, lag)
+        selected = table in {"raw_bar", "corporate_action"} or (
+            table == "provider_symbol" and provider not in {LISTING_ALIAS, DISPLAY_ALIAS}
+        )
+        receive = partial(capture_versions, table) if capture_versions and selected else None
+        if receive is None:
+            done = port.publish(table, provider_ids[provider], batch, lag)
+        else:
+            done = port.publish(table, provider_ids[provider], batch, lag, capture_versions=receive)
         if done.rows:
             rows[table] = rows.get(table, 0) + done.rows
         for reason, count in done.dropped.items():

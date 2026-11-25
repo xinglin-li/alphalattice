@@ -17,6 +17,7 @@ import threading
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from functools import cache
+from importlib import resources
 from typing import Any
 
 from alphalattice.kernel.config import current as process_config
@@ -87,6 +88,16 @@ def package_versions(names: Iterable[str]) -> tuple[tuple[str, str], ...]:
     distributions' metadata, and a running process keeps the versions it imported.
     """
     return tuple((name, _installed_version(name)) for name in sorted(set(names)))
+
+
+def ducklake_extensions() -> Iterator[tuple[str, str]]:
+    """The two engine-matched extension binaries installed with the data extra."""
+    version = _installed_version("duckdb")
+    for name in ("sqlite_scanner", "ducklake"):
+        path = resources.files(f"duckdb_extension_{name}").joinpath(
+            "extensions", f"v{version}", f"{name}.duckdb_extension"
+        )
+        yield name, str(path).replace("\\", "/").replace("'", "''")
 
 
 @cache

@@ -60863,6 +60863,7 @@
     "refusal:research_experiment.input_link_not_admitted": {},
     "refusal:research_experiment.input_manifest_identity_mismatch": {},
     "refusal:research_experiment.input_manifest_invalid": {},
+    "refusal:research_experiment.input_market_selection_unavailable": {},
     "refusal:research_experiment.input_not_selected": {},
     "refusal:research_experiment.input_publication_conflict": {},
     "refusal:research_experiment.insufficient_listing_support": {},

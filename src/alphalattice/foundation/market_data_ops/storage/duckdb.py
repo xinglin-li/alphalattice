@@ -64,8 +64,8 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     resolve_membership_schedule,
 )
 from alphalattice.foundation.market_data_ops.sources.sanitization import SanitizedBatch
+from alphalattice.foundation.market_data_ops.storage import market_snapshots, world_reads
 from alphalattice.foundation.market_data_ops.storage import world as world_tables
-from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.action_audit import (
     ActionAuditObservation,
     ActionAuditScopeInsufficient,
@@ -856,7 +856,9 @@ class MarketDataRepository(WorkspaceRepository):
         if self._universe_reader not in (None, "world", "workspace"):
             raise ValueError("universe reader must be world or workspace")
         self._universe_cutoff_us = cutoff_us
-        self._workspace_universe = UniverseWorkspaceReader(self.database)
+        self._workspace_universe = UniverseWorkspaceReader(
+            self.database, open_read=lambda: self._connect(read_only=True)
+        )
 
     def _workspace_load_universe_manifest(self, manifest_id: str) -> UniverseManifest:
         return self._workspace_universe._workspace_load_universe_manifest(manifest_id)
@@ -974,6 +976,8 @@ class MarketDataRepository(WorkspaceRepository):
             if existing is None:
                 with self.database.transaction() as schema:
                     create_market_profile(schema)
+                    if world_reads.writes_to_world(self.path):
+                        market_snapshots.install(schema)
             connection.execute(
                 """
                 ALTER TABLE market_profile
@@ -2198,13 +2202,21 @@ class MarketDataRepository(WorkspaceRepository):
                         "provider_symbol": pa.array([str(row[1]) for row in mapping_rows]),
                     },
                 ) as stage:
+                    target = market_snapshots.pending_table(self.path, "provider_symbol_mapping")
                     touched.update(
                         (row[0], row[1], row[2])
                         for row in connection.execute(
                             f"""
-                            INSERT INTO provider_symbol_mapping
-                            SELECT listing_id, ?, provider_symbol, ?, NULL, 'ACTIVE'
-                            FROM {stage}
+                            INSERT INTO {target}
+                            SELECT fresh.listing_id, fresh.provider, fresh.provider_symbol,
+                                   fresh.effective_from, NULL, 'ACTIVE'
+                            FROM (
+                                SELECT listing_id, ? AS provider, provider_symbol,
+                                       ? AS effective_from FROM {stage}
+                            ) fresh
+                            ANTI JOIN provider_symbol_mapping USING (
+                                listing_id, provider, effective_from
+                            )
                             ON CONFLICT (listing_id, provider, effective_from) DO NOTHING
                             RETURNING listing_id, provider, effective_from
                             """,
@@ -4271,9 +4283,10 @@ class MarketDataRepository(WorkspaceRepository):
                 ),
             )
             try:
+                target = market_snapshots.pending_table(self.path, "corporate_action_current")
                 connection.execute(
                     f"""
-                    INSERT INTO corporate_action_current
+                    INSERT INTO {target}
                     SELECT listing_id, provider, effective_date, action_kind,
                            new_shares_per_old_share, cash_amount, provisional, provenance,
                            payload_hash, 'ACTIVE', observed_at
@@ -4302,50 +4315,32 @@ class MarketDataRepository(WorkspaceRepository):
             """,
             [event.listing_id, event.provider, event.effective_date, event.action_kind],
         ).fetchone()
-        if existing is None:
-            connection.execute(
-                """
-                INSERT INTO corporate_action_current VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
-                """,
-                [
-                    event.listing_id,
-                    event.provider,
-                    event.effective_date,
-                    event.action_kind,
-                    event.new_shares_per_old_share,
-                    event.cash_amount,
-                    event.provisional,
-                    event.provenance,
-                    digest,
-                    observed_at,
-                ],
-            )
-            return "INSERTED"
-        prior_hash, prior_status = str(existing[0]), str(existing[1])
-        if prior_hash == digest and prior_status == "ACTIVE":
+        if existing == (digest, "ACTIVE"):
             return "UNCHANGED"
-        revision_kind = (
-            "RESTORED" if prior_status == "RETRACTED" and prior_hash == digest else "CORRECTED"
-        )
+        target = market_snapshots.pending_table(self.path, "corporate_action_current")
         connection.execute(
-            """
-            UPDATE corporate_action_current
-            SET new_shares_per_old_share = ?, cash_amount = ?, provisional = ?, provenance = ?,
-                payload_hash = ?, status = 'ACTIVE', observed_at = ?
-            WHERE listing_id = ? AND provider = ? AND effective_date = ? AND action_kind = ?
+            f"""
+            INSERT OR REPLACE INTO {target}
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
             """,
             [
+                event.listing_id,
+                event.provider,
+                event.effective_date,
+                event.action_kind,
                 event.new_shares_per_old_share,
                 event.cash_amount,
                 event.provisional,
                 event.provenance,
                 digest,
                 observed_at,
-                event.listing_id,
-                event.provider,
-                event.effective_date,
-                event.action_kind,
             ],
+        )
+        if existing is None:
+            return "INSERTED"
+        prior_hash, prior_status = str(existing[0]), str(existing[1])
+        revision_kind = (
+            "RESTORED" if prior_status == "RETRACTED" and prior_hash == digest else "CORRECTED"
         )
         self._record_action_revision(
             connection,
@@ -4378,6 +4373,7 @@ class MarketDataRepository(WorkspaceRepository):
             """,
             [listing_id, provider, history_start, history_end],
         ).fetchall()
+        target = market_snapshots.pending_table(self.path, "corporate_action_current")
         retracted: list[CorporateActionEvent] = []
         for row in rows:
             event = CorporateActionEvent(*row[:8])
@@ -4385,17 +4381,11 @@ class MarketDataRepository(WorkspaceRepository):
                 continue
             prior_hash = str(row[8])
             connection.execute(
-                """
-                UPDATE corporate_action_current SET status = 'RETRACTED', observed_at = ?
-                WHERE listing_id = ? AND provider = ? AND effective_date = ? AND action_kind = ?
+                f"""
+                INSERT OR REPLACE INTO {target}
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RETRACTED', ?)
                 """,
-                [
-                    observed_at,
-                    event.listing_id,
-                    event.provider,
-                    event.effective_date,
-                    event.action_kind,
-                ],
+                [*row, observed_at],
             )
             self._record_action_revision(
                 connection,
@@ -4494,7 +4484,7 @@ class MarketDataRepository(WorkspaceRepository):
     ) -> ActionAuditReceipt:
         """Publish a staged raw payload and its audit atomically; a failure leaves the stage."""
         listing = observation.listing_id
-        with self.database.transaction() as connection:
+        with market_snapshots.transaction(self.database) as connection:
             rows = connection.execute(
                 f"SELECT {_ONBOARDING_BARS}, ingestion_id, observed_at FROM onboarding_raw_stage"
                 " WHERE onboarding_id = ? AND listing_id = ? ORDER BY session_date",
@@ -4627,20 +4617,24 @@ class MarketDataRepository(WorkspaceRepository):
                     .tolist()
                 )
                 record_revisions(connection, "bars", appended, observed_at)
+            changed_raw = (
+                f"SELECT s.* FROM {stage_name} AS s"
+                " LEFT JOIN raw_daily_bar_current AS current"
+                " USING (listing_id, provider, session_date)"
+                " WHERE current.payload_hash IS DISTINCT FROM s.payload_hash"
+            )
             record_delta(
                 connection,
                 "bars",
-                f"SELECT s.listing_id, s.provider, s.session_date FROM {stage_name} AS s"
-                " LEFT JOIN raw_daily_bar_current AS current"
-                " USING (listing_id, provider, session_date)"
-                " WHERE current.payload_hash IS DISTINCT FROM s.payload_hash",
+                f"SELECT listing_id, provider, session_date FROM ({changed_raw})",
                 "session_date",
                 observed_at,
             )
+            target = market_snapshots.pending_table(self.path, "raw_daily_bar_current")
             connection.execute(
                 f"""
-                MERGE INTO raw_daily_bar_current AS current
-                USING {stage_name} AS staged
+                MERGE INTO {target} AS current
+                USING ({changed_raw}) AS staged
                    ON current.listing_id = staged.listing_id
                   AND current.provider = staged.provider
                   AND current.session_date = staged.session_date
@@ -5132,7 +5126,9 @@ class MarketDataRepository(WorkspaceRepository):
             try:
                 record_delta(connection, "bars", changed, "session_date", observed_at)
                 connection.execute(
-                    "INSERT OR REPLACE INTO provider_adjusted_close_current SELECT listing_id,"
+                    "INSERT OR REPLACE INTO "
+                    + market_snapshots.pending_table(self.path, "provider_adjusted_close_current")
+                    + " SELECT listing_id,"
                     " provider, session_date, adjusted_close, payload_hash, updated_at"
                     f" FROM ({changed})"
                 )

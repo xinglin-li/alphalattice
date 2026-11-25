@@ -28,9 +28,7 @@ from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any, Final
 
 from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.environment import (
-    package_versions,
-)
+from alphalattice.capabilities.domain_contracts.environment import ducklake_extensions
 from alphalattice.foundation.data_layer.project import register, uuid7
 from alphalattice.kernel import storage
 from alphalattice.kernel.config import DATA_ROOT_ENV as DATA_ROOT_ENV
@@ -175,12 +173,7 @@ def load_extensions(connection) -> None:
     """Load engine-matched binaries from the installed wheels, never INSTALL or a repository."""
     import duckdb  # lazy: data is optional; log creation works without DuckDB
 
-    version = dict(package_versions(("duckdb",)))["duckdb"]
-    for name in ("sqlite_scanner", "ducklake"):
-        path = resources.files(f"duckdb_extension_{name}").joinpath(
-            "extensions", f"v{version}", f"{name}.duckdb_extension"
-        )
-        quoted = str(path).replace("\\", "/").replace("'", "''")
+    for name, quoted in ducklake_extensions():
         try:
             connection.execute(f"LOAD '{quoted}'").complete()
         except duckdb.Error as error:
