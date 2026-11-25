@@ -28,6 +28,37 @@ os.execvpe(sys.argv[3], sys.argv[3:], os.environ)
 """
 
 
+def own_group(record: Path = Path("/proc/self/cgroup")) -> str:
+    """This process's cgroup record; empty where the system keeps none."""
+    try:
+        return record.read_text().strip()
+    except FileNotFoundError:
+        return ""
+
+
+def release_limit(
+    before: str, root: Path = _CGROUP, record: Path = Path("/proc/self/cgroup")
+) -> None:
+    """Clear the cap an unready observer left on the serving cgroup its attach moved this process
+    into from ``before``, so a Host that observes its budget has no native limit. A process the
+    attach never moved keeps the cgroup it inherited, cap and all. A cap that cannot be cleared
+    refuses by name."""
+    group = own_group(record)
+    if group == before:
+        return
+    path = (root / group.removeprefix("0::/")).resolve()
+    if not (
+        group.startswith("0::/")
+        and path.is_relative_to(root)
+        and path.name == "serving"
+        and path.parent.name.startswith("alphalattice-")
+    ):
+        return
+    for name, value in (("memory.max", "max"), ("memory.oom.group", "0")):
+        with suppress(FileNotFoundError):  # a cgroup without the memory controller has no cap
+            (path / name).write_text(value, encoding="ascii")
+
+
 def available() -> bool:
     """Find a user manager on a unified cgroup v2 hierarchy."""
     return (

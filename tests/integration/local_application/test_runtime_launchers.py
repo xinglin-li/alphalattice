@@ -705,13 +705,14 @@ class _Heard:
 
 
 @pytest.mark.proves("product_host.a_detached_launch_hears_its_host_on_its_ready_pipe")
-@pytest.mark.parametrize("end", ["byte", "exit", "silence", "lost", "late", "deadline"])
+@pytest.mark.parametrize("end", ["byte", "exit", "silence", "lost", "late", "deadline", "observed"])
 def test_a_detached_launch_hears_its_host_on_the_ready_pipe(
     end, tmp_path, monkeypatch, capsys
 ) -> None:
     """requirement: a detached launch's wait ends on its Host's ready byte or end, at its bound
     only when the Host does neither; an ended Host is judged by the log it left at its end, and
     the serving check, or a losing start's check of the serving Host, has only what is left."""
+    # A served start also relays its Host's line saying it observes its memory budget, and why.
     from alphalattice.control.product_host.composition import web_launcher
 
     reader, writer = os.pipe()
@@ -719,7 +720,7 @@ def test_a_detached_launch_hears_its_host_on_the_ready_pipe(
     log.write_text("", encoding="utf-8")
 
     def host() -> None:
-        if end in {"byte", "deadline"}:
+        if end in {"byte", "deadline", "observed"}:
             os.write(writer, b"1")
         if end != "silence":
             os.close(writer)
@@ -741,21 +742,30 @@ def test_a_detached_launch_hears_its_host_on_the_ready_pipe(
 
             def request(self, _body, timeout=None):
                 asked.extend([] if timeout is None else [timeout])
-                return {}
+                return {"operation_fields": {"HOST_STOP": {}}} if end == "observed" else {}
 
             def activity(self, limit):
                 raise local_client.LocalResearchClientError("local_client.service_not_running")
 
-        if end == "deadline":
-            log.write_text("Portfolio Research workspace: http://127.0.0.1:1/\n", "utf-8")
+        launch = "Portfolio Research workspace: http://127.0.0.1:1/"
+        words = runtime_json("config/registries/messages.json")["entries"]
+        observed = words["host.memory_observed"]["words"]["zh-CN"].format(
+            reason="spawn.cgroup_admission_unproved: no user cgroup manager"
+        )
+        if end in {"deadline", "observed"}:
+            log.write_text(f"{launch}\nLoopback only.\n{observed}\n", "utf-8")
         if end != "lost":
             monkeypatch.setattr(local_client, "LocalResearchClient", _Client)
         # A late loser waits out most of the window before it ends with its lease line.
         lost = _Heard(log, "workspace_runtime.writer_already_owned\n", 0.6 * (end == "late"))
         arguments = SimpleNamespace(workspace=tmp_path, port=0, no_browser=True)
-        assert web_launcher._heard_from(arguments, lost, reader, log, "k") == 2
-        answer = json.loads(capsys.readouterr().out)
-        if end == "lost":  # read after its end: the serving Host is verified, not called exited
+        served = web_launcher._heard_from(arguments, lost, reader, log, "k")
+        out = capsys.readouterr().out
+        assert served == (0 if end == "observed" else 2), out
+        answer = {} if end == "observed" else json.loads(out)
+        if end == "observed":  # it serves: its launch line and its memory line are relayed
+            assert out.splitlines()[1:3] == [launch, observed], out
+        elif end == "lost":  # read after its end: the serving Host is verified, not called exited
             assert answer["failure_code"] == "local_web.serving_host_unverified", answer
         elif end == "late":  # it ended 0.6 s into a 1 s deadline: its check had what was left
             assert answer["failure_code"] == "local_web.serving_host_unverified", answer
@@ -764,7 +774,7 @@ def test_a_detached_launch_hears_its_host_on_the_ready_pipe(
             assert web_launcher._failed_start(tmp_path, lost, lost.words, log, 0.0) == 2
             spent = json.loads(capsys.readouterr().out)  # nothing left: unverified, nothing checked
             assert spent["cause"] == "local_web.detached_host_not_ready" and len(asked) == 1, spent
-        else:  # the byte came 0.6 s into a 1 s deadline: the check had what was left of it
+        else:  # deadline: the byte came 0.6 s into a 1 s deadline; the check had what was left
             assert answer["failure_code"] == "local_web.detached_host_not_ready", answer
             assert asked and max(asked) <= 0.5, asked
     elapsed = time.monotonic() - began

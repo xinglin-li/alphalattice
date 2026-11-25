@@ -29,6 +29,7 @@ DEFAULT_TIMEOUT = child_process.DEFAULT_TIMEOUT
 REAP_TIMEOUT = child_process.REAP_TIMEOUT
 TreeNotStopped = child_process.TreeNotStopped
 TreeMemoryLimit = child_process.TreeMemoryLimit
+held_memory = child_process.held_memory
 _worker_host: int | None = None
 
 

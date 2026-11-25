@@ -33,6 +33,8 @@ from .linux_pool import GuardedWorker, start_guarded_worker
 from .linux_scope import LinuxScope, enable_child_subreaper, is_host_observer
 from .linux_scope import attach as attach_linux_scope
 from .linux_scope import available as linux_scope_available
+from .linux_scope import own_group as linux_scope_group
+from .linux_scope import release_limit as release_linux_limit
 from .linux_scope import start as start_linux_scope
 from .linux_scope import worker_scope as linux_worker_scope
 
@@ -42,6 +44,7 @@ if sys.platform == "win32":
 
 DEFAULT_TIMEOUT = 300.0
 REAP_TIMEOUT = 5.0
+_OBSERVER_READY_SECONDS = 2 * REAP_TIMEOUT + 1
 _CREATE_SUSPENDED = 0x4
 _LOG = logging.getLogger(__name__)
 
@@ -62,11 +65,17 @@ class TreeMemory:
         self.mode = mode
         self.peak_bytes = 0
         self.breached = False
+        self.unproved: str | None = None
 
     @property
     def enforce(self) -> bool:
         """A tree with no declared budget only observes, regardless of mode."""
         return self.mode == "enforce" and self.budget_bytes is not None
+
+    def unprove(self, reason: str) -> None:
+        """Observe a budget whose native enforcement could not be proved, naming why."""
+        self.mode, self.unproved = "observe", reason
+        _LOG.warning("spawn.memory_observed: kind=%s reason=%s", self.kind, reason)
 
     def _details(self) -> str:
         budget = "undeclared" if self.budget_bytes is None else self.budget_bytes
@@ -664,7 +673,7 @@ def own_pool_trees(pool: Any, processes: ProcessObservations, memory: TreeMemory
         )
 
     def start() -> None:
-        has_linux_scope = memory.mode == "enforce" and linux_scope_available()
+        has_linux_scope = memory.mode == "enforce" and _cgroup_admits()
         if sys.platform == "linux" and not has_linux_scope:
             observe(start_guarded_worker(pool, launch, arguments))
             return
@@ -698,12 +707,7 @@ def _start_posix(
     lineage = None
     if sys.platform == "darwin":
         process, lineage = start_darwin(args, options=options)
-    elif (
-        memory is not None
-        and memory.enforce
-        and not options.get("shell")
-        and linux_scope_available()
-    ):
+    elif memory is not None and memory.enforce and not options.get("shell") and _cgroup_admits():
         process, scope = start_linux_scope(args, limit=memory.budget_bytes, options=options)
     else:
         process = subprocess.Popen(
@@ -731,49 +735,73 @@ def _start_posix(
     return process, watch
 
 
+_HELD: list[TreeMemory] = []
+"""The tree this process serves in, while current_tree holds it."""
+
+
+def held_memory() -> dict[str, object] | None:
+    """The serving tree's memory policy: its mode, and why it observes a budget set to enforce."""
+    return {"mode": _HELD[-1].mode, "unproved": _HELD[-1].unproved} if _HELD else None
+
+
+def _cgroup_admits() -> bool:
+    """A new tree takes the cgroup path only while its Host did not fail to prove one."""
+    return not (_HELD and _HELD[-1].unproved) and linux_scope_available()
+
+
 @contextmanager
 def current_tree(processes: ProcessObservations, memory: TreeMemory) -> Iterator[None]:
     """Own a real serving process throughout its operating-system lifetime."""
-    if sys.platform == "win32":
-        job = ChildJob(memory=memory)
-        try:
-            job.assign(_winapi.GetCurrentProcess())
-        except BaseException:
-            job.close()
+    _HELD.append(memory)
+    try:
+        if sys.platform == "win32":
+            job = ChildJob(memory=memory)
+            try:
+                job.assign(_winapi.GetCurrentProcess())
+            except BaseException:
+                job.close()
+                raise
+            try:
+                yield
+            finally:
+                job.finish_memory()
+                # The serving process is in its own Job. Windows releases its last
+                # handle, and kills any remaining member, when this process ends.
+        elif sys.platform == "linux" and memory.enforce:
+            with _supervised_linux_host(processes, memory):
+                yield
+        else:
+            with _observed_host(processes, memory):
+                yield
+    finally:
+        _HELD.remove(memory)
+
+
+@contextmanager
+def _observed_host(processes: ProcessObservations, memory: TreeMemory) -> Iterator[None]:
+    """Observe a POSIX Host in place. Only enforce can move it into a cgroup since an attach
+    must finish before the serving code starts children."""
+    optional = sys.platform == "linux" and memory.mode == "observe"
+    lineage = DarwinTree(os.getpid()) if sys.platform == "darwin" else None
+    try:
+        watch = _PosixMemoryWatch(
+            os.getpid(), processes, memory, None, current=True, lineage=lineage
+        )
+    except (OSError, RuntimeError):
+        if not optional:
             raise
+        _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=start", memory.kind)
+        yield
+        return
+    try:
+        yield
+    finally:
         try:
-            yield
-        finally:
-            job.finish_memory()
-            # The serving process is in its own Job. Windows releases its last
-            # handle, and kills any remaining member, when this process ends.
-    elif memory.enforce and linux_scope_available():
-        with _supervised_linux_host(memory):
-            yield
-    else:
-        # Observe a Linux Host in place. Only enforce can move it into a cgroup
-        # since an attach must finish before the serving code starts children.
-        optional = sys.platform == "linux" and memory.mode == "observe"
-        lineage = DarwinTree(os.getpid()) if sys.platform == "darwin" else None
-        try:
-            watch = _PosixMemoryWatch(
-                os.getpid(), processes, memory, None, current=True, lineage=lineage
-            )
-        except (OSError, RuntimeError):
+            watch.close()
+        except TreeNotStopped:
             if not optional:
                 raise
-            _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=start", memory.kind)
-            yield
-            return
-        try:
-            yield
-        finally:
-            try:
-                watch.close()
-            except TreeNotStopped:
-                if not optional:
-                    raise
-                _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=finish", memory.kind)
+            _LOG.warning("spawn.host_observer_unavailable: kind=%s phase=finish", memory.kind)
 
 
 def _observe_linux_host(
@@ -781,10 +809,14 @@ def _observe_linux_host(
 ) -> None:
     """Report a hard-limit event from outside the serving process's cgroup."""
     with host, ExitStack() as resources:
-        departure = vars(os)["pidfd_open"](pid)
-        resources.callback(os.close, departure)
         limit = memory.budget_bytes if memory.enforce else None
-        scope = attach_linux_scope(pid, limit, supervisor=True)
+        try:
+            departure = vars(os)["pidfd_open"](pid)
+            resources.callback(os.close, departure)
+            scope = attach_linux_scope(pid, limit, supervisor=True)
+        except (OSError, subprocess.SubprocessError) as error:
+            host.send_bytes(f"refused {type(error).__name__}: {error}"[:500].encode())
+            return
         stopped = False
         try:
             host.send_bytes(b"ready")
@@ -808,34 +840,66 @@ def _observe_linux_host(
 
 
 @contextmanager
-def _supervised_linux_host(memory: TreeMemory) -> Iterator[None]:
-    """Keep the native hard limit's reporter alive if its Host is killed by the kernel."""
-    context = multiprocessing.get_context("spawn")
-    owner, channel = context.Pipe()
-    observer = context.Process(target=_observe_linux_host, args=(os.getpid(), memory, channel))
-    with owner, channel:
-        observer.start()
-        channel.close()
-        admitted = False
-        try:
+def _supervised_linux_host(processes: ProcessObservations, memory: TreeMemory) -> Iterator[None]:
+    """Keep the native hard limit's reporter alive if its Host is killed by the kernel. A Host
+    whose admission is unproved observes its budget in place instead, and names why."""
+    reason = "spawn.cgroup_admission_unproved: no user cgroup manager"
+    if linux_scope_available():
+        context = multiprocessing.get_context("spawn")
+        owner, channel = context.Pipe()
+        observer = context.Process(target=_observe_linux_host, args=(os.getpid(), memory, channel))
+        before = linux_scope_group()  # the cgroup this admission may move the Host out of
+        with owner, channel:
+            observer.start()
+            channel.close()
+            answer = b""
             with suppress(EOFError):
-                admitted = owner.poll(2 * REAP_TIMEOUT + 1) and owner.recv_bytes() == b"ready"
-            if not admitted:
-                raise OSError("spawn.cgroup_admission_unproved: missing Host observer")
-            yield
-        finally:
-            with suppress(BrokenPipeError, ConnectionResetError):
-                owner.send_bytes(b"done")
-            owner.close()
-            observer.join(timeout=2 * REAP_TIMEOUT)
-            if observer.is_alive():
-                observer.kill()
-                observer.join(timeout=REAP_TIMEOUT)
-                raise TreeNotStopped("spawn.tree_not_stopped: Host observer did not retire")
-            exit_code = observer.exitcode
-            observer.close()
-            if admitted and exit_code != 0:
-                raise TreeNotStopped("spawn.tree_not_stopped: Host observer failed")
+                if owner.poll(_OBSERVER_READY_SECONDS):
+                    answer = owner.recv_bytes()
+            if answer == b"ready":
+                try:
+                    yield
+                finally:
+                    with suppress(BrokenPipeError, ConnectionResetError):
+                        owner.send_bytes(b"done")
+                    owner.close()
+                    observer.join(timeout=2 * REAP_TIMEOUT)
+                    if observer.is_alive():
+                        observer.kill()
+                        observer.join(timeout=REAP_TIMEOUT)
+                        raise TreeNotStopped("spawn.tree_not_stopped: Host observer did not retire")
+                    exit_code = observer.exitcode
+                    observer.close()
+                    if exit_code != 0:
+                        raise TreeNotStopped("spawn.tree_not_stopped: Host observer failed")
+                return
+            reason = _retire_unready(observer, answer)
+        release_linux_limit(before)  # its attach may have moved and capped the Host
+    memory.unprove(reason)
+    with _observed_host(processes, memory):
+        yield
+
+
+def _retire_unready(observer: Any, answer: bytes) -> str:
+    """End an observer that did not prove admission: why it failed."""
+    late = observer.is_alive()
+    if late:
+        observer.kill()
+    observer.join(timeout=REAP_TIMEOUT)
+    if observer.is_alive():
+        raise TreeNotStopped("spawn.tree_not_stopped: Host observer did not retire")
+    code = observer.exitcode
+    observer.close()
+    if answer.startswith(b"refused "):
+        return "spawn.cgroup_admission_unproved: " + answer.removeprefix(b"refused ").decode(
+            errors="replace"
+        )
+    if late:
+        return (
+            "spawn.cgroup_admission_unproved: "
+            f"Host observer not ready in {_OBSERVER_READY_SECONDS:g} s"
+        )
+    return f"spawn.cgroup_admission_unproved: Host observer exited with code {code}"
 
 
 class JobProcess(subprocess.Popen[Any]):

@@ -961,6 +961,7 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     live: LocalPortfolioWebSession, tmp_path: Path, read_only_live, capsys, monkeypatch
 ) -> None:
     from alphalattice.control.product_host.composition import local_web_connection
+    from alphalattice.kernel.execution import spawn as execution_spawn
     from tests.portfolio_strategy_lab.local_web_support import serve_conflict
 
     client = LocalResearchClient(live.workspace)
@@ -993,6 +994,7 @@ def test_cursor_reconnect_restart_and_typed_read_refusals(
     reused = json.loads(capsys.readouterr().out)
     assert reused["host"] == client.activity(limit=1)["observer"]["host"] == host
     assert type(original).read(live.workspace) == original
+    assert host["memory"] == execution_spawn.held_memory()  # the serving tree's memory policy
 
     # A client that missed pages continues from where it stopped, in order, once.
     ordinals = [i["ordinal"] for i in _json(live, "/api/activity?limit=50")["items"]]

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.client import (
     LocalResearchClientError,
     LocalResearchConnection,
@@ -49,6 +50,7 @@ def publish_client_connection(
                 instance=connection.instance,
                 pid=os.getpid(),
                 started_at=utc_now().isoformat(),
+                memory=spawn.held_memory(),
             )
         temporary.replace(path)
     finally:

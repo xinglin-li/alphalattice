@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import suppress
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -24,6 +25,7 @@ from alphalattice.kernel.execution import (
     cancel_execution,
     execution_cancellation,
     execution_port,
+    linux_scope,
     process_execution,
 )
 from alphalattice.kernel.execution import spawn as execution_spawn
@@ -260,15 +262,6 @@ def _assert_pool_retains_escaped_child(ready):
             marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux Host cgroup observer"),
         ),
         pytest.param(
-            100,
-            "host-observer-enforce",
-            (),
-            False,
-            True,
-            "spawn.cgroup_admission_unproved",
-            marks=pytest.mark.skipif(sys.platform != "linux", reason="Linux Host cgroup observer"),
-        ),
-        pytest.param(
             None,
             "cancel-retired-pool",
             (),
@@ -290,8 +283,7 @@ def _assert_pool_retains_escaped_child(ready):
         "cancel",
         "cancel-pool-admission",
         "darwin-aggregate",
-        "host-observer-timeout-observe",
-        "host-observer-timeout-enforce",
+        "host-observer-observe",
         "cancel-retired-pool",
     ),
 )
@@ -352,33 +344,22 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
             monkeypatch.setattr(psutil.Process, "children", lambda self, recursive=False: [])
         _assert_pool_retains_escaped_child(tmp_path / "descendant")
         return
-    if mode.startswith("host-observer-"):
-        owner = MagicMock()
-        owner.poll.return_value = False
+    if mode == "host-observer-observe":
         observer = MagicMock()
-        observer.is_alive.return_value = False
-        observer.exitcode = 0
-        context = SimpleNamespace(Pipe=lambda: (owner, MagicMock()), Process=lambda **_: observer)
+        context = SimpleNamespace(
+            Pipe=lambda: (MagicMock(), MagicMock()), Process=lambda **_: observer
+        )
         monkeypatch.setattr(execution_spawn, "linux_scope_available", lambda: True)
         monkeypatch.setattr(execution_spawn.multiprocessing, "get_context", lambda _: context)
-        memory = execution_spawn.TreeMemory("host", budget, mode.removeprefix("host-observer-"))
-        if stops:
-            with (
-                pytest.raises(
-                    OSError, match=r"spawn\.cgroup_admission_unproved: missing Host observer"
-                ),
-                execution_spawn.current_tree(psutil, memory),
-            ):
-                pytest.fail("enforce admitted a Host without the observer")
-        else:
+        memory = execution_spawn.TreeMemory("host", budget, "observe")
 
-            def unavailable(_thread: threading.Thread) -> None:
-                raise RuntimeError("fixture process-tree sampler is unavailable")
+        def unavailable(_thread: threading.Thread) -> None:
+            raise RuntimeError("fixture process-tree sampler is unavailable")
 
-            monkeypatch.setattr(threading.Thread, "start", unavailable)
-            with execution_spawn.current_tree(psutil, memory):
-                observer.start.assert_not_called()
-                assert f"{report}: kind=host phase=start" in caplog.text
+        monkeypatch.setattr(threading.Thread, "start", unavailable)
+        with execution_spawn.current_tree(psutil, memory):
+            observer.start.assert_not_called()
+            assert f"{report}: kind=host phase=start" in caplog.text
         return
     with caplog.at_level(logging.INFO):
         memory = execution_spawn.TreeMemory("host", budget, mode)
@@ -395,6 +376,71 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
             memory.check()
     else:
         memory.check()
+
+
+@pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")
+@pytest.mark.parametrize(
+    ("form", "mode", "reason"),
+    [
+        ("proved", "enforce", None),
+        ("cgroup unavailable", "observe", "no user cgroup manager"),
+        ("observer late", "observe", "Host observer not ready in 11 s"),
+        ("observer dead", "observe", "Host observer exited with code 1"),
+        ("observer refused", "observe", "CalledProcessError: busctl exited 1"),
+    ],
+    ids=str,
+)
+def test_a_linux_host_enforces_only_a_proved_admission(form, mode, reason, monkeypatch, tmp_path):
+    """An unproved admission starts the Host observing its budget, never refused, and says why;
+    an unready observer's own cap is cleared before the Host observes; an inherited one stays."""
+    owner, observer = MagicMock(), MagicMock()
+    owner.poll.return_value = form != "observer late"
+    owner.recv_bytes.side_effect = {
+        "proved": [b"ready"],
+        "observer dead": EOFError,
+        "observer refused": [b"refused CalledProcessError: busctl exited 1"],
+    }.get(form)
+    observer.is_alive.side_effect = [True, False] if form == "observer late" else None
+    observer.is_alive.return_value = False
+    observer.exitcode = 1 if form == "observer dead" else 0
+    context = SimpleNamespace(Pipe=lambda: (owner, MagicMock()), Process=lambda **_: observer)
+    monkeypatch.setattr(
+        execution_spawn, "linux_scope_available", lambda: form != "cgroup unavailable"
+    )
+    monkeypatch.setattr(execution_spawn.multiprocessing, "get_context", lambda _: context)
+    # The Host starts in another live Host's capped serving cgroup it inherited. Its observer's
+    # attach moves it into this admission's own, capped, before the late and refused rows fail;
+    # the dead observer exits before any move.
+    record = tmp_path / "cgroup"
+    caps = {}
+    for scope in ("inherited", "admitted"):
+        caps[scope] = tmp_path / "app.slice" / f"alphalattice-{scope}.scope" / "serving"
+        caps[scope].mkdir(parents=True)
+        for name, value in (("memory.max", "100"), ("memory.oom.group", "1")):
+            (caps[scope] / name).write_text(value)
+    record.write_text("0::/app.slice/alphalattice-inherited.scope/serving\n")
+    moves = form in {"proved", "observer late", "observer refused"}
+    moved = "0::/app.slice/alphalattice-admitted.scope/serving\n"
+    observer.start.side_effect = (lambda: record.write_text(moved)) if moves else None
+    monkeypatch.setattr(
+        execution_spawn, "linux_scope_group", partial(linux_scope.own_group, record)
+    )
+    release = partial(linux_scope.release_limit, root=tmp_path, record=record)
+    monkeypatch.setattr(execution_spawn, "release_linux_limit", release)
+    memory = execution_spawn.TreeMemory("host", 100, "enforce")
+    with execution_spawn._supervised_linux_host(psutil, memory):
+        assert memory.mode == mode
+        cap = {
+            scope: [(path / name).read_text() for name in ("memory.max", "memory.oom.group")]
+            for scope, path in caps.items()
+        }
+        cleared = moves and form != "proved"
+        assert cap == {
+            "inherited": ["100", "1"],
+            "admitted": ["max", "0"] if cleared else ["100", "1"],
+        }
+    assert memory.unproved == (reason and f"spawn.cgroup_admission_unproved: {reason}")
+    assert observer.kill.called is (form == "observer late")
 
 
 @pytest.mark.proves("domain_contracts.child_processes_are_bounded_and_isolated")

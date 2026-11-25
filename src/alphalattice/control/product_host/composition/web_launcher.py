@@ -166,6 +166,13 @@ HANDED_KEY = "key=<from the launcher>"
 """What a detached Host prints in place of the launch key its launcher made and holds."""
 READY_VARIABLE = "ALPHALATTICE_HOST_READY"
 """Where a detached launch names the pipe its Host writes one byte to once it serves."""
+_OBSERVED = tuple(
+    words.partition("{reason}")[0]
+    for words in runtime_json("config/registries/messages.json")["entries"]["host.memory_observed"][
+        "words"
+    ].values()
+)
+"""How a Host's start line that observes its memory budget begins, in each language."""
 
 
 def _refusal(
@@ -401,7 +408,9 @@ def _heard_from(
                 {"operation": "OPERATION_LIST", "schema_operation": "HOST_STOP"}
             )
             if "HOST_STOP" in answered.get("operation_fields", {}):
-                return _served(arguments, launch.replace(HANDED_KEY, f"key={key}"), host, log_path)
+                observed = [line for line in text.splitlines() if line.startswith(_OBSERVED)]
+                launch = launch.replace(HANDED_KEY, f"key={key}")
+                return _served(arguments, "\n".join([launch, *observed[:1]]), host, log_path)
     spawn.stop_tree(host.pid)
     return _refusal(
         "local_web.detached_host_not_ready",
@@ -504,7 +513,7 @@ def _failed_start(
         served = {
             "workspace": str(workspace.resolve()),
             "address": reader.connection.url,
-            "host": profile,
+            "host": {**profile, "memory": serving.get("memory")},
             "message_id": message_id,
             "detail": str(worded(message_id)).format(**profile),
         }
@@ -646,6 +655,9 @@ def _serve(arguments: argparse.Namespace) -> int:
             ),
             flush=True,
         )
+        held = spawn.held_memory()
+        if held is not None and held["unproved"]:  # the start says what its budget does
+            print(str(worded("host.memory_observed")).format(reason=held["unproved"]), flush=True)
         if ready is not None:  # the launch line is in the log: the launcher may relay it now,
             # before any browser work, which can take longer than the launcher waits
             with suppress(OSError), os.fdopen(ready, "wb", buffering=0) as pipe:
