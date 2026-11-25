@@ -82,8 +82,7 @@
       }
     },
     "causal_derivation_worker": {
-      "tree_memory_bytes": 400000000,
-      "tree_memory_reason": "about twice its largest measured tree peak, 186,048,512 B (First Use on the sufficient fixture on Windows, read from the worker's own Job; the sufficient Daily read 185,839,616 B; macOS RSS read 126,337,024 B), as the kept worker's limit is set",
+      "tree_memory_bytes": "undeclared",
       "defined_by": "src/alphalattice/foundation/causal_outcomes/execution/publication.py::CausalExecutionOutcomePublisher.publish_daily",
       "spawn_sites": [
         {
