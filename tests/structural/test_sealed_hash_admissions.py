@@ -123,7 +123,7 @@ CLASSIFIED: dict[str, str] = {
     "investment/alpha_research/scores/model_renewal.py::"
     "AlphaModelLifecycleAdmission.validate_admission": SELF,
     "investment/alpha_research/scores/model_renewal.py::fit_alpha_refit_child": WORKSPACE,
-    "investment/alpha_research/scores/model_renewal.py::read_lifecycle_child": NOT_MOVED,
+    "investment/alpha_research/scores/model_renewal.py::_read_lifecycle_estimator": NOT_MOVED,
     "investment/alpha_research/scores/model_renewal.py::reuse_refit_child": NOT_MOVED,
     "investment/alpha_research/scores/model_renewal.py::verify_model_set": WORKSPACE,
     "investment/portfolio_strategy_lab/application/calibration.py::"
@@ -320,7 +320,7 @@ def test_records_take_the_kind_their_job_names() -> None:
         "alphalattice/control/data_platform/maintenance/coordinator.py::WorkspaceMaintenanceCoordinator._quality_evidence",
         "alphalattice/control/data_platform/maintenance/data_changes.py::WorkspaceDataChanges.maintain_valuation",
         "alphalattice/control/data_platform/maintenance/data_changes.py::WorkspaceDataChanges.verified_valuation",
-        "alphalattice/foundation/feature_engine/catalog/contracts.py::FeatureCatalog.from_payload",
+        "alphalattice/foundation/feature_engine/contracts.py::FactorSessionInvalidationPlan.create.digest",
         "alphalattice/foundation/feature_engine/contracts.py::FeatureBuildOutcome.safe_hash",
         "alphalattice/foundation/feature_engine/contracts.py::PanelAdmissionSummary.summary_hash",
         "alphalattice/foundation/feature_engine/contracts.py::PanelTemporalRisk.risk_hash",
