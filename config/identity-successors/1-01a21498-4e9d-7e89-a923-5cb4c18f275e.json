@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "1b1875156c2193b96646f185e54ae3a8e68feae78cd9426b49c0ad611ee9cc2c",
+   "successor": "0c10776e282990b86d66ac092b585db37a0a4ba1aad84e08061c089d61d67371",
+   "change": "Bound the per-request caches that review readbacks and source checks use",
+   "reason": "The development release replay at this head reads every moved product_host role equal in value; the change only bounds and registers two per-request caches, so no control or output changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "6472c25b4bd6c3cd1aa7102a4698719f0aa5862da7fda7912560f4fc23cf5e98",
+   "successor": "917e40c502b875c82769f5dc8fadbad863325662f2ed8176e80826357183ea79",
+   "change": "Bound the per-request caches that review readbacks and source checks use",
+   "reason": "The development release replay at this head reads every moved product_host role equal in value; the change only bounds and registers two per-request caches, so no control or output changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "368e46b9b182b1ad9b151804646477ed6c4a6898e594a14ff540a170de38c2dc",
+   "successor": "c65f3152833fbedda9c9dab968de1c8b2483a57a55f83e90fbaf5bdd56dff850",
+   "change": "Bound the per-request caches that review readbacks and source checks use",
+   "reason": "The development release replay at this head reads every moved product_host role equal in value; the change only bounds and registers two per-request caches, so no control or output changes"
+  }
+ ]
+}

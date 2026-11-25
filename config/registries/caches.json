@@ -3900,6 +3900,25 @@
       },
       "description": "Keeps each completed trial's first read in one request, reading a trial again after an eviction at capacity."
     },
+    "src/alphalattice/control/product_host/composition/review_updates.py::<module>._UPDATE_READS::request-verified-update-readbacks": {
+      "owner": "alphalattice.control.product_host.composition",
+      "defined_by": [
+        "src/alphalattice/control/product_host/composition/review_updates.py::_UPDATE_READS"
+      ],
+      "definition_line": 37,
+      "key": "reader, task id, record hash and publication hash",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "request end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "request",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "request",
+        "path_expression": "In-memory _UPDATE_READS in its module, instance, or call namespace"
+      },
+      "description": "Keeps each verified update readback for one review request, verifying it again after an eviction at capacity."
+    },
     "src/alphalattice/control/workspace_runtime/verified_facts.py::<module>._FULL_PROOF::full-proof-proved-values": {
       "owner": "alphalattice.control.workspace_runtime",
       "defined_by": [
@@ -3918,6 +3937,25 @@
         "path_expression": "In-memory _FULL_PROOF in its module, instance, or call namespace"
       },
       "description": "Shares what one full content proof has proved among its reads, proving a value again from its bytes after an eviction at capacity."
+    },
+    "src/alphalattice/control/workspace_runtime/content_store.py::<module>._SOURCE_OBSERVATIONS::acquisition-source-observations": {
+      "owner": "alphalattice.control.workspace_runtime",
+      "defined_by": [
+        "src/alphalattice/control/workspace_runtime/content_store.py::_SOURCE_OBSERVATIONS"
+      ],
+      "definition_line": 1334,
+      "key": "source path",
+      "dependency_coverage": "Yes: the key names every input the held value is derived from",
+      "invalidation_rule": "acquisition end",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "acquisition",
+      "eviction": "LRU at capacity; scope exit",
+      "safe_to_drop": "Yes: an evicted entry is derived or verified again",
+      "location": {
+        "scope": "acquisition",
+        "path_expression": "In-memory _SOURCE_OBSERVATIONS in its module, instance, or call namespace"
+      },
+      "description": "Names each shared immutable source once in one acquisition of related proofs, naming it again after an eviction at capacity."
     }
   }
 }

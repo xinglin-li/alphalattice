@@ -10,6 +10,7 @@ from functools import partial
 from typing import Any, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.decision_advancement import (
     SCHEMA as DECISION_ADVANCEMENT_SCHEMA,
@@ -31,7 +32,9 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
 _BUNDLE_TASK: ContextVar[UUID | None] = ContextVar("review_bundle_task", default=None)
 
 
-_UPDATE_READS: ContextVar[dict[tuple[str, str, str, str], dict[str, object]] | None] = ContextVar(
+type _UpdateRead = tuple[str, str, str, str]
+
+_UPDATE_READS: ContextVar[BoundedMemo[_UpdateRead, dict[str, object]] | None] = ContextVar(
     "review_update_reads", default=None
 )
 
@@ -39,7 +42,7 @@ _UPDATE_READS: ContextVar[dict[tuple[str, str, str, str], dict[str, object]] | N
 @contextmanager
 def update_readbacks() -> Iterator[None]:
     """Carry the current review request's exact verified updates to its readers."""
-    token = _UPDATE_READS.set({})
+    token = _UPDATE_READS.set(BoundedMemo())
     try:
         yield
     finally:
@@ -125,9 +128,10 @@ def read_review_update(
         if held is None:
             body = operations.readbacks.read(key, verify)
         else:
-            if key not in held:
-                held[key] = operations.readbacks.read(key, verify)
-            body = deepcopy(held[key])
+            read = held.get(key)
+            if read is None:
+                read = held[key] = operations.readbacks.read(key, verify)
+            body = deepcopy(read)
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)
     plan = cast(dict[str, object], task.input.payload["plan"])

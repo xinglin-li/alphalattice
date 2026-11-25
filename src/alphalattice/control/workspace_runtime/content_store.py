@@ -43,6 +43,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.capabilities.domain_contracts.environment import recorded_environment
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.domain_contracts.waits import pause
@@ -1330,7 +1331,7 @@ class CommittedIndex:
         )
 
 
-_SOURCE_OBSERVATIONS: ContextVar[dict[Path, tuple[object, ...] | None] | None] = ContextVar(
+_SOURCE_OBSERVATIONS: ContextVar[BoundedMemo[Path, tuple[object, ...] | None] | None] = ContextVar(
     "content_store_source_observations", default=None
 )
 
@@ -1338,7 +1339,7 @@ _SOURCE_OBSERVATIONS: ContextVar[dict[Path, tuple[object, ...] | None] | None] =
 @contextmanager
 def verified_source_observations() -> Iterator[None]:
     """Name shared immutable sources once in this acquisition of related proofs."""
-    token = _SOURCE_OBSERVATIONS.set({})
+    token = _SOURCE_OBSERVATIONS.set(BoundedMemo())
     try:
         yield
     finally:
@@ -1349,10 +1350,14 @@ def _observe_source_facts(sources: tuple[Path, ...]) -> tuple[tuple[object, ...]
     observed = _SOURCE_OBSERVATIONS.get()
     if observed is None:
         return tuple(FileDigestTrust.identity(path) for path in sources)
+    facts = []
     for path in sources:
-        if path not in observed:
-            observed[path] = FileDigestTrust.identity(path)
-    return tuple(observed[path] for path in sources)
+        try:
+            fact = observed[path]
+        except KeyError:
+            fact = observed[path] = FileDigestTrust.identity(path)
+        facts.append(fact)
+    return tuple(facts)
 
 
 __all__ = [
