@@ -34,6 +34,7 @@ from alphalattice.control.workspace_runtime.database import release_workspace_da
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.history import catalog_session as session
 from alphalattice.foundation.data_layer.root import sql_path
+from alphalattice.kernel import storage
 
 from . import market_snapshots, world
 from .world import DATASET, DISPLAY_ALIAS, LATEST, LISTING_ALIAS, _log_rows
@@ -97,7 +98,7 @@ def _serves(cursor: Any, database: Path) -> bool:
     own workspace at its open; another, one no Host here has opened, holds its rows only in its
     own tables."""
     found = cursor.execute("SELECT path FROM duckdb_databases() WHERE database_name = 'lake'")
-    (catalog,) = found.fetchone()
+    (catalog,) = storage.first(found)
     found.complete()  # the cursor's next statement needs its result finished
     key = (catalog, str(database.resolve()))
     if key not in _served:
@@ -252,10 +253,12 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
         release_workspace_database(database)  # an instance of the file this process keeps open
         cursor.execute(f"ATTACH '{sql_path(database)}' AS {alias} (READ_ONLY)").fetchall()
         try:
-            has_index = cursor.execute(
-                "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND table_name = ?",
-                [alias, market_snapshots.VERSIONS],
-            ).fetchone()
+            has_index = storage.first(
+                cursor.execute(
+                    "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND table_name = ?",
+                    [alias, market_snapshots.VERSIONS],
+                )
+            )
             committed = (
                 market_snapshots.version_relations(
                     f"{alias}.main.{market_snapshots.VERSIONS}", "lake"
@@ -272,10 +275,12 @@ def holds(database: Path, cutoff_us: int, *, listings: Sequence[str] | None = No
                     source = f"({projected})"
                 own = f"SELECT {columns} FROM {source}{rows}"
                 held = f"SELECT {columns} FROM {named[name]}"
-                differ = cursor.execute(
-                    f"SELECT EXISTS (({held}) EXCEPT ALL ({own}))"
-                    f" OR EXISTS (({own}) EXCEPT ALL ({held}))"
-                ).fetchone()[0]
+                differ = storage.first(
+                    cursor.execute(
+                        f"SELECT EXISTS (({held}) EXCEPT ALL ({own}))"
+                        f" OR EXISTS (({own}) EXCEPT ALL ({held}))"
+                    )
+                )[0]
                 if differ:
                     return False
             return True

@@ -38,6 +38,7 @@ from alphalattice.foundation.market_data_ops.storage import duckdb as market_sto
 from alphalattice.foundation.market_data_ops.storage import market_snapshots, world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.world_upgrade import market_upgrade_family
+from alphalattice.kernel import storage
 from alphalattice.kernel.clock import task_observation
 from tests.workspace_maintenance.acquisition_manifest import NOW, acquisition_manifest
 from tests.workspace_maintenance.audit_workspace import audit_one
@@ -1304,6 +1305,10 @@ def test_a_selection_copied_to_another_root_reads_there_once_carried(
     store, _manifest, database = workspace
     with store.database.connect(read_only=False) as connection:
         market_snapshots.install(connection)
+    with storage.memory() as raw:  # one-row version-index reads leave no result open on a raw
+        market_snapshots.install(raw)  # connection, which DuckDB would refuse its next relation
+        assert market_snapshots.enabled(raw) and market_snapshots.enabled(raw)
+        assert raw.sql("SELECT 1").fetchall() == [(1,)]
     world.publish_pending(store.path, "w1")
     sealed = MarketDataRepository(tmp_path / "sealed", universe_reader="workspace")
     with store.database.connect(read_only=False) as connection:

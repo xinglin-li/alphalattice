@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 from alphalattice.control.workspace_runtime.database import bind_each_connection
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.root import sql_path
+from alphalattice.kernel import storage
 from alphalattice.kernel.identity import canonical_json, identity_blake3
 
 VERSIONS = "market_catalog_version"
@@ -73,11 +74,13 @@ def install(connection: Any) -> None:
 
 def enabled(connection: Any) -> bool:
     """Existing physical market stores have no version index."""
-    return connection.execute(
-        "SELECT EXISTS (SELECT 1 FROM duckdb_tables() WHERE database_name = current_database()"
-        " AND schema_name = 'main' AND table_name = ?)",
-        [VERSIONS],
-    ).fetchone()[0]
+    return storage.first(
+        connection.execute(
+            "SELECT EXISTS (SELECT 1 FROM duckdb_tables() WHERE database_name = current_database()"
+            " AND schema_name = 'main' AND table_name = ?)",
+            [VERSIONS],
+        )
+    )[0]
 
 
 def anchored(connection: Any) -> bool:
@@ -87,7 +90,7 @@ def anchored(connection: Any) -> bool:
         "published",
         lambda: (
             connection.market_fact("indexed", lambda: enabled(connection))
-            and connection.execute(f"SELECT 1 FROM {ANCHOR}").fetchone() is not None
+            and storage.first(connection.execute(f"SELECT 1 FROM {ANCHOR}")) is not None
         ),
     )
 
@@ -96,9 +99,9 @@ def closed_selection(connection: Any, database: Path) -> tuple[int, int] | None:
     """A fully published workspace selection that can be kept without market bodies."""
     if not enabled(connection):
         return None
-    anchor = connection.execute(f"SELECT snapshot_id, cutoff_us FROM {ANCHOR}").fetchone()
+    anchor = storage.first(connection.execute(f"SELECT snapshot_id, cutoff_us FROM {ANCHOR}"))
     if anchor is None or any(
-        connection.execute(f"SELECT 1 FROM {pending_table(database, table)} LIMIT 1").fetchone()
+        storage.first(connection.execute(f"SELECT 1 FROM {pending_table(database, table)} LIMIT 1"))
         for table in OVERLAYS
     ):
         raise ValueError("market_data_ops.catalog_selection_unpublished")
@@ -112,7 +115,7 @@ def write_selection_index(
     selection's snapshot and cutoff, and the frozen file's logical content (`content_hash`)."""
     if destination.exists():
         raise ValueError("market_data_ops.catalog_selection_unpublished")
-    (source,) = connection.execute("SELECT current_database()").fetchone()
+    (source,) = storage.first(connection.execute("SELECT current_database()"))
     quoted = '"' + source.replace('"', '""') + '"'
     connection.execute(f"ATTACH '{sql_path(destination)}' AS frozen_selection")
     try:
@@ -285,8 +288,9 @@ def place_versions(
             action_join = " AND l.action_kind = v.action_id" if table == "corporate_action" else ""
             source_date = "effective_from" if table == "provider_symbol" else date
             try:
-                landed = connection.execute(
-                    f"""
+                landed = storage.first(
+                    connection.execute(
+                        f"""
                     INSERT OR REPLACE INTO {VERSIONS}
                     SELECT ?, ids.local_id, p.provider, v.{date}, {action}, v.version_id,
                            v.listing_id, {stamps}
@@ -298,8 +302,9 @@ def place_versions(
                       AND l.{source_date} = v.{date}{action_join}
                     {adjusted}
                     """,
-                    [table],
-                ).fetchone()
+                        [table],
+                    )
+                )
                 if landed != (versions.num_rows,):
                     raise ValueError("market_data_ops.catalog_version_count_moved")
                 if table == "provider_symbol":
@@ -370,7 +375,7 @@ def overlay(pending: str, committed: str, key: str) -> str:
 
 
 def _published(connection: Any) -> object:
-    return connection.execute(f"SELECT snapshot_id, cutoff_us FROM {ANCHOR}").fetchone()
+    return storage.first(connection.execute(f"SELECT snapshot_id, cutoff_us FROM {ANCHOR}"))
 
 
 _BODIES = {
@@ -389,10 +394,13 @@ def _require_held(connection: Any, relation: Callable[[str], str]) -> None:
         f"SELECT '{table}' AS world_table, count(*) AS found FROM {relation(view)}"
         for table, view in _BODIES.items()
     )
-    (short,) = connection.execute(
-        f"SELECT count(*) FROM (SELECT world_table, count(*) AS named FROM {VERSIONS} GROUP BY ALL)"
-        f" JOIN ({found}) USING (world_table) WHERE named <> found"
-    ).fetchone()
+    (short,) = storage.first(
+        connection.execute(
+            f"SELECT count(*) FROM (SELECT world_table, count(*) AS named FROM {VERSIONS} GROUP"
+            " BY ALL)"
+            f" JOIN ({found}) USING (world_table) WHERE named <> found"
+        )
+    )
     if short:
         raise ValueError("market_data_ops.catalog_selection_unavailable")
 
@@ -419,10 +427,12 @@ def write_back(connection: Any, database: Path) -> int:
     try:
         for table, (view, key) in OVERLAYS.items():
             pending = pending_table(database, table)
-            (count,) = connection.execute(
-                f"INSERT INTO {pending} SELECT prior.* FROM ({committed[view]}) prior"
-                f" ANTI JOIN {pending} written USING ({key})"
-            ).fetchone()
+            (count,) = storage.first(
+                connection.execute(
+                    f"INSERT INTO {pending} SELECT prior.* FROM ({committed[view]}) prior"
+                    f" ANTI JOIN {pending} written USING ({key})"
+                )
+            )
             written += int(count)
         connection.execute(f"DELETE FROM {VERSIONS}")
         connection.execute(f"DELETE FROM {ANCHOR}")
@@ -469,9 +479,12 @@ def bind_pending_reads(
     if (
         not fresh
         and not live
-        and connection.execute(
-            "SELECT 1 FROM duckdb_views() WHERE temporary AND view_name = 'raw_daily_bar_current'"
-        ).fetchone()
+        and storage.first(
+            connection.execute(
+                "SELECT 1 FROM duckdb_views() WHERE temporary AND view_name ="
+                " 'raw_daily_bar_current'"
+            )
+        )
     ):
         return
     committed = version_relations(VERSIONS, "workspace_market")

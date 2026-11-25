@@ -348,10 +348,12 @@ class StorePort:
             attach_catalog(lake, root)
         lake.execute("SET TimeZone = 'UTC'").complete()
         catalog_matches(lake)  # before the views, which name its columns
-        if not lake.execute(
-            "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
-            " AND schema_name = 'results' AND table_name = 'validation_receipt'"
-        ).fetchone():  # the one additive 0.2.8 catalog upgrade
+        if not storage.first(
+            lake.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name = 'lake'"
+                " AND schema_name = 'results' AND table_name = 'validation_receipt'"
+            )
+        ):  # the one additive 0.2.8 catalog upgrade
             ddl = next(
                 sql
                 for sql in statements(schema_text("catalog.sql"))
@@ -567,9 +569,9 @@ class StorePort:
                 )
             if held:
                 return str(held[0][0])
-            if self.lake.execute(
-                "SELECT 1 FROM lake.world.market WHERE mic = ? LIMIT 1", [mic]
-            ).fetchone():
+            if storage.first(
+                self.lake.execute("SELECT 1 FROM lake.world.market WHERE mic = ? LIMIT 1", [mic])
+            ):
                 raise DataError(
                     f"MIC {mic} has no current binding; register its verified market binding",
                     code="data_layer.market_mic_ambiguous",
@@ -670,11 +672,13 @@ class StorePort:
                         " IN (SELECT CAST(version_id AS UUID) FROM carried_versions"
                         f" WHERE world_table = '{table}')"
                     )
-                    wanted, held = run(
-                        "SELECT (SELECT count(DISTINCT version_id) FROM carried_versions"
-                        f" WHERE world_table = ?), (SELECT count(*) FROM ({rows}))",
-                        (table,),
-                    ).fetchone()
+                    wanted, held = storage.first(
+                        run(
+                            "SELECT (SELECT count(DISTINCT version_id) FROM carried_versions"
+                            f" WHERE world_table = ?), (SELECT count(*) FROM ({rows}))",
+                            (table,),
+                        )
+                    )
                     if held != wanted:
                         raise DataError(
                             f"{source} holds {held} of the {wanted} {table} versions the selection"
@@ -1124,10 +1128,12 @@ class StorePort:
                     code="data_layer.lineage_unregistered",
                 )
         if "market_id" in columns and staged.table != "market":
-            missing = self.lake.execute(
-                f"SELECT n.market_id FROM {source} n ANTI JOIN"
-                " lake.world.market m USING (market_id) LIMIT 1"
-            ).fetchone()
+            missing = storage.first(
+                self.lake.execute(
+                    f"SELECT n.market_id FROM {source} n ANTI JOIN"
+                    " lake.world.market m USING (market_id) LIMIT 1"
+                )
+            )
             if missing:
                 raise DataError(
                     f"market {missing[0]} is not registered; admit its market record first",
@@ -1226,7 +1232,7 @@ class StorePort:
             " FROM temp.admitting n WHERE n.fate IN ('older', 'equal_time')"
             f" AND NOT EXISTS (SELECT 1 FROM {target} v WHERE {equal})"
         ).complete()
-        return run("SELECT 1 FROM temp.retaining_observations LIMIT 1").fetchone() is not None
+        return storage.first(run("SELECT 1 FROM temp.retaining_observations LIMIT 1")) is not None
 
     def _catalog_results(
         self, staged: Staged | StagedSet, tables: tuple[Staged, ...], known: int
@@ -1288,7 +1294,7 @@ class StorePort:
             else:
                 target = f"lake.results.{table}"
                 same = " AND ".join(f"t.{k} = n.{k}" for k in RESULTS_KEYS[table])
-                if run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same}").fetchone():
+                if storage.first(run(f"SELECT 1 FROM {target} t, ({rows}) n WHERE {same} LIMIT 1")):
                     raise DataError(
                         f"{table} already holds rows of these keys; an artifact's rows are"
                         " admitted once",
@@ -1348,10 +1354,12 @@ class StorePort:
             f" WHERE s.table_id = world_table_id('{table}') AND s.version_id = t.version_id"
             f" AND s.superseded_asof = {NEVER_CURRENT})"
         )
-        late, other = self.lake.execute(
-            "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
-            f" {moved} FROM {target} t, temp.admitting n WHERE {same}{eligible}"
-        ).fetchone()
+        late, other = storage.first(
+            self.lake.execute(
+                "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
+                f" {moved} FROM {target} t, temp.admitting n WHERE {same}{eligible}"
+            )
+        )
         if other:
             raise DataError(
                 f"{other} {table} rows' keys are held under another lag rule or version than"
@@ -1383,7 +1391,7 @@ class StorePort:
         if self._block is not None and self._block.owed:
             self._block.owed.append(owed)
             return
-        snapshot = self.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()
+        snapshot = storage.first(self.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()"))
         row = {column: owed[column] for column in ENVELOPE if column in owed and column != "seq"}
         attrs = json.loads(owed["attrs"]) | {"catalog_snapshot": snapshot[0]}
         row["attrs"] = canonical(attrs).decode()
@@ -1535,9 +1543,11 @@ class StorePort:
         key = (target, omit)
         declared = self._columns.get(key)
         if declared is None:
-            (described,) = self.lake.execute(
-                f"SELECT map(list(column_name), list(column_type)) FROM (DESCRIBE {target})"
-            ).fetchone()
+            (described,) = storage.first(
+                self.lake.execute(
+                    f"SELECT map(list(column_name), list(column_type)) FROM (DESCRIBE {target})"
+                )
+            )
             declared = {name: kind for name, kind in described.items() if name not in omit}
             self._columns[key] = declared
         return declared

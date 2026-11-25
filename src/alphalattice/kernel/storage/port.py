@@ -138,6 +138,16 @@ def memory(config: Mapping[str, object] | None = None) -> Iterator[Any]:
         cursor.close()
 
 
+def first(result: Any) -> Any:
+    """A read's first row, or None, with its result finished.
+
+    DuckDB holds an execute() result open until a fetch returns no rows, and the connection then
+    refuses its next sql(), table() or register() (ResourceInUseException); `fetchone` on a row
+    leaves it open. Reading every row ends it, so this is for reads of at most a few rows."""
+    rows = result.fetchall()
+    return rows[0] if rows else None
+
+
 def schema[T](
     root: str,
     table: str | tuple[str, str],

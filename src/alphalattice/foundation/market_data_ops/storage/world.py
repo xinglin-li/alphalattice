@@ -75,6 +75,7 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
 from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     UniverseWorkspaceReader,
 )
+from alphalattice.kernel import storage
 
 from . import market_snapshots
 
@@ -970,14 +971,16 @@ def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
     if history.store() is None or not database.is_file():
         return None
     with closing(open_workspace_database(database, read_only=True)) as connection:
-        held = connection.execute(
-            "SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database()"
-            " AND table_name = ?",
-            [JOURNAL],
-        ).fetchone()[0]
+        held = storage.first(
+            connection.execute(
+                "SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database()"
+                " AND table_name = ?",
+                [JOURNAL],
+            )
+        )[0]
         moving = _bodies_unselected(connection)
         if not moving and not (
-            held and connection.execute(f"SELECT 1 FROM {JOURNAL} LIMIT 1").fetchone()
+            held and storage.first(connection.execute(f"SELECT 1 FROM {JOURNAL} LIMIT 1"))
         ):
             if published(workspace_id):
                 return None
@@ -993,12 +996,14 @@ def _bodies_unselected(connection: Any) -> bool:
     instead: a 0.2.7 workspace upgraded (its file left as it was, `admit`), one written back to
     move it (`carry_workspace`), or one with no version index yet. Its next writable whole
     publish selects them and drops the copies (`publish`)."""
-    held = connection.execute(
-        "SELECT coalesce(list(table_name), []) FROM duckdb_tables()"
-        " WHERE database_name = current_database() AND schema_name = 'main'"
-    ).fetchone()[0]
+    held = storage.first(
+        connection.execute(
+            "SELECT coalesce(list(table_name), []) FROM duckdb_tables()"
+            " WHERE database_name = current_database() AND schema_name = 'main'"
+        )
+    )[0]
     return not market_snapshots.anchored(connection) and any(
-        connection.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None
+        storage.first(connection.execute(f"SELECT 1 FROM {table} LIMIT 1")) is not None
         for table in DELTA
         if table in held
     )
@@ -1054,15 +1059,18 @@ def publish(
     if port is None:
         return None
     held = set(
-        connection.execute(
-            "SELECT list(table_name) FROM duckdb_tables() WHERE database_name = current_database()"
-        ).fetchone()[0]
+        storage.first(
+            connection.execute(
+                "SELECT list(table_name) FROM duckdb_tables() WHERE database_name ="
+                " current_database()"
+            )
+        )[0]
         or ()
     )
     if not held >= set(TABLES):
         return None
     through = (
-        connection.execute(f"SELECT max(seq) FROM {JOURNAL}").fetchone()[0]
+        storage.first(connection.execute(f"SELECT max(seq) FROM {JOURNAL}"))[0]
         if JOURNAL in held
         else None
     )
@@ -1122,7 +1130,9 @@ def publish(
                 "SELECT definition_id, name FROM definition_lineage WHERE family = 'provider'"
             )
         )
-        snapshot = port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchone()[0]
+        snapshot = storage.first(
+            port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()")
+        )[0]
         connection.execute("BEGIN TRANSACTION")
         try:
             market_snapshots.place_versions(
@@ -1189,11 +1199,13 @@ def _delta(
     )
     kinds, scopes, observed, days = set(JOURNAL_KINDS), None, {}, None
     if journal:
-        named_kinds, scopes = connection.execute(
-            "SELECT list(DISTINCT kind),"
-            f" coalesce(list(DISTINCT scope ORDER BY scope) FILTER (scope IS NOT NULL), [])"
-            f" FROM {journal}"
-        ).fetchone()
+        named_kinds, scopes = storage.first(
+            connection.execute(
+                "SELECT list(DISTINCT kind),"
+                f" coalesce(list(DISTINCT scope ORDER BY scope) FILTER (scope IS NOT NULL), [])"
+                f" FROM {journal}"
+            )
+        )
         kinds = set(named_kinds)
         whole = (
             "SELECT l.listing_id, NULL::VARCHAR AS provider, NULL::DATE AS day, d.kind,"
@@ -1226,18 +1238,24 @@ def _delta(
             " AND (d.provider IS NULL OR d.provider = t.provider AND d.day = t.effective_from)"
             " GROUP BY ALL"
         )
-        listed, times = connection.execute(
-            "SELECT coalesce(list(listing_id), []), coalesce(list(us), []) FROM (SELECT listing_id,"
-            " epoch_us(coalesce(max(observed_at) FILTER (kind = 'reference' AND provider IS NULL"
-            " AND NOT whole), max(observed_at) FILTER (kind = 'reference'), max(observed_at)))"
-            f" AS us FROM ({keyed} UNION ALL {whole}) GROUP BY ALL)"
-        ).fetchone()
+        listed, times = storage.first(
+            connection.execute(
+                "SELECT coalesce(list(listing_id), []), coalesce(list(us), []) FROM (SELECT"
+                " listing_id,"
+                " epoch_us(coalesce(max(observed_at) FILTER (kind = 'reference' AND provider"
+                " IS NULL"
+                " AND NOT whole), max(observed_at) FILTER (kind = 'reference'), max(observed_at)))"
+                f" AS us FROM ({keyed} UNION ALL {whole}) GROUP BY ALL)"
+            )
+        )
         observed = dict(zip(listed, times, strict=True))
-        dated, firsts = connection.execute(
-            "SELECT coalesce(list(day), []), coalesce(list(us), []) FROM (SELECT day,"
-            f" epoch_us(min(observed_at)) AS us FROM {journal} WHERE day IS NOT NULL"
-            " AND kind IN ('bars', 'actions') GROUP BY ALL)"
-        ).fetchone()
+        dated, firsts = storage.first(
+            connection.execute(
+                "SELECT coalesce(list(day), []), coalesce(list(us), []) FROM (SELECT day,"
+                f" epoch_us(min(observed_at)) AS us FROM {journal} WHERE day IS NOT NULL"
+                " AND kind IN ('bars', 'actions') GROUP BY ALL)"
+            )
+        )
         days = dict(zip(dated, firsts, strict=True))
     lake.execute(f"ATTACH ':memory:' AS {WORKSPACE}").complete()
     for table, query in queries.items():
@@ -1261,11 +1279,14 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
     try:
         with closing(open_workspace_database(database, read_only=True)) as connection:
             for table in ("sector_classification_current", "sector_classification_revision"):
-                if connection.execute(
-                    "SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database()"
-                    " AND table_name = ?",
-                    [table],
-                ).fetchone()[0]:
+                if storage.first(
+                    connection.execute(
+                        "SELECT count(*) FROM duckdb_tables() WHERE database_name ="
+                        " current_database()"
+                        " AND table_name = ?",
+                        [table],
+                    )
+                )[0]:
                     rows = connection.sql(f"FROM {table}").to_arrow_table()
                     port.lake.register("sector_rows", rows)
                     try:
@@ -1280,14 +1301,19 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
         }
         if "sector_classification_current" not in tables:
             return None
-        current_mark = run(
-            f"SELECT [count(*), bit_xor(hash(t))] FROM {WORKSPACE}.sector_classification_current t"
-        ).fetchone()[0]
-        revision_mark = (
+        current_mark = storage.first(
             run(
-                "SELECT [count(*), bit_xor(hash(t))] FROM "
-                f"{WORKSPACE}.sector_classification_revision t"
-            ).fetchone()[0]
+                "SELECT [count(*), bit_xor(hash(t))] FROM"
+                f" {WORKSPACE}.sector_classification_current t"
+            )
+        )[0]
+        revision_mark = (
+            storage.first(
+                run(
+                    "SELECT [count(*), bit_xor(hash(t))] FROM "
+                    f"{WORKSPACE}.sector_classification_revision t"
+                )
+            )[0]
             if "sector_classification_revision" in tables
             else None
         )
@@ -1365,11 +1391,13 @@ def admit_sectors(database: Path, workspace_id: str) -> dict[str, Any] | None:
                 " sector_code FROM facts ORDER BY listing_id, valid_from",
                 params,
             ).to_arrow_table()
-            expected = run(
-                f"SELECT count(*) FROM {WORKSPACE}.sector_classification_current"
-                " WHERE provider = ?",
-                [provider],
-            ).fetchone()[0]
+            expected = storage.first(
+                run(
+                    f"SELECT count(*) FROM {WORKSPACE}.sector_classification_current"
+                    " WHERE provider = ?",
+                    [provider],
+                )
+            )[0]
             pc = import_module("pyarrow.compute")  # lazy: the optional data extra
 
             if len(pc.unique(batch["listing_id"])) != expected:
@@ -1414,25 +1442,27 @@ def sector_map(
     if not listings:
         return {}
     reader = cursor if cursor is not None else port.lake
-    (found,) = reader.execute(
-        "WITH choices AS (SELECT DISTINCT a.symbol, s.scheme_id, s.sector_code, s.valid_from"
-        " FROM sector_asof(?) s JOIN provider_symbol_asof(?) a ON a.listing_id = s.listing_id"
-        " WHERE a.provider_id = ? AND a.symbol IN (SELECT unnest(?))"
-        " AND s.valid_from <= ? AND (s.valid_to IS NULL OR s.valid_to >= ?)),"
-        " current AS (SELECT * FROM choices QUALIFY row_number() OVER"
-        " (PARTITION BY symbol, scheme_id ORDER BY valid_from DESC) = 1)"
-        " SELECT map(list(symbol ORDER BY symbol), list(code ORDER BY symbol)) FROM"
-        " (SELECT symbol, min(sector_code) AS code FROM current GROUP BY symbol"
-        " HAVING count(*) = 1)",
-        [
-            cutoff_us,
-            LATEST,
-            _lineage("provider", LISTING_ALIAS),
-            list(listings),
-            session,
-            session,
-        ],
-    ).fetchone()
+    (found,) = storage.first(
+        reader.execute(
+            "WITH choices AS (SELECT DISTINCT a.symbol, s.scheme_id, s.sector_code, s.valid_from"
+            " FROM sector_asof(?) s JOIN provider_symbol_asof(?) a ON a.listing_id = s.listing_id"
+            " WHERE a.provider_id = ? AND a.symbol IN (SELECT unnest(?))"
+            " AND s.valid_from <= ? AND (s.valid_to IS NULL OR s.valid_to >= ?)),"
+            " current AS (SELECT * FROM choices QUALIFY row_number() OVER"
+            " (PARTITION BY symbol, scheme_id ORDER BY valid_from DESC) = 1)"
+            " SELECT map(list(symbol ORDER BY symbol), list(code ORDER BY symbol)) FROM"
+            " (SELECT symbol, min(sector_code) AS code FROM current GROUP BY symbol"
+            " HAVING count(*) = 1)",
+            [
+                cutoff_us,
+                LATEST,
+                _lineage("provider", LISTING_ALIAS),
+                list(listings),
+                session,
+                session,
+            ],
+        )
+    )
     return found or {}
 
 
@@ -1469,7 +1499,9 @@ def _revisions(port: Any, workspace_id: str) -> None:
                 "durable": False,
             },
         )
-        ids = run(f"SELECT coalesce(list(revision_id), []) FROM {WORKSPACE}.{table}").fetchone()[0]
+        ids = storage.first(
+            run(f"SELECT coalesce(list(revision_id), []) FROM {WORKSPACE}.{table}")
+        )[0]
         held = port.log.read(
             "SELECT subject_id FROM event WHERE type = ? AND workspace_id = ?"
             " AND subject_id IN (SELECT value FROM json_each(?))",
@@ -1536,7 +1568,7 @@ def _admit(
     of its day (`days`; a day beyond them, of the calendar's reach, at the latest), where the
     journal names them."""
     run, w = port.lake.execute, WORKSPACE
-    named = run(f"SELECT coalesce(list(listing_id), []) FROM {w}.listing").fetchone()[0]
+    named = storage.first(run(f"SELECT coalesce(list(listing_id), []) FROM {w}.listing"))[0]
     run("CREATE OR REPLACE TEMP TABLE market_ids (old VARCHAR, new UUID)").complete()
     port.lake.executemany(
         "INSERT INTO temp.market_ids VALUES (?, ?)", [(old, world_listing(old)) for old in named]
@@ -1673,12 +1705,14 @@ def _sessions(
     if not codes:
         return {}
     w = WORKSPACE
-    first, last = run(
-        f"SELECT min(d), max(d) FROM (SELECT session_date AS d FROM {w}.raw_daily_bar_current"
-        f" UNION ALL SELECT effective_date FROM {w}.corporate_action_current UNION ALL SELECT"
-        f" effective_from FROM {w}.provider_symbol_mapping UNION ALL SELECT effective_to FROM"
-        f" {w}.provider_symbol_mapping)"
-    ).fetchone()
+    first, last = storage.first(
+        run(
+            f"SELECT min(d), max(d) FROM (SELECT session_date AS d FROM {w}.raw_daily_bar_current"
+            f" UNION ALL SELECT effective_date FROM {w}.corporate_action_current UNION ALL SELECT"
+            f" effective_from FROM {w}.provider_symbol_mapping UNION ALL SELECT effective_to FROM"
+            f" {w}.provider_symbol_mapping)"
+        )
+    )
     if first is None:  # rows of no date: their markets' sessions are world's already
         return {market: [] for market in sorted(codes)}
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: untyped calendars
