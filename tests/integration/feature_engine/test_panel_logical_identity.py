@@ -11,6 +11,7 @@ import pytest
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
@@ -23,7 +24,7 @@ from alphalattice.foundation.feature_engine.panels.logical_identity import (
 
 @pytest.mark.proves("feature_engine.logical_identity_moves_only_with_content")
 def test_physical_encoding_and_provenance_do_not_change_logical_identity(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     resolver = ArtifactResolver(tmp_path / "artifacts")
     first, second = (
@@ -40,7 +41,38 @@ def test_physical_encoding_and_provenance_do_not_change_logical_identity(
     publisher = PanelLogicalIdentityPublisher(resolver=resolver, store=store)
     assert not hasattr(publisher, "publish_equivalence_attestation")
 
-    first_marker = publisher.publish_snapshot(first, published_at=_now())
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.foundation.feature_engine.panels import logical_contracts
+
+    records: list[tuple[Path, str]] = []
+    revision_hashes: list[str] = []
+
+    def counted(payload):
+        digest = canonical_hash(payload)
+        if isinstance(payload, dict) and payload.get("kind") == "PanelLogicalRevision":
+            revision_hashes.append(digest)
+        return digest
+
+    monkeypatch.setattr(logical_contracts, "canonical_hash", counted)
+    with stage_digests():
+        first_marker = publisher.publish_snapshot(
+            first,
+            published_at=_now(),
+            on_chunk_digest=lambda path, digest: records.append((path, digest)),
+        )
+        assert publisher.verify_snapshot(first_marker.legacy_snapshot_hash) == first_marker
+    assert revision_hashes == [first_marker.logical_panel_hash]
+    manifest = resolver.load_feature_panel_manifest(first)
+    chunks = {
+        resolver.resolve_feature_panel_chunk_ref(
+            uri=chunk["uri"],
+            content_hash=chunk["chunk_hash"],
+            metadata_hash=chunk["metadata_hash"],
+        )
+        for chunk in manifest["chunks"]
+    }
+    assert len(records) == len(chunks)
+    assert dict(records) == {path: file_sha256(path) for path in chunks}
     second_marker = publisher.publish_snapshot(second, published_at=_now())
 
     assert first_marker.logical_panel_hash == second_marker.logical_panel_hash

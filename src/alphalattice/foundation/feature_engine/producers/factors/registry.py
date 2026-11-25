@@ -26,6 +26,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import DesktopCoreFeatureBundle
@@ -114,7 +115,8 @@ class FeatureKernelRegistry:
         however their composition function happened to list them.
         """
         return str(
-            canonical_hash(
+            stage_digest(
+                ("installed-feature-kernel-capability",),
                 {
                     "kind": "InstalledFeatureKernelCapability",
                     "kernels": [
@@ -136,7 +138,8 @@ class FeatureKernelRegistry:
                             self._kernels.values(), key=lambda value: value.implementation_id
                         )
                     ],
-                }
+                },
+                canonical_hash,
             )
         )
 

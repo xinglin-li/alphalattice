@@ -52,6 +52,7 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.protocols.research_authoring.contracts import DecisionCutoff, MarketPhase
@@ -334,6 +335,13 @@ def formula_skip_sessions(specification: FactorSpec) -> int:
     return value
 
 
+def _source_availability_digest(identity: dict[str, object]) -> str:
+    """Share the SHA-256 of the privately dumped catalog within this request or stage."""
+    return stage_digest(
+        ("source-availability-catalog", identity["catalog_id"]), identity, canonical_hash
+    )
+
+
 class SourceAvailabilityCatalog(_Contract):
     """Every installed source-availability owner, and which fields each answers for.
 
@@ -361,7 +369,7 @@ class SourceAvailabilityCatalog(_Contract):
         identity = cls.model_construct(**values, catalog_hash="0" * 64).model_dump(
             mode="json", exclude={"catalog_hash"}
         )
-        return cls(**values, catalog_hash=str(canonical_hash(identity)))
+        return cls(**values, catalog_hash=_source_availability_digest(identity))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_catalog(self) -> Self:
@@ -381,7 +389,7 @@ class SourceAvailabilityCatalog(_Contract):
             raise FeatureObservationClockError(
                 "feature_engine.source_point_in_time_marks_incomplete"
             )
-        if self.catalog_hash != canonical_hash(
+        if self.catalog_hash != _source_availability_digest(
             self.model_dump(mode="json", exclude={"catalog_hash"})
         ):
             raise FeatureObservationClockError(
@@ -740,17 +748,14 @@ def formula_observation_policy_hash(clocks: Iterable[FeatureObservationClock]) -
     ordered = sorted(clocks, key=lambda item: item.factor_id)
     if len({item.factor_id for item in ordered}) != len(ordered):
         raise FeatureObservationClockError("feature_engine.observation_clock_duplicated")
-    return str(
-        canonical_hash(
-            {
-                "kind": "FeatureFormulaObservationPolicy",
-                "policy_id": FEATURE_OBSERVATION_CLOCK_POLICY_ID,
-                "clocks": [
-                    {"factor_id": item.factor_id, "clock_hash": item.clock_hash} for item in ordered
-                ],
-            }
-        )
-    )
+    payload = {
+        "kind": "FeatureFormulaObservationPolicy",
+        "policy_id": FEATURE_OBSERVATION_CLOCK_POLICY_ID,
+        "clocks": [
+            {"factor_id": item.factor_id, "clock_hash": item.clock_hash} for item in ordered
+        ],
+    }
+    return stage_digest(("feature-formula-observation-policy",), payload, canonical_hash)
 
 
 def latest_selectable_observation_session(

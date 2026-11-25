@@ -16,13 +16,11 @@ from __future__ import annotations
 
 import base64
 import copy
-import ctypes
 import functools
 import json
 import marshal
 import os
 import shutil
-import sys
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -35,7 +33,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
-from types import CodeType
+from types import CodeType, MappingProxyType
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -56,7 +54,7 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     record_file_fact,
 )
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import integrity_sha256, integrity_sha256_path
+from alphalattice.kernel.identity import FileDigestTrust, integrity_sha256
 from alphalattice.kernel.resources import worker_width
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
@@ -86,6 +84,10 @@ _VERIFIED_SOURCE_CHECK_POOL_LOCK = Lock()
 _VERIFIED_SOURCE_CHECK_SLOTS = BoundedSemaphore(_VERIFIED_SOURCE_CHECK_WORKERS)
 _VERIFIED_SOURCE_CHECK_RUNNING: ContextVar[bool] = ContextVar(
     "content_store_verified_source_check_running", default=False
+)
+_REQUEST_ONLY_NPZ = object()
+_VERIFIED_SOURCE_CHECK_NPZ: ContextVar[Mapping[_VERIFIED_ARRAY_KEY, object] | None] = ContextVar(
+    "content_store_verified_source_check_npz", default=None
 )
 _VERIFIED_ARRAY_PROCESS_CACHE_HITS = 0
 _VERIFIED_ARRAY_PROCESS_CACHE_MISSES = 0
@@ -153,7 +155,7 @@ def verified_source_value[T](
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
         return builder()
-    facts = tuple(_file_identity(path) for path in sources)
+    facts = _observe_source_facts(sources)
     if None in facts:  # a source that cannot be read keeps nothing; its builder names the failure
         token = _VERIFIED_SOURCE_BUILD.set(True)
         try:
@@ -212,16 +214,24 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
 
     Cross-record bindings, dependencies and control checks remain in the caller. Each
     callback performs its owner's checks. Callbacks run in fresh Contexts and independent
-    model/array/proof scopes, inheriting only the caller's proof mode and declared-source-build
-    policy. At most two callbacks are submitted
-    process-wide; nested calls run serially to avoid waiting on their own pool. Every
+    model/array/proof scopes. They inherit the caller's proof and source-build policy and
+    can read NPZ decodes already made in that ordinary request. At most two callbacks are
+    submitted process-wide; nested calls run serially to avoid waiting on their own pool. Every
     submitted check completes before return or refusal, with errors in input order.
     """
     full = _FULL_PROOF.get()
     source_build = _VERIFIED_SOURCE_BUILD.get()
+    npz_read_view = _VERIFIED_SOURCE_CHECK_NPZ.get()
+    scope = _VERIFIED_ARRAY_SCOPE.get()
+    if full is None and npz_read_view is None and scope:
+        # Share only immutable decodes. Workers cannot mutate or keep the caller's LRU alive.
+        npz_read_view = MappingProxyType(
+            {key: value for key, (value, _) in scope.items() if key and key[0] is _REQUEST_ONLY_NPZ}
+        )
 
     def run(check: Callable[[], None]) -> None:
         _VERIFIED_SOURCE_CHECK_RUNNING.set(True)
+        _VERIFIED_SOURCE_CHECK_NPZ.set(npz_read_view)
         _VERIFIED_SOURCE_BUILD.set(source_build)
         _FULL_PROOF.set(full)
         with (
@@ -371,6 +381,7 @@ def verified_request_value[T](
     nbytes: int | Callable[[T], int],
     copy_mutable: bool = False,
     file_snapshot: tuple[str, ...] | None = None,
+    _request_only: bool = False,
 ) -> T:
     """Memoize one immutable, validated value under local and optional process byte bounds.
 
@@ -393,14 +404,20 @@ def verified_request_value[T](
         return _proved_request_value(proved, key, builder, nbytes, copy_mutable=copy_mutable)
     # A nested key cannot reuse a value from before the enclosing source changed.
     scope = _VERIFIED_ARRAY_SCOPE.get()
-    if _VERIFIED_SOURCE_BUILD.get() and file_snapshot is None:
+    if _VERIFIED_SOURCE_BUILD.get() and file_snapshot is None and not _request_only:
         scope = None
     if scope is not None and key in scope:
         value, _ = scope[key]
         scope.move_to_end(key)
         return cast(T, _handed(value))
 
-    if scope is not None:
+    if _request_only:
+        read_view = _VERIFIED_SOURCE_CHECK_NPZ.get()
+        value = read_view.get(key, _ABSENT) if read_view is not None else _ABSENT
+        if value is not _ABSENT:
+            return cast(T, value)
+
+    if scope is not None and not _request_only:
         global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
         with _VERIFIED_ARRAY_CACHE_LOCK:
             cached = _VERIFIED_ARRAY_CACHE.get(key)
@@ -429,7 +446,7 @@ def verified_request_value[T](
         return value
     if size <= _VERIFIED_ARRAY_CACHE_LIMIT_BYTES:
         _remember_request_value(scope, key, kept, size)
-    if size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
+    if not _request_only and size <= _VERIFIED_ARRAY_PROCESS_CACHE_LIMIT_BYTES:
         _remember_process_value(key, kept, size)
     return cast(T, _handed(kept))
 
@@ -501,7 +518,7 @@ def _remember_process_value(key: _VERIFIED_ARRAY_KEY, value: object, size: int) 
 def verified_npz_arrays(
     payload: bytes, *, identity: tuple[object, ...]
 ) -> dict[str, npt.NDArray[Any]]:
-    """Decode a sealed NPZ once per exact identity, in the request and the process memo.
+    """Reuse a sealed NPZ decode in its request, or in the process memo for a top-level owner.
 
     ``identity`` names the owner namespace, the artifact's content hash and its resolved
     path. This grants no current-pointer authority; it only avoids repeating NPZ inflation.
@@ -529,10 +546,18 @@ def verified_npz_arrays(
                 )
         return tuple(values)
 
+    nested = _VERIFIED_SOURCE_BUILD.get()
+    # Another source owner in this request can share this decode. Its actual immutable
+    # bytes distinguish replacement or restore even when the caller supplies the same name.
+    # The enclosing source remains the only process owner of its result.
+    key = (_REQUEST_ONLY_NPZ, *identity, payload) if nested else ("npz-arrays", *identity)
     cached = verified_request_value(
-        ("npz-arrays", *identity),
+        key,
         build_arrays,
-        nbytes=lambda values: sum(array.nbytes for _, array in values),
+        nbytes=lambda values: (
+            (len(payload) if nested else 0) + sum(array.nbytes for _, array in values)
+        ),
+        _request_only=nested,
     )
     return dict(cached)
 
@@ -555,52 +580,6 @@ def verified_model_read_scope() -> Iterator[None]:
         finally:
             scope.clear()
             _VERIFIED_MODEL_SCOPE.reset(scope_token)
-
-
-def _file_identity(path: Path) -> tuple[object, ...] | None:
-    """The file now at ``path`` for its lifetime, or None when none can be named there.
-
-    A kept value is bound to it, so a file gone from its path, or another file put there, is read
-    again rather than answered from memory: a test's numbered tmp_path is reused once pytest
-    removes a passing test's folder, and a restored workspace sits at its old path. A sealed file
-    rewritten in place is still the same file: an ordinary read keeps the bytes proved when they
-    entered, and full proof refuses the change (EV2).
-
-    Linux gives a freed inode number to the next new file at once, so there the file is named by
-    its file handle, the inode number with its generation (name_to_handle_at). Elsewhere the file
-    id, which NTFS and APFS do not give again at once, is bound to the file's creation time. A
-    file system that names no handle (9p, an overlay without one) keeps nothing."""
-    try:
-        if sys.platform == "linux":
-            return _file_handle(path)
-        stat = os.stat(path)
-        return (stat.st_dev, stat.st_ino, stat.st_birthtime)
-    except OSError:
-        return None
-
-
-class _FileHandle(ctypes.Structure):
-    """Linux's struct file_handle, with room for the largest handle (MAX_HANDLE_SZ)."""
-
-    _fields_ = [
-        ("handle_bytes", ctypes.c_uint),
-        ("handle_type", ctypes.c_int),
-        ("f_handle", ctypes.c_ubyte * 128),
-    ]
-
-
-_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform == "linux" else None
-
-
-def _file_handle(path: Path) -> tuple[object, ...] | None:
-    """The mount and file handle of the file at ``path``, following a link as os.stat does."""
-    handle, mount = _FileHandle(handle_bytes=128), ctypes.c_int()
-    named = getattr(_LIBC, "name_to_handle_at", None)
-    at_cwd, follow = -100, 0x400  # AT_FDCWD, AT_SYMLINK_FOLLOW
-    pointers = (ctypes.byref(handle), ctypes.byref(mount))
-    if named is None or named(at_cwd, os.fsencode(path), *pointers, follow):
-        return None
-    return (mount.value, handle.handle_type, bytes(handle.f_handle[: handle.handle_bytes]))
 
 
 def _deeply_immutable_model(value: BaseModel) -> bool:
@@ -764,7 +743,7 @@ def _column_kind(store: ContentAddressedStore) -> str | None:
         columns_digest,
         store._columns,
         store._stable_columns,
-        integrity_sha256_path,
+        FileDigestTrust.fresh_digest,
     )
     if any(
         getattr(getattr(function, "__func__", function), "__closure__", None)
@@ -904,10 +883,15 @@ class ContentAddressedStore:
         """
         self.require_hash(content_hash)
         target = self.root / category / f"{content_hash}.json"
+        nested = _VERIFIED_SOURCE_BUILD.get()
+        payload_size = 0
 
         def verify() -> ContractT:
-            scope = _VERIFIED_MODEL_SCOPE.get()
-            fact = _file_identity(target) if scope is not None else None
+            nonlocal payload_size
+            # The outer source lookup has already named the file for this load. Only a
+            # nested reader needs its own model lookup: its enclosing source keeps the result.
+            scope = _VERIFIED_MODEL_SCOPE.get() if nested else None
+            fact = FileDigestTrust.identity(target) if scope is not None else None
             cacheable = fact is not None and model.model_config.get("frozen")
             key = (os.fspath(target.absolute()), fact, content_hash, model, identity_field)
             if cacheable:
@@ -917,6 +901,7 @@ class ContentAddressedStore:
             try:
                 with span("read", "model"):
                     payload = target.read_bytes()
+                payload_size = len(payload)
             except FileNotFoundError as error:
                 raise ContentAddressedStoreError(
                     f"content_store.artifact_missing:{content_hash}"
@@ -948,7 +933,7 @@ class ContentAddressedStore:
                 ),
                 (target,),
                 verify,
-                nbytes=lambda _: target.stat().st_size,
+                nbytes=lambda _: payload_size,
             ),
         )
 
@@ -1095,9 +1080,9 @@ class ContentAddressedStore:
     def _stable_columns(self, target: Path) -> tuple[dict[str, npt.NDArray[Any]], str]:
         """Bind a decoded table to its bytes without keeping a changed read as a proof."""
         try:
-            before = integrity_sha256_path(target)
+            before = FileDigestTrust.fresh_digest(target)
             columns = self._columns(target)
-            if integrity_sha256_path(target) != before:
+            if FileDigestTrust.fresh_digest(target) != before:
                 raise ContentAddressedStoreError("content_store.artifact_tampered")
             return columns, before
         except FileNotFoundError as error:
@@ -1250,19 +1235,41 @@ class CommittedIndex:
         target = self.path(kind.index, key)
         if not target.is_file():
             return None
-        try:
-            entry = json.loads(target.read_text(encoding="utf-8"))
+
+        def verify() -> ContractT:
+            entry = json.loads(payload.decode("utf-8"))
             if entry["key"] != key:
                 raise ValueError
-            value = kind.model.model_validate(entry["payload"])
+            value = cast(ContractT, kind.model.model_validate(entry["payload"]))
             if str(getattr(value, kind.identity_field)) != entry["identity"]:
                 raise ValueError
+            return value
+
+        try:
+            fact = None
+            with target.open("rb") as stream:
+                payload = stream.read()
+                if _VERIFIED_ARRAY_SCOPE.get() is not None or full_proof():
+                    try:
+                        fact = FileDigestTrust.stamp(target, handle=stream)
+                    except OSError:
+                        fact = None
+            if fact is None or not fact[1]:
+                value = verify()
+            else:
+                # The bytes catch in-place edits even if the file's clocks repeat.
+                value = verified_request_value(
+                    ("committed-index", target.absolute(), kind, key, fact, payload),
+                    verify,
+                    nbytes=len(payload),
+                    _request_only=True,
+                )
         except (ContentAddressedStoreError, KeyError, ValueError, json.JSONDecodeError) as error:
             raise ContentAddressedStoreError("content_store.committed_index_tampered") from error
         self.content.publish_model(
             category=kind.category, value=value, identity_field=kind.identity_field
         )
-        return cast(ContractT, value)
+        return value
 
     def load[ContractT: BaseModel](
         self, kind: CommittedKind[ContractT], content_hash: str
@@ -1284,6 +1291,31 @@ class CommittedIndex:
         )
 
 
+_SOURCE_OBSERVATIONS: ContextVar[dict[Path, tuple[object, ...] | None] | None] = ContextVar(
+    "content_store_source_observations", default=None
+)
+
+
+@contextmanager
+def verified_source_observations() -> Iterator[None]:
+    """Name shared immutable sources once in this acquisition of related proofs."""
+    token = _SOURCE_OBSERVATIONS.set({})
+    try:
+        yield
+    finally:
+        _SOURCE_OBSERVATIONS.reset(token)
+
+
+def _observe_source_facts(sources: tuple[Path, ...]) -> tuple[tuple[object, ...] | None, ...]:
+    observed = _SOURCE_OBSERVATIONS.get()
+    if observed is None:
+        return tuple(FileDigestTrust.identity(path) for path in sources)
+    for path in sources:
+        if path not in observed:
+            observed[path] = FileDigestTrust.identity(path)
+    return tuple(observed[path] for path in sources)
+
+
 __all__ = [
     "CommittedIndex",
     "CommittedKind",
@@ -1297,6 +1329,7 @@ __all__ = [
     "verified_npz_arrays",
     "verified_request_proof",
     "verified_request_value",
+    "verified_source_observations",
     "verified_source_value",
     "verify_source_checks",
 ]

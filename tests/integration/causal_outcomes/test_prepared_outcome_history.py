@@ -331,9 +331,39 @@ def test_prepared_arrow_buffers_match_the_row_builders_exact_ipc(tmp_path, lengt
     assert _files(root) == inventory and len(admissions) == writes
 
 
-@pytest.mark.parametrize("damage", ["bar", "action", "duplicate_axis", "unsorted_axis"])
-def test_captured_market_snapshot_refuses_outside_or_noncanonical_axes(damage):
+@pytest.mark.parametrize("damage", ["bar", "action", "duplicate_axis", "unsorted_axis", "identity"])
+def test_captured_market_snapshot_refuses_outside_or_noncanonical_axes(damage, monkeypatch):
     source = _source()
+    if damage == "identity":
+        from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+        from alphalattice.foundation.causal_outcomes.execution import contracts
+
+        seen = []
+        digest = contracts.canonical_hash
+
+        def counted(value):
+            seen.append(1)
+            return digest(value)
+
+        monkeypatch.setattr(contracts, "canonical_hash", counted)
+        raw = source.model_dump(mode="json")
+        with stage_digests():
+            assert LocalQAMarketSnapshot.model_validate(raw) == source
+            assert LocalQAMarketSnapshot.model_validate(raw) == source
+            assert seen == [1]
+            with pytest.raises(ValueError, match=r"causal_outcomes\.qa_market_snapshot_invalid"):
+                LocalQAMarketSnapshot.model_validate(raw | {"source_hash": "f" * 64})
+            assert seen == [1, 1]
+        seen.clear()
+        with stage_digests():
+            values = {
+                name: getattr(source, name)
+                for name in LocalQAMarketSnapshot.model_fields
+                if name != "content_hash"
+            }
+            assert LocalQAMarketSnapshot.create(**values) == source
+            assert seen == [1]
+        return
     values = dict(
         source_hash=source.source_hash,
         through=source.through,

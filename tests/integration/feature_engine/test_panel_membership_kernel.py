@@ -66,8 +66,12 @@ def _binding(*, current: bool = False) -> FeaturePanelBinding:
 SESSIONS = tuple(date(2026, 1, 5) + timedelta(days=offset) for offset in range(8))
 
 
-def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_them(tmp_path):
+def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_them(
+    tmp_path, monkeypatch
+):
 
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.control.workspace_runtime import artifacts
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
         PanelClosureArtifactStore,
@@ -78,6 +82,7 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
     from alphalattice.foundation.feature_engine.producers.cross_section import (
         clip_observation_record,
     )
+    from alphalattice.foundation.feature_engine.producers.preprocessing import contracts
 
     axis = _axis(60)
     sectors = _sectors(axis)
@@ -95,16 +100,34 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
     )
     retained = (sessions[0], sessions[-1])
     resolver = ArtifactResolver(tmp_path / "artifacts")
-    record = clip_observation_record(original)
-    payload = record.model_dump(mode="json")
-    published = resolver.publish_panel_clip_observation(
-        payload=payload, receipt_hash=record.receipt_hash
-    )
-    # A batch replayed under its receipt republishes the same document; another is refused.
-    assert (
-        resolver.publish_panel_clip_observation(payload=payload, receipt_hash=record.receipt_hash)
-        == published
-    )
+    verified = []
+
+    def count(value):
+        identity = canonical_hash(value)
+        if isinstance(value, dict) and value.get("kind") == "PanelClipObservationRecord":
+            verified.append(identity)
+        return identity
+
+    with monkeypatch.context() as probe, stage_digests():
+        probe.setattr(contracts, "canonical_hash", count)
+        probe.setattr(artifacts, "canonical_hash", count)
+        record = clip_observation_record(original)
+        payload = record.model_dump(mode="json")
+        published = resolver.publish_panel_clip_observation(
+            payload=payload, receipt_hash=record.receipt_hash
+        )
+        assert (
+            resolver.publish_panel_clip_observation(
+                payload=payload, receipt_hash=record.receipt_hash
+            )
+            == published
+        )
+        changed = {**payload, "transformed_identity": "0" * 64}
+        with pytest.raises(ValueError, match="panel clip observation identity is invalid"):
+            resolver.publish_panel_clip_observation(
+                payload=changed, receipt_hash=record.receipt_hash
+            )
+    assert len(verified) == 2 and verified[0] == record.record_hash != verified[1]
     other = {key: value for key, value in payload.items() if key != "record_hash"}
     other["transformed_identity"] = "0" * 64  # another transformation under the same receipt
     other["record_hash"] = canonical_hash(other)

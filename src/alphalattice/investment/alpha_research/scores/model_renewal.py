@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from datetime import date
 from functools import partial
 from io import BytesIO
-from itertools import chain
 from pathlib import Path
 from typing import Literal, Self, cast
 
@@ -224,8 +223,7 @@ def copy_training_observations(
         Model-validated original price/volume inputs read back before copying.
     """
     current = AlphaCurrentArtifactStore(source.root.parent)
-    snapshot = current.load_frozen_observation_snapshot(observations.observation_hash)
-    original = current.load_frozen_observations(observations.observation_hash)
+    snapshot, original = current.load_frozen_observation(observations.observation_hash)
     target._publish("frozen-observation-snapshots", snapshot, "snapshot_hash")
     for category, identity in (
         *(("frozen-observation-arrays", block) for block in snapshot.array_files),
@@ -684,9 +682,17 @@ def read_lifecycle_child(
     prepared = store._load(
         "lifecycle-prepared-refits", child.prepared_hash, "content_hash", AlphaPreparedRefit
     )
+    return prepared, _read_lifecycle_estimator(store, child, prepared)
+
+
+def _read_lifecycle_estimator(
+    store: AlphaDevelopmentArtifactStore,
+    child: AlphaRenewedChild | AlphaImportedChild,
+    prepared: AlphaPreparedRefit,
+) -> AlphaEstimatorContent:
     if isinstance(child, AlphaImportedChild):
         payload = store._frozen_payload("imported-models", child.payload_hash)
-        model = AlphaEstimatorContent.model_validate_json(payload)
+        model = cast(AlphaEstimatorContent, AlphaEstimatorContent.model_validate_json(payload))
     else:
         _, model, receipt = store.load_model_fit_sidecar(child.operation_hash)
         component = next(
@@ -725,7 +731,7 @@ def read_lifecycle_child(
         or prepared.plan.lifecycle.content_hash != child.lifecycle_hash
     ):
         raise AlphaLifecycleError("alpha_research.renewed_child_binding_invalid")
-    return prepared, model
+    return model
 
 
 @dataclass
@@ -1760,67 +1766,88 @@ def admit_component_inference(
         FrozenInferenceError: The selected frozen fallback authority/model closure cannot be
             verified.
     """
-    path = root if root.is_file() else root / "model-lifecycle-admission.json"
-    if not path.exists():
-        return admit_frozen_inference(root, expected_hash=expected_hash)
+    return admit_component_inferences(((root, expected_hash),), store=store)[0]
+
+
+def admit_component_inferences(
+    requests: tuple[tuple[Path, str], ...], *, store: AlphaCurrentArtifactStore
+) -> tuple[AdmittedFrozenInference | AdmittedRenewingInference, ...]:
+    """Verify all renewing authorities in one acquisition of their shared retained sources."""
     scope = _VERIFIED.get()
-    key = ("admission", str(store.root), str(path), expected_hash)
-    if scope is not None and key in scope:
-        return AdmittedRenewingInference(
-            store.root.parent, cast(AlphaModelLifecycleAdmission, scope[key])
-        )
-    authority = _verify_lifecycle_admission(root, store=store, expected_hash=expected_hash)
-    if scope is not None:
-        scope[key] = authority
-    return AdmittedRenewingInference(store.root.parent, authority)
+    held: dict[tuple[str, ...], AlphaModelLifecycleAdmission] = {}
+    pending: dict[tuple[str, ...], tuple[Path, str]] = {}
+    bindings: list[tuple[str, ...] | None] = []
+    for root, expected_hash in requests:
+        path = root if root.is_file() else root / "model-lifecycle-admission.json"
+        if not path.exists():
+            bindings.append(None)
+            continue
+        key = ("admission", str(store.root), str(path), expected_hash)
+        bindings.append(key)
+        record = None if scope is None else scope.get(key)
+        if record is None:
+            pending[key] = (root, expected_hash)
+        else:
+            held[key] = cast(AlphaModelLifecycleAdmission, record)
+    if pending:
+        verified = _verify_lifecycle_admission(tuple(pending.values()), store=store)
+        held.update(zip(pending, verified, strict=True))
+        if scope is not None:
+            scope.update(held)
+    return tuple(
+        admit_frozen_inference(root, expected_hash=expected_hash)
+        if key is None
+        else AdmittedRenewingInference(store.root.parent, held[key])
+        for (root, expected_hash), key in zip(requests, bindings, strict=True)
+    )
 
 
 def _verify_lifecycle_admission(
-    root: Path, *, store: AlphaCurrentArtifactStore, expected_hash: str
-) -> AlphaModelLifecycleAdmission:
-    """Prove one renewing admission from its bytes: observations, prepared refits, children."""
-
-    authority = read_lifecycle_admission(root, expected_hash=expected_hash)
-    observations = store._load(
-        "lifecycle-training-observations",
-        authority.observations_hash,
-        "content_hash",
-        AlphaTrainingObservations,
+    requests: tuple[tuple[Path, str], ...], *, store: AlphaCurrentArtifactStore
+) -> tuple[AlphaModelLifecycleAdmission, ...]:
+    """Prove each authority's bindings, then read each shared source once."""
+    authorities = tuple(
+        read_lifecycle_admission(root, expected_hash=expected_hash)
+        for root, expected_hash in requests
     )
-    store.load_frozen_observation_snapshot(observations.observation_hash)
-    frozen_hashes = dict.fromkeys((observations.observation_hash,))
-    array_hashes = [observations.array_file_hash]
-    verified_observations = {observations.content_hash}
-    for prepared in authority.prepared:
-        if (
-            store._load(
-                "lifecycle-prepared-refits",
-                prepared.content_hash,
-                "content_hash",
-                AlphaPreparedRefit,
-            )
-            != prepared
-        ):
-            raise AlphaLifecycleError("alpha_research.lifecycle_prepared_binding_invalid")
-        array_hashes.append(prepared.array_file_hash)
-        if prepared.observations_hash not in verified_observations:
-            prior_observations = store._load(
+    observations: dict[str, AlphaTrainingObservations] = {}
+    preparation_cache: dict[str, AlphaPreparedRefit] = {}
+    array_hashes: dict[str, None] = {}
+
+    def read_observations(identity: str) -> None:
+        if identity not in observations:
+            value = store._load(
                 "lifecycle-training-observations",
-                prepared.observations_hash,
+                identity,
                 "content_hash",
                 AlphaTrainingObservations,
             )
-            if prior_observations.observation_hash not in frozen_hashes:
-                store.load_frozen_observation_snapshot(prior_observations.observation_hash)
-                frozen_hashes[prior_observations.observation_hash] = None
-            array_hashes.append(prior_observations.array_file_hash)
-            verified_observations.add(prepared.observations_hash)
+            observations[identity] = value
+            array_hashes[value.array_file_hash] = None
+
+    for authority in authorities:
+        read_observations(authority.observations_hash)
+        for prepared in authority.prepared:
+            identity = prepared.content_hash
+            retained = preparation_cache.get(identity)
+            if retained is None:
+                retained = store._load(
+                    "lifecycle-prepared-refits", identity, "content_hash", AlphaPreparedRefit
+                )
+                preparation_cache[identity] = retained
+            if retained != prepared:
+                raise AlphaLifecycleError("alpha_research.lifecycle_prepared_binding_invalid")
+            array_hashes[prepared.array_file_hash] = None
+            read_observations(prepared.observations_hash)
+    frozen_hashes = tuple(dict.fromkeys(value.observation_hash for value in observations.values()))
     verify_source_checks(
-        chain(
-            (partial(store.verify_frozen_observations, identity) for identity in frozen_hashes),
-            (partial(_verify_arrays, store, identity) for identity in dict.fromkeys(array_hashes)),
+        (
+            store.frozen_observation_check(frozen_hashes[0], *frozen_hashes[1:]),
+            *(partial(_verify_arrays, store, identity) for identity in array_hashes),
         )
     )
-    for child in authority.initial_children:
-        read_lifecycle_child(store, child)
-    return authority
+    for authority in authorities:
+        proved_preparations = {item.content_hash: item for item in authority.prepared}
+        for child in authority.initial_children:
+            _read_lifecycle_estimator(store, child, proved_preparations[child.prepared_hash])
+    return authorities

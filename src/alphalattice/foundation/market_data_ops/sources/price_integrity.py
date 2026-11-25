@@ -9,6 +9,7 @@ from datetime import date
 from itertools import pairwise
 from typing import Literal
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -167,13 +168,17 @@ class TradingSessionAuthority:
 def _trading_session_authority_hash(
     calendar_ids: tuple[str, ...], sessions: tuple[date, ...]
 ) -> str:
-    return canonical_hash(
-        {
-            "kind": "TradingSessionAuthority",
-            "calendar_ids": list(calendar_ids),
-            "sessions": [value.isoformat() for value in sessions],
-        }
-    )
+    def digest(inputs: tuple[tuple[str, ...], tuple[date, ...]]) -> str:
+        calendars, dates = inputs
+        return canonical_hash(
+            {
+                "kind": "TradingSessionAuthority",
+                "calendar_ids": list(calendars),
+                "sessions": [value.isoformat() for value in dates],
+            }
+        )
+
+    return stage_digest(("trading-session-authority",), (calendar_ids, sessions), digest)
 
 
 def build_trading_session_authority(

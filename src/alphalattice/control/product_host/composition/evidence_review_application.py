@@ -3038,10 +3038,11 @@ class EvidenceReviewApplication:
         *,
         evidence_as_of: datetime | None = None,
         read_at: datetime | None = None,
+        resolved: ResolvedBookScope | None = None,
     ) -> PortfolioReviewDossier | ReviewOutcome:
         """Read the dossier at the same cutoff its delivery and submission bind."""
         dossier, _cutoff = self._review_dossier_read(
-            chosen, evidence_as_of=evidence_as_of, read_at=read_at
+            chosen, evidence_as_of=evidence_as_of, read_at=read_at, resolved=resolved
         )
         return dossier
 
@@ -3051,12 +3052,14 @@ class EvidenceReviewApplication:
         *,
         evidence_as_of: datetime | None = None,
         read_at: datetime | None = None,
+        resolved: ResolvedBookScope | None = None,
     ) -> tuple[PortfolioReviewDossier | ReviewOutcome, datetime | None]:
         """The book's review dossier. With no run and no current analysis its cutoff is the
         time it is read: ``read_at``, the time a bundle or a first part sealed, so every later
         read of that review resolves the same dossier; the clock only for a first read.
         """
-        resolved = self.resolve_book(chosen)
+        if resolved is None:
+            resolved = self.resolve_book(chosen)
         active = self.active_evidence_refresh(scope=resolved.scope)
         if active is not None:
             return (
@@ -4643,9 +4646,17 @@ class EvidenceReviewApplication:
             )
         return selector
 
-    def _verify_external_review_context(self, dossier: PortfolioReviewDossier) -> None:
+    def _verify_external_review_context(
+        self, dossier: PortfolioReviewDossier, book: SealedBook | None
+    ) -> None:
+        resolved = None
+        if book is not None:
+            projection, scope = compile_portfolio_scope(self.inputs(), book)
+            resolved = ResolvedBookScope(book=book, projection=projection, scope=scope)
         current = self._resolve_review_dossier(
-            self._selector_for_dossier(dossier), read_at=dossier.evidence_as_of
+            self._selector_for_dossier(dossier),
+            read_at=dossier.evidence_as_of,
+            resolved=resolved,
         )
         if (
             not isinstance(current, PortfolioReviewDossier)
@@ -4653,7 +4664,7 @@ class EvidenceReviewApplication:
         ):
             raise PortfolioEvidenceReviewError("chief_risk_officer.external_review_context_changed")
 
-    def _verify_update_subject(self, subject: PortfolioUpdateReviewSubject) -> None:
+    def _verify_update_subject(self, subject: PortfolioUpdateReviewSubject) -> SealedBook:
         book = open_sealed_book(
             self.inputs(),
             BookSelector(
@@ -4666,6 +4677,7 @@ class EvidenceReviewApplication:
             raise PortfolioEvidenceReviewError(
                 "product_host.evidence_review_update_subject_mismatch"
             )
+        return book
 
     def _run(
         self,

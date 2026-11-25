@@ -612,12 +612,27 @@ def test_full_catalog_plan_keeps_exact_dense_identity_and_targets(monkeypatch) -
     )
     active_sessions = sessions[:-1]
     full_range = (PanelInvalidationRange(active_sessions[0], active_sessions[-1]),)
-    expected = FactorSessionInvalidationPlan.create(
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.foundation.feature_engine import contracts
+
+    counted_hashes = []
+    hash_payload = contracts.canonical_hash
+
+    def counted_hash(payload):
+        counted_hashes.append(1)
+        return hash_payload(payload)
+
+    expected_args = dict(
         items=tuple(
             FactorSessionInvalidation(factor_id, full_range) for factor_id in catalog.factor_ids
         ),
         source_receipt_hashes=("c" * 64,),
     )
+    with stage_digests(), monkeypatch.context() as count:
+        count.setattr(contracts, "canonical_hash", counted_hash)
+        expected = FactorSessionInvalidationPlan.create(**expected_args)
+        assert FactorSessionInvalidationPlan.create(**expected_args) == expected
+        assert counted_hashes == [1]
 
     assert plan == expected
     assert targets_by_session(plan, sessions) == {

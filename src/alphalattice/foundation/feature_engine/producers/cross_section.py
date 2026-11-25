@@ -14,6 +14,10 @@ from typing import TYPE_CHECKING, cast
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    seal_payload_digest,
+    seal_scoped_model,
+)
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
@@ -315,8 +319,11 @@ class SectorNeutralPanelMaterializer:
                 "boundary_identity": observation.boundary_identity,
             }
             records_out.append(
-                PanelFactorClippingRecord(
-                    **record_values, record_hash=canonical_hash(record_values)
+                seal_scoped_model(
+                    PanelFactorClippingRecord,
+                    record_values,
+                    field="record_hash",
+                    digest=canonical_hash,
                 )
             )
         evidence_values: dict[str, object] = {
@@ -341,7 +348,9 @@ class SectorNeutralPanelMaterializer:
         }
         return PanelClippingEvidence(
             **{**evidence_values, "factor_records": tuple(records_out)},
-            evidence_hash=canonical_hash(evidence_values),
+            evidence_hash=seal_payload_digest(
+                "evidence_hash", evidence_values, digest=canonical_hash
+            ),
         )
 
     def materialize(

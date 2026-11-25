@@ -938,24 +938,38 @@ def _clip_record(
 _D1, _D2, _D3, _D4 = "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"
 
 
-def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order() -> None:
+def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monkeypatch) -> None:
     """Clipping evidence joins cells by session and keeps calendar order."""
 
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+    from alphalattice.foundation.feature_engine.producers import cross_section
     from alphalattice.foundation.feature_engine.producers.cross_section import (
         SectorNeutralPanelMaterializer,
     )
+    from alphalattice.foundation.feature_engine.producers.preprocessing import contracts
 
     materializer = SectorNeutralPanelMaterializer(FeatureCatalog.load())
     original = _clip_record("1" * 64, (_D1, _D2, _D3), (1, 2, 3))
     replacement = _clip_record("2" * 64, (_D2,), (9,), finite=20)
 
-    whole = materializer.clipping_evidence_from_records(
-        (original,),
-        panel_binding_hash="b" * 64,
-        owned={("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
-        sessions=(_D1, _D2, _D3),
-    )
+    hashes = []
+
+    def count(value):
+        if isinstance(value, dict) and value.get("kind") == "PanelFactorClippingRecord":
+            hashes.append(1)
+        return canonical_hash(value)
+
+    with monkeypatch.context() as probe, stage_digests():
+        probe.setattr(cross_section, "canonical_hash", count)
+        probe.setattr(contracts, "canonical_hash", count)
+        whole = materializer.clipping_evidence_from_records(
+            (original,),
+            panel_binding_hash="b" * 64,
+            owned={("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
+            sessions=(_D1, _D2, _D3),
+        )
+        assert hashes == [1]
     assert whole.factor_records[0].per_session_clipped_counts == (1, 2, 3)
     assert whole.ordered_sessions_hash == canonical_hash([original.ordered_sessions_hash])
     assert whole.factor_records[0].boundary_identity == canonical_hash(

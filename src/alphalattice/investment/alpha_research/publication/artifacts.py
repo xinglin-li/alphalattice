@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import zipfile
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from functools import partial
 from io import BytesIO
 from types import MappingProxyType
 from typing import Any, Literal, cast
@@ -18,9 +20,10 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
+    verified_array_read_scope,
     verified_npz_arrays,
-    verified_request_proof,
     verified_request_value,
+    verified_source_observations,
     verified_source_value,
 )
 from alphalattice.foundation.data_layer import history
@@ -388,13 +391,17 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         Returns:
             Validated observation snapshot with declared packed-array and source commitments.
         """
-        snapshot, _ = self._load_identity_json_with_identity(
-            uri=self.uri("current/frozen-observation-snapshots", content_hash),
+        return self._observation_snapshot_fact(content_hash)[0]
+
+    def _observation_snapshot_fact(
+        self, content_hash: str
+    ) -> tuple[FrozenScoreObservationSnapshot, tuple[str, ...]]:
+        return self._read_identity_json_with_identity(
+            FrozenScoreObservationSnapshot,
             category="current/frozen-observation-snapshots",
+            content_hash=content_hash,
             identity_field="snapshot_hash",
-        )
-        return cast(
-            FrozenScoreObservationSnapshot, FrozenScoreObservationSnapshot.model_validate(snapshot)
+            copy_mutable=True,
         )
 
     def load_frozen_observations(self, content_hash: str) -> FrozenPriceVolumeInputs:
@@ -414,82 +421,82 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             AlphaCurrentArtifactReadbackError: Packed payload, expected archive columns or exact
                 dtypes differ.
         """
-        snapshot, arrays, _ = self._frozen_observation_source(content_hash)
-        arrays = rebased(arrays, snapshot.ordered_listing_ids, snapshot.rebases, prefix="")
-        return self._frozen_observation_values(snapshot, arrays)
+        return self.load_frozen_observation(content_hash)[1]
 
-    def verify_frozen_observations(self, content_hash: str) -> None:
-        """Verify unchanged observation bytes without retaining arrays only used for admission.
-
-        A cold or invalidated read fully hashes the snapshot and packed payload, and checks
-        every archive member, column, dtype and input axis. An opted-in read may retain only
-        that complete proof behind leases for both sources.
-        Ordinary execution revalidates; no input values or mutable mapping are retained here.
-        """
+    def load_frozen_observation(
+        self, content_hash: str
+    ) -> tuple[FrozenScoreObservationSnapshot, FrozenPriceVolumeInputs]:
+        """Read the verified snapshot and reconstruct the arrays it declares."""
         snapshot = self.load_frozen_observation_snapshot(content_hash)
+        arrays = self._frozen_blocks(snapshot, self._frozen_observation_block)
+        arrays = rebased(arrays, snapshot.ordered_listing_ids, snapshot.rebases, prefix="")
+        return snapshot, self._frozen_observation_values(snapshot, arrays)
+
+    def verify_frozen_observations(self, content_hash: str, *other_hashes: str) -> None:
+        """Verify an admission's observations and share their common packed inputs.
+
+        Each snapshot binds its ordered blocks in its own validated identity. Retain the
+        complete admission proof behind those snapshot reads and the packed file lifetimes.
+        """
+        self.frozen_observation_check(content_hash, *other_hashes)()
+
+    def frozen_observation_check(self, content_hash: str, *other_hashes: str) -> Callable[[], None]:
+        """Acquire the snapshot descriptors before handing their array checks to a worker.
+        Retain snapshot proofs across cohorts and share packed reads within a cohort.
+        """
+        snapshots = tuple(
+            self._observation_snapshot_fact(identity)
+            for identity in dict.fromkeys((content_hash, *other_hashes))
+        )
+        uses = Counter(block for snapshot, _ in snapshots for block in snapshot.array_files)
 
         def check() -> None:
-            current, arrays, identity = self._frozen_observation_source(content_hash)
+            batch = object()
 
-            def reconcile() -> None:
-                self._frozen_observation_values(current, arrays)
+            def read(block: str) -> dict[str, npt.NDArray[Any]]:
+                if uses[block] == 1:
+                    return self._frozen_observation_block(block)
+                kept = verified_request_value(
+                    ("alpha-observation-proof-block", batch, block),
+                    lambda: tuple(self._frozen_observation_block(block).items()),
+                    nbytes=lambda values: sum(array.nbytes for _, array in values),
+                    _request_only=True,
+                )
+                return dict(kept)
 
-            verified_request_proof(
-                ("FrozenPriceVolumeInputs.proof.v1", *identity),
-                reconcile,
-            )
+            def verify(snapshot: FrozenScoreObservationSnapshot) -> None:
+                self._frozen_observation_values(snapshot, self._frozen_blocks(snapshot, read))
 
-        verified_source_value(
-            ("alpha-current-observation-proof", str(self.root), content_hash),
-            (
-                self._path("current/frozen-observation-snapshots", content_hash, "json"),
-                *(
-                    self._packed_source_path("frozen-observation-arrays", block)
-                    for block in snapshot.array_files
-                ),
-            ),
-            check,
-            nbytes=0,
-        )
+            with verified_array_read_scope(), verified_source_observations():
+                for snapshot, identity in snapshots:
+                    verified_source_value(
+                        ("alpha-current-observation-proof", str(self.root), *identity),
+                        tuple(
+                            self._packed_source_path("frozen-observation-arrays", block)
+                            for block in dict.fromkeys(snapshot.array_files)
+                        ),
+                        partial(verify, snapshot),
+                        nbytes=0,
+                    )
 
-    def _frozen_observation_source(
-        self, content_hash: str
-    ) -> tuple[FrozenScoreObservationSnapshot, dict[str, npt.NDArray[Any]], tuple[object, ...]]:
-        snapshot, snapshot_file_identity = self._read_identity_json_with_identity(
-            FrozenScoreObservationSnapshot,
-            category="current/frozen-observation-snapshots",
-            content_hash=content_hash,
-            identity_field="snapshot_hash",
-        )
-        arrays, file_identity = self._frozen_blocks(snapshot)
-        identity = (
-            "alpha-current",
-            str(self.root),
-            "frozen-observation-arrays",
-            snapshot.snapshot_hash,
-            "FrozenPriceVolumeInputs.npz_arrays.v1",
-            *snapshot_file_identity,
-            snapshot.array_content_hash,
-            *file_identity,
-        )
-        return snapshot, arrays, identity
+        return check
 
+    def _frozen_observation_block(self, content_hash: str) -> dict[str, npt.NDArray[Any]]:
+        arrays, _ = self._frozen_arrays_with_identity("frozen-observation-arrays", content_hash)
+        return arrays
+
+    @staticmethod
     def _frozen_blocks(
-        self, snapshot: FrozenScoreObservationSnapshot
-    ) -> tuple[dict[str, npt.NDArray[Any]], tuple[object, ...]]:
-        """The snapshot's arrays, its blocks copied in turn into one array each: one block and
-        the whole are held at once, never every block and a joined copy."""
+        snapshot: FrozenScoreObservationSnapshot,
+        read_block: Callable[[str], dict[str, npt.NDArray[Any]]],
+    ) -> dict[str, npt.NDArray[Any]]:
+        """Copy each block in session order into the snapshot's joined arrays."""
         if len(snapshot.array_files) == 1:
-            single, identity = self._frozen_arrays_with_identity(
-                "frozen-observation-arrays", snapshot.array_files[0]
-            )
-            return single, tuple(identity)
+            return read_block(snapshot.array_files[0])
         arrays: dict[str, npt.NDArray[Any]] = {}
-        identities: list[object] = []
         start, sessions = 0, len(snapshot.formation_sessions)
         for block in snapshot.array_files:
-            part, identity = self._frozen_arrays_with_identity("frozen-observation-arrays", block)
-            identities.extend(identity)
+            part = read_block(block)
             end = start + len(next(iter(part.values())))
             if (arrays and set(part) != set(arrays)) or end > sessions:
                 raise AlphaCurrentArtifactReadbackError(
@@ -511,7 +518,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             )
         for whole in arrays.values():
             whole.setflags(write=False)
-        return arrays, tuple(identities)
+        return arrays
 
     @staticmethod
     def _frozen_observation_values(
@@ -633,7 +640,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             AlphaCurrentArtifactReadbackError: Packed axes or reconstructed feature-value identities
                 disagree.
         """
-        result, _ = self._read_identity_json_with_identity(
+        result, result_file_identity = self._read_identity_json_with_identity(
             FrozenFeaturePreparation,
             category="current/frozen-feature-preparations",
             content_hash=content_hash,
@@ -641,40 +648,16 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         )
 
         def build_surfaces() -> tuple[HeterogeneousVintageFeatureSurface, ...]:
-            current, current_file_identity = self._read_identity_json_with_identity(
-                FrozenFeaturePreparation,
-                category="current/frozen-feature-preparations",
-                content_hash=content_hash,
-                identity_field="preparation_hash",
-            )
             payload, file_identity = self._frozen_payload_with_identity(
-                "frozen-feature-arrays", current.array_content_hash
+                "frozen-feature-arrays", result.array_content_hash
             )
-
-            def reconstruct() -> tuple[HeterogeneousVintageFeatureSurface, ...]:
-                return self._frozen_feature_surfaces(
-                    current, payload, current_file_identity, file_identity
-                )
-
-            return verified_request_value(
-                (
-                    "alpha-current-feature-surfaces",
-                    str(self.root),
-                    current.preparation_hash,
-                    *current_file_identity,
-                    current.array_content_hash,
-                    *file_identity,
-                ),
-                reconstruct,
-                nbytes=lambda values: sum(surface.features.nbytes for surface in values),
+            return self._frozen_feature_surfaces(
+                result, payload, result_file_identity, file_identity
             )
 
         surfaces = verified_source_value(
-            ("alpha-current-feature-surfaces", str(self.root), content_hash),
-            (
-                self._path("current/frozen-feature-preparations", content_hash, "json"),
-                self._packed_source_path("frozen-feature-arrays", result.array_content_hash),
-            ),
+            ("alpha-current-feature-surfaces", str(self.root), *result_file_identity),
+            (self._packed_source_path("frozen-feature-arrays", result.array_content_hash),),
             build_surfaces,
             nbytes=lambda values: sum(surface.features.nbytes for surface in values),
         )

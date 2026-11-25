@@ -42,12 +42,14 @@ from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
 from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
     TaskRecord,
     TaskSafeProjection,
 )
+from alphalattice.control.workspace_runtime.content_store import verified_array_read_scope
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.execution import EVENTS, ExecutionLane, ExecutionPool, prefer_task
@@ -323,7 +325,8 @@ class LocalBackgroundDispatcher:
         with self._lock:
             self._serving += 1
         try:
-            yield
+            with stage_digests(), verified_array_read_scope():
+                yield
         finally:
             with self._lock:
                 self._serving -= 1

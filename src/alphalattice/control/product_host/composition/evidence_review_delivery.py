@@ -1391,7 +1391,18 @@ class EvidenceReviewDelivery:
         chosen = self.app.default_selector(selector)
         if chosen is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_review_book_unselected")
-        book = self.app._open_book(self.app.inputs(), chosen)
+        inputs = self.app.inputs()
+        update_readback = None
+        if chosen.update_task_id is not None and inputs.read_update is not None:
+            read_update = inputs.read_update
+
+            def capture_update(task_id: UUID, publication_hash: str) -> dict[str, object]:
+                nonlocal update_readback
+                update_readback = read_update(task_id, publication_hash)
+                return update_readback
+
+            inputs = replace(inputs, read_update=capture_update)
+        book = self.app._open_book(inputs, chosen)
         view = (
             None
             if publication_hash is None
@@ -1433,11 +1444,8 @@ class EvidenceReviewDelivery:
             )
             base_html: str | None = render_experiment_report(portfolio)
         elif book.update_subject is not None:
-            assert self.app.read_update is not None
-            subject = book.update_subject
-            portfolio = self.app.read_update(
-                subject.update_task_id, subject.update_publication_hash
-            )
+            assert update_readback is not None
+            portfolio = update_readback
             base_html = cast(str | None, portfolio.get("html"))
             portfolio = {  # Task status stays outside the immutable export.
                 k: portfolio[k]

@@ -2854,9 +2854,10 @@
 "class": "METHOD",
 "count": 2
 },
-"src/alphalattice/foundation/feature_engine/panels/logical_identity.py::_validate_hash::64": {
+"src/alphalattice/foundation/feature_engine/panels/logical_identity.py::_mapping_name::64": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "Snapshot mapping names require the 64 hexadecimal characters of a SHA-256 digest."
 },
 "src/alphalattice/foundation/feature_engine/panels/logical_identity.py::provisional::64": {
 "class": "METHOD",

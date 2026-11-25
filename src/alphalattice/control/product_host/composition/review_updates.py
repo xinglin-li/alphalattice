@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Hashable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from copy import deepcopy
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -28,6 +29,21 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
 )
 
 _BUNDLE_TASK: ContextVar[UUID | None] = ContextVar("review_bundle_task", default=None)
+
+
+_UPDATE_READS: ContextVar[dict[tuple[str, str, str, str], dict[str, object]] | None] = ContextVar(
+    "review_update_reads", default=None
+)
+
+
+@contextmanager
+def update_readbacks() -> Iterator[None]:
+    """Carry the current review request's exact verified updates to its readers."""
+    token = _UPDATE_READS.set({})
+    try:
+        yield
+    finally:
+        _UPDATE_READS.reset(token)
 
 
 @contextmanager
@@ -105,7 +121,13 @@ def read_review_update(
             if task.input.input_schema_id == DECISION_ADVANCEMENT_SCHEMA
             else partial(reader.readback, task_id, publication_hash=publication_hash)
         )
-        body = operations.readbacks.read(key, verify)
+        held = _UPDATE_READS.get()
+        if held is None:
+            body = operations.readbacks.read(key, verify)
+        else:
+            if key not in held:
+                held[key] = operations.readbacks.read(key, verify)
+            body = deepcopy(held[key])
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)
     plan = cast(dict[str, object], task.input.payload["plan"])

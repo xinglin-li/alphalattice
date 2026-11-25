@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import struct
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TypeVar, cast
@@ -42,13 +42,14 @@ from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     PanelPhysicalChunk,
     PanelPhysicalMaterializationManifest,
     PanelPublicationMarker,
-    identity_payload,
+    seal_logical_identity,
 )
 from alphalattice.foundation.feature_engine.panels.logical_semantic_index import (
     LOGICAL_SLICE_ALGORITHM_IDENTITY,
     FeaturePanelLogicalSemanticIndex,
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
+    logical_calendar_hash,
 )
 from alphalattice.kernel.clock import observation_time
 from alphalattice.kernel.identity import identity_sha256
@@ -176,7 +177,10 @@ class PanelLogicalArtifactStore:
         self._write_pointer(pointer, {"marker_hash": marker.marker_hash})
 
     def _mapping_name(self, snapshot_hash: str) -> str:
-        _validate_hash(snapshot_hash)
+        if len(snapshot_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in snapshot_hash
+        ):
+            raise ValueError("invalid Panel identity hash")
         return f"{self._operational}/snapshot-mappings/{snapshot_hash}.json"
 
     def _pointer(self, name: str) -> dict[str, object] | None:
@@ -210,9 +214,13 @@ class PanelLogicalIdentityPublisher:
         self._closure_ledger = closure_ledger
 
     def publish_snapshot(
-        self, manifest_ref: str, *, published_at: datetime | None = None
+        self,
+        manifest_ref: str,
+        *,
+        published_at: datetime | None = None,
+        on_chunk_digest: Callable[[Path, str], None] | None = None,
     ) -> PanelPublicationMarker:
-        """Publish logical and physical authorities for a sealed Panel snapshot."""
+        """Publish a sealed Panel and carry newly proved chunk digests to the caller."""
         manifest = self._resolver.load_feature_panel_manifest(manifest_ref)
         snapshot_hash = str(manifest["snapshot_hash"])
         existing = self._store.marker_for_snapshot(snapshot_hash)
@@ -221,7 +229,7 @@ class PanelLogicalIdentityPublisher:
         observed = published_at or observation_time()
         if observed.tzinfo is None or observed.utcoffset() is None:
             raise ValueError("Panel logical publication clock must be timezone-aware")
-        built = self._build_logical_authorities(manifest)
+        built = self._build_logical_authorities(manifest, on_chunk_digest=on_chunk_digest)
         logical_manifest, revision, semantic_index, physical = built
         derivation = self._build_derivation(manifest=manifest, revision=revision)
         self._store.publish_model(
@@ -242,7 +250,7 @@ class PanelLogicalIdentityPublisher:
             if derivation.recovery_disposition == "RECOVERY_CLOSURE_VERIFIED"
             else "PHYSICAL_RETENTION_REQUIRED"
         )
-        marker = _identified(
+        marker = seal_logical_identity(
             PanelPublicationMarker,
             {
                 "legacy_snapshot_hash": snapshot_hash,
@@ -278,7 +286,10 @@ class PanelLogicalIdentityPublisher:
         return marker
 
     def _build_logical_authorities(
-        self, manifest: Mapping[str, object]
+        self,
+        manifest: Mapping[str, object],
+        *,
+        on_chunk_digest: Callable[[Path, str], None] | None,
     ) -> tuple[
         PanelLogicalContentManifest,
         PanelLogicalRevision,
@@ -321,15 +332,18 @@ class PanelLogicalIdentityPublisher:
             annual.append(annual_item)
             all_sessions.extend(item.session_date for item in observed_sessions)
             session_semantics.extend(observed_sessions)
-            physical_chunks.extend(
-                _physical_chunk(
+            annual_hash = canonical_hash(annual_item.model_dump(mode="json"))
+            for path, raw_chunk in zip(paths, year_chunks, strict=True):
+                physical_chunk = _physical_chunk(
                     path=path,
                     raw_chunk=raw_chunk,
-                    annual=annual_item,
+                    year=annual_item.year,
+                    annual_hash=annual_hash,
                     schema_hash=str(manifest["schema_hash"]),
                 )
-                for path, raw_chunk in zip(paths, year_chunks, strict=True)
-            )
+                if on_chunk_digest is not None:
+                    on_chunk_digest(path, physical_chunk.raw_sha256)
+                physical_chunks.append(physical_chunk)
         if factor_ids is None or listing_ids is None:
             raise ValueError("feature_panel.logical_content_mismatch")
         if membership_epochs is not None:
@@ -351,20 +365,20 @@ class PanelLogicalIdentityPublisher:
         }
         if membership_epochs is not None:
             logical_values["membership_epochs"] = membership_epochs
-        logical_manifest = _identified(
+        logical_manifest = seal_logical_identity(
             PanelLogicalContentManifest, logical_values, "logical_manifest_hash"
         )
         listing_set_hash = canonical_hash(listing_ids)
         if listing_set_hash != str(manifest["listing_set_hash"]):
             raise ValueError("feature_panel.logical_content_mismatch")
-        revision = _identified(
+        revision = seal_logical_identity(
             PanelLogicalRevision,
             {
                 "logical_manifest_hash": logical_manifest.logical_manifest_hash,
                 "catalog_semantics_hash": str(lineage["catalog_hash"]),
                 "cross_section_policy_hash": str(lineage["policy_hash"]),
                 "listing_set_hash": listing_set_hash,
-                "calendar_hash": canonical_hash(sessions),
+                "calendar_hash": logical_calendar_hash(sessions),
             },
             "logical_panel_hash",
         )
@@ -377,7 +391,7 @@ class PanelLogicalIdentityPublisher:
             sessions=tuple(session_semantics),
             membership_epochs=membership_epochs,
         )
-        physical = _identified(
+        physical = seal_logical_identity(
             PanelPhysicalMaterializationManifest,
             {
                 "logical_panel_hash": revision.logical_panel_hash,
@@ -475,7 +489,7 @@ class PanelLogicalIdentityPublisher:
             != (recipe.sector_map_hash if recipe is not None else recovery_binding.sector_map_hash)
         ):
             raise ValueError("feature_panel.logical_content_mismatch")
-        return _identified(
+        return seal_logical_identity(
             PanelDerivationBinding,
             {
                 "legacy_snapshot_hash": snapshot_hash,
@@ -801,7 +815,8 @@ def _physical_chunk(
     *,
     path: Path,
     raw_chunk: Mapping[str, object],
-    annual: PanelLogicalAnnualContent,
+    year: int,
+    annual_hash: str,
     schema_hash: str,
 ) -> PanelPhysicalChunk:
     metadata = pq.ParquetFile(path).metadata
@@ -811,8 +826,8 @@ def _physical_chunk(
         for column in range(metadata.row_group(group).num_columns)
     }
     return PanelPhysicalChunk(
-        year=annual.year,
-        logical_annual_hash=canonical_hash(annual.model_dump(mode="json")),
+        year=year,
+        logical_annual_hash=annual_hash,
         legacy_chunk_hash=str(raw_chunk["chunk_hash"]),
         uri=str(raw_chunk["uri"]),
         raw_sha256=file_sha256(path),
@@ -824,19 +839,6 @@ def _physical_chunk(
         compression_codecs=tuple(sorted(codecs)),
         parquet_created_by=metadata.created_by,
     )
-
-
-def _identified[Model: BaseModel](
-    model: type[Model], values: Mapping[str, object], field: str
-) -> Model:
-    provisional = model.model_construct(**values, **{field: "0" * 64})
-    payload = identity_payload(provisional, field)
-    return cast(Model, model.model_validate({**values, field: canonical_hash(payload)}))
-
-
-def _validate_hash(value: str) -> None:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-        raise ValueError("invalid Panel identity hash")
 
 
 __all__ = [

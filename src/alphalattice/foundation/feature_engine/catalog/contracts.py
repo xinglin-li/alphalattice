@@ -10,6 +10,7 @@ from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity_successors import (
     is_current,
     recorded_origin,
@@ -117,7 +118,8 @@ def desktop_core_feature_bundle() -> DesktopCoreFeatureBundle:
         factor_ids=factor_ids,
         formula_refs=formula_refs,
         numerical_spec_hashes=numerical_spec_hashes,
-        bundle_hash=canonical_hash(
+        bundle_hash=stage_digest(
+            ("desktop-core-feature-bundle",),
             {
                 "bundle_id": "desktop-core-features.2026-08-07",
                 "factor_ids": factor_ids,
@@ -129,7 +131,9 @@ def desktop_core_feature_bundle() -> DesktopCoreFeatureBundle:
                 # skip" and one whose identical numbers meant "safety lag" would
                 # publish the same identity over different values.
                 "observation_clock": observation_clock,
-            }
+            },
+            canonical_hash,
+            snapshot=lambda value: json.dumps(value, separators=(",", ":"), default=str),
         ),
     )
 
@@ -414,36 +418,45 @@ class FeatureCatalog:
             "factors": [factor.model_dump(mode="json") for factor in factors],
             "maintenance_policy": policy,
         }
-        catalog_content_hash = canonical_hash(semantic_payload)
+        catalog_content_hash = stage_digest(
+            ("feature-catalog-content",),
+            semantic_payload,
+            canonical_hash,
+            snapshot=lambda value: json.dumps(value, separators=(",", ":"), default=str),
+        )
         # The measured bytes of the arithmetic, beside the description of it.
         # The description alone survived an arbitrary rewrite of the engine, so a
         # catalog binding built from it could not answer whether the code that
         # produced a Panel's values had changed -- and one consumer took equal
         # catalog hashes as proof that it had not.
-        formula_implementation_hash = canonical_hash(
-            {
-                "arithmetic_content": control_arithmetic_content_hash(),
-                "engine": "playpen.feature_engine.desktop_finite_window_materializer",
-                "numeric_domain": "float64",
-                "rolling_evaluation": "direct_finite_source_window_recompute",
-                "adjusted_return_transform": "log(price_t/price_t_minus_1)",
-                "return_aggregation": "sum_log_returns",
-                "residual_momentum_estimation": (
-                    "intercept_beta_ols_252_ending_at_lag21_then_sum_terminal_231_residuals"
-                ),
-                "seasonality": "prior_year_same_calendar_month_log_return",
-                "factor_formula_refs": tuple(
-                    (factor.factor_id, factor.formula_ref) for factor in factors
-                ),
-            }
+        implementation_payload = {
+            "arithmetic_content": control_arithmetic_content_hash(),
+            "engine": "playpen.feature_engine.desktop_finite_window_materializer",
+            "numeric_domain": "float64",
+            "rolling_evaluation": "direct_finite_source_window_recompute",
+            "adjusted_return_transform": "log(price_t/price_t_minus_1)",
+            "return_aggregation": "sum_log_returns",
+            "residual_momentum_estimation": (
+                "intercept_beta_ols_252_ending_at_lag21_then_sum_terminal_231_residuals"
+            ),
+            "seasonality": "prior_year_same_calendar_month_log_return",
+            "factor_formula_refs": tuple(
+                (factor.factor_id, factor.formula_ref) for factor in factors
+            ),
+        }
+        formula_implementation_hash = stage_digest(
+            ("feature-catalog-implementation",), implementation_payload, canonical_hash
         )
-        materializer_policy_hash = canonical_hash(
+        materializer_policy_hash = stage_digest(
+            ("feature-materializer-policy",),
             {
                 "engine": "playpen.feature_engine.desktop_bounded_materializer",
                 "stable_id": str(payload["stable_id"]),
                 "contracts": [asdict(item) for item in contracts],
                 **policy,
-            }
+            },
+            canonical_hash,
+            snapshot=lambda value: json.dumps(value, separators=(",", ":"), default=str),
         )
         return cls(
             binding=FeatureCatalogBinding.create(

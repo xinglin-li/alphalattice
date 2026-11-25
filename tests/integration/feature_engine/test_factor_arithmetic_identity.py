@@ -433,15 +433,30 @@ def test_installed_capability_identity_binds_measured_family_content(
 ) -> None:
     """regression: installed code changes even when its declaration does not."""
 
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+
     installed = default_extension_kernel_registry()
-    before = installed.installed_capability_hash
-    with monkeypatch.context() as patched:  # a harness may run this body twice under one fixture
+    canonical = registry_module.canonical_hash
+    digests = []
+
+    def measure(payload):
+        identity = canonical(payload)
+        digests.append(identity)
+        return identity
+
+    with monkeypatch.context() as patched, stage_digests():
+        patched.setattr(registry_module, "canonical_hash", measure)
+        before = installed.installed_capability_hash
+        assert installed.installed_capability_hash == before
+        assert digests == [before]
         patched.setattr(
             registry_module,
             "method_family_content_hash",
             lambda _family, _owners: "f" * 64,
         )
-        assert installed.installed_capability_hash != before
+        changed = installed.installed_capability_hash
+        assert changed != before
+        assert digests == [before, changed]
 
 
 def test_previous_close_excursion_formulas_are_named_for_the_arithmetic_they_run() -> None:

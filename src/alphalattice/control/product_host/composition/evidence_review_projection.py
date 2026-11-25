@@ -374,7 +374,7 @@ class EvidenceCroProjector:
         }
         # Eligible earlier readings can support a dossier even when every unit
         # lacks a current analysis. The dossier owner decides their eligibility.
-        dossier = self.app._resolve_review_dossier(chosen)
+        dossier = self.app._resolve_review_dossier(chosen, resolved=resolved)
         if isinstance(dossier, ReviewOutcome) and dossier.disposition in DOSSIER_STANDINGS:
             # A dossier these analyses cannot make is the book's standing, said with its way on;
             # the book's read never fails on it.

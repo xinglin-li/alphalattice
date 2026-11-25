@@ -35,7 +35,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
 from alphalattice.control.guanyin.data.workspace_maintenance import (
     maintenance_failure_detail,
     maintenance_words,
@@ -349,7 +354,7 @@ class TaskRecoveryView(_Contract):
             raise ValueError("task recovery view verified count exceeds plan")
         if (self.guardian is None) != (self.guardian_availability == "NOT_PUBLISHED"):
             raise ValueError("task recovery view guardian availability is inconsistent")
-        if self.view_hash != canonical_hash(self.model_dump(mode="json", exclude={"view_hash"})):
+        if self.view_hash != scoped_model_digest(self, "view_hash", digest=canonical_hash):
             raise ValueError("task recovery view hash is invalid")
         return self
 
@@ -357,7 +362,12 @@ class TaskRecoveryView(_Contract):
 def _with_hash(model, values: dict[str, object], field: str):  # type: ignore[no-untyped-def]
     provisional = model.model_construct(**values, **{field: "0" * 64})
     identity = provisional.model_dump(mode="json", exclude={field})
-    return model(**values, **{field: canonical_hash(identity)})
+    digest = (
+        seal_payload_digest(field, identity, digest=canonical_hash)
+        if model is TaskRecoveryView
+        else canonical_hash(identity)
+    )
+    return model(**values, **{field: digest})
 
 
 def _owner_words(code: str) -> str | None:
@@ -1285,7 +1295,9 @@ def build_task_recovery_view(
         "observed_at": observed_at,
         "attention": attention,
     }
-    return _with_hash(TaskRecoveryView, values, "view_hash")
+    # Background projections can be built outside a serving request or work item.
+    with stage_digests():
+        return _with_hash(TaskRecoveryView, values, "view_hash")
 
 
 def way_on(

@@ -73,6 +73,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
+    FrozenFeaturePreparation,
     WorkspaceObservationHistoryHead,
     seal_current_contract,
 )
@@ -84,6 +85,7 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
     AlphaModelSetPublication,
     AlphaTrainingObservations,
     admit_component_inference,
+    admit_component_inferences,
     publish_component_training_observations,
     renew_lifecycle_admission,
     verified_lifecycle_admissions,
@@ -384,20 +386,42 @@ class StrategyScoringApplication:
             raise ValueError("strategy_score.workspace_manifest_changed")
         return binding
 
-    def _admitted_source(
-        self, binding: ResearchWorkspaceScoreInput
-    ) -> AdmittedFrozenInference | AdmittedRenewingInference:
+    def _authority_root(self, binding: ResearchWorkspaceScoreInput) -> Path:
         root = (self.session.workspace / binding.authority_relative_path).resolve()
         if not root.is_relative_to(self.session.workspace.resolve()):
             raise ValueError("strategy_score.authority_path_outside_workspace")
+        return root
+
+    def _admitted_source(
+        self, binding: ResearchWorkspaceScoreInput
+    ) -> AdmittedFrozenInference | AdmittedRenewingInference:
         return admit_component_inference(
-            root, store=self.store, expected_hash=binding.authority_hash
+            self._authority_root(binding), store=self.store, expected_hash=binding.authority_hash
         )
 
     def _authority(
         self, binding: ResearchWorkspaceScoreInput
     ) -> AdmittedFrozenInference | AdmittedRenewingInference:
-        admitted = self._admitted_source(binding)
+        return self._checked_authority(binding, self._admitted_source(binding))
+
+    def authorities(
+        self, bindings: tuple[ResearchWorkspaceScoreInput, ...]
+    ) -> tuple[AdmittedFrozenInference | AdmittedRenewingInference, ...]:
+        """Bind a scoring cohort and verify its common lifecycle sources together."""
+        requests = tuple(
+            (self._authority_root(binding), binding.authority_hash) for binding in bindings
+        )
+        admitted = admit_component_inferences(requests, store=self.store)
+        return tuple(
+            self._checked_authority(binding, value)
+            for binding, value in zip(bindings, admitted, strict=True)
+        )
+
+    def _checked_authority(
+        self,
+        binding: ResearchWorkspaceScoreInput,
+        admitted: AdmittedFrozenInference | AdmittedRenewingInference,
+    ) -> AdmittedFrozenInference | AdmittedRenewingInference:
         if admitted.authority.model_set.component_id not in self.packages[
             binding.strategy_package_id
         ].component_ids or (
@@ -426,22 +450,38 @@ class StrategyScoringApplication:
     def _captured_authority(
         self, binding: ResearchWorkspaceScoreInput, identity: str
     ) -> AdmittedFrozenInference | AdmittedRenewingInference:
-        ancestor = self._admitted_source(binding)
-        if identity == ancestor.authority.authority_hash:
-            return ancestor
-        if not isinstance(ancestor, AdmittedRenewingInference):
-            raise ValueError("strategy_score.renewal_not_installed")
-        descendant = admit_component_inference(
-            self.store.root / "current/lifecycle-admissions" / f"{identity}.json",
-            store=self.store,
-            expected_hash=identity,
+        return self._captured_authorities(((binding, identity),))[0]
+
+    def _captured_authorities(
+        self, captures: tuple[tuple[ResearchWorkspaceScoreInput, str], ...]
+    ) -> tuple[AdmittedFrozenInference | AdmittedRenewingInference, ...]:
+        bindings: list[tuple[tuple[Path, str], tuple[Path, str]]] = []
+        for binding, identity in captures:
+            ancestor = (self._authority_root(binding), binding.authority_hash)
+            effective = ancestor
+            if identity != binding.authority_hash:
+                effective = (
+                    self.store._path("current/lifecycle-admissions", identity, "json"),
+                    identity,
+                )
+            bindings.append((ancestor, effective))
+        requests = tuple(dict.fromkeys(request for pair in bindings for request in pair))
+        adopted = dict(
+            zip(requests, admit_component_inferences(requests, store=self.store), strict=True)
         )
-        if not isinstance(descendant, AdmittedRenewingInference):
-            raise ValueError("strategy_score.renewal_not_installed")
-        verify_lifecycle_successor(
-            self.store, ancestor=ancestor.authority, successor=descendant.authority
-        )
-        return descendant
+        results: list[AdmittedFrozenInference | AdmittedRenewingInference] = []
+        for root, selected in bindings:
+            initial, current = adopted[root], adopted[selected]
+            if root != selected:
+                if not isinstance(initial, AdmittedRenewingInference) or not isinstance(
+                    current, AdmittedRenewingInference
+                ):
+                    raise ValueError("strategy_score.renewal_not_installed")
+                verify_lifecycle_successor(
+                    self.store, ancestor=initial.authority, successor=current.authority
+                )
+            results.append(current)
+        return tuple(results)
 
     def authority_for_formation(
         self, binding: ResearchWorkspaceScoreInput, formation: date
@@ -473,11 +513,8 @@ class StrategyScoringApplication:
     def _source(self, binding: ResearchWorkspaceScoreInput) -> tuple[str, date]:
         if binding.source_kind == "RECORDED_INPUT_SNAPSHOT":
             assert binding.observation_snapshot_hash is not None
-            snapshot = self.store.load_frozen_observation_snapshot(
-                binding.observation_snapshot_hash
-            )
-            self.store.load_frozen_observations(snapshot.snapshot_hash)
-            return snapshot.snapshot_hash, snapshot.formation_sessions[-1]
+            source = self.store.load_frozen_observations(binding.observation_snapshot_hash)
+            return source.source_binding_hash, source.formation_sessions[-1]
         identity = workspace_score_source_identity(self.session.workspace)
         state = read_workspace_inputs(
             self.session.workspace, installed_data_update_binding(self.session.workspace)
@@ -943,8 +980,7 @@ class StrategyScoringApplication:
                 )
                 authority = AdmittedRenewingInference(self.store.root.parent, renewed)
             if plan.binding.source_kind == "RECORDED_INPUT_SNAPSHOT":
-                source = self.store.load_frozen_observations(plan.source_identity_hash)
-                observation = self.store.load_frozen_observation_snapshot(plan.source_identity_hash)
+                observation, source = self.store.load_frozen_observation(plan.source_identity_hash)
             else:
                 with self.session.reads():
                     source = build_workspace_score_inputs(
@@ -1092,27 +1128,31 @@ class StrategyScoringApplication:
         if stage not in STAGES[2:]:
             raise ValueError("strategy_score.stage_unknown")
         score = self._verify_step(plan, stage, evidence)
-        assert score is not None
+        assert isinstance(score, FrozenComponentScoreSnapshot)
         return score
 
-    def _verify_step(
-        self, plan: StrategyScorePlan, stage: str, evidence: tuple[TaskEvidence, ...]
-    ) -> FrozenComponentScoreSnapshot | None:
-        if len(evidence) != 1:
-            raise ValueError("strategy_score.evidence_invalid")
-        content = evidence[0].content_hash
-        score: FrozenComponentScoreSnapshot | None = None
-        if stage == STAGES[0]:
-            self._authority(plan.binding)
-            if content != plan.plan_hash:
-                raise ValueError("strategy_score.plan_evidence_invalid")
-        elif stage == STAGES[1]:
-            prepared, _ = self.store.load_frozen_feature_preparation(content)
-            self._captured_authority(plan.binding, prepared.inference_authority_hash)
-            self.store.load_frozen_observations(prepared.observation_snapshot_hash)
-            observation = self.store.load_frozen_observation_snapshot(
-                prepared.observation_snapshot_hash
+    def verify_feature_steps(
+        self, requests: tuple[tuple[StrategyScorePlan, tuple[TaskEvidence, ...]], ...]
+    ) -> tuple[FrozenFeaturePreparation, ...]:
+        """Verify Feature preparations together with their captured inference authorities."""
+        stage = STAGES[1]
+        acquired: dict[str, FrozenFeaturePreparation] = {}
+        products: list[FrozenFeaturePreparation] = []
+        for _, evidence in requests:
+            if len(evidence) != 1:
+                raise ValueError("strategy_score.evidence_invalid")
+            content = evidence[0].content_hash
+            if content not in acquired:
+                acquired[content], _ = self.store.load_frozen_feature_preparation(content)
+            products.append(acquired[content])
+        self._captured_authorities(
+            tuple(
+                (plan.binding, prepared.inference_authority_hash)
+                for (plan, _), prepared in zip(requests, products, strict=True)
             )
+        )
+        for (plan, evidence), prepared in zip(requests, products, strict=True):
+            observation, _ = self.store.load_frozen_observation(prepared.observation_snapshot_hash)
             source_identity = (
                 observation.snapshot_hash
                 if plan.binding.source_kind == "RECORDED_INPUT_SNAPSHOT"
@@ -1124,6 +1164,23 @@ class StrategyScoringApplication:
                 or prepared.ordered_listing_ids != observation.ordered_listing_ids
             ):
                 raise ValueError("strategy_score.feature_evidence_invalid")
+            if evidence != self._evidence(stage, prepared.preparation_hash):
+                raise ValueError("strategy_score.evidence_invalid")
+        return tuple(products)
+
+    def _verify_step(
+        self, plan: StrategyScorePlan, stage: str, evidence: tuple[TaskEvidence, ...]
+    ) -> FrozenComponentScoreSnapshot | FrozenFeaturePreparation | None:
+        if len(evidence) != 1:
+            raise ValueError("strategy_score.evidence_invalid")
+        content = evidence[0].content_hash
+        product: FrozenComponentScoreSnapshot | FrozenFeaturePreparation | None = None
+        if stage == STAGES[0]:
+            self._authority(plan.binding)
+            if content != plan.plan_hash:
+                raise ValueError("strategy_score.plan_evidence_invalid")
+        elif stage == STAGES[1]:
+            return self.verify_feature_steps(((plan, evidence),))[0]
         elif stage in STAGES[2:]:
             score = self.store.load_frozen_component_score(content)
             self._verify_model_publication(score, plan.binding)
@@ -1132,11 +1189,12 @@ class StrategyScoringApplication:
                 or score.strategy_package_hash != plan.binding.strategy_package_hash
             ):
                 raise ValueError("strategy_score.result_evidence_invalid")
+            product = score
         else:
             raise ValueError("strategy_score.stage_unknown")
         if evidence != self._evidence(stage, content):
             raise ValueError("strategy_score.evidence_invalid")
-        return score
+        return product
 
     def _verify_model_publication(
         self, score: FrozenComponentScoreSnapshot, binding: ResearchWorkspaceScoreInput

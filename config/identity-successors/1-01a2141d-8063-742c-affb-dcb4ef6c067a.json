@@ -1,0 +1,286 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "11d8b98122d79dbd6bef2a6af9e15b88de246e7c83c99e209891623b54db232f",
+   "successor": "ad2b751cd4bea870dff3a83d78e262b72a1192b18ffabd20ad061fb9367e0d20",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "dd2651119832cbfc92cc3dac5f71bedea30ceb02752751dbfba3d84b3bdc36cc",
+   "successor": "63f83c7817fb2098cc77f01fd8f96dfac090c9ee179284845e25cf9a92143de3",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "26a342230d53ab8f8288e32f9eabbfee3c2e60a69a86786808dc066b6d9fa0b7",
+   "successor": "390ff6c7dca1c11d67f6a75a26bc4a2dffd8d5f73e45fb3aee617e8537de4baa",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "5cf8ff620ce6a9bc40fee177723b7990f5f629f860ca0bf4b49e03f1cb714ece",
+   "successor": "4b2c683b4c43e5b341ee5041cc29fa52cd530c5af5f80d9f3d334381c88862b7",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "a1de91dedaeef1fe3541e5f47012275e268aec247e710a84f866944da3a4459f",
+   "successor": "c2bba22ea8764777fc3828b53f82d4ccd5cef4e617f5ca58496cbc06ceaac420",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "867e92696d39bbcd48dc2d2ab0a775dac56f4c8c2c15cb668b9008433091d671",
+   "successor": "ae7f783132d4a69733570ed002f21641344322446b8b75ce45fd9a409a41770d",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "65c7af44e19b15377b0b3c2f36773c6ecccfc46d8c3944841fd469ced1aa01e3",
+   "successor": "1d84ac08629db9786fd859e446fc320f62a471b0ccc64378e0f17c7638e6f4b5",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "ff066e626d0f8559279244e898f4dd2d6a28f712fea0147ed204dfab15bd323f",
+   "successor": "54c93cfb2c109e57e2f18ac83f30296adaab1369c161b92fa2b5b6904d42fb36",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "0c6e57d8ffa1ad1bec0336df76f62c4a147d4a994a6ebee905cecc61be9fb00f",
+   "successor": "1d8c96546a619401d8fedcac13ebd194f8cfb05f936092868e1b4cc44cf332ee",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "5bcb86f1da2bd12391ffdc750b6d14889aabe6527117cdb480c0ca5e9eb80053",
+   "successor": "3fdaa913731820488f1c2c1d2a13b419fd1cd4fd5482478a3f69c87865d1892c",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "b7890906838600960bc3d699de786f71283049ea57853f9167e6f1d3a65c3757",
+   "successor": "e53d78f8f73bbced019c86c90e34b20a4393d72dfdde8cb2f74167ba8a395438",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "62e2f10ce60719b6d92860bb2dd0aa69f4a9f4d7f4c688ed74a66daf6b2d9114",
+   "successor": "17b085b2a4752fb69df49ed7d5268e8e0d951237d4dd6eac406f89bd7859619e",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "8afb9f9cccb0f1855b41e6ab0ef515d667294e9055727a23d0b30a8deda0d630",
+   "successor": "0a3e481ef2ac8e98c95e2e37876aefebe4bfa961e82af2adb9071654145a5aa3",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.factor_value.controls",
+   "predecessor": "1f5161c92133ca2c3d958aead06625b33d5866a3822e4311659ec31607d96158",
+   "successor": "7bc3ce1d89662038cf88b3490848839893e56e6253f0e0283a42369308403b4a",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "6fa1913defe8f80487116cd9152ad8829b4eec26c71a8a7f213ef7b445178db6",
+   "successor": "bd8c193d06caaba0ee48bdb71303271bfdf691705c366663c811eb03f3a5d3a5",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "a6b1d9ac4da811451d98d08324a3769895b28fc013364ddc678c1740ef80c45f",
+   "successor": "26fa3b99de7003195d16f60ecbc0195887eb0791f4f75ed56bcfd3c85c598f28",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "bcd79750ad1e2461af36d3549a46e401451c85cd1571c26262e9cf501cf29429",
+   "successor": "49d64c1296b57c4df23b6a65b61b3d03dfeccf35a840ad60eaab4a27b7634f27",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "190f741eea096f7af0713cfe69b919e64eca53eeadeaa3bf2db48ce9914ed0c5",
+   "successor": "d717e75ee8f419affc353588396e1503d06f8eab706856ac4a1880126df48475",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "b392bbab957d690118db3a5f611913b7b899a9b4db26e4e01df7f830a62223de",
+   "successor": "500d23d30e70212fdf105414e144a3fefb5bb5dfad8f7c53b547c56ee7e0deb5",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "6ca69ee48bf997ce5975b7e2bb6c7bfdeabb00608be02ef0ada17b65b8bcf0cd",
+   "successor": "3a78a9caa3b6da328d6de6f9c5ef95ae985f76d2ba26785aae02fb5b57ca2fa8",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "cd541c765ecf23c661464230fb74010574cabdcc280da0a78a2c80132ce97e7a",
+   "successor": "b8da63e948362d8ccc67381924229185a216b6e48a975e65a45aef4a94382b3b",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "2b3e2f7374eb8d25fe23d8ef8201582202271b238e7cc6fbd23911eebdfc6d59",
+   "successor": "5caa77ef53c6cf3cc955b8fac22d96271d09a764aca36a73973f0c926aa081b8",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "8a252c84f84ddaa767986c1e9ed56686720e796abfa1eb7cfe41a1eeb6a5c93e",
+   "successor": "f8861db672975e4c80f18efb0174c964edbfd4096ceb66e2fda019e43bc789fc",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "883d4b6c46a955539f659fbac97d72519643470d36810197286d5ef461c0b3a6",
+   "successor": "77ecddeedb2f9db3abd818b717589c050638e899e10b422ace2bb62da51fcde3",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "911fda2d3c2cd60437352ee0e5a4d995dc161722db8f4ed5321daf3af8bd528e",
+   "successor": "44c793a63f15df1cf4920b066362a95ef0812ad989aa686afa5114b70ca20307",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "d767855f5c6cfdbe3662dfc36fa9c7bf6677f7c2987863a526df0045c0b83b68",
+   "successor": "d0eae5ea025e651f3b99506b274f6935ddb10ba126efd6d536333c7a3cc099ad",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "4ca8de4a352e693ff95ac7f0c3cf65bb43d1b5b4ef048eb857d725daa5a1e159",
+   "successor": "91c31deaf678800286b1c7432225639d2883b951531e174a173e715b1c8f48dc",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "8314f978cdd2d614f2f9946f6a2dc11bd6a530eedad67f5bba01ba64854f7c92",
+   "successor": "96b2c68407cc33d17a701c438f2abba2c58f7e5a60e42f2ce15026d877d4f2bd",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "3711ac7530bce4ba9f8a165f31d119904ccd2eee6b19230094ae5ec9a642c400",
+   "successor": "9b0b7eb9224038cb87041d5ad0d9c4bb04fdc221e358c0a0b00fc874db5f5168",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "e7fd372954240d712cfa9d66be23bcdce8a3df406d7346c35e8b6e6e7d8a117d",
+   "successor": "13c77a76d3ce778c8249dc6e78ffca40d614931531656280a115d8fb099695e6",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "3474d4b885f190412b417f35f19f770f4fce2ba56abeec5330ffacc326814122",
+   "successor": "98845e423e6fd69520b5dead6039914f68daaabc8d34e0cccc27a97d61e4c548",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "fd2d8af275f7305356245305fcfba63d27cd124bc91396eb7991063bde227373",
+   "successor": "0314023a38e1af21c8b1173c5d775287030c0f0d111174d7a803766b88fe25a0",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a39379affc18b0c7bd7a5a24a9d1545947a2aa7ed84659805599720f1b50502e",
+   "successor": "5c20e32e8d8f6d265d72530621c6d1baf76d6b34227c9429972f05648319cdd0",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "8fa677c13133f2f7c29bb1869a46009bb70a67632c1222872a0fd96d1e421aa6",
+   "successor": "b540ca7b2d7adedfeb16fa12e16634a9ca5b2b1fab063e1a11ea5fe0cdb1fc4e",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "8fa677c13133f2f7c29bb1869a46009bb70a67632c1222872a0fd96d1e421aa6",
+   "successor": "b540ca7b2d7adedfeb16fa12e16634a9ca5b2b1fab063e1a11ea5fe0cdb1fc4e",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "9a87be0d73a42b7d5e7b0f17fcb9b3d97cc80d9d8bf47f450bb235070db4d81f",
+   "successor": "976f8f4e80d7f3c5486a4e242ec803eaf633a4b8687af81a7be73563a29f3829",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "a03c442c68727c08fa1ac56b8134807256e9a1de31d48dee6c13b259678efca7",
+   "successor": "b17214961b8159422338eece11a07c6f6894230a9ca237eb045e77fe9797d9eb",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "3866dc68c8cc69f7d8f4aee6930969a03257ed48792ca6fc64c70bb72f1295ba",
+   "successor": "14e5227f074268da110d6be9dcb83db5af39aefe1197c685c156a2ed7fd97fa1",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "804ddc1857e2c9a4ae184cd764f41d6ab2697851563f3e42c7f8ebd5151659a0",
+   "successor": "36fc2627568097c988609709fbd4dade44dd1752b118bd44853d8e9c2899a32e",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "d4a3ffc7485a0094160e91478fab6916b6fec3f68277fb8e558003a66f18d927",
+   "successor": "27c561ee5c17187a3aab068c4fdb09b6a6f7b8aab99dd3925a6814b34bea5fa2",
+   "change": "Reuse verified inputs within research requests",
+   "reason": "File verification now runs only through its one owner, so the same file is no longer verified again within a request, and it works with the new market-data input keys. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal; the factor source closures that moved carry successor entries."
+  }
+ ]
+}

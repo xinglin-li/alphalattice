@@ -1932,6 +1932,7 @@ class WorkspacePreparationApplication:
                 workspace=root,
                 binding_hash=bundle.binding_hash,
                 document=normalize_factor_document(factor_template(bundle), binding, bundle),
+                bundle=bundle,
             )
             return {"binding_hash": inputs["binding_hash"], "status": "RESEARCH_INPUTS_READY"}
         raise ValueError("workspace_preparation.stage_unknown")

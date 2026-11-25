@@ -276,7 +276,7 @@
       "seconds": 5
     },
     "architecture.kernel_ports_enforce_import_boundaries": {
-      "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals or reserved APIs.",
+      "description": "Kernel packages import downward through ports, with only standard-library dependencies and no access to another owner's internals or reserved APIs such as the file-trust owner's verification primitives.",
       "owner": "devtools.architecture",
       "layer": "integration",
       "seconds": 5,

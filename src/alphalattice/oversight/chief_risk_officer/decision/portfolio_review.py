@@ -37,6 +37,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceDirection,
     EvidenceLifecycle,
@@ -1656,7 +1657,7 @@ def compile_portfolio_review_recommendation(
 
 def _identity(value: AlternativeEvidenceContract, field: str) -> None:
 
-    expected = canonical_hash(value.model_dump(mode="json", exclude={field}))
+    expected = scoped_model_digest(value, field, digest=canonical_hash)
     if getattr(value, field) != expected:
         raise ValueError("chief_risk_officer.identity_invalid")
 

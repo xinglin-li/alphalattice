@@ -1530,6 +1530,31 @@ def _imported_module(node: ast.AST, target: str, modules: set[str]) -> str:
     return target.rpartition(".")[0]
 
 
+_FILE_TRUST_ROOT = "alphalattice.kernel.identity"
+_FILE_TRUST_PRIMITIVES = frozenset(
+    {
+        "file_stamp",
+        "handle_stamp",
+        "integrity_sha256_path",
+        "integrity_sha256_stream",
+    }
+)
+_FILE_TRUST_TARGETS = {
+    f"{module}.{primitive}"
+    for module in (
+        _FILE_TRUST_ROOT,
+        f"{_FILE_TRUST_ROOT}.file_facts",
+        f"{_FILE_TRUST_ROOT}._digests",
+    )
+    for primitive in _FILE_TRUST_PRIMITIVES
+}
+_FILE_TRUST_OWNERS = {
+    _FILE_TRUST_ROOT,
+    f"{_FILE_TRUST_ROOT}.file_facts",
+    "alphalattice.control.workspace_runtime.verified_facts",
+}
+
+
 def import_contract_violations(
     sources: Mapping[str, str],
     *,
@@ -1578,6 +1603,14 @@ def import_contract_violations(
         eager.update(imported_module(site[1], t) for site in sites if site[6] for t in site[7])
         for line, kind, scope, deferred, lazy, text, _top, targets in sites:
             located = f"{module}:{line}"
+            if module.startswith("alphalattice.") and module not in _FILE_TRUST_OWNERS:
+                out.extend(
+                    f"{located}: file-verification-owner-required {target}"
+                    for target in targets
+                    if target in _FILE_TRUST_TARGETS
+                )
+            if kind == "file-trust-reference":
+                continue
             if deferred and not lazy and not all(t.partition(".")[0] in backends for t in targets):
                 site = f"src/{qualified.replace('.', '/')}.py::{scope}::{text}"
                 if retained[site] < 1:
@@ -1731,6 +1764,24 @@ def _import_sites(data: bytes, qualified: str) -> list[list[Any]]:
         sites.append(
             [line, kind, scope, deferred, lazy, ast.unparse(node), id(node) in top, targets]
         )
+    bindings: dict[str, str] = {}
+    for node in nodes:
+        if isinstance(node, ast.ImportFrom):
+            for alias, target in zip(node.names, targets_of(node), strict=True):
+                bindings[alias.asname or alias.name] = target
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.partition(".")[0]
+                bindings[alias.asname or root] = alias.name if alias.asname else root
+    for node in nodes:
+        if not (isinstance(node, ast.Attribute) and node.attr in _FILE_TRUST_PRIMITIVES):
+            continue
+        head, _, rest = ast.unparse(node).partition(".")
+        target = f"{bindings.get(head, head)}.{rest}"
+        if target in _FILE_TRUST_TARGETS:
+            sites.append(
+                [node.lineno, "file-trust-reference", "", False, False, "", False, [target]]
+            )
     return sites
 
 

@@ -25,7 +25,10 @@ from alphalattice.capabilities.domain_contracts.project_layout import (
     resolve_playpen_root,
     runtime_json,
 )
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_role_acquisition,
+    source_rule_closure_hash,
+)
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
@@ -386,6 +389,27 @@ _VerifiedFeatures = tuple[
 """The Feature plans and preparations one execution of a Task verified."""
 
 
+def _advancement_identities() -> tuple[str, str, str, str]:
+    with source_role_acquisition():
+        # This file decides which publications feed scoring and calibration; Task
+        # Control's runner and registry, formerly tracked here,
+        # decide lifecycles and no number.
+        own = source_rule_closure_hash(
+            root=resolve_playpen_root(Path(__file__)),
+            semantic_owner="product_host",
+            numerical_role="CONDITIONAL_DECISION_ADVANCEMENT",
+            tracked_paths=(
+                "src/alphalattice/control/product_host/composition/decision_advancement.py",
+            ),
+        )
+        score, calibration, decision = (
+            scoring_identity(),
+            calibration_identity(),
+            decision_identity(),
+        )
+    return str(canonical_hash([own, score, calibration, decision])), score, calibration, decision
+
+
 class DecisionAdvancementApplication:
     """One advancement schema, composed into the existing dispatcher and ledger."""
 
@@ -429,20 +453,7 @@ class DecisionAdvancementApplication:
             Exact combined implementation identity; operational task runner state is outside
             numerical meaning.
         """
-        # This file decides which publications feed scoring and calibration; Task
-        # Control's runner and registry, formerly tracked here,
-        # decide lifecycles and no number.
-        own = source_rule_closure_hash(
-            root=resolve_playpen_root(Path(__file__)),
-            semantic_owner="product_host",
-            numerical_role="CONDITIONAL_DECISION_ADVANCEMENT",
-            tracked_paths=(
-                "src/alphalattice/control/product_host/composition/decision_advancement.py",
-            ),
-        )
-        return str(
-            canonical_hash([own, scoring_identity(), calibration_identity(), decision_identity()])
-        )
+        return _advancement_identities()[0]
 
     def _load[M: BaseModel](
         self, category: str, identity: str, model: type[M], field: str = "content_hash"
@@ -602,7 +613,7 @@ class DecisionAdvancementApplication:
         owned = self._in_flight(tasks, package_id)
         if owned is not None:
             return owned
-        history = self.updates.history(checkpoint.content_hash)
+        history = self.updates.store.decision_history(checkpoint.history_hash)
         previous = history[-1] if history else None
         book = checkpoint.initial_book if previous is None else previous.book
         pending = None if previous is None else previous.pending_proposal
@@ -741,6 +752,7 @@ class DecisionAdvancementApplication:
             request=request,
             valuation_grants=data_plan.valuation_grants,
         )
+        implementation, score, calibration, decision = _advancement_identities()
         plan = DecisionAdvancementPlan.create(
             workspace_manifest_hash=self.updates.manifest.manifest_hash,
             catalog_hash=self.updates.application.resolver.strategy_catalog_hash,
@@ -755,10 +767,10 @@ class DecisionAdvancementApplication:
             score_requests=tuple(requests) if len(bindings) != 1 else (),
             history_score_hashes=tuple(historical),
             data_plan=data_plan,
-            implementation_hash=self.implementation(),
-            score_implementation_hash=scoring_identity(),
-            calibration_implementation_hash=calibration_identity(),
-            decision_implementation_hash=decision_identity(),
+            implementation_hash=implementation,
+            score_implementation_hash=score,
+            calibration_implementation_hash=calibration,
+            decision_implementation_hash=decision,
         )
         self._save("decision-programs", plan)
         return self._plan_body(plan, False)
@@ -1270,16 +1282,16 @@ class DecisionAdvancementApplication:
                 self._save("market-inputs", snapshot)
             products = [snapshot.content_hash]
             effective_authorities = {}
-            for index, binding in enumerate(plan.bindings):
-                current_authority = self.scoring._authority(binding)
-                with span("read", "historical_scores"):
-                    historical = [
-                        self.scoring.store.load_frozen_component_score(h)
-                        for h in plan.history_score_hashes
-                    ]
+            authorities = self.scoring.authorities(plan.bindings)
+            with span("read", "historical_scores"):
+                prior_scores = tuple(
+                    self.scoring.store.load_frozen_component_score(h)
+                    for h in plan.history_score_hashes
+                )
+            for index, current_authority in enumerate(authorities):
                 historical = [
                     s
-                    for s in historical
+                    for s in prior_scores
                     if recipe_hashes_match(
                         s.component_recipe_hash, current_authority.authority.model_set.recipe_hash
                     )
@@ -1402,9 +1414,7 @@ class DecisionAdvancementApplication:
                         if market_rows is None:
                             with span("materialize", "calibration_rows"):
                                 market_rows = PreparedLocalQASnapshotRows(
-                                    self._load(
-                                        "market-inputs", captured.products[0], LocalQAMarketSnapshot
-                                    ),
+                                    market_snapshot,
                                     artifact_root=self.session.workspace / "artifacts",
                                     capacity=lambda size: require_storage_capacity(
                                         self.session.workspace, additional_bytes=size
@@ -1636,23 +1646,34 @@ class DecisionAdvancementApplication:
         | None = None,
         verified_feature_preparations: dict[str, FrozenFeaturePreparation] | None = None,
     ) -> StrategyScorePlan:
-        key = (step.plan_hash, step.content_hash, step.products)
-        if verified_feature_plans is not None and key in verified_feature_plans:
-            return verified_feature_plans[key]
-        plan = self._load("score-programs", step.products[0], StrategyScorePlan, "plan_hash")
-        self.scoring.verify_step(
-            plan, SCORE_STAGES[1], self.scoring._evidence(SCORE_STAGES[1], step.products[1])
-        )
-        if verified_feature_plans is not None:
-            verified_feature_plans[key] = plan
+        return self._verify_feature_group(
+            (step,),
+            verified_feature_plans=verified_feature_plans,
+            verified_feature_preparations=verified_feature_preparations,
+        )[0]
+
+    def _verify_feature_group(
+        self,
+        steps: tuple[DecisionAdvancementStep, ...],
+        *,
+        verified_feature_plans: dict[tuple[str, str, tuple[str, ...]], StrategyScorePlan] | None,
+        verified_feature_preparations: dict[str, FrozenFeaturePreparation] | None,
+    ) -> tuple[StrategyScorePlan, ...]:
+        opened = verified_feature_plans if verified_feature_plans is not None else {}
+        keys = tuple((step.plan_hash, step.content_hash, step.products) for step in steps)
+        missing = {}
+        requests = []
+        for key, step in zip(keys, steps, strict=True):
+            if key in opened or key in missing:
+                continue
+            plan = self._load("score-programs", step.products[0], StrategyScorePlan, "plan_hash")
+            missing[key] = plan
+            requests.append((plan, self.scoring._evidence(SCORE_STAGES[1], step.products[1])))
+        preparations = self.scoring.verify_feature_steps(tuple(requests))
         if verified_feature_preparations is not None:
-            verified_feature_preparations[step.products[1]] = self.scoring.store._load(
-                "frozen-feature-preparations",
-                step.products[1],
-                "preparation_hash",
-                FrozenFeaturePreparation,
-            )
-        return plan
+            verified_feature_preparations.update((p.preparation_hash, p) for p in preparations)
+        opened.update(missing)
+        return tuple(opened[key] for key in keys)
 
     def _ew_input(
         self,
@@ -1811,36 +1832,38 @@ class DecisionAdvancementApplication:
         parent = plan.parent_hash
         prior = self._parent(plan)
         checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
-        for value in branch:
-            if (
-                value.parent_hash != parent
-                or value.checkpoint_hash != checkpoint.history_hash
-                or value.html_hash is None
-            ):
-                raise ValueError("research_update.branch_binding_invalid")
-            dp = self.updates._load_plan(value.plan_hash)
-            if (
-                dp.parent_hash != value.parent_hash
-                or dp.checkpoint_hash != checkpoint.content_hash
-                or dp.market_hash != value.source_snapshot_hash
-                or (
-                    dp.raw_market_hash is not None
-                    and dp.prior_market_hash
-                    != (None if prior is None else prior.source_snapshot_hash)
-                )
-                or (
-                    dp.prior_raw_market_hash is not None
-                    and (
-                        prior is None
-                        or dp.prior_raw_market_hash != self.updates.raw_basis(prior).content_hash
+        with self.updates.store.decision_observation_reads() as read:
+            for value in branch:
+                if (
+                    value.parent_hash != parent
+                    or value.checkpoint_hash != checkpoint.history_hash
+                    or value.html_hash is None
+                ):
+                    raise ValueError("research_update.branch_binding_invalid")
+                dp = self.updates._load_plan(value.plan_hash)
+                if (
+                    dp.parent_hash != value.parent_hash
+                    or dp.checkpoint_hash != checkpoint.content_hash
+                    or dp.market_hash != value.source_snapshot_hash
+                    or (
+                        dp.raw_market_hash is not None
+                        and dp.prior_market_hash
+                        != (None if prior is None else prior.source_snapshot_hash)
                     )
-                )
-            ):
-                raise ValueError("research_update.branch_source_lineage_invalid")
-            self.updates._observed(dp)
-            self.updates.store.load_html(value.html_hash)
-            parent = value.content_hash
-            prior = value
+                    or (
+                        dp.prior_raw_market_hash is not None
+                        and (
+                            prior is None
+                            or dp.prior_raw_market_hash
+                            != self.updates.raw_basis(prior, read=read).content_hash
+                        )
+                    )
+                ):
+                    raise ValueError("research_update.branch_source_lineage_invalid")
+                self.updates._observed(dp, read=read)
+                self.updates.store.load_html(value.html_hash)
+                parent = value.content_hash
+                prior = value
         if not branch or branch[-1].observed_through != plan.target:
             raise ValueError("research_update.branch_incomplete")
         return branch
@@ -1878,35 +1901,38 @@ class DecisionAdvancementApplication:
             snapshot = self._load("market-inputs", step.products[0], LocalQAMarketSnapshot)
             if snapshot.through != plan.target or len(step.products) != len(plan.requests) + 1:
                 raise ValueError("research_update.input_axis_invalid")
-            for (index, day), h in zip(plan.requests, step.products[1:], strict=True):
-                v = self._load("decision-stages", h, DecisionAdvancementStep)
-                sp = self._verify_features(
-                    v,
-                    verified_feature_plans=verified_feature_plans,
-                    verified_feature_preparations=verified_feature_preparations,
-                )
+            feature_steps = tuple(
+                self._load("decision-stages", h, DecisionAdvancementStep) for h in step.products[1:]
+            )
+            score_plans = self._verify_feature_group(
+                feature_steps,
+                verified_feature_plans=verified_feature_plans,
+                verified_feature_preparations=verified_feature_preparations,
+            )
+            for (index, day), v, sp in zip(plan.requests, feature_steps, score_plans, strict=True):
                 if (
                     sp != self._score_plan(plan, day, step.source_hash, index)
                     or v.plan_hash != plan.content_hash
                 ):
                     raise ValueError("research_update.features_binding_invalid")
         elif stage == STAGES[3]:
-            features = self._need(plan, STAGES[2]).products[1:]
-            for h, f in zip(step.products, features, strict=True):
-                v = self._load("decision-stages", f, DecisionAdvancementStep)
-                sp = self._verify_features(
-                    v,
-                    verified_feature_plans=verified_feature_plans,
-                    verified_feature_preparations=verified_feature_preparations,
-                )
+            feature_steps = tuple(
+                self._load("decision-stages", h, DecisionAdvancementStep)
+                for h in self._need(plan, STAGES[2]).products[1:]
+            )
+            preparations = (
+                verified_feature_preparations if verified_feature_preparations is not None else {}
+            )
+            score_plans = self._verify_feature_group(
+                feature_steps,
+                verified_feature_plans=verified_feature_plans,
+                verified_feature_preparations=preparations,
+            )
+            for h, v, sp in zip(step.products, feature_steps, score_plans, strict=True):
                 score = self.scoring.verify_score_step(
                     sp, SCORE_STAGES[2], self.scoring._evidence(SCORE_STAGES[2], h)
                 )
-                preparation = (
-                    None
-                    if verified_feature_preparations is None
-                    else verified_feature_preparations.get(v.products[1])
-                )
+                preparation = preparations.get(v.products[1])
                 if preparation is None:
                     preparation, _ = self.scoring.store.load_frozen_feature_preparation(
                         v.products[1]
@@ -2081,6 +2107,7 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.publication_task_ambiguous")
         return matches[0] if matches else None
 
+    @verified_lifecycle_admissions()
     def readback(
         self, task_id: UUID | None = None, *, publication_hash: str | None = None
     ) -> dict[str, object]:
@@ -2153,7 +2180,11 @@ class DecisionAdvancementApplication:
         checkpoint = self.updates.store.load_decision_checkpoint(
             value.input_checkpoint_hash or value.checkpoint_hash
         )
-        history = self.updates.history(plan.checkpoint_hash)
+        history = (
+            self.updates.store.decision_history(checkpoint.history_hash)
+            if checkpoint.content_hash == plan.checkpoint_hash
+            else self.updates.history(plan.checkpoint_hash)
+        )
         prefix = history[
             : next(i for i, v in enumerate(history) if v.content_hash == value.content_hash) + 1
         ]

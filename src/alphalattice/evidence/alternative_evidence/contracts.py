@@ -17,7 +17,10 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model_validated
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_model_validated,
+)
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -865,7 +868,7 @@ def _aware(value: datetime, code: str) -> None:
 
 
 def _identity(value: AlternativeEvidenceContract, field: str) -> None:
-    expected = canonical_hash(value.model_dump(mode="json", exclude={field}))
+    expected = scoped_model_digest(value, field, digest=canonical_hash)
     if getattr(value, field) != expected:
         raise ValueError("alternative_evidence.identity_invalid")
 

@@ -11,6 +11,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     FloatArray,
     PortfolioCostPolicy,
@@ -60,9 +61,8 @@ class _Sealed(BaseModel):  # type: ignore[misc]
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def identity(self) -> Self:
-        if self.content_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"content_hash"})
-        ):
+        digest = scoped_model_digest(self, "content_hash", digest=canonical_hash)
+        if self.content_hash != digest:
             raise ValueError("portfolio_update.identity_invalid")
         return self
 

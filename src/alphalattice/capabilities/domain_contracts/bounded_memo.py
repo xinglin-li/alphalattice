@@ -158,14 +158,25 @@ def stage_digests(digests: StageDigests | None = None) -> Iterator[None]:
         _STAGE_DIGESTS.reset(token)
 
 
-def stage_digest[T](slot: tuple[object, ...], inputs: T, digest: Callable[[T], str]) -> str:
-    """Reuse a digest only when the reader sees the same immutable inputs in its slot."""
+def stage_digest[T](
+    slot: tuple[object, ...],
+    inputs: T,
+    digest: Callable[[T], str],
+    *,
+    snapshot: Callable[[T], object] | None = None,
+) -> str:
+    """Reuse a digest when its immutable input holds.
+
+    A caller that can compare its inputs exactly through a snapshot builds it only in a scope.
+    The digest still takes the original input.
+    """
     held = _STAGE_DIGESTS.get()
     if held is None:
         return digest(inputs)
+    bound = inputs if snapshot is None else snapshot(inputs)
     prior = held.get(slot)
-    if prior is not None and prior[0] == inputs:
+    if prior is not None and prior[0] == bound:
         return prior[1]
     value = digest(inputs)
-    held[slot] = inputs, value
+    held[slot] = bound, value
     return value

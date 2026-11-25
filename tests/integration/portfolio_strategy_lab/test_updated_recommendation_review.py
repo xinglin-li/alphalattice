@@ -46,6 +46,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     _post_observed_package,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
+from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )
@@ -56,6 +57,7 @@ from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
 from tests.alternative_evidence_desk.planted_corpus import _NOW
+from tests.alternative_evidence_desk.review_dossiers import controlled_answer
 from tests.alternative_evidence_desk.review_http_support import (
     _raise_interruption,
     _Service,
@@ -366,7 +368,17 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     service.drain()
     cro_context = service.get("/api/tasks/recovery?task_id=" + cro["task_id"])["subject_context"]
     assert cro_context["date"] == entry
-    published = service.get(evidence_url)
+    resolve_book = service.review.resolve_book
+    book_reads = []
+
+    def counted(selector):
+        book_reads.append((str(selector.update_task_id), selector.update_publication_hash))
+        return resolve_book(selector)
+
+    with monkeypatch.context() as observed:
+        observed.setattr(service.review, "resolve_book", counted)
+        published = service.get(evidence_url)
+    assert book_reads == [(task, c.value.content_hash)]
     assert published["state"] == "REVIEW_PUBLISHED", published
     assert published["review_publication_hash"]
     # regression (FAR-PAST-FIRST-USE B): Evidence read after the positions' formation is named
@@ -394,7 +406,17 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
         **c.selector,
         "review_publication_hash": published["review_publication_hash"],
     }
-    exported = service.get("/api/evidence-cro/export?" + urlencode(export_selector))
+    read_update = service.review.read_update
+    export_reads = []
+
+    def exact_update(*args):
+        export_reads.append(args)
+        return read_update(*args)
+
+    with monkeypatch.context() as observed:
+        observed.setattr(service.review, "read_update", exact_update)
+        exported = service.get("/api/evidence-cro/export?" + urlencode(export_selector))
+    assert export_reads == [(UUID(task), c.value.content_hash)]
     pinned = service.get("/api/evidence-cro?" + urlencode(export_selector))
     assert pinned["book"]["committee_context"] == context
     assert "committee_context" not in exported and "committee_context" not in exported["portfolio"]
@@ -587,16 +609,64 @@ def test_legacy_entry_stays_readable_but_cannot_invent_a_review(updated):
     assert not c.service.review.review_actor.observed_deadlines
 
 
-@pytest.mark.parametrize("tamper", (False, True), ids=("resume", "refuse-tampered-source"))
-def test_update_review_recovery_revalidates_its_exact_source(updated, monkeypatch, tamper):
+@pytest.mark.parametrize(
+    "tamper,prepared",
+    [(False, False), (True, False), (False, True)],
+    ids=["resume", "refuse-tampered-source", "prepared"],
+)
+def test_update_review_recovery_revalidates_its_exact_source(
+    updated, monkeypatch, tamper, prepared
+):
     c = updated
     service = c.service
     service.post("/api/evidence-refresh", c.selector)
     service.drain()
     with monkeypatch.context() as patch:
         patch.setattr(PortfolioReviewTaskAdapter, "verify_stage", _raise_interruption)
-        admitted = service.post("/api/cro-review", c.selector)
+        if prepared:
+            dossier = service.agent(Request(operation="CRO_REVIEW_DOSSIER", **c.selector))
+            answer = controlled_answer(
+                dossier["dossier"], *service.review.review_actor.risks
+            ).model_dump(mode="json")
+            execute = PortfolioReviewTaskAdapter.execute_stage
+            read_update = service.review.read_update
+            stage_reads = []
+
+            def count_acquisition(adapter, **args):
+                reads = []
+
+                def read(*key):
+                    reads.append(key)
+                    return read_update(*key)
+
+                with monkeypatch.context() as observed:
+                    observed.setattr(service.review, "read_update", read)
+                    outcome = execute(adapter, **args)
+                stage_reads.append((args["work_item"].stage_id, reads))
+                return outcome
+
+            patch.setattr(PortfolioReviewTaskAdapter, "execute_stage", count_acquisition)
+            submitted = service.review.submit_assessment(
+                dispatcher=service.session.dispatcher,
+                selector=BookSelector(
+                    update_task_id=UUID(c.selector["update_task_id"]),
+                    update_publication_hash=c.selector["update_publication_hash"],
+                    position_basis=c.selector["position_basis"],
+                ),
+                dossier_hash=dossier["dossier"]["dossier_hash"],
+                policy_hash=dossier["decision_policy_hash"],
+                schema_hash=dossier["assessment_schema_hash"],
+                answer=answer,
+                caller="EXTERNAL_AUTOMATION",
+            )
+            assert submitted.disposition == "ADMITTED", submitted
+            admitted = {"task_id": str(submitted.task_id)}
+        else:
+            admitted = service.post("/api/cro-review", c.selector)
         service.drain()
+        if prepared:
+            exact = (UUID(c.selector["update_task_id"]), c.value.content_hash)
+            assert stage_reads == [("admit_portfolio_review", [exact])]
     task_id = UUID(admitted["task_id"])
     task = service.registry.task(task_id)
     assert task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
@@ -627,7 +697,9 @@ def test_update_review_recovery_revalidates_its_exact_source(updated, monkeypatc
             assert recovered.lifecycle is TaskLifecycle.SUCCEEDED
             assert len(values) == 1
             assert values[0].update_subject.update_publication_hash == c.value.content_hash
-            assert len(c.service.review.review_actor.observed_deadlines) == calls + 1
+            assert len(c.service.review.review_actor.observed_deadlines) == calls + int(
+                not prepared
+            )
     finally:
         path.write_bytes(original)
 
@@ -709,15 +781,24 @@ def test_a_sealed_review_update_is_verified_once_for_its_concurrent_readers(
         bodies[0]["publication"] = None  # each reader holds its own copy
         assert operations._read_review_update(task, publication) == bodies[1]
         assert len(verified) == before + 2  # a completed flight is not kept
+        from alphalattice.control.product_host.composition.review_updates import update_readbacks
+
+        with update_readbacks():
+            held = operations._read_review_update(task, publication)
+            held["publication"] = None
+            assert operations._read_review_update(task, publication) == bodies[1]
+            assert len(verified) == before + 3
         path = operations.updates.store.root / "decision-updates" / f"{publication}.json"
         original_bytes = path.read_bytes()
         try:
             path.write_bytes(b"tampered")
             with pytest.raises(ValueError):
                 real(task, publication_hash=publication)
-            with pytest.raises(ValueError):
+            with update_readbacks(), pytest.raises(ValueError):
                 operations._read_review_update(task, publication)
         finally:
             path.write_bytes(original_bytes)
+        with update_readbacks():
+            assert operations._read_review_update(task, publication) == bodies[1]
     finally:
         service.session.stop()

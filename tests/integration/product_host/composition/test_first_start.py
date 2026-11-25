@@ -453,7 +453,9 @@ def test_first_start_reuses_only_the_recorded_family_inputs(
                     current = first_start.FirstStart(root, log, workspace)
                     facts = current._trusted[str(workspace.resolve()), "held"]
                     committed = facts["files"]["/new-store.json"]["metadata"]
-                    assert committed == list(first_start.file_stamp(workspace / "new-store.json"))
+                    assert committed == list(
+                        first_start.FileDigestTrust.stamp(workspace / "new-store.json")
+                    )
 
 
 @pytest.mark.proves("product_host.first_start_asks_nothing_of_catalog_held_outcomes")

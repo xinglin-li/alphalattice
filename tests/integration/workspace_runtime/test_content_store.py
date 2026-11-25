@@ -36,6 +36,8 @@ from pydantic import BaseModel, ConfigDict
 
 from alphalattice.capabilities.domain_contracts.spans import collect
 from alphalattice.control.workspace_runtime.content_store import (
+    CommittedIndex,
+    CommittedKind,
     ContentAddressedStore,
     ContentAddressedStoreError,
     columns_digest,
@@ -50,8 +52,8 @@ from alphalattice.control.workspace_runtime.content_store import (
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase, table_columns
 from alphalattice.foundation.data_layer import backup
 from alphalattice.kernel.config import Change, override
+from alphalattice.kernel.identity import FileDigestTrust, file_stamp
 from alphalattice.kernel.identity import file_facts as digests
-from alphalattice.kernel.identity import file_stamp
 
 
 def _store(tmp_path: Path) -> ContentAddressedStore:
@@ -271,7 +273,7 @@ def test_full_proof_refuses_a_missing_model_file_behind_a_kept_value(tmp_path: P
 
 @pytest.mark.proves("workspace_runtime.a_kept_value_follows_its_file")
 def test_a_kept_model_is_never_answered_for_a_file_gone_or_replaced_at_its_path(
-    tmp_path, kept_here
+    tmp_path, kept_here, monkeypatch
 ):
     """A model kept for a file is read again once that file is gone or a new file stands at its
     path, as a reused test folder or a restored workspace leaves it; outside full proof too."""
@@ -297,6 +299,54 @@ def test_a_kept_model_is_never_answered_for_a_file_gone_or_replaced_at_its_path(
     with verified_model_read_scope():
         _load_read_record(store, identity)
     assert _FrozenReadRecord.validation_calls == (3 if kept_here else 4)  # made again: read
+    for reader in ("content", "committed"):
+        with monkeypatch.context() as probe:
+            _assert_model_file_identity_boundary(tmp_path / reader, probe, reader)
+
+
+def _assert_model_file_identity_boundary(tmp_path, monkeypatch, reader):
+    """The model's reader reuses the source boundary's fact and recognizes a replacement."""
+    store, identity, path = _published_read_record(tmp_path)
+    index = CommittedIndex(store.root, store)
+    kind = CommittedKind("records", "records", _FrozenReadRecord, "content_hash")
+    if reader == "committed":
+        index.commit(kind, identity, _load_read_record(store, identity))
+        path = index.path(kind.index, identity)
+
+    def read():
+        if reader == "committed":
+            return index.open(kind, identity)
+        return _load_read_record(store, identity)
+
+    lifetime = FileDigestTrust.identity
+    observed = []
+
+    def count(source):
+        observed.append(source)
+        return lifetime(source)
+
+    monkeypatch.setattr(FileDigestTrust, "identity", staticmethod(count))
+    replacement = path.with_name("replacement.json")
+    original = path.read_bytes()
+    replacement.write_bytes(original)
+    with verified_model_read_scope():
+        first = read()
+        if reader == "committed":
+            assert read() is first
+        os.replace(replacement, path)
+        after = read()
+        if reader == "committed":
+            stamp = path.stat()
+            path.write_bytes(original.replace(b'"sealed"', b'"broken"'))
+            os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+            with pytest.raises(ContentAddressedStoreError, match="committed_index_tampered"):
+                read()
+            path.write_bytes(original)
+            restored = read()
+            assert restored == first and restored is not after
+    assert after == first and after is not first
+    if reader == "content":
+        assert observed == [path, path]
 
 
 def test_failed_model_verification_is_never_cached(tmp_path: Path):
@@ -1149,6 +1199,66 @@ def test_complete_source_owner_retains_decoded_values_without_a_second_process_c
     assert np.array_equal(first[0][1], np.arange(8))
     with pytest.raises(ValueError, match="WRITEABLE"):
         first[0][1].setflags(write=True)
+    with monkeypatch.context() as probe:
+        nested = tmp_path / "nested"
+        nested.mkdir()
+        _assert_nested_npz_readers(nested, probe)
+
+
+def _assert_nested_npz_readers(tmp_path, monkeypatch):
+    """Source owners can share a request's immutable decode across the source-check pool."""
+    from alphalattice.control.workspace_runtime import content_store as owner
+
+    path = tmp_path / "arrays.bin"
+    caller = current_thread()
+    load = np.load
+    decodes = []
+
+    def counted_load(*args, **kwargs):
+        decodes.append(True)
+        return load(*args, **kwargs)
+
+    def read(name):
+        def build():
+            arrays = verified_npz_arrays(path.read_bytes(), identity=(str(path), "result"))
+            return tuple(arrays.items())
+
+        return dict(verified_source_value((name,), (path,), build, nbytes=64))["values"]
+
+    def checked_read(name):
+        results = []
+
+        def check():
+            assert current_thread() is not caller
+            results.append(read(name))
+
+        verify_source_checks((check,))
+        return results[0]
+
+    def write(values, target):
+        with target.open("wb") as stream:
+            np.savez(stream, values=np.array(values))
+
+    monkeypatch.setattr(np, "load", counted_load)
+    monkeypatch.setattr(owner, "worker_width", lambda _: 2)
+    write([5, 7], path)
+    with verified_model_read_scope():
+        first = read("first")
+        assert read("another reader") is first
+        assert checked_read("source check") is first
+        with full_content_proof():
+            proved = checked_read("source check")
+            assert proved.tolist() == [5, 7] and proved is not first
+        original = path.read_bytes()
+        replacement = path.with_name("replacement.bin")
+        write([11, 13], replacement)
+        os.replace(replacement, path)
+        assert checked_read("after replacement").tolist() == [11, 13]
+        replacement.write_bytes(original)
+        os.replace(replacement, path)
+        assert checked_read("after restore") is first
+    assert checked_read("another request") is not first
+    assert decodes == [True, True, True, True]
 
 
 @pytest.mark.proves("workspace_runtime.source_owner_keeps_one_copy")

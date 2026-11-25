@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
 
 Hash = str
@@ -298,7 +299,7 @@ def _validate_axes(
 
 
 def _validate_hash(model: BaseModel, field_name: str) -> None:
-    expected = canonical_hash(model.model_dump(mode="json", exclude={field_name}))
+    expected = scoped_model_digest(model, field_name, digest=canonical_hash)
     if getattr(model, field_name) != expected:
         raise ValueError(f"{model.__class__.__name__} identity is invalid")
 

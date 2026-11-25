@@ -102,7 +102,12 @@ from alphalattice.investment.alpha_research.targets.total_return import (
     TotalReturnAlphaTargetEvidence,
     total_return_array_identity,
 )
-from alphalattice.kernel.identity import identity_sha256, integrity_blake3, integrity_sha256
+from alphalattice.kernel.identity import (
+    FileDigestTrust,
+    identity_sha256,
+    integrity_blake3,
+    integrity_sha256,
+)
 
 from .campaign import AlphaDevelopmentProgram
 from .campaign_evidence import (
@@ -627,10 +632,8 @@ class AlphaDevelopmentArtifactStore:
         if not resolved.is_relative_to(self.root.parent):
             raise self._packed_readback_error("alpha_research.frozen_input_path_outside_root")
 
-        with span("read", "alpha_packed"), path.open("rb") as stream:
-            before = os.fstat(stream.fileno())
-            payload = stream.read()
-            after = os.fstat(stream.fileno())
+        with span("read", "alpha_packed"):
+            payload, before, after = FileDigestTrust.read_snapshot(path)
         if full_proof():
             with span("hash", "alpha_packed"):
                 observed_hash = identity_sha256(payload).hexdigest()
@@ -722,10 +725,8 @@ class AlphaDevelopmentArtifactStore:
 
         def verify() -> tuple[bytes, tuple[str, ...]]:
             try:
-                with span("read", "alpha_json"), target.open("rb") as stream:
-                    before = os.fstat(stream.fileno())
-                    raw = stream.read()
-                    after = os.fstat(stream.fileno())
+                with span("read", "alpha_json"):
+                    raw, before, after = FileDigestTrust.read_snapshot(target)
                 current = target.stat()
             except FileNotFoundError as error:
                 raise FileNotFoundError("Alpha JSON artifact is missing") from error

@@ -8,16 +8,62 @@ Callers pass pydantic contract models.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+import json
+from collections.abc import Callable, Collection, Mapping
 from typing import Any, cast
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+
+_PAYLOAD_WIRE = json.JSONEncoder(separators=(",", ":"), default=str)
+
+
+def scoped_model_digest(record: Any, field: str, *, digest: Callable[[object], str]) -> str:
+    """Reuse a contract's digest in this stage only when the complete payload agrees.
+
+    The comparison keeps signed zero and nonfinite values distinct from their alternatives.
+    The supplied digest still encodes the original payload in its canonical form on a miss.
+    """
+    payload = record.model_dump(mode="json", exclude={field})
+    return scoped_payload_digest(payload, field, getattr(record, field), digest=digest)
+
+
+def scoped_payload_digest(
+    payload: dict[str, object], field: str, expected: str, *, digest: Callable[[object], str]
+) -> str:
+    """Reuse the canonical digest only when the complete payload matches in this stage."""
+    return stage_digest((digest, field, expected), payload, digest, snapshot=_PAYLOAD_WIRE.encode)
 
 
 def _sealed_identity(model: Any, values: Mapping[str, object], field: str) -> dict[str, Any]:
     """The canonical JSON a record's `field` seals: every other field, the draft unvalidated."""
     identity: dict[str, Any] = model.model_construct(**values, **{field: "0" * 64}).model_dump(
         mode="json", exclude={field}
+    )
+    return identity
+
+
+def seal_scoped_model[M](
+    model: type[M],
+    values: Mapping[str, object],
+    *,
+    field: str,
+    digest: Callable[[object], str],
+) -> M:
+    """Give the record's validator the digest of the same canonical payload in this stage."""
+    payload = _sealed_identity(model, values, field)
+    identity = seal_payload_digest(field, payload, digest=digest)
+    constructor: Any = model
+    return cast(M, constructor(**payload, **{field: identity}))
+
+
+def seal_payload_digest(
+    field: str, payload: dict[str, object], *, digest: Callable[[object], str]
+) -> str:
+    """Carry the digest of the exact canonical payload to its validator in this stage."""
+    identity = digest(payload)
+    stage_digest(
+        (digest, field, identity), payload, lambda _: identity, snapshot=_PAYLOAD_WIRE.encode
     )
     return identity
 
@@ -72,7 +118,8 @@ def seal_model_validated[M](model: type[M], field: str, /, **values: object) -> 
     draft = contract.model_construct(**values, **{field: "0" * 64})
     identity = draft.model_dump(mode="json", exclude={field})
     payload = draft.model_dump(exclude={field})
-    return cast(M, contract.model_validate({**payload, field: canonical_hash(identity)}))
+    digest = seal_payload_digest(field, identity, digest=canonical_hash)
+    return cast(M, contract.model_validate({**payload, field: digest}))
 
 
 def validate_hash_compatible(
@@ -104,8 +151,11 @@ def validate_hash_compatible(
 
 
 __all__ = [
+    "scoped_model_digest",
+    "scoped_payload_digest",
     "seal_model",
     "seal_model_from_dump",
     "seal_model_validated",
+    "seal_payload_digest",
     "validate_hash_compatible",
 ]

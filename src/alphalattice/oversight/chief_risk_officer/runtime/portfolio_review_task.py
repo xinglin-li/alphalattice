@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic_core import to_jsonable_python
 
@@ -72,6 +72,9 @@ from alphalattice.protocols.actor_execution.answers import (
     AnswerProblem,
 )
 from alphalattice.protocols.actor_execution.usage import ProviderStageUsage
+
+if TYPE_CHECKING:
+    from alphalattice.oversight.chief_risk_officer.decision.book_evidence import SealedBook
 
 TASK_KIND = "chief_risk_officer.portfolio_review"
 INPUT_SCHEMA_ID = "cro-portfolio-review-authority"
@@ -346,9 +349,11 @@ class PortfolioReviewTaskResources:
     actor_id: str
     clock: Callable[[], datetime]
     monotonic: Callable[[], float] = time.monotonic
-    verify_update_subject: Callable[[PortfolioUpdateReviewSubject], None] | None = None
+    verify_update_subject: Callable[[PortfolioUpdateReviewSubject], SealedBook] | None = None
     verify_experiment_subject: Callable[[PortfolioExperimentReviewSubject], None] | None = None
-    verify_external_review_context: Callable[[PortfolioReviewDossier], None] | None = None
+    verify_external_review_context: (
+        Callable[[PortfolioReviewDossier, SealedBook | None], None] | None
+    ) = None
 
 
 def portfolio_review_task_contract(
@@ -504,6 +509,7 @@ class PortfolioReviewTaskAdapter:
 
         if stage == "seal_portfolio_review_assessment":
             dossier = self._dossier(task)
+            self._verify_subject(dossier)
             if not self._evidence_is_current(dossier):
                 raise PortfolioReviewEvidenceExpired("chief_risk_officer.review_evidence_expired")
             started = self.resources.monotonic()
@@ -544,7 +550,7 @@ class PortfolioReviewTaskAdapter:
 
         if stage == "publish_portfolio_review":
             dossier = self._dossier(task)
-            self._verify_external_context(task, dossier)
+            self._verify_external_context(task, dossier, self._verify_subject(dossier))
             receipt = self._receipt(task)
             recommendation = compile_portfolio_review_recommendation(
                 dossier=dossier, receipt=receipt
@@ -620,15 +626,16 @@ class PortfolioReviewTaskAdapter:
             else dossier.experiment_subject.model_dump(mode="json")
         ):
             raise ValueError("chief_risk_officer.review_input_binding_mismatch:experiment_subject")
-        self._verify_subject(dossier)
-        self._verify_external_context(task, dossier)
+        self._verify_external_context(task, dossier, self._verify_subject(dossier))
         prepared = payload.get("submission_hash")
         if prepared is not None and prepared != self._prepared_submission_hash():
             raise ValueError("chief_risk_officer.review_input_binding_mismatch:submission_hash")
         self.artifacts.publish("cro-review-dossiers", dossier.dossier_hash, dossier)
         return dossier
 
-    def _verify_external_context(self, task: TaskRecord, dossier: PortfolioReviewDossier) -> None:
+    def _verify_external_context(
+        self, task: TaskRecord, dossier: PortfolioReviewDossier, book: SealedBook | None
+    ) -> None:
         if {"prepared_answer", "prepared_submission"} & set(task.input.payload):
             if self.resources.decision_policy != build_portfolio_review_policy_binding(
                 self.resources.playpen_root
@@ -636,7 +643,7 @@ class PortfolioReviewTaskAdapter:
                 raise ValueError("chief_risk_officer.external_review_policy_changed")
             if self.resources.verify_external_review_context is None:
                 raise ValueError("chief_risk_officer.external_review_context_reader_missing")
-            self.resources.verify_external_review_context(dossier)
+            self.resources.verify_external_review_context(dossier, book)
 
     def _prepared_submission_hash(self) -> str | None:
         prepared = getattr(self.resources.actor, "answer", None)
@@ -671,10 +678,9 @@ class PortfolioReviewTaskAdapter:
             self._stage_identity(task, "admit_portfolio_review"),
             PortfolioReviewDossier,
         )
-        self._verify_subject(dossier)
         return dossier
 
-    def _verify_subject(self, dossier: PortfolioReviewDossier) -> None:
+    def _verify_subject(self, dossier: PortfolioReviewDossier) -> SealedBook | None:
         if dossier.experiment_subject is not None:
             if self.resources.verify_experiment_subject is None:
                 raise ValueError("chief_risk_officer.review_experiment_reader_missing")
@@ -682,7 +688,8 @@ class PortfolioReviewTaskAdapter:
         if dossier.update_subject is not None:
             if self.resources.verify_update_subject is None:
                 raise ValueError("chief_risk_officer.review_update_reader_missing")
-            self.resources.verify_update_subject(dossier.update_subject)
+            return self.resources.verify_update_subject(dossier.update_subject)
+        return None
 
     def _receipt(self, task: TaskRecord) -> PortfolioReviewReceipt:
         return self.artifacts.load(

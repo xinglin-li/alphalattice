@@ -808,14 +808,11 @@ def test_shutdown_joins_a_slow_authenticated_handler(
 
     live.web.application.route("GET", "/api/qa-slow")(slow_handler)
     if held == "source":
-        from stat import S_IFREG, S_ISREG
-
         from alphalattice.capabilities.domain_contracts import source_identity
         from alphalattice.control.product_host.composition import portfolio_research_operations
 
         source_package = Path(source_identity.__file__).resolve().parents[2]
-        windows = source_identity.os_name == "nt"
-        source_stat = source_identity.file_stamp if windows else Path.stat
+        source_version = source_identity.FileDigestTrust.version
         reading_source = False
 
         def watch_source_admission(check):
@@ -829,12 +826,12 @@ def test_shutdown_joins_a_slow_authenticated_handler(
 
             return source_identity.source_read_admission(mark_source_read)
 
-        def finish_one_source_read(path, **kwargs):
-            facts = source_stat(path, **kwargs)
+        def finish_one_source_read(path):
+            facts = source_version(path)
             if (
                 reading_source
                 and threading.current_thread().name == "local-web-request"
-                and S_ISREG(getattr(facts, "st_mode", S_IFREG))
+                and facts[0]
                 and path.suffix == ".py"
                 and path.is_relative_to(source_package)
             ):
@@ -847,10 +844,9 @@ def test_shutdown_joins_a_slow_authenticated_handler(
         monkeypatch.setattr(
             portfolio_research_operations, "source_read_admission", watch_source_admission
         )
-        if windows:
-            monkeypatch.setattr(source_identity, "file_stamp", finish_one_source_read)
-        else:
-            monkeypatch.setattr(Path, "stat", finish_one_source_read)
+        monkeypatch.setattr(
+            source_identity.FileDigestTrust, "version", staticmethod(finish_one_source_read)
+        )
 
     dispatcher = live.dispatcher
     before = dispatcher.admissions

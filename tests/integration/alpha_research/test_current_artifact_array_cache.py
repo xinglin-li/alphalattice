@@ -32,6 +32,7 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
+from alphalattice.kernel.identity import FileDigestTrust
 
 
 def _source() -> FrozenPriceVolumeInputs:
@@ -93,10 +94,29 @@ def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells
         load_calls += 1
         return load(*args, **kwargs)
 
+    identify = FileDigestTrust.identity
+    snapshot_path = (
+        store.root / "current/frozen-observation-snapshots" / (f"{observation.snapshot_hash}.json")
+    )
+    preparation_path = (
+        store.root
+        / "current/frozen-feature-preparations"
+        / (f"{preparation.preparation_hash}.json")
+    )
+    descriptor_reads = Counter()
+
+    def counted_identity(path):
+        if path in (snapshot_path, preparation_path):
+            descriptor_reads[path] += 1
+        return identify(path)
+
+    monkeypatch.setattr(FileDigestTrust, "identity", staticmethod(counted_identity))
     monkeypatch.setattr(np, "load", counted_load)
     with verified_model_read_scope():
         with verified_lifecycle_admissions():
-            observations_a = store.load_frozen_observations(observation.snapshot_hash)
+            snapshot, observations_a = store.load_frozen_observation(observation.snapshot_hash)
+            assert snapshot == observation
+            assert descriptor_reads[snapshot_path] == 1
             observations_b = store.load_frozen_observations(observation.snapshot_hash)
             preparation_a, surfaces_a = store.load_frozen_feature_preparation(
                 preparation.preparation_hash
@@ -105,6 +125,7 @@ def test_frozen_observations_and_feature_preparation_reuse_npz_with_fresh_shells
                 preparation.preparation_hash
             )
 
+        assert descriptor_reads[preparation_path] == 2
         assert load_calls == 2  # one archive inflation per exact payload, not per read
         assert observations_a is not observations_b
         assert observations_a.sector_by_listing_id is not observations_b.sector_by_listing_id
@@ -196,7 +217,7 @@ def test_immutable_artifacts_are_read_once_across_request_scopes(
 
     # Sealed bytes are read once per process on every OS; the next scope answers from memory.
     # Not kept: each scope reads and inflates its sealed bytes again.
-    assert read_counts["json"] == (3 if kept_here else 6)
+    assert read_counts["json"] == (2 if kept_here else 4)
     assert read_counts["arrays"] == (2 if kept_here else 4)
     assert load_calls == (2 if kept_here else 4)
     assert observations_a is not observations_b
@@ -470,33 +491,37 @@ def test_full_proof_refuses_observation_bytes_tampered_after_verification(curren
     """tamper: a sealed observation array changed after its proof, size and time restored, is
     refused by name under full proof (an export, the scrub; EV2)."""
     store, observation, _ = current_artifacts
-    with verified_model_read_scope():
-        store.verify_frozen_observations(observation.snapshot_hash)
-
+    twin = store.publish_frozen_observations(_source(), disposition="RECORDED_INPUT_QA")
+    hashes = (observation.snapshot_hash, twin.snapshot_hash)
     path = store._packed_source_path("frozen-observation-arrays", observation.array_files[-1])
-    before = path.stat()
-    damaged = bytearray(path.read_bytes())
-    damaged[len(damaged) // 2] ^= 1
-    path.write_bytes(damaged)
-    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-    with (
-        full_content_proof(),
-        verified_model_read_scope(),
-        pytest.raises(
+    with full_content_proof(), verified_model_read_scope():
+        store.verify_frozen_observations(*hashes)
+        before = path.stat()
+        damaged = bytearray(path.read_bytes())
+        damaged[len(damaged) // 2] ^= 1
+        replacement = path.with_suffix(".replacement")
+        replacement.write_bytes(damaged)
+        os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+        replacement.replace(path)
+        with pytest.raises(
             development_artifacts.AlphaDevelopmentArtifactReadbackError, match="content_invalid"
-        ),
-    ):
-        store.verify_frozen_observations(observation.snapshot_hash)
+        ):
+            store.verify_frozen_observations(*hashes)
 
 
 def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope(
     current_artifacts, monkeypatch, kept_here
 ):
-    """Control: sealed packed observation bytes are read once across independent scopes."""
+    """One admission checks a shared block once, and a new scope observes its lifetime again."""
     store, observation, _ = current_artifacts
+    twin = store.publish_frozen_observations(_source(), disposition="RECORDED_INPUT_QA")
+    assert twin.snapshot_hash != observation.snapshot_hash
+    assert twin.array_files == observation.array_files
     path = store._packed_source_path("frozen-observation-arrays", observation.array_files[-1])
     open_file = Path.open
+    file_identity = FileDigestTrust.identity
     reads = 0
+    observations = []
 
     def counted_open(candidate, mode="r", *args, **kwargs):
         nonlocal reads
@@ -504,10 +529,17 @@ def test_observation_admission_proof_skips_unchanged_packed_bytes_in_a_new_scope
             reads += 1
         return open_file(candidate, mode, *args, **kwargs)
 
+    def counted_identity(candidate):
+        if Path(candidate) == path:
+            observations.append(candidate)
+        return file_identity(candidate)
+
     monkeypatch.setattr(Path, "open", counted_open)
-    for _ in range(2):
+    monkeypatch.setattr(FileDigestTrust, "identity", staticmethod(counted_identity))
+    for hashes in ((observation.snapshot_hash, twin.snapshot_hash), (twin.snapshot_hash,)):
         with verified_model_read_scope():
-            store.verify_frozen_observations(observation.snapshot_hash)
+            store.verify_frozen_observations(*hashes)
+    assert observations == [path, path]
     # Not kept: each new scope takes the packed bytes from disk again.
     assert reads == (1 if kept_here else 2)
 

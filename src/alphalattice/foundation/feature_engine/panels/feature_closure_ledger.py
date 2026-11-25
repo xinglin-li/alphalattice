@@ -11,6 +11,7 @@ import pyarrow as pa
 from pydantic import BaseModel
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -571,7 +572,8 @@ def _identified[Model: BaseModel](
 ) -> Model:
     provisional = model.model_construct(**values, **{identity_field: "0" * 64})
     identity = durable_payload(provisional, exclude={identity_field})
-    return cast(Model, model.model_validate({**values, identity_field: canonical_hash(identity)}))
+    digest = seal_payload_digest(identity_field, identity, digest=canonical_hash)
+    return cast(Model, model.model_validate({**values, identity_field: digest}))
 
 
 def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str) -> SectorHistory:

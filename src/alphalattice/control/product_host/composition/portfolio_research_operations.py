@@ -33,7 +33,10 @@ from pydantic import ValidationError
 
 from alphalattice.capabilities.domain_contracts.environment import file_trust
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.source_identity import source_read_admission
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_read_admission,
+    source_role_acquisition,
+)
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
 from alphalattice.control.product_host.composition.answer_turns import (
@@ -79,6 +82,11 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.resource_estimates import (
     MEMORY_INSUFFICIENT,
     gate_for,
+)
+from alphalattice.control.product_host.composition.review_updates import (
+    bundle_book_key,
+    read_review_update,
+    update_readbacks,
 )
 from alphalattice.control.product_host.composition.strategy_tasks import (
     StrategyRead,
@@ -1707,6 +1715,8 @@ class PortfolioResearchOperations:
                 )
                 with (
                     edge_proof(request.operation),
+                    source_role_acquisition(fresh=True),
+                    update_readbacks(),
                     verified_model_read_scope(),
                     verified_lifecycle_admissions(),
                     verified_study_evidence(),
@@ -3505,7 +3515,6 @@ class PortfolioResearchOperations:
         self, task_id: UUID, *, publication_hash: str | None = None
     ) -> dict[str, object]:
         """Keep one verified advancement readback while the bundle reads its sealed book."""
-        from .review_updates import bundle_book_key  # lazy: dated update projection
 
         def verify() -> dict[str, object]:
             assert self.research_updates is not None
@@ -5100,10 +5109,6 @@ class PortfolioResearchOperations:
         readback: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Read the exact review origin, reusing a matching result verified in this request."""
-        from .review_updates import (  # lazy: sealed update reader
-            read_review_update,
-        )
-
         body = read_review_update(self, task_id, publication_hash, readback=readback)
         return cast(dict[str, object], body)
 

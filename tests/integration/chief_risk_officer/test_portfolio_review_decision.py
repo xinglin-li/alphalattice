@@ -190,8 +190,30 @@ def _wide_rows() -> tuple[tuple[str, str, float, float], ...]:
     )
 
 
-def test_the_scope_selects_by_the_canonical_lexicographic_rule() -> None:
+def test_the_scope_selects_by_the_canonical_lexicographic_rule(monkeypatch) -> None:
     """Opened and increased first, then unchanged holds, then what shrank."""
+
+    from alphalattice.capabilities.domain_contracts import sealing
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.oversight.chief_risk_officer.portfolio_evidence import contracts
+
+    canonical_hash = sealing.canonical_hash
+    hashed_reports = []
+
+    def count(payload):
+        if isinstance(payload, dict) and payload.get("kind") == "PortfolioExposureProjection":
+            hashed_reports.append(payload["report_hash"])
+        return canonical_hash(payload)
+
+    monkeypatch.setattr(sealing, "canonical_hash", count)
+    monkeypatch.setattr(contracts, "canonical_hash", count)
+    with stage_digests():
+        projection = _projection()
+        assert type(projection).model_validate_json(projection.model_dump_json()) == projection
+        changed = {**projection.model_dump(mode="json"), "report_hash": "f" * 64}
+        with pytest.raises(ValueError, match=r"portfolio_evidence\.identity_invalid"):
+            type(projection).model_validate(changed)
+    assert hashed_reports == ["c" * 64, "f" * 64]
 
     scope = _scope()
 

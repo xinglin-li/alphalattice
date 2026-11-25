@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import latest
+from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 
@@ -407,7 +408,10 @@ class ArtifactResolver:
         identity = dict(payload)
         if (
             identity.pop("evidence_hash", None) != evidence_hash
-            or canonical_hash(identity) != evidence_hash
+            or scoped_payload_digest(
+                identity, "evidence_hash", evidence_hash, digest=canonical_hash
+            )
+            != evidence_hash
         ):
             raise ValueError("panel clipping evidence identity is invalid")
         serialized = json.dumps(
@@ -456,7 +460,10 @@ class ArtifactResolver:
         identity = dict(payload)
         if (
             identity.pop("evidence_hash", None) != evidence_hash
-            or canonical_hash(identity) != evidence_hash
+            or scoped_payload_digest(
+                identity, "evidence_hash", evidence_hash, digest=canonical_hash
+            )
+            != evidence_hash
         ):
             raise ValueError("panel clipping evidence identity is invalid")
         return payload
@@ -492,7 +499,8 @@ class ArtifactResolver:
         if (
             payload.get("receipt_hash") != receipt_hash
             or not isinstance(record_hash, str)
-            or canonical_hash(identity) != record_hash
+            or scoped_payload_digest(identity, "record_hash", record_hash, digest=canonical_hash)
+            != record_hash
         ):
             raise ValueError("panel clip observation identity is invalid")
         serialized = json.dumps(
@@ -537,7 +545,8 @@ class ArtifactResolver:
         if (
             payload.get("receipt_hash") != receipt_hash
             or not isinstance(record_hash, str)
-            or canonical_hash(identity) != record_hash
+            or scoped_payload_digest(identity, "record_hash", record_hash, digest=canonical_hash)
+            != record_hash
         ):
             raise ValueError("panel clip observation identity is invalid")
         return payload

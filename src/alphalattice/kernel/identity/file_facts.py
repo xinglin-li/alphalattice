@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
+import sys
 import weakref
 from _thread import LockType
 from collections.abc import Callable, MutableMapping
 from contextlib import AbstractContextManager
 from io import BufferedReader
 from pathlib import Path
+from stat import S_ISREG
 from threading import Lock
 from typing import BinaryIO, Protocol, cast
 
@@ -75,6 +78,30 @@ TrustEntry = tuple[Stamp, str]
 """A file's stamp when its digest was taken, and the digest."""
 
 
+class _FileHandle(ctypes.Structure):
+    """Linux's struct file_handle, with room for the largest handle (MAX_HANDLE_SZ)."""
+
+    _fields_ = [
+        ("handle_bytes", ctypes.c_uint),
+        ("handle_type", ctypes.c_int),
+        ("f_handle", ctypes.c_ubyte * 128),
+    ]
+
+
+_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform == "linux" else None
+
+
+def _file_handle(path: Path) -> tuple[object, ...] | None:
+    """The mount and file handle of the file at ``path``, following a link as os.stat does."""
+    handle, mount = _FileHandle(handle_bytes=128), ctypes.c_int()
+    named = getattr(_LIBC, "name_to_handle_at", None)
+    at_cwd, follow = -100, 0x400  # AT_FDCWD, AT_SYMLINK_FOLLOW
+    pointers = (ctypes.byref(handle), ctypes.byref(mount))
+    if named is None or named(at_cwd, os.fsencode(path), *pointers, follow):
+        return None
+    return (mount.value, handle.handle_type, bytes(handle.f_handle[: handle.handle_bytes]))
+
+
 class TrustStore(Protocol):
     """Where the trust record keeps each file's entry; its composer owns memory and the journal."""
 
@@ -117,6 +144,77 @@ class FileDigestTrust:
         self._digest_locks: weakref.WeakValueDictionary[str, LockType] = (
             weakref.WeakValueDictionary()
         )
+
+    @staticmethod
+    def identity(path: Path) -> tuple[object, ...] | None:
+        """The file now at ``path`` for its lifetime, or None when none can be named there.
+
+        A kept value follows the file. Removal or replacement at its path requires a new read.
+        An ordinary read of an in-place rewrite keeps the sealed bytes. Full proof checks the
+        current bytes (EV2).
+
+        Linux can reuse inodes, so its file handle includes the generation. On NTFS and APFS
+        retain the file ID with its creation time. Filesystems with no stable name keep nothing."""
+        try:
+            if sys.platform == "linux":
+                return _file_handle(path)
+            stat = os.stat(path)
+            return (stat.st_dev, stat.st_ino, stat.st_birthtime)
+        except OSError:
+            return None
+
+    @staticmethod
+    def read_snapshot(path: Path) -> tuple[bytes, os.stat_result, os.stat_result]:
+        """Read one open descriptor and observe it on either side of the read."""
+        with path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            payload = stream.read()
+            after = os.fstat(stream.fileno())
+        return payload, before, after
+
+    @staticmethod
+    def file_object(handle: BinaryIO) -> tuple[int, int] | None:
+        """The physical object named by an open descriptor, where the filesystem names it."""
+        facts = os.fstat(handle.fileno())
+        return (facts.st_dev, facts.st_ino) if facts.st_ino else None
+
+    @staticmethod
+    def version(path: Path) -> tuple[bool, Stamp | None]:
+        """Whether a regular file is present and the change stamp that supports its proof."""
+        if os.name == "nt":
+            # Python's path stat reports creation time as st_ctime on Windows.
+            try:
+                stamp = file_stamp(path)
+            except (FileNotFoundError, NotADirectoryError):
+                return False, None
+            except OSError:
+                return path.is_file(), None
+            return True, stamp if stamp[1] else None
+        try:
+            facts = path.stat()
+        except (FileNotFoundError, NotADirectoryError):
+            return False, None
+        if not S_ISREG(facts.st_mode):
+            return False, None
+        if not facts.st_ino:
+            return True, None  # without an identity this file cannot support a kept proof
+        return True, (
+            facts.st_dev,
+            facts.st_ino,
+            facts.st_size,
+            facts.st_mtime_ns,
+            facts.st_ctime_ns,
+        )
+
+    @staticmethod
+    def stamp(path: Path, *, handle: BinaryIO | None = None) -> Stamp:
+        """Observe the file's change stamp, using the caller's handle if it has one."""
+        return file_stamp(path) if handle is None else handle_stamp(handle)
+
+    @staticmethod
+    def fresh_digest(path: Path, *, handle: BinaryIO | None = None) -> str:
+        """Prove bytes from the file itself instead of answering a stored digest."""
+        return integrity_sha256_path(path) if handle is None else _whole(handle)
 
     def _settled(self, stamp: Stamp) -> bool:
         return self._time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9

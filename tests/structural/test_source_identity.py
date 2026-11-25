@@ -551,13 +551,13 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
     if edit == "same-tick rewrite":
         model = source / MODEL_PATH
         # A same-size rewrite sees the exact same stamp on a coarse filesystem within its tick.
-        file_stamp = source_identity.file_stamp
-        racy = (*file_stamp(model)[:3], clock, clock)
-        monkeypatch.setattr(source_identity, "os_name", "nt")
+        trust = source_identity.FileDigestTrust
+        version = trust.version
+        racy = (*trust.stamp(model)[:3], clock, clock)
         monkeypatch.setattr(
-            source_identity,
-            "file_stamp",
-            lambda path: racy if path == model else file_stamp(path),
+            trust,
+            "version",
+            staticmethod(lambda path: (True, racy) if path == model else version(path)),
         )
 
     closures: list[object] = []
@@ -585,7 +585,22 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
             numerical_role=role,
         )
 
-    before = identity()
+    if edit == "unchanged":
+        model = source / MODEL_PATH
+        observations = []
+        read_version = source_identity.FileDigestTrust.version
+
+        def observe_version(path):
+            if path == model:
+                observations.append(path)
+            return read_version(path)
+
+        with monkeypatch.context() as probe:
+            probe.setattr(source_identity.FileDigestTrust, "version", staticmethod(observe_version))
+            before = identity()
+        assert len(observations) == 2  # opening and final confirmation for one acquired source
+    else:
+        before = identity()
     if edit != "same-tick rewrite":
         assert identity() == before
         assert len(closures) == 1
@@ -610,8 +625,62 @@ def test_a_rule_closure_follows_imports_inside_the_deciding_packages_and_ignores
         assert [sorted(closure) for closure in reached] == [modules]
     elif edit == "module shared by two roles":
         assert len(closures) == 2 and source_reads == initial_reads
+        _assert_shared_advancement_source_stamp(source / MODEL_PATH, identity, monkeypatch)
     elif edit in ("constant changed", "same-tick rewrite", "rewrite with restored mtime"):
         assert len(closures) == 2 and source_reads[len(initial_reads) :] == [source / MODEL_PATH]
+
+
+def _assert_shared_advancement_source_stamp(model, identity, monkeypatch):
+    from os import utime
+
+    from alphalattice.capabilities.domain_contracts import source_identity
+    from alphalattice.control.product_host.composition import decision_advancement
+
+    monkeypatch.setattr(
+        decision_advancement, "source_rule_closure_hash", lambda **_: identity("ADVANCEMENT")
+    )
+    for getter in ("scoring_identity", "calibration_identity", "decision_identity"):
+        monkeypatch.setattr(decision_advancement, getter, lambda role=getter: identity(role))
+    implementation = decision_advancement.DecisionAdvancementApplication.implementation
+    before = implementation(None)
+    versions = []
+    trust = source_identity.FileDigestTrust
+    read_version = trust.version
+
+    def counted(path):
+        versions.append(path)
+        return read_version(path)
+
+    monkeypatch.setattr(trust, "version", staticmethod(counted))
+    stamp = model.stat()
+    original = model.read_text(encoding="utf-8")
+
+    def replace_source(contents):
+        staged = model.with_suffix(".next")
+        staged.write_text(contents, encoding="utf-8", newline="\n")
+        utime(staged, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        staged.replace(model)
+
+    with source_identity.source_read_admission(lambda: None):
+        assert implementation(None) == before
+        assert versions.count(model) == 1
+        versions.clear()
+        with source_identity.source_role_acquisition():
+            assert implementation(None) == before
+            assert implementation(None) == before
+        assert versions.count(model) == 1
+        versions.clear()
+        with source_identity.source_role_acquisition():
+            assert identity("COLD_FIRST") != identity("COLD_SECOND")
+        assert versions.count(model) == 2  # one opening and one stability check
+        with source_identity.source_role_acquisition():
+            assert implementation(None) == before
+            replace_source(original.replace("SHIFT = 1", "SHIFT = 2"))
+            with source_identity.source_role_acquisition(fresh=True):
+                assert implementation(None) != before
+            replace_source(original)
+            with source_identity.source_role_acquisition(fresh=True):
+                assert implementation(None) == before
 
 
 @pytest.mark.proves("domain_contracts.source_identity_survives_relocation")

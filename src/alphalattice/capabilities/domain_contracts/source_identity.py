@@ -9,9 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cache
-from os import name as os_name
 from pathlib import Path, PurePosixPath
-from stat import S_ISREG
 from threading import Lock
 from typing import Any, cast
 
@@ -25,9 +23,9 @@ from alphalattice.capabilities.domain_contracts.project_layout import (
 from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
+    FileDigestTrust,
     Stamp,
     change_sha256,
-    file_stamp,
     identity_sha256,
     integrity_sha256,
 )
@@ -1178,25 +1176,32 @@ _MODULE_STAMPS = BoundedMemo[tuple[Path, str], tuple[Stamp, _Canonical]](capacit
 _ROLE_READ = Lock()
 
 
-def _file_version(path: Path) -> _FileVersion:
-    if os_name == "nt":
-        # Python's path stat reports creation time as st_ctime on Windows.
-        try:
-            stamp = file_stamp(path)
-        except (FileNotFoundError, NotADirectoryError):
-            return False, None
-        except OSError:
-            return path.is_file(), None
-        return True, stamp if stamp[1] else None
+class _RoleSources:
+    def __init__(self) -> None:
+        self.opened: dict[Path, _FileVersion] = {}
+        self.confirmed: dict[Path, _FileVersion] = {}
+
+
+_ACQUIRED_ROLE_SOURCES: ContextVar[_RoleSources | None] = ContextVar(
+    "acquired_role_sources", default=None
+)
+
+
+@contextmanager
+def source_role_acquisition(*, fresh: bool = False) -> Iterator[None]:
+    """Share source observations among the roles in the current request or Task phase."""
+    if not fresh and _ACQUIRED_ROLE_SOURCES.get() is not None:
+        yield
+        return
+    token = _ACQUIRED_ROLE_SOURCES.set(_RoleSources())
     try:
-        facts = path.stat()
-    except (FileNotFoundError, NotADirectoryError):
-        return False, None
-    if not S_ISREG(facts.st_mode):
-        return False, None
-    if not facts.st_ino:
-        return True, None  # without an identity this file cannot support a kept proof
-    return True, (facts.st_dev, facts.st_ino, facts.st_size, facts.st_mtime_ns, facts.st_ctime_ns)
+        yield
+    finally:
+        _ACQUIRED_ROLE_SOURCES.reset(token)
+
+
+def _file_version(path: Path) -> _FileVersion:
+    return FileDigestTrust.version(path)
 
 
 def _settled_stamp(stamp: Stamp | None, recorded_at: int) -> bool:
@@ -1206,13 +1211,20 @@ def _settled_stamp(stamp: Stamp | None, recorded_at: int) -> bool:
 class _ClosureInputs:
     """Files and absent import candidates encountered while resolving a role."""
 
-    def __init__(self) -> None:
+    def __init__(self, acquired: _RoleSources | None) -> None:
         self.recorded_at = wall_time_ns()
+        self.acquired = acquired if acquired is not None else _RoleSources()
         self.versions: dict[Path, _FileVersion] = {}
+        self.parsed: dict[tuple[Path, str], tuple[Stamp, _Canonical]] = {}
 
     def is_file(self, path: Path) -> bool:
         if path not in self.versions:
-            self.versions[path] = _file_version(path)
+            version = self.acquired.confirmed.get(path)
+            if version is None:
+                if path not in self.acquired.opened:
+                    self.acquired.opened[path] = _file_version(path)
+                version = self.acquired.opened[path]
+            self.versions[path] = version
         return self.versions[path][0]
 
     def canonical(self, path: Path, package: str) -> tuple[_Canonical, tuple[str, ...]]:
@@ -1223,22 +1235,46 @@ class _ClosureInputs:
         if held is not None and held[0] == stamp:
             parsed = held[1]
         else:
+            # New bytes need their own final check. A retained parse can carry the
+            # observation already confirmed by another role in this acquisition.
+            self.acquired.confirmed.pop(path, None)
             parsed = _canonical(path, package)
-            if settled and stamp is not None and _file_version(path) == (True, stamp):
-                _MODULE_STAMPS[identity] = stamp, parsed
+            if settled and stamp is not None:
+                self.parsed[identity] = stamp, parsed
         return parsed, parsed.walked
 
     def stable(self) -> bool:
-        return _matches_role(self.versions.items(), self.recorded_at)
+        confirmed = self.acquired.confirmed
+        stable = _matches_role(self.versions.items(), self.recorded_at, confirmed)
+        # The final check can also confirm the modules parsed in this acquisition.
+        # When it stops at a changed input, independently confirm only the unvisited modules.
+        for identity, (stamp, parsed) in self.parsed.items():
+            path, _ = identity
+            if path not in confirmed:
+                confirmed[path] = _file_version(path)
+            if confirmed[path] == (True, stamp):
+                _MODULE_STAMPS[identity] = stamp, parsed
+        return stable
 
 
-def _matches_role(files: Iterable[tuple[Path, _FileVersion]], recorded_at: int) -> bool:
+def _matches_role(
+    files: Iterable[tuple[Path, _FileVersion]],
+    recorded_at: int,
+    acquired: dict[Path, _FileVersion] | None = None,
+) -> bool:
     check = _SOURCE_ADMISSION.get()
     for path, version in files:
         if check is not None:
             check()
         present, stamp = version
-        if (present and not _settled_stamp(stamp, recorded_at)) or _file_version(path) != version:
+        if present and not _settled_stamp(stamp, recorded_at):
+            return False
+        observed = acquired.get(path) if acquired is not None else None
+        if observed is None:
+            observed = _file_version(path)
+            if acquired is not None:
+                acquired[path] = observed
+        if observed != version:
             return False
     return True
 
@@ -1270,10 +1306,12 @@ def source_rule_closure_hash(
     with _ROLE_READ:
         rule = number_deciding_rule(root)
         key = root, tracked_paths, semantic_owner, numerical_role, rule
-        inputs = _ClosureInputs()
         observing = _SOURCE_OBSERVER.get() is not None
+        inputs = _ClosureInputs(None if observing else _ACQUIRED_ROLE_SOURCES.get())
         held = None if observing else _ROLE_CLOSURES.get(key)
-        if held is not None and _matches_role(held[0], inputs.recorded_at):
+        if held is not None and _matches_role(
+            held[0], inputs.recorded_at, inputs.acquired.confirmed
+        ):
             return held[1]
         python = {path: path.startswith("src/") and path.endswith(".py") for path in tracked_paths}
         modules = tuple(
@@ -1308,11 +1346,13 @@ def source_rule_closure_hash(
 def _resource_sha256(root: Path, relative: str, inputs: _ClosureInputs) -> str:
     path = resource_path(root, relative)
     if inputs.is_file(path):
+        inputs.acquired.confirmed.pop(path, None)
         return integrity_sha256(path.read_bytes()).hexdigest()
     # Development runners are not runtime entries. The wheel carries the
     # accepted tree's byte commitments, preserving the same closure value.
     manifest = root / "config/release/source-hashes.json"
     if inputs.is_file(manifest):
+        inputs.acquired.confirmed.pop(manifest, None)
         hashes = json.loads(manifest.read_text(encoding="utf-8"))
         value = hashes.get(relative)
         if isinstance(value, str) and len(value) == 64:

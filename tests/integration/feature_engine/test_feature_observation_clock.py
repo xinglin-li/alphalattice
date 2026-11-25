@@ -285,9 +285,66 @@ def test_the_canonical_axis_refuses_a_lagged_projection_of_a_formula() -> None:
     assert FeatureCatalog.from_payload(candidate).factor_ids[-1] == "zz_independent_ewma_lag_1"
 
 
-def test_source_availability_is_owned_per_authority_not_per_factor() -> None:
-    """Source availability is owned per authority not per factor."""
+def _assert_source_availability_digest(monkeypatch):
+    """Construction, its validator and another read share the digest of the exact catalog."""
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.foundation.feature_engine.catalog import observation_clock
 
+    hashed = []
+
+    def count(content):
+        if content.get("kind") == "SourceAvailabilityCatalog":
+            hashed.append(content)
+        return canonical_hash(content)
+
+    monkeypatch.setattr(observation_clock, "canonical_hash", count)
+    with stage_digests():
+        first = installed_source_availability_catalog()
+        assert installed_source_availability_catalog() == first
+        altered = first.model_dump(mode="json")
+        altered["catalog_id"] = "other-availability-catalog"
+        with pytest.raises(ValueError, match="source_availability_catalog_identity_invalid"):
+            type(first).model_validate(altered)
+    assert [payload["catalog_id"] for payload in hashed] == [
+        first.catalog_id,
+        "other-availability-catalog",
+    ]
+
+
+def _assert_catalog_derived_digests(monkeypatch):
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.foundation.feature_engine.catalog import contracts, observation_clock
+
+    hashes = []
+
+    def count(value):
+        if isinstance(value, dict):
+            if set(value) == {"stable_id", "observation_clock", "factors", "maintenance_policy"}:
+                hashes.append("catalog")
+            elif "arithmetic_content" in value:
+                hashes.append("implementation")
+            elif value.get("engine") == "playpen.feature_engine.desktop_bounded_materializer":
+                hashes.append("materializer")
+            elif value.get("kind") == "FeatureFormulaObservationPolicy":
+                hashes.append("observation")
+        return canonical_hash(value)
+
+    monkeypatch.setattr(contracts, "canonical_hash", count)
+    monkeypatch.setattr(observation_clock, "canonical_hash", count)
+    with stage_digests():
+        first = FeatureCatalog.load()
+        assert FeatureCatalog.load() == first
+        assert hashes == ["catalog", "implementation", "materializer", "observation"]
+    assert FeatureCatalog.load() == first
+    assert len(hashes) == 8
+
+
+def test_source_availability_is_owned_per_authority_not_per_factor(monkeypatch) -> None:
+    """Source availability is owned per authority and binds its exact Formula catalog."""
+    with monkeypatch.context() as probe:
+        _assert_source_availability_digest(probe)
+    with monkeypatch.context() as probe:
+        _assert_catalog_derived_digests(probe)
     catalog = installed_source_availability_catalog()
 
     # Owners are per authority: the five distinct source owners the installed Formulas

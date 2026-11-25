@@ -55,13 +55,43 @@ def _copy(workspace: Path, panel: bytes, database: bytes) -> str:
     return bundle.binding_hash
 
 
+def _assert_factor_manifest_digest(monkeypatch):
+    """Two reconstructions of one manifest carry its hash, while changed bytes still refuse."""
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.control.product_host.research_authoring import factor_inputs
+
+    original = factor_inputs.canonical_hash
+    seen = []
+
+    def counted(payload):
+        seen.append(payload["panel_snapshot_hash"])
+        return original(payload)
+
+    monkeypatch.setattr(factor_inputs, "canonical_hash", counted)
+    with stage_digests():
+        bundle = FactorInputBundle.create(
+            panel_snapshot_hash="a" * 64,
+            outcome_snapshot_hash="b" * 64,
+            sessions=(date(2026, 1, 2),),
+            files=(("artifacts/panel.parquet", "d" * 64),),
+        )
+        reread = FactorInputBundle.model_validate_json(bundle.model_dump_json())
+        assert FactorInputBundle.model_validate_json(bundle.model_dump_json()) == reread == bundle
+        different = bundle.model_dump() | {"panel_snapshot_hash": "c" * 64}
+        with pytest.raises(ValueError, match=r"research_experiment\.input_manifest_invalid"):
+            FactorInputBundle.model_validate(different)
+    assert seen == ["a" * 64, "c" * 64]
+
+
 @pytest.mark.proves("product_host.research_input_copies_removed_after_backup_replay")
 def test_copies_are_kept_read_back_and_removed_only_after_the_backup_replays_them(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     """A workspace's 0.2.7 copies upgrade ALL EQUAL, read the same bundles through a rollback and
     forward, and are removed only once their backup restored reads every binding equal to the
     copies, byte for byte."""
+    with monkeypatch.context() as probe:
+        _assert_factor_manifest_digest(probe)
     original = tmp_path / "held"
     _copy(original, b"panel one", b"db")
     _copy(original, b"panel two", b"db")

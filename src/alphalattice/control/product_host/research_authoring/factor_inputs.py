@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     current_allowed_logical_processors,
@@ -101,6 +102,7 @@ from alphalattice.foundation.market_data_ops.storage import market_snapshots, wo
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.kernel import storage
 from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.identity import FileDigestTrust
 from alphalattice.kernel.resources import worker_width
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
@@ -179,18 +181,6 @@ def file_digest(path: Path) -> str:
 _DIGEST_WORKERS = 4
 
 
-def _file_object(stream: BinaryIO) -> tuple[int, int] | None:
-    """The identity of the file object behind an open handle, or None where none is reported.
-
-    Read off the handle, never off the path: a path can be pointed at another
-    object at any time, an open handle cannot. Identity says two handles read
-    the same bytes; it is never a substitute for reading them.
-    """
-
-    stat = os.fstat(stream.fileno())
-    return (stat.st_dev, stat.st_ino) if stat.st_ino else None
-
-
 def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
     """Digest several files at once; every file object by the same digest, through the trust
     record, so an object whose stamp holds is not read again.
@@ -222,7 +212,7 @@ def file_digests(paths: Iterable[Path]) -> dict[Path, str]:
                 streams[path] = stack.enter_context(path.open("rb"))
             except FileNotFoundError as error:
                 raise AuthoringError("research_experiment.input_file_unavailable") from error
-        objects = {path: _file_object(stream) for path, stream in streams.items()}
+        objects = {path: FileDigestTrust.file_object(stream) for path, stream in streams.items()}
         representative: dict[tuple[int, int], Path] = {}
         first_of: dict[Path, Path] = {}
         for path in ordered:
@@ -318,10 +308,14 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
             pydantic.ValidationError: Fields or declared consistency violate the concrete model.
         """
         draft = cls.model_construct(**values, binding_hash="0" * 64)
-        return cls(
-            **values,
-            binding_hash=draft._binding_key(),
+        identity = draft._binding_key()
+        stage_digest(
+            ("factor-bundle", identity),
+            draft,
+            lambda _: identity,
+            snapshot=lambda bundle: bundle.model_dump_json(exclude={"binding_hash"}),
         )
+        return cls(**values, binding_hash=identity)
 
     @property
     def market_selection(self) -> tuple[str, int] | None:
@@ -357,7 +351,13 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
             or not self.files
             or self.files != tuple(sorted(set(self.files)))
             or len({p for p, _ in self.files}) != len(self.files)
-            or self.binding_hash != self._binding_key()
+            or self.binding_hash
+            != stage_digest(
+                ("factor-bundle", self.binding_hash),
+                self,
+                lambda bundle: bundle._binding_key(),
+                snapshot=lambda bundle: bundle.model_dump_json(exclude={"binding_hash"}),
+            )
         ):
             raise AuthoringError("research_experiment.input_manifest_invalid")
         if (self.binding_version is None) != (self.outcomes is None):
@@ -837,14 +837,15 @@ def _bind_factor_inputs(
         resolver.feature_panel_manifest_uri(panel_snapshot_hash)
     )
     paths.append(resolver._feature_panel_lifecycle_path())
-    for chunk in panel["chunks"]:
-        paths.append(
-            resolver.resolve_feature_panel_chunk_ref(
-                uri=chunk["uri"],
-                content_hash=chunk["chunk_hash"],
-                metadata_hash=chunk["metadata_hash"],
-            )
-        )
+    panel_chunks = tuple(
+        resolver.resolve_feature_panel_chunk_ref(
+            uri=chunk["uri"],
+            content_hash=chunk["chunk_hash"],
+            metadata_hash=chunk["metadata_hash"],
+        ).resolve()
+        for chunk in panel["chunks"]
+    )
+    paths.extend(panel_chunks)
     store = reader.artifacts
     outcome_refs = []
     for chunk in outcome.development_chunks:
@@ -884,6 +885,7 @@ def _bind_factor_inputs(
             workspace=workspace,
             source=source,
             sources=sources,
+            panel_chunks=panel_chunks,
             manifest=manifest,
             input_id=input_id,
             panel_snapshot_hash=panel_snapshot_hash,
@@ -905,6 +907,7 @@ def _seal_factor_inputs(
     workspace: Path,
     source: Path,
     sources: Mapping[str, Path],
+    panel_chunks: tuple[Path, ...],
     manifest: ResearchWorkspaceManifest,
     input_id: str,
     panel_snapshot_hash: str,
@@ -1004,22 +1007,32 @@ def _seal_factor_inputs(
         require_storage_capacity(workspace, additional_bytes=required)
         with staging_directory(parent, ".binding-") as temporary:
             staged = Path(temporary) / "complete"
-            # Every staged file is verified once by reading the bytes it will
-            # keep (a link's are the source's own). The source is read again,
-            # whole, at the end of the binding; a change to it anywhere in
-            # between is refused there.
+            pending_chunks: dict[Path, str] = {}
             for name, expected in files:
                 src = sources[name]
                 target = confined(staged / "source", name)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 _copy_input(workspace, src, target)
-                if file_digest(target) != expected:
+                if include_alpha_handoff and src in panel_chunks:
+                    pending_chunks[target] = expected
+                elif file_digest(target) != expected:
                     raise AuthoringError("research_experiment.source_changed_during_binding")
             if include_alpha_handoff:
+
+                def check_chunk(path: Path, observed: str) -> None:
+                    expected = pending_chunks.pop(path.resolve(), None)
+                    if expected is not None and observed != expected:
+                        raise AuthoringError("research_experiment.source_changed_during_binding")
+
                 owner = logical_panel_owner(staged / "source")
                 owner.publish_snapshot(
-                    ArtifactResolver.feature_panel_manifest_uri(panel_snapshot_hash)
+                    ArtifactResolver.feature_panel_manifest_uri(panel_snapshot_hash),
+                    on_chunk_digest=check_chunk,
                 )
+                # An existing logical marker may be reused without reading its bodies.
+                for path, expected in pending_chunks.items():
+                    if file_digest(path) != expected:
+                        raise AuthoringError("research_experiment.source_changed_during_binding")
                 owner.verify_snapshot(panel_snapshot_hash)
                 # The publisher adds the logical files under the staged
                 # artifacts; the copied objects were verified above and are

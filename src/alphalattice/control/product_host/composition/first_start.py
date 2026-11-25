@@ -59,7 +59,7 @@ from alphalattice.foundation.data_layer.upgrade import (
     workspace_files,
     workspace_plan_prefix,
 )
-from alphalattice.kernel.identity import Stamp, file_stamp, handle_stamp, integrity_sha256_stream
+from alphalattice.kernel.identity import FileDigestTrust, Stamp
 
 UNHELD: Final = ("data_layer.outcome_missing",)
 """The refusal that says only that the catalog holds no body for a chunk: no profile for its
@@ -202,8 +202,8 @@ def _examined(workspace: Path) -> list[object]:
 def _shared_content(path: Path, stamp: Stamp) -> str:
     """A hard link can change the file's change clock without touching its bytes."""
     with path.open("rb") as stream:
-        digest = integrity_sha256_stream(stream).hexdigest()
-        if handle_stamp(stream) != stamp:
+        digest = FileDigestTrust.fresh_digest(path, handle=stream)
+        if FileDigestTrust.stamp(path, handle=stream) != stamp:
             raise OSError(f"Upgrade input changed while being read: {path}")
     return digest
 
@@ -239,7 +239,7 @@ def _input_stamps(
         ]
         if not matching:
             continue
-        stamp, linked = file_stamp(path), path.is_symlink()
+        stamp, linked = FileDigestTrust.stamp(path), path.is_symlink()
         metadata = list(stamp)
         for name in matching:
             content = None

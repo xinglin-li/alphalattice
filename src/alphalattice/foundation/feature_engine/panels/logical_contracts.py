@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date, datetime
 from typing import ClassVar, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 Hash = str
@@ -292,8 +294,23 @@ def identity_payload(model: BaseModel, field_name: str) -> dict[str, object]:
     return cast(dict[str, object], model.model_dump(mode="json", exclude=excluded))
 
 
+def seal_logical_identity[Model: BaseModel](
+    model: type[Model], values: Mapping[str, object], field_name: str
+) -> Model:
+    """Seal the draft and carry its exact payload to the validator in this stage."""
+    draft = model.model_construct(**values)
+    payload = identity_payload(draft, field_name)
+    identity = canonical_hash(payload)
+    stage_digest((model, field_name, identity), payload, lambda _: identity)
+    return cast(Model, model.model_validate({**values, field_name: identity}))
+
+
 def _validate_hash(model: BaseModel, field_name: str) -> None:
-    if getattr(model, field_name) != canonical_hash(identity_payload(model, field_name)):
+    expected = getattr(model, field_name)
+    verified = stage_digest(
+        (type(model), field_name, expected), identity_payload(model, field_name), canonical_hash
+    )
+    if expected != verified:
         raise ValueError(f"{model.__class__.__name__} identity is invalid")
 
 
@@ -310,4 +327,5 @@ __all__ = [
     "PanelPublicationMarker",
     "expected_logical_rows",
     "identity_payload",
+    "seal_logical_identity",
 ]

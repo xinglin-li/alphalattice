@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -171,6 +172,28 @@ class ObservationStore:
 
     def load_decision_observation(self, content_hash: str) -> LocalQAMarketSnapshot:
         """Reopen a complete, identity-checked source from legacy JSON or shared parts."""
+        return self._load_decision_observation(content_hash, {})
+
+    @contextmanager
+    def decision_observation_reads(self) -> Iterator[Callable[[str], LocalQAMarketSnapshot]]:
+        """Carry already proved parts and snapshots through one observation comparison."""
+        parts: dict[str, list[object]] = {}
+        snapshots: dict[str, LocalQAMarketSnapshot] = {}
+
+        def read(content_hash: str) -> LocalQAMarketSnapshot:
+            if content_hash not in snapshots:
+                snapshots[content_hash] = self._load_decision_observation(content_hash, parts)
+            return snapshots[content_hash]
+
+        try:
+            yield read
+        finally:
+            parts.clear()
+            snapshots.clear()
+
+    def _load_decision_observation(
+        self, content_hash: str, proved_parts: dict[str, list[object]]
+    ) -> LocalQAMarketSnapshot:
         self.content.require_hash(content_hash)
         if (self.root / self._observation_category / f"{content_hash}.json").is_file():
             return self.content.load_model(
@@ -195,18 +218,21 @@ class ObservationStore:
             if set(parts) != {"bars", "actions", "schedule"}:
                 raise ValueError("observation fields differ")
             for field, identities in parts.items():
-                payload[field] = [
-                    row
-                    for identity in identities
-                    for row in json.loads(
-                        self.content.load_model(
+                values: list[object] = []
+                for identity in identities:
+                    if identity not in proved_parts:
+                        part = self.content.load_model(
                             category=_OBSERVATION_PARTS,
                             content_hash=identity,
                             model=ObservationPart,
                             identity_field="content_hash",
-                        ).payload_json
-                    )
-                ]
+                        )
+                        rows = json.loads(part.payload_json)
+                        if not isinstance(rows, list):
+                            raise ValueError("observation part differs")
+                        proved_parts[identity] = rows
+                    values.extend(proved_parts[identity])
+                payload[field] = values
             value: LocalQAMarketSnapshot = LocalQAMarketSnapshot.model_validate(payload)
             if value.content_hash != content_hash:
                 raise ValueError("observation identity differs")

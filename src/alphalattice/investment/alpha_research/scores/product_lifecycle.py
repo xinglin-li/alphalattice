@@ -38,6 +38,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_scoped_model,
+)
 from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.investment.alpha_research.scores.product_replay import (
     AlphaProductRecipeView,
@@ -100,16 +104,14 @@ class _LifecycleContract(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        payload = cls.model_construct(**values, content_hash="0" * 64).model_dump(
-            mode="json", exclude={"content_hash"}
-        )
-        return cls(**payload, content_hash=canonical_hash(payload))
+        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
+
+    def _identity_digest(self) -> str:
+        return scoped_model_digest(self, "content_hash", digest=canonical_hash)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def verify_identity(self) -> Self:
-        if self.content_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"content_hash"})
-        ):
+        if self.content_hash != self._identity_digest():
             raise AlphaLifecycleError("alpha_research.model_lifecycle_identity_invalid")
         return self
 

@@ -713,6 +713,7 @@ class _Held:
 
 def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_liveness(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Stale unreadable or unbound telemetry never establishes current liveness."""
 
@@ -761,7 +762,30 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
 
         # No signal for this execution: the durable timestamp alone, 60 s old, says not recent.
         assert reader.read(execution.execution_id) == readout()
-        durable_only = build(readout())
+        from alphalattice.control.product_host.composition import task_recovery
+
+        canonical_hash = task_recovery.canonical_hash
+        hashes = 0
+        thread = threading.get_ident()
+
+        def count_view_hash(payload: object) -> str:
+            nonlocal hashes
+            if (
+                threading.get_ident() == thread
+                and isinstance(payload, dict)
+                and payload.get("kind") == "TaskRecoveryView"
+            ):
+                hashes += 1
+            return canonical_hash(payload)
+
+        with monkeypatch.context() as probe:
+            probe.setattr(task_recovery, "canonical_hash", count_view_hash)
+            durable_only = build(readout())
+        assert hashes == 1
+        edited = durable_only.model_dump(mode="json")
+        edited["operation_running"] = False
+        with pytest.raises(ValueError, match="task recovery view hash is invalid"):
+            TaskRecoveryView.model_validate(edited)
         assert durable_only.liveness.status == "NOT_RECENT"
         assert durable_only.liveness.telemetry == "DURABLE_ONLY"
         assert durable_only.liveness.last_heartbeat_source == "DURABLE_TIMESTAMP"

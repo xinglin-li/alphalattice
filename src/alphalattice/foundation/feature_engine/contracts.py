@@ -8,6 +8,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import ClassVar
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sector_treatment import SECTOR_HISTORY_BACKFILLED
 from alphalattice.foundation.market_data_ops.sources.membership import membership_identity
@@ -1268,22 +1269,29 @@ class FactorSessionInvalidationPlan:
         ordered = tuple(sorted(items, key=lambda item: item.factor_id))
         if len({item.factor_id for item in ordered}) != len(ordered):
             raise ValueError("factor-session plan contains duplicate factor identities")
-        payload = {
-            "items": [
+        sources = tuple(sorted(set(source_receipt_hashes)))
+        expected = tuple(sorted(set(expected_input_hashes)))
+
+        def digest(items: tuple[FactorSessionInvalidation, ...]) -> str:
+            return canonical_hash(
                 {
-                    "factor_id": item.factor_id,
-                    "ranges": [asdict(value) for value in item.ranges],
+                    "items": [
+                        {
+                            "factor_id": item.factor_id,
+                            "ranges": [asdict(value) for value in item.ranges],
+                        }
+                        for item in items
+                    ],
+                    "source_receipt_hashes": sources,
+                    "expected_input_hashes": expected,
                 }
-                for item in ordered
-            ],
-            "source_receipt_hashes": sorted(set(source_receipt_hashes)),
-            "expected_input_hashes": sorted(set(expected_input_hashes)),
-        }
+            )
+
         return cls(
             items=ordered,
-            source_receipt_hashes=tuple(payload["source_receipt_hashes"]),
-            expected_input_hashes=tuple(payload["expected_input_hashes"]),
-            plan_hash=canonical_hash(payload),
+            source_receipt_hashes=sources,
+            expected_input_hashes=expected,
+            plan_hash=stage_digest((cls, sources, expected, ordered), ordered, digest),
         )
 
     @property
