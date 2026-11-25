@@ -202,6 +202,7 @@ class WorkspaceConnection:
         "_pinned",
         "_raw",
         "_root",
+        "_since",
         "_top",
         "_transacted",
         "_view",
@@ -240,6 +241,10 @@ class WorkspaceConnection:
         # A writer's: a transaction statement ran (the engine's parser says so) since the engine
         # last reported no transaction open on this handle (`in_transaction`).
         self._transacted = False
+        # A writer's: the file's schema revision when its last transaction statement ran, None
+        # when that statement also changed the schema. While the revision stays there, no schema
+        # statement ran on the file since, so its transaction sees the latest committed catalog.
+        self._since: int | None = None
         self._root: duckdb.DuckDBPyConnection | None = None  # the instance's, closed after this
         if guarded:
             self._raw.execute("BEGIN TRANSACTION READ ONLY")
@@ -335,7 +340,7 @@ class WorkspaceConnection:
                 self._arm()
             return
         self._raw.execute("BEGIN TRANSACTION")
-        self._transacted = True
+        self._began_writing(set())
         try:
             yield self
         except BaseException:
@@ -396,8 +401,15 @@ class WorkspaceConnection:
         finally:
             if not self._guarded:
                 self._mark(kinds)
-                self._transacted |= duckdb.StatementType.TRANSACTION in kinds
+                if duckdb.StatementType.TRANSACTION in kinds:
+                    self._began_writing(kinds)
         return self if result is self._raw else result
+
+    def _began_writing(self, kinds: set[duckdb.StatementType]) -> None:
+        """A transaction statement ran on this writer: note the file's schema revision then."""
+        self._transacted = True
+        with _STATE:
+            self._since = None if kinds & _SCHEMA_STATEMENTS else _REVISIONS.get(self._path, 0)
 
     def _recover(self) -> None:
         # A refused write or a conversion error aborts the read-only
@@ -1372,7 +1384,11 @@ def _workspace_catalog_read[T](
         return read()
     with _STATE:
         revision = _REVISIONS.get(connection._path, 0)
-    private = connection.in_transaction() or connection._view not in (None, revision)
+    # A writer's open transaction reads its own catalog once a schema statement ran on the file
+    # after it began (its own uncommitted change among them); until then it is the latest one.
+    private = (
+        connection.in_transaction() and connection._since != revision
+    ) or connection._view not in (None, revision)
     catalog_input = (
         connection._path,
         key,

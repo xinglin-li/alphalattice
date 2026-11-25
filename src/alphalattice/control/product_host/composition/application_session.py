@@ -64,6 +64,9 @@ from alphalattice.kernel.clock import utc_now
 
 PORTFOLIO_PUBLIC_RUNTIME_FILENAME = "portfolio-public-task-checkpoints.sqlite"
 
+_DAILY_ADVANCEMENT = "portfolio_public_watermark_advancement"
+"""The Daily's Task, whose data stage builds the new sessions' Features in the Task's worker."""
+
 _TASK_READER_POLICY = Lock()
 
 
@@ -316,12 +319,19 @@ class WorkspaceApplicationSession:
                 )
             )
             start_log_reader()
-            prepare = task.task_kind == "workspace_preparation"
+            # First use's Feature build needs all its workers, the Daily's the Task's own worker
+            # first: each starts them after claim, so their imports run beside the stages before
+            # the build rather than inside it. The Daily's further workers start at its need.
+            warm = (
+                worker_processes(cores)
+                if task.task_kind == "workspace_preparation"
+                else int(task.task_kind == _DAILY_ADVANCEMENT)
+            )
             with warm_child_workers(
-                worker_processes(cores) if prepare else 0,
+                warm,
                 modules=("alphalattice.foundation.feature_engine.runtime.service", "pandas"),
             ) as start_workers:
-                yield start_workers if prepare else None
+                yield start_workers if warm else None
 
     def execution_identity(self, implementation_hash: str) -> str:
         """Bind a Task's recovery to its owner's numerical implementation, and to nothing else.

@@ -33,6 +33,7 @@ import pyarrow as pa
 import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.spans import collect
 from alphalattice.control.workspace_runtime import reader_threads
 from alphalattice.control.workspace_runtime.database import (
     LiveConnections,
@@ -598,7 +599,8 @@ def _kept_for_the_session(
     cursors of its one instance, a second data root has its own, a reader sees the writer's rows,
     a schema change refreshes the kept schema, a pool's readers each hold a handle of their own,
     a unit's hold ending keeps the instance, a narrower CPU grant reaches the kept instance, a
-    pinned reader and a writer's open transaction each read their own catalog, a declared write
+    pinned reader and a writer's open transaction each read their own catalog, a writer's
+    transaction takes the kept catalog until its schema statement, a declared write
     finds the instance it needs, a call in another process lets go of only the file it opens, a
     digest of a written file and a replacement each let go of what would refuse them, and the
     session's end lets every file go."""
@@ -714,7 +716,8 @@ def _session_catalogs(
     """A table created while another handle reads: a reader pinned before it, or the writer in
     its open transaction, reads its own catalog; a reader of the latest catalog reads the other.
     The writer begins by its own BEGIN, by `begin()`, or with the change in one call in any of
-    its spellings, and commits, or rolls back (its table is never published)."""
+    its spellings, and commits, or rolls back (its table is never published). Begun apart from its
+    change, the writer's transaction first reads the kept columns, with no engine catalog read."""
     writer = database.connect(read_only=False)
     reader = database.connect(read_only=True)
     try:
@@ -728,14 +731,20 @@ def _session_catalogs(
                 finally:
                     current.close()
                 return before, latest, table_columns(reader, "late")
+        kept: object = None
         if begun in IN_ONE_CALL:
             writer.execute(IN_ONE_CALL[begun])
         else:
+            columns = table_columns(writer, "unit")
             writer.begin() if begun == "-after-begin" else writer.execute("BEGIN TRANSACTION")
+            with collect() as ledger:
+                same = table_columns(writer, "unit") == columns
+            engine = [r["count"] for r in ledger.rows() if r["detail"] == "workspace_catalog"]
+            kept = same, sum(engine)
             writer.execute("CREATE TABLE late (x INTEGER)")
         own, other = table_columns(writer, "late"), table_columns(reader, "late")
         writer.execute("ROLLBACK" if begun == "-rolled-back" else "COMMIT")
-        return own, other, table_columns(reader, "late")
+        return own, other, table_columns(reader, "late"), kept
     finally:
         reader.close()
         writer.close()
@@ -868,16 +877,23 @@ SESSION_CASES = {
         {"first": 1, "second": 0},
         ((), (("x", "INTEGER"),), ()),
     ),
+    # begun apart from its change, the writer's transaction reads the kept columns (True, 0 engine
+    # catalog reads) until its schema statement
     **{
         f"session-a-writers-own-catalog{begun}": (
             {"first": 1, "second": 0},
-            ((("x", "INTEGER"),), (), (("x", "INTEGER"),)),
+            (
+                (("x", "INTEGER"),),
+                (),
+                (("x", "INTEGER"),),
+                None if begun in IN_ONE_CALL else (True, 0),
+            ),
         )
         for begun in ("", "-after-begin", *IN_ONE_CALL)
     },
     "session-a-writers-own-catalog-rolled-back": (
         {"first": 1, "second": 0},
-        ((("x", "INTEGER"),), (), ()),
+        ((("x", "INTEGER"),), (), (), (True, 0)),
     ),
     # the session declares it writes the file: the read's instance serves the write, except on
     # Windows, where a writable instance denies every other handle and the writer reopens it

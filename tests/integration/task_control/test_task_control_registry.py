@@ -2091,8 +2091,8 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
             input_envelope=envelope, goal=goal, plan=plan, observed_at=observed_at
         ).record
 
-    # Only the installed preparation Task starts a worker before its first work item.
-    ahead = task_kind == "workspace_preparation"
+    # Preparation and the Daily start a worker before their first work item.
+    ahead = task_kind in {"workspace_preparation", "portfolio_public_watermark_advancement"}
     if ahead:
         set_tasks_waiting(tmp_path, 2, now)
     admitted = admit(task_kind, now)
@@ -2100,8 +2100,10 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
 
     class ChildStartAdapter(_FixtureTaskAdapter):
         needs_child = True
+        entered = 0
 
         def execute_stage(self, **arguments):
+            self.entered += 1
             if self.needs_child:
                 run_in_child("builtins:str", {})
             return super().execute_stage(**arguments)
@@ -2154,6 +2156,8 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
         assert registry.task(admitted.task_id) == stopped
         assert projections[-1].latest_failure_code == stopped.failure_code
         assert adapter.executed == []  # first attempt; no repeated untyped interruption
+        # A Task that starts its worker ahead stops at claim, before its first stage runs.
+        assert adapter.entered == (0 if ahead else 1)
         if successor is not None:
             assert registry.queued_task().task_id == successor.task_id
         adapter.needs_child = False
