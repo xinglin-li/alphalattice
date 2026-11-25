@@ -40,6 +40,9 @@ PROJECTION_LOADERS = {
     "config/registries/test-private.json": (
         "from devtools.architecture.registries import baseline\nbaseline(root, 'test-private')"
     ),
+    "config/registries/parameters.json": (
+        "from devtools.architecture.registries import baseline\nbaseline(root, 'parameters')"
+    ),
 }
 """How each registry a projection may change is loaded by its owner, as public code reads it."""
 
