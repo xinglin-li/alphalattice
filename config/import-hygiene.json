@@ -58,7 +58,7 @@
     "src/alphalattice/control/product_host/composition/research_workspace.py::resolve_workspace_model_lifecycle::from alphalattice.investment.alpha_research.scores.model_renewal import AlphaTrainingObservations, admit_component_inference, read_lifecycle_admission": 1,
     "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py::_outside_checkout_and_workspaces::from alphalattice.control.product_host.composition.research_workspace import RESEARCH_WORKSPACE_MANIFEST_NAME": 1,
     "src/alphalattice/control/product_host/composition/saved_object_readback.py::probe::from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession": 1,
-    "src/alphalattice/control/product_host/composition/web_launcher.py::_detach::from alphalattice.interface.local_application import client": 2,
+    "src/alphalattice/control/product_host/composition/web_launcher.py::_detach::from alphalattice.interface.local_application import client": 1,
     "src/alphalattice/control/product_host/composition/web_launcher.py::_failed_start::from alphalattice.interface.local_application import client": 1,
     "src/alphalattice/control/product_host/composition/web_launcher.py::_stdin_ties::from ctypes import wintypes": 1,
     "src/alphalattice/control/product_host/composition/web_launcher.py::_stdin_ties::import ctypes": 1,

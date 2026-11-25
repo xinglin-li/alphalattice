@@ -4,6 +4,7 @@ from . import spawn as child_process
 from .cancel import (
     CANCELLED,
     TIMED_OUT,
+    Bell,
     ExecutionStopped,
     cancel_execution,
     carry_cancellation,
@@ -23,6 +24,7 @@ __all__ = [
     "EVENTS",
     "TIMED_OUT",
     "TIMERS",
+    "Bell",
     "EventDeadline",
     "Events",
     "ExecutionHeartbeat",

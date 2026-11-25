@@ -53,8 +53,10 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
     # A Codex wake is sent by the Host from the Task's journal, never by the client. An agent
     # verb's chain (the chained verbs) takes one deadline from its cap in `_chain` and
     # waits only through `_follow`, in its `followed` method, reviewed with the deadline owners.
+    # A goal's and a floor's waits wait at the Host (its long poll), each read through restarts.
+    hosted = {"_wait_for_goal", "_committee_wait"}
     for name in capped - {"_sleep_before_read", "_wait", "_chain"}:
-        assert "_sleep_before_read" in calls[name], name
+        assert ("_sleep_before_read" in calls[name]) != (name in hosted), name
         if name != "_read_through_restarts":
             assert "_read_through_restarts" in calls[name], name
     assert {"_follow", "_wait_for_goal", "_read_through_restarts"} <= calls["_wait"]
@@ -109,6 +111,13 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
                 "submit_evidence_analysis",
             ),
             ("control/product_host/composition/portfolio_research_operations.py", "_moved_on"),
+            # A goal's narrative and a member's floor read wait on their goal's events (and the
+            # floor's next moment) within the request's wait_seconds, re-reading each wake.
+            ("control/product_host/composition/goals.py", "_narrative_moved"),
+            ("control/product_host/composition/committee.py", "read_addressed"),
+            # A detached start spends one deadline on its Host's ready byte, its exit and the
+            # serving check, and stops a Host that said neither by it.
+            ("control/product_host/composition/web_launcher.py", "_heard_from"),
             ("control/workspace_runtime/database.py", "_acquire"),
             # An access outside the engine waits for a live instance on the one deadline it sets,
             # re-reading the books at each wake, and refuses by name at its end.
@@ -124,8 +133,6 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
             ("interface/local_application/web.py", "_discard_announced_body"),
             ("interface/local_application/web.py", "join_request_threads"),
             ("interface/local_application/web.py", "stop"),
-            # A detached launch's readiness wait: bounded, reread each pause, refused at its end.
-            ("control/product_host/composition/web_launcher.py", "_detach"),
             (
                 "control/product_host/composition/evidence_review_application.py",
                 "_refresh_coverage",

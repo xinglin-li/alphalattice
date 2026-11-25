@@ -38,6 +38,7 @@ from .linux_scope import worker_scope as linux_worker_scope
 
 if sys.platform == "win32":
     import _winapi
+    import msvcrt
 
 DEFAULT_TIMEOUT = 300.0
 REAP_TIMEOUT = 5.0
@@ -242,12 +243,37 @@ def ambient_job_probe(
     )
 
 
+def descriptor_name(descriptor: int) -> str:
+    """How a child started with ``inherit=descriptor`` names it: its handle on Windows, where a
+    child inherits handles, and its number elsewhere."""
+    if sys.platform == "win32":
+        return str(msvcrt.get_osfhandle(descriptor))
+    return str(descriptor)
+
+
+def inherited(name: str, flags: int) -> int:
+    """The descriptor a parent handed this process by `descriptor_name`, opened with ``flags``
+    and kept from this process's own children."""
+    if sys.platform == "win32":
+        descriptor = msvcrt.open_osfhandle(int(name), flags)
+    else:
+        descriptor = int(name)
+    os.set_inheritable(descriptor, False)
+    return descriptor
+
+
 def detached(
-    args: list[str], *, log: Any, env: dict[str, str], processes: ProcessObservations
+    args: list[str],
+    *,
+    log: Any,
+    env: dict[str, str],
+    processes: ProcessObservations,
+    inherit: int | None = None,
 ) -> subprocess.Popen[bytes]:
-    """Start a workspace-owned Host outside the launching turn's process group."""
+    """Start a workspace-owned Host outside the launching turn's process group; it inherits the
+    one descriptor ``inherit`` names besides its standard streams."""
     args = _command(args)
-    common = {
+    common: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": log,
         "stderr": log,
@@ -258,8 +284,13 @@ def detached(
             args,
             start_new_session=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            pass_fds=() if inherit is None else (inherit,),
             **common,
         )
+    if inherit is not None:
+        handle = int(descriptor_name(inherit))
+        os.set_handle_inheritable(handle, True)
+        common["startupinfo"] = subprocess.STARTUPINFO(lpAttributeList={"handle_list": [handle]})
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.IsProcessInJob.argtypes = [
         ctypes.c_void_p,

@@ -2634,18 +2634,26 @@ class PortfolioResearchOperations:
         """The date's committee under its workspace's agenda rule, on the Goal's own ledger."""
         from . import committee  # lazy: this operation reads the committee
 
-        task, now = str(request.update_task_id), self.dispatcher.clock()
-        return committee.operate(
-            self.goals.store,
-            request,
-            now,
-            provenance=REQUEST_PROVENANCE.get(),
-            dated=lambda: self._dated(task),
-            file_floor=lambda: self._file_floor(task, now),
-            agenda_limit=self.workspace_manifest.committee_agenda_limit or committee.AGENDA_LIMIT,
-            caller=caller,
-            workspace=self.workspace_session.workspace,
-        )
+        task, clock = str(request.update_task_id), self.dispatcher.clock
+        provenance = REQUEST_PROVENANCE.get()
+
+        def read(now: datetime) -> dict[str, object]:
+            return committee.operate(
+                self.goals.store,
+                request,
+                now,
+                provenance=provenance,
+                dated=lambda: self._dated(task),
+                file_floor=lambda: self._file_floor(task, now),
+                agenda_limit=self.workspace_manifest.committee_agenda_limit
+                or committee.AGENDA_LIMIT,
+                caller=caller,
+                workspace=self.workspace_session.workspace,
+            )
+
+        if request.operation != "COMMITTEE_READ" or request.wait_seconds is None:
+            return read(clock())
+        return committee.read_addressed(self.goals.store, task, read, request.wait_seconds, clock)
 
     def _date_risk(
         self, body: dict[str, object], positions: PortfolioUpdatePositions

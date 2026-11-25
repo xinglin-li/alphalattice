@@ -28925,7 +28925,8 @@
         "committee_key",
         "committee_role",
         "committee_seen",
-        "update_task_id"
+        "update_task_id",
+        "wait_seconds"
       ],
       "required": [
         "update_task_id"
@@ -29890,7 +29891,9 @@
     "operation:GOAL_NARRATIVE": {
       "allowed": [
         "goal_hash",
-        "goal_id"
+        "goal_id",
+        "goal_seen",
+        "wait_seconds"
       ],
       "required": []
     },
@@ -33947,6 +33950,12 @@
     "option:committee show/--wait": {
       "choices": null,
       "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:committee show/--wait-seconds": {
+      "choices": null,
+      "nargs": null,
       "required": false,
       "type": null
     },
@@ -41723,6 +41732,12 @@
       "required": false,
       "type": null
     },
+    "option:goal narrative/--seen": {
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
     "option:goal narrative/--view": {
       "choices": [
         "compact",
@@ -41736,6 +41751,12 @@
     "option:goal narrative/--wait": {
       "choices": null,
       "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    "option:goal narrative/--wait-seconds": {
+      "choices": null,
+      "nargs": null,
       "required": false,
       "type": null
     },
@@ -63091,6 +63112,21 @@
           {
             "maxLength": 64,
             "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "request:Request.goal_seen": {
+      "required": false,
+      "schema": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{16}$",
             "type": "string"
           },
           {

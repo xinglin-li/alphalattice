@@ -19,6 +19,7 @@ class RequestFields(RequestFieldModel):
     remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None
     """The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`."""
     wait_seconds: float | None = Field(default=None, gt=0, le=20)
-    """How long a Task's status may wait for the Task to move on; at most 20 seconds."""
+    """How long a read may wait for what it reads to move on (a Task's status, a goal's
+    narrative, a committee floor addressing its member); at most 20 seconds."""
     status_section: Literal["storage"] | None = None
     """The optional Task status section to compute on an explicit read."""

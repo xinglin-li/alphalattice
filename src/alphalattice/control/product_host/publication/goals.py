@@ -36,6 +36,7 @@ from alphalattice.interface.local_application.goals import (
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
 from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
+from alphalattice.kernel.execution import EVENTS
 
 EXPERIENCE_RECORD_WORDS = (
     "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), "
@@ -246,7 +247,8 @@ class GoalStore:
                 self.content.root / "heads" / f"{value.goal_id}.json",
                 json.dumps({"goal_hash": value.goal_hash}, sort_keys=True).encode(),
             )
-            return value
+        EVENTS.publish(("goal", str(value.goal_id)))
+        return value
 
     def _session_path(self, session: GoalSession) -> Path:
         return self.content.root / "sessions" / session.vendor / f"{session.session_id}.json"
@@ -427,6 +429,7 @@ class GoalStore:
             self.content.atomic_write(
                 folder / f"{place:08d}.json", json.dumps(dict(entry), sort_keys=True).encode()
             )
+        EVENTS.publish(("goal", str(goal_id)))
 
     def accepted_answer_context(
         self, key: str, decide: Callable[[], GoalAcceptedAnswerContext]

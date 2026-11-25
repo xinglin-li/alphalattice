@@ -2098,9 +2098,9 @@ def _read_through_restarts(
     def read() -> dict[str, Any] | None:
         """The Host's answer, or None while it stops or restarts."""
         remaining = deadline - time.monotonic()
-        request = document
-        if "wait_seconds" in document:
-            request = {**document, "wait_seconds": min(document["wait_seconds"], max(0, remaining))}
+        request = {k: v for k, v in document.items() if k != "wait_seconds"}
+        if "wait_seconds" in document and remaining > 0:  # the last read at the cap waits not
+            request["wait_seconds"] = min(document["wait_seconds"], remaining)
         try:
             body = client.request(request, timeout=max(0, remaining) + _POLL_MARGIN)
         except LocalResearchClientError as error:
@@ -2124,6 +2124,8 @@ def _read_through_restarts(
 
 
 _POLL_MARGIN = 5.0
+HOST_WAIT = 20.0
+"""Seconds a goal's or a floor's read may wait at the Host for its news: the long poll's most."""
 """Seconds a request may run past a waiter's deadline: a long poll asks the Host for no more
 than the time left, and its answer needs a moment to arrive."""
 
@@ -2394,7 +2396,6 @@ def _wait_for_goal(
     # its first stop was (a set of first states slept through the second).
     seen = {t["task_id"]: t["state"] for t in current["record"]["tasks"]}
     heard = {m["observation_id"] for m in current["record"]["conversation"] if _filed(m)}
-    delay = 2.0
     while current.get("state") == "OPEN":
         conversation = current["record"]["conversation"]
         mine = {str(m.get("message_id")) for m in conversation if me and m.get("agent_id") == me}
@@ -2437,14 +2438,16 @@ def _wait_for_goal(
                     ),
                 }
         seen.update({t["task_id"]: t["state"] for t in current["record"]["tasks"]})
-        if not _sleep_before_read(delay, deadline):
+        if deadline - time.monotonic() <= 0:
             return {
                 **current,
                 "wait_status": "MAX_WAIT_TASK_CONTINUES",
                 "wait_event": wait_event("MAX_WAIT_REACHED", read, prefix=prefix, goal_id=goal_id),
             }
-        delay = min(delay * 1.5, 15.0)
-        client, again = _read_through_restarts(client, document, deadline)
+        # The Host answers once the goal moves on from the mark last read (a message, a Task's
+        # state, a revision), or at its long poll's end.
+        moved = {**document, "wait_seconds": HOST_WAIT, "goal_seen": current["narrative_mark"]}
+        client, again = _read_through_restarts(client, moved, deadline)
         if again is not None:
             current = again
     return {
@@ -3285,6 +3288,8 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         "committee_role": args.committee_role,
         "committee_key": args.committee_key,
         "committee_seen": int(args.committee_seen or 0),
+        # The Host answers once the floor addresses this member, or at its long poll's end.
+        "wait_seconds": HOST_WAIT,
     }
     deadline = _deadline(args.max_wait)
 
@@ -3297,9 +3302,8 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         )
 
     client, read = _read_through_restarts(client, document, deadline)
-    delay, body = 1.0, read or {}
-    while read is not None and not answered(read) and _sleep_before_read(delay, deadline):
-        delay = min(delay * 1.5, 10.0)
+    body = read or {}
+    while read is not None and not answered(read) and deadline - time.monotonic() > 0:
         client, read = _read_through_restarts(client, document, deadline)
         body = body if read is None else read
     return body if answered(read) else {**body, "wait_status": "MAX_WAIT_REACHED"}

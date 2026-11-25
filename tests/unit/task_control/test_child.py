@@ -1,3 +1,5 @@
+import threading
+from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from itertools import count
 from types import SimpleNamespace
@@ -12,7 +14,9 @@ from alphalattice.kernel.execution import (
     cancel_execution,
     child_process,
     execution_cancellation,
+    interruptible,
     stop_reason,
+    worker_cancellation,
 )
 
 TEST_SOURCE = "src/alphalattice/control/task_control/child.py"
@@ -28,6 +32,50 @@ def test_cancellation_belongs_to_the_named_execution():
         cancel_execution(execution)
         assert stop_reason() == CANCELLED
     assert stop_reason() is None
+
+
+class _Bell:
+    """A worker's bell that counts each look its listener takes before waiting."""
+
+    def __init__(self) -> None:
+        self.rung, self.looks = threading.Event(), threading.Semaphore(0)
+        self.before_clear: Callable[[], object] | None = None
+
+    def set(self) -> None:
+        self.rung.set()
+
+    def clear(self) -> None:
+        if (hook := self.before_clear) is not None:
+            self.before_clear = None
+            hook()
+        self.rung.clear()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.looks.release()
+        return self.rung.wait(timeout)
+
+
+@pytest.mark.proves("execution.a_kept_call_stops_when_its_bell_rings_with_its_flag")
+def test_a_kept_call_stops_when_its_bell_rings_with_its_flag(tmp_path):
+    """A kept call stops once its worker's bell rings with the call's own flag set; a ring for
+    another call leaves it running, and the call's end releases its listener, even when the end
+    and its ring land just before the listener clears the bell."""
+    flag, bell, interrupted = tmp_path / "cancel", _Bell(), threading.Event()
+    with worker_cancellation(str(flag), bell), interruptible(interrupted.set):
+        assert bell.looks.acquire(timeout=5)  # listening, its flag not set
+        bell.set()  # a ring for another call
+        assert bell.looks.acquire(timeout=5) and stop_reason() is None
+        flag.touch()
+        bell.set()
+        assert interrupted.wait(5) and stop_reason() == CANCELLED
+    assert not [t for t in threading.enumerate() if t.name == "execution-bell"]
+    bell, clearing = _Bell(), threading.Event()
+    with worker_cancellation(str(tmp_path / "other"), bell):
+        assert bell.looks.acquire(timeout=5)
+        bell.before_clear = lambda: bell.rung.clear() or clearing.set() or bell.rung.wait(5)
+        bell.set()  # a ring for another call; the call ends before the listener clears it
+        assert clearing.wait(5)
+    assert not [t for t in threading.enumerate() if t.name == "execution-bell"]
 
 
 class _Ended(Exception):

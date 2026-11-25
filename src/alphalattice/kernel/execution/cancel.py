@@ -6,23 +6,42 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from pathlib import Path
-from threading import Condition, Lock, Thread, Timer
+from threading import Condition, Event, Lock, Thread, Timer
 from time import monotonic
+from typing import Protocol
 from uuid import UUID
 
 CANCELLED = "execution.cancelled"
 TIMED_OUT = "execution.timeout"
 _INTERRUPT_INTERVAL = 0.025
+_BELL_BOUND = 60.0
+"""How long a kept call's bell listener waits between looks at whether its call has ended; a
+ring (the parent's cancel, the call's own end) wakes it at once."""
 
 
 class ExecutionStopped(RuntimeError):
     """The current execution reached its accepted cancellation or deadline."""
 
 
+class Bell(Protocol):
+    """A kept worker's doorbell, shared with its parent: a process-wide event either side sets."""
+
+    def set(self) -> None:
+        """Ring it: the listener looks at its call's flag."""
+        ...
+
+    def clear(self) -> None:
+        """Quiet it before a look, so a ring after the look is still heard."""
+        ...
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Block until it rings or ``timeout`` passes; whether it rang."""
+        ...
+
+
 class _Cancellation:
-    def __init__(self, flag: Path | None = None) -> None:
+    def __init__(self) -> None:
         self.reason: str | None = None
-        self._flag = flag
         self._condition = Condition()
         self._interrupts: dict[object, Callable[[], object]] = {}
         self._watcher: Thread | None = None
@@ -47,44 +66,28 @@ class _Cancellation:
             self._watcher.start()
 
     def _watch(self) -> None:
+        """After the stop, interrupt each registered operation until none is left or its second
+        passes: keep attempting only while the same operation holds its registration, as an
+        interrupt observed just before engine entry can otherwise be lost."""
         with self._condition:
             try:
-                while not self._closed:
-                    if not self._interrupts:
-                        if self._flag is None:
-                            return
-                        self._condition.wait(timeout=1.0)
-                        continue
-                    if self.reason is None and self._flag is not None and self._flag.exists():
-                        self._stop(CANCELLED)
-                    if self.reason is not None:
-                        if monotonic() >= self._deadline:
-                            return
-                        # Keep attempting only while the same operation holds its registration.
-                        # An interrupt observed just before engine entry can otherwise be lost.
-                        for interrupt in self._interrupts.values():
-                            with suppress(Exception):
-                                interrupt()
+                while not self._closed and self._interrupts and monotonic() < self._deadline:
+                    for interrupt in self._interrupts.values():
+                        with suppress(Exception):
+                            interrupt()
                     self._condition.wait(_INTERRUPT_INTERVAL)
             finally:
                 self._watcher = None
 
     def watch(self, interrupt: Callable[[], object]) -> object | None:
         with self._condition:
-            if self.reason is None and self._flag is not None and self._flag.exists():
-                self._stop(CANCELLED)
             if self.reason == TIMED_OUT:
                 raise ExecutionStopped(TIMED_OUT)
             if self._closed or self.reason is not None:
                 # A cancelled Task can finish its current chunk's writes before seeing the stop.
                 return None
-            first = not self._interrupts
             registration = object()
             self._interrupts[registration] = interrupt
-            if self._flag is not None and first:
-                # One observer waits between queries within the same kept worker call.
-                self._start()
-                self._condition.notify()
             return registration
 
     def unwatch(self, registration: object) -> None:
@@ -138,15 +141,41 @@ def cancel_execution(execution_id: UUID | None) -> None:
 
 
 @contextmanager
-def worker_cancellation(flag: str) -> Iterator[None]:
-    """Honor the existing per-call flag in a kept process, with no shared cursor references."""
-    signal = _Cancellation(Path(flag))
+def worker_cancellation(flag: str, bell: Bell) -> Iterator[None]:
+    """Honor the per-call flag in a kept process, with no shared cursor references.
+
+    The parent touches the flag and rings the worker's bell; the call stops when the bell rings
+    with its own flag set. A ring for an earlier call, or this call's own end, only makes the
+    listener look again.
+    """
+    signal = _Cancellation()
     reset = _CURRENT.set(signal)
+    ended = Event()
+    listener = Thread(
+        target=_listen, args=(signal, Path(flag), bell, ended), name="execution-bell", daemon=True
+    )
+    listener.start()
     try:
         yield
     finally:
+        ended.set()
+        bell.set()
+        listener.join(timeout=1.0)
         _CURRENT.reset(reset)
         signal.close()
+
+
+def _listen(signal: _Cancellation, flag: Path, bell: Bell, ended: Event) -> None:
+    """Stop the call once its flag is set, looking at each ring of its worker's bell. The bell is
+    cleared before each look at the call's end and its flag, and the parent and the teardown each
+    write before they ring, so a ring after the clear is heard by the wait and none is lost."""
+    bell.clear()
+    while not ended.is_set():
+        if flag.exists():
+            signal.stop(CANCELLED)
+            break
+        bell.wait(_BELL_BOUND)
+        bell.clear()
 
 
 def stop_reason() -> str | None:

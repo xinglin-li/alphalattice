@@ -70,3 +70,6 @@ class RequestFields(RequestFieldModel):
     """One committee message, as its YAML or JSON file."""
     committee_seen: int | None = Field(default=None, ge=0, le=9999, strict=True)
     """The last floor message the reader has seen, by its number (M4 is 4)."""
+    goal_seen: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+    """The goal's narrative mark as last read; with `wait_seconds` the narrative answers once
+    its Tasks, record or revision move on from it."""

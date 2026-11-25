@@ -7,13 +7,14 @@ computes research.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass, fields, replace
 from dataclasses import field as dataclass_field
 from datetime import date, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from secrets import token_hex
+from time import monotonic
 from typing import Any, Self
 from uuid import UUID, uuid5
 
@@ -97,6 +98,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
     validate_request_document,
 )
+from alphalattice.kernel.execution import EVENTS, EventDeadline
 from alphalattice.protocols.actor_execution import ActorKind
 from alphalattice.protocols.actor_execution.bundles import (
     bundle_directory_key,
@@ -326,6 +328,19 @@ def conversation_entries(entries: Sequence[Mapping[str, Any]]) -> list[dict[str,
                 }
             )
     return sorted(rows, key=lambda row: str(row.get("recorded_at") or ""))
+
+
+def narrative_mark(saved: Mapping[str, Any], tasks: int) -> str:
+    """What a goal's waiter reads, as sixteen hex digits of three numbers that only grow: the
+    rows the goal's record keeps (5), its head revision (3) and ``tasks`` (8), its Tasks'
+    record versions summed, each successor that continued a stop counted once (Task Control
+    advances a Task's version with each write of its record, its lifecycle among them). A
+    message, any Task moving on or a new revision moves it; a read that finds nothing new
+    keeps it."""
+    record = saved["record"]
+    rows = record["request_count"] + record["event_count"]
+    revision = saved["head"]["revision"]
+    return f"{rows & 0xFFFFF:05x}{revision & 0xFFF:03x}{tasks & 0xFFFFFFFF:08x}"
 
 
 def session_usage(entries: Sequence[Mapping[str, object]]) -> list[dict[str, Any]]:
@@ -1249,9 +1264,16 @@ class GoalApplication:
         return session
 
     def record(
-        self, goal: Goal, *, whole_conversation: bool = False, head: Goal | None = None
+        self,
+        goal: Goal,
+        *,
+        whole_conversation: bool = False,
+        head: Goal | None = None,
+        versions: list[int] | None = None,
     ) -> dict[str, Any]:
-        """The Host's facts; a waiter reads every message, never only the shown tail."""
+        """The Host's facts; a waiter reads every message, never only the shown tail. Each
+        Task's record version, and one for a successor that continued its stop, goes to
+        ``versions`` from the same read its row shows."""
         entries = joined_members(self.store.attributed(goal.goal_id))
         requests = [e for e in entries if "operation" in e]
         messages = conversation_entries(entries)
@@ -1260,6 +1282,8 @@ class GoalApplication:
         for task_id in dict.fromkeys(str(e["task_id"]) for e in requests if e.get("task_id")):
             facts = self.task_facts(UUID(task_id))
             if facts is not None:
+                if versions is not None:
+                    versions.append((*facts, None, 0)[4] + ((*facts, None)[3] is not None))
                 tasks.append(
                     GoalTaskFact(
                         task_id=UUID(task_id),
@@ -1366,7 +1390,10 @@ class GoalApplication:
                 raise ValueError("goal.closed_open_a_follow_up")
             return self._save(request, caller, goal, state="ABANDONED")
         goal = self._selected(request)
-        readers = {"GOAL_NARRATIVE": self.narrative, "GOAL_PROFILE": self.profile}
+        readers: dict[str, Callable[[Goal], dict[str, Any]]] = {
+            "GOAL_NARRATIVE": partial(self._narrative_moved, request),
+            "GOAL_PROFILE": self.profile,
+        }
         if request.operation in readers:
             return readers[request.operation](goal)
         if request.operation in {"GOAL_SHOW", "GOAL_EXPORT", "GOAL_REFERENCE"}:
@@ -2094,7 +2121,12 @@ class GoalApplication:
         }
 
     def _saved(
-        self, goal: Goal, *, whole_conversation: bool = False, head: Goal | None = None
+        self,
+        goal: Goal,
+        *,
+        whole_conversation: bool = False,
+        head: Goal | None = None,
+        versions: list[int] | None = None,
     ) -> dict[str, Any]:
         """Project saved facts; a supplied head is this request's fresh publication.
 
@@ -2135,7 +2167,9 @@ class GoalApplication:
             "open_choices": [
                 s.model_dump(mode="json") for s in goal.statements if s.disposition == "OPEN"
             ],
-            "record": self.record(goal, whole_conversation=whole_conversation, head=head),
+            "record": self.record(
+                goal, whole_conversation=whole_conversation, head=head, versions=versions
+            ),
             "next_requests": {
                 **self._next(goal),
                 **(
@@ -2158,9 +2192,14 @@ class GoalApplication:
         ``GOAL_SHOW`` re-checks every reference and ``GOAL_REFERENCE`` one. Its conversation is
         whole, so a waiter loses no message between reads.
         """
+        # The mark sums the versions of the very Task reads the record's rows show, in its one
+        # traversal, so a mark never names rows it did not read.
+        versions: list[int] = []
+        saved = self._saved(goal, whole_conversation=True, versions=versions)
         return {
             "status": "GOAL_NARRATIVE",
-            **self._saved(goal, whole_conversation=True),
+            **saved,
+            "narrative_mark": narrative_mark(saved, sum(versions)),
             "references": [
                 {
                     "reference": ref.model_dump(mode="json"),
@@ -2182,6 +2221,32 @@ class GoalApplication:
             "GOAL_REFERENCE verifies one selected reference. "
             "No current/scientific approval or retention pin.",
         }
+
+    def _narrative_moved(
+        self, request: PortfolioResearchOperationRequest, goal: Goal
+    ) -> dict[str, Any]:
+        """The narrative once its mark moves on from ``goal_seen``, or after ``wait_seconds``:
+        a goal's waiter learns of a message, a Task moving on or a revision when it happens.
+
+        It reads again on each event for the goal (a revision, a row its record keeps) or for
+        one of its Tasks, subscribing before each read, and nothing is held between reads.
+        """
+        body = self.narrative(goal)
+        if request.wait_seconds is None:
+            return body
+        deadline = monotonic() + request.wait_seconds
+        while (
+            body["narrative_mark"] == request.goal_seen
+            and body["state"] == "OPEN"
+            and (left := deadline - monotonic()) > 0
+        ):
+            tasks = [("task", t["task_id"]) for t in body["record"]["tasks"]]
+            with EVENTS.subscribed(("goal", body["goal_id"]), *tasks) as moved:
+                body = self.narrative(self._selected(request))  # what moved before it
+                if body["narrative_mark"] == request.goal_seen:
+                    with suppress(EventDeadline):
+                        moved.wait(0, timeout=left, what=f"goal {body['goal_id']}")
+        return body
 
     def _reference_row(
         self,

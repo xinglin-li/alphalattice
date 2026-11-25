@@ -1616,6 +1616,12 @@
       "layer": "integration",
       "seconds": 10
     },
+    "execution.a_kept_call_stops_when_its_bell_rings_with_its_flag": {
+      "description": "A kept call stops once its worker's bell rings with the call's own flag set; a ring for another call leaves it running, and its end releases the listener.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "unit",
+      "seconds": 1
+    },
     "execution.a_wait_ends_on_its_owners_event": {
       "description": "If a wait polled its owner's state, a follow would answer late, and a Host asleep past a due time could run a job more than once.",
       "lower_layer": "The follow, the process's one timer and a maintenance worker are threads that meet on real events and a real deadline, which no single function holds.",
@@ -1841,6 +1847,12 @@
     },
     "local_application.a_goal_is_found_by_its_declaration_hash": {
       "description": "A reopened goal is found by its declaration's typed binary hash with its opener and encoding version, never by JSON text.",
+      "owner": "alphalattice.interface.local_application",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "local_application.a_goal_or_floor_read_takes_its_wait_and_its_mark": {
+      "description": "A goal's narrative takes the Host's wait and the mark last read, and a floor read takes the wait, each refused by name outside its bounds; no other goal read waits.",
       "owner": "alphalattice.interface.local_application",
       "layer": "unit",
       "seconds": 1
@@ -2595,6 +2607,27 @@
       "layer": "integration",
       "seconds": 5
     },
+    "product_host.a_detached_launch_hears_its_host_on_its_ready_pipe": {
+      "description": "A detached launch's readiness wait ends on its Host's ready byte or the Host's end, and at its bound only when the Host does neither.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 2,
+      "lower_layer": "It reads an operating-system pipe another thread writes or closes, the launcher's real channel, which a pure unit cannot stand in for."
+    },
+    "product_host.a_floor_wait_answers_on_its_row_or_next_moment": {
+      "description": "A committee member's floor read with wait_seconds answers on the next row filed under its goal or at the floor's next moment on the clock, never at its bound.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It opens a real floor in a goal's ledger and files a stance from another thread, which needs the goal store's files and its events together."
+    },
+    "product_host.a_narrative_wait_answers_when_its_goal_moves": {
+      "description": "A goal's narrative read with wait_seconds answers at once when its mark moved from the reader's, on the next row its goal keeps or its Tasks' next event, and unchanged at its bound otherwise.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It reads a goal's real record files and Task facts while another thread files a row or moves a Task, which one unit cannot hold."
+    },
     "product_host.a_reopened_goal_is_found_by_its_declaration": {
       "description": "Reopening a goal answers it, a new one under a UUIDv7 and one opened under its old uuid5 once the upgrade step indexes it.",
       "owner": "alphalattice.control.product_host",
@@ -2891,6 +2924,13 @@
       "owner": "alphalattice.control.task_control",
       "layer": "unit",
       "seconds": 1
+    },
+    "task_control.a_stop_reaches_a_kept_workers_operation_when_accepted": {
+      "description": "A Task's accepted stop interrupts a kept worker's running operation through the call's flag and the worker's bell, with no period on either side.",
+      "owner": "alphalattice.control.task_control",
+      "layer": "integration",
+      "seconds": 10,
+      "lower_layer": "It needs a real kept worker process and the bell shared with it across processes, which no in-process unit holds."
     },
     "task_control.a_wedged_worker_is_ended_by_name": {
       "description": "If the Host waited on a worker that stopped running with no bound, a wedged call would hold its Task forever.",

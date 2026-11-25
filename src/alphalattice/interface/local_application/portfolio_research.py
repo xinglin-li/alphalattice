@@ -397,6 +397,7 @@ class PortfolioResearchOperationRequest:
     committee_key: str | None = None
     committee_message: CommitteeMessage | None = None
     committee_seen: int | None = None
+    goal_seen: str | None = None
 
     def __post_init__(self) -> None:
         """Validate operation fields and normalize delivery commentary."""

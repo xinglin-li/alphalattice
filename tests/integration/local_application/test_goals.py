@@ -6,11 +6,12 @@ import json
 import os
 import shlex
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
-from threading import Event
+from threading import Event, Timer
 from types import SimpleNamespace
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
@@ -39,6 +40,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
+from alphalattice.kernel.execution import EVENTS
 from tests.portfolio_strategy_lab.cli_support import cli_environment
 from tests.portfolio_strategy_lab.goal_support import (
     DECLARATION,
@@ -1370,6 +1372,56 @@ def test_goal_narrative_reads_the_saved_revision_without_any_owner_read(goal_app
     path.write_text(path.read_text().replace("Costs remain", "Costs never"))
     with pytest.raises(ValueError, match="tampered"):
         app.operate(Request(operation="GOAL_NARRATIVE", goal_hash=noted["goal_hash"]), "HUMAN")
+
+
+@pytest.mark.proves("product_host.a_narrative_wait_answers_when_its_goal_moves")
+def test_a_narrative_wait_answers_on_its_goals_or_its_tasks_event(goal_app, monkeypatch):
+    """requirement: GOAL_NARRATIVE with wait_seconds answers at once when its mark moved from
+    goal_seen, on a row its goal keeps or any Task's move (within one millisecond too), and with
+    the mark unchanged at its bound when nothing moves; each read traverses its goal once."""
+    app, opened, _calls, _body, tasks = goal_app
+    task_id = UUID(int=31)
+    goal = app.store.load(opened["goal_hash"])
+    tasks[task_id] = ("factor_research", "RUNNING", NOW, None, 1)
+    app.attribute(
+        goal,
+        Request(operation="EXPERIMENT_RUN", experiment_plan_hash="p" * 64),
+        {"status": "ADMITTED", "task_id": str(task_id)},
+        SESSION,
+    )
+
+    def narrative(seen: str | None = None, wait: float | None = None) -> tuple[str, float]:
+        began = time.monotonic()
+        request = Request(
+            operation="GOAL_NARRATIVE", goal_id=goal.goal_id, goal_seen=seen, wait_seconds=wait
+        )
+        return app.operate(request, "HUMAN")["narrative_mark"], time.monotonic() - began
+
+    traversals, attributed = [], app.store.attributed
+    monkeypatch.setattr(
+        app.store, "attributed", lambda key: traversals.append(key) or attributed(key)
+    )
+    mark, _ = narrative()
+    assert traversals == [goal.goal_id]  # the rows and the mark come from one traversal
+    moved, seconds = narrative("0" * 16, 10.0)  # moved on from that mark already
+    assert moved == mark and seconds < 5, seconds
+    still, seconds = narrative(mark, 0.3)
+    assert still == mark and seconds >= 0.3
+
+    def finish() -> None:
+        tasks[task_id] = ("factor_research", "SUCCEEDED", NOW, None, 2)  # the same clock
+        EVENTS.publish(("task", str(task_id)))  # as Task Control's row about the Task does
+
+    def file() -> None:
+        _bundle(app, goal, "AGENT_BUNDLE_PREPARE", "AGENT_BUNDLE_READY", "a" * 64)
+
+    for move in (finish, file):
+        timer = Timer(0.2, move)
+        timer.start()
+        moved, seconds = narrative(mark, 10.0)
+        timer.join(5)
+        assert moved != mark and seconds < 5, (move.__name__, seconds)
+        mark = moved
 
 
 def test_a_submission_is_checked_against_the_record_and_names_what_is_missing(goal_app):

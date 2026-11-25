@@ -678,6 +678,7 @@
   "goal_id": "The goal, by the id its GOAL_OPEN answered with.",
   "goal_reference": "What to attach to the goal: a Task, a study, a result or a publication, by reference.",
   "goal_reference_id": "The reference ID saved in the exact goal revision; only that reference is verified.",
+  "goal_seen": "The goal's narrative mark as last read; with `wait_seconds` the narrative answers once its Tasks, record or revision move on from it.",
   "goal_statement": "A note for the goal's record, written by the agent working for it.",
   "goal_submission": "The completion document claiming the goal is met, naming its evidence.",
   "handoff_hash": "The research handoff a book comes from.",
@@ -752,7 +753,7 @@
   "view_last_days": "Only the last this many days.",
   "view_to": "The last day read, as YYYY-MM-DD.",
   "view_topic": "Only this topic's Evidence.",
-  "wait_seconds": "How long a Task's status may wait for the Task to move on; at most 20 seconds.",
+  "wait_seconds": "How long a read may wait for what it reads to move on (a Task's status, a goal's narrative, a committee floor addressing its member); at most 20 seconds.",
   "wake_codex_path": "The client's Codex executable; the Host validates it or uses its PATH.",
   "wake_read": "The exact read or rerun command, with its next free output path.",
   "wake_thread": "The Codex thread to wake (`CODEX_THREAD_ID`).",
@@ -859,7 +860,8 @@
     "committee_key",
     "committee_role",
     "committee_seen",
-    "update_task_id"
+    "update_task_id",
+    "wait_seconds"
    ],
    "required": [
     "update_task_id"
@@ -1824,7 +1826,9 @@
   "GOAL_NARRATIVE": {
    "allowed": [
     "goal_hash",
-    "goal_id"
+    "goal_id",
+    "goal_seen",
+    "wait_seconds"
    ],
    "required": []
   },
@@ -2548,6 +2552,7 @@
   "goal_id": "goal",
   "goal_reference": "file",
   "goal_reference_id": "reference",
+  "goal_seen": "seen",
   "goal_statement": "file",
   "goal_submission": "file",
   "handoff_hash": "handoff",
@@ -3597,6 +3602,9 @@
    "object"
   ],
   "goal_reference_id": [
+   "string"
+  ],
+  "goal_seen": [
    "string"
   ],
   "goal_statement": [

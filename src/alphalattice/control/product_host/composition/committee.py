@@ -20,6 +20,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
@@ -94,6 +95,7 @@ from alphalattice.interface.local_application.questions import person_question
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
+from alphalattice.kernel.execution import EVENTS, EventDeadline
 from alphalattice.kernel.identity import identity_sha256, integrity_hmac_sha256, integrity_sha256
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
 
@@ -243,6 +245,54 @@ def settled(floor: Floor, now: datetime) -> bool:
 def member_key(seed: str, thread: str, role: str) -> str:
     """A member's key on one thread: it admits that member's messages there and nowhere else."""
     return integrity_hmac_sha256(bytes.fromhex(seed), f"{thread}:{role}".encode())[:32]
+
+
+def addressed(read: Mapping[str, Any]) -> bool:
+    """Whether a member's read holds what its wait is for: a refusal, what the floor addresses
+    to it (`for_you`), the settled debate or the close."""
+    return read.get("status") != "COMMITTEE_FLOOR" or bool(
+        read.get("for_you") or read.get("settled") or read.get("stage") == "CLOSED"
+    )
+
+
+def read_addressed(
+    store: GoalStore,
+    task: str,
+    read: Callable[[datetime], dict[str, object]],
+    wait_seconds: float,
+    clock: Callable[[], datetime],
+) -> dict[str, object]:
+    """A member's read once the floor addresses it, or after ``wait_seconds``.
+
+    It reads again on each row filed under the floor's goal (a message, the open, a person's
+    answer) and at the floor's next moment on the clock (the stance window's close, the
+    discussion's, the time box's), and nothing is held between reads. Each read projects the
+    floor at the instant it is handed, and the next moment is the first after that instant: one
+    the clock passed since is read again at once.
+    """
+    found = floor_of(store, task)
+    if found is None:
+        return read(clock())
+    deadline = monotonic() + wait_seconds
+    with EVENTS.subscribed(("goal", str(found.goal_id))) as moved:
+        projected = clock()
+        heard, body = 0, read(projected)
+        while not addressed(body) and (left := deadline - monotonic()) > 0:
+            moments = (
+                body.get(k) for k in ("stances_close_at", "discussion_closes_at", "closes_at")
+            )
+            now = clock()
+            ahead = [
+                (at - now).total_seconds()
+                for at in (datetime.fromisoformat(str(m)) for m in moments if m)
+                if at > projected
+            ]
+            if (wake := min([left, *ahead])) > 0:
+                with suppress(EventDeadline):
+                    heard = moved.wait(heard, timeout=wake, what=f"floor {task}")
+            projected = clock()
+            body = read(projected)
+    return body
 
 
 def floor_of(store: GoalStore, task: str) -> Floor | None:

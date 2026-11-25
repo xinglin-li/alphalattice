@@ -360,6 +360,7 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
     def narrative(*tasks: tuple[str, str]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {
                 "tasks": [{"task_id": t, "state": s} for t, s in tasks],
@@ -378,7 +379,9 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
     final = client_module._wait_for_goal(stub, goal, None)  # type: ignore[arg-type]
     event = final["wait_event"]
     assert (event["event"], event["task_id"], event["goal_id"]) == ("NEEDS_DECISION", new, goal)
-    assert all(d == {"operation": "GOAL_NARRATIVE", "goal_id": goal} for d in stub.sent)
+    first = {"operation": "GOAL_NARRATIVE", "goal_id": goal}
+    moved = {**first, "wait_seconds": client_module.HOST_WAIT, "goal_seen": "0" * 16}
+    assert stub.sent == [first, moved, moved]  # each later read waits at the Host on the mark
 
 
 def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> None:
@@ -399,6 +402,7 @@ def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> Non
     def narrative(*messages: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [], "conversation": list(messages)},
         }
@@ -448,6 +452,7 @@ def test_a_goal_wait_wakes_only_for_its_own_messages(monkeypatch) -> None:
     def narrative(*messages: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [], "conversation": list(messages)},
         }
@@ -490,6 +495,7 @@ def test_every_waiter_ends_on_a_deferral_with_its_retry_time_and_resume(monkeypa
     def narrative(state: str) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [{"task_id": task_id, "state": state}], "conversation": []},
         }
@@ -751,6 +757,7 @@ def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
 def _goal_narrative(task: str, state: str) -> dict[str, Any]:
     return {
         "status": "GOAL_NARRATIVE",
+        "narrative_mark": "0" * 16,
         "state": "OPEN",
         "record": {"tasks": [{"task_id": task, "state": state}], "conversation": []},
     }

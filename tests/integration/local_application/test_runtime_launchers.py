@@ -557,15 +557,21 @@ def test_a_detached_host_outlives_the_turn_that_started_it(
         from alphalattice.capabilities.domain_contracts import spawn
         from alphalattice.control.product_host.composition import web_launcher
 
-        stopped = []
+        stopped, held = [], []
+
+        def detached(*_args, inherit, **_kwargs):  # a Host that never serves holds its pipe end
+            held.append(os.dup(inherit))
+            return SimpleNamespace(pid=42)
+
         monkeypatch.setattr(spawn, "stop_tree", stopped.append)
-        monkeypatch.setattr(spawn, "detached", lambda *a, **k: SimpleNamespace(pid=42))
+        monkeypatch.setattr(spawn, "detached", detached)
         monkeypatch.setattr(web_launcher, "READY_SECONDS", 0)
         monkeypatch.setattr(web_launcher.tempfile, "tempdir", str(tmp_path))
         args = SimpleNamespace(workspace=tmp_path, no_browser=True, port=0, stop_on_stdin=False)
         assert web_launcher._detach(args) == 2
         answer = json.loads(capsys.readouterr().out)
         assert stopped == [42]
+        os.close(held[0])  # as the stopped Host's end closes
         assert answer["detail"] == (
             "The Host did not become ready within 0 seconds and was stopped. "
             f"Its log is {next(tmp_path.glob('alphalattice-host-*.log'))}. "
@@ -680,6 +686,93 @@ class _ExitedHost:
 
     def terminate(self):
         pass
+
+
+class _Heard:
+    """A detached Host the launcher waits on: it writes ``words`` to its log as it ends,
+    ``delay`` seconds into the wait."""
+
+    pid = 4242
+
+    def __init__(self, log: Path, words: str, delay: float = 0.0) -> None:
+        self.log, self.words, self.delay, self.returncode = log, words, delay, None
+
+    def wait(self, timeout=None):
+        time.sleep(self.delay)
+        self.log.write_text(self.words, encoding="utf-8")
+        self.returncode = 1
+        return 1
+
+
+@pytest.mark.proves("product_host.a_detached_launch_hears_its_host_on_its_ready_pipe")
+@pytest.mark.parametrize("end", ["byte", "exit", "silence", "lost", "late", "deadline"])
+def test_a_detached_launch_hears_its_host_on_the_ready_pipe(
+    end, tmp_path, monkeypatch, capsys
+) -> None:
+    """requirement: a detached launch's wait ends on its Host's ready byte or end, at its bound
+    only when the Host does neither; an ended Host is judged by the log it left at its end, and
+    the serving check, or a losing start's check of the serving Host, has only what is left."""
+    from alphalattice.control.product_host.composition import web_launcher
+
+    reader, writer = os.pipe()
+    log = tmp_path / "host.log"
+    log.write_text("", encoding="utf-8")
+
+    def host() -> None:
+        if end in {"byte", "deadline"}:
+            os.write(writer, b"1")
+        if end != "silence":
+            os.close(writer)
+
+    timer = threading.Timer({"lost": 0.0, "late": 0.0, "deadline": 0.6}.get(end, 0.2), host)
+    timer.start()
+    began = time.monotonic()
+    if end in {"byte", "exit", "silence"}:
+        said = web_launcher._ready(reader, 0.6 if end == "silence" else 30.0)
+        assert said == {"byte": b"1", "exit": b""}.get(end)
+    else:
+        monkeypatch.setattr(web_launcher, "READY_SECONDS", 1.0)
+        monkeypatch.setattr(web_launcher.spawn, "stop_tree", lambda *_a, **_k: None)
+        asked: list[float] = []
+
+        class _Client:
+            def __init__(self, _workspace, timeout):
+                asked.append(timeout)
+
+            def request(self, _body, timeout=None):
+                asked.extend([] if timeout is None else [timeout])
+                return {}
+
+            def activity(self, limit):
+                raise local_client.LocalResearchClientError("local_client.service_not_running")
+
+        if end == "deadline":
+            log.write_text("Portfolio Research workspace: http://127.0.0.1:1/\n", "utf-8")
+        if end != "lost":
+            monkeypatch.setattr(local_client, "LocalResearchClient", _Client)
+        # A late loser waits out most of the window before it ends with its lease line.
+        lost = _Heard(log, "workspace_runtime.writer_already_owned\n", 0.6 * (end == "late"))
+        arguments = SimpleNamespace(workspace=tmp_path, port=0, no_browser=True)
+        assert web_launcher._heard_from(arguments, lost, reader, log, "k") == 2
+        answer = json.loads(capsys.readouterr().out)
+        if end == "lost":  # read after its end: the serving Host is verified, not called exited
+            assert answer["failure_code"] == "local_web.serving_host_unverified", answer
+        elif end == "late":  # it ended 0.6 s into a 1 s deadline: its check had what was left
+            assert answer["failure_code"] == "local_web.serving_host_unverified", answer
+            assert asked and max(asked) <= 0.5, asked
+            capsys.readouterr()
+            assert web_launcher._failed_start(tmp_path, lost, lost.words, log, 0.0) == 2
+            spent = json.loads(capsys.readouterr().out)  # nothing left: unverified, nothing checked
+            assert spent["cause"] == "local_web.detached_host_not_ready" and len(asked) == 1, spent
+        else:  # the byte came 0.6 s into a 1 s deadline: the check had what was left of it
+            assert answer["failure_code"] == "local_web.detached_host_not_ready", answer
+            assert asked and max(asked) <= 0.5, asked
+    elapsed = time.monotonic() - began
+    timer.join(5)
+    if end == "silence":
+        os.close(writer)  # the stopped Host's end
+    tick = time.get_clock_info("monotonic").resolution  # Windows' is about 16 ms
+    assert elapsed < 10 and (end != "silence" or elapsed >= 0.6 - tick), elapsed
 
 
 def _detached_spawns(monkeypatch, escape: str, *, real: bool) -> SimpleNamespace:

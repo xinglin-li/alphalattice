@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
+from threading import Timer
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -758,6 +760,50 @@ def test_the_stances_stay_blind_until_all_four_are_in(
     assert revealed["stage"] == "DEBATE" and revealed["for_you"] == ["M1", "M3", "M4"]
     assert _read(store, now, None, 0)["for_you"] == []
     assert "(N" in revealed["messages"][0]["text"]  # the Host renders H1 with its name
+
+
+@pytest.mark.proves("product_host.a_floor_wait_answers_on_its_row_or_next_moment")
+@pytest.mark.parametrize("news", ["row", "moment", "crossed"])
+def test_a_members_wait_answers_on_its_floors_row_or_next_moment(
+    tmp_path: Path, readback: dict[str, Any], news: str
+) -> None:
+    """requirement: a floor read with wait_seconds answers on the next row filed under its goal
+    (the last stance) or at the floor's next moment on the clock (the stance window's close,
+    read at once when it passed after the projection), never at its bound."""
+    store, now = _floor(tmp_path, readback)
+    floor = committee.floor_of(store, TASK)
+    assert floor is not None
+    window = datetime.fromisoformat(floor.opened["stances_close_at"])
+    began = time.monotonic()
+    start = {"row": NOW, "moment": window - timedelta(seconds=0.3)}.get(news, window)
+    projections: list[datetime] = []
+
+    def clock() -> datetime:
+        if news == "crossed" and not projections:  # the first projection, a moment before
+            return window - timedelta(milliseconds=1)
+        return start + timedelta(seconds=time.monotonic() - began)
+
+    member = {"committee_role": "ALPHA", "committee_key": floor.key("ALPHA")}
+    request = Request(operation="COMMITTEE_READ", update_task_id=UUID(TASK), **member)
+
+    def read(at: datetime) -> dict[str, object]:
+        projections.append(at)
+        return committee.operate(
+            store, request, at, provenance=None, dated=lambda: None, file_floor=lambda: None
+        )
+
+    for role in ("PM", "ALPHA", "RISK") if news == "row" else ("PM",):
+        _say(store, now, role, "STANCE")
+    assert not committee.addressed(read(window - timedelta(seconds=1)))
+    projections.clear()
+    timer = Timer(0.2, _say, (store, now, "CRO", "STANCE")) if news == "row" else None
+    if timer:
+        timer.start()
+    body = committee.read_addressed(store, TASK, read, 10.0, clock)
+    if timer:
+        timer.join(5)
+    assert committee.addressed(body) and body["stage"] == "DEBATE", body.get("stage")
+    assert body["for_you"] and time.monotonic() - began < 5
 
 
 def test_the_committee_windows_name_the_hosts_local_moments(tmp_path, readback, host_local_clock):

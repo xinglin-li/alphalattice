@@ -54,6 +54,7 @@ from alphalattice.interface.local_application.web import (
     LAUNCH_KEY_VARIABLE,
     OPEN_THE_WORKBENCH,
 )
+from alphalattice.kernel.config import consume_secret
 from alphalattice.kernel.config import current as process_config
 
 from .process_job import ChildJob
@@ -163,6 +164,8 @@ READY_SECONDS = 300
 """How long a detached launch waits for its Host to report it serves."""
 HANDED_KEY = "key=<from the launcher>"
 """What a detached Host prints in place of the launch key its launcher made and holds."""
+READY_VARIABLE = "ALPHALATTICE_HOST_READY"
+"""Where a detached launch names the pipe its Host writes one byte to once it serves."""
 
 
 def _refusal(
@@ -222,12 +225,15 @@ def attached_child(command: list[str], *, env: dict[str, str]) -> int:
         )
 
 
-def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[bytes]:
+def _spawn_detached(
+    command: list[str], log: Any, key: str, ready: int | None = None
+) -> subprocess.Popen[bytes]:
     """Start the Host apart from this process: its own process group (session), no console
     window and no standard input, and out of this process's Job where the Job allows it (a
     Codex turn ends its shell's children, by its tree or its Job).
 
-    Denied Job breakaway raises; no still-held child is started.
+    Denied Job breakaway raises; no still-held child is started. ``ready``, a pipe's write
+    end, is the one descriptor the Host inherits: it writes there once it serves.
     """
     # The new interpreter imports this same source, as `entry.serve` gives its child.
     source = str(Path(__file__).resolve().parents[4])
@@ -237,8 +243,9 @@ def _spawn_detached(command: list[str], log: Any, key: str) -> subprocess.Popen[
         "PYTHONPATH": source + os.pathsep + inherited if inherited else source,
         "PYTHONFAULTHANDLER": "1",
         LAUNCH_KEY_VARIABLE: key,
+        **({} if ready is None else {READY_VARIABLE: spawn.descriptor_name(ready)}),
     }
-    return spawn.detached(command, log=log, env=environment)
+    return spawn.detached(command, log=log, env=environment, inherit=ready)
 
 
 def _names_a_host(workspace: Path) -> bool:
@@ -309,10 +316,12 @@ def _detach(
         str(arguments.port),
         *(["--no-browser"] if arguments.no_browser else []),
     ]
+    reader, writer = os.pipe()
     try:
         with log_path.open("wb") as log:
-            host = _spawn_detached(command, log, key)
+            host = _spawn_detached(command, log, key, writer)
     except PermissionError as error:
+        os.close(reader)
         from alphalattice.interface.local_application import client
 
         with suppress(client.LocalResearchClientError, OSError):
@@ -352,29 +361,47 @@ def _detach(
                 arguments.workspace, port=arguments.port, new_research=new_research
             ),
         )
-    deadline = time.monotonic() + READY_SECONDS
-    while time.monotonic() < deadline:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-        launch = next(
-            (line for line in text.splitlines() if line.startswith("Portfolio Research")), None
-        )
-        if launch is not None and "Loopback only." in text:
-            from alphalattice.interface.local_application import client
+    except BaseException:
+        os.close(reader)
+        raise
+    finally:
+        os.close(writer)  # the Host holds the one write end left, so its end closes the pipe
+    return _heard_from(arguments, host, reader, log_path, key)
 
-            with suppress(client.LocalResearchClientError):
-                ready = client.LocalResearchClient(
-                    arguments.workspace, timeout=READY_SECONDS
-                ).request(
-                    {"operation": "OPERATION_LIST", "schema_operation": "HOST_STOP"},
-                    timeout=deadline - time.monotonic(),
-                )
-                if "HOST_STOP" in ready.get("operation_fields", {}):
-                    return _served(
-                        arguments, launch.replace(HANDED_KEY, f"key={key}"), host, log_path
-                    )
-        if host.poll() is not None:
-            return _failed_start(arguments.workspace, host, text, log_path)
-        pause(0.2)
+
+def _heard_from(
+    arguments: argparse.Namespace,
+    host: subprocess.Popen[bytes],
+    reader: int,
+    log_path: Path,
+    key: str,
+) -> int:
+    """The detached start's answer from its Host: served once its ready byte came and it serves
+    `HOST_STOP`; its own refusal, read from the log it left, once it ended; else stopped as not
+    ready. One deadline holds the byte, the Host's exit and the serving check together."""
+    deadline = time.monotonic() + READY_SECONDS
+    said = _ready(reader, READY_SECONDS)
+    if said == b"":  # the Host ended without serving: its pipe closed with it
+        with suppress(subprocess.TimeoutExpired):
+            host.wait(timeout=max(deadline - time.monotonic(), 0.0))
+        if host.returncode is not None:  # its last words are in the log once it has ended
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+            return _failed_start(
+                arguments.workspace, host, text, log_path, deadline - time.monotonic()
+            )
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    launch = next(
+        (line for line in text.splitlines() if line.startswith("Portfolio Research")), None
+    )
+    if said and launch is not None and (left := deadline - time.monotonic()) > 0:
+        from alphalattice.interface.local_application import client  # lazy: the serving check only
+
+        with suppress(client.LocalResearchClientError):  # its bound is the client's: no floor
+            answered = client.LocalResearchClient(arguments.workspace, timeout=left).request(
+                {"operation": "OPERATION_LIST", "schema_operation": "HOST_STOP"}
+            )
+            if "HOST_STOP" in answered.get("operation_fields", {}):
+                return _served(arguments, launch.replace(HANDED_KEY, f"key={key}"), host, log_path)
     spawn.stop_tree(host.pid)
     return _refusal(
         "local_web.detached_host_not_ready",
@@ -382,6 +409,22 @@ def _detach(
         f"Its log is {log_path}. Run alphalattice serve again.",
         "SERVE_AGAIN",
     )
+
+
+def _ready(reader: int, seconds: float) -> bytes | None:
+    """The detached Host's ready byte; b"" once it ended without one, its pipe closed with it;
+    None when it said neither within ``seconds``. The read blocks in its own thread, which ends
+    on the byte, on the Host's end, or on its stop after the bound."""
+    heard: list[bytes] = []
+
+    def read() -> None:
+        with os.fdopen(reader, "rb", buffering=0) as pipe:
+            heard.append(pipe.read(1))
+
+    reading = threading.Thread(target=read, name="host-ready", daemon=True)
+    reading.start()
+    reading.join(seconds)
+    return heard[0] if heard else None
 
 
 def _served(
@@ -412,14 +455,21 @@ def _served(
 
 
 def _failed_start(
-    workspace: Path, host: subprocess.Popen[bytes] | None, text: str, log_path: Path
+    workspace: Path,
+    host: subprocess.Popen[bytes] | None,
+    text: str,
+    log_path: Path,
+    seconds: float = READY_SECONDS,
 ) -> int:
-    """Reuse only the exact authenticated serving Host; preserve unverified discovery and lease."""
+    """Reuse only the exact authenticated serving Host; preserve unverified discovery and lease.
+    Its verification spends only the ``seconds`` its start has left, and none left is unverified."""
     if host is None or "workspace_runtime.writer_already_owned" in text:
         from alphalattice.interface.local_application import client
 
         try:
-            reader = client.LocalResearchClient(workspace, timeout=READY_SECONDS)
+            if seconds <= 0:  # nothing of the start's deadline is left to verify with
+                raise TimeoutError
+            reader = client.LocalResearchClient(workspace, timeout=seconds)
             body = reader.activity(limit=1)
             observer = body.get("observer")
             serving = observer.get("host") if isinstance(observer, dict) else None
@@ -443,7 +493,9 @@ def _failed_start(
                 str(worded(message_id)),
                 "READ_THE_HOST_LOG",
                 message_id=message_id,
-                cause=safe_failure_code(str(error)) or "local_client.connection_unreadable",
+                cause="local_web.detached_host_not_ready"
+                if seconds <= 0
+                else safe_failure_code(str(error)) or "local_client.connection_unreadable",
                 host_log=str(log_path),
             )
         log_path.unlink(missing_ok=True)
@@ -518,6 +570,9 @@ def main(
 def _serve(arguments: argparse.Namespace) -> int:
     """Run one Host and drain its work before releasing the service."""
     handed = process_config().secret(LAUNCH_KEY_VARIABLE) is not None
+    # A detached launch's ready pipe, taken before this Host starts any child of its own.
+    named = consume_secret(READY_VARIABLE)
+    ready = None if named is None else spawn.inherited(named.reveal(), os.O_WRONLY)
 
     from alphalattice.control.product_host.composition.local_web_session import (  # lazy: serve
         LocalPortfolioWebSession,
@@ -591,6 +646,11 @@ def _serve(arguments: argparse.Namespace) -> int:
             ),
             flush=True,
         )
+        if ready is not None:  # the launch line is in the log: the launcher may relay it now,
+            # before any browser work, which can take longer than the launcher waits
+            with suppress(OSError), os.fdopen(ready, "wb", buffering=0) as pipe:
+                ready = None
+                pipe.write(b"1")
         if arguments.no_browser:
             print(OPEN_THE_WORKBENCH, flush=True)
         else:
@@ -608,6 +668,8 @@ def _serve(arguments: argparse.Namespace) -> int:
         # worker before releasing the lease, and a launcher that gave up early
         # would leave a second writer behind for the next one to meet.
         session.stop()
+        if ready is not None:  # never served: the launcher reads the pipe's end as the exit
+            os.close(ready)
     return 0
 
 

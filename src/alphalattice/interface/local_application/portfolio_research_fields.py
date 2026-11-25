@@ -25,8 +25,12 @@ requirements = {
     **{
         # A saved revision or the current head.
         op: (frozenset(), frozenset({"goal_id", "goal_hash"}))
-        for op in ("GOAL_SHOW", "GOAL_NARRATIVE", "GOAL_PROFILE", "GOAL_EXPORT")
+        for op in ("GOAL_SHOW", "GOAL_PROFILE", "GOAL_EXPORT")
     },
+    "GOAL_NARRATIVE": (
+        frozenset(),
+        frozenset({"goal_id", "goal_hash", "goal_seen", "wait_seconds"}),
+    ),
     "GOAL_REFERENCE": (
         frozenset({"goal_hash", "goal_reference_id"}),
         frozenset({"goal_hash", "goal_reference_id"}),
@@ -387,7 +391,9 @@ requirements = {
     ),
     "COMMITTEE_READ": (
         frozenset({"update_task_id"}),
-        frozenset({"update_task_id", "committee_role", "committee_key", "committee_seen"}),
+        frozenset(
+            {"update_task_id", "committee_role", "committee_key", "committee_seen", "wait_seconds"}
+        ),
     ),
     "WAKE_REGISTER": (
         frozenset({"task_id", "wake_thread", "wake_read"}),

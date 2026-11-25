@@ -156,9 +156,22 @@ def ambient_job_probe(args: list[str], *, creationflags: int) -> subprocess.Comp
     )
 
 
-def detached(args: list[str], *, log: Any, env: dict[str, str]) -> subprocess.Popen[bytes]:
-    """Start a workspace-owned Host outside the launching turn's process group."""
-    return child_process.detached(args, log=log, env=env, processes=psutil)
+def detached(
+    args: list[str], *, log: Any, env: dict[str, str], inherit: int | None = None
+) -> subprocess.Popen[bytes]:
+    """Start a workspace-owned Host outside the launching turn's process group; it inherits the
+    one descriptor ``inherit`` names (`descriptor_name`) besides its standard streams."""
+    return child_process.detached(args, log=log, env=env, processes=psutil, inherit=inherit)
+
+
+def descriptor_name(descriptor: int) -> str:
+    """How a detached child names the descriptor it inherited (`inherited`)."""
+    return child_process.descriptor_name(descriptor)
+
+
+def inherited(name: str, flags: int) -> int:
+    """The descriptor this process's parent handed it by name, kept from its own children."""
+    return child_process.inherited(name, flags)
 
 
 def stop_tree(pid: int) -> None:

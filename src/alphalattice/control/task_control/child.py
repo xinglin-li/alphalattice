@@ -29,6 +29,7 @@ import sys
 import tempfile
 import threading
 import time
+import weakref
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent import futures
@@ -58,9 +59,11 @@ from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import (
     CANCELLED,
+    Bell,
     ExecutionStopped,
     child_process,
     execution_port,
+    interrupt_on_execution_stop,
     stop_reason,
     worker_cancellation,
 )
@@ -101,6 +104,11 @@ _TASK_WORKERS: dict[ResourceLease, dict[int, ProcessPoolExecutor]] = {}
 _WORKER_LOCK = threading.Lock()
 _BUSY: dict[ProcessPoolExecutor, int] = {}
 """Each kept worker's calls in flight; one with none retires after `KEPT_WORKER_IDLE_SECONDS`."""
+_BELLS: weakref.WeakKeyDictionary[ProcessPoolExecutor, Bell] = weakref.WeakKeyDictionary()
+"""Each kept worker's doorbell: the parent rings it once a call's cancel flag is set, and the
+worker's call looks at its flag (`worker_cancellation`)."""
+_BELL: Bell | None = None
+"""In a kept worker, its doorbell."""
 _SHARED: dict[str, dict[str, Any]] = {}
 """In a kept worker, by call set, the values that set shipped once, by content key. Sets may
 interleave on one worker; each set's close forgets its own."""
@@ -265,7 +273,12 @@ class ChildCalls:
         """The oldest unanswered call's answer, raising its failure as `run_in_child` does."""
         submitted = self._pending.popleft()
         with span("wait", "worker"):
-            answer = _waited(submitted, self._flag, self._cancelled)
+            answer = _waited(
+                submitted,
+                self._flag,
+                self._cancelled,
+                lambda: [item.pool for item in self._pending],
+            )
         absorb(answer.get("spans"))
         _traced(answer)
         if answer["status"] != "OK" or submitted.answer is None:
@@ -280,7 +293,7 @@ class ChildCalls:
         pending, self._pending = self._pending, deque()
         running = [item.future for item in pending if not item.future.cancel()]
         if running:
-            self._flag.touch()
+            _relay(self._flag, {item.pool for item in pending})
             if stop_reason() is not None:
                 for pool in {item.pool for item in pending if _task_owns_pool(item.pool)}:
                     spawn.stop_pool(pool)
@@ -419,18 +432,29 @@ def _retire_idle(worker: int, pool: ProcessPoolExecutor) -> None:
 
 
 def _waited(
-    submitted: _Submitted, flag: Path, cancelled: Callable[[], bool] | None
+    submitted: _Submitted,
+    flag: Path,
+    cancelled: Callable[[], bool] | None,
+    sharing: Callable[[], Iterable[ProcessPoolExecutor]] = tuple,
 ) -> dict[str, Any]:
-    """Wait for a call's answer, relaying the Task's cancellation while it runs."""
+    """Wait for a call's answer, relaying the Task's cancellation while it runs to its worker
+    and to the workers of ``sharing``, the other calls running under the same flag."""
     progress: tuple[float | None, float] = (None, time.monotonic())
+    # The Task's stop reaches the workers when it is accepted, through the execution's interrupt;
+    # one accepted before this wait began is relayed at once.
     try:
-        # The answer ends the wait at once; each POLL_SECONDS without one relays the Task's
-        # cancellation and samples the worker's CPU for the wedge.
+        release = interrupt_on_execution_stop(lambda: _relay(flag, {submitted.pool, *sharing()}))
+    except ExecutionStopped:  # already timed out
+        release = _unheld
+    if stop_reason() is not None:
+        _relay(flag, {submitted.pool, *sharing()})
+    try:
+        # The answer ends the wait at once; each POLL_SECONDS without one relays a cancel only
+        # the Task's predicate knows and samples the worker's CPU for the wedge.
         while (answer := _answer(submitted.future)) is None:
             reason = stop_reason()
             if reason is not None or (cancelled is not None and cancelled()):
-                if not flag.exists():
-                    flag.touch()
+                _relay(flag, {submitted.pool, *sharing()})
                 if _task_owns_pool(submitted.pool):
                     spawn.stop_pool(submitted.pool)
                     _retire_worker(submitted.worker, submitted.pool, wait_for_exit=True)
@@ -441,6 +465,21 @@ def _waited(
         return answer
     except BrokenProcessPool:
         raise _ended(submitted.worker, submitted.pool) from None
+    finally:
+        release()
+
+
+def _unheld() -> None:
+    """No interrupt to release."""
+
+
+def _relay(flag: Path, pools: Iterable[ProcessPoolExecutor]) -> None:
+    """Tell the calls under ``flag`` to cancel: set the flag, then ring each worker's bell."""
+    if not flag.exists():
+        flag.touch()
+    for pool in pools:
+        if (bell := _BELLS.get(pool)) is not None:
+            bell.set()
 
 
 def _answer(future: Future[Any]) -> dict[str, Any] | None:
@@ -567,15 +606,18 @@ def _worker(worker: int, *, warm: _WarmImports | None = None) -> ProcessPoolExec
         workers = _kept_workers()
         kept = workers.get(worker)
         if kept is None:
+            context = multiprocessing.get_context("spawn")
+            bell = context.Event()
             kept = workers[worker] = execution_port().register_pool(
                 ProcessPoolExecutor(
                     max_workers=worker_width(1),
-                    mp_context=multiprocessing.get_context("spawn"),
+                    mp_context=context,
                     initializer=_worker_started,
-                    initargs=(worker,) if warm is None else (worker, warm),
+                    initargs=(worker, warm, bell),
                 ),
                 name="task-child",
             )
+            _BELLS[kept] = bell
         return kept
 
 
@@ -598,7 +640,9 @@ ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THRE
 """The numerical libraries' thread variables, each read once, when its library loads."""
 
 
-def _worker_started(worker: int = 0, warm: _WarmImports | None = None) -> None:
+def _worker_started(worker: int, warm: _WarmImports | None, bell: Bell) -> None:
+    global _BELL
+    _BELL = bell
     # A spread worker runs every call on one thread (`threads=1`): its libraries are told so
     # before they load, and reserve one thread's buffers rather than one per processor, about
     # 1.5 GB of commit a worker. The Task's own worker keeps the default its calls run
@@ -664,7 +708,8 @@ def _call(
     ledger: SpanLedger | None = None
     rows: list[dict[str, Any]] = []
     try:
-        with use_resource_lease(grant), worker_cancellation(flag):
+        assert _BELL is not None, "a call runs in a kept worker, which holds its bell"
+        with use_resource_lease(grant), worker_cancellation(flag, _BELL):
             _follow_root(root)
             arguments = _held(arguments)
             module_name, _, name = target.partition(":")

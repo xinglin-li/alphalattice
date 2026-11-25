@@ -6,7 +6,9 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +33,7 @@ from alphalattice.kernel.execution import (
     CANCELLED,
     cancel_execution,
     execution_cancellation,
+    interruptible,
     stop_reason,
 )
 from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
@@ -320,6 +323,27 @@ def until_cancelled(*, seconds: float, cancelled) -> str:  # type: ignore[no-unt
     return "ran out"
 
 
+def until_interrupted(*, seconds: float, cancelled: Callable[[], bool]) -> str:
+    """Block in one interruptible operation until its interrupt, as a process the call runs
+    does: a stop accepted before it registered is read at its start."""
+    interrupted = threading.Event()
+    with interruptible(interrupted.set):
+        stopped = stop_reason() is not None or interrupted.wait(seconds)
+    return "interrupted" if stopped else "ran out"
+
+
+def interrupted_at(*, seconds: float, holds: bool, cancelled: Callable[[], bool]) -> object:
+    """With ``holds``, an operation that registers no interrupt and answers "held" at its end;
+    else `until_interrupted`, answering the wall time its interrupt came, or None."""
+    if holds:
+        threading.Event().wait(seconds)
+        return "held"
+    interrupted = threading.Event()
+    with interruptible(interrupted.set):
+        stopped = stop_reason() is not None or interrupted.wait(seconds)
+    return time.time() if stopped else None
+
+
 def ended(*, cancelled) -> None:  # type: ignore[no-untyped-def]
     os._exit(7)
 
@@ -375,6 +399,41 @@ def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
         run_in_child(f"{HERE}:interrupted", {})
     assert failure.value.type_name == "_Declared"
     assert failure.value.failure_class == "OPERATIONAL_FAILURE"
+
+
+@pytest.mark.proves("task_control.a_stop_reaches_a_kept_workers_operation_when_accepted")
+@pytest.mark.parametrize("call", ["run", "calls", "spread"])
+def test_a_tasks_stop_interrupts_its_workers_operation_when_accepted(monkeypatch, call) -> None:
+    """requirement: a Task's accepted stop reaches each kept worker's running operation of the
+    call set through its flag and the worker's bell, with no period on either side, while the
+    parent waits on another call (its answer wait set longer than the call)."""
+    assert run_in_child(f"{HERE}:doubled", {"value": 1})["value"] == 2  # the worker is up
+    monkeypatch.setattr(child, "POLL_SECONDS", 60.0)
+    execution = UUID(int=41)
+    stop = threading.Timer(0.5, cancel_execution, (execution,))
+    with execution_cancellation(execution):
+        if call == "spread":
+            with child_calls(f"{HERE}:interrupted_at", workers=2) as warm:  # both workers are up
+                warm.make({"seconds": 0.0, "holds": True})
+                warm.make({"seconds": 0.0, "holds": True})
+                assert [warm.answer(), warm.answer()] == ["held", "held"]
+        stop.start()
+        began, wall = time.monotonic(), time.time()
+        if call == "run":
+            answer = run_in_child(f"{HERE}:until_interrupted", {"seconds": 20.0})
+        elif call == "calls":
+            with child_calls(f"{HERE}:until_interrupted", workers=1) as calls:
+                calls.make({"seconds": 20.0})
+                answer = calls.answer()
+        else:
+            with child_calls(f"{HERE}:interrupted_at", workers=2) as calls:
+                calls.make({"seconds": 6.0, "holds": True})
+                calls.make({"seconds": 20.0, "holds": False})
+                assert calls.answer() == "held"
+                at = calls.answer()
+            answer = "interrupted" if at is not None and at - wall < 4.0 else f"at {at}"
+        stop.join(5)
+    assert answer == "interrupted" and time.monotonic() - began < 10
 
 
 def test_a_cancellation_reaches_the_worker_and_a_worker_that_ends_is_replaced() -> None:

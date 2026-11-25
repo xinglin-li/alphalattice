@@ -2,7 +2,7 @@
 
 An event is a row the Host's log admits (`HostLog.append` publishes its subject once the row is
 written), or a change its owner keeps in memory and publishes the same way (the dispatcher's
-command returning). A waiter declares itself for one subject with `subscribed`, reads the state it
+command returning). A waiter declares itself for its subjects with `subscribed`, reads the state it
 waits on, and blocks until an event for that subject arrives or its deadline passes: a wait ends on
 its owner's event, never on a sleep or a poll, and an event that never comes is refused by name.
 """
@@ -52,20 +52,24 @@ class Events:
         self._subscribers: dict[Hashable, list[Subscription]] = {}
 
     @contextmanager
-    def subscribed(self, subject: Hashable) -> Iterator[Subscription]:
-        """A subscription to ``subject`` for the block: declare it before reading the state the
-        wait is about, so an event between that read and the wait is still heard."""
+    def subscribed(self, *subjects: Hashable) -> Iterator[Subscription]:
+        """One subscription to each of ``subjects`` for the block, hearing an event for any of
+        them: declare it before reading the state the wait is about, so an event between that
+        read and the wait is still heard."""
         subscription = Subscription(self)
+        named = tuple(dict.fromkeys(subjects))
         with self._condition:
-            self._subscribers.setdefault(subject, []).append(subscription)
+            for subject in named:
+                self._subscribers.setdefault(subject, []).append(subscription)
         try:
             yield subscription
         finally:
             with self._condition:
-                held = self._subscribers[subject]
-                held.remove(subscription)
-                if not held:
-                    del self._subscribers[subject]
+                for subject in named:
+                    held = self._subscribers[subject]
+                    held.remove(subscription)
+                    if not held:
+                        del self._subscribers[subject]
 
     def publish(self, subject: Hashable) -> None:
         """Tell each subscriber of ``subject`` that an event for it arrived. A subject no one

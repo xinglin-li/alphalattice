@@ -34,6 +34,11 @@ def _fake_time(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> None:
     monkeypatch.setattr(waits, "clock", clock.monotonic)
 
 
+def host_sleeps(host: _Host) -> list[float]:
+    """The waits the fake Host itself spent: each request's long poll."""
+    return [float(r["wait_seconds"]) for r in host.requests if r.get("wait_seconds")]
+
+
 class _Host:
     goal = None
     timeout = 60
@@ -80,6 +85,7 @@ class _Host:
             return {
                 "status": "GOAL_NARRATIVE",
                 "state": "OPEN",
+                "narrative_mark": ("1" if arrived else "0") * 16,
                 "record": {"tasks": [], "conversation": conversation},
             }
         if self.kind == "committee":
@@ -165,18 +171,24 @@ def test_every_cli_wait_reads_at_its_cap(tmp_path, monkeypatch, capsys, kind, ar
         assert clock.now == pytest.approx(limit)
     else:
         assert arrival <= clock.now <= limit
-    assert len(host.reads) >= 2
+    # A floor's wait is the Host's from its first read, so one long poll may span the cap.
+    assert len(host.reads) >= (1 if kind == "committee" else 2)
     assert all(t <= limit for t in host.reads)
+    if kind in {"goal", "committee"}:  # each later read waits at the Host, never at the client
+        later = host.requests[1:] if kind == "goal" else host.requests
+        assert all(0 < r["wait_seconds"] <= 20 for r in later), later
+        assert all(r["goal_seen"] == "0" * 16 for r in later if kind == "goal")
+        assert [s for s in clock.sleeps if s] == host_sleeps(host)
 
 
-@pytest.mark.parametrize("kind", ["goal", "activity-task"])
+@pytest.mark.parametrize("kind", ["goal", "activity-task", "committee"])
 @pytest.mark.parametrize("available", [False, True])
 def test_a_restart_near_the_cap_gets_its_last_cli_read(
     tmp_path, monkeypatch, capsys, kind, available
 ) -> None:
     """a reconnect at 0.9 seconds still attempts its last read at one second."""
     clock = _Clock()
-    host = _Host(tmp_path, clock, "goal" if kind == "goal" else kind, None, restart=True)
+    host = _Host(tmp_path, clock, kind, None, restart=True)
     request = host.request
 
     def read(document, timeout=None):
@@ -188,14 +200,16 @@ def test_a_restart_near_the_cap_gets_its_last_cli_read(
     monkeypatch.setattr(host, "request", read)
     _fake_time(monkeypatch, clock)
     monkeypatch.setattr(client, "LocalResearchClient", lambda *_a, **_k: host)
-    target = ["--goal", host.goal_id] if kind == "goal" else ["--task", host.task]
+    command = {
+        "goal": ["activity", "wait", "--goal", host.goal_id],
+        "activity-task": ["activity", "wait", "--task", host.task],
+        "committee": ["committee", "wait", "--update", host.task, "--role", "PM", "--key", "k"],
+    }[kind]
     code = cli.main(
         [
             "--workspace",
             str(tmp_path),
-            "activity",
-            "wait",
-            *target,
+            *command,
             "--max-wait",
             "1",
             "--view",
@@ -204,9 +218,12 @@ def test_a_restart_near_the_cap_gets_its_last_cli_read(
         serve=lambda _: pytest.fail("no serve"),
     )
     answer = json.loads(capsys.readouterr().out)
-    assert code == 3 and answer["data"]["wait_event"]["event"] == "MAX_WAIT_REACHED"
+    reached = answer["data"].get("wait_event", {}).get("event") or answer["data"]["wait_status"]
+    assert code == 3 and reached == "MAX_WAIT_REACHED"
     assert host.reads[0] == pytest.approx(0.9)
     assert host.reads[-1] == pytest.approx(1.0)
+    # the read at the cap asks the Host for no long poll: never a zero the Host would refuse
+    assert all(r.get("wait_seconds", 1) > 0 for r in host.requests), host.requests
     assert clock.now == pytest.approx(1.0)
     assert clock.sleeps[0] == pytest.approx(0.1)
 

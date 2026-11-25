@@ -1077,6 +1077,7 @@ FLAGS: Final[dict[str, str]] = {
     "committee_key": "key",
     "committee_role": "role",
     "committee_seen": "seen",
+    "goal_seen": "seen",
     "calibration_plan_hash": "plan",
     "candidate_hash": "candidate",
     "candidate_id": "candidate",
