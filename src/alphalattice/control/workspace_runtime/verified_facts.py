@@ -34,7 +34,6 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMappin
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
-from io import BufferedReader
 from pathlib import Path
 from threading import Lock
 from typing import BinaryIO, TextIO, cast
@@ -49,13 +48,16 @@ from alphalattice.control.workspace_runtime.database import table_columns
 from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.kernel import storage
 from alphalattice.kernel.clock import wall_time, wall_time_ns
+from alphalattice.kernel.config import data_root
 from alphalattice.kernel.identity import (
+    ANY,
     RACY_SECONDS,
     FileDigestTrust,
     TrustEntry,
+    bind_sealed,
     change_xxh3_128_hex,
     integrity_sha256_path,
-    integrity_sha256_stream,
+    whole_digest,
 )
 
 FILE_FACTS = Path("runtime") / "verified-files.jsonl"
@@ -65,6 +67,8 @@ _SCRUB_STARTED = '"scrub-start-v1"'
 _SCRUB_CHECKED = '"scrub-checked-v1"'
 _SCRUB_DISCARDED = '"scrub-discard-v1"'
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_TRUSTED_DIGEST = re.compile(r"(?:blake3:)?[0-9a-f]{64}")
+"""A trust row's digest: an untagged SHA-256 of the bytes, or a writer's ``blake3:`` identity."""
 _CONTENT_KIND = "\x00content-v1:"
 _FULL_PROOF: ContextVar[BoundedMemo[tuple[object, ...], object] | None] = ContextVar(
     "content_store_full_proof", default=None
@@ -100,6 +104,7 @@ class _TrustJournal:
 
     def place(self, path: Path) -> tuple[MutableMapping[str, TrustEntry], str]:
         absolute = Path(os.path.abspath(path))
+        _keep_data_root(absolute)
         with _LOCK:
             for root, entries in _TRUSTED.items():
                 if absolute.is_relative_to(root):
@@ -254,6 +259,35 @@ _DIGEST_TRUST = FileDigestTrust(
     time_ns=lambda: wall_time_ns(),
     trusting=file_trust,
 )
+bind_sealed(_DIGEST_TRUST.sealed)  # the data layer's writers record their parts' digests here
+_DATA_ROOTS: set[Path] = set()
+
+
+def _keep_data_root(absolute: Path) -> None:
+    """The data root's sealed parts keep their trust across processes, as a kept workspace's
+    files do: its record is loaded at the first lookup or record beneath it, in every process
+    that seals or reads a part there (the Host and its Task workers append to one journal)."""
+    root = Path(os.path.abspath(data_root()))
+    if root in _DATA_ROOTS or not absolute.is_relative_to(root):
+        return
+    with _LOCK:
+        if root in _DATA_ROOTS or root in _TRUSTED:
+            return
+        _DATA_ROOTS.add(root)
+    keep_file_facts(root, shared=True)
+
+
+def held_digest(path: Path, *, holding: Callable[[str], bool] | None = None) -> str | None:
+    """The digest the trust record holds for `path` while its stamp holds and is settled, of
+    either tag: an untagged SHA-256 of its bytes, or its writer's ``blake3:``. Never a hash.
+    A recorded digest that `holding` refuses answers None before the file is stamped."""
+    return _DIGEST_TRUST.held(path, tag=ANY, holding=holding)
+
+
+def named_digest(path: Path, observed: os.stat_result) -> str | None:
+    """The digest the trust record names for the file `observed` saw, of either tag, without
+    opening it; for binding a file fact, which a reader trusts only through `held_digest`."""
+    return _DIGEST_TRUST.named(path, observed)
 
 
 def ensure_year_fact_schema(connection: duckdb.DuckDBPyConnection) -> None:
@@ -362,11 +396,12 @@ def configure_file_facts(*, capacity: int | None = None) -> None:
         _PROCESS, _TRUSTED_PROCESS = facts, trusted
 
 
-def keep_file_facts(workspace: Path) -> None:
+def keep_file_facts(workspace: Path, *, shared: bool = False) -> None:
     """Keep file digests and facts for `workspace` across processes; its writer lease's holder
-    calls this, once per process."""
+    calls this, once per process. A `shared` root's journals, which other processes append to
+    while this one reads them (the data root's), are read here and never rewritten."""
     root = Path(os.path.abspath(workspace))
-    facts, _ = _journal(root / FILE_FACTS, _fact_entry, _line)
+    facts, _ = _journal(root / FILE_FACTS, _fact_entry, _line, rewrite=not shared)
     # The lease's load probes no file: the idle job decides which of the journal's files remain.
     trusted, lines = _journal(root / FILE_TRUST, _trust_entry, _trust_line, rewrite=False)
     with _LOCK:
@@ -456,8 +491,8 @@ def _fact_entry(row: list[object]) -> tuple[_Key, _Entry]:
 
 def _trust_entry(row: list[object]) -> tuple[str, TrustEntry]:
     path, dev, ino, size, mtime, changed, digest = row
-    if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
-        raise ValueError("a trusted digest is a SHA-256")
+    if not isinstance(digest, str) or _TRUSTED_DIGEST.fullmatch(digest) is None:
+        raise ValueError("a trusted digest is a SHA-256 or a writer's blake3: identity")
     stamp = (int(dev), int(ino), int(size), int(mtime), int(changed))
     return str(path), (stamp, digest)
 
@@ -706,10 +741,17 @@ def record_file_fact(
             _append(root / FILE_FACTS, _line((key, entry)))
 
 
-def file_sha256(path: Path, *, written: bool = False, handle: BinaryIO | None = None) -> str:
+def file_sha256(
+    path: Path,
+    *,
+    written: bool = False,
+    handle: BinaryIO | None = None,
+    kept: list[bytes] | None = None,
+) -> str:
     """The file's SHA-256 through the trust record, read off `handle` when the caller holds the
-    file open; its `written` writer hashes and records it. Inside ``full_content_proof()`` a read
-    hashes the bytes, answering nothing kept before."""
+    file open; a hash taken of it reads its content into `kept` when given. Its `written` writer
+    hashes and records it. Inside ``full_content_proof()`` a read hashes the bytes, answering
+    nothing kept before."""
     if written:
         return _DIGEST_TRUST.written(path)
     if full_proof():
@@ -717,9 +759,21 @@ def file_sha256(path: Path, *, written: bool = False, handle: BinaryIO | None = 
             if handle is None:
                 with storage.outside(path):
                     return integrity_sha256_path(path)
-            handle.seek(0)
-            return integrity_sha256_stream(cast(BufferedReader, handle)).hexdigest()
-    return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle)[0]
+            return whole_digest(handle, kept)
+    return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle, kept=kept)[0]
+
+
+def verified_bytes(path: Path) -> tuple[bytes, str]:
+    """A file's bytes and its SHA-256 through the trust record, both off one open, so the digest
+    answered is that of the bytes returned while the file's stamp holds. A miss, and full proof,
+    hash the very bytes returned: the file is read once."""
+    kept: list[bytes] = []
+    with storage.outside(path), path.open("rb") as handle:
+        digest = file_sha256(path, handle=handle, kept=kept)
+        if kept:
+            return kept[-1], digest
+        handle.seek(0)
+        return handle.read(), digest
 
 
 def _verified(path: Path) -> str:
@@ -733,6 +787,7 @@ def _place(
     path: Path, kind: str, *, shared: bool = False
 ) -> tuple[BoundedMemo[_Key, _Entry], _Key]:
     absolute = Path(os.path.abspath(path))
+    _keep_data_root(absolute)
     with _LOCK:
         for root, entries in _KEPT.items():
             if absolute.is_relative_to(root):

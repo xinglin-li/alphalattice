@@ -77,6 +77,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
     INTEGRATED_FAMILY_SPELLING,
@@ -136,7 +137,6 @@ from alphalattice.interface.local_application.retrieval_environment import (
     load,
 )
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -344,7 +344,7 @@ def _publish(
             raise ValueError("evidence_review.immutable_package_conflict")
         return EvidenceReviewArtifactBinding(
             relative_path=path.relative_to(workspace).as_posix(),
-            file_sha256=integrity_sha256(payload).hexdigest(),
+            file_sha256=file_sha256(path),
             content_hash=identity,
         )
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", delete=False) as handle:
@@ -357,9 +357,9 @@ def _publish(
     finally:
         if temporary.exists():
             temporary.unlink()
-    return EvidenceReviewArtifactBinding(
+    return EvidenceReviewArtifactBinding(  # its writer records the digest it holds on disk
         relative_path=path.relative_to(workspace).as_posix(),
-        file_sha256=integrity_sha256(payload).hexdigest(),
+        file_sha256=file_sha256(path, written=True),
         content_hash=identity,
     )
 

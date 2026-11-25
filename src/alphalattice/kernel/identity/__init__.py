@@ -15,18 +15,23 @@ from ._digests import (
     integrity_sha256_stream,
 )
 from .file_facts import (
+    ANY,
     RACY_SECONDS,
     FileDigestTrust,
     Stamp,
     TrustEntry,
     TrustStore,
+    bind_sealed,
     file_stamp,
     handle_stamp,
     integrity_sha256_path,
+    record_sealed,
+    whole_digest,
 )
 from .port import IdentityPort
 
 __all__ = [
+    "ANY",
     "RACY_SECONDS",
     "FileDigestTrust",
     "IdentityPort",
@@ -34,6 +39,7 @@ __all__ = [
     "Stamp",
     "TrustEntry",
     "TrustStore",
+    "bind_sealed",
     "canonical_hash",
     "canonical_json",
     "change_blake3",
@@ -48,4 +54,6 @@ __all__ = [
     "integrity_sha256",
     "integrity_sha256_path",
     "integrity_sha256_stream",
+    "record_sealed",
+    "whole_digest",
 ]

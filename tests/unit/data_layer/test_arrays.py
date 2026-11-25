@@ -182,10 +182,15 @@ def test_a_lane_file_read_in_place_proves_its_name(tmp_path: Path, suffix: str) 
     ],
 )
 def test_start_places_a_staged_body_only_when_its_profile_committed(
-    tmp_path: Path, committed: bool, placed: bool
+    tmp_path: Path, committed: bool, placed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A body a crash left staged goes into place when the log holds its profile, and is handed to
-    the collector when it does not."""
+    """A body a crash left staged goes into place when the log holds its profile, its writer's
+    BLAKE3 identity recorded with the file-trust port, and is handed to the collector when it
+    does not."""
+    sealed: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        arrays, "record_sealed", lambda path, digest: sealed.append((path.name, digest))
+    )
     array = arrays.describe({"value": np.array([1.0, -0.0])})
     staged = tmp_path / "blobs" / f".{array.artifact_id}.4242{arrays.STAGED}"
     staged.parent.mkdir()
@@ -207,3 +212,4 @@ def test_start_places_a_staged_body_only_when_its_profile_committed(
     }
     left = [path.name for path in staged.parent.iterdir()]
     assert left == ([array.artifact_id] if placed else [])
+    assert sealed == ([(array.artifact_id, f"blake3:{array.artifact_id}")] if placed else [])

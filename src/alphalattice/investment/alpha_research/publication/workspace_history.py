@@ -22,10 +22,10 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
-from alphalattice.kernel.identity import integrity_sha256
 
 from .contracts import (
     HistoryProofParts,
@@ -746,10 +746,7 @@ class _WorkspaceObservationHistoryStore:
                     protected.add(old_part)
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:
-            payload = path.read_bytes()
-            return WorkspaceObservationHistoryFile(
-                path, integrity_sha256(payload).hexdigest(), len(payload)
-            )
+            return WorkspaceObservationHistoryFile(path, file_sha256(path), path.stat().st_size)
 
         return WorkspaceObservationHistoryRetention(
             roots=tuple(fact(path) for path in sorted(protected)),

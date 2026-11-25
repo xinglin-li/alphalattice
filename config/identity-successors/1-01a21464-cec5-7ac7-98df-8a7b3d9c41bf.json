@@ -1,0 +1,139 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "ad2b751cd4bea870dff3a83d78e262b72a1192b18ffabd20ad061fb9367e0d20",
+   "successor": "394e12903872f1fc0456eac3a0ff017ed75b807861ed2dfdf426fb4f65d05b45",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "63f83c7817fb2098cc77f01fd8f96dfac090c9ee179284845e25cf9a92143de3",
+   "successor": "655c8a8868eb8dc831fbd3801e334e78583115dc9c4c86b3e4c5233ec5d46b81",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "4b2c683b4c43e5b341ee5041cc29fa52cd530c5af5f80d9f3d334381c88862b7",
+   "successor": "264a4f79a92b91bd7491b7aaae6a1564358e53c81e0cfda2ddcc35148e6caf92",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "5caa77ef53c6cf3cc955b8fac22d96271d09a764aca36a73973f0c926aa081b8",
+   "successor": "fe0c9e80e96bfedb38acd63e98b24843db6eca219946d6e9d261a6e895d6123c",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "f8861db672975e4c80f18efb0174c964edbfd4096ceb66e2fda019e43bc789fc",
+   "successor": "1b1875156c2193b96646f185e54ae3a8e68feae78cd9426b49c0ad611ee9cc2c",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "77ecddeedb2f9db3abd818b717589c050638e899e10b422ace2bb62da51fcde3",
+   "successor": "6472c25b4bd6c3cd1aa7102a4698719f0aa5862da7fda7912560f4fc23cf5e98",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "44c793a63f15df1cf4920b066362a95ef0812ad989aa686afa5114b70ca20307",
+   "successor": "b4fb22a62f0e56d56ffc4806d4ca886ea29bb93e1029f1e0e670b68a8c6a29fb",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "91c31deaf678800286b1c7432225639d2883b951531e174a173e715b1c8f48dc",
+   "successor": "0c4e30f8a2f51dc38727ff4d3ac1a376a209a020221e48374206429f2da24d7d",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "9b0b7eb9224038cb87041d5ad0d9c4bb04fdc221e358c0a0b00fc874db5f5168",
+   "successor": "eda419f1048d4720dd8101e60ec6df525cc350a8b08f2cd5667641b56e265631",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "13c77a76d3ce778c8249dc6e78ffca40d614931531656280a115d8fb099695e6",
+   "successor": "2dd918902d885908562330936ddd162f07304cfc29a87d084db367dea1d7030d",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "98845e423e6fd69520b5dead6039914f68daaabc8d34e0cccc27a97d61e4c548",
+   "successor": "368e46b9b182b1ad9b151804646477ed6c4a6898e594a14ff540a170de38c2dc",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "0314023a38e1af21c8b1173c5d775287030c0f0d111174d7a803766b88fe25a0",
+   "successor": "c53e554f7ae3dbb622e44942a96c5318318ad6519e26853d26261e7a84527f2b",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "5c20e32e8d8f6d265d72530621c6d1baf76d6b34227c9429972f05648319cdd0",
+   "successor": "03d7e4b128cdda5edfc7686fc26dfc26aae257d266ad6b11cfdafc1c20cfeb27",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "b540ca7b2d7adedfeb16fa12e16634a9ca5b2b1fab063e1a11ea5fe0cdb1fc4e",
+   "successor": "0ce2fd7677bb163d95cf61fb6975865177da5a10b184f8467042c9b55ab4363e",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "b540ca7b2d7adedfeb16fa12e16634a9ca5b2b1fab063e1a11ea5fe0cdb1fc4e",
+   "successor": "0ce2fd7677bb163d95cf61fb6975865177da5a10b184f8467042c9b55ab4363e",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "976f8f4e80d7f3c5486a4e242ec803eaf633a4b8687af81a7be73563a29f3829",
+   "successor": "54cc0c8ff7267109623cda339236206b00c94b7c6d1bfa44d7516ee77bf538f2",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "b17214961b8159422338eece11a07c6f6894230a9ca237eb045e77fe9797d9eb",
+   "successor": "10b221c5188a0448de827c3f702cf7ca111a70db67eeef50b7449e7923ec0e94",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "14e5227f074268da110d6be9dcb83db5af39aefe1197c685c156a2ed7fd97fa1",
+   "successor": "81a9db9494d2a21f8d7d583089c09e8e9b285f0c513ce95081a0aa6f43249b35",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "27c561ee5c17187a3aab068c4fdb09b6a6f7b8aab99dd3925a6814b34bea5fa2",
+   "successor": "ab4a484d48d9ac2a7bfd051aeda63051573d955502b1f939a0a96d8558f02041",
+   "change": "A review trusts sealed data it proved until a file changes",
+   "reason": "A review trusts the sealed data it already proved, across restarts, until a file changes, so the same files are not verified again. Every value is unchanged, proved by replaying a real workspace's 185,251 records with all values equal."
+  }
+ ]
+}

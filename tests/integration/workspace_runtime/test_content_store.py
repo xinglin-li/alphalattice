@@ -618,6 +618,98 @@ def _reader(path: Path, payload: bytes = b"sealed"):
     return read, calls
 
 
+def _part_proof_across_processes(tmp_path: Path, monkeypatch, case: str) -> None:
+    """A part's writer records its blake3 identity with no hash; a proof over the part, once
+    passed, is skipped by the next process until the file changes; full proof and a one-byte
+    change after making prove it again; no SHA-256 is taken."""
+    from alphalattice.control.workspace_runtime import content_store
+    from alphalattice.control.workspace_runtime import verified_facts as facts
+    from alphalattice.kernel.identity import record_sealed
+
+    root = tmp_path / "data-root"
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
+    part = root / "blobs" / ("b" * 64)
+    part.parent.mkdir(parents=True)
+    part.write_bytes(b"part")
+    clock = _Clock(facts, monkeypatch)
+    hashes = _counted_hashes(monkeypatch)
+    proofs: list[int] = []
+
+    def read() -> None:
+        verified_source_value(("part-proof", case), (part,), lambda: proofs.append(1), nbytes=0)
+
+    def next_process() -> None:
+        facts.release_file_facts(root)
+        facts._DATA_ROOTS.discard(Path(os.path.abspath(root)))
+        content_store._VERIFIED_ARRAY_CACHE.clear()
+
+    try:
+        record_sealed(part, "blake3:" + "b" * 64)  # the writer, before its stamp settles
+        read()  # the making's proof runs and is kept beside the writer's digest
+        assert proofs == [1]
+        next_process()
+        clock.settle(part)
+        assert facts.held_digest(part) == "blake3:" + "b" * 64
+        assert facts.file_fact(part, "sha256") is None  # never answered as a SHA-256
+        if case == "part-proof-after-a-changed-byte":
+            part.write_bytes(b"parT")
+            clock.settle(part)
+        if case == "part-proof-under-full-proof":
+            with full_content_proof():
+                read()
+        else:
+            read()
+        assert len(proofs) == (1 if case == "part-proof-kept-across-processes" else 2)
+        assert hashes == []
+    finally:
+        next_process()
+
+
+def _part_read_once(tmp_path: Path, monkeypatch, case: str) -> None:
+    """A cold or fully proved read of a part hashes the very bytes it returns, reading the file
+    once; a lookup in a new process reads the data root's shared journal and never rewrites it,
+    so a proof another process appends meanwhile is kept."""
+    from io import BytesIO
+
+    from alphalattice.control.workspace_runtime import verified_facts as facts
+    from alphalattice.kernel.identity import file_facts as kernel_facts
+
+    root = tmp_path / "data-root"
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
+    part = root / "blobs" / ("c" * 64)
+    part.parent.mkdir(parents=True)
+    part.write_bytes(b"part" * 1024)
+    streams: list[object] = []
+    digest = kernel_facts.integrity_sha256_stream
+
+    def counted(stream):
+        streams.append(stream)
+        return digest(stream)
+
+    monkeypatch.setattr(kernel_facts, "integrity_sha256_stream", counted)
+    try:
+        if case == "part-proof-leaves-the-shared-journal":
+            journal = root / facts.FILE_FACTS
+            journal.parent.mkdir()
+            stale = '["stale","sha256:x",1,1,1,"v"]\n' * 1100  # past the compaction bound
+            journal.write_text(stale, encoding="utf-8")
+            assert facts.held_digest(part) is None  # the process's first lookup loads it
+            assert journal.read_text(encoding="utf-8") == stale
+            return
+        if case == "part-read-once-under-full-proof":
+            with full_content_proof():
+                payload, digest = facts.verified_bytes(part)
+        else:
+            payload, digest = facts.verified_bytes(part)  # inside the racy tick: a miss
+        assert payload == b"part" * 1024
+        assert digest == hashlib.sha256(payload).hexdigest()
+        assert len(streams) == 1 and isinstance(streams[0], BytesIO)
+        assert streams[0].getvalue() == payload  # the hash proves the buffer returned
+    finally:
+        facts.release_file_facts(root)
+        facts._DATA_ROOTS.discard(Path(os.path.abspath(root)))
+
+
 def _proved(read):
     with full_content_proof():
         return read()
@@ -633,12 +725,27 @@ def _proved(read):
         "replaced-file-request-proof",
         "replaced-file-request-value",
         "open-writer-transaction",
+        "part-proof-kept-across-processes",
+        "part-proof-after-a-changed-byte",
+        "part-proof-under-full-proof",
+        "part-read-once-cold",
+        "part-read-once-under-full-proof",
+        "part-proof-leaves-the-shared-journal",
     ],
 )
 def test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again(
-    tmp_path, kept_here, case
+    tmp_path, kept_here, case, monkeypatch
 ):
-    """Verify source versions and committed schemas, including full proof and private writes."""
+    """Verify source versions and committed schemas, full proof, private writes, a part's proof
+    kept across processes until a byte of it changes, and a part read once and hashed as read."""
+    if case in {"part-read-once-cold", "part-read-once-under-full-proof"} or case.endswith(
+        "shared-journal"
+    ):
+        _part_read_once(tmp_path, monkeypatch, case)
+        return
+    if case.startswith("part-proof"):
+        _part_proof_across_processes(tmp_path, monkeypatch, case)
+        return
     if case == "full-proof":
         read, calls = _reader(tmp_path / "sealed.bin")
         first = read()  # Each read opens and closes its own Task's read scope.

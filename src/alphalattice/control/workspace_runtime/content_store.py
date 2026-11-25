@@ -51,10 +51,12 @@ from alphalattice.control.workspace_runtime.verified_facts import (
     file_fact,
     full_content_proof,
     full_proof,
+    held_digest,
+    named_digest,
     record_file_fact,
 )
 from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.identity import FileDigestTrust, integrity_sha256
+from alphalattice.kernel.identity import FileDigestTrust, change_xxh3_128_hex, integrity_sha256
 from alphalattice.kernel.resources import worker_width
 
 _WINDOWS_REPLACE_ATTEMPTS = 6
@@ -151,6 +153,11 @@ def verified_source_value[T](
     runs once per proof and its value replaces what was kept. Concurrent readers of one key share
     one producer; waiting never holds the cache lock. A builder owns every source it declares:
     nested source builders read in full and leave retention to the enclosing builder.
+
+    A proof (a builder that returns None) is a fact about its sources' content: once it passes,
+    each source whose digest the trust record holds keeps it (``record_file_fact``), bound to that
+    digest, so any process trusts it until a source changes. An ordinary read whose every source
+    holds the fact runs no builder; a full proof always runs it. Neither side hashes.
     """
     global _VERIFIED_ARRAY_PROCESS_CACHE_HITS, _VERIFIED_ARRAY_PROCESS_CACHE_MISSES
     if _VERIFIED_SOURCE_BUILD.get():
@@ -186,10 +193,19 @@ def verified_source_value[T](
                 continue
         pending.result()
     pending = mine
+    proof = _proof_kind(identity, sources)
     token = _VERIFIED_SOURCE_BUILD.set(True)
     try:
+        if proved is None and _proof_held(sources, proof):
+            _remember_process_value(key, None, 0)
+            return cast(T, None)
+        before = tuple(os.stat(path) for path in sources)
         with span("verify", "source_value"):
             value = builder()
+        if value is None:  # a proof passed over these sources' content: each keeps it
+            for path, stat in zip(sources, before, strict=True):
+                if (digest := named_digest(path, stat)) is not None:
+                    record_file_fact(path, proof, _PROVED, written=True, stat=stat, _content=digest)
         size = nbytes(value) if callable(nbytes) else nbytes
         if size < 0:
             raise ValueError("content_store.verified_value_size_invalid")
@@ -207,6 +223,29 @@ def verified_source_value[T](
             _VERIFIED_SOURCE_BUILDS.pop(key)
         if not pending.done():
             pending.set_result(None)
+
+
+_PROVED = "proved"
+
+
+def _proof_kind(identity: tuple[object, ...], sources: tuple[Path, ...]) -> str:
+    """The file-fact kind of a source proof: its owner's identity and each source's place in it."""
+    named = repr((identity, tuple(path.name for path in sources))).encode("utf-8")
+    return "source-proof-v1:" + change_xxh3_128_hex(named)
+
+
+def _proof_held(sources: tuple[Path, ...], proof: str) -> bool:
+    """Whether every source's settled, trusted digest carries this proof; a source whose recorded
+    digest carries none answers before it is stamped."""
+    return all(
+        held_digest(path, holding=functools.partial(_proof_on, path, proof)) is not None
+        for path in sources
+    )
+
+
+def _proof_on(path: Path, proof: str, digest: str) -> bool:
+    proved: str | None = file_fact(path, proof, _content=digest)
+    return proved == _PROVED
 
 
 def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:

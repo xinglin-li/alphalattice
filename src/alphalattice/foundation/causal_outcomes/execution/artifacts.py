@@ -18,6 +18,7 @@ from alphalattice.control.workspace_runtime.content_store import verified_source
 from alphalattice.control.workspace_runtime.verified_facts import (
     file_sha256,
     record_sealed_file,
+    verified_bytes,
 )
 from alphalattice.foundation.data_layer import history
 from alphalattice.kernel.identity import integrity_sha256
@@ -249,16 +250,12 @@ class _ExecutionOutcomeArtifactStore:
         for part in head.parts:
             path = self._local_qa_path("parts", part.file_hash, "parquet")
             try:
-                content = path.read_bytes()
+                content, digest = verified_bytes(path)
             except FileNotFoundError as exc:
                 raise ValueError("causal_outcomes.qa_preparation_missing") from exc
             except OSError as exc:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid") from exc
-            # The bytes decoded are the bytes proved: a part is read whole either way.
-            if (
-                len(content) != part.byte_count
-                or integrity_sha256(content).hexdigest() != part.file_hash
-            ):
+            if len(content) != part.byte_count or digest != part.file_hash:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
             try:
                 table = _canonical_local_qa_table(pq.read_table(pa.BufferReader(content)))
@@ -621,15 +618,13 @@ def local_qa_preparation_retention_inventory(
     for path in sorted(files):
         if not path.resolve().is_relative_to(scope.resolve()):
             raise ValueError("causal_outcomes.qa_preparation_reference_invalid")
-        content = path.read_bytes()
-        file_hash = integrity_sha256(content).hexdigest()
         item = LocalQAOutcomePreparationFile(
             relative_path=path.relative_to(artifact_root.resolve()).as_posix(),
-            byte_count=len(content),
-            file_hash=file_hash,
+            byte_count=path.stat().st_size,
+            file_hash=file_sha256(path),
         )
         if path in protected:
-            if file_hash != protected[path]:
+            if item.file_hash != protected[path]:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
             rooted.append(item)
         else:

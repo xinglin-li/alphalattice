@@ -31,6 +31,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.composition.task_kinds import (
     EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
 )
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -49,7 +50,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
 )
@@ -470,7 +470,7 @@ def verify_evidence_review_workspace(
     """Open and verify local authority children without claiming a Provider."""
     root = workspace.resolve()
     manifest_path = _confined(root, binding.relative_path)
-    if _file_sha256(manifest_path) != binding.file_sha256:
+    if _file_digest(manifest_path) != binding.file_sha256:
         raise ResearchWorkspaceError("evidence_review.manifest_file_identity_invalid")
     manifest = _read_model(manifest_path, EvidenceReviewWorkspaceManifest)
     registry = _read_bound(
@@ -513,7 +513,7 @@ def _read_bound[T: BaseModel](
     identity_field: str,
 ) -> T:
     path = _confined(root, binding.relative_path)
-    if _file_sha256(path) != binding.file_sha256:
+    if _file_digest(path) != binding.file_sha256:
         raise ResearchWorkspaceError("evidence_review.child_file_identity_invalid")
     value = _read_model(path, model)
     if getattr(value, identity_field, None) != binding.content_hash:
@@ -547,15 +547,12 @@ def _confined(root: Path, relative_path: str) -> Path:
     return path
 
 
-def _file_sha256(path: Path) -> str:
-    digest = integrity_sha256()
+def _file_digest(path: Path) -> str:
+    """The file's digest through the file-trust owner: hashed only when its stamp changed."""
     try:
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(block)
+        return file_sha256(path)
     except OSError as error:
         raise ResearchWorkspaceError("evidence_review.artifact_unreadable") from error
-    return digest.hexdigest()
 
 
 def _normalize_deepseek_base_url(value: str) -> str:

@@ -16,6 +16,7 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.kernel.identity import integrity_sha256
 
 from .contracts import SectorContextManifest
@@ -90,8 +91,7 @@ class SectorContextStore:
         data = self.root / "surfaces" / f"{manifest_hash}.parquet"
         try:
             manifest = SectorContextManifest.model_validate_json(meta.read_bytes())
-            payload = data.read_bytes()
-            if integrity_sha256(payload).hexdigest() != manifest.payload_sha256:
+            if file_sha256(data) != manifest.payload_sha256:
                 raise SectorContextBoundaryError("alpha_research.sector_context_payload_tampered")
             table = pq.read_table(data).combine_chunks()
             table_hash = str(

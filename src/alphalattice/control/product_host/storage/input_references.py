@@ -58,6 +58,7 @@ from alphalattice.control.product_host.storage.retention import (
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
+from alphalattice.control.workspace_runtime.verified_facts import verified_bytes
 from alphalattice.evidence.alternative_evidence.storage.inventory import (
     EvidenceStorageBinding,
     EvidenceStorageInventory,
@@ -77,7 +78,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_sha256
 
 
 def _strings(value: object) -> set[str]:
@@ -553,8 +553,8 @@ class ResearchInputStorage:
             return {}
         if binding is None:
             return {}
-        payload = confined(self.workspace, binding.relative_path).read_bytes()
-        if integrity_sha256(payload).hexdigest() != binding.file_sha256:
+        payload, digest = verified_bytes(confined(self.workspace, binding.relative_path))
+        if digest != binding.file_sha256:
             return {}
         manifest = EvidenceReviewWorkspaceManifest.model_validate_json(payload)
         root = confined(self.workspace, manifest.semantic_model_relative_path)

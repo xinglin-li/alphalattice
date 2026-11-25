@@ -51,7 +51,12 @@ import pyarrow.parquet as pq
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.foundation.data_layer.chain import canonical
 from alphalattice.foundation.data_layer.log import HostLog
-from alphalattice.kernel.identity import identity_blake3, integrity_blake3, integrity_sha256
+from alphalattice.kernel.identity import (
+    identity_blake3,
+    integrity_blake3,
+    integrity_sha256,
+    record_sealed,
+)
 
 TYPE: Final = "array"
 """The artifact type of every array the door keeps."""
@@ -244,6 +249,7 @@ def settle(root: Path, read: Read, collect: Callable[[str], bool]) -> dict[str, 
             rows = read("SELECT body_state FROM artifact WHERE artifact_id = ?", (name,))
             if rows and rows[0][0] == "present" and not target.is_file():
                 os.replace(staged, target)
+                _sealed(target)
                 report["placed"].append(f"blobs/{name}")
             else:
                 handle = f"blobs/{staged.name}"
@@ -370,6 +376,7 @@ def _keep(
                 if capacity is not None:
                     capacity(len(payload))
                 _place(target, payload)  # its committed profile's body a crash left staged
+                _sealed(target)
             _hold(log, artifact, workspace)
         else:
             payload = body()
@@ -430,8 +437,15 @@ def _settled(target: Path, staged: Path, *, committed: bool) -> None:
     try:
         if committed:
             os.replace(staged, target)
+            _sealed(target)
     finally:
         del _unplaced[target]
+
+
+def _sealed(target: Path) -> None:
+    """Record, as the writer that just placed a body under blobs/, the BLAKE3 identity it computed
+    for it (its name), so a read in any process trusts it until the file changes: no hash."""
+    record_sealed(target, f"blake3:{target.name}")
 
 
 def _read(root: Path, artifact: str) -> bytes:
