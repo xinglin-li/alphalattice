@@ -63,6 +63,33 @@ _bootstrap_data = tempfile.TemporaryDirectory(prefix="alphalattice-test-bootstra
 os.environ["ALPHALATTICE_DATA_ROOT"] = _bootstrap_data.name
 os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(Path(_bootstrap_data.name) / "backups")
 
+# A test's Git acts on the repository it names, under a configuration the suite owns. A Git hook
+# exports the variables that bind Git to the committing repository (git rev-parse
+# --local-env-vars, less its config injection), and every Git command a test starts would act on
+# that repository whatever its -C names; popped at import, so no worker inherits them.
+REPOSITORY_BINDING = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_CONFIG",
+)
+for _variable in REPOSITORY_BINDING:
+    os.environ.pop(_variable, None)
+# A test names the product's command as its own interpreter does, whichever launcher started the
+# run: under `uv run` the product would ask uv for its tool folder and print the machine's own
+# installed command. A test of that launcher sets the marker itself.
+os.environ.pop("UV_RUN_RECURSION_DEPTH", None)
+environment.declare_launcher()
+
 pytest_plugins = [
     "devtools.testing.collection",
     *(["tests.agent_eval.hooks"] if (Path(__file__).parent / "agent_eval").is_dir() else []),
@@ -234,6 +261,20 @@ def host_local_clock(monkeypatch):
 _MAINTAINER_THREAD = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CLAUDE_CODE_SESSION_ID")
 for _variable in (*(name for _vendor, name in AGENT_SESSION_VARIABLES), *TRACE_VARIABLES):
     os.environ.pop(_variable, None)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def git_owned_config(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """Each Git a test starts reads a global configuration the suite owns, never the machine's:
+    no identity, alias, hook path or template the person set, and line endings the test's own on
+    every host (a Windows system autocrlf=true never decides what a fixture commits)."""
+    config = tmp_path_factory.getbasetemp() / "gitconfig"
+    config.write_text(
+        "[core]\n\tlongpaths = true\n\tautocrlf = false\n\tsafecrlf = false\n", encoding="utf-8"
+    )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("GIT_CONFIG_GLOBAL", str(config))
+        yield
 
 
 @pytest.fixture

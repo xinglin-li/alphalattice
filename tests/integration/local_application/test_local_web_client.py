@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from argparse import Namespace
+from contextlib import suppress
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from types import SimpleNamespace
@@ -260,16 +261,21 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
                 deadline = started + 120
                 while not LocalResearchConnection.path(workspace).exists():
                     if child.poll() is not None or time.monotonic() >= deadline:
-                        pytest.fail("CLI did not start its own Host")
+                        log = (tmp_path / "startup.log").read_text("utf-8", errors="replace")
+                        pytest.fail(
+                            f"CLI did not start its own Host (exit {child.poll()}):\n{log[-4000:]}"
+                        )
                     time.sleep(0.05)
                 output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
                 output.flush()
                 client = LocalResearchClient(workspace)
                 assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
                 instance = client.connection.instance
-            finally:
-                family = psutil.Process(child.pid)
-                family = [*family.children(recursive=True), family]
+            finally:  # a child that already exited leaves no tree, and never masks the failure
+                family: list[psutil.Process] = []
+                with suppress(psutil.NoSuchProcess):
+                    parent = psutil.Process(child.pid)
+                    family = [*parent.children(recursive=True), parent]
                 session.stop()
                 assert not psutil.wait_procs(family, timeout=20)[1]
         from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease

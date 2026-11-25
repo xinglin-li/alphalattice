@@ -74,6 +74,14 @@ LAYER_CASES = (
         ),
         ("preloaded-pure", "unit", "import duckdb\n", "assert 2 + 2 == 4", False),
         (
+            "process-cache",
+            "unit",
+            "from collections import OrderedDict\nfrom duckdb import connect\n"
+            "CACHE = OrderedDict(earlier=connect)\n",
+            "assert len(CACHE) == 1",
+            False,
+        ),
+        (
             "installed-metadata",
             "unit",
             "",
@@ -507,6 +515,7 @@ LAYER_IDS = (
         "database",
         "bound-database",
         "preloaded-pure",
+        "process-cache",
         "installed-metadata",
         "installed-timezone",
         "project-read",

@@ -16,7 +16,6 @@ from typing import Literal
 
 import numpy as np
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -140,6 +139,10 @@ def calendar_sessions(
     standard: ResearchWhitelistStandard | None = None,
 ) -> tuple[date, ...]:
     """The common US sessions from the standard's floor before `AS_OF` through `end`."""
+    # lazy: the panel upgrade driver runs this module under a released source, which is handed
+    # its sessions and never imports this source's calendar path
+    from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+
     years = (standard or STANDARD).minimum_history_calendar_years
     first = start or AS_OF.replace(year=AS_OF.year - years)
     schedule = materialize_calendar_schedule(

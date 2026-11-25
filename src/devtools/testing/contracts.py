@@ -15,7 +15,7 @@ import tempfile
 import threading
 import time
 import zoneinfo
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping, MutableSequence, MutableSet
 from contextlib import ExitStack, contextmanager
 from functools import partial
 from importlib.machinery import EXTENSION_SUFFIXES
@@ -119,6 +119,12 @@ class _LibraryImportClock:
         return spec
 
 
+_PROCESS_STATE = (MutableMapping, MutableSequence, MutableSet)
+"""A module global of these kinds holds what the process put there (a cache earlier tests
+filled), not code: the walk never reads its contents, so a unit test's verdict never depends on
+which tests ran before it in its worker. Its members are judged when they run."""
+
+
 class LayerContract:
     """One collected test's resource boundary; contexts own only their acquired subscriptions."""
 
@@ -209,7 +215,7 @@ class LayerContract:
             self.refuse("unproved loaded-module inventory reader " + value.__qualname__)
         closed = inspect.getclosurevars(value)
         dependencies = [
-            *closed.globals.values(),
+            *(held for held in closed.globals.values() if not isinstance(held, _PROCESS_STATE)),
             *closed.nonlocals.values(),
             *(value.__defaults__ or ()),
             *(value.__kwdefaults__ or {}).values(),
@@ -226,6 +232,7 @@ class LayerContract:
                         continue
                     if (
                         key in namespace
+                        and not isinstance(namespace[key], _PROCESS_STATE)
                         and not (candidate is importlib and key == "import_module")
                         and not (candidate is builtins and key == "__import__")
                     ):

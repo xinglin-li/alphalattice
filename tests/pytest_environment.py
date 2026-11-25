@@ -67,6 +67,12 @@ PERSON_RESOLVERS = (  # module, resolver, the variable naming its root, whether 
 )
 
 
+AGENT_HOMES = ("CODEX_HOME", "CLAUDE_CONFIG_DIR")
+HOME_READERS = (  # module, resolver: each names the agent host's folder a reader then opens
+    ("alphalattice.interface.local_application.native_usage", "session_root"),
+)
+
+
 @contextmanager
 def owning(*roots: Path) -> Iterator[None]:
     """Admit roots a test helper is handed by path, a golden's and its copy's served roots, while
@@ -124,6 +130,21 @@ def _owned_only(
     return owned
 
 
+def _returns_owned(resolve: Any, where: str) -> Any:
+    @functools.wraps(resolve)
+    def owned(*args: Any, **kwargs: Any) -> Any:
+        # the resolver only names a path; the guard judges it before anything there is read
+        if _owned(found := resolve(*args, **kwargs), OWNED_ROOTS):
+            return found
+        raise AssertionError(
+            f"tests.person_root_resolved: {RUNNING_TEST.get('id') or 'a test'} reached {found} "
+            f"through {where}, outside this run's own roots; keep {' and '.join(AGENT_HOMES)} "
+            "set, or pass a home under tmp_path"
+        )
+
+    return owned
+
+
 def require_named_roots(entry: str) -> None:
     """Refuse, by name, a test helper run where no root of its own is named.
 
@@ -160,7 +181,12 @@ def guard_person_roots() -> None:
             where = f"{name}.{attribute}"
             GUARDED[resolve] = _owned_only(resolve, where, variable, reads_home, roots)
             setattr(sys.modules[name], attribute, GUARDED[resolve])
-    names = {attribute for _, attribute, _, _ in PERSON_RESOLVERS}
+    for name, attribute in HOME_READERS:
+        resolve = getattr(sys.modules.get(name), attribute, None)
+        if resolve is not None and resolve not in GUARDED.values():
+            GUARDED[resolve] = _returns_owned(resolve, f"{name}.{attribute}")
+            setattr(sys.modules[name], attribute, GUARDED[resolve])
+    names = {attribute for _, attribute, _, _ in PERSON_RESOLVERS} | {a for _, a in HOME_READERS}
     for module in list(sys.modules.values()):
         if getattr(module, "__name__", "").startswith("alphalattice."):
             space = vars(module)
@@ -274,12 +300,17 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
         lambda: tempfile.mkdtemp(prefix="alphalattice-test-models-", dir=backup_parent),
     )
     os.environ["ALPHALATTICE_MODEL_STORE"] = str(MODEL_STORE)
+    # The agent hosts' homes: a test reads the Codex sessions and Claude projects it wrote, never
+    # the machine's own; one empty home each per test process, which a test may replace.
+    for variable in AGENT_HOMES:
+        os.environ[variable] = tempfile.mkdtemp(prefix="alphalattice-test-home-", dir=backup_parent)
     _declare_environment(
         {
             "ALPHALATTICE_SHELL",
             "ALPHALATTICE_DATA_ROOT",
             "ALPHALATTICE_BACKUP_ROOT",
             "ALPHALATTICE_MODEL_STORE",
+            *AGENT_HOMES,
         },
         "test-worker-roots",
     )
@@ -287,6 +318,11 @@ def configure_temporary_roots(checkout: Path, basetemp: str | None) -> None:
     if basetemp is not None:
         OWNED_ROOTS.append(Path(os.path.abspath(str(basetemp))).parent)
     MODEL_ROOTS[:] = [*OWNED_ROOTS, MODEL_STORE]
+
+
+def declare_launcher() -> None:
+    """Keep the product's frozen view free of the launcher marker the suite popped."""
+    _declare_environment({"UV_RUN_RECURSION_DEPTH"}, "test-launcher")
 
 
 def _declare_environment(names: set[str], kind: str) -> None:

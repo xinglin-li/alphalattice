@@ -41,6 +41,7 @@ STORES = {  # an inherited store, the test host's kit; admitted only when they a
     "store-another-kit": (Path("shared-kits", "model-store"), Path("kit"), False),
 }
 
+HOMES = {"codex-home": ("codex", "CODEX_HOME"), "claude-home": ("claude-code", "CLAUDE_CONFIG_DIR")}
 ENTRIES = {  # a helper a plain script can run, and whether its run names roots of its own
     "builder-unnamed": ("build_real_risk_workspace", False),
     "builder-named": ("build_real_risk_workspace", True),
@@ -92,13 +93,27 @@ def _hooks(body):
 
 
 @pytest.mark.proves("testing.a_test_leaking_its_interpreter_or_a_person_root_fails_by_name")
-@pytest.mark.parametrize("case", [*LEAKS, *ROOTS, *STORES, *ENTRIES, *SUPPORT_ROOTS], ids=str)
+@pytest.mark.parametrize(
+    "case", [*LEAKS, *ROOTS, *STORES, *ENTRIES, *SUPPORT_ROOTS, *HOMES], ids=str
+)
 def test_a_test_that_leaks_its_interpreter_or_reaches_a_person_root_fails_by_name(
     case, tmp_path, monkeypatch
 ):
     """A leaking body fails at its own teardown, by name, with the state put back; a resolver's
     default outside the run's roots fails before it reads, its resolved result after; a helper a
     script can run refuses, by name, before anything, unless roots of its own are named."""
+    if case in HOMES:  # an agent host's home: the run's own, never the machine's
+        from alphalattice.interface.local_application import native_usage
+
+        host, variable = HOMES[case]
+        assert environment._owned(Path(os.environ[variable]), environment.OWNED_ROOTS)
+        assert native_usage.session_root in environment.GUARDED.values()
+        assert native_usage.session_root(host, home=str(tmp_path)).parent == tmp_path
+        monkeypatch.delenv(variable)  # the default, under the person's folder
+        monkeypatch.setattr(native_usage.Path, "home", staticmethod(lambda: OUTSIDE))
+        with pytest.raises(AssertionError, match=r"^tests\.person_root_resolved: .* reached "):
+            native_usage.session_root(host, dict(os.environ))
+        return
     if case in SUPPORT_ROOTS:
         from tests import _support
 
