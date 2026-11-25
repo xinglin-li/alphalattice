@@ -19,6 +19,7 @@ from uuid import uuid4
 import psutil
 import pytest
 
+from alphalattice.kernel.config import Change, override
 from alphalattice.kernel.execution import (
     CANCELLED,
     ExecutionStopped,
@@ -342,7 +343,11 @@ def test_spawn_judges_one_budget_for_the_whole_tree(
 
             monkeypatch.setattr(execution_spawn, "linux_scope_available", unavailable_scope)
             monkeypatch.setattr(psutil.Process, "children", lambda self, recursive=False: [])
-        _assert_pool_retains_escaped_child(tmp_path / "descendant")
+        # The pool's tree observes, whatever the Host's default mode (enforce, for a declared tree)
+        with override(
+            Change("test-observed-pool", {"ALPHALATTICE_PROCESS_MEMORY_MODE": "observe"})
+        ):
+            _assert_pool_retains_escaped_child(tmp_path / "descendant")
         return
     if mode == "host-observer-observe":
         observer = MagicMock()

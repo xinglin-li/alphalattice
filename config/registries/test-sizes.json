@@ -83,6 +83,16 @@
         "safe_dump"
       ]
     },
+    "tests/integration/resources/test_caches.py::test_every_cache_the_product_holds_is_registered_with_the_bound_its_source_holds": {
+      "facet": "cache_holdings",
+      "within": [
+        "src/alphalattice/*.py"
+      ],
+      "inputs": [
+        "config/registries/caches.json",
+        "src/devtools/pipeline/facets.py"
+      ]
+    },
     "tests/structural/test_moved_names.py::test_a_staged_check_reads_the_index_not_an_unstaged_repair": {
       "inputs": [
         "src/devtools/architecture/moved_names.py",

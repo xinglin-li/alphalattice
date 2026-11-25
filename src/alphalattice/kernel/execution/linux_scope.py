@@ -111,7 +111,8 @@ class LinuxScope:
         watcher.poll(1000)  # Observe has no kernel threshold and samples cumulative peak.
 
     def stop(self) -> None:
-        """Kill the whole cgroup, including descendants in other sessions."""
+        """Kill the whole cgroup, including descendants in other sessions. A cgroup that has gone
+        (its files absent, or ENODEV once its manager removed the emptied scope) has ended."""
         native = vars(select)
         try:
             (self.directory / "cgroup.kill").write_bytes(b"1")
@@ -124,8 +125,10 @@ class LinuxScope:
                     if b"populated 0" in events.read().splitlines():
                         return
                     watcher.poll(max(1, int((deadline - time.monotonic()) * 1000)))
-        except FileNotFoundError:
-            return
+        except OSError as error:
+            if error.errno not in {errno.ENOENT, errno.ENODEV}:
+                raise
+            return  # The emptied cgroup was removed by its manager: its tree has ended.
         raise RuntimeError("spawn.tree_not_stopped: Linux cgroup still populated")
 
     def close(self) -> None:

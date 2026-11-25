@@ -245,7 +245,12 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         typed = "tests/integration/product_host/test_local_web_service.py::" + (
             "test_every_web_handler_preserves_every_typed_owner_exception"
         )
-        census = {n: r for n, r in facet_rows.items() if n in {host_holder, lifecycle, typed}}
+        caches = "tests/integration/resources/test_caches.py::" + (
+            "test_every_cache_the_product_holds_is_registered_with_the_bound_its_source_holds"
+        )
+        census = {
+            n: r for n, r in facet_rows.items() if n in {host_holder, lifecycle, typed, caches}
+        }
 
         def facets(path, before, after, rows=census):
             return stage.facet_holders([pair(path)], {old: before, new: after}, rows)
@@ -272,6 +277,15 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             "from .one import Base\nclass E(Base): pass",
             "from .two import Base\nclass E(Base): pass",
         ) == (typed,)
+        # 11-25: the cache census reads a bound through a module constant, a new weak map and a
+        # cached function's scope, and no edit inside a cached function's body.
+        sized = "_HELD = {}\n@lru_cache(maxsize=_HELD)\ndef f(k):\n    return k\n"
+        assert facets(anywhere, sized.format(8), sized.format(16)) == (caches,)
+        assert facets(anywhere, "", "_BELLS = weakref.WeakKeyDictionary()") == (caches,)
+        assert facets(anywhere, "_P = WeakKeyDictionary()", "_P = OrderedDict()") == (caches,)
+        nested = "def {}():\n    @lru_cache(maxsize=8)\n    def f(k):\n        return k\n"
+        assert facets(anywhere, nested.format("A"), nested.format("B")) == (caches,)
+        assert facets(anywhere, sized.format(8), sized.format(8) + "    k += 1\n") == ()
         # 11-15: a slow whole-tree guard meets the change it reads by its own row, never the broad
         # match (a module-proof red reached develop when only the nightly ran it).
         guard = "tests/x.py::"

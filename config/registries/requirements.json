@@ -1628,6 +1628,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "execution.a_removed_cgroup_reads_as_stopped": {
+      "description": "A killed Linux cgroup whose emptied scope its manager removed, its events file gone or reading ENODEV, has stopped; any other refusal to read it is raised.",
+      "owner": "alphalattice.kernel.execution",
+      "layer": "unit",
+      "seconds": 1
+    },
     "execution.a_wait_ends_on_its_owners_event": {
       "description": "If a wait polled its owner's state, a follow would answer late, and a Host asleep past a due time could run a job more than once.",
       "lower_layer": "The follow, the process's one timer and a maintenance worker are threads that meet on real events and a real deadline, which no single function holds.",

@@ -195,11 +195,154 @@ def mentions(source: str, words: Collection[str]) -> set[str]:
     return found
 
 
+_HAND = frozenset({"OrderedDict", "WeakKeyDictionary", "WeakValueDictionary"})
+"""Stateful maps evicted by hand: their bound is not a count the scan reads."""
+_MAPS = frozenset({"BoundedMemo", "dict", "Dict", *_HAND})
+
+# What a cache's source holds its size to: a count, an owner's capacity it does not spell as a
+# number ("capacity"), a hand-written eviction the scan cannot read ("hand"), or None for none.
+type CacheBound = int | str | None
+
+
+def _count(node: ast.expr, constants: dict[str, CacheBound]) -> CacheBound:
+    """The size an argument spells: a positive literal or module constant, or BoundedMemo's own
+    default capacity. Anything else, a None, an imported name or a computed value, is no bound
+    the scan can prove, so a row that names one over it is refused."""
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, int) and node.value > 0 else None
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "default_capacity"
+        and _named(node.func.value) == "BoundedMemo"
+    ):
+        return "capacity"
+    return None
+
+
+def _named(node: ast.expr) -> str | None:
+    """A call's or a reference's last name: ``a.b(c)`` is ``b``."""
+    target = node.func if isinstance(node, ast.Call) else node
+    name = getattr(target, "id", None) or getattr(target, "attr", None)
+    return name if isinstance(name, str) else None
+
+
+def _functools_bound(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, constants: dict[str, CacheBound]
+) -> CacheBound | bool:
+    """The bound a functools decorator declares, or False for a function that caches nothing."""
+    for decorator in function.decorator_list:
+        if _named(decorator) == "cache":
+            arguments = function.args
+            keyed = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+            return 1 if not keyed and not arguments.vararg and not arguments.kwarg else None
+        if _named(decorator) == "lru_cache":
+            if not isinstance(decorator, ast.Call):
+                return 128
+            given = [*decorator.args, *(k.value for k in decorator.keywords if k.arg == "maxsize")]
+            if given:
+                return None if isinstance(given[0], ast.Starred) else _count(given[0], constants)
+            # The default holds only for a call that gives no maximum: an unpacked one is unread.
+            return None if any(k.arg is None for k in decorator.keywords) else 128
+    return False
+
+
+def _stored_types(node: ast.expr) -> set[str]:
+    """Read the value's type and union members without descending into type arguments."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return _stored_types(node.left) | _stored_types(node.right)
+    if isinstance(node, ast.Subscript):
+        if _named(node.value) in {"Optional", "Union"}:
+            members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            return set().union(*(_stored_types(member) for member in members))
+        node = node.value
+    return {name} if (name := _named(node)) else set()
+
+
+def _context_held(
+    names: list[str], annotation: ast.expr, aliases: dict[str, ast.expr]
+) -> dict[str, CacheBound]:
+    """A context variable that holds a mapping, with the bound its mapping's type declares."""
+    if not isinstance(annotation, ast.Subscript):
+        return {}
+    spelled = _stored_types(annotation.slice)
+    for alias in spelled & aliases.keys():
+        spelled |= _stored_types(aliases[alias])
+    if not spelled & _MAPS:
+        return {}
+    bound: CacheBound = (
+        "capacity" if "BoundedMemo" in spelled else "hand" if spelled & _HAND else None
+    )
+    return dict.fromkeys(names, bound)
+
+
+def cache_holdings(source: str) -> set[tuple[str, CacheBound, str]]:
+    """Each cache a module holds, by the name the cache register's ``defined_by`` gives it after
+    its path, with the bound its source declares and the kind that declares it: functools caches
+    by their dotted scope (kind ``functools``), and module-level stateful maps (their class's name)
+    and the context variables that hold one (``ContextVar``) by their name. The cache census
+    builds its answer from this, so it selects exactly the edits that change the answer: a bound
+    named through a module constant or a type alias, or a map's kind, included."""
+    tree = ast.parse(source)
+    constants = {
+        target.id: _count(node.value, {})
+        for node in tree.body
+        if isinstance(node, ast.Assign | ast.AnnAssign) and isinstance(node.value, ast.Constant)
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name)
+    }
+    held: dict[str, tuple[CacheBound, str]] = {}
+    scope: list[str] = []
+
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            bound = _functools_bound(node, constants)
+            if bound is not False:
+                held[".".join([*scope, node.name])] = (bound, "functools")
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            scope.append(node.name)
+            for child in ast.iter_child_nodes(node):
+                visit(child)
+            scope.pop()
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    visit(tree)
+    aliases: dict[str, ast.expr] = {}
+    for node in tree.body:
+        if isinstance(node, ast.TypeAlias) and isinstance(node.name, ast.Name):
+            aliases[node.name.id] = node.value
+        elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            aliases[node.targets[0].id] = node.value
+    for node in tree.body:
+        value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
+        targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+        names = [t.id for t in targets if isinstance(t, ast.Name)]
+        if not isinstance(value, ast.Call):
+            continue
+        kind = _named(value)
+        if kind == "BoundedMemo":
+            capacity = [k.value for k in value.keywords if k.arg == "capacity"]
+            # BoundedMemo always holds a capacity: one it cannot read is its default or the owner's.
+            bound = (_count(capacity[0], constants) if capacity else None) or "capacity"
+            held.update(dict.fromkeys(names, (bound, kind)))
+        elif kind in _HAND:
+            held.update(dict.fromkeys(names, ("hand", kind)))
+        elif kind == "ContextVar" and isinstance(node, ast.AnnAssign):
+            context = _context_held(names, node.annotation, aliases)
+            held.update({name: (bound, kind) for name, bound in context.items()})
+    return {(name, bound, kind) for name, (bound, kind) in held.items()}
+
+
 FACETS: dict[str, Callable[[str], AbstractSet[object]]] = {
     "deadline_owners": deadline_names,
     "lifecycle_sets": lifecycle_sets,
     "class_declarations": class_declarations,
     "defined_tests": defined_tests,
+    "cache_holdings": cache_holdings,
 }
 """The facets a ``selection_readers`` row may name, each a function of one file's text."""
 

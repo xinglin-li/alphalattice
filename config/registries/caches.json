@@ -3233,6 +3233,26 @@
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "description": "Caches content-keyed shared inputs within each child-worker call set, forgetting that set when its owner closes or the worker exits."
     },
+    "src/alphalattice/control/task_control/child.py::<module>._BELLS::kept-child-worker-doorbells": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/child.py::_BELLS"
+      ],
+      "definition_line": 107,
+      "key": "the kept worker's executor, held weakly",
+      "dependency_coverage": "Exact: one doorbell made with its executor; no derived value",
+      "invalidation_rule": "the executor's collection drops its weak key; worker retirement or break",
+      "size_bound": "one doorbell per live kept worker, held to the kept workers' grant admission",
+      "bound_scope": "the live kept-worker executors _WORKERS and the Task grants' workers hold",
+      "eviction": "weak key: gone with its executor; no LRU",
+      "safe_to_drop": "No while its worker lives: a cancel would not reach the worker's call until it next reads its flag",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _BELLS in its module, keyed weakly by each kept-worker executor"
+      },
+      "source_commit": "1311222d53b59f893bac785df796ed4f92d35f0a",
+      "description": "Holds each kept worker's cancellation doorbell, rung after a call's cancel flag is set, for as long as that worker's executor lives."
+    },
     "src/alphalattice/control/task_control/child.py::<module>._WORKERS::kept-child-worker-executor-pool-workers": {
       "owner": "alphalattice.control.task_control",
       "defined_by": [

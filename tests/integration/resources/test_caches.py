@@ -10,7 +10,6 @@ One table holds the register's inputs, each run against the product as it is:
 
 from __future__ import annotations
 
-import ast
 import json
 from pathlib import Path
 
@@ -19,12 +18,10 @@ import pytest
 
 from alphalattice.kernel.resources import cache_bound, cache_register
 from devtools.architecture.registries import CACHES_REGISTRY, _unbounded_cache
+from devtools.pipeline.facets import CacheBound, cache_holdings
 
 TEST_SOURCE = "src/alphalattice/kernel/resources/caches.py"
 ROOT = Path(__file__).resolve().parents[3]
-_FUNCTOOLS = {"cache", "lru_cache"}
-_HAND = {"OrderedDict", "WeakKeyDictionary", "WeakValueDictionary"}
-_MAPS = {"BoundedMemo", "dict", "Dict", *_HAND}
 _WEAK_OWNER_DIRECTORIES = {
     # Callers retain the pools. The weak keys only track the names of live owners.
     "src/alphalattice/kernel/execution/pool.py::_POOLS",
@@ -38,142 +35,23 @@ _CONTEXT_STATE = {
     "src/alphalattice/foundation/data_layer/history_alpha_arrays.py::_ALPHA_PARTS",  # parts
 }
 
-# What a cache's source holds its size to: a count, an owner's capacity it does not spell as a
-# number ("capacity"), a hand-written eviction the scan cannot read ("hand"), or None for none.
-type Declared = int | str | None
+type Declared = CacheBound
 
 
 def _entries() -> dict[str, dict[str, object]]:
     return json.loads((ROOT / CACHES_REGISTRY).read_text(encoding="utf-8"))["entries"]
 
 
-def _named(node: ast.expr) -> str | None:
-    target = node.func if isinstance(node, ast.Call) else node
-    return getattr(target, "id", None) or getattr(target, "attr", None)
-
-
-def _count(node: ast.expr, constants: dict[str, int | None]) -> Declared:
-    """The size an argument spells: a positive literal or module constant, or BoundedMemo's own
-    default capacity. Anything else, a None, an imported name or a computed value, is no bound
-    the scan can prove, so a row that names one over it is refused."""
-    if isinstance(node, ast.Constant):
-        return node.value if isinstance(node.value, int) and node.value > 0 else None
-    if isinstance(node, ast.Name):
-        return constants.get(node.id)
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "default_capacity"
-        and _named(node.func.value) == "BoundedMemo"
-    ):
-        return "capacity"
-    return None
-
-
-def _functools_bound(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, constants: dict[str, int | None]
-) -> Declared | bool:
-    """The bound a functools decorator declares, or False for a function that caches nothing."""
-    for decorator in function.decorator_list:
-        if _named(decorator) == "cache":
-            arguments = function.args
-            keyed = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
-            return 1 if not keyed and not arguments.vararg and not arguments.kwarg else None
-        if _named(decorator) == "lru_cache":
-            if not isinstance(decorator, ast.Call):
-                return 128
-            given = [*decorator.args, *(k.value for k in decorator.keywords if k.arg == "maxsize")]
-            if given:
-                return None if isinstance(given[0], ast.Starred) else _count(given[0], constants)
-            # The default holds only for a call that gives no maximum: an unpacked one is unread.
-            return None if any(k.arg is None for k in decorator.keywords) else 128
-    return False
-
-
-def _stored_types(node: ast.expr) -> set[str]:
-    """Read the value's type and union members without descending into type arguments."""
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _stored_types(node.left) | _stored_types(node.right)
-    if isinstance(node, ast.Subscript):
-        if _named(node.value) in {"Optional", "Union"}:
-            members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-            return set().union(*(_stored_types(member) for member in members))
-        node = node.value
-    return {name} if (name := _named(node)) else set()
-
-
-def _context_held(
-    names: list[str], annotation: ast.expr, aliases: dict[str, ast.expr]
-) -> dict[str, Declared]:
-    """A context variable that holds a mapping, with the bound its mapping's type declares."""
-    if not isinstance(annotation, ast.Subscript):
-        return {}
-    spelled = _stored_types(annotation.slice)
-    for alias in spelled & aliases.keys():
-        spelled |= _stored_types(aliases[alias])
-    if not spelled & _MAPS:
-        return {}
-    bound: Declared = (
-        "capacity" if "BoundedMemo" in spelled else "hand" if spelled & _HAND else None
-    )
-    return {name: bound for name in names if name not in _CONTEXT_STATE}
-
-
 def _held(relative: str, source: str) -> dict[str, Declared]:
     """Each cache a module holds, named as the registry's ``defined_by`` names it, with the bound
-    its source declares: functools caches by their dotted scope, and module-level stateful maps
-    and the context variables that hold one by their name."""
-    tree = ast.parse(source)
-    constants = {
-        target.id: _count(node.value, {})
-        for node in tree.body
-        if isinstance(node, ast.Assign | ast.AnnAssign) and isinstance(node.value, ast.Constant)
-        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
-        if isinstance(target, ast.Name)
+    its source declares (the census's own facet, ``cache_holdings``), less an owner's weak pool
+    directory while it stays a WeakKeyDictionary and the context state that caches nothing."""
+    exempt = {"WeakKeyDictionary": _WEAK_OWNER_DIRECTORIES, "ContextVar": _CONTEXT_STATE}
+    return {
+        f"{relative}::{name}": bound
+        for name, bound, kind in cache_holdings(source)
+        if f"{relative}::{name}" not in exempt.get(kind, ())
     }
-    held: dict[str, Declared] = {}
-    scope: list[str] = []
-
-    def visit(node: ast.AST) -> None:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            bound = _functools_bound(node, constants)
-            if bound is not False:
-                held[f"{relative}::{'.'.join([*scope, node.name])}"] = bound
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            scope.append(node.name)
-            for child in ast.iter_child_nodes(node):
-                visit(child)
-            scope.pop()
-            return
-        for child in ast.iter_child_nodes(node):
-            visit(child)
-
-    visit(tree)
-    aliases: dict[str, ast.expr] = {}
-    for node in tree.body:
-        if isinstance(node, ast.TypeAlias) and isinstance(node.name, ast.Name):
-            aliases[node.name.id] = node.value
-        elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
-            aliases[node.targets[0].id] = node.value
-    for node in tree.body:
-        value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
-        targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
-        names = [f"{relative}::{t.id}" for t in targets if isinstance(t, ast.Name)]
-        if not isinstance(value, ast.Call):
-            continue
-        kind = _named(value)
-        if kind == "BoundedMemo":
-            capacity = [k.value for k in value.keywords if k.arg == "capacity"]
-            # BoundedMemo always holds a capacity: one it cannot read is its default or the owner's.
-            bound = (_count(capacity[0], constants) if capacity else None) or "capacity"
-            held.update(dict.fromkeys(names, bound))
-        elif kind in _HAND:
-            for name in names:
-                if kind != "WeakKeyDictionary" or name not in _WEAK_OWNER_DIRECTORIES:
-                    held[name] = "hand"
-        elif kind == "ContextVar" and isinstance(node, ast.AnnAssign):
-            held.update(_context_held(names, node.annotation, aliases))
-    return held
 
 
 def _unregistered(held: dict[str, Declared]) -> list[str]:
@@ -308,6 +186,11 @@ _WEAK_CACHE = WeakKeyDictionary()
 def _refused() -> None:
     assert _unbounded_cache(CACHES_REGISTRY, "entries:new", {"size_bound": "unbounded"})
     assert _unbounded_cache(CACHES_REGISTRY, "entries:new", {})
+    pools = (
+        "src/alphalattice/kernel/execution/pool.py"  # its weak directory turned strong is a cache
+    )
+    assert _held(pools, "_POOLS = WeakKeyDictionary()") == {}
+    assert _held(pools, "_POOLS = OrderedDict()") == {f"{pools}::_POOLS": "hand"}
     held = _held(_NEW_MODULE, _NEW_SOURCE)
     names = [
         "_SCOPE",
