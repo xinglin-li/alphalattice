@@ -2745,6 +2745,94 @@
   ],
   "quarantine": [
     {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[CANCELLED-None-None-False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.preparation_fixture_fix_required-None-False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.preparation_fixture_fix_required-None-True-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.truth_review_required-False-False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.truth_review_required-True-False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.current_universe_no_feature_ready_listings-None-False-False]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
+      "node": "tests/integration/product_host/test_workspace_preparation.py::test_cancelled_preparation_reuses_captured_scope_without_new_discovery[BLOCKED-data.current_universe_no_feature_ready_listings-None-False-True]",
+      "owner": "tests.portfolio_strategy_lab",
+      "reason": "The module's cancelled-preparation tests leave their Task children and kept workers running, so its open descriptors climb past 180 within the module; under a 256-descriptor limit a Task child start refuses with too many open files. Held until each test retires its workers.",
+      "until": "2026-12-02",
+      "class": "real",
+      "since": "2026-11-25",
+      "seen_on": [
+        "mac1"
+      ]
+    },
+    {
       "node": "tests/integration/product_host/test_first_use_goal.py::test_a_first_use_decides_its_own_preparations_data_issue_and_its_preparation_goes_on",
       "owner": "tests.portfolio_strategy_lab",
       "reason": "In an observed Windows environment, the workspace network decision remains DEFAULT rather than the offline selection; a configured Windows environment passed. Review by its date.",
