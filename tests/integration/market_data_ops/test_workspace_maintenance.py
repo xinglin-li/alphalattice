@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+from concurrent.futures import ALL_COMPLETED
+from concurrent.futures import wait as futures_wait
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -69,6 +71,9 @@ from alphalattice.foundation.feature_engine.publication.current_storage import (
 from alphalattice.foundation.feature_engine.storage.repositories import (
     FeatureStateRepository,
     PanelStateRepository,
+)
+from alphalattice.foundation.market_data_ops.runtime import (
+    universe_maintenance as maintenance_module,
 )
 from alphalattice.foundation.market_data_ops.runtime.diagnostics import (
     audit_bounded_restatements,
@@ -1531,7 +1536,7 @@ def test_baseline_qualification_keeps_an_explicit_cutoff_and_refuses_future_sour
 
 
 def test_daily_transport_workers_fetch_only_and_main_thread_persists(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     manifest, market_data, _, _ = _maintenance_workspace(
         tmp_path, eligible_listing_ids=("listing-aapl", "listing-msft")
@@ -1594,6 +1599,30 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
 
     provider = ConcurrentFixtureProvider()
     main_thread = get_ident()
+    # Both fetches are complete when the run first waits, as a replay's whole chunk is, so the
+    # two listings apply as one batch, which reads each kind once for both listings.
+    monkeypatch.setattr(
+        maintenance_module,
+        "wait",
+        lambda futures, **_: futures_wait(futures, return_when=ALL_COMPLETED),
+    )
+    reads: list[tuple[str, int]] = []
+
+    def counted(name: str):
+        read = getattr(market_data, name)
+
+        def counting(scope, *args, **kwargs):
+            reads.append((name, len(scope)))
+            return read(scope, *args, **kwargs)
+
+        return counting
+
+    for name in (
+        "actions_by_listing",
+        "_adjusted_closes_by_listing",
+        "_adjusted_revisions",
+    ):
+        monkeypatch.setattr(market_data, name, counted(name))
     runner = CurrentUniverseMaintenance(
         store=market_data,
         manifest=manifest,
@@ -1612,6 +1641,13 @@ def test_daily_transport_workers_fetch_only_and_main_thread_persists(
     }
     assert len(provider.worker_ids) == 2 and not hasattr(runner, "_refresh_listing")
     assert main_thread not in provider.worker_ids
+    assert sorted(reads) == [
+        ("_adjusted_closes_by_listing", 2),
+        ("_adjusted_closes_by_listing", 2),
+        ("_adjusted_revisions", 2),
+        ("actions_by_listing", 2),
+        ("actions_by_listing", 2),
+    ]
     assert all(
         market_data.raw_bars(item.listing_id)[-1].session_date == date(2026, 7, 31)
         for item in manifest.listings

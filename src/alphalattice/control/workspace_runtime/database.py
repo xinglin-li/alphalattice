@@ -1562,6 +1562,15 @@ def _workspace_catalog_read[T](
     return storage.schema(str(catalog_input[0]), key, revision, measured)
 
 
+def catalog_answer[T](
+    connection: duckdb.DuckDBPyConnection, question: str, read: Callable[[], T]
+) -> T:
+    """`read`'s answer about the connection's catalog, by its `question` name: a workspace
+    file's is kept as `table_columns` keeps its columns, until a schema change moves its
+    revision."""
+    return _workspace_catalog_read(connection, ("question", question), read)
+
+
 def table_info(
     connection: duckdb.DuckDBPyConnection, table: str
 ) -> tuple[tuple[int, str, str, bool, str | None, bool], ...]:
@@ -1768,6 +1777,7 @@ __all__ = [
     "WorkspaceConnection",
     "WorkspaceDatabase",
     "WorkspaceRepository",
+    "catalog_answer",
     "checkpoint_workspace_database",
     "hand_off",
     "hold_workspace_database",

@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b446c4179a8ed0b117e9e3d49761d5ad93ae75c81c13bf6b87c55190a30fd367",
+   "successor": "cf4b13cd588e2eae195543950c84945018eac9a01483aa65051b81b51ef67286",
+   "change": "Daily data updates read each batch of listings together",
+   "reason": "The four product_host roles move only through their source fingerprints: the batched maintenance reads return the same rows, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "a11d128ebb05a2635614b277e6ace0a437dfe343d2b741002c0fbfbf9030742a",
+   "successor": "0f530436352ccc3309a4c6fb8bdeb8f38f348f310b7be4e043e957402cebba79",
+   "change": "Daily data updates read each batch of listings together",
+   "reason": "The four product_host roles move only through their source fingerprints: the batched maintenance reads return the same rows, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "eefe61fc7a9ebdb84e6243db7b99d74cd665dae03ac839249ac1bcc9de53579e",
+   "successor": "9d10660ae23b56d8cb8403a79d7220b3571d4c3c430b518bc03c0f5071e9af37",
+   "change": "Daily data updates read each batch of listings together",
+   "reason": "The four product_host roles move only through their source fingerprints: the batched maintenance reads return the same rows, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "61d51f9081c005430b84ff3f86aa3008f13b9a05e26765908d486d9aed6b9948",
+   "successor": "6f4653d4121e44ea69be4895187719f60802f4df551517230263d03e0010e5a1",
+   "change": "Daily data updates read each batch of listings together",
+   "reason": "The four product_host roles move only through their source fingerprints: the batched maintenance reads return the same rows, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  }
+ ]
+}

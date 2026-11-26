@@ -22,6 +22,7 @@ from alphalattice.control.workspace_runtime.database import (
     WorkspaceConnection,
     WorkspaceDatabase,
     WorkspaceRepository,
+    catalog_answer,
     checkpoint_workspace_database,
     install_workspace_schema,
     table_info,
@@ -246,15 +247,20 @@ _BOOTSTRAP_TABLES: Final = (
 
 
 def _ensure_market_journal(connection: duckdb.DuckDBPyConnection) -> None:
-    """Initialize the existing journal and sequence only when the write can see them missing."""
-    ready = connection.execute(
-        "SELECT EXISTS (SELECT 1 FROM duckdb_tables()"
-        " WHERE database_name = current_database() AND schema_name = 'main'"
-        " AND table_name = 'market_delta') AND EXISTS (SELECT 1 FROM duckdb_sequences()"
-        " WHERE database_name = current_database() AND schema_name = 'main'"
-        " AND sequence_name = 'market_delta_seq')"
-    ).fetchone()
-    if ready is not None and ready[0]:
+    """Initialize the existing journal and sequence only when the write can see them missing:
+    asked of the catalog once a schema revision (`catalog_answer`)."""
+
+    def held() -> bool:
+        ready = connection.execute(
+            "SELECT EXISTS (SELECT 1 FROM duckdb_tables()"
+            " WHERE database_name = current_database() AND schema_name = 'main'"
+            " AND table_name = 'market_delta') AND EXISTS (SELECT 1 FROM duckdb_sequences()"
+            " WHERE database_name = current_database() AND schema_name = 'main'"
+            " AND sequence_name = 'market_delta_seq')"
+        ).fetchone()
+        return ready is not None and bool(ready[0])
+
+    if catalog_answer(connection, "market_journal", held):
         return
     for statement in MARKET_DELTA:
         connection.execute(statement)
@@ -5196,30 +5202,52 @@ class MarketDataRepository(WorkspaceRepository):
 
         ``_connection`` is the caller's connection: it sees that transaction's own writes.
         """
-        with self.market_reads(_connection, cutoff_us=cutoff_us, listings=(listing_id,)) as (
+        return self._adjusted_closes_by_listing(
+            {listing_id: start}, through=through, cutoff_us=cutoff_us, _connection=_connection
+        )[listing_id]
+
+    def _adjusted_closes_by_listing(
+        self,
+        starts: Mapping[str, date | None],
+        *,
+        through: date,
+        cutoff_us: int = world_reads.LATEST,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, tuple[ProviderAdjustedClosePoint, ...]]:
+        """``provider_adjusted_closes`` of many listings in one read, each from its own start
+        (None: its first session) through `through`; a listing without a provider mapping is
+        refused as there."""
+        scope = list(starts)
+        with self.market_reads(_connection, cutoff_us=cutoff_us, listings=scope) as (
             connection,
             tables,
         ):
             rows = connection.execute(
                 _selected_provider_sql(tables["mappings"])
-                + f"""
-                SELECT selected.provider, adjusted.session_date, adjusted.adjusted_close
+                + f""", bounds AS (
+                    SELECT unnest(?::VARCHAR[]) AS listing_id, unnest(?::DATE[]) AS start_date
+                )
+                SELECT selected.listing_id, selected.provider, adjusted.session_date,
+                       adjusted.adjusted_close
                 FROM selected_provider AS selected
+                JOIN bounds ON bounds.listing_id = selected.listing_id
                 LEFT JOIN {tables["adjusted"]} AS adjusted
                   ON adjusted.listing_id = selected.listing_id
                  AND adjusted.provider = selected.provider
-                 AND adjusted.session_date BETWEEN ? AND ?
-                ORDER BY adjusted.session_date
+                 AND adjusted.session_date BETWEEN bounds.start_date AND ?
+                ORDER BY selected.listing_id, adjusted.session_date
                 """,
-                [[listing_id], start or date.min, through],
+                [scope, scope, [starts[each] or date.min for each in scope], through],
             ).fetchall()
-        if rows[0][0] is None:
-            raise ValueError("listing has no provider mapping")
-        return tuple(
-            ProviderAdjustedClosePoint(listing_id, provider, session, float(close))
-            for provider, session, close in rows
-            if session is not None
-        )
+        points: dict[str, list[ProviderAdjustedClosePoint]] = {each: [] for each in scope}
+        for listing_id, provider, session, close in rows:
+            if provider is None:
+                raise ValueError("listing has no provider mapping")
+            if session is not None:
+                points[listing_id].append(
+                    ProviderAdjustedClosePoint(listing_id, provider, session, float(close))
+                )
+        return {listing_id: tuple(each) for listing_id, each in points.items()}
 
     def provider_adjusted_close_panel(
         self,
@@ -5305,20 +5333,39 @@ class MarketDataRepository(WorkspaceRepository):
 
         ``_connection`` is the caller's connection: it sees that transaction's own writes.
         """
+        return self._adjusted_revisions((source_receipt_hash,), _connection=_connection)[
+            source_receipt_hash
+        ]
+
+    def _adjusted_revisions(
+        self,
+        source_receipt_hashes: Sequence[str],
+        *,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> dict[str, ProviderAdjustedSeriesRevision | None]:
+        """``provider_adjusted_revision`` of many source receipts in one read."""
+        wanted = list(dict.fromkeys(source_receipt_hashes))
         connection = _connection or self._connect(read_only=True)
         try:
-            row = connection.execute(
+            rows = connection.execute(
                 f"""
                 SELECT {_REVISION_COLUMNS}
                 FROM provider_adjusted_series_revision
-                WHERE source_receipt_hash = ? ORDER BY observed_at DESC LIMIT 1
+                WHERE source_receipt_hash IN (SELECT unnest(?::VARCHAR[]))
+                QUALIFY row_number() OVER (
+                    PARTITION BY source_receipt_hash ORDER BY observed_at DESC
+                ) = 1
                 """,
-                [source_receipt_hash],
-            ).fetchone()
-            return None if row is None else ProviderAdjustedSeriesRevision.read(row)
+                [wanted],
+            ).fetchall()
         finally:
             if _connection is None:
                 connection.close()
+        found: dict[str, ProviderAdjustedSeriesRevision | None] = dict.fromkeys(wanted)
+        for row in rows:
+            revision = ProviderAdjustedSeriesRevision.read(row)
+            found[revision.source_receipt_hash] = revision
+        return found
 
     def provider_adjusted_semantic_ledger(
         self,

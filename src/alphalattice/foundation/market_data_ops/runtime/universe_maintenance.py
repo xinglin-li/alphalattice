@@ -8,14 +8,14 @@ quality gates: it advances a frozen quality-filtered manifest with a bounded
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.foundation.market_data_ops.publication.projection import action_set_hash
@@ -30,6 +30,7 @@ from alphalattice.foundation.market_data_ops.runtime.refresh import (
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     FailureEvidence,
+    ProviderAdjustedClosePoint,
     RawDailyBar,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -63,6 +64,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
+    ProviderAdjustedSeriesRevision,
     market_update,
 )
 from alphalattice.foundation.market_data_ops.storage.rebase import (
@@ -148,8 +150,34 @@ _Job = tuple[CurrentUniverseMaintenanceListing, ManifestListing, tuple[object, .
 _Ready = tuple[
     CurrentUniverseMaintenanceListing, ManifestListing, tuple[object, ...], date, HydrationEvidence
 ]
-_Steps = Generator[ActionAuditObservation, tuple[ActionAuditReceipt, dict[str, int]], str]
-"""A listing's hydration: it yields its audit's observation and receives receipt and counts."""
+
+
+class _Before(NamedTuple):
+    """A listing's reads before its writes: its actions and adjusted closes from `audit_start`."""
+
+    listing_id: str
+    audit_start: date
+
+
+class _Audit(NamedTuple):
+    """A listing's audit, and the session its adjusted closes are read from after it."""
+
+    observation: ActionAuditObservation
+    start: date
+
+
+class _Finished(NamedTuple):
+    """A listing's reads after its audit."""
+
+    revision: ProviderAdjustedSeriesRevision | None
+    adjusted: tuple[ProviderAdjustedClosePoint, ...]
+    actions: tuple[object, ...]
+    rebases: tuple[RawBarRebase, ...]
+
+
+_Steps = Generator[_Before | _Audit, Any, str]
+"""A listing's hydration: it asks for its reads (`_Before`), receiving actions and adjusted
+closes, then for its audit (`_Audit`), receiving receipt, counts and its reads after it."""
 
 
 @dataclass
@@ -641,43 +669,9 @@ class CurrentUniverseMaintenance:
         apply = partial(self._apply_hydration, job, observed_at=observed_at)
         try:
             with market_snapshots.transaction(self.store.database) as connection:
-                return self._drive(apply(connection=connection), connection)
+                return self._driven([apply(connection=connection)], connection)[0]
         except Exception:
-            return self._drive(apply(), None)
-
-    def _drive(self, steps: _Steps, connection: DuckDBPyConnection | None) -> str:
-        """Run one listing's hydration, its audit a one-observation call; an error goes back in."""
-        pending = self._step(steps, None, connection)
-        while not isinstance(pending, str):
-            pending = self._step(steps, pending, connection)
-        return pending
-
-    def _step(
-        self,
-        steps: _Steps,
-        observation: ActionAuditObservation | None,
-        connection: DuckDBPyConnection | None,
-    ) -> ActionAuditObservation | str:
-        """Start the steps (no observation) or audit one and send its receipt back.
-
-        Returns the next observation, or the steps' return value once they finish.
-        """
-        try:
-            if observation is None:
-                return next(steps)
-            try:
-                with span("verify", "listing_action_audit"):
-                    audited = self._mutate(
-                        self.store.complete_action_audit,
-                        self.manifest,
-                        observation,
-                        _connection=connection,
-                    )
-            except Exception as exc:
-                return steps.throw(exc)
-            return steps.send(audited[0])
-        except StopIteration as stop:
-            return str(stop.value)
+            return self._driven([apply()], None)[0]
 
     def _fetch_failed(
         self,
@@ -705,35 +699,116 @@ class CurrentUniverseMaintenance:
             try:
                 with market_snapshots.transaction(self.store.database) as connection:
                     steps = [apply(job, connection=connection) for job in ready]
-                    return self._audited(steps, connection)
+                    return self._driven(steps, connection)
             except Exception:
                 pass  # rolled back whole: each listing applies alone below
         return [self._apply_listing(job, observed_at=observed_at) for job in ready]
 
-    def _audited(self, steps: list[_Steps], connection: DuckDBPyConnection) -> list[str]:
-        """Run the listings' hydrations to their audits, audit them together, and finish them."""
+    def _driven(self, steps: list[_Steps], connection: DuckDBPyConnection | None) -> list[str]:
+        """Run the listings' hydrations, each read and the audit one statement set for all.
+
+        Each listing asks for its reads before its writes, then for its audit; it receives its
+        receipt with the reads after the audit. On the caller's transaction the audit is one
+        call and an error refuses the whole set; on separate commits (`connection` None, one
+        listing) an audit's error goes back into the listing, which handles it.
+        """
         results: dict[int, str] = {}
-        observations: dict[int, ActionAuditObservation] = {}
-        for index, step in enumerate(steps):
+
+        def advance(index: int, answer: object = None, error: Exception | None = None) -> Any:
             try:
-                observations[index] = next(step)
+                if error is not None:
+                    return steps[index].throw(error)
+                return next(steps[index]) if answer is None else steps[index].send(answer)
             except StopIteration as stop:
                 results[index] = str(stop.value)
-        with span("verify", "listing_action_audit"):
-            audited = self._mutate(
-                self.store.complete_action_audit,
-                self.manifest,
-                *observations.values(),
-                _connection=connection,
-            )
-        for index, receipt in zip(observations, audited, strict=True):
+                return None
+
+        before = {index: asked for index in range(len(steps)) if (asked := advance(index))}
+        read = self._before_reads(before.values(), connection)
+        audits: dict[int, _Audit] = {
+            index: asked
+            for index, request in before.items()
+            if (asked := advance(index, read[request.listing_id]))
+        }
+        receipts: dict[int, tuple[ActionAuditReceipt, dict[str, int]]] = {}
+        if connection is not None and audits:
+            with span("verify", "listing_action_audit"):
+                audited = self._mutate(
+                    self.store.complete_action_audit,
+                    self.manifest,
+                    *(audit.observation for audit in audits.values()),
+                    _connection=connection,
+                )
+            receipts = dict(zip(audits, audited, strict=True))
+        for index, audit in audits.items() if connection is None else ():
             try:
-                steps[index].send(receipt)
-            except StopIteration as stop:
-                results[index] = str(stop.value)
-            else:
-                raise RuntimeError("a listing in a batch audits once")
+                with span("verify", "listing_action_audit"):
+                    receipts[index] = self._mutate(
+                        self.store.complete_action_audit, self.manifest, audit.observation
+                    )[0]
+            except Exception as exc:  # the listing handles it, alone, on separate commits
+                if advance(index, error=exc) is not None:
+                    raise RuntimeError("a listing audits once") from exc
+        finished = self._finished_reads(
+            {
+                audits[index].observation.listing_id: (audits[index].start, receipt.receipt_hash)
+                for index, (receipt, _counts) in receipts.items()
+            },
+            connection,
+        )
+        for index, (receipt, counts) in receipts.items():
+            answer = (receipt, counts, finished[receipt.listing_id])
+            if advance(index, answer) is not None:
+                raise RuntimeError("a listing audits once")
         return [results[index] for index in range(len(steps))]
+
+    def _before_reads(
+        self, requests: Iterable[_Before], connection: DuckDBPyConnection | None
+    ) -> dict[str, tuple[tuple[object, ...], tuple[ProviderAdjustedClosePoint, ...]]]:
+        """Each listing's actions and adjusted closes before its writes, one read each: the
+        closes from its audit start, or whole when the series ends before it."""
+        starts: dict[str, date | None] = {
+            request.listing_id: request.audit_start for request in requests
+        }
+        if not starts:
+            return {}
+        actions = self.store.actions_by_listing(list(starts), _connection=connection)
+        adjusted = self.store._adjusted_closes_by_listing(
+            starts, through=self.as_of_session, _connection=connection
+        )
+        if whole := dict.fromkeys(listing for listing, points in adjusted.items() if not points):
+            adjusted |= self.store._adjusted_closes_by_listing(
+                whole, through=self.as_of_session, _connection=connection
+            )
+        return {listing: (actions[listing], adjusted[listing]) for listing in starts}
+
+    def _finished_reads(
+        self, requests: Mapping[str, tuple[date, str]], connection: DuckDBPyConnection | None
+    ) -> dict[str, _Finished]:
+        """Each audited listing's reads after its audit, one read each: its receipt's series
+        revision, its adjusted closes from `start`, its actions and this cycle's rebases."""
+        if not requests:
+            return {}
+        listings = list(requests)
+        revisions = self.store._adjusted_revisions(
+            [receipt_hash for _start, receipt_hash in requests.values()], _connection=connection
+        )
+        adjusted = self.store._adjusted_closes_by_listing(
+            {listing: start for listing, (start, _hash) in requests.items()},
+            through=self.as_of_session,
+            _connection=connection,
+        )
+        actions = self.store.actions_by_listing(listings, _connection=connection)
+        rebases = self._rebases(listings, connection)
+        return {
+            listing: _Finished(
+                revision=revisions[receipt_hash],
+                adjusted=adjusted[listing],
+                actions=actions[listing],
+                rebases=tuple(each for each in rebases if each.listing_id == listing),
+            )
+            for listing, (_start, receipt_hash) in requests.items()
+        }
 
     def _apply_hydration(
         self,
@@ -789,14 +864,9 @@ class CurrentUniverseMaintenance:
             )
             return "FAILED"
         before_bars = {bar.session_date: bar for bar in existing}
-        before_actions = self.store.actions(item.listing_id, _connection=connection)
         # Only the latest adjusted session is wanted: the window from the audit start holds it
         # whenever the series reaches that far; a series that ends before is read whole.
-        before_adjusted = self.store.provider_adjusted_closes(
-            item.listing_id, through=self.as_of_session, start=audit_start, _connection=connection
-        ) or self.store.provider_adjusted_closes(
-            item.listing_id, through=self.as_of_session, _connection=connection
-        )
+        before_actions, before_adjusted = yield _Before(item.listing_id, audit_start)
         before_adjusted_through = max((p.session_date for p in before_adjusted), default=None)
         batch = self._standing(batch, existing, before_actions)  # a re-rounded rescale stands
         # Pure pre-admission observation: how the candidate batch disagrees with
@@ -916,16 +986,16 @@ class CurrentUniverseMaintenance:
         return replace(batch, bars=standing(bars, batch.bars, known, self.rebase_agreement))
 
     def _rebases(
-        self, listing_id: str, connection: DuckDBPyConnection | None
+        self, listing_ids: Sequence[str], connection: DuckDBPyConnection | None
     ) -> tuple[RawBarRebase, ...]:
-        """The rebases this cycle wrote for the listing, read back from the store.
+        """The rebases this cycle wrote for the listings, read back from the store.
 
         A restart after the bars' commit so still discloses them.
         """
         if connection is not None:
-            return recorded(connection, (listing_id,), f"{self.maintenance_id}:")
+            return recorded(connection, listing_ids, f"{self.maintenance_id}:")
         with self.store.database.read_transaction() as read:
-            return recorded(read, (listing_id,), f"{self.maintenance_id}:")
+            return recorded(read, listing_ids, f"{self.maintenance_id}:")
 
     def _price_action_sentinel(self, batch: SanitizedBatch) -> PriceActionIntegritySentinelReport:
         """Run the sentinels against the authority the Host qualified.
@@ -977,8 +1047,9 @@ class CurrentUniverseMaintenance:
         force_full_audit = waits
         adjusted_return_change_sessions: set[date] = set()
         try:
-            receipt, audit_counts = yield self._observation(
-                item, hydration, audit_start, observed_at, write_counts
+            receipt, audit_counts, finished = yield _Audit(
+                self._observation(item, hydration, audit_start, observed_at, write_counts),
+                bars[0].session_date,
             )
         except ProviderFetchError as exc:
             if connection is not None:
@@ -1023,11 +1094,8 @@ class CurrentUniverseMaintenance:
             )
             return "FAILED"
         else:
-            adjusted_revision = self.store.provider_adjusted_revision(
-                receipt.receipt_hash, _connection=connection
-            )
-            if adjusted_revision is not None:
-                adjusted_return_change_sessions.update(adjusted_revision.changed_return_sessions)
+            if finished.revision is not None:
+                adjusted_return_change_sessions.update(finished.revision.changed_return_sessions)
         historical_adjusted_change = before_adjusted_through is not None and any(
             session <= before_adjusted_through for session in adjusted_return_change_sessions
         )
@@ -1086,13 +1154,15 @@ class CurrentUniverseMaintenance:
                         item, hydration, bars[0].session_date, observed_at, write_counts
                     ),
                 )[0]
-                adjusted_revision = self.store.provider_adjusted_revision(receipt.receipt_hash)
-                if adjusted_revision is not None:
-                    adjusted_return_change_sessions.update(
-                        adjusted_revision.changed_return_sessions
-                    )
                 audit_start = bars[0].session_date
                 bars = self.store.raw_bars(item.listing_id, through=self.as_of_session)
+                finished = self._finished_reads(
+                    {item.listing_id: (bars[0].session_date, receipt.receipt_hash)}, None
+                )[item.listing_id]
+                if finished.revision is not None:
+                    adjusted_return_change_sessions.update(
+                        finished.revision.changed_return_sessions
+                    )
             except ProviderFetchError as exc:
                 if exc.code in {"data.rate_limited", "data.provider_session_unstable"}:
                     self._record_deferred_failure(item, code=exc.code, observed_at=observed_at)
@@ -1114,13 +1184,9 @@ class CurrentUniverseMaintenance:
                     rejected_history=hydration,
                 )
                 return "FAILED"
-        adjusted = self.store.provider_adjusted_closes(
-            item.listing_id,
-            through=self.as_of_session,
-            start=bars[0].session_date,
-            _connection=connection,
-        )
-        if {point.session_date for point in adjusted} != {bar.session_date for bar in bars}:
+        if {point.session_date for point in finished.adjusted} != {
+            bar.session_date for bar in bars
+        }:
             self._record_failure(
                 item,
                 code="data.provider_adjusted_series_incomplete",
@@ -1139,7 +1205,7 @@ class CurrentUniverseMaintenance:
                 before_bars=before_bars,
                 after_bars={bar.session_date: bar for bar in bars},
                 before_actions=before_actions,
-                after_actions=self.store.actions(item.listing_id, _connection=connection),
+                after_actions=finished.actions,
                 audit_start=audit_start,
                 provider_receipt_hash=receipt.receipt_hash,
                 action_set_hash_value=receipt.action_set_hash,
@@ -1153,7 +1219,7 @@ class CurrentUniverseMaintenance:
                 sentinel_report=sentinel_report,
                 restatement_observation=restatement_observation,
                 observed_at=observed_at,
-                rebases=self._rebases(item.listing_id, connection),
+                rebases=finished.rebases,
             ),
             observed_at=observed_at,
             _connection=connection,
