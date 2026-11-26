@@ -157,6 +157,55 @@ def failure_message(grade, saved):
         return f"first-use evidence write failed: {type(error).__name__}\n{json.dumps(evidence)}"
 
 
+_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
+_TAIL = 8
+
+
+def walk_tail(trace: Trace, *, code_reader: Callable[[object], str | None]) -> dict[str, Any]:
+    """A failed walk's bounded account for its assertion message: the outcomes, states and codes
+    its answers reached, in order, and its last answers' allowlisted fields (the command's verb,
+    outcome, state, failure code and the ways offered), never response text."""
+
+    def token(value: object) -> str | None:
+        return value if isinstance(value, str) and _TOKEN.match(value) else None
+
+    steps, mutated = [], 0
+    for event in trace.events:
+        attributes = event.attributes
+        if "alphalattice.mutation" in attributes:
+            mutated += 1
+            continue
+        answer = attributes.get("alphalattice.response")
+        answer = answer if isinstance(answer, dict) else {}
+        raw = answer.get("failure_code") or _data(answer).get("failure_code")
+        verb = str(attributes.get("alphalattice.command", "")).split()[:2]
+        steps.append(
+            {
+                "command": " ".join(word for word in verb if token(word)),
+                "outcome": token(answer.get("outcome")),
+                "state": token(_state(answer)),
+                "failure_code": code_reader(raw.partition(":")[0])
+                if isinstance(raw, str)
+                else None,
+                "offers": sorted(
+                    n for n in attributes.get("alphalattice.offers") or [] if token(n)
+                )[:6],
+            }
+        )
+    reached = dict.fromkeys(
+        value
+        for step in steps
+        for value in (step["outcome"], step["state"], step["failure_code"])
+        if value
+    )
+    return {
+        "answers": len(steps),
+        "mistake_answers": mutated,
+        "reached": list(reached)[:24],
+        "last": steps[-_TAIL:],
+    }
+
+
 def data_decision_findings(
     feed: dict[str, Any], projection: dict[str, Any]
 ) -> list[dict[str, str]]:
