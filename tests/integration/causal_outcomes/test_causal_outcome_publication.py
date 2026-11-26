@@ -498,7 +498,6 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
     )
     for name in NATIVE_THREAD_VARIABLES:
         monkeypatch.setenv(name, "4")
-    parent_apis = {api for api, _threads in numerical_thread_counts()}
     grant = ResourceLease("causal-derivation", ResourceAmounts(cpu=2, workers=2))
     with (
         use_resource_lease(grant),
@@ -512,17 +511,16 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
             name="causal-derivation",
         ) as pool,
     ):
-        counts = dict(pool.submit(numerical_thread_counts).result())
-        assert parent_apis <= counts.keys()
-        assert all(threads == 1 for threads in counts.values())
-        if not parent_apis:
-            record_property("native_thread_probe", "no controllable BLAS or OpenMP library")
-            assert all(
-                pool.submit(os.getenv, name).result() == "1" for name in NATIVE_THREAD_VARIABLES
-            )
+        variables = {
+            name: pool.submit(os.getenv, name).result() for name in NATIVE_THREAD_VARIABLES
+        }
+        assert set(variables.values()) == {"1"}, variables
         there = pool.submit(
             _derive_in_worker, (listing.listing_id, listing.symbol, tuple(bars), actions)
         ).result()
+        counts = pool.submit(numerical_thread_counts).result()
+        record_property("native_thread_probe", {"variables": variables, "loaded": counts})
+        assert all(threads == 1 for _api, threads in counts), counts
     assert there.listing_id == here.listing_id
     assert there.source_row_bindings == here.source_row_bindings
     assert set(there.tables) == set(here.tables)
