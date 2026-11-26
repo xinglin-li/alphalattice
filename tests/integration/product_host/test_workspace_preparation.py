@@ -60,7 +60,9 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
     # the Host composed from it keeps the input here, as it would on another machine.
     with LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT):
         bundle = read_factor_bundle(root, manifest.experiment_inputs[0].binding_hash)
-    assert bundle.database_snapshot_hash is not None
+    # It binds the catalog selection it read, never a copy of the database (a version 3 binding).
+    assert bundle.binding_version == 3 and bundle.market_selection is not None
+    assert bundle.database_snapshot_hash is None
     with WorkspaceApplicationSession.acquire(root) as session:
         app = WorkspacePreparationApplication(session, clock=lambda: OBSERVED_AT)
         assert app.readback() == view

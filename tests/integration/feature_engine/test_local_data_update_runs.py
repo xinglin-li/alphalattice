@@ -52,7 +52,11 @@ from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,
 )
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    copy_workspace,
+    restore_seed,
+    session_workspace,
+)
 from tests.workspace_maintenance.data_update_support import (
     _activate,
     _active_panel_manifest,
@@ -1121,6 +1125,7 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
 
     day_one, day_two_clock = NOW, NOW + timedelta(days=1)
     source, metadata = standing_quarantine_seed
+    restore_seed(source)  # its published market rows live in the machine it was built on
     workspace, boot = _quarantine_review_workspace(
         source, tmp_path, monkeypatch, anomaly="level_shift"
     )

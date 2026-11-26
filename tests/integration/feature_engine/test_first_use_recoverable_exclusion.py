@@ -125,10 +125,18 @@ def test_first_use_continues_after_recoverable_sector_exclusion(tmp_path: Path, 
         assert selection[0] == bundle.market_catalog_snapshot
         listing = child.listings[0].listing_id
         assert bound.raw_bars(listing) == market.raw_bars(listing) != ()
-        # A sealed Parquet body or manifest document is stored once, the binding's.
+        # A sealed Parquet body or manifest document is stored once, the binding's. The Panel's
+        # closure is not among them: the workspace keeps it on its log, never as files, and the
+        # binding's publisher writes the snapshot's closure into the binding alone.
         kept = factor_input_paths(tmp_path, bundle.binding_hash)[0]
-        sealed = [n for n, _ in bundle.files if re.search(r"(\.parquet|/[0-9a-f]{64}\.json)$", n)]
+        sealed = [
+            n
+            for n, _ in bundle.files
+            if re.search(r"(\.parquet|/[0-9a-f]{64}\.json)$", n)
+            and not n.startswith("artifacts/feature-panel/closure/")
+        ]
         assert sealed and all((tmp_path / name).samefile(kept / name) for name in sealed)
+        assert not (tmp_path / "artifacts/feature-panel/closure").exists()
         # One Panel is composed for the counterexample: the first pass
         # stops on the recoverable sector
         # exclusion over the parent, the baseline qualification applies from the rows it

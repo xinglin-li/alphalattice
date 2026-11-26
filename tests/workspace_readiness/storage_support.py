@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.market_data_ops.storage import market_snapshots
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     record_delta,
@@ -38,6 +39,9 @@ def future_sample(
     published bar stands after the workspace rows are removed.
     """
     tables = dict.fromkeys(("raw_daily_bar_current", table))
+    # a workspace connection reads each table through its overlay view; a writer writes its
+    # physical table, as the market data update does (`market_snapshots.pending_table`)
+    written = {name: market_snapshots.pending_table(market.path, name) for name in tables}
     now = datetime.now(UTC)
     with gate.hold(), market.writing(), market.database.transaction() as conn:
         for name in tables:
@@ -48,7 +52,7 @@ def future_sample(
                 [session, now.replace(tzinfo=None), listing_id],
             )
             record_delta(conn, "bars", "FROM later_sample", "session_date", now)
-            conn.execute(f"INSERT INTO {name} SELECT * FROM later_sample")
+            conn.execute(f"INSERT INTO {written[name]} SELECT * FROM later_sample")
             conn.execute("DROP TABLE later_sample")
     try:
         yield
@@ -56,7 +60,7 @@ def future_sample(
         with gate.hold(), market.database.connect(read_only=False) as conn:
             for name in tables:
                 conn.execute(
-                    f"DELETE FROM {name} WHERE session_date = ? AND listing_id = ?",
+                    f"DELETE FROM {written[name]} WHERE session_date = ? AND listing_id = ?",
                     [session, listing_id],
                 )
 

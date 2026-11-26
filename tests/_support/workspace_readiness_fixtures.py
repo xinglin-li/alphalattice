@@ -13,7 +13,11 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import b
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
-from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs
+from alphalattice.foundation.data_layer.history import (
+    carry_arrays,
+    carry_research_inputs,
+    data_root,
+)
 from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
@@ -27,6 +31,7 @@ from tests.researcher_methodology_surface.real_workspace import (
     history_start,
     publish_causal_outcomes,
 )
+from tests.researcher_methodology_surface.session_workspace import carry_market
 
 
 @pytest.fixture(scope="session")
@@ -145,6 +150,7 @@ def fresh_prepared(tmp_path_factory):
     carry_tasks(root, root)
     carry_arrays(root, root)  # and its lanes
     carry_research_inputs(root, root)  # and its bound inputs
+    carry_market(root, data_root())  # and the market rows its selection named on this root
     return root, task_id, view
 
 
