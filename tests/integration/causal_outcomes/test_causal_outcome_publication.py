@@ -17,6 +17,7 @@ never touched.
 from __future__ import annotations
 
 import multiprocessing
+import os
 import sys
 import threading
 from concurrent.futures import ProcessPoolExecutor
@@ -408,10 +409,11 @@ def test_a_superseded_panel_with_an_index_on_disk_is_refused_before_any_read(
 
 
 def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
-    tmp_path: Path, outcome_host
+    tmp_path: Path, outcome_host, monkeypatch, record_property
 ) -> None:
     """Parallel derivation publishes the identical snapshot and bytes."""
 
+    from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
     from alphalattice.foundation.causal_outcomes.execution import publication as owner
     from alphalattice.foundation.causal_outcomes.execution.compile import (
         ListingRowDerivation,
@@ -421,6 +423,13 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
     from alphalattice.foundation.causal_outcomes.execution.methods import (
         build_one_session_recipe,
         resolve_schedule_points,
+    )
+    from alphalattice.kernel.execution import execution_port
+    from alphalattice.kernel.resources import (
+        NATIVE_THREAD_VARIABLES,
+        ResourceAmounts,
+        ResourceLease,
+        use_resource_lease,
     )
 
     serial_workspace = build_real_risk_workspace(tmp_path / "serial")
@@ -437,8 +446,13 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
         ).publish_daily(panel_manifest_ref=workspace.panel_manifest_ref, completed_at=OBSERVED_AT)
 
     serial = publish(serial_workspace, workers=1)
-    with patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1):
+    with (
+        patch.object(owner, "PARALLEL_DERIVATION_ROW_THRESHOLD", 1),
+        patch.object(owner, "ProcessPoolExecutor", wraps=ProcessPoolExecutor) as executor,
+    ):
         parallel = publish(parallel_workspace, workers=2)
+    context = executor.call_args.kwargs.get("mp_context")
+    assert context is not None and context.get_start_method() == "spawn"
     assert serial.receipt.action == parallel.receipt.action == "PUBLISHED"
     assert parallel.manifest.snapshot_hash == serial.manifest.snapshot_hash
     assert parallel.manifest == serial.manifest
@@ -482,9 +496,30 @@ def test_parallel_derivation_publishes_the_identical_snapshot_and_bytes(
     here = derivation.derive(
         listing_id=listing.listing_id, symbol=listing.symbol, bars=bars, actions=actions
     )
-    with ProcessPoolExecutor(
-        max_workers=1, initializer=_initialize_derivation_worker, initargs=(derivation,)
-    ) as pool:
+    for name in NATIVE_THREAD_VARIABLES:
+        monkeypatch.setenv(name, "4")
+    parent_apis = {api for api, _threads in numerical_thread_counts()}
+    grant = ResourceLease("causal-derivation", ResourceAmounts(cpu=2, workers=2))
+    with (
+        use_resource_lease(grant),
+        execution_port().register_pool(
+            ProcessPoolExecutor(
+                max_workers=1,
+                mp_context=multiprocessing.get_context("spawn"),
+                initializer=_initialize_derivation_worker,
+                initargs=(derivation,),
+            ),
+            name="causal-derivation",
+        ) as pool,
+    ):
+        counts = dict(pool.submit(numerical_thread_counts).result())
+        assert parent_apis <= counts.keys()
+        assert all(threads == 1 for threads in counts.values())
+        if not parent_apis:
+            record_property("native_thread_probe", "no controllable BLAS or OpenMP library")
+            assert all(
+                pool.submit(os.getenv, name).result() == "1" for name in NATIVE_THREAD_VARIABLES
+            )
         there = pool.submit(
             _derive_in_worker, (listing.listing_id, listing.symbol, tuple(bars), actions)
         ).result()

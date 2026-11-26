@@ -69,6 +69,7 @@ from alphalattice.kernel.execution import (
 )
 from alphalattice.kernel.resources import (
     ResourceLease,
+    bound_native_threads,
     cpu_width,
     current_resource_lease,
     use_resource_lease,
@@ -98,7 +99,7 @@ KEPT_WORKER_IDLE_SECONDS = 180.0
 An execution parameter: an idle Host keeps no workers the person would see for its whole life."""
 
 _WORKERS: dict[int, ProcessPoolExecutor] = {}
-"""The kept workers by position; 0 is the Task's."""
+"""Kept workers by position. The ordinary call owns 0 and spread calls own 1 onward."""
 _TASK_WORKERS: dict[ResourceLease, dict[int, ProcessPoolExecutor]] = {}
 """Workers started ahead for a Task, owned by its exact grant until it ends."""
 _WORKER_LOCK = threading.Lock()
@@ -243,11 +244,11 @@ class ChildCalls:
         """
         busy = {item.worker for item in self._pending}
         worker = next(
-            (index for index in range(self._workers) if index not in busy),
-            self._pending[0].worker if self._pending else 0,
+            (place for place in range(1, self._workers + 1) if place not in busy),
+            self._pending[0].worker if self._pending else 1,
         )
         if shared:
-            pool = _worker(worker)
+            pool = _worker(worker, threads=1)
             sent: dict[str, Any] = {"__call_set__": self._folder.name}
             for name, (key, value) in shared.items():
                 carried = self._shipped.get((worker, key)) is not pool
@@ -370,7 +371,7 @@ def _submitted(
     pool = None
     ended = hand_off(opens)
     try:
-        pool = _worker(worker)
+        pool = _worker(worker, threads=threads)
         future = pool.submit(
             _call,
             target,
@@ -583,8 +584,8 @@ def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Ca
     def start() -> None:
         warm = (modules, process_config().get(DATA_ROOT_ENV), worker_resource_lease(1))
         try:
-            for worker in range(worker_width(workers)):
-                _worker(worker, warm=warm).submit(os.getpid)
+            for worker in range(1, worker_width(workers) + 1):
+                _worker(worker, threads=1, warm=warm).submit(os.getpid)
         except (OSError, MemoryError) as error:
             raise ChildStartFailed(error) from error
 
@@ -601,7 +602,9 @@ def warm_child_workers(workers: int, *, modules: tuple[str, ...]) -> Iterator[Ca
 type _WarmImports = tuple[tuple[str, ...], str | None, ResourceLease | None]
 
 
-def _worker(worker: int, *, warm: _WarmImports | None = None) -> ProcessPoolExecutor:
+def _worker(
+    worker: int, *, threads: int | None, warm: _WarmImports | None = None
+) -> ProcessPoolExecutor:
     with _WORKER_LOCK:
         workers = _kept_workers()
         kept = workers.get(worker)
@@ -613,7 +616,7 @@ def _worker(worker: int, *, warm: _WarmImports | None = None) -> ProcessPoolExec
                     max_workers=worker_width(1),
                     mp_context=context,
                     initializer=_worker_started,
-                    initargs=(worker, warm, bell),
+                    initargs=(cpu_width(threads), warm, bell),
                 ),
                 name="task-child",
             )
@@ -636,19 +639,10 @@ def _retire_worker(worker: int, pool: ProcessPoolExecutor, *, wait_for_exit: boo
         pool.shutdown(wait=False, cancel_futures=False)
 
 
-ONE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
-"""The numerical libraries' thread variables, each read once, when its library loads."""
-
-
-def _worker_started(worker: int, warm: _WarmImports | None, bell: Bell) -> None:
+def _worker_started(threads: int, warm: _WarmImports | None, bell: Bell) -> None:
     global _BELL
     _BELL = bell
-    # A spread worker runs every call on one thread (`threads=1`): its libraries are told so
-    # before they load, and reserve one thread's buffers rather than one per processor, about
-    # 1.5 GB of commit a worker. The Task's own worker keeps the default its calls run
-    # under (`threads=None`), on which a Risk number can depend (LAWS PA3).
-    if worker > 0:
-        declare(Change("task-worker-start", dict.fromkeys(ONE_THREAD_VARIABLES, "1")), native=True)
+    bound_native_threads(threads)
     threading.Thread(target=child_process.watch_parent, name="parent-watch", daemon=True).start()
     # The worker's DuckDB driver, installed in the storage port before any call opens a file.
     from alphalattice.control.workspace_runtime import reader_threads  # lazy: the worker's own

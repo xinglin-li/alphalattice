@@ -19,6 +19,27 @@ from alphalattice.kernel.config import current as process_config
 
 def serve(arguments: list[str]) -> int:
     """Start the Local Web Host with its declared retrieval environment."""
+    entry = argparse.ArgumentParser(add_help=False)
+    entry.add_argument("--workspace", type=Path, required=True)
+    entry.add_argument("--new-research", action="store_true")
+    entry.add_argument("--detach", action="store_true")
+    entry.add_argument("--stop-on-stdin", action="store_true")
+    selected, _rest = entry.parse_known_args(arguments)
+
+    from .web_launcher import (  # lazy: only serve prepares and launches a Host
+        attached_child,
+        detached_refusal,
+        prepare_native_threads,
+    )
+    from .web_launcher import main as start  # lazy: only serve starts a Host
+
+    if (
+        selected.detach
+        and (refusal := detached_refusal(selected.workspace, stop_on_stdin=selected.stop_on_stdin))
+        is not None
+    ):
+        return refusal
+    prepare_native_threads(selected.workspace)
     from alphalattice.control.product_host.composition.research_workspace import (
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,
@@ -31,13 +52,7 @@ def serve(arguments: list[str]) -> int:
     )
 
     from .first_use_road import serve_road
-    from .web_launcher import attached_child  # lazy: only serve launches a Host
-    from .web_launcher import main as start  # lazy: only serve starts a Host
 
-    entry = argparse.ArgumentParser(add_help=False)
-    entry.add_argument("--workspace", type=Path, required=True)
-    entry.add_argument("--new-research", action="store_true")
-    selected, _rest = entry.parse_known_args(arguments)
     # Before anything starts: the project's completed first use in another workspace is its
     # daily road, unless the person said yes to separate new research.
     if not selected.new_research and (road := serve_road(selected.workspace)) is not None:
@@ -75,9 +90,12 @@ def serve(arguments: list[str]) -> int:
             )
             return 2
         # Detach before a venv trampoline adds its own Job; that Job can mask the caller's.
-        if "--detach" in arguments:
+        if selected.detach:
             return start(
-                arguments, host_interpreter=interpreter, new_research=selected.new_research
+                arguments,
+                host_interpreter=interpreter,
+                new_research=selected.new_research,
+                native_threads_prepared=True,
             )
         # Inherit cwd/stdin/env. The workspace and input file arguments retain
         # their caller-relative meaning; no source is loaded from a sibling tree.
@@ -100,9 +118,9 @@ def serve(arguments: list[str]) -> int:
             env=environment,
         )
     return (
-        start(arguments, new_research=selected.new_research)
-        if "--detach" in arguments
-        else start(arguments, own_process_tree=True)
+        start(arguments, new_research=selected.new_research, native_threads_prepared=True)
+        if selected.detach
+        else start(arguments, own_process_tree=True, native_threads_prepared=True)
     )
 
 

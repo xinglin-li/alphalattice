@@ -27,7 +27,6 @@ from uuid import UUID
 from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     agent_session,
@@ -1165,6 +1164,10 @@ def usage_reading_answer(workspace: Path) -> dict[str, object]:
 
 def set_usage_reading(workspace: Path, *, enabled: bool) -> dict[str, object]:
     """Atomically write a person's setting, then read it back."""
+    from alphalattice.control.workspace_runtime.content_store import (  # lazy: usage write
+        replace_shared_file,
+    )
+
     path = workspace / USAGE_CONTROL_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")

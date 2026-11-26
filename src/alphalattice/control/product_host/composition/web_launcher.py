@@ -49,6 +49,7 @@ from alphalattice.interface.local_application.cli_contract import (
     worded,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code
+from alphalattice.interface.local_application.thin_cli import connection_path
 from alphalattice.interface.local_application.web import (
     DEFAULT_IDLE_TIMEOUT_SECONDS,
     LAUNCH_KEY_VARIABLE,
@@ -56,6 +57,7 @@ from alphalattice.interface.local_application.web import (
 )
 from alphalattice.kernel.config import consume_secret
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.resources import bound_native_threads
 
 from .process_job import ChildJob
 from .workspace_folder import RESEARCH_WORKSPACE_MANIFEST_NAME, holds_foreign_files
@@ -257,11 +259,9 @@ def _spawn_detached(
 
 def _names_a_host(workspace: Path) -> bool:
     """Whether a Host left its connection here: whether that Host serves is the launch's to read."""
-    from alphalattice.interface.local_application import client  # lazy: only a refusal's path.
-
     try:
-        return client.LocalResearchConnection.path(workspace).exists()
-    except client.LocalResearchClientError:
+        return connection_path(workspace).exists()
+    except ValueError:
         return True  # a record that leaves the workspace is refused by name at that read
 
 
@@ -290,6 +290,18 @@ def _workspace_refusal(workspace: Path) -> int | None:
     return None
 
 
+def detached_refusal(workspace: Path, *, stop_on_stdin: bool) -> int | None:
+    """Answer a detached launch refusal before reading the workspace's CPU policy."""
+    if stop_on_stdin:
+        return _refusal(
+            "local_web.detach_with_stop_on_stdin",
+            "A detached Host has no standard input to stop on; `alphalattice host stop` stops "
+            "it. Drop --stop-on-stdin, or --detach for an attached Host.",
+            "DROP_ONE_OF_DETACH_AND_STOP_ON_STDIN",
+        )
+    return _workspace_refusal(workspace)
+
+
 def _detach(
     arguments: argparse.Namespace, host_interpreter: Path | None = None, new_research: bool = False
 ) -> int:
@@ -301,15 +313,6 @@ def _detach(
     shell: `alphalattice host stop` stops the Host. The log sits in the temporary directory,
     since a new workspace must be empty until the Host initializes it.
     """
-    if arguments.stop_on_stdin:
-        return _refusal(
-            "local_web.detach_with_stop_on_stdin",
-            "A detached Host has no standard input to stop on; `alphalattice host stop` stops "
-            "it. Drop --stop-on-stdin, or --detach for an attached Host.",
-            "DROP_ONE_OF_DETACH_AND_STOP_ON_STDIN",
-        )
-    if (workspace_refusal := _workspace_refusal(arguments.workspace)) is not None:
-        return workspace_refusal
     descriptor, name = tempfile.mkstemp(prefix="alphalattice-host-", suffix=".log")
     os.close(descriptor)
     log_path, key = Path(name), secrets.token_urlsafe(32)
@@ -534,12 +537,30 @@ def _failed_start(
     )
 
 
+def prepare_native_threads(workspace: Path) -> None:
+    """Resolve the workspace's startup CPU budget before loading runtime owners."""
+    from alphalattice.control.observation_runtime.telemetry.process_metrics import (  # lazy: CPU
+        current_allowed_logical_processors,
+    )
+    from alphalattice.evidence.alternative_evidence.runtime.execution import (  # lazy: startup
+        CpuBudgetStore,
+        safe_intra_op_threads,
+    )
+
+    allowed = len(current_allowed_logical_processors()) or 1
+    budget = CpuBudgetStore(workspace / "runtime").read().cpu_budget
+    bound_native_threads(
+        safe_intra_op_threads(allowed) if budget == "auto" else min(allowed, budget)
+    )
+
+
 def main(
     argv: list[str] | None = None,
     *,
     host_interpreter: Path | None = None,
     new_research: bool = False,
     own_process_tree: bool = False,
+    native_threads_prepared: bool = False,
 ) -> int:
     """Run the declared command and return its exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -564,6 +585,18 @@ def main(
         "once it serves; `alphalattice host stop` stops it.",
     )
     arguments = parser.parse_args(argv)
+    if not native_threads_prepared:
+        if (
+            arguments.detach
+            and (
+                refusal := detached_refusal(
+                    arguments.workspace, stop_on_stdin=arguments.stop_on_stdin
+                )
+            )
+            is not None
+        ):
+            return refusal
+        prepare_native_threads(arguments.workspace)
     if arguments.detach:
         return _detach(arguments, host_interpreter, new_research)
     if own_process_tree:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
@@ -487,6 +488,7 @@ class CausalExecutionOutcomePublisher:
                     pool = execution_port().register_pool(
                         ProcessPoolExecutor(
                             max_workers=workers,
+                            mp_context=multiprocessing.get_context("spawn"),
                             initializer=_initialize_derivation_worker,
                             initargs=(derivation,),
                         ),

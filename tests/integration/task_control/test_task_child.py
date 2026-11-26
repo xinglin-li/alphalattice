@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import pickle
 import subprocess
 import sys
 import threading
@@ -20,7 +21,6 @@ import pytest
 from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
-    ONE_THREAD_VARIABLES,
     ChildInterrupted,
     ChildRefused,
     ChildStartFailed,
@@ -36,7 +36,12 @@ from alphalattice.kernel.execution import (
     interruptible,
     stop_reason,
 )
-from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
+from alphalattice.kernel.resources import (
+    NATIVE_THREAD_VARIABLES,
+    ResourceAmounts,
+    ResourceLease,
+    use_resource_lease,
+)
 
 HERE = __spec__.name if __spec__ else __name__
 
@@ -278,7 +283,7 @@ def doubled(*, value: int, cancelled) -> dict[str, object]:  # type: ignore[no-u
 
 
 def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-untyped-def]
-    return {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
+    return {name: os.environ.get(name) for name in NATIVE_THREAD_VARIABLES}
 
 
 def numerical_product(*, cancelled) -> dict[str, object]:  # type: ignore[no-untyped-def]
@@ -640,16 +645,17 @@ threadpoolctl.ThreadpoolController = original
 def test_a_spread_worker_loads_its_numerical_libraries_on_one_thread(monkeypatch) -> None:
     """A spread worker loads its numerical libraries on one thread."""
 
-    for name in ONE_THREAD_VARIABLES:
+    for name in NATIVE_THREAD_VARIABLES:
         monkeypatch.setenv(name, "2")
-    parent = {name: os.environ.get(name) for name in ONE_THREAD_VARIABLES}
+    parent = {name: os.environ.get(name) for name in NATIVE_THREAD_VARIABLES}
     assert run_in_child(f"{HERE}:thread_variables", {}) == parent
-    with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
-        for _ in range(2):
-            calls.make({})
-        answers = [calls.answer() for _ in range(2)]
-    spread = [a for a in answers if a != parent]
-    assert spread and all(set(a.values()) == {"1"} for a in spread)
+    grant = ResourceLease("feature-spread", ResourceAmounts(cpu=2, workers=2))
+    with use_resource_lease(grant), child.warm_child_workers(2, modules=("numpy",)) as warm:
+        warm()
+        with child_calls(f"{HERE}:thread_variables", workers=2) as calls:
+            for _ in range(2):
+                calls.make({})
+            assert all(set(calls.answer().values()) == {"1"} for _ in range(2))
 
 
 def test_spread_numerical_calls_hold_one_thread_and_leave_normal_calls_unchanged() -> None:
@@ -724,7 +730,9 @@ def test_a_later_start_refusal_cancels_an_already_running_child(monkeypatch, tmp
     assert time.monotonic() - refused_at < 3
     assert stopped.read_text(encoding="utf-8") == "cancelled"
     # The first worker is intentionally kept idle; its next answer proves no owned call remains.
-    assert run_in_child(f"{HERE}:doubled", {"value": 21})["pid"] == worker
+    with child_calls(f"{HERE}:doubled", workers=2) as follow_up:
+        follow_up.make({"value": 21})
+        assert follow_up.answer()["pid"] == worker
     with child_calls(f"{HERE}:doubled", workers=2) as calls:
         calls.make({"value": 21})
         calls.make({"value": 22})
@@ -812,14 +820,16 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path,
             self.joined = False
             pools.append(self)
 
-        def submit(self, call, *_):
+        def submit(self, call, *args):
             future = Future()
             if call is child.os.getpid:
                 self.started = True
                 return future  # the start can still be in flight when the Task ends
             if self.broken:
                 raise child.BrokenProcessPool
-            future.set_result({"status": "OK", "result": self})
+            # Spread replies travel through the call's answer file.
+            Path(args[4]).write_bytes(pickle.dumps(pools.index(self)))
+            future.set_result({"status": "OK"})
             return future
 
         def terminate(self):
@@ -840,16 +850,18 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path,
             if case == "cancelled-during-start":
                 cancel_execution(execution)
                 assert stop_reason() == CANCELLED
-            elif case == "worker-dies":
-                pools[0].broken = True
-                with pytest.raises(
-                    child.ChildInterrupted, match=r"^task_control\.child_process_ended$"
-                ):
-                    child.run_in_child("fixture:work", {})
-                assert child.run_in_child("fixture:work", {}) is pools[3]
-            elif case == "used":
-                assert child.run_in_child("fixture:work", {}) is pools[0]
-                assert len(pools) == 3
+            elif case in {"worker-dies", "used"}:
+                with child_calls("fixture:work", workers=4) as calls:
+                    if case == "worker-dies":
+                        pools[0].broken = True
+                        with pytest.raises(
+                            child.ChildInterrupted, match=r"^task_control\.child_process_ended$"
+                        ):
+                            calls.make({})
+                    calls.make({})
+                    replacement = case == "worker-dies"
+                    assert calls.answer() == (3 if replacement else 0)
+                    assert len(pools) == (4 if replacement else 3)
         assert all(pool.joined and not pool._processes for pool in pools)
         assert all(pool.stopped for pool in pools[1:])
 

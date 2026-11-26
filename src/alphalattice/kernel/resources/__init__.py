@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from threading import Lock
 from uuid import UUID
 
+from alphalattice.kernel.config import Change, declare_native_startup
 from alphalattice.kernel.config import current as process_config
 
 from .caches import CacheBound, CacheRow, cache_bound, cache_register
@@ -21,12 +22,14 @@ __all__ = [
     "ResourceLeases",
     "ResourceRefused",
     "ResourcesPort",
+    "bound_native_threads",
     "cache_bound",
     "cache_register",
     "carry_resource_lease",
     "cpu_width",
     "current_resource_lease",
     "logical_cpu_count",
+    "native_thread_settings",
     "use_resource_lease",
     "worker_resource_lease",
     "worker_width",
@@ -70,6 +73,26 @@ def cpu_width(requested: int | None = None) -> int:
         raise ResourceRefused("resources.capacity_exceeded:cpu")
     ceiling = available or 1
     return max(1, min(requested or ceiling, share or ceiling, ceiling))
+
+
+NATIVE_THREAD_VARIABLES = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+
+
+def native_thread_settings() -> dict[str, str | None]:
+    """Read the operator's limits apart from the process's native defaults."""
+    inherited = process_config().child_environment()
+    return {name: inherited.get(name) for name in NATIVE_THREAD_VARIABLES}
+
+
+def bound_native_threads(requested: int) -> None:
+    """Publish the CPU ceiling before native libraries read their startup environment."""
+    ceiling = cpu_width(requested)
+    widths = {}
+    for name, value in native_thread_settings().items():
+        text = (value or "").strip()
+        width = int(text) if text.isdecimal() else 0
+        widths[name] = str(min(ceiling, width or ceiling))
+    declare_native_startup(Change("native-thread-budget", widths))
 
 
 def worker_resource_lease(threads: int | None) -> ResourceLease | None:

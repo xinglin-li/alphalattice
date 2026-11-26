@@ -1,0 +1,20 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "eda419f1048d4720dd8101e60ec6df525cc350a8b08f2cd5667641b56e265631",
+   "successor": "e842394066927907adbffe398be8dc1e83e2f268976a7940c3ed2f6a47cbae24",
+   "change": "Limit native math threads to the Host and worker CPU budgets",
+   "reason": "The development release replay at this head reads all 185,251 records equal over 11 listings; the change bounds native thread widths and starts the causal pool fresh, with no output changed"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "03d7e4b128cdda5edfc7686fc26dfc26aae257d266ad6b11cfdafc1c20cfeb27",
+   "successor": "d0ad176c3b7f2ac63e097c8013e4ceba1a4be7e5635444a7bb2bec269f2d138d",
+   "change": "Limit native math threads to the Host and worker CPU budgets",
+   "reason": "The development release replay at this head reads all 185,251 records equal over 11 listings; the change bounds native thread widths and starts the causal pool fresh, with no output changed"
+  }
+ ]
+}

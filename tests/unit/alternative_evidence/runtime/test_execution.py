@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -73,13 +74,35 @@ def test_resource_leases_keep_one_budget_and_reclaim_the_exact_holder(monkeypatc
         assert leases.available == request
         return
     if case == "share-four-cores":
-        monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+        from alphalattice.kernel import resources
+        from alphalattice.kernel.config import Config, current, using
+        from alphalattice.kernel.resources import ResourceLease
+
         second = leases.grant("second", request)
         assert first.amounts.cpu + second.amounts.cpu == 4
-        with use_resource_lease(second):
+        with using(Config({})), use_resource_lease(second):
             assert worker_width(4) == cpu_width(4) == 2
             assert worker_width(1) == cpu_width(1) == 1
             read = carry_resource_lease(current_resource_lease)
+        for name in resources.NATIVE_THREAD_VARIABLES:
+            monkeypatch.setenv(name, "9")
+        larger = ResourceLease("later", ResourceAmounts(cpu=8))
+        for inlet, expected, later in (
+            ({}, ("2", "2", "2"), 8),
+            (
+                {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "3", "MKL_NUM_THREADS": "9"},
+                ("1", "2", "2"),
+                3,
+            ),
+        ):
+            with using(Config(inlet)):
+                with use_resource_lease(second):
+                    resources.bound_native_threads(4)
+                actual = tuple(os.environ[name] for name in resources.NATIVE_THREAD_VARIABLES)
+                assert actual == expected
+                assert current().child_environment() == inlet
+                with use_resource_lease(larger):
+                    assert cpu_width() == later
         assert read() is second
         assert current_resource_lease() is None
         with pytest.raises(ResourceRefused, match=r"^resources.capacity_exceeded:cpu$"):

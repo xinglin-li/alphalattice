@@ -246,13 +246,7 @@ def _apply_process(change: Change, *, native: bool) -> Config:
     scope = _scoped.get(None)
     changed = (scope if scope is not None else _start()).apply(change)
     if native:
-        # Some third-party libraries read their own platform environment during import.
-        for name, value in change.values.items():
-            if value is None:
-                with suppress(KeyError):
-                    del os.environ[name]
-            else:
-                os.environ[name] = value
+        _write_native(change)
     if scope is None:
         _startup = changed
     else:
@@ -264,6 +258,23 @@ def declare(change: Change, *, native: bool = False) -> Config:
     """Apply a declared process change without silently rereading the environment."""
     with _startup_lock:
         return _apply_process(change, native=native)
+
+
+def _write_native(change: Change) -> None:
+    """Write the platform environment read by third-party libraries at import."""
+    for name, value in change.values.items():
+        if value is None:
+            with suppress(KeyError):
+                del os.environ[name]
+        else:
+            os.environ[name] = value
+
+
+def declare_native_startup(change: Change) -> None:
+    """Set native library defaults while preserving the captured operator policy."""
+    with _startup_lock:
+        _start()
+        _write_native(change)
 
 
 def consume_secret(name: str) -> Secret | None:

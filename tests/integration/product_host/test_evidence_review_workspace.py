@@ -1279,7 +1279,13 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     detached = []
     monkeypatch.setattr(web_launcher, "main", lambda a, **kw: detached.append(kw) or 0)
     assert run_alphalattice.serve([*args[:-1], "--detach"]) == 0
-    assert detached == [{"host_interpreter": interpreter, "new_research": False}]
+    assert detached == [
+        {
+            "host_interpreter": interpreter,
+            "new_research": False,
+            "native_threads_prepared": True,
+        }
+    ]
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
     # Run the actual module from outside the checkout with that child's source
     # binding: dependency-only environments and hostile sibling paths both work.
@@ -1309,7 +1315,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     monkeypatch.setattr(web_launcher, "main", lambda args, **kw: started.append((args, kw)) or 0)
     empty_args = ["--workspace", str(tmp_path / "empty"), "--no-browser"]
     assert run_alphalattice.serve(empty_args) == 0
-    assert started == [(empty_args, {"own_process_tree": True})]
+    assert started == [(empty_args, {"own_process_tree": True, "native_threads_prepared": True})]
 
 
 def test_workspace_authority_installs_the_existing_runtime_and_no_model_actor(

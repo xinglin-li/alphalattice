@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import multiprocessing.util
+import pickle
 import subprocess
 import sys
 from collections.abc import Callable
@@ -16,6 +17,7 @@ from typing import Any, Literal, overload
 import psutil
 
 from alphalattice.capabilities.domain_contracts.runtime_resources import runtime_json
+from alphalattice.kernel.config import Change, declare
 from alphalattice.kernel.config import current as process_config
 from alphalattice.kernel.execution import (
     ExecutionStopped,
@@ -24,6 +26,7 @@ from alphalattice.kernel.execution import (
     interrupt_on_execution_stop,
     stop_reason,
 )
+from alphalattice.kernel.resources import bound_native_threads, native_thread_settings
 
 DEFAULT_TIMEOUT = child_process.DEFAULT_TIMEOUT
 REAP_TIMEOUT = child_process.REAP_TIMEOUT
@@ -53,8 +56,9 @@ def current_tree(kind: str) -> AbstractContextManager[None]:
 
 def _start_pool_worker(
     kind: str,
-    initialize: Callable[..., None] | None,
+    initialize: Callable[..., None] | bytes | None,
     arguments: tuple[Any, ...],
+    operator_limits: dict[str, str | None],
     release: Connection | None = None,
     host_pid: int | None = None,
 ) -> None:
@@ -73,8 +77,17 @@ def _start_pool_worker(
             args=(None, None, None),
             exitpriority=10,
         )
-    if initialize is not None:
-        initialize(*arguments)
+    declare(Change("worker-operator-thread-settings", operator_limits))
+    callback: Callable[..., None] | None
+    if isinstance(initialize, bytes):
+        # The parent sealed its own initializer and arguments. Delay importing
+        # the causal implementation until this worker has its one-core slice.
+        bound_native_threads(1)
+        callback, arguments = pickle.loads(initialize)
+    else:
+        callback = initialize
+    if callback is not None:
+        callback(*arguments)
 
 
 def worker_host_pid() -> int | None:
@@ -88,7 +101,10 @@ def _own_process_pool(pool: ProcessPoolExecutor, name: str) -> None:
     if kind is None:
         return
     native: Any = pool
-    native._initargs = (kind, native._initializer, native._initargs)
+    initialize, arguments = native._initializer, native._initargs
+    if name == "causal-derivation":
+        initialize, arguments = pickle.dumps((initialize, arguments)), ()
+    native._initargs = (kind, initialize, arguments, native_thread_settings())
     native._initializer = _start_pool_worker
     if sys.platform != "win32":
         child_process.own_pool_trees(pool, psutil, tree_memory(kind))

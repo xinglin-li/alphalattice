@@ -900,19 +900,28 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
     record.write_text("{}", encoding="utf-8")
     assert web_launcher._workspace_refusal(taken) is None
     record.unlink()
-    with monkeypatch.context() as escaping:
-        escaping.setattr(
-            local_client.LocalResearchConnection,
-            "path",
-            lambda _: (_ for _ in ()).throw(local_client.LocalResearchClientError("escapes")),
-        )
-        assert web_launcher._workspace_refusal(taken) is None
     # A folder no Host can serve is named before any launch, with no command that could not work.
+    foreign_budget = taken / "runtime/execution/cpu-budget.json"
+    foreign_budget.parent.mkdir(parents=True, exist_ok=True)
+    foreign_budget.write_text("not a CPU budget", encoding="utf-8")
     assert main(launch, serve=web_launcher.main) == 2
     refused = json.loads(capsys.readouterr().out)
     assert refused["failure_code"] == "research_workspace.nonempty_manifest_absent"
     assert refused["workspaces"] == [str(beside.resolve())]
     assert "terminal_command" not in refused and not spawns.flags
+    if real:
+        from alphalattice.control.product_host.composition import entry
+
+        assert main(launch, serve=entry.serve) == 2
+        assert json.loads(capsys.readouterr().out) == refused
+    foreign_budget.unlink()
+    with monkeypatch.context() as escaping:
+        escaping.setattr(
+            web_launcher,
+            "connection_path",
+            lambda _: (_ for _ in ()).throw(ValueError("escapes")),
+        )
+        assert web_launcher._workspace_refusal(taken) is None
     (taken / "research-workspace.json").write_text("not a manifest", encoding="utf-8")
     assert main(launch, serve=web_launcher.main) == 2
     exited = json.loads(capsys.readouterr().out)
