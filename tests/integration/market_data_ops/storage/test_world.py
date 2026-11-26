@@ -4,6 +4,7 @@ marks alone while unchanged, and a later correction known only from its admissio
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from collections.abc import Callable, Iterator, Sequence
@@ -313,6 +314,109 @@ def test_a_mapping_reverted_after_an_admission_that_took_none_of_it_is_admitted_
     assert states == [[("DELISTED",)], [("ACTIVE",)]]
 
 
+_UPGRADE_PUBLICATION_CASES = {
+    "fresh-composition": 0,
+    "market-file-moved": 1,
+    "catalog-ddl": 1,
+    "new-process": 1,
+    "resumed-sibling": 1,
+    "execution-outcomes-only": 0,
+    "world-table-moved": 1,
+}
+
+
+def _compose_upgraded_market(store, database, tmp_path, focus):
+    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
+
+    root, workspace = tmp_path / "data", store.workspace
+    log = history.held(root)
+    other = tmp_path / "other"
+    sibling_failed = focus == "resumed-sibling"
+
+    def identify(folder):
+        return "w1" if folder == workspace else None if sibling_failed else "w2"
+
+    def run_upgrade():
+        family = market_upgrade_family(identify)
+        return UpgradeRunner(root, log, folders, (family,), lambda *_: {"fixture": "verified"})
+
+    def market_admissions(identity):
+        return log.read(
+            "SELECT count(*) FROM event WHERE type = 'admission' AND subject_id = ?"
+            " AND json_extract(attrs, '$.dataset') = 'market'",
+            (identity,),
+        )[0][0]
+
+    def compose(folder, identity):
+        before = market_admissions(identity)
+        lease = WorkspaceWriterLease.acquire(folder)
+        try:
+            market = MarketDataRepository(folder, universe_reader="workspace")
+            world.publish_pending(market.path, identity)
+            with market.database.read_transaction() as connection:
+                assert market_snapshots.anchored(connection)
+        finally:
+            lease.close()
+        assert market_admissions(identity) - before == _UPGRADE_PUBLICATION_CASES[focus]
+
+    with store.database.transaction() as connection:
+        connection.execute("COMMENT ON TABLE market_profile IS NULL")
+    (workspace / "research-workspace.json").write_text('{"workspace_id":"w1"}', encoding="utf-8")
+    folders = (workspace,)
+    if sibling_failed:
+        other.mkdir()
+        release_workspace_database(database)
+        shutil.copy2(database, other / database.name)
+        (other / "research-workspace.json").write_text('{"workspace_id":"w2"}', encoding="utf-8")
+        folders += (other,)
+        with (
+            world.capture_upgrade_admission(database),
+            pytest.raises(DataError, match="stopped at step"),
+        ):
+            run_upgrade().run()
+        assert market_admissions("w1") == 1
+        assert market_admissions("w2") == 0
+        with store.database.read_transaction() as connection:
+            assert not market_snapshots.anchored(connection)
+        sibling_failed = False
+
+    with world.capture_upgrade_admission(database if len(folders) == 1 else None) as admission:
+        runner = run_upgrade()
+        assert (runner.started is not None) == (len(folders) == 2)
+        assert runner.run()
+        admission.verified = True
+        lake = history.store().lake
+        if focus == "market-file-moved":
+            stamp = database.stat()
+            os.utime(database, ns=(stamp.st_atime_ns, stamp.st_mtime_ns - 2_000_000_000))
+        elif focus == "catalog-ddl":
+            lake.execute("CREATE TABLE lake.results.selection_probe(i INTEGER)").complete()
+        elif focus == "execution-outcomes-only":
+            lake.execute(
+                "INSERT INTO lake.results.execution_outcome VALUES ("
+                " 'result', 'listing', 'SYM', 0, ?, ?, ?, ?, ?, ?, 1, 'OK', 'OK', "
+                " 1, 1, 0, 0, 'entry', 'holding', 'row')",
+                [NOW.date(), NOW] * 3,
+            ).complete()
+        elif focus == "world-table-moved":
+            lake.execute(
+                "INSERT INTO lake.world.superseded VALUES ('unrelated', uuid(), ? , 'probe')",
+                [NOW],
+            ).complete()
+        if focus != "new-process":
+            compose(workspace, "w1")
+            if len(folders) == 2:
+                compose(other, "w2")
+            return
+
+    # Reopening history loses the process-local admission even though the file and catalog hold.
+    history.release_history()
+    history.open_history("w1", workspace.name, workspace, root=root)
+    log = history.held(root)
+    compose(workspace, "w1")
+
+
 @pytest.mark.proves("market_data_ops.world_holds_the_workspace_market_tables")
 @pytest.mark.parametrize(
     "focus",
@@ -329,7 +433,9 @@ def test_a_mapping_reverted_after_an_admission_that_took_none_of_it_is_admitted_
         "absent-file",
         "resent",
         "delta",
+        *_UPGRADE_PUBLICATION_CASES,
     ),
+    ids=lambda focus: focus,
 )
 def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_its_admission(
     workspace: tuple[MarketDataRepository, UniverseManifest, Path],
@@ -340,6 +446,9 @@ def test_a_workspace_open_admits_its_market_tables_once_and_a_correction_from_it
     """A workspace open admits its market tables into world once, equal row for row, and a
     later correction is seen only from its admission."""
     store, manifest, database = workspace
+    if focus in _UPGRADE_PUBLICATION_CASES:
+        _compose_upgraded_market(store, database, tmp_path, focus)
+        return
     if focus == "providers":
         providers = [f"development-alias-{index:02d}-" + "a" * 225 for index in range(17)]
         with store.database.transaction() as connection:

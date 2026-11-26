@@ -99,6 +99,7 @@ from alphalattice.foundation.data_layer.history import (
 )
 from alphalattice.foundation.data_layer.store import preload_grouping
 from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     READ_OPERATIONS,
@@ -866,10 +867,15 @@ class LocalPortfolioWebSession:
 
         def finish() -> None:
             first = self.first_start
-            assert first is not None
+            assert first is not None and first.plan is not None
+            database = self.workspace / WORKSPACE_MARKET_DATA_DATABASE_FILENAME
             try:
-                first.run()
-                self._compose()
+                with world.capture_upgrade_admission(
+                    None if first.plan.recorded else database
+                ) as admission:
+                    first.run()
+                    admission.verified = True
+                    self._compose()
             except Exception as error:  # kept for /api/upgrade; the Host stays restricted
                 first.state, first.failure = "FAILED", first.failure or refusal_reason(error)
 

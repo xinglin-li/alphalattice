@@ -35,7 +35,8 @@ import sqlite3
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
-from dataclasses import asdict
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from importlib import import_module
@@ -59,7 +60,7 @@ from alphalattice.foundation.data_layer.project import (
     lineage,
     require_lineage,
 )
-from alphalattice.foundation.data_layer.store import KNOWN, as_columns, newest, stage
+from alphalattice.foundation.data_layer.store import KNOWN, StorePort, as_columns, newest, stage
 from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
     MarketProfile,
@@ -76,6 +77,7 @@ from alphalattice.foundation.market_data_ops.storage.universe_workspace import (
     UniverseWorkspaceReader,
 )
 from alphalattice.kernel import storage
+from alphalattice.kernel.identity import FileDigestTrust, Stamp
 
 from . import market_snapshots
 
@@ -951,11 +953,131 @@ def admit(database: Path, workspace_id: str) -> dict[str, Any] | None:
     """Publish every market row the workspace in `database` holds, as a 0.2.7 workspace's
     upgrade does (`publish`, whole), read from the file opened read-only, which it leaves as it
     is, journal included; None with no Host history or no market database."""
-    if history.store() is None or not database.is_file():
+    port = history.store()
+    if port is None or not database.is_file():
         return None
     release_workspace_database(database)  # an instance of the file this process keeps open
+    upgrade = _UPGRADE_ADMISSION.get()
+    same_workspace = upgrade is not None and upgrade.database == database
+    source = _selection_source(database) if same_workspace else None
+    versions: dict[str, list[Any]] = {}
+
+    def remember(table: str, rows: Any) -> None:
+        versions.setdefault(table, []).append(rows)
+
     with closing(open_workspace_database(database, read_only=True)) as connection:
-        return publish(database, connection, workspace_id, whole=True, emptying=False)
+        capture = remember if source is not None and _bodies_unselected(connection) else None
+        admitted = publish(
+            database, connection, workspace_id, whole=True, emptying=False, capture_versions=capture
+        )
+    if upgrade is not None and same_workspace:
+        upgrade.selection = None
+        if versions and source is not None and _selection_source(database) == source:
+            admission = _latest_market_admission(port, workspace_id)
+            if admission is not None:
+                upgrade.selection = _LegacySelection(
+                    workspace_id, source, port, _selection_snapshot(port), admission, versions
+                )
+    return admitted
+
+
+def _selection_source(database: Path) -> Stamp | None:
+    _, main = FileDigestTrust.version(database)
+    has_wal, _ = FileDigestTrust.version(Path(f"{database}.wal"))
+    return None if has_wal else main
+
+
+def _selection_snapshot(port: StorePort) -> int:
+    return storage.first(port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()"))[0]
+
+
+def _latest_market_admission(port: StorePort, workspace_id: str) -> int | None:
+    rows = port.log.read(
+        "SELECT seq FROM event WHERE type = 'admission' AND subject_id = ?"
+        " AND json_extract(attrs, '$.dataset') = ? ORDER BY seq DESC LIMIT 1",
+        (workspace_id, DATASET),
+    )
+    return int(rows[0][0]) if rows else None
+
+
+@dataclass(frozen=True)
+class _LegacySelection:
+    """Version IDs from the fresh upgrade's whole admission and its verified file facts."""
+
+    workspace_id: str
+    source: Stamp
+    port: StorePort
+    snapshot: int
+    admission: int
+    versions: dict[str, list[Any]]
+
+    def install(self, database: Path, workspace_id: str) -> bool:
+        """Use the verified admission under the composition's workspace writer lease."""
+        if workspace_id != self.workspace_id or history.store() is not self.port:
+            return False
+        release_workspace_database(database)
+        if _selection_source(database) != self.source:
+            return False
+        # The selected versions and the legacy comparison read the catalog's World schema.
+        with self.port.hold_disjoint_catalog(self.snapshot, "world") as snapshot:
+            if (
+                snapshot is None
+                or _latest_market_admission(self.port, workspace_id) != self.admission
+            ):
+                return False
+            with closing(open_workspace_database(database, read_only=False)) as connection:
+                if not market_snapshots.enabled(connection):
+                    market_snapshots.install(connection)
+                _place_selection(
+                    self.port,
+                    database,
+                    connection,
+                    self.versions,
+                    _journal_head(connection),
+                    moving=True,
+                    snapshot=snapshot,
+                )
+        return True
+
+
+@dataclass
+class UpgradeAdmission:
+    """One workspace's admission, owned by the thread finishing a fresh first start."""
+
+    database: Path | None
+    selection: _LegacySelection | None = None
+    verified: bool = False
+
+
+_UPGRADE_ADMISSION: ContextVar[UpgradeAdmission | None] = ContextVar(
+    "market_upgrade_admission", default=None
+)
+
+
+@contextmanager
+def capture_upgrade_admission(database: Path | None) -> Iterator[UpgradeAdmission]:
+    """Carry one admission to composition in this thread. None disables capture on resume."""
+    upgrade = UpgradeAdmission(database)
+    token = _UPGRADE_ADMISSION.set(upgrade)
+    try:
+        yield upgrade
+    finally:
+        _UPGRADE_ADMISSION.reset(token)
+
+
+def _journal_head(connection: Any) -> int | None:
+    if (
+        storage.first(
+            connection.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE database_name = current_database()"
+                " AND table_name = ?",
+                [JOURNAL],
+            )
+        )
+        is None
+    ):
+        return None
+    return storage.first(connection.execute(f"SELECT max(seq) FROM {JOURNAL}"))[0]
 
 
 def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
@@ -985,6 +1107,11 @@ def publish_pending(database: Path, workspace_id: str) -> dict[str, Any] | None:
             if published(workspace_id):
                 return None
             return publish(database, connection, workspace_id, whole=True, emptying=False)
+    upgrade = _UPGRADE_ADMISSION.get()
+    if moving and upgrade is not None and upgrade.verified and upgrade.database == database:
+        selection, upgrade.selection = upgrade.selection, None
+        if selection is not None and selection.install(database, workspace_id):
+            return None
     with closing(open_workspace_database(database, read_only=False)) as connection:
         if moving and not market_snapshots.enabled(connection):
             market_snapshots.install(connection)
@@ -1125,45 +1252,64 @@ def publish(
     )
     history.flush()
     if (through is not None or moving) and emptying and versions:
-        names = dict(
-            port.log.read(
-                "SELECT definition_id, name FROM definition_lineage WHERE family = 'provider'"
-            )
+        _place_selection(
+            port,
+            database,
+            connection,
+            versions,
+            through,
+            moving=moving,
+            snapshot=_selection_snapshot(port),
         )
-        snapshot = storage.first(
-            port.lake.execute("SELECT max(snapshot_id) FROM lake.snapshots()")
-        )[0]
-        connection.execute("BEGIN TRANSACTION")
-        try:
-            market_snapshots.place_versions(
-                connection, database, versions, names, world_listing, snapshot, port.log.clock()
-            )
-            for table, (kind, date_column) in DELTA.items():
-                physical = market_snapshots.pending_table(database, table)
-                version = "corporate_action" if kind == "actions" else "raw_bar"
-                action = " AND p.action_kind = v.action_key" if kind == "actions" else ""
-                journaled = (
-                    ""
-                    if moving
-                    else f" AND EXISTS (SELECT 1 FROM {JOURNAL} d WHERE d.seq <= ? AND d.kind = ?"
-                    " AND p.listing_id = d.listing_id AND p.provider = d.provider"
-                    f" AND p.{date_column} = d.day)"
-                )
-                connection.execute(
-                    f"DELETE FROM {physical} p USING {market_snapshots.VERSIONS} v"
-                    " WHERE v.world_table = ? AND p.listing_id = v.listing_id"
-                    f" AND p.provider = v.provider AND p.{date_column} = v.day{action}{journaled}",
-                    [version] if moving else [version, through, kind],
-                )
-            if through is not None:
-                connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
-            connection.execute("COMMIT")
-        except BaseException:
-            connection.execute("ROLLBACK")
-            raise
     elif through is not None and emptying:
         connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
     return admitted
+
+
+def _place_selection(
+    port: StorePort,
+    database: Path,
+    connection: Any,
+    versions: Mapping[str, Sequence[Any]],
+    through: int | None,
+    *,
+    moving: bool,
+    snapshot: int,
+) -> None:
+    """Commit the workspace selection, remove only covered bodies and empty its journal."""
+    names = dict(
+        port.log.read(
+            "SELECT definition_id, name FROM definition_lineage WHERE family = 'provider'"
+        )
+    )
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        market_snapshots.place_versions(
+            connection, database, versions, names, world_listing, snapshot, port.log.clock()
+        )
+        for table, (kind, date_column) in DELTA.items():
+            physical = market_snapshots.pending_table(database, table)
+            version = "corporate_action" if kind == "actions" else "raw_bar"
+            action = " AND p.action_kind = v.action_key" if kind == "actions" else ""
+            journaled = (
+                ""
+                if moving
+                else f" AND EXISTS (SELECT 1 FROM {JOURNAL} d WHERE d.seq <= ? AND d.kind = ?"
+                " AND p.listing_id = d.listing_id AND p.provider = d.provider"
+                f" AND p.{date_column} = d.day)"
+            )
+            connection.execute(
+                f"DELETE FROM {physical} p USING {market_snapshots.VERSIONS} v"
+                " WHERE v.world_table = ? AND p.listing_id = v.listing_id"
+                f" AND p.provider = v.provider AND p.{date_column} = v.day{action}{journaled}",
+                [version] if moving else [version, through, kind],
+            )
+        if through is not None:
+            connection.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", [through])
+        connection.execute("COMMIT")
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
 
 
 DELTA: Final = {

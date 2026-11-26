@@ -154,6 +154,7 @@ DERIVED_PARTS: Final = {rule["table"]: rule["part"] for rule in _ADMISSION_RULES
 listing (a feature set's: a build's batch writes whole listings, and a day's append moves one
 month of each), or an as-of date."""
 CHANGES: Final = "__ducklake_metadata_lake.main.ducklake_snapshot_changes"
+_CATALOG_METADATA: Final = "__ducklake_metadata_lake.main"
 """Each snapshot's commit message and info, read in the catalog database DuckLake attaches for
 `lake` under its documented name (METADATA_CATALOG's default, `__ducklake_metadata_<name>`)."""
 KEEP_SNAPSHOTS: Final = timedelta(days=7)
@@ -542,6 +543,56 @@ class StorePort:
                 publish()
             else:
                 self._block.published.append(publish)
+
+    @contextmanager
+    def hold_disjoint_catalog(self, since: int, input_schema: str) -> Iterator[int | None]:
+        """Hold the writer through use of an unchanged schema's catalog inputs."""
+        with self._writer:
+            yield self._disjoint_catalog(since, input_schema)
+
+    def _disjoint_catalog(self, since: int, input_schema: str) -> int | None:
+        """Allow only known insertions outside the input schema as it stood at admission."""
+        try:
+            latest = storage.first(
+                self.lake.execute(
+                    f"SELECT max(snapshot_id) FROM {_CATALOG_METADATA}.ducklake_snapshot"
+                )
+            )[0]
+            if not isinstance(latest, int) or latest < since:
+                return None
+            if latest == since:
+                return latest
+            changes = self.lake.execute(
+                f"SELECT snapshot_id, changes_made FROM {CHANGES}"
+                " WHERE snapshot_id > ? AND snapshot_id <= ? ORDER BY snapshot_id",
+                [since, latest],
+            ).fetchall()
+            tables = self.lake.execute(
+                "WITH boundary(snapshot) AS (VALUES (?))"
+                f" SELECT t.table_id, s.schema_name FROM {_CATALOG_METADATA}.ducklake_table t"
+                f" JOIN {_CATALOG_METADATA}.ducklake_schema s USING (schema_id)"
+                " CROSS JOIN boundary"
+                " WHERE t.begin_snapshot <= snapshot"
+                " AND (t.end_snapshot IS NULL OR t.end_snapshot > snapshot)"
+                " AND s.begin_snapshot <= snapshot"
+                " AND (s.end_snapshot IS NULL OR s.end_snapshot > snapshot)",
+                [since],
+            ).fetchall()
+        except Exception:  # unavailable catalog metadata leaves the ordinary publish due
+            return None
+        if len(changes) != latest - since or not any(
+            schema == input_schema for _, schema in tables
+        ):
+            return None
+        disjoint = {str(table) for table, schema in tables if schema != input_schema}
+        for expected, (snapshot, description) in enumerate(changes, start=since + 1):
+            if snapshot != expected or not isinstance(description, str):
+                return None
+            for change in description.split(","):
+                kind, _, table = change.partition(":")
+                if kind not in {"inserted_into_table", "inlined_insert"} or table not in disjoint:
+                    return None
+        return latest
 
     def _rolled_back(self) -> None:
         """Roll back an open block."""
