@@ -12,6 +12,7 @@ that unit; a previously prepared unit reuses its sealed artifacts.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -22,6 +23,7 @@ from uuid import UUID
 from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.host_stop import HostStopping
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current
@@ -2770,8 +2772,18 @@ def validate_scoped_obligation(
         raise ValueError("alternative_evidence.task_obligation_sources_unadmitted")
 
 
+_WIRE = json.JSONEncoder(separators=(",", ":"), sort_keys=True)
+
+
 def _hash(value: object) -> str:
-    return str(canonical_hash(to_jsonable_python(value)))
+    """A value's identity, hashed once per stage or request for the same payload."""
+    payload = to_jsonable_python(value)
+    wire = _WIRE.encode(payload)
+    return str(
+        stage_digest(
+            ("alternative-evidence-task", wire), payload, canonical_hash, snapshot=lambda _: wire
+        )
+    )
 
 
 def _authority_moved(

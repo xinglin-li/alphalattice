@@ -629,15 +629,18 @@ class TaskControlRunner:
             context = _RunnerContext(
                 registry=self.registry, adapter=adapter, clock=self.clock, pool=pool
             )
+            # The runner's own record transitions between phases share one digest holder: a
+            # record it writes or reads again in this execution is not hashed again.
             try:
-                while self._step(task.task_id, execution.execution_id, context):
-                    pass
+                with stage_digests():
+                    while self._step(task.task_id, execution.execution_id, context):
+                        pass
+                    return self.registry.task(task.task_id)
             except BaseException:
                 pool.drain()
                 raise
             finally:
                 pool.close()
-            return self.registry.task(task.task_id)
         except HostStopping:
             stopped = self.registry.mark_recovery_required(
                 task_id=task.task_id, failure_code="HOST_STOP_REQUESTED", observed_at=self._now()

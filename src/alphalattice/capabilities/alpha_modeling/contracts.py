@@ -11,6 +11,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.kernel.identity import integrity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
@@ -587,9 +588,7 @@ class AlphaEstimatorContent(_Contract):
         """
         if self.ordered_feature_ids != tuple(
             dict.fromkeys(self.ordered_feature_ids)
-        ) or self.content_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"content_hash"})
-        ):
+        ) or self.content_hash != scoped_model_digest(self, "content_hash", digest=canonical_hash):
             raise ValueError("ALPHA_ESTIMATOR_CONTENT_IDENTITY_INVALID")
         return self
 

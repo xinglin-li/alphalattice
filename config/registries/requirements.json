@@ -1408,6 +1408,12 @@
       "layer": "integration",
       "seconds": 2
     },
+    "domain_contracts.a_record_is_sealed_once": {
+      "description": "If a record's validator encoded the payload its creator had just sealed, every sealed record would be encoded twice; a record read back still proves its digest.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
     "domain_contracts.a_wait_ends_by_its_deadline_or_its_stop": {
       "description": "A wait returns its check's first result, or ends by name at its deadline or its stop event, and refuses an unbounded deadline.",
       "owner": "alphalattice.capabilities.domain_contracts",

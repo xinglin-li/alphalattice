@@ -38,6 +38,7 @@ from alphalattice.capabilities.causal_inputs.contracts import (
 )
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
 from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
@@ -460,8 +461,11 @@ class AlphaDevelopmentArtifactStore:
         self._require_hash(content_hash)
         identity = dict(payload)
         identity.pop(identity_field)
-        with span("hash", "alpha_json"):
-            if canonical_hash(identity) != content_hash:
+        with span("hash", "alpha_json"):  # a record sealed in this stage is not hashed again
+            if (
+                scoped_payload_digest(identity, identity_field, content_hash, digest=canonical_hash)
+                != content_hash
+            ):
                 raise ValueError("Alpha JSON identity field is invalid")
         with span("serialize", "alpha_json"):
             serialized = self._json_bytes(payload)
@@ -752,7 +756,11 @@ class AlphaDevelopmentArtifactStore:
                 identity = dict(payload)
                 identity.pop(identity_field)
                 with span("hash", "alpha_json"):
-                    if canonical_hash(identity) != content_hash:
+                    # Proved once in the stage: the record's own validator answers this proof.
+                    proved = scoped_payload_digest(
+                        identity, identity_field, content_hash, digest=canonical_hash
+                    )
+                    if proved != content_hash:
                         raise AlphaDevelopmentArtifactReadbackError(
                             "Alpha JSON payload hash is invalid"
                         )

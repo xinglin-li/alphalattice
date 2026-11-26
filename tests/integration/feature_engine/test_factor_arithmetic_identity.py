@@ -415,6 +415,9 @@ def test_installing_a_second_family_leaves_the_first_bit_identical() -> None:
     # And installation is not invisible: it moves the identity that is about the
     # installed set, and only that one.
     assert a_only.installed_capability_hash != a_plus_b.installed_capability_hash
+    # A worker holds its rebuilt kernels to the payload this identity seals, unhashed.
+    assert canonical_hash(a_only.capability_payload()) == a_only.installed_capability_hash
+    assert a_only.capability_payload() != a_plus_b.capability_payload()
     assert FeatureCatalog.load().binding.catalog_hash == base_catalog_hash
     assert len(a_plus_b.installed_capability_hash) == 64
     # Registration order is not identity: the same kernels compose to one build.

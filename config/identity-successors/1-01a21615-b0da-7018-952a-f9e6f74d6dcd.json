@@ -1,0 +1,307 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "394e12903872f1fc0456eac3a0ff017ed75b807861ed2dfdf426fb4f65d05b45",
+   "successor": "2fa765345ba69f09b4b2abf75c60661331dffefae47e00d2e02ccf674d5932ac",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "655c8a8868eb8dc831fbd3801e334e78583115dc9c4c86b3e4c5233ec5d46b81",
+   "successor": "c58cd1e512c25a781f24f3c336e84f4ae42138b44da58076e0f5e1af588615b0",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "alpha_research.return_unit_capability",
+   "predecessor": "1b1c221c4f1f97b15f3226dce7e3d8e589641045d7ba4bbbac98bb32406424a0",
+   "successor": "600233254dac248bd63a3a0d1d35d91038c70d596b58be827e2907fa6a37bd3e",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "alternative_evidence.acquisition_binding",
+   "predecessor": "15a3740a7beaf7687b14a0f3ecc3a19327d53160039de870609707639a766209",
+   "successor": "782579b19f4d88a6f3d5aa1999e6710cec60de4f08b5e7ad96a73a94e9a3c91e",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "alternative_evidence.analysis_policy",
+   "predecessor": "ba4db670b421174907aa5bd6abcf0abf1e7253ec77623102136d7feacc7ec5f5",
+   "successor": "41beb4c8fcb2b576b10251501c7e413669321346520f97cfc2ba7f504100319a",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "alternative_evidence.decision_policy",
+   "predecessor": "daf4b8ad0ca11406b2d9393dc2949d5e10e3d08e71285340c28bf1bbf7b43bf1",
+   "successor": "dfe40501d6c231503d221042c3c18cb61b8a5d30dcb4c787c6913a91ab6bf12b",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "chief_risk_officer.portfolio_review_policy",
+   "predecessor": "390ff6c7dca1c11d67f6a75a26bc4a2dffd8d5f73e45fb3aee617e8537de4baa",
+   "successor": "9923907fa1b4d6fd6c22fe69809180c64ee4e148e4a722f29191878e8b4cdb2f",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "264a4f79a92b91bd7491b7aaae6a1564358e53c81e0cfda2ddcc35148e6caf92",
+   "successor": "cc4448f373bb9cd7ab30334f3777c12a665eadeca720b59ea230195f6f32ff6c",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.ABSOLUTE_STATE",
+   "predecessor": "c2bba22ea8764777fc3828b53f82d4ccd5cef4e617f5ca58496cbc06ceaac420",
+   "successor": "92902f5e628118bcbf7d4ae8bad65a415401cfb0bfb07101abf2f2e1437b69ab",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.DOWNSIDE_TAIL",
+   "predecessor": "ae7f783132d4a69733570ed002f21641344322446b8b75ce45fd9a409a41770d",
+   "successor": "ae4ab4b42285c9647ff2a66be6569d30f8273f7c43d754a57b1c0b11f2840a5b",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.FACTOR_FORMULA",
+   "predecessor": "1d84ac08629db9786fd859e446fc320f62a471b0ccc64378e0f17c7638e6f4b5",
+   "successor": "69c3e6938f20a7043b71d6ef1fb8ecbf1b43de79703da4af34079cbfb1cb15e9",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.OPEN_INTRADAY",
+   "predecessor": "54c93cfb2c109e57e2f18ac83f30296adaab1369c161b92fa2b5b6904d42fb36",
+   "successor": "d86f8df4b7a20dd84c0eb34d74bd313a23b050913a5f7923df2f142df62d49d1",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.RESIDUAL_REVERSAL",
+   "predecessor": "1d8c96546a619401d8fedcac13ebd194f8cfb05f936092868e1b4cc44cf332ee",
+   "successor": "a1e21d99a471b1dd39d23536478f8963825b3bd933a5f9560e5fc21f27de3ffc",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.SECTOR_LEADER_LAG",
+   "predecessor": "3fdaa913731820488f1c2c1d2a13b419fd1cd4fd5482478a3f69c87865d1892c",
+   "successor": "1131d81e5f9f69712ce91b93f4db2e282044d3845a208304cb5cf528fea9ce4f",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_LIQUIDITY",
+   "predecessor": "e53d78f8f73bbced019c86c90e34b20a4393d72dfdde8cb2f74167ba8a395438",
+   "successor": "b292d9bfc25aee8bbf984d821d2162d98b62d4ded6ac88abf648d8b1d6ef143f",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.SESSION_OBSERVATION",
+   "predecessor": "17b085b2a4752fb69df49ed7d5268e8e0d951237d4dd6eac406f89bd7859619e",
+   "successor": "80cb9e94c1cb2ede517ee30d49f23f03419b6268fcc13188b5ccf783f9647f08",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.factor_value.STATE_INTERACTION",
+   "predecessor": "0a3e481ef2ac8e98c95e2e37876aefebe4bfa961e82af2adb9071654145a5aa3",
+   "successor": "aef5f55e03b6e40a3e77d53ed9ec65b3bae1d1f40017e1c3762d6d29b4942eb3",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "bd8c193d06caaba0ee48bdb71303271bfdf691705c366663c811eb03f3a5d3a5",
+   "successor": "987c1415b2696e65abd78fa7a38e458d22804911d55e13a6b024ca15590714d0",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "26fa3b99de7003195d16f60ecbc0195887eb0791f4f75ed56bcfd3c85c598f28",
+   "successor": "6c507420bdccc5d24f99ee66637454f0c3cb8bc94c82a3078584fe72922e2797",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "49d64c1296b57c4df23b6a65b61b3d03dfeccf35a840ad60eaab4a27b7634f27",
+   "successor": "f29a595c04327c82a3662154d16979e64aef047eff02315e26ab261b90615de0",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "d717e75ee8f419affc353588396e1503d06f8eab706856ac4a1880126df48475",
+   "successor": "daf890ee3478dfbeedf7e5e377df552c8b07268da3e6b69d1cd10802f5aec9da",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "500d23d30e70212fdf105414e144a3fefb5bb5dfad8f7c53b547c56ee7e0deb5",
+   "successor": "b3e8c9c00c5a4384ba3a595cc5c7129f8694161146d5e4cc78918f6315ab27cc",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "3a78a9caa3b6da328d6de6f9c5ef95ae985f76d2ba26785aae02fb5b57ca2fa8",
+   "successor": "1a4d8c15412499a853e94dd8304589ceb1e6b7f5b8c57b7e8a5ff979f1e0d247",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "b8da63e948362d8ccc67381924229185a216b6e48a975e65a45aef4a94382b3b",
+   "successor": "15174fac2369464fd933a51c1bbd319ddba266dac781f76b7290381055eb3d23",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "fe0c9e80e96bfedb38acd63e98b24843db6eca219946d6e9d261a6e895d6123c",
+   "successor": "fa369063f46d45514bfd4e11050553e16f52820fdaaca0a3643832d26755132f",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "0c10776e282990b86d66ac092b585db37a0a4ba1aad84e08061c089d61d67371",
+   "successor": "b446c4179a8ed0b117e9e3d49761d5ad93ae75c81c13bf6b87c55190a30fd367",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "917e40c502b875c82769f5dc8fadbad863325662f2ed8176e80826357183ea79",
+   "successor": "9b07d8dd97629eb053769ed5543a6c4dbfdb57cc19ad3049ed52fc75ea5c04a6",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "b4fb22a62f0e56d56ffc4806d4ca886ea29bb93e1029f1e0e670b68a8c6a29fb",
+   "successor": "fe0151fbf31079e80538a1dc62c7ccc8f386bb9923285fc67f395357187ccc17",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "d0eae5ea025e651f3b99506b274f6935ddb10ba126efd6d536333c7a3cc099ad",
+   "successor": "e8ca0d59542b5954ecbf850a1836f2569b62f214ee73dc528330cf8e784d0faa",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "0c4e30f8a2f51dc38727ff4d3ac1a376a209a020221e48374206429f2da24d7d",
+   "successor": "02dac8d88907fca5e815bbe35c41dfe65a219b9f4755c971df83b5a773b57a30",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "96b2c68407cc33d17a701c438f2abba2c58f7e5a60e42f2ce15026d877d4f2bd",
+   "successor": "a11d128ebb05a2635614b277e6ace0a437dfe343d2b741002c0fbfbf9030742a",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "e842394066927907adbffe398be8dc1e83e2f268976a7940c3ed2f6a47cbae24",
+   "successor": "27aa76c33637a0364e05d35e8150f7d9b10bf33ebc4b0a9da9405732605bb713",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "2dd918902d885908562330936ddd162f07304cfc29a87d084db367dea1d7030d",
+   "successor": "38495f79ac9c41624fba09f596381bf99afc9826d6f550ca13676a1c64cfa555",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "c65f3152833fbedda9c9dab968de1c8b2483a57a55f83e90fbaf5bdd56dff850",
+   "successor": "eefe61fc7a9ebdb84e6243db7b99d74cd665dae03ac839249ac1bcc9de53579e",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "c53e554f7ae3dbb622e44942a96c5318318ad6519e26853d26261e7a84527f2b",
+   "successor": "61d51f9081c005430b84ff3f86aa3008f13b9a05e26765908d486d9aed6b9948",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "d0ad176c3b7f2ac63e097c8013e4ceba1a4be7e5635444a7bb2bec269f2d138d",
+   "successor": "08b57c742df408219c963b532f4e8f46669ab0d02eaa5312adc1d0942a395e16",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "0ce2fd7677bb163d95cf61fb6975865177da5a10b184f8467042c9b55ab4363e",
+   "successor": "ad02c19eedbadea29bd2660d00ed90d44d48b665ef8b936820bf06c741bba36e",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "0ce2fd7677bb163d95cf61fb6975865177da5a10b184f8467042c9b55ab4363e",
+   "successor": "ad02c19eedbadea29bd2660d00ed90d44d48b665ef8b936820bf06c741bba36e",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "54cc0c8ff7267109623cda339236206b00c94b7c6d1bfa44d7516ee77bf538f2",
+   "successor": "896590e03e8e1574f2808244f296f1661d3724b892c061e17e962606b08c1889",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "10b221c5188a0448de827c3f702cf7ca111a70db67eeef50b7449e7923ec0e94",
+   "successor": "85f6c57f82cfe59a10ecab9abf641c0ab9d13c79fd5c96c0781e58353b27c9f9",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "81a9db9494d2a21f8d7d583089c09e8e9b285f0c513ce95081a0aa6f43249b35",
+   "successor": "cf11589d6d7ab2e3392677171bc81486054a175ff65c2bd06612862acb81a73b",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "36fc2627568097c988609709fbd4dade44dd1752b118bd44853d8e9c2899a32e",
+   "successor": "8ab1239d9c734721c6910440961a9e3f508e2a2f7fe4fc6480adaf23ea50d5dd",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "ab4a484d48d9ac2a7bfd051aeda63051573d955502b1f939a0a96d8558f02041",
+   "successor": "73624e303060686339ad9acd703b2eb6f92e01cecaec2e29492b3404c630cfe9",
+   "change": "A Daily run checks each sealed input once instead of many times",
+   "reason": "The development release replay reads all 185,251 records equal, and the only later change is the repeat census's ceilings; the repair restores fresh observation and exact comparisons, with no stored value moved"
+  }
+ ]
+}

@@ -11,7 +11,10 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_scoped_model,
+)
 from alphalattice.control.workspace_runtime.content_store import columns_digest
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
@@ -41,10 +44,7 @@ class _Contract(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        identity = cls.model_construct(**values, content_hash="0" * 64).model_dump(
-            mode="json", exclude={"content_hash"}
-        )
-        return cls(**identity, content_hash=canonical_hash(identity))
+        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

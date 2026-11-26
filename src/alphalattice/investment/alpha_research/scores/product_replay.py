@@ -43,6 +43,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
@@ -824,7 +825,9 @@ def _identity(
     scores: FloatArray,
     live: BoolArray,
 ) -> str:
-    return canonical_hash(
+    # Its writer and its validator name the same content: one hash in the stage.
+    return seal_payload_digest(
+        "projection_hash",
         {
             "kind": "AlphaProductScoreProjection",
             "recipe_hash": recipe_hash,
@@ -839,7 +842,8 @@ def _identity(
             "model_lineage_hashes": list(lineage_hashes),
             "scores": _array_hash(scores, dtype=np.dtype("<f8")),
             "live": _array_hash(live, dtype=np.dtype("?")),
-        }
+        },
+        digest=canonical_hash,
     )
 
 

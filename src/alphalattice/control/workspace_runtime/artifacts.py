@@ -13,6 +13,7 @@ from uuid import uuid4
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import latest
 from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
@@ -36,7 +37,22 @@ def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:
 
 def _matches_binding_digest(payload: Mapping[str, object], field: str, expected: object) -> bool:
     identity = dict(payload)
-    return identity.pop(field, None) == expected and canonical_hash(identity) == expected
+    return (
+        isinstance(expected, str)
+        and identity.pop(field, None) == expected
+        and not _breaks_seal(identity, field, expected)
+    )
+
+
+def _breaks_seal(identity: dict[str, object], field: str, expected: str) -> bool:
+    """Whether `identity` does not hash to `expected`, checked once per stage for its content: its
+    writer's check and its readers' share one hash."""
+    return scoped_payload_digest(identity, field, expected, digest=canonical_hash) != expected
+
+
+ADJUSTED_RETURN_CHAIN = "adjusted-return-chain"
+"""The stage slot of an adjusted-return revision chain's identity: its builder, its publisher and
+its readers hash the same deltas once per stage."""
 
 
 @dataclass(frozen=True)
@@ -286,7 +302,9 @@ class ArtifactResolver:
         """Publish the row-hash-only preflight index without changing panel bytes."""
         self._require_hash(index_hash)
         identity = dict(payload)
-        if identity.pop("index_hash", None) != index_hash or canonical_hash(identity) != index_hash:
+        if identity.pop("index_hash", None) != index_hash or _breaks_seal(
+            identity, "index_hash", index_hash
+        ):
             raise ValueError("feature panel semantic index identity is invalid")
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
@@ -714,7 +732,9 @@ class ArtifactResolver:
         if not isinstance(payload, dict):
             raise ValueError("feature panel semantic index payload is invalid")
         identity = dict(payload)
-        if identity.pop("index_hash", None) != index_hash or canonical_hash(identity) != index_hash:
+        if identity.pop("index_hash", None) != index_hash or _breaks_seal(
+            identity, "index_hash", index_hash
+        ):
             raise ValueError("feature panel semantic index content is invalid")
         return payload
 
@@ -750,12 +770,17 @@ class ArtifactResolver:
                 raise ValueError("adjusted-return revision delta is invalid")
             identity = dict(value)
             semantic_hash = identity.pop("semantic_hash", None)
-            if semantic_hash != canonical_hash(identity):
+            if not isinstance(semantic_hash, str) or _breaks_seal(
+                identity, "semantic_hash", semantic_hash
+            ):
                 raise ValueError("adjusted-return revision delta identity is invalid")
             delta_hashes.append(str(semantic_hash))
         if payload.get("cursor") != len(delta_hashes):
             raise ValueError("adjusted-return revision cursor is invalid")
-        if canonical_hash(delta_hashes) != chain_hash:
+        chained = stage_digest(
+            (ADJUSTED_RETURN_CHAIN, tuple(delta_hashes)), delta_hashes, canonical_hash
+        )
+        if chained != chain_hash:
             raise ValueError("adjusted-return revision chain is invalid")
 
         serialized = json.dumps(
@@ -826,10 +851,15 @@ class ArtifactResolver:
                 raise ValueError("adjusted-return semantic revision delta is invalid")
             identity = dict(value)
             semantic_hash = identity.pop("semantic_hash", None)
-            if semantic_hash != canonical_hash(identity):
+            if not isinstance(semantic_hash, str) or _breaks_seal(
+                identity, "semantic_hash", semantic_hash
+            ):
                 raise ValueError("adjusted-return semantic revision delta identity is invalid")
             delta_hashes.append(str(semantic_hash))
-        if payload.get("chain_hash") != chain_hash or canonical_hash(delta_hashes) != chain_hash:
+        chained = stage_digest(
+            (ADJUSTED_RETURN_CHAIN, tuple(delta_hashes)), delta_hashes, canonical_hash
+        )
+        if payload.get("chain_hash") != chain_hash or chained != chain_hash:
             raise ValueError("adjusted-return semantic revision chain is invalid")
         return payload
 

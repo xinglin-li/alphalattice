@@ -11,7 +11,10 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_scoped_model,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     FloatArray,
     PortfolioCostPolicy,
@@ -56,8 +59,8 @@ class _Sealed(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        payload = cls.model_construct(**values).model_dump(mode="json", exclude={"content_hash"})
-        return cls(**payload, content_hash=canonical_hash(payload))
+        values.pop("content_hash", None)  # a record re-sealed from an earlier one's fields
+        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def identity(self) -> Self:

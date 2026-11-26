@@ -14,6 +14,7 @@ from uuid import UUID
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.control.workspace_runtime.database import (
     WORKSPACE_MARKET_DATA_DATABASE_FILENAME,
@@ -94,6 +95,10 @@ waited for a person or a changed install while every Task behind it waited too. 
 holds a place only when each may run beside others (`overlapping`)."""
 _RUNNING_PLACE_SQL = ", ".join(f"'{lifecycle.value}'" for lifecycle in sorted(_RUNNING_PLACE))
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)  # the log keeps the registry clock in microseconds since
+_VERIFIED_RECORDS: BoundedMemo[str, TaskRecord] = BoundedMemo()
+"""Each stored Task document this process has verified, by its exact text: the same text read
+again, by any request, stage or thread, is the same sealed record, never validated again. The
+held record stays private; each reader gets its own copy, so its mutable payload is its own."""
 
 _QUEUE_HEAD = """
     SELECT task_id, record_json FROM workspace_task WHERE workspace_id = ? AND lifecycle = 'QUEUED'
@@ -451,7 +456,10 @@ class DuckDbTaskControlRegistry:
     @staticmethod
     def _verified_record(stored_id: str, document: str) -> TaskRecord:
         try:
-            record = TaskRecord.model_validate_json(document)
+            held = _VERIFIED_RECORDS.get(document)
+            if held is None:
+                held = _VERIFIED_RECORDS[document] = TaskRecord.model_validate_json(document)
+            record = held.model_copy(deep=True)
             if str(record.task_id) != stored_id:
                 raise ValueError("canonical Task identity differs from its stored row")
         except (TypeError, ValueError) as error:

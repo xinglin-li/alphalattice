@@ -204,6 +204,7 @@ def materialize_listing_rows(
     catalog: FeatureCatalog,
     kernel_registry: FeatureKernelRegistry | None,
     kernel_capability: str,
+    kernel_capability_payload: dict[str, object] | None,
     listing_id: str,
     source: FeatureSourceInputs,
     source_sessions: tuple[date, ...] | None,
@@ -220,7 +221,8 @@ def materialize_listing_rows(
         `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
         -- the rows' identities are derived here as well, by the derivation the closure
         coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
-        capability the build installed, unless the build sends its own.
+        capability the build installed, unless the build sends its own. The build sends the
+        capability's payload with its hash: the rebuilt kernels match it exactly, unhashed.
     """
     projected_bars = feature_source_frame(source, sessions=source_sessions)
     with span("hash", "listing_inputs"):
@@ -230,7 +232,7 @@ def materialize_listing_rows(
         registry = _WORKER_KERNELS.get(kernel_capability)
         if registry is None:
             registry = default_extension_kernel_registry()
-            if registry.installed_capability_hash != kernel_capability:
+            if registry.capability_payload() != kernel_capability_payload:
                 raise ValueError("feature.worker_kernel_capability_mismatch")
             _WORKER_KERNELS[kernel_capability] = registry
     with span("features", "listing_rows"):
@@ -632,6 +634,9 @@ class FeatureFoundationService:
             if kernel_capability == default_extension_kernel_registry().installed_capability_hash
             else self.base.kernel_registry
         )
+        kernel_payload = (
+            self.base.kernel_registry.capability_payload() if shipped_kernels is None else None
+        )
         try:
             self._publish_progress(
                 operation_id=request.request_hash,
@@ -881,6 +886,7 @@ class FeatureFoundationService:
                                 {
                                     "kernel_registry": shipped_kernels,
                                     "kernel_capability": kernel_capability,
+                                    "kernel_capability_payload": kernel_payload,
                                     "listing_id": listing.listing_id,
                                     "source": source,
                                     "source_sessions": self._source_sessions(

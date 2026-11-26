@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
 
 from ..contracts import (
     MAXIMUM_SOURCE_DOCUMENT_BYTES,
@@ -127,13 +128,17 @@ class AcquiredEvidenceDocument(BaseModel):  # type: ignore[misc]
             retrieved_at=self.retrieved_at,
             code="alternative_evidence.source_document",
         )
-        expected = canonical_hash(
+        # Its acquisition sealed this payload in the stage: the seal is answered, not rehashed.
+        expected = scoped_payload_digest(
             {
                 "source_name": self.source_name,
                 "revision": self.revision,
                 "media_type": self.media_type,
                 "content_hex": self.content.hex(),
-            }
+            },
+            "source_content_hash",
+            self.source_content_hash,
+            digest=canonical_hash,
         )
         if self.source_content_hash != expected:
             raise ValueError("alternative_evidence.source_document_hash_invalid")

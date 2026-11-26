@@ -22,6 +22,7 @@ from typing import Any, Literal, Protocol, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 
 _HASH = r"^[0-9a-f]{64}$"
 _HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}$"
@@ -604,9 +605,7 @@ class ResearchExecutionEvidence(_Contract):
             and self.numerical_call_count != 0
         ):
             raise AuthoringError("research_authoring.reuse_claimed_with_numerical_calls")
-        if self.evidence_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"evidence_hash"})
-        ):
+        if self.evidence_hash != scoped_model_digest(self, "evidence_hash", digest=canonical_hash):
             raise AuthoringError("research_authoring.evidence_identity_invalid")
         return self
 

@@ -15,14 +15,17 @@ from typing import Any, cast
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
-_PAYLOAD_WIRE = json.JSONEncoder(separators=(",", ":"), default=str)
+# Keys sorted: a payload read from its sealed file in canonical order is the same snapshot as
+# the record dumped in field order.
+_PAYLOAD_WIRE = json.JSONEncoder(separators=(",", ":"), default=str, sort_keys=True)
 
 
 def scoped_model_digest(record: Any, field: str, *, digest: Callable[[object], str]) -> str:
     """Reuse a contract's digest in this stage only when the complete payload agrees.
 
     The comparison keeps signed zero and nonfinite values distinct from their alternatives.
-    The supplied digest still encodes the original payload in its canonical form on a miss.
+    The supplied digest still encodes the original payload in its canonical form on a miss:
+    a record is hashed once in a stage, and its validator compares the exact payload it holds.
     """
     payload = record.model_dump(mode="json", exclude={field})
     return scoped_payload_digest(payload, field, getattr(record, field), digest=digest)
@@ -31,8 +34,13 @@ def scoped_model_digest(record: Any, field: str, *, digest: Callable[[object], s
 def scoped_payload_digest(
     payload: dict[str, object], field: str, expected: str, *, digest: Callable[[object], str]
 ) -> str:
-    """Reuse the canonical digest only when the complete payload matches in this stage."""
-    return stage_digest((digest, field, expected), payload, digest, snapshot=_PAYLOAD_WIRE.encode)
+    """Reuse the canonical digest only when the complete payload matches in this stage. A payload
+    that proves its seal is held for a later seal of the same payload in the stage."""
+    wire = _PAYLOAD_WIRE.encode(payload)
+    identity = stage_digest((digest, field, expected), payload, digest, snapshot=lambda _: wire)
+    if identity == expected:
+        stage_digest((digest, field, wire), payload, lambda _: identity, snapshot=lambda _: wire)
+    return identity
 
 
 def _sealed_identity(model: Any, values: Mapping[str, object], field: str) -> dict[str, Any]:
@@ -60,11 +68,11 @@ def seal_scoped_model[M](
 def seal_payload_digest(
     field: str, payload: dict[str, object], *, digest: Callable[[object], str]
 ) -> str:
-    """Carry the digest of the exact canonical payload to its validator in this stage."""
-    identity = digest(payload)
-    stage_digest(
-        (digest, field, identity), payload, lambda _: identity, snapshot=_PAYLOAD_WIRE.encode
-    )
+    """Carry the digest of the exact canonical payload to its validator in this stage. The same
+    payload sealed again in the stage answers the identity it sealed, with no second hash."""
+    wire = _PAYLOAD_WIRE.encode(payload)
+    identity = stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
+    stage_digest((digest, field, identity), payload, lambda _: identity, snapshot=lambda _: wire)
     return identity
 
 
@@ -81,10 +89,11 @@ def seal_model[M](model: type[M], values: Mapping[str, object], *, field: str) -
     Returns:
         The sealed record, validated from `values`.
     """
-    constructor: Any = model
-    return cast(
-        M, constructor(**values, **{field: canonical_hash(_sealed_identity(model, values, field))})
+    identity = seal_payload_digest(
+        field, _sealed_identity(model, values, field), digest=canonical_hash
     )
+    constructor: Any = model
+    return cast(M, constructor(**values, **{field: identity}))
 
 
 def seal_model_from_dump[M](model: type[M], values: Mapping[str, object], *, field: str) -> M:
@@ -98,9 +107,10 @@ def seal_model_from_dump[M](model: type[M], values: Mapping[str, object], *, fie
     Returns:
         The sealed record, validated from the JSON its hash covers.
     """
-    identity = _sealed_identity(model, values, field)
+    payload = _sealed_identity(model, values, field)
+    identity = seal_payload_digest(field, payload, digest=canonical_hash)
     constructor: Any = model
-    return cast(M, constructor(**identity, **{field: canonical_hash(identity)}))
+    return cast(M, constructor(**payload, **{field: identity}))
 
 
 def seal_model_validated[M](model: type[M], field: str, /, **values: object) -> M:

@@ -45,6 +45,7 @@ from pydantic import BaseModel
 from alphalattice.capabilities.data.errors import DataError
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current, latest
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 
 from ..analysis.contracts import (
     CONTEXT_COMPLETE_SELECTION_RULES_ID,
@@ -450,12 +451,14 @@ class SealedSelections:
         """
         if not isinstance(generation, AlternativeEvidenceRetrievalGeneration):
             return None
-        references = canonical_hash(
+        references = seal_payload_digest(  # one stage's find and add key it once
+            "selection_references",
             {
                 "documents": [item.model_dump(mode="json") for item in document_set.documents],
                 "rejections": [item.model_dump(mode="json") for item in document_set.rejections],
                 "reading_depth": document_set.reading_depth.value,
-            }
+            },
+            digest=canonical_hash,
         )
         return (
             generation.index_id,

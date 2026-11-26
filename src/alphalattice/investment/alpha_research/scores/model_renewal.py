@@ -848,14 +848,16 @@ def _check_prepared_values(prepared: AlphaPreparedRefit, values: dict[str, Float
 def _verify_prepared_values(
     store: AlphaDevelopmentArtifactStore, prepared: AlphaPreparedRefit
 ) -> None:
-    """Keep a complete training-binding proof of the sealed sources it read (LAWS.md EV2)."""
+    """Keep a complete training-binding proof of the sealed sources it read (LAWS.md EV2).
+
+    The prepared refit's seal commits to its market scale, so the key names it through that seal.
+    """
     semantic_identity = (
         prepared.content_hash,
         prepared.array_file_hash,
         prepared.plan.content_hash,
         prepared.observations_hash,
         prepared.row_axis_hash,
-        canonical_hash(prepared.market_scale.model_dump(mode="json")),
         prepared.training_binding_hash,
         prepared.row_count,
     )
@@ -1737,12 +1739,24 @@ def read_lifecycle_admission(root: Path, *, expected_hash: str) -> AlphaModelLif
             binding differs.
     """
     path = root if root.is_file() else root / "model-lifecycle-admission.json"
-    authority = AlphaModelLifecycleAdmission.model_validate_json(path.read_bytes())
-    if authority.content_hash != expected_hash or (root / "inference-authority.json").exists():
+    if (root / "inference-authority.json").exists():
         raise AlphaLifecycleError("alpha_research.lifecycle_admission_binding_invalid")
-    if not is_installed_component(authority.component):
-        raise AlphaLifecycleError("alpha_research.lifecycle_component_not_installed")
-    return cast(AlphaModelLifecycleAdmission, authority)
+    size: list[int] = []
+
+    def read() -> AlphaModelLifecycleAdmission:
+        payload = path.read_bytes()
+        size.append(len(payload))
+        authority = AlphaModelLifecycleAdmission.model_validate_json(payload)
+        if authority.content_hash != expected_hash:
+            raise AlphaLifecycleError("alpha_research.lifecycle_admission_binding_invalid")
+        if not is_installed_component(authority.component):
+            raise AlphaLifecycleError("alpha_research.lifecycle_component_not_installed")
+        return cast(AlphaModelLifecycleAdmission, authority)
+
+    # The sealed file is parsed and its seals checked once while its bytes hold.
+    return verified_source_value(
+        ("lifecycle-admission", str(path), expected_hash), (path,), read, nbytes=lambda _: size[-1]
+    )
 
 
 def admit_component_inference(

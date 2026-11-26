@@ -73,6 +73,7 @@ from .contracts import (
     SectorHistoryRecord,
     StoredRebase,
     WorkspaceObservationHistoryHead,
+    array_blocks_digest,
     seal_current_contract,
 )
 from .workspace_history import (
@@ -341,7 +342,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     if (record := SectorHistoryRecord.of(source.sector_by_listing_id)) is not None
                     else {}
                 ),
-                "array_content_hash": canonical_hash(blocks),
+                "array_content_hash": array_blocks_digest(blocks),
                 "array_blocks": blocks,
                 "source_binding_hash": source.source_binding_hash,
                 "reference_eligibility_recorded": source.reference_eligible is not None,

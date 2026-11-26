@@ -25,6 +25,10 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
 from alphalattice.capabilities.quant.sector_history import sector_ids, sector_slices
 from alphalattice.kernel.identity import identity_sha256
 
@@ -187,10 +191,9 @@ def panel_array_hash(values: npt.NDArray[np.generic]) -> str:
 
 def _seal[T: _Contract](model: type[T], values: dict[str, object], field: str) -> T:
     provisional = model.model_construct(**values, **{field: "0" * 64})
-    return model(
-        **values,
-        **{field: str(canonical_hash(provisional.model_dump(mode="json", exclude={field})))},
-    )
+    payload = provisional.model_dump(mode="json", exclude={field})
+    identity = seal_payload_digest(field, payload, digest=canonical_hash)
+    return model(**values, **{field: identity})
 
 
 class FeatureTransformDescriptor(_Contract):
@@ -237,8 +240,8 @@ class FeatureTransformDescriptor(_Contract):
         Raises:
             PanelFeatureBoundaryError: descriptor_hash differs from the complete descriptor payload.
         """
-        if self.descriptor_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"descriptor_hash"})
+        if self.descriptor_hash != scoped_model_digest(
+            self, "descriptor_hash", digest=canonical_hash
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_transform_identity_invalid")
         return self
@@ -295,7 +298,7 @@ class FeatureRoleSelection(_Contract):
                 for values in self.source_transform_ids
             )
             or self.selection_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"selection_hash"}))
+            != scoped_model_digest(self, "selection_hash", digest=canonical_hash)
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_role_selection_invalid")
         return self
@@ -350,8 +353,7 @@ class PanelFeatureViewRecipe(_Contract):
         if (
             role_ids != tuple(value for value in _ROLE_ORDER if value in set(role_ids))
             or role_ids != tuple(dict.fromkeys(role_ids))
-            or self.recipe_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"recipe_hash"}))
+            or self.recipe_hash != scoped_model_digest(self, "recipe_hash", digest=canonical_hash)
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_view_recipe_invalid")
         return self

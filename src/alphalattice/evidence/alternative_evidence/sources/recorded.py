@@ -10,6 +10,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -317,13 +318,15 @@ class RecordedEvidenceSource:
                     content=content,
                     immutable_source=document.immutable_source,
                     limitations=document.limitations,
-                    source_content_hash=canonical_hash(
+                    source_content_hash=seal_payload_digest(
+                        "source_content_hash",
                         {
                             "source_name": document.source_name,
                             "revision": document.revision,
                             "media_type": "text/markdown",
                             "content_hex": content.hex(),
-                        }
+                        },
+                        digest=canonical_hash,
                     ),
                 )
             )

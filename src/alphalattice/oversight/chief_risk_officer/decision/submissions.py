@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.protocols.actor_execution import (
@@ -93,14 +94,16 @@ def build_portfolio_review_policy_binding(playpen_root: Path) -> CROHostPolicyBi
         "kind": "CROHostPolicyBinding",
         "owner_id": "chief_risk_officer.portfolio_review",
         "policy_version": "2026-09-02",
-        "contract_schema_hash": canonical_hash(
+        "contract_schema_hash": seal_payload_digest(
+            "contract_schema_hash",
             {
                 "dossier": schema_structure(PortfolioReviewDossier),
                 "answer": schema_structure(PortfolioReviewAnswer),
                 "submission": schema_structure(PortfolioReviewAssessmentSubmission),
                 "receipt": schema_structure(PortfolioReviewReceipt),
                 "recommendation": schema_structure(PortfolioReviewRecommendation),
-            }
+            },
+            digest=canonical_hash,
         ),
         "validation_source_hash": source_rule_closure_hash(
             root=playpen_root.resolve(),

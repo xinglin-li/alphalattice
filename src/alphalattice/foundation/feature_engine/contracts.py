@@ -452,7 +452,9 @@ def panel_cross_section_identity(
         if not set(excluded).issubset(members):
             raise ValueError("source exclusion is outside the nominal cross-section")
         payload["source_exclusions"] = excluded
-    return canonical_hash(payload)
+    # One session axis shares its cross-section across many sessions and readers in a stage.
+    slot = ("panel-cross-section", tuple(members), tuple(sorted(set(source_exclusions))))
+    return stage_digest(slot, payload, canonical_hash, snapshot=lambda _: tuple(map(tuple, pairs)))
 
 
 @dataclass(frozen=True)

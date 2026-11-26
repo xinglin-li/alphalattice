@@ -12,6 +12,10 @@ from typing import Any, Literal, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import successor_identity_payload
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_payload_digest,
+    seal_payload_digest,
+)
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
@@ -390,9 +394,14 @@ class MarketDataChangeSet:
             "membership_removals": sorted(set(self.membership_removals)),
             "receipt_hashes": sorted(set(self.receipt_hashes)),
         }
-        expected = canonical_hash(payload)
-        if self.change_set_hash and self.change_set_hash != expected:
-            raise ValueError("market-data change-set hash does not match its content")
+        if self.change_set_hash:  # a supplied identity is checked once per stage for its content
+            expected = scoped_payload_digest(
+                payload, "change_set_hash", self.change_set_hash, digest=canonical_hash
+            )
+            if self.change_set_hash != expected:
+                raise ValueError("market-data change-set hash does not match its content")
+        else:
+            expected = seal_payload_digest("change_set_hash", payload, digest=canonical_hash)
         object.__setattr__(self, "listing_changes", ordered)
         object.__setattr__(self, "membership_additions", tuple(payload["membership_additions"]))
         object.__setattr__(self, "membership_removals", tuple(payload["membership_removals"]))

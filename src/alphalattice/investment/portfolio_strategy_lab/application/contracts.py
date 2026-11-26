@@ -20,6 +20,11 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    scoped_payload_digest,
+    seal_scoped_model,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioPerSideCostAssumption,
 )
@@ -1466,10 +1471,7 @@ class PortfolioWindowEndBook(_Contract):
         Raises:
             pydantic.ValidationError: Fields or declared consistency violate the concrete model.
         """
-        identity = cls.model_construct(**values, book_hash="0" * 64).model_dump(
-            mode="json", exclude={"book_hash"}
-        )
-        return cls(**identity, book_hash=canonical_hash(identity))
+        return seal_scoped_model(cls, values, field="book_hash", digest=canonical_hash)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -1513,7 +1515,7 @@ class PortfolioWindowEndBook(_Contract):
             abs(value.weight_change) for value in self.positions
         ):
             raise PortfolioApplicationError("portfolio_application.book_change_total_inconsistent")
-        if self.book_hash != canonical_hash(self.model_dump(mode="json", exclude={"book_hash"})):
+        if self.book_hash != scoped_model_digest(self, "book_hash", digest=canonical_hash):
             raise PortfolioApplicationError("portfolio_application.book_identity_invalid")
         return self
 
@@ -1625,7 +1627,9 @@ class PortfolioDeclaredPathReport(_Contract):
             # The receipt validator already proved the legacy nested identity.
             # Preserve the parent report's exact pre-field hash as well.
             receipt.pop("catalog_control_ids", None)
-        if self.report_hash != canonical_hash(identity):
+        if self.report_hash != scoped_payload_digest(
+            identity, "report_hash", self.report_hash, digest=canonical_hash
+        ):
             raise PortfolioApplicationError("portfolio_application.report_identity_invalid")
         return self
 

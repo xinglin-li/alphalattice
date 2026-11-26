@@ -3956,6 +3956,25 @@
         "path_expression": "In-memory _SOURCE_OBSERVATIONS in its module, instance, or call namespace"
       },
       "description": "Names each shared immutable source once in one acquisition of related proofs, naming it again after an eviction at capacity."
+    },
+    "src/alphalattice/control/task_control/registry.py::<module>._VERIFIED_RECORDS::verified-task-documents": {
+      "owner": "alphalattice.control.task_control",
+      "defined_by": [
+        "src/alphalattice/control/task_control/registry.py::_VERIFIED_RECORDS"
+      ],
+      "definition_line": 98,
+      "key": "the stored Task document's exact text",
+      "dependency_coverage": "Yes: the record is validated from that text alone; the stored id is checked on every read",
+      "invalidation_rule": "process restart or LRU eviction; a changed document is a different key",
+      "size_bound": "BoundedMemo owner capacity, default 1024 entries per logical CPU",
+      "bound_scope": "process",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: an evicted document is validated again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _VERIFIED_RECORDS in its module, instance, or call namespace"
+      },
+      "description": "Keeps each stored Task document this process has verified, validating it again after an eviction at capacity."
     }
   }
 }

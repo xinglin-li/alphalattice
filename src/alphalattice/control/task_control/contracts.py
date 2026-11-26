@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
@@ -17,19 +18,30 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
-from pydantic_core import to_json, to_jsonable_python
+from pydantic_core import to_jsonable_python
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
+_SNAPSHOT: Final = json.JSONEncoder(separators=(",", ":"), sort_keys=True)
+"""A contract's payload as the stage compares it: keys sorted, so a record built from its fields
+and the same record read back compare equal."""
+
 
 def _hash(value: object, expected: str | None = None) -> str:
+    """A contract's identity, hashed once per stage for the same payload; with `expected`, the
+    exact payload is checked against it, and answered by its writer's hash of the same payload."""
     payload = to_jsonable_python(value)
-    if expected is not None:
-        return stage_digest(("task-contract", expected), payload, canonical_hash, snapshot=to_json)
-    identity = canonical_hash(payload)
-    stage_digest(("task-contract", identity), payload, lambda _: identity, snapshot=to_json)
-    return identity
+    wire = _SNAPSHOT.encode(payload)
+    identity = (
+        expected
+        if expected is not None
+        else stage_digest(
+            ("task-contract-payload", wire), payload, canonical_hash, snapshot=lambda _: wire
+        )
+    )
+    digest = (lambda _: identity) if expected is None else canonical_hash
+    return stage_digest(("task-contract", identity), payload, digest, snapshot=lambda _: wire)
 
 
 FAILURE_CODE_MAX_LENGTH = 120

@@ -16,6 +16,7 @@ from typing import Literal, Protocol, cast
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
@@ -918,17 +919,15 @@ def _listing_row_axis(
     selected_listings = tuple(
         source.ordered_listing_ids[int(position)] for position in listing_positions
     )
+    pairs = [
+        (session.isoformat(), listing)
+        for session, listing in zip(selected_sessions, selected_listings, strict=True)
+    ]
+    # Roles that select the same rows share one axis identity in the stage.
     return (
         selected_sessions,
         selected_listings,
-        str(
-            canonical_hash(
-                [
-                    (session.isoformat(), listing)
-                    for session, listing in zip(selected_sessions, selected_listings, strict=True)
-                ]
-            )
-        ),
+        stage_digest(("listing-row-axis", len(pairs)), pairs, canonical_hash),
     )
 
 

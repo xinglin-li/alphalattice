@@ -14,6 +14,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
@@ -48,6 +49,11 @@ class PortfolioLedgerStoreError(ValueError):
     """Stable public ledger storage refusal."""
 
 
+def _part_digest(text: str) -> str:
+    """A part's identity, hashed once per stage for the same text: its writer's and its reader's."""
+    return stage_digest(("observation-part", text), text, canonical_hash)
+
+
 class ObservationPart(BaseModel):  # type: ignore[misc]
     """An exact JSON lane or field-reference head for Portfolio observations."""
 
@@ -58,7 +64,7 @@ class ObservationPart(BaseModel):  # type: ignore[misc]
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> ObservationPart:
         """Verify the exact packed payload before any source consumes it."""
-        if self.content_hash != canonical_hash(self.payload_json):
+        if self.content_hash != _part_digest(self.payload_json):
             raise ValueError("content_store.artifact_tampered")
         return self
 
@@ -126,7 +132,7 @@ class ObservationStore:
             text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
             if text not in encoded:
                 encoded[text] = ObservationPart.model_construct(
-                    payload_json=text, content_hash=canonical_hash(text)
+                    payload_json=text, content_hash=_part_digest(text)
                 )  # Generated canonical bytes are hashed once; external reads validate below.
             return encoded[text]
 

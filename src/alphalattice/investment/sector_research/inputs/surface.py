@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
@@ -306,7 +307,8 @@ def compile_sector_context_surface(
                     stable_reduction=True,
                 )
         source_surface_hash = str(
-            canonical_hash(
+            seal_payload_digest(
+                "source_surface_hash",
                 {
                     "source": source_surface_hash,
                     "sessions": event_sessions,
@@ -315,7 +317,8 @@ def compile_sector_context_surface(
                         np.ascontiguousarray(reference_eligible).tobytes()
                     ).hexdigest(),
                     "reference_reduction": "COMPACT_SESSION_ROWS",
-                }
+                },
+                digest=canonical_hash,
             )
         )
 
@@ -368,7 +371,12 @@ def compile_sector_context_surface(
     table = _table(values, output_sessions, sectors)
     payload = _payload(table)
     rows = table.to_pylist()
-    table_hash = str(canonical_hash({"schema": str(table.schema), "rows": rows}))
+    # The stage's second read of the same inputs answers the table it hashed.
+    table_hash = str(
+        seal_payload_digest(
+            "table_hash", {"schema": str(table.schema), "rows": rows}, digest=canonical_hash
+        )
+    )
     if ledger := active_ledger():
         for detail, count in (
             ("sector_axes", len(event_values) + len(listing_values)),
