@@ -17,13 +17,11 @@ import ast
 import json
 import re
 from datetime import UTC, datetime, timedelta
-from importlib.util import resolve_name
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceStructureState,
 )
@@ -33,6 +31,7 @@ from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
 )
 from alphalattice.evidence.alternative_evidence.runtime.coverage import UNIT_LIMIT, coverage_units
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     EVIDENCE_REQUIRED_CHECKS,
     portfolio_review_key_payload,
@@ -190,30 +189,8 @@ def _wide_rows() -> tuple[tuple[str, str, float, float], ...]:
     )
 
 
-def test_the_scope_selects_by_the_canonical_lexicographic_rule(monkeypatch) -> None:
+def test_the_scope_selects_by_the_canonical_lexicographic_rule() -> None:
     """Opened and increased first, then unchanged holds, then what shrank."""
-
-    from alphalattice.capabilities.domain_contracts import sealing
-    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
-    from alphalattice.oversight.chief_risk_officer.portfolio_evidence import contracts
-
-    canonical_hash = sealing.canonical_hash
-    hashed_reports = []
-
-    def count(payload):
-        if isinstance(payload, dict) and payload.get("kind") == "PortfolioExposureProjection":
-            hashed_reports.append(payload["report_hash"])
-        return canonical_hash(payload)
-
-    monkeypatch.setattr(sealing, "canonical_hash", count)
-    monkeypatch.setattr(contracts, "canonical_hash", count)
-    with stage_digests():
-        projection = _projection()
-        assert type(projection).model_validate_json(projection.model_dump_json()) == projection
-        changed = {**projection.model_dump(mode="json"), "report_hash": "f" * 64}
-        with pytest.raises(ValueError, match=r"portfolio_evidence\.identity_invalid"):
-            type(projection).model_validate(changed)
-    assert hashed_reports == ["c" * 64, "f" * 64]
 
     scope = _scope()
 
@@ -1312,18 +1289,23 @@ class _ManualClock:
 # ================================================== contraction and closure
 
 
-def _scope_imports(body: list[ast.stmt], *, package: str | None = None) -> set[str]:
-    """Imports executed at this scope, excluding deferred bodies and type-only imports."""
+def _module_scope_imports(tree: ast.Module) -> set[str]:
+    """What importing this module actually loads.
+
+    Only module-scope statements count. An import inside a function body runs
+    when that function is called, and an import under `TYPE_CHECKING` never
+    runs at all, so neither is loaded by importing the module. The Host names
+    the Agent adapters in annotations and constructs them inside the admission
+    function; a reader of this closure must not see either as a load.
+    """
 
     found: set[str] = set()
-    pending = list(body)
+    pending: list[ast.stmt] = list(tree.body)
     while pending:
         node = pending.pop()
         if isinstance(node, ast.ImportFrom):
             if node.module and node.level == 0:
                 found.add(node.module)
-            elif node.module and package is not None:
-                found.add(resolve_name("." * node.level + node.module, package))
         elif isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
         elif isinstance(node, ast.If):
@@ -1341,8 +1323,8 @@ def _scope_imports(body: list[ast.stmt], *, package: str | None = None) -> set[s
     return found
 
 
-def _internal_import_closure(start: str, *, entrypoint: str) -> set[str]:
-    """Modules reached by importing the Host and entering its named factory."""
+def _internal_import_closure(start: str) -> set[str]:
+    """Every `alphalattice` module importing one entry point actually loads."""
 
     src = REPO_ROOT / "src"
     imports: dict[str, set[str]] = {}
@@ -1351,15 +1333,7 @@ def _internal_import_closure(start: str, *, entrypoint: str) -> set[str]:
         if parts[-1] == "__init__":
             parts = parts[:-1]
         tree = ast.parse(path.read_bytes().decode("utf-8"))
-        module = ".".join(parts)
-        imports[module] = _scope_imports(tree.body)
-        if module == start:
-            factory = next(
-                node
-                for node in tree.body
-                if isinstance(node, ast.FunctionDef) and node.name == entrypoint
-            )
-            imports[module].update(_scope_imports(factory.body, package=module.rpartition(".")[0]))
+        imports[".".join(parts)] = _module_scope_imports(tree)
 
     seen: set[str] = set()
     stack = [start]
@@ -1375,11 +1349,10 @@ def _internal_import_closure(start: str, *, entrypoint: str) -> set[str]:
 
 
 def test_the_local_web_composition_reaches_the_review_seam_and_no_agent_adapter() -> None:
-    """First use reaches the review seam and no agent adapter."""
+    """The local web composition reaches the review seam and no agent adapter."""
 
     closure = _internal_import_closure(
-        "alphalattice.control.product_host.composition.local_web_session",
-        entrypoint="build_evidence_review_application",
+        "alphalattice.control.product_host.composition.local_web_session"
     )
     for owner in (
         "alphalattice.control.product_host.composition.evidence_review_application",

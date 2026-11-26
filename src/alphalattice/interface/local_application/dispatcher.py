@@ -20,7 +20,7 @@ everything else:
   registry. Nothing here caches a lifecycle, and nothing here can report one the
   registry would not.
 
-One execution slot per running place (`workers`), never more: Task Control decides which
+One worker per running place (`workers`), never more: Task Control decides which
 Tasks may run beside others, and a worker past the places could only ever wait.
 `close()` joins every worker, so none outlives the service that started it.
 
@@ -31,28 +31,23 @@ a branch here.
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import partial, wraps
 from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
-from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
     TaskRecord,
     TaskSafeProjection,
 )
-from alphalattice.control.workspace_runtime.content_store import verified_array_read_scope
 from alphalattice.control.workspace_runtime.mutation_gate import gate_subject, run_background
-from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.execution import EVENTS, ExecutionLane, ExecutionPool, prefer_task
 
 
 class _DispatcherClosed(RuntimeError):
@@ -72,7 +67,6 @@ def _admitted[Function: Callable[..., object]](method: Function) -> Function:
 
 CommandDisposition = Literal[
     "ADMITTED",
-    "JOINED",
     "REFUSED_QUEUE_FULL",
     "REFUSED_INVALID_COMMAND",
 ]
@@ -97,8 +91,6 @@ class CommandAdmission:
 
     task_id: UUID
     lifecycle: str
-    joined: bool = False
-    """The owner found this work running: the request joins that Task, with no second command."""
 
 
 class LocalApplicationCommand(Protocol):
@@ -251,7 +243,7 @@ class LocalBackgroundDispatcher:
     """The registry's own stale-version refusal, matched structurally like the others: a
     caller that confirmed a version learns it moved; a versionless caller keeps the old
     `False`."""
-    clock: Callable[[], datetime] = utc_now
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     on_idle: Callable[[], None] | None = None
     on_command_returned: Callable[[str, UUID, str | None], None] | None = None
     """Told `(command_kind, task_id, worker_failure)` once a command has returned.
@@ -263,20 +255,17 @@ class LocalBackgroundDispatcher:
     observer that could not write is not a worker that failed.
     """
 
-    stop_requested: Callable[[], bool] = bool
-    """The owning Host's stop, never another workspace's."""
-
     workers: Callable[[], int] = lambda: 1
     """How many Tasks may run at once, read at each start: one worker each."""
 
-    _threads: ExecutionPool | None = field(default=None, init=False, repr=False)
-    _pending: int = field(default=0, init=False, repr=False)
-    _lanes: dict[UUID, ExecutionLane] = field(default_factory=dict, init=False, repr=False)
+    _work: queue.Queue[tuple[LocalApplicationCommand, UUID, str | None] | None] = field(
+        default_factory=queue.Queue, init=False, repr=False
+    )
+    _workers: list[threading.Thread] = field(default_factory=list, init=False, repr=False)
     _failures: dict[UUID, str] = field(default_factory=dict, init=False, repr=False)
-    _executing: set[UUID] = field(default_factory=set, init=False, repr=False)
     _running: set[UUID] = field(default_factory=set, init=False, repr=False)
     """Work this dispatcher queued and whose command has not yet returned."""
-    _waiting: dict[UUID, tuple[LocalApplicationCommand, str | None]] = field(
+    _waiting: dict[UUID, LocalApplicationCommand] = field(
         default_factory=dict, init=False, repr=False
     )
     """Commands that returned before their Task's turn came: another Task held the running
@@ -287,8 +276,6 @@ class LocalBackgroundDispatcher:
     _lock: threading.Condition = field(default_factory=threading.Condition, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _admitting: int = field(default=0, init=False, repr=False)
-    _serving: int = field(default=0, init=False, repr=False)
-    _foreground_wake: Callable[[], None] | None = field(default=None, init=False, repr=False)
     _generation: int = field(default=0, init=False, repr=False)
     _depth: threading.local = field(default_factory=threading.local, init=False, repr=False)
     _last_needed: float = field(default_factory=lambda: monotonic(), init=False, repr=False)
@@ -308,7 +295,7 @@ class LocalBackgroundDispatcher:
         """Reserve an admitted action through its nested handoffs, outside the state lock."""
         depth = getattr(self._depth, "value", 0)
         with self._lock:
-            if self._closed and not depth and (activity or not self.stop_requested()):
+            if self._closed and not depth:
                 raise _DispatcherClosed("local_application.dispatcher_closed")
             self._admitting += 1
             self._generation += activity
@@ -317,94 +304,16 @@ class LocalBackgroundDispatcher:
             return action()
         finally:
             self._depth.value = depth
-            self._release_admission(activity)
-
-    @contextmanager
-    def serving_request(self) -> Iterator[None]:
-        """Keep idle work out of the whole served request, including its response."""
-        with self._lock:
-            self._serving += 1
-        try:
-            with stage_digests(), verified_array_read_scope():
-                yield
-        finally:
             with self._lock:
-                self._serving -= 1
-                self._wake_if_idle()
-
-    def _release_admission(self, activity: bool) -> None:
-        with self._lock:
-            self._admitting -= 1
-            if activity:
-                self._last_needed = monotonic()
-            self._lock.notify_all()
-            self._wake_if_idle()
-
-    def watch_foreground_idle(self, wake: Callable[[], None]) -> None:
-        """Install the idle signal and offer the same handoff at startup."""
-        with self._lock:
-            self._foreground_wake = wake
-            self._wake_if_idle()
-
-    def _wake_if_idle(self) -> None:
-        if self._foreground_wake is not None and self._foreground_idle():
-            self._foreground_wake()
-
-    def admit_request(self, action: Callable[[], _Value], activity: bool = True) -> _Value:
-        """Keep request admission on its caller and mark its queued work interactive."""
-        previous = getattr(self._depth, "lane", "background")
-        self._depth.lane = "interactive"
-        try:
-            return self._admit(action, activity)
-        finally:
-            self._depth.lane = previous
-
-    def check_task_admission(self) -> None:
-        """Refuse read-only preparation while stopping, before a Task has its lease."""
-        if self.closing:
-            raise _DispatcherClosed("local_application.dispatcher_closed")
+                self._admitting -= 1
+                if activity:
+                    self._last_needed = monotonic()
+                self._lock.notify_all()
 
     def _begin_drain(self) -> None:
-        """Refuse new top-level work while admitted handoffs finish. The drain is an event for each
-        executing Task: a work item waiting on its Task's events reads the Host's stop at once."""
+        """Refuse new top-level work while admitted handoffs finish."""
         with self._lock:
             self._closed = True
-            executing = tuple(self._executing)
-        for task_id in executing:
-            EVENTS.publish(("task", str(task_id)))
-
-    def run_between_tasks(self, action: Callable[[], None]) -> None:
-        """Try for an exclusive idle slice while the caller holds its owner's guards."""
-        if not self._lock.acquire(blocking=False):
-            return
-        try:
-            if not self._closed and not self._running and self._admitting == 1:
-                action()
-        finally:
-            self._lock.release()
-
-    def finishing(self) -> list[str]:
-        """Name the commands still executing while this Host stops."""
-        with self._lock:
-            return sorted(str(task_id) for task_id in self._executing)
-
-    def _foreground_idle(self) -> bool:
-        return not (
-            self._closed or self._running or self._waiting or self._admitting or self._serving
-        )
-
-    def foreground_idle(self) -> bool:
-        """Observe an idle turn before beginning a non-writing slice."""
-        with self._lock:
-            return self._foreground_idle()
-
-    def publish_when_idle(self, action: Callable[[], None]) -> bool:
-        """Reserve the small visible write of an otherwise separately prepared publication."""
-        with self._lock:
-            if not self._foreground_idle():
-                return False
-            action()
-            return True
 
     def _idle_busy(self) -> bool:
         """Read the current busy facts while the caller holds the admission lock."""
@@ -412,7 +321,7 @@ class LocalBackgroundDispatcher:
             (
                 self._admitting,
                 self._running,
-                self._pending,
+                self._work.unfinished_tasks,
                 self._idle_again,
                 self._idle.locked(),
             )
@@ -452,42 +361,21 @@ class LocalBackgroundDispatcher:
             return True
 
     def start(self) -> None:
-        """Bind the dispatcher to the process execution owner."""
+        """Begin the workers the running places want. Idempotent: a service may call it often."""
         with self._lock:
             if self._closed and not getattr(self._depth, "value", 0):
                 raise _DispatcherClosed("local_application.dispatcher_closed")
-            self._open_slots()
-
-    def _open_slots(self) -> ExecutionPool:
-        if self._threads is None:
-            self._threads = ExecutionPool(self._wanted())
-        elif not self._closed:
-            self._threads.grow(self._wanted())
-        return self._threads
-
-    def _enqueue(
-        self,
-        command: LocalApplicationCommand,
-        task_id: UUID,
-        expected_task_hash: str | None,
-        lane: ExecutionLane,
-    ) -> None:
-        with self._lock:
-            scope = self._open_slots()
-            self._pending += 1
-            try:
-                scope.submit(
-                    partial(
-                        run_background,
-                        partial(self._run_command, task_id, command, expected_task_hash, lane),
-                        "BACKGROUND_TASK",
-                        task_id,
-                    ),
-                    lane=lane,
+            added = [
+                threading.Thread(
+                    target=partial(run_background, self._drain, "BACKGROUND_TASK"),
+                    name="local-application-dispatcher",
+                    daemon=False,
                 )
-            except BaseException:
-                self._pending -= 1
-                raise
+                for _ in range(self._wanted() - len(self._workers))
+            ]
+            self._workers.extend(added)
+        for worker in added:
+            worker.start()
 
     def _wanted(self) -> int:
         """The workers the running places want; one when the setting cannot be read."""
@@ -497,19 +385,42 @@ class LocalBackgroundDispatcher:
             return 1
 
     def close(self, *, timeout: float | None = None) -> bool:
-        """Refuse new admissions and wait for the dispatcher's own commands to settle."""
+        """Stop accepting work and join the workers. True when every worker ended.
+
+        Unbounded by default, and that is the safe default rather than a
+        convenient one: a task that is mid-stage owns a workspace lease and a
+        checkpoint, and a `close` that returned while it was still running would
+        hand the caller a service it could believe was stopped.
+
+        A caller that must bound the wait passes a timeout and reads the answer.
+        `False` means a writer is still live, and the only correct response is to
+        keep holding whatever that writer needs -- not to carry on with cleanup.
+        Calling again resumes the join rather than reporting success.
+        """
         deadline = None if timeout is None else time.monotonic() + timeout
         with self._lock:
             self._closed = True
-            while self._admitting or self._pending:
+            while self._admitting:
                 left = None if deadline is None else deadline - time.monotonic()
-                if getattr(self._depth, "worker", False) or (left is not None and left <= 0):
+                if left is not None and left <= 0:
                     return False
                 self._lock.wait(left)
-            scope, self._threads = self._threads, None
-        if scope is not None:
-            scope.close()
-        return True
+            workers = list(self._workers)
+        # Work admitted before the close runs before the workers stop, as a queued command
+        # always did; a command waiting its turn is driven again when the running ones return.
+        with self._work.all_tasks_done:
+            while workers and self._work.unfinished_tasks:
+                left = None if deadline is None else deadline - time.monotonic()
+                if threading.current_thread() in workers or (left is not None and left <= 0):
+                    return False
+                self._work.all_tasks_done.wait(left)
+        for _worker in workers:
+            self._work.put(None)
+        for worker in workers:
+            worker.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
+        with self._lock:
+            self._workers = [worker for worker in self._workers if worker.is_alive()]
+            return not self._workers
 
     @property
     def closing(self) -> bool:
@@ -518,9 +429,8 @@ class LocalBackgroundDispatcher:
 
     @property
     def worker_alive(self) -> bool:
-        """Whether this dispatcher still holds its worker scope."""
-        with self._lock:
-            return self._threads is not None
+        """Whether an owned worker is still running. Never inferred."""
+        return any(worker.is_alive() for worker in self._workers)
 
     def __enter__(self) -> LocalBackgroundDispatcher:
         """Start the owned worker when entering the dispatch scope."""
@@ -558,14 +468,6 @@ class LocalBackgroundDispatcher:
                 submitted_at=submitted_at,
                 refusal_detail=str(error)[:200],
             )
-        if admission.joined:  # that Task has its command: there is no second one to drive
-            return CommandSubmission(
-                command_kind=command.command_kind,
-                disposition="JOINED",
-                submitted_at=submitted_at,
-                task_id=admission.task_id,
-                lifecycle=admission.lifecycle,
-            )
         self.admissions += 1
         # A Task found stopped or cancelled has nothing for its command to run: it is answered as
         # it stands, never read as running while that command waits its turn.
@@ -577,10 +479,8 @@ class LocalBackgroundDispatcher:
             self._owned_tasks.add(admission.task_id)
             if not stopped:
                 self._running.add(admission.task_id)
-        lane: ExecutionLane = getattr(self._depth, "lane", "background")
-        with self._lock:
-            self._lanes[admission.task_id] = lane
-            self._enqueue(command, admission.task_id, None, lane)
+        self._work.put((command, admission.task_id, None))
+        self.start()
         return CommandSubmission(
             command_kind=command.command_kind,
             disposition="ADMITTED",
@@ -592,7 +492,7 @@ class LocalBackgroundDispatcher:
     @_admitted
     def resume(
         self,
-        commands: Mapping[str, LocalApplicationCommand],
+        commands: dict[str, LocalApplicationCommand],
         *,
         only_task_id: UUID | None = None,
         expected_task_hash: str | None = None,
@@ -657,15 +557,10 @@ class LocalBackgroundDispatcher:
                     continue
                 self._running.add(task.task_id)
             confirmed = expected_task_hash if task.task_id == only_task_id else None
-            lane: ExecutionLane = (
-                getattr(self._depth, "lane", "background")
-                if only_task_id is not None
-                else "background"
-            )
-            with self._lock:
-                self._lanes[task.task_id] = lane
-                self._enqueue(command, task.task_id, confirmed, lane)
+            self._work.put((command, task.task_id, confirmed))
             resumed.append(task.task_id)
+        if resumed:
+            self.start()
         return tuple(resumed)
 
     # -------------------------------------------------------------- status
@@ -751,7 +646,8 @@ class LocalBackgroundDispatcher:
         refused at the transaction and the run completed as if never asked).
         """
         with self._lock:
-            for attempt in range(CANCEL_REAIM_LIMIT):
+            attempts = 0
+            while True:
                 projection = self.status_port.safe_projection(task_id)
                 confirmed = (
                     expected_task_hash
@@ -773,13 +669,13 @@ class LocalBackgroundDispatcher:
                                 "task_control.cancel_version_stale"
                             ) from error
                         return False
-                    if not stale or attempt + 1 >= CANCEL_REAIM_LIMIT:
+                    attempts += 1
+                    if not stale or attempts >= CANCEL_REAIM_LIMIT:
                         return False
             finalized = task_id in self._owned_tasks and task_id not in self._running
             if finalized:
                 self._finalize_idle_cancel(task_id)
                 self._waiting.pop(task_id, None)
-                self._lanes.pop(task_id, None)
         if finalized:
             # A cancelled deferral frees the running place no command held.
             self.drive_waiting()
@@ -826,106 +722,84 @@ class LocalBackgroundDispatcher:
         starts them in. Told of each start too, so a Task that may run beside it goes at once.
         """
         with self._lock:
-            if not self._waiting or self.stop_requested():
+            if not self._waiting:
                 return
-            waiting = set(self._waiting)
-            lanes = dict(self._lanes)
         try:
             tasks = self.status_port.tasks()
             recoveries = [
                 t.task_id for t in tasks if t.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
             ]
             queue = [t.task_id for t in tasks if t.lifecycle is TaskLifecycle.QUEUED]
-            interactive = [task_id for task_id in queue if lanes.get(task_id) == "interactive"]
-            startable = []
-            for task_id in (*recoveries, *(interactive or queue)[:1]):
-                if task_id in waiting:
-                    with prefer_task(task_id if task_id in interactive else None):
-                        if self.status_port.may_start(task_id):
-                            startable.append(task_id)
+            startable = {
+                task_id
+                for task_id in (*recoveries, *queue[:1])
+                if task_id in self._waiting and self.status_port.may_start(task_id)
+            }
         except Exception:
             return
+        driven = False
         with self._lock:
-            for task_id in () if self.stop_requested() else startable:
-                pending = self._waiting.pop(task_id, None)
-                if pending is not None and task_id not in self._running:
-                    command, expected_task_hash = pending
+            for task_id in startable:
+                command = self._waiting.pop(task_id, None)
+                if command is not None and task_id not in self._running:
                     self._running.add(task_id)
-                    self._enqueue(command, task_id, expected_task_hash, self._lanes[task_id])
+                    self._work.put((command, task_id, None))
+                    driven = True
             # A Task no longer queued or owed its recovery has nothing left for its command.
             live = {*recoveries, *queue}
             for task_id in [task_id for task_id in self._waiting if task_id not in live]:
                 del self._waiting[task_id]
-                self._lanes.pop(task_id, None)
+            closed = self._closed
+        if driven and not closed:  # a closing dispatcher's workers stay until its queue drains
+            self.start()
 
     # -------------------------------------------------------------- worker
 
-    def _run_command(
-        self,
-        task_id: UUID,
-        command: LocalApplicationCommand,
-        expected_task_hash: str | None,
-        lane: ExecutionLane,
-    ) -> None:
-        self._depth.worker = True
-        try:
-            with self._lock:
-                if self.stop_requested():
-                    self._running.discard(task_id)
-                    self._lanes.pop(task_id, None)
-                    try:
-                        self._finalize_idle_cancel(task_id)
-                    except Exception as error:
-                        self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
-                    return
-                self._executing.add(task_id)
-            with (
-                gate_subject(command.command_kind, task_id),
-                host_stop_scope(self.stop_requested),
-                prefer_task(task_id if lane == "interactive" else None),
-            ):
-                seen = self._stamp()
-                try:
-                    # Versionless work is called the way every command always was; only a
-                    # confirmed version asks the command to carry it to Task Control.
-                    if expected_task_hash is None:
-                        command.execute(task_id)
-                    else:
-                        command.execute(task_id, expected_task_hash=expected_task_hash)
-                    self.executions += 1
-                    with self._lock:
-                        self._failures.pop(task_id, None)
-                except Exception as error:
-                    with self._lock:
-                        self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
-                finally:
-                    waits = self._waits_its_turn(task_id, seen)
-                    # Cleared whichever way it went: a caller waiting for a
-                    # terminal answer must be released on failure too.
-                    with self._lock:
-                        self._running.discard(task_id)
-                        self._executing.discard(task_id)
-                        if waits:
-                            # Not a failure: its turn had not come.
-                            self._waiting[task_id] = (command, expected_task_hash)
-                            self._failures.pop(task_id, None)
-                        else:
-                            self._lanes.pop(task_id, None)
-                        try:
-                            self._finalize_idle_cancel(task_id)
-                        except Exception as error:
-                            self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
-            # The command's return ends the operation a status reads (`masked`): an event.
-            EVENTS.publish(("task", str(task_id)))
-            self._notify_returned(command.command_kind, task_id)
-            self.drive_waiting()
-        finally:
+    def _drain(self) -> None:
+        while True:
+            item = self._work.get()
             try:
+                if item is None:
+                    return
+                command, task_id, expected_task_hash = item
+                with gate_subject(command.command_kind, task_id):
+                    seen = self._stamp()
+                    try:
+                        # Versionless work is called the way every command always was; only a
+                        # confirmed version asks the command to carry it to Task Control.
+                        if expected_task_hash is None:
+                            command.execute(task_id)
+                        else:
+                            command.execute(task_id, expected_task_hash=expected_task_hash)
+                        self.executions += 1
+                        with self._lock:
+                            self._failures.pop(task_id, None)
+                    except Exception as error:
+                        with self._lock:
+                            self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
+                    finally:
+                        waits = self._waits_its_turn(task_id, seen)
+                        # Cleared whichever way it went: a caller waiting for a
+                        # terminal answer must be released on failure too.
+                        with self._lock:
+                            self._running.discard(task_id)
+                            if waits:
+                                # Not a failure: its turn had not come.
+                                self._waiting[task_id] = command
+                                self._failures.pop(task_id, None)
+                            try:
+                                self._finalize_idle_cancel(task_id)
+                            except Exception as error:
+                                self._failures[task_id] = f"{type(error).__name__}: {error}"[:400]
+                    self._notify_returned(command.command_kind, task_id)
+                    self.drive_waiting()
+            finally:
                 with self._lock:
                     self._last_needed = monotonic()
                     callback = self.on_idle if not self._running and not self._closed else None
                     if callback is not None:
                         self._idle_again = True
+                self._work.task_done()
                 while callback is not None and self._idle.acquire(blocking=False):
                     try:
                         while self._idle_again:
@@ -937,16 +811,12 @@ class LocalBackgroundDispatcher:
                         # An optional wake observer is not allowed to kill the
                         # Task worker or change a published Task's lifecycle.
                         with self._lock:
-                            self._failures[task_id] = "local_application.idle_observer_failed"
+                            if item is not None:
+                                self._failures[item[1]] = "local_application.idle_observer_failed"
                     finally:
                         self._idle.release()
                     if not self._idle_again:
                         break
-            finally:
-                self._depth.worker = False
-                with self._lock:
-                    self._pending -= 1
-                    self._lock.notify_all()
 
     def _stamp(self) -> tuple[str, ...] | None:
         try:
@@ -976,9 +846,8 @@ class LocalBackgroundDispatcher:
         Named for what it is. Production callers poll status, because a caller
         that waits for the work has undone the reason this class exists.
         """
-        with self._lock:
-            if not self._lock.wait_for(lambda: not self._pending, timeout):
-                raise TimeoutError("the dispatcher did not drain in time")
+        del timeout
+        self._work.join()
 
 
 __all__ = [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date
 from pathlib import Path
 from typing import Literal, Self, cast
@@ -11,13 +12,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
     DynamicPanelFoldDossier,
     DynamicPanelScaleReceipt,
     dynamic_panel_array_identity,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .dynamic_panel_campaign import (
     DynamicPanelModelCampaignDossier,
@@ -150,7 +150,7 @@ class DynamicPanelFoldContextManifest(_Contract):
 
 
 def _sha256_file(path: Path) -> str:
-    digest = integrity_sha256()
+    digest = hashlib.sha256()
     with path.open("rb") as stream:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)

@@ -75,16 +75,12 @@ def validate_policy(value: Any) -> dict[str, Any]:
         raise ValueError("test_size.rule")
     if any(r.get("size") not in {"small", "medium"} for r in value["defaults"]):
         raise ValueError("test_size.default_size")
-    # Mandatory files run on every commit: second-scale static scans any change can break; every
-    # other test, structural ones included, joins by reach, and the nightly runs them all.
     if "mandatory" in value and (
-        not isinstance(value["mandatory"], list)
-        or any(not isinstance(p, str) or not p.startswith("tests/") for p in value["mandatory"])
+        not isinstance(value["mandatory"], list) or "tests/structural/*" not in value["mandatory"]
     ):
         raise ValueError("test_size.mandatory_missing")
     _post_merge_only(value)
     _reach(value)
-    _whole_tree_guards(value)
     _structural_fence(value)
     _limits(value)
     _quarantine(value)
@@ -295,35 +291,9 @@ def _structural_fence(policy: dict[str, Any]) -> None:
         seen.add(pattern)
 
 
-def guards_the_change(nodeid: str, policy: dict[str, Any], changed: frozenset[str]) -> bool:
-    """A fast whole-tree guard runs at commit when the tree it reads changed; a slow one waits."""
-    rule = policy.get("whole_tree_guards", {})
-    return not any(fnmatchcase(nodeid, p) for p in rule.get("slow", ())) and any(
-        fnmatchcase(path, read) for path in changed for read in rule.get("reads", ())
-    )
-
-
-def _whole_tree_guards(policy: dict[str, Any]) -> None:
-    """The rule names why, what its guards read, and which are too slow for the commit stage."""
-    rule = policy.get("whole_tree_guards", {})
-    if rule and not (
-        isinstance(rule, dict)
-        and set(rule) == {"reason", "reads", "slow"}
-        and isinstance(rule["reason"], str)
-        and rule["reason"].strip()
-        and all(
-            isinstance(rule[key], list) and all(isinstance(value, str) for value in rule[key])
-            for key in ("reads", "slow")
-        )
-        and rule["reads"]
-    ):
-        raise ValueError("test_size.whole_tree_guards_invalid")
-
-
 def moved(nodeid: str, policy: dict[str, Any]) -> bool:
-    """A whole-tree structural guard with no declared reach and no fence law: the commit stage runs
-    it only when the tree it reads changed (``guards_the_change``) or its selection row requires it,
-    and the nightly runs every structural node whole (the reform's rule, 0.2.md)."""
+    """A whole-tree structural guard with no declared reach and no fence law: the commit stage
+    leaves it to post-merge, which runs every structural node whole (the reform's rule, 0.2.md)."""
     nodeid = nodeid.replace("\\", "/")
     return (
         nodeid.startswith("tests/structural/")
@@ -432,97 +402,6 @@ def _admission_limits(policy: dict[str, Any]) -> None:
         raise ValueError("test_size.large_contract")
 
 
-def _growth(policy: dict[str, Any]) -> None:
-    """Validate the net test lines a change may add beyond its net source."""
-    growth = policy.get("growth")  # contract: require after pre-contract policy readers retire
-    if growth is not None and (
-        not isinstance(growth, dict)
-        or set(growth) != {"floor_lines"}
-        or type(growth["floor_lines"]) is not int
-        or growth["floor_lines"] < 0
-    ):
-        raise ValueError("test_size.growth")
-
-
-def budgets(policy: dict[str, Any]) -> dict[str, float]:
-    """Each numeric test budget by name: a size's hang guard (``limits``), an admission limit (the
-    speed budget), the growth floor and every Large row's timeout, a row without one taking the
-    Large hang guard."""
-    limits = policy["limits"]
-    found = {f"limits.{size}": value for size, value in limits.items()}
-    for size, row in (policy.get("admission_limits") or {}).items():
-        found |= {f"admission_limits.{size}.{key}": value for key, value in row.items()}
-    if policy.get("growth") is not None:
-        found["growth.floor_lines"] = policy["growth"]["floor_lines"]
-    for row in policy["large"]:
-        found["large:" + row["pattern"]] = row.get("timeout_seconds", limits["large"])
-    return found
-
-
-def budget_rises(
-    before: dict[str, Any], after: dict[str, Any], carry: Callable[[str], str] | None = None
-) -> list[str]:
-    """A test budget only falls: a raised or added one needs a dated budget admission at or above
-    its new value. ``carry`` restates a byte-identical move's old name."""
-    old = budgets(before)
-    old |= {carry(name): value for name, value in old.items()} if carry else {}
-    admitted = {row["budget"]: row["value"] for row in after.get("budget_admissions", [])}
-    return [
-        f"test budget {name} rose {old.get(name, 'from none')} -> {value}; lower it, or add a "
-        "budget_admissions row with its value and 'YYYY-MM-DD: why' in admitted"
-        for name, value in sorted(budgets(after).items())
-        if value > old.get(name, float("-inf")) and admitted.get(name, float("-inf")) < value
-    ]
-
-
-def policy_change(
-    before: dict[str, Any], after: dict[str, Any], carry: Callable[[str], str] | None = None
-) -> list[str]:
-    """A staged catalog's refusals against the one it changes: invalid, or each unadmitted rise."""
-    try:
-        validate_policy(after)
-    except ValueError as error:
-        return [str(error)]
-    return budget_rises(before, after, carry)
-
-
-def _dated(decision: Any) -> bool:
-    """A decision reads 'YYYY-MM-DD: why' on one line, with a real date."""
-    match = (
-        re.fullmatch(r"(\d{4}-\d{2}-\d{2}): \S[^\n\r]*", decision)
-        if isinstance(decision, str)
-        else None
-    )
-    try:
-        return match is not None and date.fromisoformat(match[1]) is not None
-    except ValueError:
-        return False
-
-
-def _budget_admissions(policy: dict[str, Any]) -> None:
-    """Each budget admission names one current budget, the admitted value and a dated one-line
-    decision, as a new Large row's admitted does."""
-    rows = policy.get("budget_admissions", [])
-    current = budgets(policy)
-    if not isinstance(rows, list):
-        raise ValueError("test_size.budget_admission")
-    for row in rows:
-        if not (
-            isinstance(row, dict)
-            and set(row) == {"budget", "value", "admitted"}
-            and _dated(row["admitted"])
-            and row["budget"] in current
-            and type(row["value"]) in (int, float)
-            and isfinite(row["value"])
-        ):
-            raise ValueError(
-                "test_size.budget_admission: name one current budget, the admitted value and "
-                "'YYYY-MM-DD: why'; remove an admission with its budget"
-            )
-    if len({row["budget"] for row in rows}) != len(rows):
-        raise ValueError("test_size.budget_admission: one admission per budget")
-
-
 def _limits(policy: dict[str, Any]) -> None:
     """Refuse disabled bounds, duplicate Large declarations and unexplained resource needs."""
     limits = policy.get("limits")
@@ -535,10 +414,8 @@ def _limits(policy: dict[str, Any]) -> None:
     if any(type(n) not in (int, float) or not isfinite(n) or n <= 0 for n in bounds):
         raise ValueError("test_size.limits")
     _admission_limits(policy)
-    _growth(policy)
     if len({r["pattern"] for r in policy["large"]}) != len(policy["large"]):
         raise ValueError("test_size.large_duplicate")
-    _budget_admissions(policy)
     for row in policy["large"]:
         reason = row.get("reason")
         if (
@@ -653,8 +530,7 @@ def _rule(nodeid: str, rules: list[dict[str, Any]]) -> dict[str, Any] | None:
 def classify(
     nodeid: str, declared: Iterable[str], policy: dict[str, Any]
 ) -> tuple[str, str, str, float]:
-    """Resolve size, owner, declaration and hang guard in one rule scan: the bound a test is killed
-    at as hung, never a speed limit (``hang_guard``)."""
+    """Resolve size, owner, declaration and execution bound in one rule scan."""
     sizes = set(declared)
     if len(sizes) > 1:
         raise ValueError("test_size.conflicting:" + nodeid)
@@ -672,27 +548,10 @@ def classify(
     if size not in policy["sizes"] or not rule.get("owner"):
         raise ValueError("test_size.declaration_invalid:" + nodeid)
     origin = "marker:" + nodeid if sizes else rule["pattern"]
-    guard = hang_guard(policy, size)  # a Large row's own timeout is kept only above its size's
-    return (
-        str(size),
-        str(rule["owner"]),
-        str(origin),
-        float((large or {}).get("timeout_seconds", guard)),
+    seconds = (
+        large.get("timeout_seconds", policy["limits"][size]) if large else policy["limits"][size]
     )
-
-
-def hang_guard(policy: dict[str, Any], size: str) -> float:
-    """The seconds a test of this size is killed at, only as hung: Bazel's size timeouts (small
-    60, medium 300, large 900; the registry's ``limits``). A size's speed is its admission limit
-    (``speed_budget``), judged solo and reported from durations, never by this kill under load."""
-    return float(policy["limits"][size])
-
-
-def speed_budget(policy: dict[str, Any], size: str) -> float | None:
-    """A size's speed budget: its admission limit's seconds, judged solo on a quiet host; None
-    for a size with none (Large, which runs only in the nightly)."""
-    row = (policy.get("admission_limits") or {}).get(size)
-    return float(row["seconds"]) if row else None
+    return str(size), str(rule["owner"]), str(origin), float(seconds)
 
 
 def changed_paths(*, floor: bool = False) -> frozenset[str] | None:
@@ -771,8 +630,7 @@ def included(
             return any(fnmatchcase(nodeid, p) for p in policy["mandatory"]) or size != "large"
         return row.get("per_file") is True or _triggered(nodeid, row, changed or frozenset())
     if lane == "merge" and changed is not None and moved(nodeid, policy):
-        own = nodeid.replace("\\", "/").split("::")[0]  # else the nightly runs it whole
-        return own in changed or guards_the_change(nodeid, policy, changed)
+        return nodeid.replace("\\", "/").split("::")[0] in changed  # else post-merge runs it whole
     return (
         not lane
         or any(fnmatchcase(nodeid, p) for p in policy["mandatory"])

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from threading import Lock
 from uuid import UUID
 
@@ -21,7 +21,6 @@ from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressUpdate,
     WorkspaceProgressPublisher,
 )
-from alphalattice.kernel.clock import utc_now
 
 ACQUIRE = "acquire_source_evidence"
 CANONICALIZE = "canonicalize_documents"
@@ -97,7 +96,7 @@ class StageCounter:
 class PreparationProgress:
     """Each unit's latest stage count, per coverage Task, in this process."""
 
-    def __init__(self, clock: Callable[[], datetime] = utc_now) -> None:
+    def __init__(self, clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         """Store stage counts using the supplied clock for update times."""
         self.clock = clock
         self.sink: Callable[[StageWork], object] | None = None

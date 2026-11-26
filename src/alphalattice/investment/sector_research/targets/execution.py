@@ -35,12 +35,12 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sector_treatment import (
+from alphalattice.kernel.quant.sector_history import sector_positions as sector_runs
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
-from alphalattice.capabilities.quant.sector_history import sector_positions as sector_runs
 
 from ..contracts import (
     FloatArray,

@@ -27,7 +27,6 @@ for _entry in (str(SRC), str(SCRIPTS_ROOT)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 from alphalattice.investment.alpha_research.verification.identity import (  # noqa: E402
     alpha_execution_domain_hashes,
 )
@@ -62,12 +61,7 @@ from devtools.architecture.structural import (  # noqa: E402
     kept_fact,
     kept_facts,
 )
-from devtools.pipeline.stage import (  # noqa: E402
-    derived_holders,
-    facet_holders,
-    registered_holders,
-    selection_readers,
-)
+from devtools.pipeline.stage import DEADLINE_ROOTS, derived_holders  # noqa: E402
 from devtools.testing.layout import placed_tests  # noqa: E402
 
 _PARENT_REVISION = "HEAD"
@@ -320,7 +314,7 @@ def _run_group(
     print(f"PLAYPEN_TEST_STARTED {json.dumps(group)}", flush=True)
     with TemporaryDirectory(prefix="playpen-test-report-") as temporary:
         report = Path(temporary) / "junit.xml"
-        completed = spawn.run(
+        completed = subprocess.run(
             (
                 sys.executable,
                 "-m",
@@ -336,9 +330,7 @@ def _run_group(
                 *group,
             ),
             cwd=PLAYPEN_ROOT,
-            env={
-                key: value for key, value in os.environ.items() if key != "ALPHALATTICE_DATA_ROOT"
-            },
+            env=dict(os.environ),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
             check=False,
@@ -346,7 +338,6 @@ def _run_group(
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=5400,
         )
         costs = _junit_file_seconds(report, group)
     return TestGroupRun(
@@ -822,8 +813,7 @@ def _fixture_users(
     except (OSError, SyntaxError, UnicodeError):
         return None
     names = {name for path in reached for name in registered[path]}
-    changed = True
-    while changed:
+    while True:
         expanded = names | {
             name
             for name, function in functions.items()
@@ -837,7 +827,8 @@ def _fixture_users(
                 )
             }
         }
-        changed = expanded != names
+        if expanded == names:
+            break
         names = expanded
     if names & automatic:
         return None
@@ -1113,7 +1104,7 @@ def _parent_tree(revision: str) -> Path:
 
     holder: TemporaryDirectory[str] = TemporaryDirectory(prefix="impact-parent-")
     _PARENT_TREES.append(holder)  # kept for the process, removed at its end
-    archive = spawn.run(
+    archive = subprocess.run(
         ("git", "-C", str(PLAYPEN_ROOT), "archive", "--format=tar", revision, "src", *_CASE_ROOTS),
         check=True,
         capture_output=True,
@@ -1126,7 +1117,7 @@ def _parent_tree(revision: str) -> Path:
 def _deleted_module_tests(value: str) -> tuple[str, ...]:
     """A deleted module's consumer tests, from the parent commit's graph (V106)."""
 
-    held = spawn.run(
+    held = subprocess.run(
         ("git", "-C", str(PLAYPEN_ROOT), "cat-file", "-e", f"{_PARENT_REVISION}:{value}"),
         capture_output=True,
         check=False,
@@ -1187,45 +1178,6 @@ def _reach_roles(changed: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(roles))
 
 
-def _registered_holders(
-    paths: set[str],
-    *,
-    staged: bool,
-    pairs: list[tuple[list[str], str]],
-    changed: dict[str, str],
-) -> tuple[str, ...]:
-    """The same declared edges as the stage, read from this plan's own input state; ``changed``
-    holds both sides of each changed Python file by object id."""
-    policy_path = "config/registries/test-sizes.json"
-    if staged:
-        policy = read_blobs([":" + policy_path], PLAYPEN_ROOT, timeout=60).get(":" + policy_path)
-        if policy is None:
-            raise ValueError(f"the staged selection registry is unavailable: {policy_path}")
-    else:
-        policy = (PLAYPEN_ROOT / policy_path).read_text(encoding="utf-8")
-    rows = selection_readers(json.loads(policy))
-    needed = {
-        row[key]
-        for row in rows.values()
-        if "census" in row
-        and (
-            any(path.startswith("src/alphalattice/") and path.endswith(".py") for path in paths)
-            or paths.intersection(row["conditional_inputs"])
-        )
-        for key in ("census", "sample")
-    } | {node.split("::", 1)[0] for node, row in rows.items() if "literal_root" in row}
-    if staged:
-        blobs = read_blobs([":" + path for path in sorted(needed)], PLAYPEN_ROOT, timeout=60)
-        sources = {path: blobs[":" + path] for path in needed if ":" + path in blobs}
-    else:
-        sources = {
-            path: (PLAYPEN_ROOT / path).read_text(encoding="utf-8")
-            for path in needed
-            if (PLAYPEN_ROOT / path).is_file()
-        }
-    return (*registered_holders(paths, sources, rows), *facet_holders(pairs, changed, rows))
-
-
 def _declared_holders(
     changed: tuple[str, ...], *, base: str | None, staged: bool
 ) -> tuple[str, ...]:
@@ -1238,7 +1190,9 @@ def _declared_holders(
         command.append("--cached")
     elif base:
         command.append(base)
-    raw = spawn.run(command, check=True, capture_output=True, text=True, encoding="utf-8").stdout
+    raw = subprocess.run(
+        command, check=True, capture_output=True, text=True, encoding="utf-8"
+    ).stdout
     fields = raw.split("\0")
     if fields[-1:] == [""]:
         fields.pop()
@@ -1246,7 +1200,9 @@ def _declared_holders(
         raise ValueError("malformed changed-file record")
     entries = {path: header.split() for header, path in zip(fields[::2], fields[1::2], strict=True)}
     paths = set(changed) | entries.keys()
-    candidates = {path for path in paths if path.endswith(".py")}
+    candidates = {
+        path for path in paths if path.startswith(DEADLINE_ROOTS) and path.endswith(".py")
+    }
     pairs = [([":000000", "000000", zero, zero, "A"], path) for path in paths - candidates]
     found = {}
     for path in candidates & entries.keys():
@@ -1259,21 +1215,21 @@ def _declared_holders(
             or meta[1] not in {"000000", "100644", "100755"}
             or any(not re.fullmatch(r"[0-9a-f]{40}", oid) for oid in meta[2:4])
         ):
-            raise ValueError(f"changed Python source is not a regular file: {path}")
+            raise ValueError(f"changed deadline source is not a regular file: {path}")
         found[path] = meta
-    # A path the diff does not list is unchanged at both ends, so it holds no changed facts;
-    # only against the index is it an untracked file, new to the working tree.
-    for path in candidates - found.keys():
-        if not (staged or base) and (PLAYPEN_ROOT / path).is_file():
-            found[path] = [":000000", "100644", zero, zero, "A"]
-        else:
-            pairs.append(([":000000", "000000", zero, zero, "A"], path))
+    missing = candidates - found.keys()
+    if missing and (staged or base):
+        raise ValueError(
+            "changed deadline source missing from Git diff: " + ", ".join(sorted(missing))
+        )
+    for path in missing:
+        found[path] = [":000000", "100644", zero, zero, "A"]
     ids = {meta[2] for meta in found.values() if meta[2] != zero}
     if staged:
         ids.update(meta[3] for meta in found.values() if meta[3] != zero)
     blobs = read_blobs(sorted(ids), PLAYPEN_ROOT, timeout=60)
     if set(blobs) != ids:
-        raise ValueError("changed Python blob is unavailable")
+        raise ValueError("changed deadline-source blob is unavailable")
     for path, meta in found.items():
         if not staged and meta[4] != "D":
             source = (PLAYPEN_ROOT / path).read_bytes()
@@ -1281,8 +1237,7 @@ def _declared_holders(
             blobs[oid] = source.decode("utf-8")
             meta[3] = oid
         pairs.append((meta, path))
-    declared = _registered_holders(paths, staged=staged, pairs=pairs, changed=blobs)
-    return tuple(sorted({*derived_holders(pairs), *declared}))
+    return derived_holders(pairs, blobs)
 
 
 def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
@@ -1292,10 +1247,10 @@ def _changed_paths(*, base: str | None, staged: bool) -> tuple[str, ...]:
     elif base is not None:
         args.append(base)
     args.extend(("--name-only", "--diff-filter=ACDMR", "-z"))
-    completed = spawn.run(args, check=True, capture_output=True, text=True, encoding="utf-8")
+    completed = subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8")
     paths = {value for value in completed.stdout.split("\0") if value}
     if not staged and base is None:
-        untracked = spawn.run(
+        untracked = subprocess.run(
             (
                 "git",
                 "-c",
@@ -1355,7 +1310,7 @@ def _select() -> int:
     global _PARENT_REVISION
     _PARENT_REVISION = args.base or "HEAD"
     all_changed = _changed_paths(base=args.base, staged=args.staged)
-    previous = git_previous(PLAYPEN_ROOT, _PARENT_REVISION, all_changed)
+    previous = git_previous(PLAYPEN_ROOT, _PARENT_REVISION)
     neutral = tuple(
         verdict.path
         for verdict in neutral_verdicts(PLAYPEN_ROOT, all_changed, previous)

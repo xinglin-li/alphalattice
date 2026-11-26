@@ -1,64 +1,56 @@
 {
  "components": {
   "DEVELOPMENT_PANEL_PREPROCESSING:development": {
-   "byte": "dc3091b3699a2575ce51836280bede3ba7de5c2318155a3459373c49cf20a4ce",
-   "rule": "5ca95c0359d76ac2616582f87e0554b11a436e6c800a8623eda23ae615580b11"
+   "byte": "11395654f0fa5698bbf6e76f73dee7b508327fc2fe18564c2a5422b708a6f2ea",
+   "rule": "550fd092725203532520a67eb72d0f37dafd7be907720e8e4db6e91791869f4c"
   },
   "DEVELOPMENT_PANEL_PREPROCESSING:joint_primary_interaction": {
-   "byte": "f03be7977352e2f35de3472bd6739e831ac00bf5bfd6853da2e3f1b6400fd8bf",
-   "rule": "d7860a67f05a3031374314c638cdc67970a65c43e865a25975ebf4b98c440cb3"
+   "byte": "8a300c075ef1eb96837209b4e7c2ffc77a1265b2ed635664e97bb40e899d349d",
+   "rule": "4f69a29bd9090193a85fc2db4ebfae09b456b6b03c3ca17f18255cfeed54062e"
   },
   "FACTOR_VALUE:ABSOLUTE_STATE": {
    "byte": "a1de91dedaeef1fe3541e5f47012275e268aec247e710a84f866944da3a4459f",
-   "rule": "53b00f2a3011078a2ab9b8b9ac438e9e8f93451620c73e67b1e783808307021b"
+   "rule": "51a8db5772381ad5c2dd501340270bf6409aa7c01da6cac5da7331411473a979"
   },
   "FACTOR_VALUE:DOWNSIDE_TAIL": {
    "byte": "867e92696d39bbcd48dc2d2ab0a775dac56f4c8c2c15cb668b9008433091d671",
-   "rule": "29a17211c35db99f68086c6230d408e239045593cee15bf17a2a003b02e97846"
-  },
-  "FACTOR_VALUE:FACTOR_FORMULA": {
-   "byte": "65c7af44e19b15377b0b3c2f36773c6ecccfc46d8c3944841fd469ced1aa01e3",
-   "rule": "57141947a386443c599cdb0acf1245abbd7aabdb35d87a8eafbbdf1c552bd1bd"
+   "rule": "347815fa4e8184f95ff7500f82a29ce330ef7d8befb1ae8e01adf026d3005ef2"
   },
   "FACTOR_VALUE:OPEN_INTRADAY": {
    "byte": "ff066e626d0f8559279244e898f4dd2d6a28f712fea0147ed204dfab15bd323f",
-   "rule": "9e05894a7b058f84188c1d1f151b4303f20ebfc609b53f70a25883acf61fcc40"
+   "rule": "d0bd9bee3f68cd0998a7fc28c6c2e8d7bc6cc0f33617328f05b24899e27421c5"
   },
   "FACTOR_VALUE:RESIDUAL_REVERSAL": {
    "byte": "0c6e57d8ffa1ad1bec0336df76f62c4a147d4a994a6ebee905cecc61be9fb00f",
-   "rule": "6409243a4887b9be81d98e4347d00b83fa7cd539bfe444aec7a8fe3320e1140e"
+   "rule": "768d647b35cc7de5bbf093aaf313cbbc7ea808274c2a380c6c0e0f76908b5e0c"
   },
   "FACTOR_VALUE:SECTOR_LEADER_LAG": {
    "byte": "5bcb86f1da2bd12391ffdc750b6d14889aabe6527117cdb480c0ca5e9eb80053",
-   "rule": "72ef9219256f9c87a9e9f72426cbf4e3a85bbffe4cc0cf1be92a80324b1c01a4"
+   "rule": "1aa9cfcc736958ed8a9a2464ba505af9bfcd5b565b9fdad3c874a84087f0e776"
   },
   "FACTOR_VALUE:SESSION_LIQUIDITY": {
    "byte": "b7890906838600960bc3d699de786f71283049ea57853f9167e6f1d3a65c3757",
-   "rule": "1fd5342e4e31379163cb96895e862dec109ec923f501d218d270148e99054b28"
+   "rule": "0f926879f54c281e6fa0cc79ec36a059ebfd8f3efe88e2bef5de0bfc082aede5"
   },
   "FACTOR_VALUE:SESSION_OBSERVATION": {
    "byte": "62e2f10ce60719b6d92860bb2dd0aa69f4a9f4d7f4c688ed74a66daf6b2d9114",
-   "rule": "5a696b0aae396c32f4b0aa81c650b9a975bb3406cb0b1132b0d02af52640d61e"
+   "rule": "2ed4755c7656262fba1309add714dcd4671eaa1e55291818c725b9462b9bfa71"
   },
   "FACTOR_VALUE:STATE_INTERACTION": {
    "byte": "8afb9f9cccb0f1855b41e6ab0ef515d667294e9055727a23d0b30a8deda0d630",
-   "rule": "d806d9177a2d108144b0a73d4adaf663e23dbd709250e86fab2e3abc483bb500"
+   "rule": "d5814ed8644e79f2905d18e446901738d8ce2643e5c508c54306ee3e150e18eb"
   },
   "FACTOR_VALUE:controls": {
    "byte": "1f5161c92133ca2c3d958aead06625b33d5866a3822e4311659ec31607d96158",
-   "rule": "5e8797b26607c0ba25f226558bde62b501446ca96fe601c02f6f73409fd871db"
+   "rule": "b2f8683e079e2f5d166a8b6ed987f767a98a44b0a2a5b6292eb49b291b84f96a"
   },
   "PANEL_PREPROCESSING:joint_primary_relative": {
-   "byte": "3366d109f97777cea78a46eac2839fe0d3da46eb04f2ed93e9f0f7c7fcdd6d82",
-   "rule": "b515834aed19db4c56b8c7095f8c5014c174b2fa560571d8fbf1bb1871ab4819"
+   "byte": "40fe0451d6ab33ae8461d14e5361d65452890a17085c90d83b30587f26330897",
+   "rule": "77b63241602549622f03bce2a45c520e1c94d4b515adcf46890553a0c7feafb3"
   },
   "PANEL_PREPROCESSING:robust_sector_neutral_z": {
-   "byte": "dd5b0411afd44bb8f1a0df63259f8b5ef4c13773e812636412d76d37d1564753",
-   "rule": "12623c8d0a851b77c448d3d7d7bb196d0ff289c1e1e8dd5a7d3f2a39f207b840"
-  },
-  "PANEL_PREPROCESSING:robust_universe_z": {
-   "byte": "70b6ef7463536ee4f0f5920ac9c986ae52c1c54da23084dfc3c06ad1cb35fc0a",
-   "rule": "c611495ecc1bca98a0928c17bbf1349262e197b8040a67d0729a894be576b571"
+   "byte": "428747bd4aba9fd2839358aee4c90a8b968f8bd493bca6968bd9f75d25fe11c1",
+   "rule": "acea5b7e939fdd208b44084ff90f8b3b13f4d8a0583ba0d2589627450a9d2e0d"
   },
   "alpha_research.calibration:return-unit-calibration:e0df1f88a6b808eb": {
    "byte": "42ea83349fcaaf77847bdd2816254629f2378b0ed874dcc78b7c988ae183301a",
@@ -148,18 +140,6 @@
    "byte": "ebae61d3bac25c904bb35ceea2dad4c17fac6872aaf453ba518971d17446c6ff",
    "rule": "713023ad0790e95f2f0c311bb0835cd54ea3c5d73649311a44aa754eefe0a990"
   },
-  "product_host.research_strategy_preparation": {
-   "byte": "a40d5d1ac02b25d27774d82ed1c04aa24f2a26db2ce88d30d85103feca8885ca",
-   "rule": "b1b013dd48574d72384e02ee47d081a0ce407443ee5e6dbd840a43d551146bda"
-  },
-  "research_experiment.portfolio.policy-development.implementation": {
-   "byte": "c6f8d1ecd89bb4f7ca93c802ded57323b7783258979f3e6627ffdaf547f8abb8",
-   "rule": "919e43abc3b1ac31b78ef36dc9cfa9c9176af550098bc3dee2eba75889e91cd7"
-  },
-  "research_experiment.risk.covariance-development.implementation": {
-   "byte": "158aca2a43bb6ef1f4ee052f5b5215f0627a0eb75f15db9ca834877cfc345497",
-   "rule": "fbe9eb0a33f5526faef393b5b62e6aa3af83421ba8330f208b6cd7d979b95dd7"
-  },
   "risk_research.estimators:RISK_ESTIMATOR_IMPLEMENTATION:184afe79428fc7b0": {
    "byte": "6e79ccbf77c10583a3a0414b5479b4dfaf55d76e060b437c39482409e313f335",
    "rule": "0b87262ad0ca24c41bc55a0e9fe616d6da85c6c9895f0aff2b333394bde0c8a7"
@@ -201,12 +181,6 @@
    "rule": "d03cac3abfecaf094e0c245467f6a9695498532d521f4152e339f940fd0c2c39"
   }
  },
- "format_changes": {
-  "factor-input:3": {
-   "identity": "A new Factor input binds the market selection and catalog snapshot instead of a physical market database digest.",
-   "previous": "Existing unversioned and version 2 bindings keep their sealed bytes and identities."
-  }
- },
- "note": "Each byte closure the rule replaced (LAWS.md ID3): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
+ "note": "Each byte closure the rule replaced (LAWS.md ID3; V70, V231, V232 for the Feature components, W9b's sites for the rest): its rule value and the byte value it had at the switch. While a closure's rule value is the one recorded here, it keeps the byte value everything was sealed under; a comment or docstring moves nothing, and a changed rule is a new identity.",
  "schema": "alphalattice.playpen.identity-switch"
 }

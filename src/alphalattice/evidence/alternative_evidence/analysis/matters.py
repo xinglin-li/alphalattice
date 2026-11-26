@@ -1893,8 +1893,7 @@ def service_order(
     turn = dict.fromkeys(issuers, 0)
     started: set[str] = set()
     order: list[EvidenceNeed] = []
-    served_any = True
-    while served_any:
+    while True:
         served_any = False
         for issuer in issuers:
             members = by_issuer[issuer]
@@ -1909,6 +1908,8 @@ def service_order(
                     started |= _opens(need)
                 served_any = True
                 break
+        if not served_any:
+            break
     return tuple(order)
 
 

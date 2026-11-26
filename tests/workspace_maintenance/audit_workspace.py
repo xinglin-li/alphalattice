@@ -12,7 +12,6 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.control.data_platform.maintenance.contracts import (
     ActionAuditChainReceipt,
     ActionAuditScope,
@@ -27,6 +26,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     MarketDataRepository,
 )
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
     OBSERVED_AT,

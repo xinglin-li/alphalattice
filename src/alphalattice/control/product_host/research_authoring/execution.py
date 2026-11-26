@@ -30,9 +30,6 @@ from typing import Any, cast
 import numpy as np
 
 from alphalattice.capabilities.alpha_modeling.catalog import build_installed_alpha_model_catalog
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.product_host.research_authoring.authority import (
     InstalledResearchSnapshot,
     WorkspaceResearchAuthorityResolver,
@@ -158,6 +155,9 @@ from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurf
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
 from alphalattice.investment.risk_research.experiments.execution import RiskExperimentExecutor
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExperimentExecutor,

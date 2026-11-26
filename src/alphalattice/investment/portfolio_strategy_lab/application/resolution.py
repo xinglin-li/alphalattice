@@ -16,11 +16,6 @@ from typing import Any, Final, Protocol
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    switched_source_identity,
-)
 from alphalattice.capabilities.portfolio_backtesting.benchmark import (
     PortfolioBenchmarkBoundaryError,
 )
@@ -39,7 +34,6 @@ from alphalattice.capabilities.portfolio_inputs.tradability.publication import (
 from alphalattice.capabilities.portfolio_inputs.tradability.readback import (
     read_tradability_matrices,
 )
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeManifest,
@@ -55,10 +49,6 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import (
 )
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
-)
-from alphalattice.foundation.feature_engine.panels.sector_classification import (
-    classified,
-    named,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     WORKSPACE_DEFAULT_STRATEGY_PACKAGE_ID,
@@ -97,7 +87,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_retur
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
 )
-from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -105,6 +94,12 @@ from alphalattice.investment.risk_research.surfaces.producer import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
+)
+from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
+from alphalattice.kernel.shared_kernel.source_identity import (
+    switched_source_identity,
 )
 
 type FloatArray = npt.NDArray[np.float64]
@@ -598,7 +593,7 @@ def _sector_lanes(
     # A history with a reclassification is read per formation, by Sector name.
     if history.reclassifications:
         return sector_exposure_lanes(history, listings=listings, sessions=sessions)
-    entries = {value.listing_id: value for value in classified(classification)}
+    entries = {value.listing_id: value for value in classification.entries}
     return sector_exposure_lanes(
         {value: entries[value].sector_key or entries[value].sector_name for value in listings},
         listings=listings,
@@ -741,7 +736,7 @@ class SharedPortfolioInputResolver:
             )
         )
         risk_sessions = CausalRiskReturnReader(artifact_root).available_sessions(risk_surface)
-        classification = named(  # the risk producer's Sectors, through world
+        classification = (
             _sector_map(
                 artifact_root, manifest_revision=risk_surface.epoch.universe_manifest_revision
             )
@@ -1035,7 +1030,6 @@ class SharedPortfolioInputResolver:
             [listing_positions[value] for value in listings], dtype=np.int64
         )
         producer = RiskSurfaceProducer()
-        factor_store = catalog_factor_surfaces()
         allocations = {}
         attributions = {}
         required = (
@@ -1059,8 +1053,7 @@ class SharedPortfolioInputResolver:
                     classification,
                     risk_surface.surface_hash,
                     history,
-                ),
-                store=factor_store,
+                )
             )
             allocations[session] = produced.allocation
             attributions[session] = produced.attribution

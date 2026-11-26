@@ -17,10 +17,6 @@ DETAIL = "owner-private-detail-7b2e"
 
 # These classes are not public typed refusal cases; each exclusion has its source reason.
 EXCLUDED_POSITIVE = {
-    "alphalattice.evidence.alternative_evidence.analysis.contracts._NeedInvariantError": (
-        "contracts.py:611-638,769-829; private Pydantic validator detail, wrapped as "
-        "ValidationError before leaving the model, not an owner refusal"
-    ),
     "alphalattice.control.observation_runtime.telemetry.process_metrics._ProcessExited": (
         "process_metrics.py:195-197; enumeration race is swallowed as an absent process, "
         "not a refusal"
@@ -32,10 +28,10 @@ EXCLUDED_POSITIVE = {
         "decision_advancement.py:290-293; internal WAIT carries StageExecutionResult, "
         "not a public failure"
     ),
-    "alphalattice.capabilities.knowledge.model_store._RetryableStatus": (
+    "alphalattice.kernel.knowledge.model_store._RetryableStatus": (
         "model_store.py:464-465,482; numeric HTTP status controls transfer retry, not an owner code"
     ),
-    "alphalattice.capabilities.domain_contracts.domain.errors.RegisteredCodeError": (
+    "alphalattice.kernel.shared_kernel.domain.errors.RegisteredCodeError": (
         "domain/errors.py:48-50,65-68; abstract category/label/codes require "
         "a concrete registered subclass"
     ),
@@ -264,12 +260,9 @@ def make_owner_exception(cls: type[Exception]) -> tuple[Exception, str]:
         "evidence_as_of": datetime(2026, 1, 1, tzinfo=UTC),
         "entities": (),
         "failed": 0,
-        "operation": "WORKSPACE_SHOW",
         "option": "source_artifact_root",
         "type_name": "RuntimeError",
         "failure_class": None,
-        "what": "a fixture wait",
-        "seconds": 1.0,
     }
     for parameter in signature.parameters.values():
         if parameter.name == "self" or parameter.kind in (

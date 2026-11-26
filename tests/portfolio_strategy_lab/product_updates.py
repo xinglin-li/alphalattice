@@ -19,12 +19,12 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.synthetic_numerical import HASH, build_numerical
 
 
 def _update_run(service, prepared=None, through=None):
-    from tests.portfolio_strategy_lab.host_requests import _json
+    from tests.portfolio_strategy_lab.local_web_support import _json
     from tests.portfolio_strategy_lab.scoring_runs import PACKAGE
 
     payload = {"strategy_package_id": PACKAGE}
@@ -71,8 +71,7 @@ def exercise_product_updates(workspace, calibration, monkeypatch, *, symbols):
         PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
     )
     from bind_portfolio_decision_checkpoint import bind_checkpoint
-    from tests.portfolio_strategy_lab.host_requests import _json
-    from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
+    from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
     from tests.portfolio_strategy_lab.process_death import forced_process
     from tests.portfolio_strategy_lab.scoring_runs import PACKAGE, _calibration_run, _plan_run
     from tests.workspace_maintenance.local_data_provider import (
@@ -235,8 +234,7 @@ def exercise_single_action_catchup(workspace, daily, monkeypatch, *, symbols):
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
     )
-    from tests.portfolio_strategy_lab.host_requests import _json
-    from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
+    from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
     from tests.portfolio_strategy_lab.process_death import forced_process
     from tests.portfolio_strategy_lab.scoring_runs import PACKAGE
     from tests.workspace_maintenance.local_data_provider import (
@@ -515,7 +513,7 @@ def _research_crash_child(workspace, stage):
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,
     )
-    from tests.portfolio_strategy_lab.host_requests import _json
+    from tests.portfolio_strategy_lab.local_web_support import _json
     from tests.portfolio_strategy_lab.scoring_runs import PACKAGE
     from tests.workspace_maintenance.local_data_provider import (
         PRODUCT_QA_SYMBOLS,

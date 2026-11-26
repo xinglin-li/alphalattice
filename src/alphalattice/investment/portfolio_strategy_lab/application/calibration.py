@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from hashlib import sha256
 from io import BytesIO
 from typing import Literal, Self, cast
 
@@ -10,11 +11,6 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_model_digest,
-    seal_scoped_model,
-)
 from alphalattice.control.workspace_runtime.content_store import columns_digest
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
@@ -33,7 +29,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -44,11 +40,16 @@ class _Contract(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
+        identity = cls.model_construct(**values, content_hash="0" * 64).model_dump(
+            mode="json", exclude={"content_hash"}
+        )
+        return cls(**identity, content_hash=canonical_hash(identity))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
-        if self.content_hash != scoped_model_digest(self, "content_hash", digest=canonical_hash):
+        if self.content_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"content_hash"})
+        ):
             raise ValueError("portfolio_calibration.identity_invalid")
         return self
 
@@ -132,7 +133,7 @@ def _legacy_npz_digest(scores: FloatArray, returns: FloatArray, eligible: BoolAr
     # Legacy observations carry the digest of their arrays packed as one npz.
     data = BytesIO()
     np.savez(data, scores=scores, returns=returns, eligible=eligible)
-    return identity_sha256(data.getvalue()).hexdigest()
+    return sha256(data.getvalue()).hexdigest()
 
 
 def publish_observations(

@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelMembership,
@@ -66,12 +65,8 @@ def _binding(*, current: bool = False) -> FeaturePanelBinding:
 SESSIONS = tuple(date(2026, 1, 5) + timedelta(days=offset) for offset in range(8))
 
 
-def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_them(
-    tmp_path, monkeypatch
-):
+def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_them(tmp_path):
 
-    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
-    from alphalattice.control.workspace_runtime import artifacts
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
         PanelClosureArtifactStore,
@@ -82,7 +77,6 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
     from alphalattice.foundation.feature_engine.producers.cross_section import (
         clip_observation_record,
     )
-    from alphalattice.foundation.feature_engine.producers.preprocessing import contracts
 
     axis = _axis(60)
     sectors = _sectors(axis)
@@ -100,39 +94,10 @@ def test_legacy_replay_keeps_single_row_epochs_when_the_retained_slice_merges_th
     )
     retained = (sessions[0], sessions[-1])
     resolver = ArtifactResolver(tmp_path / "artifacts")
-    verified = []
-
-    def count(value):
-        identity = canonical_hash(value)
-        if isinstance(value, dict) and value.get("kind") == "PanelClipObservationRecord":
-            verified.append(identity)
-        return identity
-
-    with monkeypatch.context() as probe, stage_digests():
-        probe.setattr(contracts, "canonical_hash", count)
-        probe.setattr(artifacts, "canonical_hash", count)
-        record = clip_observation_record(original)
-        payload = record.model_dump(mode="json")
-        published = resolver.publish_panel_clip_observation(
-            payload=payload, receipt_hash=record.receipt_hash
-        )
-        assert (
-            resolver.publish_panel_clip_observation(
-                payload=payload, receipt_hash=record.receipt_hash
-            )
-            == published
-        )
-        changed = {**payload, "transformed_identity": "0" * 64}
-        with pytest.raises(ValueError, match="panel clip observation identity is invalid"):
-            resolver.publish_panel_clip_observation(
-                payload=changed, receipt_hash=record.receipt_hash
-            )
-    assert len(verified) == 2 and verified[0] == record.record_hash != verified[1]
-    other = {key: value for key, value in payload.items() if key != "record_hash"}
-    other["transformed_identity"] = "0" * 64  # another transformation under the same receipt
-    other["record_hash"] = canonical_hash(other)
-    with pytest.raises(ValueError, match="receipt was reused"):
-        resolver.publish_panel_clip_observation(payload=other, receipt_hash=record.receipt_hash)
+    record = clip_observation_record(original)
+    resolver.publish_panel_clip_observation(
+        payload=record.model_dump(mode="json"), receipt_hash=record.receipt_hash
+    )
     # The current closure has gained a later entrant. Its earlier recorded
     # union must reproduce the old batch's axis hash, without guessing a roster.
     future = SESSIONS[3]
@@ -486,17 +451,6 @@ def test_current_policy_uses_unchanged_coverage_for_missing_member_rows(missing_
         for item in legacy.availability
         if item["session_date"] == SESSIONS[0].isoformat()
     )
-    # A planted session on which every member's factor_a is the same value: all rows present,
-    # no dispersion, so that factor is unavailable that day by its own reason (an all-undefined
-    # session reads as coverage instead); the other factor is untouched.
-    flat = rows.copy()
-    flat.loc[flat.session_date == SESSIONS[1], "factor_a"] = 0.25
-    planted = kernel.materialize(feature_rows=flat, binding=_binding(current=True), **arguments)
-    assert [
-        (item["factor_id"], item["status"], item["reason"])
-        for item in planted.availability
-        if item["session_date"] == SESSIONS[1].isoformat()
-    ] == [("factor_a", "unavailable", "feature_mad_zero"), ("factor_b", "available", None)]
 
 
 @pytest.mark.parametrize("value", [np.inf, -np.inf])

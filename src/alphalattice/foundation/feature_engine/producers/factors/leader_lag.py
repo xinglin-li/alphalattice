@@ -4,17 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from math import ceil
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 SECTOR_LEADER_LAG_METHOD_FAMILY: Final = "SECTOR_LEADER_LAG"
 SECTOR_LEADER_LAG_5_ID: Final = "factor.desktop.experimental.sector_leader_lag_5.v1"
@@ -72,8 +70,6 @@ def leader_lag_factor_specs() -> tuple[FactorSpec, ...]:
 
 def sector_leader_lag_5(source: pd.DataFrame, specification: FactorSpec) -> pd.Series:
     """Calculate the cross-sectional method when historical membership is supplied."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     frame = source.assign(_position=np.arange(len(source), dtype=int)).copy()
     frame["session_date"] = pd.to_datetime(frame["session_date"])
     frame = frame.sort_values(["session_date", "listing_id"], kind="mergesort")

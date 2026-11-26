@@ -19,7 +19,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -45,7 +44,7 @@ from alphalattice.interface.local_application.goals import target_sessions, upda
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.execution import TIMERS, Timers
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class ResearchUpdateAutomationSettings(BaseModel):  # type: ignore[misc]
@@ -129,7 +128,6 @@ class ResearchUpdateAutomation:
         execute: Callable[[PortfolioResearchOperationRequest], dict[str, object]],
         resume: Callable[[], None] | None = None,
         admit: Callable[[Callable[[], None]], None] | None = None,
-        timers: Timers = TIMERS,
     ) -> None:
         """Wire committed settings and a bounded service-lifetime maintenance host.
 
@@ -141,7 +139,6 @@ class ResearchUpdateAutomation:
             execute: Deterministic operation dispatch callback.
             resume: At start, what holds the first use's dated update again when still owed.
             admit: Reserve a held callback until its Task handoff completes.
-            timers: The Host's timer, which wakes both workers at their due times.
         """
         self.index, self.manifest_hash = index, workspace_manifest_hash
         self.installed = installed_package_ids
@@ -151,7 +148,6 @@ class ResearchUpdateAutomation:
             wake=self.wake,
             run_once=partial(admit, self._cycle) if admit else self._cycle,
             clock=clock,
-            timers=timers,
         )
         # The first use's dated update: the same seam, one shot, never the daily schedule.
         self.held_wake = MaintenanceWakeController()
@@ -159,7 +155,6 @@ class ResearchUpdateAutomation:
             wake=self.held_wake,
             run_once=partial(admit, self._run_held) if admit else self._run_held,
             clock=clock,
-            timers=timers,
         )
         self._held: tuple[datetime, Callable[[], object]] | None = None
         self._held_running = False
@@ -191,16 +186,15 @@ class ResearchUpdateAutomation:
         """
         current = None
         seen: set[str] = set()
-        parent = None
-        while (
-            value := self.index.open(_AUTOMATION_SETTINGS, canonical_hash(["SETTINGS", parent]))
-        ) is not None:
+        while True:
+            parent = None if current is None else current.content_hash
+            value = self.index.open(_AUTOMATION_SETTINGS, canonical_hash(["SETTINGS", parent]))
+            if value is None:
+                return current
             if value.previous_hash != parent or value.content_hash in seen:
                 raise ValueError("research_update.automation_lineage_invalid")
             seen.add(value.content_hash)
             current = value
-            parent = value.content_hash
-        return current
 
     def readback(self) -> dict[str, object]:
         """Read scheduling status, admission, last attempt and maintenance failure.

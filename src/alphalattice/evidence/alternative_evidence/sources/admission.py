@@ -17,7 +17,6 @@ from importlib import resources
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.network_access import (
     NetworkAccess,
     network_access,
@@ -41,7 +40,7 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     SecOfficialResponse,
     SecOfficialTransport,
 )
-from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SEC_USER_AGENT_VARIABLE = "SEC_USER_AGENT"
 SEC_CONTACT = "sec-contact.json"
@@ -66,7 +65,7 @@ def sec_user_agent(environment: Mapping[str, str] | None = None) -> str | None:
     never asked for a name or an address.
     """
     override = (
-        (process_config().public if environment is None else environment)
+        (os.environ if environment is None else environment)
         .get(SEC_USER_AGENT_VARIABLE, "")
         .strip()
     )
@@ -411,7 +410,7 @@ def admit_official_source(
             transport_origin="INJECTED",
             **declared,
         )
-    values = dict(process_config().public if environment is None else environment)
+    values = dict(os.environ if environment is None else environment)
     # The workspace's typed network control decides, the operator's offline switch first.
     access = network_access(workspace_root, values, now=now)
     if not access.allowed:

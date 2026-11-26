@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import struct
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -15,17 +17,11 @@ import pyarrow.parquet as pq
 from pydantic import BaseModel
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import (
-    record_sealed_file,
-    sealed_file_holds,
-)
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
-from alphalattice.foundation.feature_engine.panels.closure_files import (
-    ClosureFiles,
-    FolderFiles,
-    closure_files,
+from alphalattice.kernel.shared_kernel.persistence import (
+    DURABLE_REPLACE_DELAYS,
+    replace_with_retry,
 )
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 
 _Model = TypeVar("_Model", bound=BaseModel)
 
@@ -54,7 +50,7 @@ def ordered_key_hash(session_dates: Iterable[object], listing_ids: Iterable[str]
         parts.append(session_bytes)
         parts.append(listing_bytes)
         count += 1
-    digest = identity_sha256(b"PanelBaseKeyAxis\0")
+    digest = hashlib.sha256(b"PanelBaseKeyAxis\0")
     digest.update(b"".join(parts))
     digest.update(struct.pack(">Q", count))
     return digest.hexdigest()
@@ -68,7 +64,7 @@ def ordered_value_hash(
     mask = np.asarray(valid, dtype=np.bool_)
     if floats.ndim != 1 or mask.ndim != 1 or len(floats) != len(mask):
         raise ValueError("Panel value closure arrays must be aligned one-dimensional arrays")
-    digest = identity_sha256(b"PanelBaseValueColumn\0")
+    digest = hashlib.sha256(b"PanelBaseValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
@@ -84,18 +80,11 @@ def arrow_table_logical_hash(table: pa.Table) -> str:
     normalized = table.replace_schema_metadata(None).combine_chunks()
     with ipc.new_stream(sink, normalized.schema) as writer:
         writer.write_table(normalized)
-    return identity_sha256(sink.getvalue().to_pybytes()).hexdigest()
-
-
-def _physical(data: bytes) -> str:
-    """A closure Parquet file's physical digest, as its reference records it: SHA-256 of its
-    bytes, taken by the writer and checked again by a reader of the log's copy."""
-    return integrity_sha256(data).hexdigest()
+    return hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()
 
 
 class PanelClosureArtifactStore:
-    """Publish immutable closure children under the existing artifact root: in its folder, or a
-    workspace's own root on the log once the upgrade moved it (`closure_files`)."""
+    """Publish immutable closure children under the existing artifact root."""
 
     _URI_PREFIX = "playpen://feature-panel/closure"
 
@@ -105,45 +94,31 @@ class PanelClosureArtifactStore:
         """Locate closure artifacts and bind the optional capacity admission."""
         self._root = Path(resolver.root) / "feature-panel" / "closure"
         self.capacity = capacity
-        self._files: ClosureFiles | None = None
 
     @property
     def root(self) -> Path:
         """Return the root of the immutable closure artifact store."""
         return self._root
 
-    @property
-    def files(self) -> ClosureFiles:
-        """The root's files, decided at the first use: the Host composes its stores after the
-        upgrade, so one store reads one place."""
-        if self._files is None:
-            self._files = closure_files(self._root)
-        return self._files
-
-    def holds(self, category: str, content_hash: str, suffix: str = ".json") -> bool:
-        """Whether the child is published, its bytes unread."""
-        return self.files.exists(self._name(category, content_hash, suffix))
-
     def publish_json(
         self, *, category: str, content_hash: str, payload: Mapping[str, object]
     ) -> str:
         """Publish a content-addressed JSON closure artifact."""
-        name = self._name(category, content_hash, ".json")
+        target = self._path(category, content_hash, ".json")
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
         ).encode("utf-8")
-        self._publish(name, serialized)
-        if self.files.read(name) != serialized:
+        if self.capacity is not None and not target.exists():
+            self.capacity(len(serialized))
+        self._atomic_publish(target, serialized)
+        if target.read_bytes() != serialized:
             raise ValueError("closure JSON authoritative readback failed")
         return self._uri(category, content_hash)
 
     def load_json(self, *, category: str, content_hash: str) -> dict[str, object]:
         """Load a JSON closure artifact by its category and content hash."""
-        name = self._name(category, content_hash, ".json")
-        data = self.files.read(name)
-        if data is None:
-            raise FileNotFoundError(f"closure JSON artifact is missing: {name}")
-        payload = json.loads(data.decode("utf-8"))
+        target = self._path(category, content_hash, ".json")
+        payload = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("closure JSON payload is not an object")
         return payload
@@ -161,11 +136,10 @@ class PanelClosureArtifactStore:
         """Every published document of one category the predicate admits, by content hash."""
         self._validate_category(category)
         found: list[_Model] = []
-        for name in self.files.names(category):
-            stem, _, suffix = name.rpartition(".")
-            if suffix != "json" or len(stem) != 64:
+        for path in sorted((self._root / category).glob("*.json")):
+            if len(path.stem) != 64:
                 continue
-            candidate = self.load_model(category=category, content_hash=stem, model=model)
+            candidate = self.load_model(category=category, content_hash=path.stem, model=model)
             if matches(candidate):
                 found.append(candidate)
         return tuple(found)
@@ -178,90 +152,70 @@ class PanelClosureArtifactStore:
         kind: str,
         table: pa.Table,
     ) -> ClosureArtifactRef:
-        """Publish a Parquet closure child with logical and physical hashes; one already
-        published keeps its own bytes."""
-        name = self._name(category, content_hash, ".parquet")
-        data = self.files.read(name)
-        if data is None:
-            metadata = dict(table.schema.metadata or {})
-            metadata.update(
-                {
-                    b"alphalattice.closure_kind": kind.encode("utf-8"),
-                    b"alphalattice.content_hash": content_hash.encode("ascii"),
-                }
-            )
-            sink = pa.BufferOutputStream()
-            pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd")
-            data = sink.getvalue().to_pybytes()
-            self._publish(name, data)
-        self._validate_parquet(data, content_hash=content_hash, kind=kind)
-        physical = _physical(data)
-        if isinstance(self.files, FolderFiles):  # checked here once; reads take it by its stat
-            record_sealed_file(self._root / name, physical)
+        """Publish a Parquet closure child with logical and physical hashes."""
+        target = self._path(category, content_hash, ".parquet")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        metadata = dict(table.schema.metadata or {})
+        metadata.update(
+            {
+                b"alphalattice.closure_kind": kind.encode("utf-8"),
+                b"alphalattice.content_hash": content_hash.encode("ascii"),
+            }
+        )
+        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        if not target.exists():
+            try:
+                if self.capacity is not None:
+                    sink = pa.BufferOutputStream()
+                    pq.write_table(
+                        table.replace_schema_metadata(metadata), sink, compression="zstd"
+                    )
+                    encoded = sink.getvalue().to_pybytes()
+                    self.capacity(len(encoded))
+                    staged.write_bytes(encoded)
+                else:
+                    pq.write_table(
+                        table.replace_schema_metadata(metadata), staged, compression="zstd"
+                    )
+                replace_with_retry(staged, target, delays=DURABLE_REPLACE_DELAYS)
+            finally:
+                staged.unlink(missing_ok=True)
+        self._validate_parquet(target, content_hash=content_hash, kind=kind)
+        physical = hashlib.sha256(target.read_bytes()).hexdigest()
         return ClosureArtifactRef(
             kind=kind,
             content_hash=content_hash,
             physical_sha256=physical,
-            byte_count=len(data),
+            byte_count=target.stat().st_size,
             row_count=table.num_rows,
             uri=self._uri(category, content_hash),
         )
 
     def load_parquet(self, *, category: str, reference: ClosureArtifactRef) -> pa.Table:
-        """Verify a Parquet reference and load its table: its bytes are the digest its writer
-        recorded, while a folder file's stat holds or as the log proves them."""
+        """Verify a Parquet reference and load its table."""
         expected_uri = self._uri(category, reference.content_hash)
         if reference.uri != expected_uri:
             raise ValueError("closure Parquet URI does not match its content hash")
-        name = self._name(category, reference.content_hash, ".parquet")
-        if isinstance(self.files, FolderFiles):
-            target = self._root / name
-            if not target.is_file():
-                raise FileNotFoundError("closure Parquet artifact is missing")
-            self._validate_parquet(target, content_hash=reference.content_hash, kind=reference.kind)
-            if not sealed_file_holds(target, reference.physical_sha256):
-                raise ValueError("closure Parquet physical hash does not match its reference")
-            size = target.stat().st_size
-            source: Path | pa.BufferReader = target
-        else:
-            data = self.files.read(name)
-            if data is None:
-                raise FileNotFoundError("closure Parquet artifact is missing")
-            if _physical(data) != reference.physical_sha256:
-                raise ValueError("closure Parquet physical hash does not match its reference")
-            self._validate_parquet(data, content_hash=reference.content_hash, kind=reference.kind)
-            size, source = len(data), pa.BufferReader(data)
-        if size != reference.byte_count:
+        target = self._path(category, reference.content_hash, ".parquet")
+        self._validate_parquet(target, content_hash=reference.content_hash, kind=reference.kind)
+        if hashlib.sha256(target.read_bytes()).hexdigest() != reference.physical_sha256:
+            raise ValueError("closure Parquet physical hash does not match its reference")
+        if target.stat().st_size != reference.byte_count:
             raise ValueError("closure Parquet byte count does not match its reference")
-        table = pq.read_table(source)
+        table = pq.read_table(target)
         if table.num_rows != reference.row_count:
             raise ValueError("closure Parquet row count does not match its reference")
         return table
 
     def physical_path(self, *, category: str, reference: ClosureArtifactRef) -> Path:
-        """Return a verified Parquet artifact's local path: a folder's alone, since the log
-        keeps no file to name."""
+        """Return a verified Parquet artifact's local path."""
         self.load_parquet(category=category, reference=reference)
-        if not isinstance(self.files, FolderFiles):
-            raise ValueError("closure Parquet artifact is kept on the log, not in a folder")
-        return self._root / self._name(category, reference.content_hash, ".parquet")
+        return self._path(category, reference.content_hash, ".parquet")
 
-    def _publish(self, name: str, content: bytes) -> None:
-        """Write an immutable child once: the same bytes again are left as they are, other bytes
-        under its identity are refused, and only a new child asks the capacity admission."""
-        held = self.files.read(name)
-        if held is not None:
-            if held != content:
-                raise ValueError("closure artifact identity was reused with different content")
-            return
-        if self.capacity is not None:
-            self.capacity(len(content))
-        self.files.write(name, content)
-
-    def _name(self, category: str, content_hash: str, suffix: str) -> str:
+    def _path(self, category: str, content_hash: str, suffix: str) -> Path:
         self._validate_category(category)
         self._validate_hash(content_hash)
-        return f"{category}/{content_hash}{suffix}"
+        return self._root / category / f"{content_hash}{suffix}"
 
     def _uri(self, category: str, content_hash: str) -> str:
         self._validate_category(category)
@@ -281,9 +235,24 @@ class PanelClosureArtifactStore:
             raise ValueError("invalid closure artifact hash")
 
     @staticmethod
-    def _validate_parquet(source: Path | bytes, *, content_hash: str, kind: str) -> None:
-        held = pa.BufferReader(source) if isinstance(source, bytes) else source
-        metadata = pq.ParquetFile(held).schema_arrow.metadata or {}
+    def _atomic_publish(target: Path, content: bytes) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if target.read_bytes() != content:
+                raise ValueError("closure artifact identity was reused with different content")
+            return
+        staged = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+        staged.write_bytes(content)
+        try:
+            replace_with_retry(staged, target, delays=DURABLE_REPLACE_DELAYS)
+        finally:
+            staged.unlink(missing_ok=True)
+
+    @staticmethod
+    def _validate_parquet(path: Path, *, content_hash: str, kind: str) -> None:
+        if not path.is_file():
+            raise FileNotFoundError("closure Parquet artifact is missing")
+        metadata = pq.ParquetFile(path).schema_arrow.metadata or {}
         if metadata.get(b"alphalattice.content_hash", b"").decode("ascii") != content_hash:
             raise ValueError("closure Parquet content hash metadata is invalid")
         if metadata.get(b"alphalattice.closure_kind", b"").decode("utf-8") != kind:

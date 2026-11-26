@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "namespace": "SYSTEM_FIXTURE",
+  "stable_id": "recorded.source-limitation",
+  "revision": "1.0.0",
+  "synthetic": true,
+  "contains_personal_data": false,
+  "source_urn": "urn:alphalattice:recorded-evidence:source-limitation",
+  "title": "Synthetic source limitation",
+  "content": "Synthetic limitation: the available source lacks timely corroboration; treat the claim as limited and require human review.",
+  "content_sha256": "45ca9facf58d986a88f21c90eb1f812c2b69c249a1abe2c2fd3f05f6f857e770",
+  "claim_scope": "DATA_SOURCE",
+  "relation": "LIMITATION",
+  "permitted_effects": ["HUMAN_REVIEW", "LIMITATION"],
+  "published_at": "2026-01-17T14:00:00Z",
+  "available_at": "2026-01-17T14:10:00Z",
+  "retrieved_at": "2026-01-17T14:15:00Z",
+  "expires_at": "2030-01-01T00:00:00Z",
+  "license_id": "CC0-1.0",
+  "redistribution_allowed": true
+}

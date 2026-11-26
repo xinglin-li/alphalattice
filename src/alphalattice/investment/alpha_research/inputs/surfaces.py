@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -15,13 +14,13 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.inputs.execution_target import (
     build_factor_target_policy,
     build_factor_target_policy_for_method,
     compile_factor_target_surface,
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..targets.execution_outcome import AlphaTargetPolicy, compile_alpha_target_surface
 from .folds import (
@@ -75,7 +74,7 @@ def _training_binding_source_hashes(
 
 
 def _total_physical_memory_bytes() -> int:
-    if sys.platform == "win32":
+    if os.name == "nt":
         import ctypes
 
         class _MemoryStatus(ctypes.Structure):
@@ -500,7 +499,7 @@ class _AdmittedRows:
 def _declared_sample(plan: AlphaFoldArrayPlan) -> pa.Array | None:
     """The plan's listing axis, when it is a declared sample of the Panel's listings.
 
-    An exploration study runs on a sample of its input's names: its
+    An exploration study runs on a sample of its input's names (binding plan, B17): its
     authority's listing axis is a strict subset of the Panel's, and rows of the other
     names are left out. A plan on the Panel's own axis (its `listing_set_hash`) keeps
     refusing any row off that axis, as before.

@@ -157,6 +157,7 @@ def test_set_based_raw_persistence_is_equivalent_idempotent_and_faster(tmp_path)
         "action_corrected": 0,
     }
     assert legacy_seconds / max(set_seconds, 1e-9) >= 20
+    assert set_seconds * 500 < 120
     assert market_data.revision_count("listing-aapl") == 0
     assert market_data.action_revision_count("listing-aapl") == 0
 
@@ -288,18 +289,8 @@ class _YFinance:
         self.frame = frame
         self.calls: list[dict[str, object]] = []
 
-    def Ticker(self, _symbol: str, *, session=None) -> _Ticker:
-        del session
+    def Ticker(self, _symbol: str) -> _Ticker:
         return _Ticker(self.frame, self.calls)
-
-
-def _use_fake_yahoo(monkeypatch: pytest.MonkeyPatch, fake: _YFinance) -> None:
-    """Run the real adapter against in-memory history without granting network access."""
-    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
-    monkeypatch.setattr(
-        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
-        lambda _source: None,
-    )
 
 
 def _history_frame() -> pd.DataFrame:
@@ -323,7 +314,7 @@ def _history_frame() -> pd.DataFrame:
 
 def test_one_response_hydration_splits_evidence_and_filters_window(tmp_path, monkeypatch) -> None:
     fake = _YFinance(_history_frame())
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
     provider = YFinanceMarketDataProvider(tmp_path / "cache")
     evidence = provider.fetch_hydration(
         listing_id="listing-aapl",
@@ -379,7 +370,7 @@ def test_provider_rejects_unrepaired_split_discontinuity(tmp_path, monkeypatch) 
     frame = _history_frame().copy()
     frame.loc[frame.index[:2], ["Open", "High", "Low", "Close"]] *= 2.0
     fake = _YFinance(frame)
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
 
     with pytest.raises(ProviderFetchError) as captured:
         YFinanceMarketDataProvider(tmp_path / "cache").fetch_hydration(
@@ -397,7 +388,7 @@ def test_provider_rejects_other_split_day_price_discontinuity(tmp_path, monkeypa
     frame = _history_frame().copy()
     frame.loc[frame.index[2], ["Open", "High", "Low", "Close"]] *= 6.0
     fake = _YFinance(frame)
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
 
     with pytest.raises(ProviderFetchError) as captured:
         YFinanceMarketDataProvider(tmp_path / "cache").fetch_hydration(
@@ -428,7 +419,7 @@ def test_provider_allows_cash_event_explained_price_discontinuity(tmp_path, monk
     frame.loc[frame.index[1], "Dividends"] = 103.75
     frame.loc[:, "Stock Splits"] = 0.0
     fake = _YFinance(frame)
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
 
     evidence = YFinanceMarketDataProvider(tmp_path / "cache").fetch_hydration(
         listing_id="listing-kdp",
@@ -440,14 +431,14 @@ def test_provider_allows_cash_event_explained_price_discontinuity(tmp_path, monk
     assert len(evidence.daily_rows) == 2
 
 
-@pytest.mark.parametrize("value", [pytest.param(float("nan"), id="nan"), 0.0, -1.0])
+@pytest.mark.parametrize("value", [float("nan"), 0.0, -1.0])
 def test_one_response_hydration_rejects_invalid_adjusted_close(
     tmp_path, monkeypatch, value
 ) -> None:
     frame = _history_frame().iloc[1:].copy()
     frame.loc[frame.index[0], "Adj Close"] = value
     fake = _YFinance(frame)
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
     provider = YFinanceMarketDataProvider(tmp_path / "cache")
     with pytest.raises(ProviderFetchError) as captured:
         provider.fetch_hydration(
@@ -1248,7 +1239,7 @@ def test_batched_feature_persistence_rolls_back_the_bounded_batch(
 
 def test_one_response_hydration_rejects_empty_payload(tmp_path, monkeypatch) -> None:
     fake = _YFinance(_history_frame().iloc[0:0])
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
     with pytest.raises(ProviderFetchError) as captured:
         YFinanceMarketDataProvider(tmp_path / "cache").fetch_hydration(
             listing_id="listing-aapl",
@@ -1276,12 +1267,11 @@ def test_one_response_hydration_maps_shared_session_instability(tmp_path, monkey
             raise RuntimeError("curl multi handle session already in use")
 
     class UnstableYFinance(_YFinance):
-        def Ticker(self, _symbol: str, *, session=None):
-            del session
+        def Ticker(self, _symbol: str):
             return UnstableTicker(self.frame, self.calls)
 
     fake = UnstableYFinance(_history_frame())
-    _use_fake_yahoo(monkeypatch, fake)
+    monkeypatch.setattr(YFinanceMarketDataProvider, "_module", lambda _self: fake)
     with pytest.raises(ProviderFetchError) as captured:
         YFinanceMarketDataProvider(tmp_path / "cache").fetch_hydration(
             listing_id="listing-aapl",

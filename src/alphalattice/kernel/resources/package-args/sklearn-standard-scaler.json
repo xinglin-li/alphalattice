@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.scikit-learn.standard-scaler",
+  "revision": "1.0.0",
+  "title": "scikit-learn StandardScaler adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "scikit-learn", "version": "1.9.0"},
+  "companion_distributions": [],
+  "callable": "sklearn.preprocessing.StandardScaler",
+  "arguments": [
+    {"schema_version": "1", "name": "copy", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "with_mean", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "with_std", "value_kind": "boolean", "has_default": true, "default": true}
+  ],
+  "interactions": ["The owner policy fixes centering and scaling before penalized fitting."],
+  "assumptions": ["Input is a finite training-only sample-by-feature matrix."],
+  "warnings": ["Fitted statistics must never include validation or holdout rows."],
+  "failure_modes": ["Unsupported constructor argument or unavailable locked scikit-learn distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html"
+}

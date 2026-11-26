@@ -8,9 +8,6 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.crud_contracts import (
     FeatureCatalogDelta,
@@ -36,6 +33,9 @@ from alphalattice.foundation.feature_engine.producers.factors.formula import (
 from alphalattice.foundation.feature_engine.producers.factors.formula_language import (
     FormulaError,
 )
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sealing import seal_model
 
 _HASH = r"^[0-9a-f]{64}$"
 

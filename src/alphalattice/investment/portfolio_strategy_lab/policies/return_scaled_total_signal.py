@@ -30,13 +30,13 @@ from typing import Literal, Protocol, Self, cast
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioTargetDecision
 from alphalattice.investment.portfolio_strategy_lab.optimizer import service as optimizer_service
 from alphalattice.investment.portfolio_strategy_lab.optimizer.service import (
     PortfolioOptimizationError,
     PortfolioOptimizer,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from . import sector_admission
 from .contracts import (

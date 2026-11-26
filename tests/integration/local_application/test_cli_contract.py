@@ -12,24 +12,21 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
-from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.research_authoring.comparison import POSITION_UNITS
-from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.interface.local_application import cli, client, native_setup
 from alphalattice.interface.local_application.answers import answer_problem
 from alphalattice.interface.local_application.cli import main
@@ -46,26 +43,18 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.failure_codes import FAILURE_DETAIL_WITHHELD
 from alphalattice.interface.local_application.labels import label
 from alphalattice.interface.local_application.portfolio_research import (
+    PortfolioResearchOperationRequest,
     PortfolioResearchRequestDocument,
 )
-from alphalattice.kernel.door import (
-    Decisions,
-    Door,
-    DoorRefusal,
-    FamilyRoute,
-    answer_bytes,
-    request_bytes,
-)
-from alphalattice.kernel.door import port as door_port
 from devtools.evaluation.forms import Scenario
-from tests._support.history_fixtures import recording_history as recording_history
 from tests.portfolio_strategy_lab.cli_support import (
     _agent_project,
     _cli,
     _inprocess_cli,
     _session_cli,
+    strategy_readback_operations,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.structural.refusal_support import rerun_refusal_codes
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
@@ -84,8 +73,7 @@ ENVELOPE = {
 
 
 def test_a_question_code_is_optional_and_cannot_expand_a_relayed_decision() -> None:
-    """Uncoded replies keep their own question; a coded one carries its registered words and
-    binds the catalog's permitted operations."""
+    """Coded replies retain legacy input and bind the catalog's permitted operations."""
     from alphalattice.interface.local_application.goals import relayed_decision
     from alphalattice.interface.local_application.portfolio_research import (
         PersonConfirmation,
@@ -98,15 +86,7 @@ def test_a_question_code_is_optional_and_cannot_expand_a_relayed_decision() -> N
     )
     assert legacy.model_dump().get("question_code", "absent") is None
     assert relayed_decision(request, legacy) == legacy.decision_hash
-    from alphalattice.interface.local_application.goals import DAILY_NETWORK_ASK
-
-    with pytest.raises(ValueError, match=r"person_confirmation\.question_words_differ"):
-        relayed_decision(
-            request, legacy.model_copy(update={"question_code": "network.daily_updates"})
-        )
-    coded = legacy.model_copy(
-        update={"question_code": "network.daily_updates", "question": DAILY_NETWORK_ASK}
-    )
+    coded = legacy.model_copy(update={"question_code": "network.daily_updates"})
     assert relayed_decision(request, coded) == legacy.decision_hash
     wider = {**request, "evidence_documents_per_issuer": 10}
     with pytest.raises(ValueError, match=r"person_confirmation\.beyond_its_question"):
@@ -132,34 +112,19 @@ _PRODUCT_WORDS = frozenset({"(CLI)", "(CPU)", "(CRO)", "(ISO)", "(PM)", "(UTC)"}
     "failure", ["task_control.queue_full", "TASK_STAGE_RAISED:private-content"]
 )
 def test_problem_report_projects_real_activity_without_private_values(
-    recording_history, tmp_path, monkeypatch, capsys, request, failure
+    live, tmp_path, monkeypatch, capsys, failure
 ) -> None:
     """A local report keeps replay facts and excludes private ledger and doctor values."""
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    activity = WorkspaceActivity(
-        workspace=workspace,
-        workspace_id=recording_history,
-        gate=WorkspaceMutationGate(),
-        instance="problem-report",
-    )
-    request.addfinalizer(activity.close)
-
-    def local_client(path: Path, *, timeout: float) -> SimpleNamespace:
-        assert path == workspace and timeout > 0
-        return SimpleNamespace(activity_recent=activity.recent)
-
-    monkeypatch.setattr(native_setup, "LocalResearchClient", local_client)
-    private = [str(workspace), "private-holdings", "private-content"]
+    private = [str(live.workspace), "private-holdings", "private-content"]
     private += [str(uuid4()), "987654.321"]
-    operation = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
-    span = activity.entered(operation, caller="EXTERNAL_AUTOMATION")
+    request = PortfolioResearchRequestDocument(operation="PLAN", spec={}).to_operation_request()
+    span = live.activity.entered(request, caller="EXTERNAL_AUTOMATION")
     assert span is not None
     answer = dict(status="REFUSED", failure_code=failure, next_action="READ_TASK")
     answer.update(task_id=private[3], holdings=private[1], figure=float(private[4]))
     answer.update(file_contents=private[2], conversation=private[2], workspace=private[0])
     answer["next_requests"] = {"retry": {"operation": "WORKSPACE_SHOW", "file": private[0]}}
-    activity.returned(span, answer)
+    live.activity.returned(span, answer)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_THREAD_ID", "test-report-session")
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
@@ -174,7 +139,7 @@ def test_problem_report_projects_real_activity_without_private_values(
         args = ["--lang", language, "problem", "report", "--output", str(saved)]
         sentence = "Report the WORKSPACE_SHOW problem to the developers."
         args += ["--sentence", sentence, "--expected-route", "WORKSPACE_SHOW"]
-        code, shown, _ = _inprocess_cli(workspace, *args, capsys=capsys)
+        code, shown, _ = _inprocess_cli(live.workspace, *args, capsys=capsys)
         expected = (0, "PROBLEM_REPORT", "PROBLEM_REPORT")
         assert (code, shown["operation"], shown["status"]) == expected
         report = json.loads(saved.read_text("utf-8"))
@@ -244,7 +209,7 @@ def test_serve_forwards_its_own_options_to_the_launcher(tmp_path: Path) -> None:
 def test_storage_cap_is_one_operator_setting_through_the_real_cli(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """changing execution capacity preserves the workspace's sealed manifest and Tasks."""
+    """V680: changing execution capacity preserves the workspace's sealed manifest and Tasks."""
     before = live.workspace_manifest.model_dump_json()
     tasks = _json(live, "/api/tasks")["tasks"]
     code, shown, _ = _cli(live.workspace, "storage", "cap")
@@ -467,7 +432,7 @@ def test_no_answer_carries_a_failure_field_that_is_not_a_code(
 
 
 def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path: Path) -> None:
-    """requirement: an agent reported 35 launches against a budget of 40 after 41,
+    """requirement (V364): an agent reported 35 launches against a budget of 40 after 41,
     its help launches miscounted; every answer carries `session_launches`, the session's
     launches with help counted, and an answer outside an agent session carries none."""
 
@@ -478,11 +443,10 @@ def test_every_answer_counts_the_agent_sessions_launches_help_included(tmp_path:
     asked = ("--request-timeout", "700", "task", "list")
 
     def launch(*arguments: str, env: dict[str, str] = environment) -> dict[str, Any]:
-        result = spawn.run(
+        result = subprocess.run(
             [sys.executable, str(SCRIPT), "--workspace", str(empty), *arguments],
             capture_output=True,
             text=True,
-            encoding="utf-8",
             timeout=120,
             env=env,
         )
@@ -511,7 +475,7 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """One session reader assigns both requests and their counted launches to the same
-    unambiguous session; a trace in the environment is sent only as one ASCII line."""
+    unambiguous session."""
 
     from alphalattice.interface.local_application import cli_contract
 
@@ -521,9 +485,6 @@ def test_one_reader_names_the_session_a_request_and_its_launches_count_to(
     both = {**claude, **codex}
     assert cli_contract.agent_session(both) is None
     assert cli_contract.agent_provenance_headers(both) == {}
-    traced = {"TRACEPARENT": "00-1-2-01", "BAGGAGE": "a=1\r\nX-Injected: 1"}  # one line only
-    assert cli_contract.agent_provenance_headers(traced) == {"traceparent": "00-1-2-01"}
-    assert cli_contract.agent_provenance_headers({"BAGGAGE": "a=é"}) == {}  # ASCII only
     launches = [cli_contract.count_launch(env) for env in (claude, both, claude, codex)]
     assert launches == [1, None, 2, 1]
     assert cli_contract.agent_session(claude) == ("claude-code", "claude-1")
@@ -609,11 +570,10 @@ def test_an_empty_document_file_is_refused_by_its_own_code(
 
 def test_a_nouns_help_names_every_verbs_flags() -> None:
     """Object and top-level help show registered actions, flags, person-only doors and order."""
-    result = spawn.run(
+    result = subprocess.run(
         [sys.executable, str(SCRIPT), "feature", "--help"],
         capture_output=True,
         text=True,
-        encoding="utf-8",
         timeout=120,
         env={**os.environ, "COLUMNS": "240"},
     )
@@ -638,12 +598,8 @@ def test_a_nouns_help_names_every_verbs_flags() -> None:
     assert "FEATURE_ACTIVATE" in table["person_only"] and "person" in rows["activate"]
     assert "--from (a saved answer)" in text
 
-    shown = spawn.run(
-        [sys.executable, str(SCRIPT), "--help"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=60,
+    shown = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, timeout=60
     )
     words = " ".join(shown.stdout.split())
     positions = [words.index(command) for command in table["common_path"]]
@@ -672,120 +628,6 @@ def test_an_unknown_operation_is_answered_with_the_nearest_names(tmp_path: Path)
     items = parts["result"]["evidence_report"]["items"]
     assert parts["result"]["evidence_report"]["hypothesis_count"] == "integer"
     assert items[0]["classification"] == "string"
-
-
-@pytest.mark.proves("door.named_operations_preserve_bytes_and_person_authority")
-@pytest.mark.parametrize(
-    ("case", "code"),
-    [
-        ("known", None),
-        ("unknown", "door.operation_unknown"),
-        ("question", None),
-        ("unattended", "door.person_unavailable"),
-        ("unattended update", "door.person_unavailable"),
-        ("paid unattended", "door.paid_run_approval_required"),
-        ("duplicate", "door.operation_duplicate"),
-        ("unavailable family", "door.family_import_failed"),
-    ],
-)
-def test_the_door_keeps_operation_bytes_and_names_its_refusals(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, code: str | None
-) -> None:
-    """Resolve the named family once and give the person's decision a durable answer."""
-    imports = []
-
-    def load(module: str) -> SimpleNamespace:
-        imports.append(module)
-        if module == "unavailable":
-            raise ImportError(module)
-        return SimpleNamespace(execute=lambda document: answer_bytes(json.loads(document)))
-
-    monkeypatch.setattr(door_port, "importlib", SimpleNamespace(import_module=load))
-    route = FamilyRoute(("SHOW", "READBACK"), "family")
-    door: Door[bytes, bytes] = Door([route, FamilyRoute(("BROKEN",), "unavailable")])
-    assert door.operations == {"SHOW", "READBACK", "BROKEN"}
-    document = request_bytes({"z": "你好", "operation": "SHOW"})
-    assert document == b'{"z": "\\u4f60\\u597d", "operation": "SHOW"}'
-    expected = b'{"operation": "SHOW", "z": "\\u4f60\\u597d"}'
-    queue = Decisions(tmp_path / "decisions.sqlite3", uuid4)
-    if case == "known":
-        assert imports == []
-        assert door.dispatch("SHOW", document) == expected
-        assert door.dispatch("READBACK", document) == expected
-        assert imports == ["family"]
-    elif case == "question":
-        prompt = {"prompt": "Which input?"}
-        first, later = "DATA_UPDATE_PLAN", "RESEARCH_UPDATE_PLAN"
-        question = queue.ask("question", first, prompt, attended=True, key="scope")
-        assert queue.ask("question", first, prompt, attended=True, key="scope") == question
-        reopened = Decisions(queue.path, uuid4)
-        assert reopened.take(question) is None
-        reopened.answer(question, "the generated copy", by_person=True)
-        assert queue.take(question) == "the generated copy"
-        assert reopened.take(question) is None
-        reopened_again = queue.ask("question", later, prompt, attended=True, key="scope")
-        assert reopened_again.id != question.id and reopened_again.operation == later
-        assert queue.ask("question", later, prompt, attended=True, key="scope") == reopened_again
-        with pytest.raises(DoorRefusal, match=r"^door\.decision_not_pending$"):
-            queue.answer(question, "stale", by_person=True)
-        try:
-            queue.answer(reopened_again, "the new copy", by_person=True)
-        except DoorRefusal as error:
-            pytest.fail(f"The reopened ticket refused its own operation: {error.failure_code}")
-        assert queue.ask("question", first, prompt, attended=True, key="scope") == reopened_again
-        assert reopened.take(reopened_again) == "the new copy"
-    elif case == "unattended update":
-        from alphalattice.control.product_host.composition import portfolio_research_operations
-        from alphalattice.interface.local_application.portfolio_research import (
-            PortfolioResearchOperationRequest,
-        )
-
-        owner = SimpleNamespace(goals=SimpleNamespace(store=SimpleNamespace(decisions=queue)))
-        try:
-            answer = portfolio_research_operations.PortfolioResearchOperations._deliver_questions(
-                owner,
-                PortfolioResearchOperationRequest(
-                    operation="RESEARCH_UPDATE_PLAN", strategy_package_id="example"
-                ),
-                {
-                    "status": "REFUSED",
-                    "failure_code": "local_application.network_access_required",
-                    "person_questions": [{"code": "network.workspace_access"}],
-                },
-                "SERVICE_AUTOMATION",
-            )
-        except DoorRefusal as error:
-            pytest.fail(f"The operation did not return its refusal: {error.failure_code}")
-        assert answer["status"] == "REFUSED" and answer["failure_code"] == code
-        assert "person_questions" not in answer and not queue.path.exists()
-    else:
-        actions = {
-            "unknown": lambda: door.dispatch("UNKNOWN", document),
-            "duplicate": lambda: Door([route, route]),
-            "unavailable family": lambda: door.dispatch("BROKEN", document),
-            "unattended": lambda: queue.ask("question", "SHOW", {}, attended=False),
-            "paid unattended": lambda: queue.ask("paid_run", "SHOW", {}, attended=False),
-        }
-        with pytest.raises(DoorRefusal, match=f"^{re.escape(str(code))}$") as raised:
-            actions[case]()
-        assert raised.value.operation == {
-            "unknown": "UNKNOWN",
-            "unavailable family": "BROKEN",
-        }.get(case, "SHOW")
-        assert imports == (["unavailable"] if case == "unavailable family" else [])
-        assert not queue.path.exists()
-        if case == "paid unattended":
-            paid = queue.ask("paid_run", "SHOW", {"limit": 1}, attended=True)
-            with pytest.raises(DoorRefusal, match=r"^door\.person_required$"):
-                queue.answer(paid, "approve", by_person=False)
-            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
-                queue.spend_approval(paid, {"limit": 1})
-            queue.answer(paid, "approve", by_person=True)
-            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
-                queue.spend_approval(paid, {"limit": 2})
-            queue.spend_approval(paid, {"limit": 1})
-            with pytest.raises(DoorRefusal, match=r"^door\.paid_run_approval_required$"):
-                queue.spend_approval(paid, {"limit": 1})
 
 
 def test_a_metric_read_alone_carries_its_unit(tmp_path: Path, capsys: Any, fake_host: Any) -> None:
@@ -948,15 +790,7 @@ def test_each_wait_takes_the_reread_its_compact_answer_offers() -> None:
         sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
         parser = sub.choices[word]
     seen = next(a for a in parser._actions if a.dest == "committee_seen")
-    assert "M7 or 7" in seen.help  # the floor's name or its number (#5)
-    parse = cli.command_parser().parse_args
-    for given in ("M3", "m3", "3"):
-        assert parse(cli.floor_numbers([*committee, "--seen", given])).committee_seen == 3
-    assert parse(cli.floor_numbers([*committee, "--seen=M3"])).committee_seen == 3
-    # The forms agents try read as the command they mean: the PM's verdict is a submit, and a
-    # research update's Task is the update the committee verbs name.
-    assert parse(["committee", "verdict", "--update", "u"]).operations == ("COMMITTEE_SUBMIT",)
-    assert parse(["research-update", "show", "--update", "u"]).task_id == "u"
+    assert "M7 is 7" in seen.help  # the number, not the id the floor shows (#5)
 
 
 def test_an_answer_carries_the_titles_of_the_installed_ids_it_names() -> None:
@@ -1019,7 +853,7 @@ def test_a_deprecated_command_still_answers_and_names_its_replacement(
 def test_every_field_schema_prints_is_described() -> None:
     """requirement (SC3): a field's meaning is written once, in its contract, and `schema show`
     prints it: every request field of every operation, every field of a typed answer and every
-    key of a Desk's declaration section carries its description."""
+    key of a Desk's declaration section (V249) carries its description."""
 
     from alphalattice.interface.local_application import cli
     from alphalattice.interface.local_application.operations import OPERATIONS
@@ -1047,9 +881,9 @@ def test_every_field_schema_prints_is_described() -> None:
         "portfolio",
         "risk",
     }
-    # A Portfolio study sized by a linked Risk study is found from the CLI alone.
+    # A Portfolio study sized by a linked Risk study is found from the CLI alone (V310).
     assert {"risk_task_id", "policy", "weight_rule"} <= set(sections["portfolio"]["properties"])
-    # What the catalog holds and a study may not declare yet, each with its reason.
+    # What the catalog holds and a study may not declare yet, each with its reason (V313).
     # Each says its field, its values and why, in words; the row that tracks it stays in the
     # plans (NM1b).
     assert all(
@@ -1115,8 +949,6 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         "evidence_setup": "--acquire-sec --entities AAPL --network-consent --install",
         "usage_reading_enabled": "false",
         "committee_daily_enabled": "true",
-        "analyst_reads_mode": "SUBAGENTS",
-        "analyst_reads_bundles": "3",
         "input_pinned": "true",
         "task_id": str(uuid4()),
         "automation_enabled": "true",
@@ -1134,6 +966,16 @@ def test_an_operation_only_a_person_completes_is_marked_so(
         ] + ([values.get(shown, "a" * 64)] if shown in fields(operation)[0] else [])
         code, body, _ = _inprocess_cli(live.workspace, noun, verb, *arguments, capsys=capsys)
         assert body["outcome"] == "REFUSED" and "human" in body["failure_code"], (operation, body)
+
+
+def test_every_read_of_work_planned_per_strategy_is_keyed_by_its_strategy() -> None:
+    """Control: Every read of work planned per strategy is keyed by its strategy."""
+
+    contract = PortfolioResearchOperationRequest.field_contract
+    readbacks = strategy_readback_operations()
+    for operation in readbacks:
+        required, allowed = contract(operation)
+        assert not required and {"task_id", "strategy_package_id"} <= allowed, operation
 
 
 def test_every_door_whose_way_on_reruns_a_plan_resumes_its_stopped_task() -> None:
@@ -1310,7 +1152,7 @@ def test_the_global_options_are_read_anywhere_on_the_line(
     assert answer["data"] == {"status": "OK", "task_id": task, "read_request": read}, answer
     assert seen == [tmp_path]
     # Outside a bound session, wherever this runs, a line naming none is refused by name and
-    # nothing is sent.
+    # nothing is sent (V568).
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
     assert cli.main(["task", "list"], serve=lambda _: 99) == 1
@@ -1362,7 +1204,7 @@ def test_a_compact_answer_holds_its_next_requests_to_the_read(
         if page["next_left"] is None:
             break
         start = page["next_left"]["list"].rsplit(" ", 1)[1]
-    # Each listed once; a full view's command carries --view full and whole ids.
+    # Each listed once; a full view's command carries --view full and whole ids (V406, V393).
     assert set(paged) == set(listed)
     # Each page holds to the read whatever length the workspace path adds: next_left's
     # key was left out of a page's room, a page one byte over at one temporary path's length.
@@ -1491,12 +1333,8 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     """Owner-supplied words and routes stay exact when registered metadata is added."""
 
     from alphalattice.interface.local_application.cli_contract import (
-        ANSWER_LANGUAGE,
         refusal_problem,
         worded_refusal,
-    )
-    from alphalattice.interface.local_application.cli_contract import (
-        worded as translated,
     )
     from alphalattice.interface.local_application.web import AdmittedRequest, LocalWebApplication
 
@@ -1512,17 +1350,6 @@ def test_a_refusal_leaves_with_words_and_a_way_on() -> None:
     assert panel_words["status"] == "REFUSED" and panel_words["failure_code"] == panel_code
     assert panel_words["next_action"] == "DATA_UPDATE_READBACK"
     assert refusal_problem(panel_words) is None
-    binding = worded_refusal(
-        {"status": "REFUSED", "failure_code": "research_update.features_binding_invalid"}
-    )
-    assert "feature" in binding["detail"] and "plan" in binding["detail"]
-    assert binding["next_action"] == "READ_UPDATE_AND_PLAN_AGAIN"
-    assert refusal_problem(binding) is None
-    language = ANSWER_LANGUAGE.set("zh")
-    try:
-        assert translated(binding["detail"]) != binding["detail"]
-    finally:
-        ANSWER_LANGUAGE.reset(language)
     panel_request = {"show": {"operation": "DATA_UPDATE_READBACK"}}
     panel = worded_refusal(
         {
@@ -1887,40 +1714,3 @@ def test_a_declaration_and_choices_never_give_one_field_twice(
         body
     )
     assert fake_host.sent == []
-
-
-@pytest.mark.proves("composition.cli_names_a_closed_output_pipe")
-def test_the_cli_names_a_closed_output_pipe(monkeypatch, capsys):
-    import io
-    import sys
-
-    from alphalattice.control.product_host.composition import entry
-    from alphalattice.interface.local_application import cli
-
-    class ClosedPipe(io.StringIO):
-        def write(self, text):
-            raise BrokenPipeError("pipe closed")
-
-    with monkeypatch.context() as changed:
-        changed.setattr(sys, "stdout", ClosedPipe())
-        changed.setattr(cli, "main", lambda *args, **kwargs: print("answer"))
-        try:
-            code = entry.main([])
-        except BrokenPipeError:
-            code = None
-    assert code is not None and code != 0
-    assert "pipe" in capsys.readouterr().err.lower()
-    assert not entry._closed_output_pipe(PermissionError("not a pipe failure"))
-    if sys.platform == "win32":
-        import ctypes
-        import errno
-        import msvcrt
-        from types import SimpleNamespace
-
-        with monkeypatch.context() as changed:
-            changed.setattr(msvcrt, "get_osfhandle", lambda _: 42)
-            changed.setattr(ctypes.windll.kernel32, "GetFileType", lambda _: 3)
-            changed.setattr(sys, "stdout", SimpleNamespace(fileno=lambda: 1))
-            assert entry._closed_output_pipe(OSError(errno.EINVAL, "closed"))
-            changed.setattr(ctypes.windll.kernel32, "GetFileType", lambda _: 1)
-            assert not entry._closed_output_pipe(OSError(errno.EINVAL, "other"))

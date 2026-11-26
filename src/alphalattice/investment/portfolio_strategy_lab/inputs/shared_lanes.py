@@ -15,7 +15,7 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from alphalattice.capabilities.quant.sector_history import exposure_sector_ids, sector_exposure
+from alphalattice.kernel.quant.sector_history import exposure_sector_ids, sector_exposure
 
 type FloatArray = npt.NDArray[np.float64]
 

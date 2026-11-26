@@ -97,23 +97,6 @@ def review_evidence_view(
     }
 
 
-_CONTINUE = (
-    "With every receipt back, `review continue --dir` reads them, prepares the CRO's bundle."
-)
-REVIEW_DETAIL = {
-    "ASK_THE_PERSON_ONCE": "Ask the person `ask_now`'s question first and start no Analyst until "
-    "they answer; then read the bundles as they chose, each answer submitted by its route. "
-    + _CONTINUE,
-    "READ_EACH_BUNDLE_HERE": "Read each bundle yourself in this session, one after another, as "
-    "the person chose: follow its README and submit its answer by its route. " + _CONTINUE,
-    "DISPATCH_ANALYSTS": "Start each Analyst with its bundle: each submits its answer by its "
-    "route. " + _CONTINUE,
-    "READ_EVIDENCE": "Evidence is prepared with no Analyst bundle to answer; read its review "
-    "state.",
-}
-"""The review answer's instruction for each next action, so the two never disagree."""
-
-
 def review_prepared(
     chain: Any,
     *,
@@ -134,30 +117,19 @@ def review_prepared(
     if prepared.get("units_failed") and not bundles:
         return cast(dict[str, Any], chain.stop("evidence", prepared))
     review = chain.offered(readback, "review")
-    reads: dict[str, Any] = {}
-    if len(bundles) > 1:  # how many to start at once is the person's answer, kept per workspace
-        kept = chain.send(
-            "analyst_reads", {"operation": "ANALYST_READS", "analyst_reads_bundles": len(bundles)}
-        )
-        if outcome_of(kept) != "OK":
-            return cast(dict[str, Any], chain.stop("analyst_reads", kept))
-        reads = {k: kept[k] for k in ("analyst_reads", "ask_now", "person_questions") if k in kept}
-    # The person's answer decides who reads; while it is asked, no Analyst starts.
-    if "ask_now" in reads:
-        action = "ASK_THE_PERSON_ONCE"
-    elif reads.get("analyst_reads") == "IN_SESSION":
-        action = "READ_EACH_BUNDLE_HERE"
-    else:
-        action = "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE"
     return {
         "status": "BOOK_REVIEW_READY" if bundles else "EVIDENCE_PREPARED",
         "strategy_package_id": package,
         ("positions" if update else "book"): subject,
         "evidence": review_evidence_view(preview, current, prepared, resuming=resuming),
         "analyst_bundles": bundles,
-        **reads,
         "steps": chain.steps,
-        "next_action": action,
-        "detail": REVIEW_DETAIL[action],
+        "next_action": "DISPATCH_ANALYSTS" if bundles else "READ_EVIDENCE",
+        "detail": (
+            "Start each Analyst with its bundle: each submits its answer by its route. With their "
+            "receipts back, `review continue --dir` reads them, prepares the CRO's bundle."
+            if bundles
+            else "Evidence is prepared with no Analyst bundle to answer; read its review state."
+        ),
         "next_requests": {} if review is None else {"review": review},
     }

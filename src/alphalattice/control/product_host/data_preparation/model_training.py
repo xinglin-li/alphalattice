@@ -11,10 +11,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -76,6 +72,10 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
     ModelLifecycle,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 PLAN_FIELDS = ("experiment_inputs",)
 """The manifest fields a plan reads: the research input it selects its binding from; its own
@@ -90,8 +90,8 @@ PUBLICATIONS = "lifecycle-input-publications"
 
 
 IMPLEMENTATION_ROLE = "product_host.research_component_training_input"
-"""The role a move of this implementation is recorded under in `config/identity-successors/`,
-so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
 
 
 def _implementation() -> str:

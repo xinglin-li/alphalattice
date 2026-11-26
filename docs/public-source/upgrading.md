@@ -1,12 +1,7 @@
 # Upgrading AlphaLattice
-Last checked: 2026-11-23 against 0.2.9
+Last checked: 2026-11-04 against 0.2.4
 
-Use this guide to upgrade from 0.2.0 or later to 0.2.9. A workspace from before 0.2.8
-has its data moved once, at its first start on 0.2.8 or later
-([the 0.2.8 data move](#the-028-data-move)). A workspace last opened by a release before
-0.2.7 still holds tables 0.2.7 retired and is refused with
-`feature_storage.workspace_before_0_2_7`: open it with 0.2.7 first, then upgrade. From
-0.2.8 to 0.2.9 no data moves: 0.2.9 uses a 0.2.8 data root as it is. Keep using your
+Use this guide to upgrade from 0.2.0 to a later 0.2.x patch. Keep using your
 existing agent project and research workspace. [Getting started](getting-started.md)
 and the [operating reference](../../.agents/skills/alphalattice-research/references/operating.md)
 cover installation requirements and setup repairs.
@@ -26,9 +21,8 @@ cover installation requirements and setup repairs.
    alphalattice --workspace "<existing-workspace-path>" host stop
    ```
 
-   The Host stops Tasks at safe points and retains completed work for resumption.
-   Task status remains readable while it stops. Wait until it has released the
-   workspace before replacing the installation.
+   The Host lets running Tasks finish and releases the workspace without
+   cancelling them. Wait until it has stopped before replacing the installation.
 
 ## Source checkout
 
@@ -67,14 +61,14 @@ Run the doctor again after repairs or configuration.
 ## Release wheel
 
 Download the new release's wheel to a separate installation directory. Extract
-the locked requirements and resolver overrides from that same wheel, as in the
-[operating reference](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
-Replace the example filename in both commands with the new wheel you downloaded.
-It must contain both runtime files:
+the runtime requirements from that same wheel and use them as both requirements
+and constraints, as in the [operating reference](../../.agents/skills/alphalattice-research/references/operating.md#setup-and-launch).
+The example below uses the 0.2.4 wheel; replace its filename in both commands
+with the wheel you downloaded:
 
 ```powershell
-python -c "from zipfile import ZipFile; from pathlib import Path; wheel = ZipFile('alphalattice-0.2.9-py3-none-any.whl'); Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-requirements.txt')); Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read('alphalattice/_runtime/config/release/runtime-overrides.txt'))"
-uv tool install --force --compile-bytecode --python 3.12 ./alphalattice-0.2.9-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt --overrides alphalattice-runtime-overrides.txt
+python -c "from zipfile import ZipFile; from pathlib import Path; Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile('alphalattice-0.2.4-py3-none-any.whl').read('alphalattice/_runtime/config/release/runtime-requirements.txt'))"
+uv tool install --force --python 3.12 ./alphalattice-0.2.4-py3-none-any.whl --with-requirements alphalattice-runtime-requirements.txt --constraints alphalattice-runtime-requirements.txt
 ```
 
 `--force` replaces the previous tool installation. To switch between the wheel
@@ -117,38 +111,8 @@ same agent project, ask for your next daily update as usual, for example
 `Positions for <next session>, reviewed.`
 
 The first daily update after an upgrade may need a one-time rebuild of derived
-work. Allow it to finish; later updates can reuse that work. Keep your earlier
-sealed goals, reports and research history in the existing workspace.
-
-## The 0.2.8 data move
-
-The 0.2.8 Host startup has an ordered upgrade runner. Before moving a family of
-stored data, it requires verified backups of the machine data root and every
-workspace being upgraded. Each family compares its old and new reads before
-switching to the new store. Its old data is retained.
-
-Backup verification reads the saved machine log's chain, the catalog's complete
-file set and its sealed file bytes. It also checks each workspace generation and
-its retained objects. A manifest's presence alone does not admit an upgrade.
-Before the first family starts, the machine backup must match the current log
-head and each workspace generation must match its current held state. A valid
-older backup is refused; create fresh backups before that first start.
-
-The start record retains those exact backup generations. Resume verifies their
-seals and reuses that pre-upgrade authority even after a family has changed the
-stores. It does not substitute a newer backup or require the partially migrated
-stores to still equal their pre-upgrade copies. Keep the recorded generations
-available until the upgrade finishes.
-
-An interrupted start resumes the first unfinished family. A failed comparison
-names that family and leaves its reader on the old store; the Host does not
-serve a partial upgrade. Repair the named problem before starting again. A
-completed family does not migrate again on the next start.
-
-The runner moves these families, in this order: market data, execution
-outcomes, Strategy Lab lanes, Alpha arrays, protected validation, risk covariance,
-sector results, the portfolio benchmark, portfolio results, panel closures,
-research inputs and the machine backup's copies of research inputs.
+work. Allow it to finish; later updates can reuse that work. Earlier sealed goals
+and reports keep verifying, and your existing research history stays available.
 
 ## If a command refuses
 

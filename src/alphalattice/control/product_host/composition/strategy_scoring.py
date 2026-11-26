@@ -12,14 +12,6 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import (
-    canonical_hash,
-    schema_structure,
-)
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current, predecessors
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.readiness import _latest_common_us_session
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -33,16 +25,12 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
-    TRAINING_TARGET_METHOD_ID,
     PreparedWorkspaceComponentInputs,
     build_workspace_score_inputs,
     prepare_workspace_component_inputs,
     read_workspace_component_inputs,
     workspace_observation_history_columns,
     workspace_score_source_identity,
-)
-from alphalattice.control.product_host.composition.task_kinds import (
-    STRATEGY_SCORE_TASK_KIND,
 )
 from alphalattice.control.product_host.maintenance.data_update import (
     installed_data_update_binding,
@@ -73,7 +61,6 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
-    FrozenFeaturePreparation,
     WorkspaceObservationHistoryHead,
     seal_current_contract,
 )
@@ -85,7 +72,6 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
     AlphaModelSetPublication,
     AlphaTrainingObservations,
     admit_component_inference,
-    admit_component_inferences,
     publish_component_training_observations,
     renew_lifecycle_admission,
     verified_lifecycle_admissions,
@@ -99,19 +85,27 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
     FrozenStrategyPackage,
     recipe_hashes_match,
 )
+from alphalattice.kernel.shared_kernel.identity import (
+    canonical_hash,
+    schema_structure,
+)
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 PLAN_FIELDS = ("score_inputs",)
 """The manifest fields a plan reads: the score inputs it prepares scores for. A plan binds them,
-never the whole manifest, so a publication of fields it does not read leaves it applicable (
+never the whole manifest, so a publication of fields it does not read leaves it applicable (V223,
 OW10)."""
 
-TASK_KIND = STRATEGY_SCORE_TASK_KIND
+TASK_KIND = "strategy_score_preparation"
 STAGES = ("verify_frozen_inputs", "materialize_features", "score_models", "publish_score_receipt")
 
 
 IMPLEMENTATION_ROLE = "product_host.strategy_scoring"
-"""The role a move of this implementation is recorded under in `config/identity-successors/`,
-so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
 
 
 def _implementation_hash() -> str:
@@ -303,12 +297,13 @@ class StrategyScoringApplication:
             task_kind=TASK_KIND, preview="STRATEGY_SCORE_PLAN", admitting="STRATEGY_SCORE_RUN"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers
+    (V188)."""
     additional_publications: Callable[[], tuple[FrozenComponentScoreSnapshot, ...]] | None = None
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes."""
+        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
         return self._manifests.current
 
     @property
@@ -338,7 +333,7 @@ class StrategyScoringApplication:
         self.store = AlphaCurrentArtifactStore(session.workspace / "artifacts")
         self.last_plan: StrategyScorePlan | None = None
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again.
+        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
         self._plans: PreviewRegistry[StrategyScorePlan] = PreviewRegistry(
             model=StrategyScorePlan,
             clock=self.clock,
@@ -369,7 +364,7 @@ class StrategyScoringApplication:
             and (component_id is None or item.component_id == component_id)
         ]
         if len(choices) > 1:
-            # A package of several components scores them one at a time.
+            # A package of several components scores them one at a time (V332).
             raise ValueError(
                 "strategy_score.component_required:"
                 + ",".join(sorted(str(value.component_id) for value in choices))
@@ -386,42 +381,20 @@ class StrategyScoringApplication:
             raise ValueError("strategy_score.workspace_manifest_changed")
         return binding
 
-    def _authority_root(self, binding: ResearchWorkspaceScoreInput) -> Path:
-        root = (self.session.workspace / binding.authority_relative_path).resolve()
-        if not root.is_relative_to(self.session.workspace.resolve()):
-            raise ValueError("strategy_score.authority_path_outside_workspace")
-        return root
-
     def _admitted_source(
         self, binding: ResearchWorkspaceScoreInput
     ) -> AdmittedFrozenInference | AdmittedRenewingInference:
+        root = (self.session.workspace / binding.authority_relative_path).resolve()
+        if not root.is_relative_to(self.session.workspace.resolve()):
+            raise ValueError("strategy_score.authority_path_outside_workspace")
         return admit_component_inference(
-            self._authority_root(binding), store=self.store, expected_hash=binding.authority_hash
+            root, store=self.store, expected_hash=binding.authority_hash
         )
 
     def _authority(
         self, binding: ResearchWorkspaceScoreInput
     ) -> AdmittedFrozenInference | AdmittedRenewingInference:
-        return self._checked_authority(binding, self._admitted_source(binding))
-
-    def authorities(
-        self, bindings: tuple[ResearchWorkspaceScoreInput, ...]
-    ) -> tuple[AdmittedFrozenInference | AdmittedRenewingInference, ...]:
-        """Bind a scoring cohort and verify its common lifecycle sources together."""
-        requests = tuple(
-            (self._authority_root(binding), binding.authority_hash) for binding in bindings
-        )
-        admitted = admit_component_inferences(requests, store=self.store)
-        return tuple(
-            self._checked_authority(binding, value)
-            for binding, value in zip(bindings, admitted, strict=True)
-        )
-
-    def _checked_authority(
-        self,
-        binding: ResearchWorkspaceScoreInput,
-        admitted: AdmittedFrozenInference | AdmittedRenewingInference,
-    ) -> AdmittedFrozenInference | AdmittedRenewingInference:
+        admitted = self._admitted_source(binding)
         if admitted.authority.model_set.component_id not in self.packages[
             binding.strategy_package_id
         ].component_ids or (
@@ -450,38 +423,22 @@ class StrategyScoringApplication:
     def _captured_authority(
         self, binding: ResearchWorkspaceScoreInput, identity: str
     ) -> AdmittedFrozenInference | AdmittedRenewingInference:
-        return self._captured_authorities(((binding, identity),))[0]
-
-    def _captured_authorities(
-        self, captures: tuple[tuple[ResearchWorkspaceScoreInput, str], ...]
-    ) -> tuple[AdmittedFrozenInference | AdmittedRenewingInference, ...]:
-        bindings: list[tuple[tuple[Path, str], tuple[Path, str]]] = []
-        for binding, identity in captures:
-            ancestor = (self._authority_root(binding), binding.authority_hash)
-            effective = ancestor
-            if identity != binding.authority_hash:
-                effective = (
-                    self.store._path("current/lifecycle-admissions", identity, "json"),
-                    identity,
-                )
-            bindings.append((ancestor, effective))
-        requests = tuple(dict.fromkeys(request for pair in bindings for request in pair))
-        adopted = dict(
-            zip(requests, admit_component_inferences(requests, store=self.store), strict=True)
+        ancestor = self._admitted_source(binding)
+        if identity == ancestor.authority.authority_hash:
+            return ancestor
+        if not isinstance(ancestor, AdmittedRenewingInference):
+            raise ValueError("strategy_score.renewal_not_installed")
+        descendant = admit_component_inference(
+            self.store.root / "current/lifecycle-admissions" / f"{identity}.json",
+            store=self.store,
+            expected_hash=identity,
         )
-        results: list[AdmittedFrozenInference | AdmittedRenewingInference] = []
-        for root, selected in bindings:
-            initial, current = adopted[root], adopted[selected]
-            if root != selected:
-                if not isinstance(initial, AdmittedRenewingInference) or not isinstance(
-                    current, AdmittedRenewingInference
-                ):
-                    raise ValueError("strategy_score.renewal_not_installed")
-                verify_lifecycle_successor(
-                    self.store, ancestor=initial.authority, successor=current.authority
-                )
-            results.append(current)
-        return tuple(results)
+        if not isinstance(descendant, AdmittedRenewingInference):
+            raise ValueError("strategy_score.renewal_not_installed")
+        verify_lifecycle_successor(
+            self.store, ancestor=ancestor.authority, successor=descendant.authority
+        )
+        return descendant
 
     def authority_for_formation(
         self, binding: ResearchWorkspaceScoreInput, formation: date
@@ -513,8 +470,11 @@ class StrategyScoringApplication:
     def _source(self, binding: ResearchWorkspaceScoreInput) -> tuple[str, date]:
         if binding.source_kind == "RECORDED_INPUT_SNAPSHOT":
             assert binding.observation_snapshot_hash is not None
-            source = self.store.load_frozen_observations(binding.observation_snapshot_hash)
-            return source.source_binding_hash, source.formation_sessions[-1]
+            snapshot = self.store.load_frozen_observation_snapshot(
+                binding.observation_snapshot_hash
+            )
+            self.store.load_frozen_observations(snapshot.snapshot_hash)
+            return snapshot.snapshot_hash, snapshot.formation_sessions[-1]
         identity = workspace_score_source_identity(self.session.workspace)
         state = read_workspace_inputs(
             self.session.workspace, installed_data_update_binding(self.session.workspace)
@@ -552,7 +512,7 @@ class StrategyScoringApplication:
                 and authority.authority.can_prepare(formation)
             )
         ):
-            # The refusal names the formation it chose and the epoch the lifecycle admits.
+            # The refusal names the formation it chose and the epoch the lifecycle admits (V335).
             admitted = authority.authority
             start = getattr(admitted, "formation_start", None)
             end = getattr(admitted, "formation_end", None)
@@ -563,7 +523,7 @@ class StrategyScoringApplication:
         if isinstance(authority, AdmittedRenewingInference):
             authority.authority.planned_refits(self.store, (formation,), allow_preparation=True)
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between.
+        # may have replaced in between (V534).
         planned = StrategyScorePlan.create(
             workspace_id=self.manifest.workspace_id,
             workspace_manifest_hash=manifest_fields_hash(self.manifest, PLAN_FIELDS),
@@ -587,7 +547,7 @@ class StrategyScoringApplication:
             else "Construct inputs, predict with admitted models, publish score. Zero fits.",
             "limitation": "INPUT_TO_SCORE_QA_NOT_PORTFOLIO_RECOMMENDATION",
             # The same plan again from this answer, its day and component kept; a plan with no
-            # day still takes the newest.
+            # day still takes the newest (V562).
             "next_requests": {
                 "run": {"operation": "STRATEGY_SCORE_RUN", "score_plan_hash": planned.plan_hash},
                 "replan": _replan(planned),
@@ -840,22 +800,16 @@ class StrategyScoringApplication:
             else ()
         )
         scope_hash = workspace_observation_history_scope(binding)
-        implementation = _implementation_hash()
         selection_hash = workspace_observation_history_selection(
-            binding, implementation=implementation
+            binding, implementation=_implementation_hash()
         )
         with self.session.reads():
             candidate = self.store.load_workspace_observation_history(scope_hash)
-            history = None
-            if candidate is not None:
-                saved = candidate[0].selection_hash
-                if saved == selection_hash or any(
-                    saved == workspace_observation_history_selection(binding, implementation=prior)
-                    for prior in predecessors(IMPLEMENTATION_ROLE, implementation)[1:]
-                ):
-                    history = candidate
-                    # Keep the selection under which the verified history parts were sealed.
-                    selection_hash = saved
+            history = (
+                candidate
+                if candidate is not None and candidate[0].selection_hash == selection_hash
+                else None
+            )
             try:
                 prepared = prepare_workspace_component_inputs(
                     self.session.workspace,
@@ -962,10 +916,6 @@ class StrategyScoringApplication:
                         component=authority.authority.component,
                         source=source,
                         training=training,
-                        # The reader compiled this method's targets over the same inputs.
-                        compiled=(training.total_return_target_z, training.holding_end_sessions)
-                        if authority.authority.component.target_recipe == TRAINING_TARGET_METHOD_ID
-                        else None,
                     )
                 renewed = renew_lifecycle_admission(
                     self.store,
@@ -980,7 +930,8 @@ class StrategyScoringApplication:
                 )
                 authority = AdmittedRenewingInference(self.store.root.parent, renewed)
             if plan.binding.source_kind == "RECORDED_INPUT_SNAPSHOT":
-                observation, source = self.store.load_frozen_observation(plan.source_identity_hash)
+                source = self.store.load_frozen_observations(plan.source_identity_hash)
+                observation = self.store.load_frozen_observation_snapshot(plan.source_identity_hash)
             else:
                 with self.session.reads():
                     source = build_workspace_score_inputs(
@@ -1128,31 +1079,27 @@ class StrategyScoringApplication:
         if stage not in STAGES[2:]:
             raise ValueError("strategy_score.stage_unknown")
         score = self._verify_step(plan, stage, evidence)
-        assert isinstance(score, FrozenComponentScoreSnapshot)
+        assert score is not None
         return score
 
-    def verify_feature_steps(
-        self, requests: tuple[tuple[StrategyScorePlan, tuple[TaskEvidence, ...]], ...]
-    ) -> tuple[FrozenFeaturePreparation, ...]:
-        """Verify Feature preparations together with their captured inference authorities."""
-        stage = STAGES[1]
-        acquired: dict[str, FrozenFeaturePreparation] = {}
-        products: list[FrozenFeaturePreparation] = []
-        for _, evidence in requests:
-            if len(evidence) != 1:
-                raise ValueError("strategy_score.evidence_invalid")
-            content = evidence[0].content_hash
-            if content not in acquired:
-                acquired[content], _ = self.store.load_frozen_feature_preparation(content)
-            products.append(acquired[content])
-        self._captured_authorities(
-            tuple(
-                (plan.binding, prepared.inference_authority_hash)
-                for (plan, _), prepared in zip(requests, products, strict=True)
+    def _verify_step(
+        self, plan: StrategyScorePlan, stage: str, evidence: tuple[TaskEvidence, ...]
+    ) -> FrozenComponentScoreSnapshot | None:
+        if len(evidence) != 1:
+            raise ValueError("strategy_score.evidence_invalid")
+        content = evidence[0].content_hash
+        score: FrozenComponentScoreSnapshot | None = None
+        if stage == STAGES[0]:
+            self._authority(plan.binding)
+            if content != plan.plan_hash:
+                raise ValueError("strategy_score.plan_evidence_invalid")
+        elif stage == STAGES[1]:
+            prepared, _ = self.store.load_frozen_feature_preparation(content)
+            self._captured_authority(plan.binding, prepared.inference_authority_hash)
+            self.store.load_frozen_observations(prepared.observation_snapshot_hash)
+            observation = self.store.load_frozen_observation_snapshot(
+                prepared.observation_snapshot_hash
             )
-        )
-        for (plan, evidence), prepared in zip(requests, products, strict=True):
-            observation, _ = self.store.load_frozen_observation(prepared.observation_snapshot_hash)
             source_identity = (
                 observation.snapshot_hash
                 if plan.binding.source_kind == "RECORDED_INPUT_SNAPSHOT"
@@ -1164,23 +1111,6 @@ class StrategyScoringApplication:
                 or prepared.ordered_listing_ids != observation.ordered_listing_ids
             ):
                 raise ValueError("strategy_score.feature_evidence_invalid")
-            if evidence != self._evidence(stage, prepared.preparation_hash):
-                raise ValueError("strategy_score.evidence_invalid")
-        return tuple(products)
-
-    def _verify_step(
-        self, plan: StrategyScorePlan, stage: str, evidence: tuple[TaskEvidence, ...]
-    ) -> FrozenComponentScoreSnapshot | FrozenFeaturePreparation | None:
-        if len(evidence) != 1:
-            raise ValueError("strategy_score.evidence_invalid")
-        content = evidence[0].content_hash
-        product: FrozenComponentScoreSnapshot | FrozenFeaturePreparation | None = None
-        if stage == STAGES[0]:
-            self._authority(plan.binding)
-            if content != plan.plan_hash:
-                raise ValueError("strategy_score.plan_evidence_invalid")
-        elif stage == STAGES[1]:
-            return self.verify_feature_steps(((plan, evidence),))[0]
         elif stage in STAGES[2:]:
             score = self.store.load_frozen_component_score(content)
             self._verify_model_publication(score, plan.binding)
@@ -1189,12 +1119,11 @@ class StrategyScoringApplication:
                 or score.strategy_package_hash != plan.binding.strategy_package_hash
             ):
                 raise ValueError("strategy_score.result_evidence_invalid")
-            product = score
         else:
             raise ValueError("strategy_score.stage_unknown")
         if evidence != self._evidence(stage, content):
             raise ValueError("strategy_score.evidence_invalid")
-        return product
+        return score
 
     def _verify_model_publication(
         self, score: FrozenComponentScoreSnapshot, binding: ResearchWorkspaceScoreInput

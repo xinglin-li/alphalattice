@@ -8,9 +8,8 @@ against that record, sealing it or naming each missing item.
 from __future__ import annotations
 
 import re
-import struct
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -26,15 +25,13 @@ from pydantic import (
 )
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.portfolio_research import (
     PersonConfirmation,
     decision_hash,
 )
-from alphalattice.interface.local_application.questions import person_question, relayed_question
-from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import identity_blake3
+from alphalattice.interface.local_application.questions import person_question
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type ResearchStage = Literal[
     "DATA_FEATURES", "FACTOR_FOUNDATION", "ALPHA", "RISK", "PORTFOLIO", "EVIDENCE_CRO"
@@ -44,7 +41,7 @@ _ID = r"^[a-z][a-z0-9_-]{0,63}$"
 _HASH = r"^[0-9a-f]{64}$"
 
 FIRST_USE_HOURS: Final = 24
-"""How long a first-use goal's delegation lasts from its opening."""
+"""How long a first-use goal's delegation lasts from its opening (V452)."""
 
 DAILY_NETWORK_ASK: Final = str(person_question("network.daily_updates")["words"])
 """The one line a first use asks at its start, word for word: the person's yes, relayed by
@@ -82,19 +79,10 @@ DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DA
 """The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
 
 DAILY_NETWORK_RELAY: Final = tuple(
-    (
-        *words,
-        "--person-said",
-        "<their words>",
-        "--asked",
-        DAILY_NETWORK_ASK,
-        "--question-code",
-        "network.daily_updates",
-    )
+    (*words, "--person-said", "<their words>", "--asked", DAILY_NETWORK_ASK)
     for words, _request in _DAILY_REQUESTS
 )
-"""The same two requests as the commands that relay the person's yes, verbatim but its words.
-Each names its question's code, so the Host records the answer as that question's."""
+"""The same two requests as the commands that relay the person's yes, verbatim but its words."""
 
 
 NOT_A_PERSON: Final = re.compile(
@@ -112,13 +100,13 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
 
     Raises:
-        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch`,
-            `.beyond_its_question`, or the question's own refusal (`relayed_question`): a
-            registered question's relay carries its registered words, never a paraphrase.
+        ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch` or
+            `.beyond_its_question`.
     """
     if NOT_A_PERSON.search(confirmation.words):
         raise ValueError("person_confirmation.not_the_persons_words")
-    relayed_question(str(request["operation"]), confirmation.question_code, confirmation.question)
+    if confirmation.question_code is not None:
+        person_question(confirmation.question_code, operation=str(request["operation"]))
     decision = decision_hash(request)
     if confirmation.decision_hash != decision:
         raise ValueError("person_confirmation.decision_mismatch")
@@ -130,15 +118,9 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     return decision
 
 
-def opened_goal(
-    answer: dict[str, Any], declaration: Mapping[str, Any] | None, *, daily_answered: bool = False
-) -> dict[str, Any]:
-    """Project the first-use question while the person has not answered it."""
-    if (
-        answer.get("goal_id")
-        and not daily_answered
-        and (declaration or {}).get("kind") == "FIRST_USE"
-    ):
+def opened_goal(answer: dict[str, Any], declaration: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project the first-use question at the Host boundary, before its observer."""
+    if answer.get("goal_id") and (declaration or {}).get("kind") == "FIRST_USE":
         answer["person_questions"] = [person_question("network.daily_updates")]
     return answer
 
@@ -170,21 +152,14 @@ def first_use_asks(
 ) -> dict[str, Any]:
     """Format the first-use road and unchanged notices beside the Host's questions."""
     selected_shell = shell()
-    questions = list(questions)
     relays = [join([*prefix, *words], selected_shell) for words in DAILY_NETWORK_RELAY]
     return {
         "road": [
             {"step": step, "command": join([*prefix, *words], selected_shell), "does": does}
             for step, words, does in road
         ],
-        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays]
-        if questions
-        else [
-            WATCH_IN_WORKBENCH.format(link=link),
-            "When Evidence is not set up, reviewing positions may acquire recent SEC filings "
-            "within the default budget and download the retrieval model needed by its setup.",
-        ],
-        "person_questions": questions,
+        "ask_now": [WATCH_IN_WORKBENCH.format(link=link), *FIRST_USE_ASK_NOW, *relays],
+        "person_questions": list(questions),
     }
 
 
@@ -272,56 +247,6 @@ class GoalDeclaration(GoalContract):
         return cast(dict[str, Any], self.model_dump(mode="json", exclude={"title"}))
 
 
-DECLARATION_ENCODING: Final = 1
-"""The version of `declaration_hash`'s byte form; a change to that form takes the next number."""
-
-
-def declaration_hash(declaration: GoalDeclaration, opener: object) -> str:
-    """Whether this opener already opened this declaration: the goal store's declaration index
-    reads it for REUSED_EXACT. Its inputs are the declaration's typed fields, as the model
-    serializes them (an absent date stays absent), and the opener's id: its agent session's
-    fields, else the caller. Its form is `_typed`'s tagged binary encoding, version
-    DECLARATION_ENCODING, never JSON text; the digest is BLAKE3's."""
-    head = b"alphalattice.goal-declaration" + bytes(1) + DECLARATION_ENCODING.to_bytes(2, "big")
-    body = _typed(declaration.model_dump(mode="python")) + _typed(opener)
-    return identity_blake3(head + body).hexdigest()
-
-
-def _typed(value: object) -> bytes:
-    """One value as a type tag and its body, fixed-width or length-prefixed; a mapping's keys in
-    order. Equal declarations make equal bytes: -0.0 is 0.0, as the model compares them."""
-    if value is None:
-        return b"N"
-    if isinstance(value, bool):
-        return b"T" if value else b"F"
-    if isinstance(value, int):
-        return b"I" + _sized(value.to_bytes((value.bit_length() + 8) // 8, "big", signed=True))
-    if isinstance(value, float):
-        return b"D" + struct.pack(">d", value + 0.0)
-    if isinstance(value, str):
-        return b"S" + _sized(value.encode())
-    if isinstance(value, datetime):
-        raise TypeError("goal.declaration_untyped: datetime")  # a declaration names dates only
-    if isinstance(value, date):
-        return b"A" + value.toordinal().to_bytes(4, "big")
-    if isinstance(value, UUID):
-        return b"U" + value.bytes
-    if isinstance(value, Mapping):
-        items = sorted(value.items())
-        return b"O" + _count(items) + b"".join(_typed(k) + _typed(v) for k, v in items)
-    if isinstance(value, list | tuple):
-        return b"L" + _count(value) + b"".join(_typed(item) for item in value)
-    raise TypeError(f"goal.declaration_untyped: {type(value).__name__}")
-
-
-def _sized(body: bytes) -> bytes:
-    return _count(body) + body
-
-
-def _count(items: Sequence[object] | bytes) -> bytes:
-    return len(items).to_bytes(4, "big")
-
-
 def update_offers(update: object, named: date | None, task: object) -> dict[str, object]:
     """An activation's update offers: its status once admitted, else the update to plan.
 
@@ -391,7 +316,7 @@ def target_sessions(
     if point is None:
         raise ValueError("first_use.date_outside_calendar")
     ready = information_available_at(point.formation_close_at)
-    available = ready <= (now or utc_now())
+    available = ready <= (now or datetime.now(UTC))
     exchange, mine = ready.astimezone(ZoneInfo("America/New_York")), ready.astimezone(here)
     yours = (
         ""
@@ -448,21 +373,24 @@ def _earliest_entry(formation: date) -> str | None:
     """The first entry whose formation's ten-year history the calendars plan, when this
     formation's history would start before their first session; else nothing."""
 
-    from alphalattice.capabilities.data.calendar import SUPPORTED_CALENDARS
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (  # lazy: date.
-        history_floor,
+        ten_calendar_year_anniversary,
     )
+    from alphalattice.kernel.data.calendar import SUPPORTED_CALENDARS
 
     get_calendar = import_module("exchange_calendars").get_calendar  # lazy: calendar.
     floor = max(get_calendar(c).first_session.date() for c in SUPPORTED_CALENDARS)
-    if history_floor(formation) >= floor:
+    if ten_calendar_year_anniversary(formation) >= floor:
         return None
     named = date(floor.year + 10, floor.month, min(floor.day, 28))
-    reading = target_sessions(named)
-    while history_floor(date.fromisoformat(str(reading["formation_session"]))) < floor:
-        named += timedelta(days=1)
+    while True:
         reading = target_sessions(named)
-    return str(reading["entry_session"])
+        if (
+            ten_calendar_year_anniversary(date.fromisoformat(str(reading["formation_session"])))
+            >= floor
+        ):
+            return str(reading["entry_session"])
+        named += timedelta(days=1)
 
 
 class GoalReferenceRequest(GoalContract):
@@ -556,17 +484,12 @@ class GoalStatement(GoalContract):
     """An attributed decision or conclusion with explicit evidence standing."""
 
     statement_id: str = Field(pattern=_ID)
-    kind: Literal["DECISION", "CONCLUSION", "HYPOTHESIS", "PM_RESPONSE"]
+    kind: Literal["DECISION", "CONCLUSION", "PM_RESPONSE"]
     attribution: str = Field(min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=12000)
     evidence: tuple[str, ...] = Field(default=(), max_length=64)
     disposition: Literal["SUPPORTS", "DOES_NOT_SUPPORT", "INSUFFICIENT", "OPEN", "REJECTED"]
     responds_to: str | None = Field(default=None, max_length=64)
-
-    def model_post_init(self, __context: Any) -> None:
-        """A stated hypothesis begins open; its standing is recorded separately."""
-        if self.kind == "HYPOTHESIS" and self.disposition != "OPEN":
-            raise ValueError("goal.hypothesis_must_be_open")
 
 
 class GoalSession(GoalContract):
@@ -579,7 +502,7 @@ class GoalSession(GoalContract):
 class GoalAcceptedAnswerContext(GoalContract):
     """The original Goal frozen at genuine first acceptance.
 
-    The assignment fields read older contexts, when a lead's assignment
+    The assignment fields read contexts written before FLOW-1, when a lead's assignment
     message could close at acceptance; nothing writes them now.
     """
 

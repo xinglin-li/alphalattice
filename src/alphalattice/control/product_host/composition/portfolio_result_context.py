@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from bisect import bisect_left
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
@@ -13,8 +12,6 @@ from uuid import UUID
 import numpy as np
 from numpy.typing import NDArray
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     TRADING_SESSIONS_PER_YEAR,
 )
@@ -36,7 +33,6 @@ from alphalattice.control.product_host.research_authoring.execution import (
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
     factor_input_paths,
-    read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -49,7 +45,6 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import Sect
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
-from alphalattice.foundation.feature_engine.panels.sector_classification import named
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.activity import refusal_code, returned_status
 from alphalattice.interface.local_application.failure_codes import (
@@ -103,7 +98,6 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     position_row_groups,
 )
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
-from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
 from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
@@ -113,9 +107,9 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
     RiskReturnSurfaceError,
     listing_returns,
-    listing_sources,
 )
-from alphalattice.kernel.identity import change_xxh3_128_hex
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 
 from .research_experiments import review_requests
@@ -560,7 +554,7 @@ def forward_update_read_requests(
     return tuple(result)
 
 
-@verified_model_read_scope()
+@verified_model_read_scope(reuse_verified=True)
 @verified_lifecycle_admissions()
 def read_portfolio(
     operations: Any,
@@ -814,24 +808,17 @@ def book_sectors(workspace: Path, body: Mapping[str, Any]) -> dict[str, Any]:
             "by_listing": {},
         }
     shown = (body.get("position") or {}).get("session")
-    canonical = json.dumps(
-        [
-            binding,
-            snapshot,
-            revision,
-            shown if isinstance(shown, str) else None,
-            [str(value) for value in listings],
-        ],
-        ensure_ascii=False,
-        separators=(",", ":"),
+    key = (
+        str(binding),
+        str(snapshot),
+        str(revision),
+        str(shown),
+        canonical_hash(tuple(str(v) for v in listings)),
     )
-    key = (change_xxh3_128_hex(canonical.encode("utf-8")), canonical)
+    cached = _SECTOR_CACHE.get(key)
+    if cached is not None:
+        return cached
     try:
-        # A sealed identity may be the same in two workspaces; each must still have its bytes.
-        read_factor_bundle(workspace, str(binding))
-        cached = _SECTOR_CACHE.get(key)
-        if cached is not None:
-            return cached
         source_workspace, artifact_root = factor_input_paths(workspace, str(binding))
         manifest = MarketDataRepository(source_workspace).load_universe_manifest_revision(
             str(revision)
@@ -902,25 +889,24 @@ def _risk_session_gap(start: date, through: date) -> int:
     )
 
 
-def _dated_risk_inputs(
+def _date_risk(
     workspace: Path,
-    surface: CausalRiskReturnSurface,
-    classification: SectorRevisionMap,
-    sessions: tuple[date, ...],
-    session: date,
+    manifest: ResearchWorkspaceManifest,
     readback: Mapping[str, Any],
     positions: PortfolioUpdatePositions,
-) -> tuple[
-    date,
-    NDArray[np.float64],
-    list[str],
-    tuple[str, ...],
-    set[str],
-    dict[str, float],
-    float,
-    tuple[date, ...],
-]:
-    """Prepare the covered listing axis and return history for one dated position."""
+) -> dict[str, Any]:
+    session = positions.schedule.formation_session
+    installed = installed_authority(workspace, manifest)
+    if installed is None:
+        raise ValueError("risk_research.installed_risk_surface_absent")
+    root, authority = installed
+    surface = RiskReturnArtifactStore(root).load_manifest(authority.risk_return_surface_hash)
+    reader = CausalRiskReturnReader(root)
+    closure = PanelClosureArtifactStore(ArtifactResolver(root))
+    sessions = reader.available_sessions(surface)
+    classification = closure.load_model(
+        category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
+    )
     classified = {entry.listing_id for entry in classification.entries}
     listings = tuple(v for v in surface.epoch.ordered_listing_ids if v in classified)
     calendar = (
@@ -937,32 +923,6 @@ def _dated_risk_inputs(
     held = dict(zip(readback["listing_labels"], positions.weights, strict=True))
     total = sum(abs(w) for w in held.values())
     covered = sum(abs(held.get(v, 0.0)) for v in listings if v not in missing) / (total or 1.0)
-    return formation, forward, hashes, listings, missing, held, covered, gap
-
-
-def _date_risk(
-    workspace: Path,
-    manifest: ResearchWorkspaceManifest,
-    readback: Mapping[str, Any],
-    positions: PortfolioUpdatePositions,
-) -> dict[str, Any]:
-    session = positions.schedule.formation_session
-    installed = installed_authority(workspace, manifest)
-    if installed is None:
-        raise ValueError("risk_research.installed_risk_surface_absent")
-    root, authority = installed
-    surface = RiskReturnArtifactStore(root).load_manifest(authority.risk_return_surface_hash)
-    reader = CausalRiskReturnReader(root)
-    closure = PanelClosureArtifactStore(ArtifactResolver(root))
-    sessions = reader.available_sessions(surface)
-    classification = named(  # the risk producer's Sectors, through world
-        closure.load_model(
-            category="sector-maps", content_hash=authority.sector_map_hash, model=SectorRevisionMap
-        )
-    )
-    formation, forward, hashes, listings, missing, held, covered, gap = _dated_risk_inputs(
-        workspace, surface, classification, sessions, session, readback, positions
-    )
     producer = RiskSurfaceProducer()
     recipe = producer.recipe
     required = recipe.conditional_volatility_initialization_sessions + recipe.factor_fit_sessions
@@ -973,25 +933,13 @@ def _date_risk(
         return _unevaluated(f"risk_research.{why}", covered)
     columns = [surface.epoch.ordered_listing_ids.index(v) for v in listings]
     source = canonical_hash({"surface": surface.surface_hash, "carried": hashes})
-    names = {row["listing_id"]: row for row in holdings(readback)}
-    canonical = json.dumps(
-        [
-            readback["publication"]["content_hash"],
-            authority.authority_hash,
-            recipe.recipe_hash,
-            positions.position_hash,
-            formation.isoformat(),
-            positions.schedule.entry_session.isoformat(),
-            positions.weights,
-            list(readback["listing_labels"].items()),
-            [(listing, row["alias"], row["name"]) for listing, row in names.items()],
-            source,
-        ],
-        ensure_ascii=False,
-        allow_nan=False,
-        separators=(",", ":"),
+    key = (
+        str(readback["publication"]["content_hash"]),
+        authority.authority_hash,
+        recipe.recipe_hash,
+        positions.position_hash,
+        source,
     )
-    key = (change_xxh3_128_hex(canonical.encode("utf-8")), canonical)
     cached = _DATE_RISK.get(key)
     if cached is not None:
         return cached
@@ -1004,12 +952,12 @@ def _date_risk(
             classification,
             source,
             sector_history_as_of(closure, classification.sector_revision).subset(listings),
-        ),
-        store=catalog_factor_surfaces(),
+        )
     ).surface
     w = np.asarray([0.0 if v in missing else held.get(v, 0.0) for v in listings])
     variance, shares = float(model.book_variance(w)), model.variance_shares(w)
     systematic, specific = model.variance_split(w)
+    names = {row["listing_id"]: row for row in holdings(readback)}
     value = {
         "risk_status": "EVALUATED",
         "risk_as_of": formation.isoformat(),
@@ -1057,12 +1005,17 @@ def _carried_returns(
         return None
     returns = np.full((len(sessions) - 1, len(listings)), np.nan)
     hashes: list[str] = []
-    sources = listing_sources(market, scope, sessions)
-    for listing in scope:
-        try:
-            rows = listing_returns(universe, listing, sessions, sources)
-        except RiskReturnSurfaceError:
-            continue
-        returns[:, listings.index(listing.listing_id)] = [r["open_total_return_log"] for r in rows]
-        hashes.extend(str(row["row_hash"]) for row in rows)
+    connection = market._connect(read_only=True)
+    try:
+        for listing in scope:
+            try:
+                rows = listing_returns(market, universe, listing, sessions, connection)
+            except RiskReturnSurfaceError:
+                continue
+            returns[:, listings.index(listing.listing_id)] = [
+                r["open_total_return_log"] for r in rows
+            ]
+            hashes.extend(str(row["row_hash"]) for row in rows)
+    finally:
+        connection.close()
     return (returns, hashes) if hashes else None

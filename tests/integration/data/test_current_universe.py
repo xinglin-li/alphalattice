@@ -7,14 +7,14 @@ from hashlib import sha256
 
 import pytest
 
-from alphalattice.capabilities.data.enums import UniverseIndex
-from alphalattice.capabilities.data.errors import DataProviderError
-from alphalattice.capabilities.data.universe import (
+from alphalattice.foundation.market_data_ops.sources import universe as current_universe
+from alphalattice.kernel.data.enums import UniverseIndex
+from alphalattice.kernel.data.errors import DataProviderError
+from alphalattice.kernel.data.universe import (
     FROZEN_UNIVERSE_SOURCES,
     FetchedUniverseSource,
     parse_membership,
 )
-from alphalattice.foundation.market_data_ops.sources import universe as current_universe
 
 
 def _source(index: UniverseIndex, members: tuple[tuple[str, str], ...]) -> FetchedUniverseSource:

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast
+from typing import Self, cast
 
 import numpy as np
+import pandas as pd
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.factor_research.experiments.campaign import (
     CuratedFactorCheckpoint,
@@ -30,11 +30,9 @@ from alphalattice.investment.alpha_research.inputs.dynamic_panel import (
 from alphalattice.investment.alpha_research.inputs.workspace import (
     load_sector_history,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .development_artifacts import AlphaDevelopmentArtifactStore
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -130,8 +128,6 @@ class DynamicPanelAlphaDevelopmentService:
 
     @staticmethod
     def _ordered_frame(frame: pd.DataFrame, *, session_column: str) -> pd.DataFrame:
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         result = frame.copy()
         result[session_column] = pd.to_datetime(result[session_column]).dt.date
         result["listing_id"] = result["listing_id"].astype(str)
@@ -146,8 +142,6 @@ class DynamicPanelAlphaDevelopmentService:
         self, request: DynamicPanelDevelopmentRequest
     ) -> tuple[DynamicPanelSourceArrays, DynamicPanelSourceResolution, datetime]:
         """Load only immutable development children and reconcile all row axes."""
-
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
 
         checkpoint = self._curated_checkpoint(request.curated_factor_checkpoint_hash)
         methodology = load_development_methodology_surface_manifest(

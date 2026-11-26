@@ -141,10 +141,11 @@ def rule_retention_confirmations(session, application, manifest, evidence, cases
         lambda _: None,
         workspace=session.workspace,
     )
-    task_id = UUID(int=9)
-    opened = goals.operate(
+    goal_id, task_id = UUID(int=7), UUID(int=9)
+    goals.operate(
         PortfolioResearchOperationRequest(
             operation="GOAL_OPEN",
+            goal_id=goal_id,
             goal_declaration={
                 "title": "First use",
                 "objective": "Keep verified raw findings.",
@@ -155,7 +156,6 @@ def rule_retention_confirmations(session, application, manifest, evidence, cases
         ),
         "EXTERNAL_AUTOMATION",
     )
-    goal_id = UUID(str(opened["goal_id"]))
     goals.store.attribute(goal_id, {"task_id": str(task_id)})
     decide = goals.data_rule(task_id)
     assert decide is not None

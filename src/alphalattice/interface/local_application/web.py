@@ -24,7 +24,7 @@ of those failing refuses before a single owner is called.
 carries a key the Host holds in memory and prints and opens for the person; the
 token is read back only by a request that already holds the cookie. A local
 program that knows the port reads the projections, as any reader may, but cannot
-take an operation only a person may take (HB).
+take an operation only a person may take (HB, V183).
 
 **Nothing leaves the machine.** Assets are inlined from local files, the CSP
 forbids every remote origin including `connect-src`, and there is no font,
@@ -40,33 +40,22 @@ supply chain.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
 import secrets
 import threading
 import time
-from collections.abc import Callable, Collection, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from select import select
-from typing import TYPE_CHECKING, Any, Final, Protocol, cast
+from typing import Any, Final, Protocol, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
-from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
-from alphalattice.interface.local_application.call_span import (
-    CALL_PATH,
-    REQUEST_CALL,
-    CallSpan,
-    ended,
-    record,
-    request_call,
-)
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
     CLIENT_HEADER,
@@ -84,19 +73,8 @@ from alphalattice.interface.local_application.failure_codes import (
     owner_failure_code,
     public_failure,
 )
-from alphalattice.kernel.config import consume_secret
-from alphalattice.kernel.door import (
-    CLI_OPERATION,
-    OPERATIONS_PATH,
-    DoorRefusal,
-    answer_bytes,
-    refusal_fields,
-)
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
-
-if TYPE_CHECKING:
-    from socket import socket
 
 LOOPBACK_HOST = "127.0.0.1"
 BROWSER_REFUSED_PORTS: Final = frozenset(
@@ -107,7 +85,7 @@ BROWSER_REFUSED_PORTS: Final = frozenset(
     | {5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080}
 )
 """The ports Chromium refuses to load (`ERR_UNSAFE_PORT`). Windows may assign one to a
-port-0 bind, as the staged gate met at 1720, and the Workbench would not open."""
+port-0 bind, as the staged gate met at 1720 (STOPS-1), and the Workbench would not open."""
 BROWSER_SAFE_REBINDS: Final = 16
 """How many refused ports one bind holds while it asks for another, before it keeps one."""
 SESSION_COOKIE = "alphalattice_local_session"
@@ -143,7 +121,7 @@ def session_cookie_name(port: int) -> str:
     return f"{SESSION_COOKIE}_{port}"
 
 
-# A content-hashed asset never changes under its path.
+# A content-hashed asset never changes under its path (round 96).
 IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 CONTENT_SECURITY_POLICY = "; ".join(
     (
@@ -186,19 +164,6 @@ class Route:
     external_client: bool = False
     session: bool = False
     """A read that answers only the browser holding the session cookie."""
-    otlp: tuple[str, str] | None = None
-    """Native signal and catalog workspace id, supplied together by the serving Host."""
-    traced: bool = True
-    """Whether a client's call opens a step span; a call's own end opens none."""
-
-    def admits_read(self, operation: object, declared_reads: Collection[str]) -> bool:
-        """Recognize a registered read or the bounded carrier at its authenticated door."""
-        return isinstance(operation, str) and (
-            operation in declared_reads
-            or (
-                self.external_client and self.path == OPERATIONS_PATH and operation == CLI_OPERATION
-            )
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +181,7 @@ class LocalWebResponse:
 
     Every API answer and the host page are `no-store`: the product's state is
     read from its owners, never from a cache. An asset served under its
-    content-hashed path is the one exception: its bytes cannot
+    content-hashed path is the one exception (round 96): its bytes cannot
     change under that path, so it is `immutable` for a year and a warm load
     fetches nothing.
     """
@@ -245,54 +210,12 @@ class AdmittedRequest:
     issues_session: bool
     launch: bool = False
     provenance: RequestProvenance | None = None
-    trace: tuple[tuple[str, str], ...] = ()
-    otlp_type: str = "application/json"
-    otlp_encoding: str = "identity"
-    """The W3C `traceparent` and `baggage` headers the client sent, for its step's span."""
-    call: CallSpan | None = None
-    """The CLI invocation an external request comes from, whose span its step is under."""
-
-
-TRACE_HEADERS: Final = ("traceparent", "baggage")
-
-
-@contextmanager
-def _step(
-    route: Route,
-    operation: object,
-    admitted: AdmittedRequest,
-    *,
-    traced: bool,
-) -> Iterator[None]:
-    """One span for a client's step or a write, in the trace its headers name, acting for the
-    agent session and goal it names; a polling read opens none. The history, and with it the SDK,
-    is imported only for a traced step."""
-    if not traced:
-        yield
-        return
-    from alphalattice.foundation.data_layer.history import step  # lazy: the Host's, never the CLI's
-
-    named = operation if isinstance(operation, str) else route.path
-    who = admitted.provenance or RequestProvenance()
-    with step(
-        telemetry.SPAN_HOST_REQUEST,
-        dict(admitted.trace),
-        caller=None if who.session is None else ("agent", who.session),
-        goal=who.goal_id,
-        **{telemetry.OPERATION: named, telemetry.ROUTE: f"{route.method} {route.path}"},
-    ):
-        yield
 
 
 DEFAULT_IDLE_TIMEOUT_SECONDS: Final = 900
 
 LAUNCH_KEY_VARIABLE = "ALPHALATTICE_LAUNCH_KEY"
 """Where a detached launch hands the Host the launch key it made (`web_launcher`)."""
-
-
-def _launch_key() -> str:
-    handed = consume_secret(LAUNCH_KEY_VARIABLE)
-    return (handed.reveal() if handed is not None else None) or secrets.token_urlsafe(32)
 
 
 @dataclass
@@ -306,7 +229,12 @@ class LocalWebApplication:
     """
 
     session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), repr=False)
-    launch_key: str = field(default_factory=_launch_key, repr=False)
+    launch_key: str = field(
+        default_factory=lambda: (
+            os.environ.pop(LAUNCH_KEY_VARIABLE, None) or secrets.token_urlsafe(32)
+        ),
+        repr=False,
+    )
     """Held in memory and put only in the launch URL; never on disk or in an answer. A detached
     launch makes it and hands it over in `LAUNCH_KEY_VARIABLE`, taken from the environment once."""
     offered: set[tuple[str, str]] = field(default_factory=set, init=False, repr=False)
@@ -319,12 +247,7 @@ class LocalWebApplication:
     external_workspace_id: str | None = None
     workspace: Path | None = field(default=None, repr=False)
     cookie_name: str = field(default=SESSION_COOKIE, init=False, repr=False)
-    routes: dict[tuple[str, str], Route] = field(
-        default_factory=lambda: {
-            ("POST", CALL_PATH): Route("POST", CALL_PATH, ended, external_client=True, traced=False)
-        }
-    )
-    """Each method and path's handler; a CLI call's end is the Host's own, before any other."""
+    routes: dict[tuple[str, str], Route] = field(default_factory=dict)
     assets: dict[str, tuple[bytes, str, str | None]] = field(default_factory=dict)
     allowed_hosts: frozenset[str] = frozenset()
     refusals: int = 0
@@ -332,12 +255,6 @@ class LocalWebApplication:
     admission: Callable[[Callable[[], object], bool], object] | None = field(
         default=None, repr=False
     )
-    request_scope: Callable[[], AbstractContextManager[None]] = field(
-        default=nullcontext, repr=False
-    )
-    withheld: Callable[[], dict[str, object]] | None = field(default=None, repr=False)
-    """While set, every path with no route or asset is refused with this refusal, not as
-    unknown: a Host that serves only its upgrade's routes says why, with its progress."""
 
     def route(
         self,
@@ -347,8 +264,6 @@ class LocalWebApplication:
         mutates: bool = False,
         external_client: bool = False,
         session: bool = False,
-        otlp: tuple[str, str] | None = None,
-        traced: bool = True,
     ) -> Callable[
         [Callable[[Mapping[str, list[str]], dict[str, Any]], object]],
         Callable[[Mapping[str, list[str]], dict[str, Any]], object],
@@ -362,8 +277,6 @@ class LocalWebApplication:
             external_client: Whether the external client may call it.
             session: Whether a read answers only the browser holding the session
                 cookie (the session read, which hands that browser its token).
-            otlp: Native signal and the Host's catalog workspace id, separate from its header key.
-            traced: Whether a client's call opens a step span (a call's own end does not).
 
         Returns:
             A decorator that records the handler without changing it.
@@ -379,8 +292,6 @@ class LocalWebApplication:
                 mutates=mutates,
                 external_client=external_client,
                 session=session,
-                otlp=otlp,
-                traced=traced,
             )
             return handler
 
@@ -412,7 +323,6 @@ class LocalWebApplication:
         mutates: bool,
         external_client: bool = False,
         session: bool = False,
-        otlp: bool = False,
     ) -> str | None:
         """Return a refusal reason, or `None` when the request may proceed.
 
@@ -441,8 +351,10 @@ class LocalWebApplication:
             token = headers.get(CLIENT_HEADER, "")
             if not token or not secrets.compare_digest(token, self.external_token):
                 return "local_web.external_token_invalid"
-            if mutates and headers.get("Content-Type", "").split(";")[0].strip().lower() not in (
-                {"application/json", "application/x-protobuf"} if otlp else {"application/json"}
+            if (
+                mutates
+                and headers.get("Content-Type", "").split(";")[0].strip().lower()
+                != "application/json"
             ):
                 return "local_web.content_type_not_json"
             return None
@@ -502,7 +414,7 @@ class LocalWebApplication:
             return self._launch(parsed.query, headers)
         asset = self.assets.get(path) if method == "GET" else None
         route = self.routes.get((method, path))
-        if asset is None and route is None and self.withheld is None:
+        if asset is None and route is None:
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         refusal = self._authorised(
             method=method,
@@ -510,7 +422,6 @@ class LocalWebApplication:
             mutates=bool(route and route.mutates),
             external_client=bool(route and route.external_client),
             session=bool(route and route.session),
-            otlp=bool(route and route.otlp),
         )
         if refusal is not None:
             self.refusals += 1
@@ -519,11 +430,6 @@ class LocalWebApplication:
                 refusal,
                 next_action=REOPEN_FROM_LAUNCH_URL if route and route.session else None,
             )
-        if asset is None and route is None and self.withheld is not None:
-            withheld = self.withheld()
-            refused = self._refuse(HTTPStatus.SERVICE_UNAVAILABLE, str(withheld["failure_code"]))
-            body = json.dumps(json.loads(refused.body) | withheld).encode("utf-8")
-            return LocalWebResponse(refused.status, body, refused.content_type)
         declared = (headers.get("Content-Length") or "0").strip()
         if not declared.isdigit():
             # `isdigit` rejects the whole malformed family in one test: a sign,
@@ -539,9 +445,9 @@ class LocalWebApplication:
             )
         try:
             # An external client may name its agent session and a goal (OP13).
-            external = route is not None and route.external_client
-            provenance = request_provenance(headers) if external else None
-            call = request_call(headers) if external else None
+            provenance = (
+                request_provenance(headers) if route is not None and route.external_client else None
+            )
         except ValueError as error:
             self.refusals += 1
             return self._refuse(HTTPStatus.BAD_REQUEST, str(error))
@@ -553,14 +459,6 @@ class LocalWebApplication:
             # The session cookie is issued at the launch URL alone (`_launch`).
             issues_session=False,
             provenance=provenance,
-            call=call,
-            trace=tuple(  # header names are case-insensitive; a client may send `Traceparent`
-                (name.lower(), value)
-                for name, value in headers.items()
-                if name.lower() in TRACE_HEADERS
-            ),
-            otlp_type=headers.get("Content-Type", "").split(";")[0].strip().lower(),
-            otlp_encoding=headers.get("Content-Encoding", "identity").strip().lower(),
         )
 
     def _launch(self, query: str, headers: Mapping[str, str]) -> AdmittedRequest | LocalWebResponse:
@@ -660,24 +558,7 @@ class LocalWebApplication:
         if route is None:  # pragma: no cover - preflight admits one or the other
             return self._refuse(HTTPStatus.NOT_FOUND, "local_web.route_unknown")
         payload: dict[str, Any] = {}
-        if route.otlp:
-            from alphalattice.foundation.data_layer.telemetry import decode  # lazy: Host ingest
-
-            try:
-                payload = {
-                    "rows": decode(
-                        route.otlp[0],
-                        body,
-                        admitted.otlp_type,
-                        workspace_id=route.otlp[1],
-                        encoding=admitted.otlp_encoding,
-                        maximum=MAXIMUM_REQUEST_BODY_BYTES,
-                    ),
-                    "content_type": admitted.otlp_type,
-                }
-            except ValueError:
-                return self._refuse(HTTPStatus.BAD_REQUEST, "agent_telemetry.payload_invalid")
-        elif body:
+        if body:
             try:
                 decoded = json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
@@ -686,21 +567,18 @@ class LocalWebApplication:
                 return self._refuse(HTTPStatus.BAD_REQUEST, "local_web.body_not_an_object")
             payload = decoded
         scope = REQUEST_PROVENANCE.set(admitted.provenance)
-        called = REQUEST_CALL.set(admitted.call)
         notice = BINDING_NOTICE.set(None)
         try:
             action = partial(route.handler, admitted.query, payload)
             operation = payload.get("operation")
-            writes = route.mutates and not route.admits_read(operation, command_table()["reads"])
+            writes = route.mutates and (
+                not isinstance(operation, str) or operation not in command_table()["reads"]
+            )
             if self.admission is not None:
                 action = partial(self.admission, action, writes)
-            if admitted.call is not None and route.traced and not route.otlp:
-                record(admitted.call, admitted.provenance)
-            traced = route.traced and not route.otlp and (route.external_client or writes)
-            with _step(route, operation, admitted, traced=traced):
-                answer = self._offer_workbench(
-                    with_binding_notice(action()), admitted.provenance, operation=operation
-                )
+            answer = self._offer_workbench(
+                with_binding_notice(action()), admitted.provenance, operation=operation
+            )
         except LocalWebError as error:
             return self._refuse(
                 HTTPStatus.BAD_REQUEST,
@@ -711,11 +589,7 @@ class LocalWebApplication:
             # Refusal identity belongs to the owner, not to ValueError's inheritance.
             code = owner_failure_code(error)
             if code is not None:
-                return self._refuse(
-                    HTTPStatus.BAD_REQUEST,
-                    code,
-                    door=error if isinstance(error, DoorRefusal) else None,
-                )
+                return self._refuse(HTTPStatus.BAD_REQUEST, code)
             if isinstance(error, (ValueError, KeyError)):
                 return self._refuse(
                     HTTPStatus.BAD_REQUEST,
@@ -731,35 +605,26 @@ class LocalWebApplication:
             )
         finally:
             REQUEST_PROVENANCE.reset(scope)
-            REQUEST_CALL.reset(called)
             BINDING_NOTICE.reset(notice)
         self.served += 1
         if isinstance(answer, LocalWebResponse):
             return answer
         if isinstance(answer, dict) and isinstance(answer.get("yaml"), str):
-            # An exported declaration must read back as it was written. Until W12 moves
+            # An exported declaration must read back as it was written (V146). Until W12 moves
             # each exporter onto `dump_declaration`, the answer is rewritten here, once.
             answer = {**answer, "yaml": rewrite_in_declaration_dialect(answer["yaml"])}
         return LocalWebResponse(
             HTTPStatus.OK,
-            answer_bytes(answer),
+            json.dumps(answer, default=str, sort_keys=True).encode("utf-8"),
             "application/json; charset=utf-8",
         )
 
     def _refuse(
-        self,
-        status: HTTPStatus,
-        reason: str,
-        *,
-        next_action: str | None = None,
-        door: DoorRefusal | None = None,
+        self, status: HTTPStatus, reason: str, *, next_action: str | None = None
     ) -> LocalWebResponse:
-        body = refusal_fields(reason)
-        if door is not None:
-            body["operation"] = door.operation
-            if door.module is not None:
-                body["family_module"] = door.module
-        # A raised refusal carries its code's words and way on, as a returned one does (OP4).
+        body: dict[str, object] = {"refused": reason}
+        # A raised refusal carries its code's words and way on, as a returned one does (OP4,
+        # V449).
         words = refusal_words(reason)
         if next_action is not None or words:
             body.update(
@@ -794,9 +659,7 @@ def report_policy(page: str) -> str:
     `'unsafe-inline'`, which would permit any style anyone later injected.
     """
     digests = [
-        "'sha256-"
-        + base64.b64encode(integrity_sha256(block.encode("utf-8")).digest()).decode()
-        + "'"
+        "'sha256-" + base64.b64encode(hashlib.sha256(block.encode("utf-8")).digest()).decode() + "'"
         for block in re.findall(r"<style[^>]*>(.*?)</style>", page, flags=re.DOTALL)
     ]
     if not digests:
@@ -814,11 +677,6 @@ def _cookie(header: str | None, name: str) -> str | None:
         if key == name:
             return value
     return None
-
-
-DRAIN_SECONDS = 5.0
-"""The longest a refused request's announced body is read and dropped: a client that trickles it
-slower holds a request thread no longer than this, where the socket's timeout bounds one chunk."""
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -895,38 +753,25 @@ class _Handler(BaseHTTPRequestHandler):
         self.close_connection |= cast(_Server, self.server).stopping.is_set()
 
     def _discard_announced_body(self) -> None:
-        """Read and drop a refused request's announced body after its answer.
+        """Read and drop a refused request's announced body after its answer (V551).
 
         A socket closed with unread bytes is reset, and a client under load could read the
-        reset before the refusal (WinError 10053). The body is drained within the admitted
-        bound and `DRAIN_SECONDS` in all, and never kept: each read takes what one receive
-        brings, waiting no longer than the time left, so a client trickling bytes cannot hold
-        a read open past the deadline. A length the preflight refused as malformed or oversized
-        stays unread, as before. A client still sending at the deadline, or silent past it, has
-        its connection closed.
+        reset before the refusal (WinError 10053). The body is drained in bounded chunks,
+        within the admitted bound and the socket's timeout, and never kept; a length the
+        preflight refused as malformed or oversized stays unread, as before.
         """
         declared = (self.headers.get("Content-Length") or "0").strip()
         if not declared.isdigit() or int(declared) > MAXIMUM_REQUEST_BODY_BYTES:
             return
         remaining = int(declared)
-        deadline = time.monotonic() + DRAIN_SECONDS
-        before = self.connection.gettimeout()
         try:
             while remaining > 0:
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    self.close_connection = True
-                    return
-                self.connection.settimeout(left if before is None else min(left, before))
-                chunk = self.rfile.read1(min(remaining, 65536))
+                chunk = self.rfile.read(min(remaining, 65536))
                 if not chunk:
                     return
                 remaining -= len(chunk)
-        except OSError:  # a read that waited out the time left, or a reset
-            self.close_connection = True
-        finally:
-            with suppress(OSError):
-                self.connection.settimeout(before)
+        except OSError:
+            return
 
     def _serve(self, method: str) -> None:
         if cast(_Server, self.server).stopping.is_set():
@@ -937,8 +782,7 @@ class _Handler(BaseHTTPRequestHandler):
             )
             self._discard_announced_body()
             return
-        # HTTP field names are case-insensitive; keep HTTPMessage's lookup semantics.
-        headers = cast(Mapping[str, str], self.headers)
+        headers = {key: value for key, value in self.headers.items()}
         outcome = self.application.preflight(method=method, target=self.path, headers=headers)
         if isinstance(outcome, LocalWebResponse):
             # Refused before the body. Nothing announced is read, so an
@@ -950,10 +794,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond(outcome, set_session=False)
             self._discard_announced_body()
             return
-        application = self.application
-        with application.request_scope():
-            body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
-            self._respond(application.dispatch(outcome, body), set_session=outcome.issues_session)
+        body = self.rfile.read(outcome.content_length) if outcome.content_length else b""
+        self._respond(self.application.dispatch(outcome, body), set_session=outcome.issues_session)
 
     def do_GET(self) -> None:
         self._serve("GET")
@@ -984,24 +826,21 @@ def bind_browser_safe[B: _Bound](bind: Callable[[], B], *, assigned: bool) -> B:
     """
     refused: list[B] = []
     try:
-        server = bind()
-        while (
-            assigned
-            and int(server.server_address[1]) in BROWSER_REFUSED_PORTS
-            and len(refused) < BROWSER_SAFE_REBINDS
-        ):
-            refused.append(server)
+        while True:
             server = bind()
-        return server
+            if (
+                not assigned
+                or int(server.server_address[1]) not in BROWSER_REFUSED_PORTS
+                or len(refused) >= BROWSER_SAFE_REBINDS
+            ):
+                return server
+            refused.append(server)
     finally:
         for held in refused:
             held.server_close()
 
 
 class _Server(ThreadingHTTPServer):
-    timeout = 0
-    """The accept loop calls handle_request after the listener signals readiness."""
-
     daemon_threads = False
     """A request thread can admit a task, so it is a writer and must be joined.
 
@@ -1019,40 +858,11 @@ class _Server(ThreadingHTTPServer):
     """
 
     def __init__(self, address: tuple[str, int], application: LocalWebApplication) -> None:
-        from socket import socketpair  # lazy: only the listener owns the wake socket
-
         self.application = application
         self.stopping = threading.Event()
         self._handlers: list[threading.Thread] = []
         self._handler_lock = threading.Lock()
-        self._stop_reader, self._stop_writer = socketpair()
-        try:
-            super().__init__(address, _Handler)
-        except BaseException:
-            self._stop_reader.close()
-            self._stop_writer.close()
-            raise
-
-    def serve_until_stopped(self) -> None:
-        """Wait on the listener and the stop signal in the same accept thread."""
-        while not self.stopping.is_set():
-            readable, _, _ = select([self.socket, self._stop_reader], [], [])
-            if self.socket in readable and not self.stopping.is_set():
-                self.handle_request()
-
-    def stop_accepting(self) -> None:
-        """Wake a blocked accept loop as soon as it has been asked to stop."""
-        with self._handler_lock:
-            if not self.stopping.is_set():
-                self.stopping.set()
-                self._stop_writer.sendall(b"\0")
-
-    def server_close(self) -> None:
-        try:
-            super().server_close()
-        finally:
-            self._stop_reader.close()
-            self._stop_writer.close()
+        super().__init__(address, _Handler)
 
     def process_request(self, request: object, client_address: object) -> None:
         """Own the request thread rather than handing it to the base class.
@@ -1062,16 +872,13 @@ class _Server(ThreadingHTTPServer):
         *whether* the threads finished, which is the fact a caller holding a
         workspace lease has to act on.
         """
+        thread = threading.Thread(
+            target=self.process_request_thread,
+            args=(request, client_address),
+            name="local-web-request",
+            daemon=False,
+        )
         with self._handler_lock:
-            if self.stopping.is_set():
-                self.shutdown_request(cast("socket", request))
-                return
-            thread = threading.Thread(
-                target=self.process_request_thread,
-                args=(request, client_address),
-                name="local-web-request",
-                daemon=False,
-            )
             self._handlers = [value for value in self._handlers if value.is_alive()]
             self._handlers.append(thread)
         thread.start()
@@ -1138,9 +945,7 @@ class LocalWebService:
             # gave us, so `Host` cannot be a wildcard and cannot be widened later.
             self.application.allowed_hosts = frozenset({host, f"localhost:{self.bound_port}"})
             self.application.cookie_name = session_cookie_name(self.bound_port)
-            thread = threading.Thread(
-                target=server.serve_until_stopped, name="local-web", daemon=False
-            )
+            thread = threading.Thread(target=server.serve_forever, name="local-web", daemon=False)
             self._thread = thread
             thread.start()
         except BaseException:
@@ -1163,11 +968,10 @@ class LocalWebService:
         if server is None:
             return True
         deadline = None if timeout is None else time.monotonic() + timeout
-        server.stop_accepting()
+        server.stopping.set()
+        server.shutdown()
         if thread is not None:
             thread.join(timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))
-            if thread.is_alive():
-                return False
         server.server_close()
         joined = server.join_request_threads(
             None if deadline is None else max(0.0, deadline - time.monotonic())
@@ -1179,16 +983,6 @@ class LocalWebService:
     def live_request_threads(self) -> tuple[threading.Thread, ...]:
         """Handler threads still running. Empty is the only clean shutdown."""
         return () if self._server is None else self._server.live_request_threads()
-
-    def serve(self, application: LocalWebApplication) -> None:
-        """Answer on this socket with `application` from the next request on, keeping its session:
-        the browser and launch key the first one admitted stay admitted, on the same port."""
-        current = self.application
-        for name in ("session_token", "launch_key", "allowed_hosts", "cookie_name", "offer_keys"):
-            setattr(application, name, getattr(current, name))
-        self.application = application
-        if self._server is not None:
-            self._server.application = application
 
     def __enter__(self) -> LocalWebService:
         """Start the loopback service for the context scope."""

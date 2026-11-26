@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,15 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spans
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.spans import (
-    absorb,
-    collect,
-    readout,
-    span,
-    spanned,
-)
 from alphalattice.control.task_control.child import child_calls, run_in_child
 from alphalattice.control.task_control.contracts import TaskEvidence, TaskLifecycle
 from alphalattice.control.task_control.registry import (
@@ -37,6 +27,14 @@ from alphalattice.control.task_control.timing import (
     task_timing,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.spans import (
+    absorb,
+    collect,
+    readout,
+    span,
+    spanned,
+)
 from tests.workspace_task_runner.task_control_support import compatibility, digest, task_contract
 
 HERE = __name__  # this module, wherever it lives
@@ -66,8 +64,6 @@ def test_a_span_counts_its_own_time_apart_from_the_spans_it_holds() -> None:
         with pytest.raises(ZeroDivisionError), span("compute", "outer"):
             _ = 1 / 0
     rows = _rows(readout(ledger))
-    # The work census is off by default: no span names an input, no readout carries its rows.
-    assert spans._CENSUS is None and ledger.census_rows == [] and "census" not in readout(ledger)
     outer = rows["compute", "outer", "host"]
     assert outer["count"] == 2
     held = (
@@ -174,7 +170,7 @@ def test_cache_observations_merge_counts_and_keep_the_latest_instance_gauge(monk
         snapshot["cache_observations"][0]["retained_bytes_estimate"],
         snapshot["cache_observation_gaps"],
     ) == (8, ["CACHE_RETAINED_BYTES_UNOBSERVED"])
-    from alphalattice.capabilities.domain_contracts import spans
+    from alphalattice.kernel.shared_kernel import spans
 
     monkeypatch.setattr(spans, "MAXIMUM_SPAN_KEYS", 2)
     with collect() as limited:
@@ -257,14 +253,8 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     finally:
         runner.close()
 
-    kept_on_log = read_stage_spans(runtime, task.task_id)
-    assert len(kept_on_log) == 4
     path = stage_spans_path(runtime, task.task_id)
     assert path == tmp_path / "runtime" / "execution" / "spans" / f"{task.task_id}.jsonl"
-    assert not path.exists()
-    # The old reader still names a torn legacy source before that source can switch.
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(row) + "\n" for row in kept_on_log), encoding="utf-8")
     with path.open("a", encoding="utf-8") as sink:
         sink.write('{"torn": \n')
     diagnostics = []
@@ -301,11 +291,11 @@ def test_each_stage_phase_keeps_its_spans_and_its_timing_reads_them_back(tmp_pat
     assert read_stage_spans(runtime, task.task_id, diagnostics=diagnostics) == ()
     assert diagnostics == [{"code": "PHASE_ROWS_UNREADABLE", "source": str(path)}]
     path.unlink()
-    assert read_stage_spans(runtime, task.task_id) == kept_on_log
+    assert read_stage_spans(runtime, task.task_id) == ()
 
 
 def test_a_stage_gate_refusal_blocks_the_stage_before_its_work(tmp_path: Path) -> None:
-    """requirement: the Host's memory check blocks a stage, recoverably, unexecuted."""
+    """requirement (PERF-1): the Host's memory check blocks a stage, recoverably, unexecuted."""
     now = datetime(2026, 10, 8, 11, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()

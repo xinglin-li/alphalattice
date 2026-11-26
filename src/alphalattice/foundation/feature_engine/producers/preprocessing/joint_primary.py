@@ -6,19 +6,14 @@ import warnings
 from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Literal, cast
+from hashlib import sha256
+from typing import Final, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
+from scipy.special import ndtri  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    equal_sector_demean,
-    median_mad_winsor,
-)
 from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelAdmissionSummary,
@@ -27,7 +22,14 @@ from alphalattice.foundation.feature_engine.producers.arithmetic_identity import
     PREPROCESSING_WALK_EXCLUDED,
     feature_component_identity,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    equal_sector_demean,
+    median_mad_winsor,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .adapters import require_uniform_membership
 from .contracts import PanelPreprocessingImplementationBinding
@@ -36,12 +38,6 @@ from .robust_cross_section import (
     PanelFactorClipObservation,
     PanelMaterialization,
 )
-
-if TYPE_CHECKING:
-    pass
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z_IMPLEMENTATION = (
     "feature_engine.producers.preprocessing.joint_primary.JointPrimaryCrossSectionKernel"
@@ -77,8 +73,8 @@ def _array_digest(values: np.ndarray) -> str:
                 "kind": "PanelArrayDigest",
                 "dtype": str(values.dtype),
                 "shape": list(values.shape),
-                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
+                "finite_mask": sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
+                "finite_values": sha256(
                     np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
                 ).hexdigest(),
             }
@@ -89,8 +85,6 @@ def _array_digest(values: np.ndarray) -> str:
 def _rank_gauss_rows(
     values: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    from scipy.special import ndtri  # lazy: not at the Host's start
-
     result: npt.NDArray[np.float64] = np.full(values.shape, np.nan, dtype=np.float64)
     for row_index, row in enumerate(values):
         finite = np.isfinite(row)
@@ -242,8 +236,6 @@ class JointPrimaryCrossSectionKernel:
                 are invalid.
             PanelPreprocessingError: Declared membership differs from the full calculation axis.
         """
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         require_uniform_membership(members_by_session, active_listing_ids)
         if (isinstance(feature_rows, pd.DataFrame) and feature_rows.empty) or not len(feature_rows):
             raise ValueError("sector panel requires feature rows")
@@ -623,8 +615,6 @@ class JointPrimaryStateInteractionBlockAdapter:
                 required factor or state child is absent.
             PanelPreprocessingError: Membership differs from the full calculation axis.
         """
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         frame = (
             feature_rows.copy()
             if isinstance(feature_rows, pd.DataFrame)

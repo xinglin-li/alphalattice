@@ -78,8 +78,6 @@ class _Paths:
                         old.update(value)
             if not changed:
                 break
-        else:
-            raise ValueError(f"public_closure.fixpoint_unconverged:{path}")
 
     def values(self, node: ast.AST | None) -> set[str]:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):

@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition import rolling_portfolio_report as composition
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     advance_decision_state,
@@ -17,6 +16,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.rolling_history 
     RollingHistoryError,
     RollingReportHead,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     build_numerical,
     prepared_for,

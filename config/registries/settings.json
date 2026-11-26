@@ -71,16 +71,16 @@
     "env:ALPHALATTICE_MODEL_STORE": {
       "key": "env:ALPHALATTICE_MODEL_STORE",
       "description": "Selects the model-pack store directory as a filesystem path so installed retrieval models can live outside the platform default location.",
-      "owner": "alphalattice.capabilities.knowledge",
+      "owner": "alphalattice.kernel.knowledge",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
       "default": {
         "value": "",
         "resolution": "Empty override chooses the remembered model-store root, else the platform default.",
-        "source": "src/alphalattice/capabilities/knowledge/model_store.py:210"
+        "source": "src/alphalattice/kernel/knowledge/model_store.py:210"
       },
       "defined_by": [
-        "src/alphalattice/capabilities/knowledge/model_store.py::default_store_root"
+        "src/alphalattice/kernel/knowledge/model_store.py::default_store_root"
       ],
       "definition_line": 210,
       "identity_bearing": false,
@@ -91,9 +91,9 @@
           "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py:12",
           "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py:47",
           "src/alphalattice/control/product_host/composition/retrieval_pack_setup.py:65",
-          "src/alphalattice/capabilities/knowledge/model_store.py:17",
-          "src/alphalattice/capabilities/knowledge/model_store.py:209",
-          "src/alphalattice/capabilities/knowledge/model_store.py:210",
+          "src/alphalattice/kernel/knowledge/model_store.py:17",
+          "src/alphalattice/kernel/knowledge/model_store.py:209",
+          "src/alphalattice/kernel/knowledge/model_store.py:210",
           "tests/integration/knowledge/test_model_store.py:202",
           "tests/integration/knowledge/test_model_store.py:204",
           "tests/integration/local_application/test_product_script_refusals.py:62",
@@ -105,16 +105,16 @@
     "env:ALPHALATTICE_NETWORK_DISABLED": {
       "key": "env:ALPHALATTICE_NETWORK_DISABLED",
       "description": "Uses the string 1 as an operator offline switch so network reads can be blocked even when a workspace permits them.",
-      "owner": "alphalattice.capabilities.domain_contracts",
+      "owner": "alphalattice.kernel.shared_kernel",
       "source_commit": "4e29de787036643360b3448d9cddba114f06d739",
       "type": "str | absent",
       "default": {
         "value": null,
         "resolution": "Only the string 1 sets the operator offline switch; absent does not itself grant network permission.",
-        "source": "src/alphalattice/capabilities/domain_contracts/environment.py:43"
+        "source": "src/alphalattice/kernel/shared_kernel/environment.py:43"
       },
       "defined_by": [
-        "src/alphalattice/capabilities/domain_contracts/environment.py::offline"
+        "src/alphalattice/kernel/shared_kernel/environment.py::offline"
       ],
       "definition_line": 43,
       "identity_bearing": false,
@@ -141,9 +141,9 @@
           "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js:5861",
           "src/alphalattice/interface/local_application/assets/workbench-source/js/data/zh.js:5865",
           "src/alphalattice/investment/alpha_research/experiments/panel_alpha_fold_execution.py:174",
-          "src/alphalattice/capabilities/domain_contracts/environment.py:23",
-          "src/alphalattice/capabilities/domain_contracts/environment.py:32",
-          "src/alphalattice/capabilities/domain_contracts/environment.py:43",
+          "src/alphalattice/kernel/shared_kernel/environment.py:23",
+          "src/alphalattice/kernel/shared_kernel/environment.py:32",
+          "src/alphalattice/kernel/shared_kernel/environment.py:43",
           "tests/README.md:105",
           "tests/integration/alpha_research/test_model_lifecycle.py:417",
           "tests/integration/alpha_research/test_model_lifecycle.py:515",
@@ -217,39 +217,6 @@
         ]
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
-    },
-    "env:ALPHALATTICE_PROCESS_MEMORY_MODE": {
-      "key": "env:ALPHALATTICE_PROCESS_MEMORY_MODE",
-      "description": "Reports a tree memory breach in observe mode and also stops the tree in enforce mode.",
-      "owner": "alphalattice.kernel.config",
-      "type": "observe | enforce",
-      "default": {
-        "value": "enforce",
-        "source": "src/alphalattice/kernel/config/port.py::Settings"
-      },
-      "defined_by": [
-        "src/alphalattice/kernel/config/port.py::Settings"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "environment/operational policy",
-      "identity_basis": "Process memory enforcement controls execution rather than research identity."
-    },
-    "env:ALPHALATTICE_RETENTION_DAYS": {
-      "key": "env:ALPHALATTICE_RETENTION_DAYS",
-      "description": "Keeps artifact bodies that have no live reference for this many whole days after production.",
-      "owner": "alphalattice.kernel.config",
-      "type": "positive int | absent",
-      "default": {
-        "value": null,
-        "resolution": "An absent or invalid value keeps unheld artifact bodies for seven days.",
-        "source": "src/alphalattice/foundation/data_layer/governance.py::UNHELD"
-      },
-      "defined_by": [
-        "src/alphalattice/kernel/config/port.py::Settings"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "environment/operational policy",
-      "identity_basis": "The policy is configuration beside research results and is outside their identities."
     },
     "env:ALPHALATTICE_SHELL": {
       "key": "env:ALPHALATTICE_SHELL",
@@ -547,7 +514,7 @@
         "literal": [
           "src/alphalattice/control/product_host/storage/backup.py:13",
           "src/alphalattice/control/product_host/storage/backup.py:205",
-          "src/alphalattice/capabilities/knowledge/model_store.py:236",
+          "src/alphalattice/kernel/knowledge/model_store.py:236",
           "tests/integration/knowledge/test_model_store.py:205"
         ]
       },
@@ -578,23 +545,6 @@
         ]
       },
       "reader_basis": "Public static key/attribute references, including declarations, writes and tests; same-named fields may belong to other contracts. Private maintainer references are tracked separately. This is not runtime or type-flow proof."
-    },
-    "env:OMP_NUM_THREADS": {
-      "key": "env:OMP_NUM_THREADS",
-      "description": "Names the operator's CPU thread share, also read by native numerical libraries.",
-      "owner": "alphalattice.kernel.config",
-      "type": "positive int | absent",
-      "default": {
-        "value": null,
-        "resolution": "An absent or invalid value leaves the applicable resource owner's default in force.",
-        "source": "src/alphalattice/kernel/config/port.py::Settings.from_values"
-      },
-      "defined_by": [
-        "src/alphalattice/kernel/config/port.py::Settings"
-      ],
-      "identity_bearing": false,
-      "identity_scope": "environment/operational policy",
-      "identity_basis": "The configured share and observed numerical pools are recorded outside research identities."
     },
     "env:PATH": {
       "key": "env:PATH",
@@ -860,7 +810,7 @@
       "readers": {
         "literal": [
           "src/alphalattice/control/product_host/storage/backup.py:208",
-          "src/alphalattice/capabilities/knowledge/model_store.py:238",
+          "src/alphalattice/kernel/knowledge/model_store.py:238",
           "tests/integration/knowledge/test_model_store.py:205"
         ]
       },
@@ -1274,16 +1224,18 @@
           "src/alphalattice/investment/risk_research/experiments/contracts.py:5",
           "src/alphalattice/investment/risk_research/experiments/development.py:267",
           "src/alphalattice/investment/sector_research/evaluation/comparison.py:15",
-          "src/alphalattice/capabilities/knowledge/contracts.py:256",
-          "src/alphalattice/capabilities/knowledge/contracts.py:278",
-          "src/alphalattice/capabilities/knowledge/contracts.py:291",
-          "src/alphalattice/capabilities/knowledge/contracts.py:293",
-          "src/alphalattice/capabilities/knowledge/contracts.py:524",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:276",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:290",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:359",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:611",
-          "src/alphalattice/evidence/live_evidence/errors.py:35",
+          "src/alphalattice/kernel/knowledge/contracts.py:256",
+          "src/alphalattice/kernel/knowledge/contracts.py:278",
+          "src/alphalattice/kernel/knowledge/contracts.py:291",
+          "src/alphalattice/kernel/knowledge/contracts.py:293",
+          "src/alphalattice/kernel/knowledge/contracts.py:524",
+          "src/alphalattice/kernel/knowledge/hybrid.py:2803",
+          "src/alphalattice/kernel/knowledge/hybrid.py:2812",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:276",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:290",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:359",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:611",
+          "src/alphalattice/kernel/live_evidence/errors.py:35",
           "src/alphalattice/oversight/chief_risk_officer/decision/portfolio_review.py:464",
           "src/alphalattice/oversight/chief_risk_officer/portfolio_evidence/contracts.py:532",
           "src/alphalattice/oversight/chief_risk_officer/runtime/portfolio_review_task.py:335",
@@ -1463,6 +1415,7 @@
       "identity_basis": "Network permission or storage-cap control is outside sealed computation method identities; no method parameter is changed.",
       "readers": {
         "literal": [
+          "src/alphalattice/control/observation_runtime/ledger.py:176",
           "src/alphalattice/control/product_host/storage/input_references.py:576",
           "src/alphalattice/control/product_host/storage/input_references.py:578",
           "src/alphalattice/control/product_host/storage/input_references.py:585",
@@ -1480,6 +1433,10 @@
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/pages-settings.js:70",
           "src/alphalattice/interface/local_application/assets/workbench-source/js/app/pages-settings.js:71",
           "src/alphalattice/interface/local_application/native_setup.py:441",
+          "src/alphalattice/kernel/knowledge/_reranking.py:308",
+          "src/alphalattice/kernel/knowledge/_reranking.py:315",
+          "src/alphalattice/kernel/knowledge/_reranking.py:470",
+          "tests/integration/alternative_evidence/test_evidence_index_storage.py:519",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:12",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:20",
           "tests/portfolio_strategy_lab/storage_capacity_support.py:30",
@@ -1494,6 +1451,9 @@
           "tests/integration/local_application/test_native_bridge.py:538",
           "tests/integration/product_host/test_strategy_activation.py:1901",
           "tests/integration/product_host/test_strategy_activation.py:1905",
+          "tests/integration/observation_runtime/test_unified_observation.py:495",
+          "tests/integration/observation_runtime/test_unified_observation.py:511",
+          "tests/integration/observation_runtime/test_unified_observation.py:532",
           "tests/integration/product_host/test_current_state_storage.py:109",
           "tests/integration/product_host/test_current_state_storage.py:94",
           "tests/integration/product_host/test_current_state_storage.py:95"
@@ -2164,16 +2124,16 @@
           "src/alphalattice/investment/risk_research/surfaces/returns.py:396",
           "src/alphalattice/investment/risk_research/surfaces/returns.py:514",
           "src/alphalattice/investment/risk_research/surfaces/returns.py:528",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:520",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:906",
-          "src/alphalattice/evidence/live_evidence/online_sources.py:114",
-          "src/alphalattice/capabilities/domain_contracts/domain/serialization.py:1",
-          "src/alphalattice/capabilities/domain_contracts/domain/serialization.py:158",
-          "src/alphalattice/capabilities/domain_contracts/domain/serialization.py:80",
-          "src/alphalattice/capabilities/domain_contracts/source_identity.py:442",
-          "src/alphalattice/capabilities/validation/schedule_contracts.py:57",
-          "src/alphalattice/capabilities/validation/schedule_contracts.py:62",
-          "src/alphalattice/capabilities/validation/schedule_contracts.py:68",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:520",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:906",
+          "src/alphalattice/kernel/live_evidence/online_sources.py:114",
+          "src/alphalattice/kernel/shared_kernel/domain/serialization.py:1",
+          "src/alphalattice/kernel/shared_kernel/domain/serialization.py:158",
+          "src/alphalattice/kernel/shared_kernel/domain/serialization.py:80",
+          "src/alphalattice/kernel/shared_kernel/source_identity.py:442",
+          "src/alphalattice/kernel/validation/schedule_contracts.py:57",
+          "src/alphalattice/kernel/validation/schedule_contracts.py:62",
+          "src/alphalattice/kernel/validation/schedule_contracts.py:68",
           "src/alphalattice/oversight/chief_risk_officer/runtime/portfolio_review_task.py:78",
           "src/alphalattice/oversight/chief_risk_officer/runtime/portfolio_review_task.py:79",
           "src/alphalattice/oversight/chief_risk_officer/runtime/portfolio_review_task.py:80",
@@ -2349,6 +2309,7 @@
           "src/alphalattice/interface/local_application/operations.py:1025",
           "src/alphalattice/interface/local_application/operations.py:1088",
           "src/alphalattice/interface/local_application/operations.py:1129",
+          "src/alphalattice/kernel/knowledge/_torch.py:15",
           "src/devtools/evaluation/intent.py:180",
           "src/devtools/evaluation/intent.py:34",
           "src/devtools/evaluation/intent.py:37",
@@ -3608,27 +3569,28 @@
           "src/alphalattice/investment/portfolio_strategy_lab/research_loop/paired_alpha_portfolio.py:911",
           "src/alphalattice/investment/portfolio_strategy_lab/research_loop/paired_alpha_portfolio.py:925",
           "src/alphalattice/investment/risk_research/experiments/execution.py:273",
-          "src/alphalattice/capabilities/data/errors.py:39",
-          "src/alphalattice/capabilities/data/table.py:150",
-          "src/alphalattice/capabilities/data/table.py:152",
-          "src/alphalattice/capabilities/data/table.py:154",
-          "src/alphalattice/capabilities/data/table.py:186",
-          "src/alphalattice/capabilities/data/table.py:35",
-          "src/alphalattice/capabilities/data/table.py:63",
-          "src/alphalattice/capabilities/data/universe.py:276",
-          "src/alphalattice/capabilities/knowledge/contracts.py:232",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:381",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:384",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:428",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:434",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:455",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:462",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:473",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:519",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:851",
-          "src/alphalattice/capabilities/knowledge/hybrid_contracts.py:891",
-          "src/alphalattice/capabilities/quant/sector_history.py:3",
-          "src/alphalattice/capabilities/domain_contracts/spans.py:54",
+          "src/alphalattice/kernel/data/errors.py:39",
+          "src/alphalattice/kernel/data/table.py:150",
+          "src/alphalattice/kernel/data/table.py:152",
+          "src/alphalattice/kernel/data/table.py:154",
+          "src/alphalattice/kernel/data/table.py:186",
+          "src/alphalattice/kernel/data/table.py:35",
+          "src/alphalattice/kernel/data/table.py:63",
+          "src/alphalattice/kernel/data/universe.py:276",
+          "src/alphalattice/kernel/knowledge/_embeddings.py:902",
+          "src/alphalattice/kernel/knowledge/contracts.py:232",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:381",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:384",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:428",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:434",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:455",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:462",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:473",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:519",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:851",
+          "src/alphalattice/kernel/knowledge/hybrid_contracts.py:891",
+          "src/alphalattice/kernel/quant/sector_history.py:3",
+          "src/alphalattice/kernel/shared_kernel/spans.py:54",
           "src/alphalattice/oversight/chief_risk_officer/publication/portfolio_review.py:224",
           "src/alphalattice/protocols/actor_execution/contracts.py:27",
           "src/alphalattice/protocols/actor_execution/projections.py:59",
@@ -3732,8 +3694,8 @@
           "tests/integration/market_data_ops/test_data_performance.py:434",
           "tests/integration/market_data_ops/test_data_performance.py:85",
           "tests/integration/market_data_ops/test_data_performance.py:88",
-          "tests/unit/evaluation/test_forms.py:260",
-          "tests/unit/evaluation/test_forms.py:53",
+          "tests/integration/evaluation/test_forms.py:260",
+          "tests/integration/evaluation/test_forms.py:53",
           "tests/factor_research_pipeline_correctness/walk_forward_source.py:55",
           "tests/feature_engine/panel_workspace.py:196",
           "tests/feature_engine/panel_workspace.py:210",
@@ -7303,6 +7265,7 @@
           "tests/integration/local_application/test_product_script_refusals.py:360",
           "tests/integration/local_application/test_product_script_refusals.py:400",
           "tests/integration/local_application/test_product_script_refusals.py:468",
+          "tests/integration/knowledge/test_retrieval_recipes.py:264",
           "tests/integration/product_host/test_input_revisions.py:470",
           "tests/integration/product_host/test_workspace_preparation.py:608"
         ]

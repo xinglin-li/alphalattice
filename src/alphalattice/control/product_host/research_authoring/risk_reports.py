@@ -10,7 +10,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.research_authoring.factor_inputs import confined
 from alphalattice.interface.local_application.cli_contract import refusal_words
@@ -19,6 +18,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
     PortfolioPublicationError,
     PortfolioResearchArtifactStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError, ResolvedListingScope
 
 CATEGORY = "development/risk-report-links"
@@ -321,7 +321,7 @@ class RiskReportLinks:
             "link": link.model_dump(mode="json"),
             "export_request": export_request,
             # The links read again from this receipt, bound to its book's Task, which the
-            # receipt names only inside its link.
+            # receipt names only inside its link (V479).
             "next_requests": {
                 "export": export_request,
                 "links": {"operation": "EXPERIMENT_RISK_LINKS", "task_id": str(portfolio_task_id)},

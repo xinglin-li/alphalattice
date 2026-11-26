@@ -1,8 +1,5 @@
 # Getting started
-Last checked: 2026-11-23 against 0.2.9
-
-For the versioned wheel command and Claude Code plugin, see
-[Install and start](install.md) / [安装并启动](install.md).
+Last checked: 2026-11-04 against 0.2.4
 
 Give your agent the repository link and one research intent. It installs
 AlphaLattice and continues in the same session. The
@@ -48,16 +45,14 @@ holds the installation and launch procedure.
    ```powershell
    uv run python scripts/build_local_web_ui.py --product
    uv export --locked --all-extras --no-dev --no-emit-project --no-hashes --output-file .venv/alphalattice-runtime-requirements.txt
-   uv run python -c "from pathlib import Path; from scripts.release.wheel_build import runtime_overrides; Path('.venv/alphalattice-runtime-overrides.txt').write_bytes(runtime_overrides().encode())"
-   uv tool install --compile-bytecode --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt --overrides .venv/alphalattice-runtime-overrides.txt
+   uv tool install --python 3.12 --editable . --with-requirements .venv/alphalattice-runtime-requirements.txt --constraints .venv/alphalattice-runtime-requirements.txt
    ```
 
    Run the retrieval runtime's offline fill exactly as the doctor prints it.
    If its package cache is cold, follow its returned network form within the
-   stated download permission. If the installed command is off PATH, the agent can
-   use the absolute binding the setup returns without restarting the shell. You can
-   instead run `uv tool update-shell` and restart the session or terminal. Dependency
-   repairs outside the lock require your permission.
+   stated download permission. If the installed command is off PATH, you run
+   `uv tool update-shell` once and restart the session or terminal, then the agent
+   repeats the doctor. Dependency repairs outside the lock require your permission.
 
 3. Configure the agent project from the same checkout root:
 
@@ -84,9 +79,8 @@ holds the installation and launch procedure.
    On Claude Code desktop, the agent can start it in the app's Terminal panel.
    Without a panel, the first start can ask you to run the offered
    `terminal_command` once in a terminal you own, outside the agent's command
-   shell. Tell the agent when it is running so it can continue. If Codex cannot
-   detach the Host, follow its offered terminal route as well. A detached Host stays
-   up between sessions and stops by itself
+   shell. Tell the agent when it is running so it can continue. Codex detaches
+   the Host itself. A detached Host stays up between sessions and stops by itself
    once no work is owed and it has been idle for its configured period. This startup step is separate from the network-permission
    question. Follow the returned startup answer and keep its ready link.
 
@@ -128,9 +122,9 @@ both supported uses:
 - **First use:** start in a new folder with your intent, or
   `Positions for <date>, reviewed.` The agent prepares data and the strategy,
   then follows the date's positions through review, committee discussion and a report.
-  It asks once whether daily updates may keep the network on for market data and
-  SEC filings within the default budget (3 per issuer, 600 documents and 3 GB
-  overall). First use continues without waiting for your answer. Your yes is a
+  It stops once to ask whether daily updates may keep the network on for market
+  data and SEC filings within the default budget (3 per issuer, 600 documents
+  and 3 GB overall). **Work waits until you answer yes or no.** Your yes is a
   continuing setting until you tell it to stop. At the first-use report, the
   agent also asks whether daily updates should convene the investment committee;
   without that setting, later updates get the portfolio manager's view on the
@@ -152,7 +146,7 @@ Follow Tasks, results and review in the Workbench. Deactivate the book on
 **Portfolio**. To stop the goal, use **Stop** in Local Web or ask the agent to
 abandon it; cancel a running Task separately.
 
-An answer can name a next step. A refusal can identify a data shortfall, missing
+Each answer names its next step. A refusal can identify a data shortfall, missing
 permission or required decision; read its explanation and permitted continuation.
 A provider deferral retains fetched listings and names when the existing
 preparation can resume. After a disconnect, the agent reads the existing Task.
@@ -181,8 +175,6 @@ alphalattice cpu-budget set --cores auto
 `show` reports capacity, load and work. `auto` uses processors not already
 busy when work starts; a positive count bounds preparation CPU use without
 changing the calculation. Queue capacity is a separate `--queue` setting.
-The Host sizes its shared catalog's DuckDB pools at startup. Restart the Host
-to apply a changed budget to those pools.
 
 After preparation publishes an input, [Research flows](research-flows.md)
 explains the research choices. [CLI](cli.md) explains answers and continuations,

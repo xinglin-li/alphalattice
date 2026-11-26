@@ -7,7 +7,6 @@ from uuid import UUID
 
 import pytest
 
-from alphalattice.control.product_host.composition import goals as composition
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.portfolio_research import (
@@ -35,11 +34,7 @@ DECLARATION = {
 
 
 @pytest.fixture
-def goal_app(tmp_path, monkeypatch):
-    """A goal application whose Host mints goal ids in order, read as UUID(int=1), 2, ...; its
-    first goal is open."""
-    minted = iter(range(1, 1 << 16))
-    monkeypatch.setattr(composition, "uuid7", lambda: str(UUID(int=next(minted))))
+def goal_app(tmp_path):
     calls = []
     tasks: dict[UUID, tuple[Any, ...]] = {}
     body = {
@@ -67,6 +62,7 @@ def goal_app(tmp_path, monkeypatch):
     opened = app.operate(
         Request(
             operation="GOAL_OPEN",
+            goal_id=UUID(int=1),
             goal_declaration=DECLARATION,
             change_reason="Register before execution",
         ),

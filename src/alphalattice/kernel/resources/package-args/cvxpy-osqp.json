@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.cvxpy.osqp",
+  "revision": "1.0.0",
+  "title": "CVXPY OSQP solve adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "cvxpy-base", "version": "1.9.2"},
+  "companion_distributions": [
+    {"schema_version": "1", "distribution": "osqp", "version": "1.1.3"}
+  ],
+  "callable": "cvxpy.Problem.solve",
+  "arguments": [
+    {"schema_version": "1", "name": "adaptive_rho", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "eps_abs", "value_kind": "number", "has_default": true, "default": 0.00001, "minimum": 0.0, "minimum_inclusive": false},
+    {"schema_version": "1", "name": "eps_rel", "value_kind": "number", "has_default": true, "default": 0.00001, "minimum": 0.0, "minimum_inclusive": false},
+    {"schema_version": "1", "name": "max_iter", "value_kind": "integer", "has_default": true, "default": 10000, "minimum": 1.0},
+    {"schema_version": "1", "name": "polishing", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "scaled_termination", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "solver", "value_kind": "string", "required": true, "allowed_values": ["OSQP"]},
+    {"schema_version": "1", "name": "verbose", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "warm_start", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "warm_starting", "value_kind": "boolean", "has_default": true, "default": true}
+  ],
+  "interactions": [
+    "CVXPY warm_start and OSQP warm_starting are distinct settings.",
+    "CVXPY 1.9.2 overrides raw OSQP defaults for eps_abs, eps_rel, max_iter, and polishing.",
+    "A fresh solve defaults polishing to true; a cached solve defaults it to whether matrix refactorization is required."
+  ],
+  "assumptions": ["Problem construction, solver role, and residual acceptance remain owned by Quant."],
+  "warnings": ["Only exact optimal status can enter the authoritative candidate under the owner policy."],
+  "failure_modes": ["Unsupported solver setting, missing OSQP companion, or distribution version mismatch."],
+  "owner_policy_ref": "reference:numerical-portfolio-construction",
+  "official_source_url": "https://osqp.org/docs/interfaces/solver_settings.html"
+}

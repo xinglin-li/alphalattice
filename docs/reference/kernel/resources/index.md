@@ -1,5 +1,6 @@
 # alphalattice.kernel.resources
+Date: 2026-09-26
 
-The kernel port for resource budgets and leases.
+Immutable package resources shipped with the AlphaLattice base wheel.
 
 ::: alphalattice.kernel.resources

@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import duckdb
 
-from alphalattice.control.workspace_runtime.database import WorkspaceRepository, table_columns
+from alphalattice.control.workspace_runtime.database import WorkspaceRepository
 
 
 def _utc_naive(value: datetime) -> datetime:
@@ -63,11 +63,6 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
         Args:
             connection: Open workspace database connection used for this operation.
         """
-        if any(
-            name == "source_check_failed_at"
-            for name, _ in table_columns(connection, "workspace_readiness")
-        ):
-            return
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS workspace_readiness (
@@ -105,7 +100,12 @@ class WorkspaceReadinessRepository(WorkspaceRepository):
         connection = self._connect(read_only=True)
         try:
             try:
-                columns = {name for name, _ in table_columns(connection, "workspace_readiness")}
+                columns = {
+                    item[1]
+                    for item in connection.execute(
+                        "PRAGMA table_info('workspace_readiness')"
+                    ).fetchall()
+                }
                 failed_column = (
                     "source_check_failed_at"
                     if "source_check_failed_at" in columns

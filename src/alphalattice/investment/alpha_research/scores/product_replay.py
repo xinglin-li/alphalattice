@@ -32,6 +32,7 @@ worktree that only exists on one machine.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import date
@@ -42,9 +43,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -105,7 +104,7 @@ class AlphaProductRecipeView(Protocol):
 
 
 def _sha256(path: Path) -> str:
-    digest = integrity_sha256()
+    digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
@@ -113,7 +112,7 @@ def _sha256(path: Path) -> str:
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return hashlib.sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
 
 
 def _frozen(values: npt.ArrayLike, *, dtype: npt.DTypeLike) -> npt.NDArray[np.generic]:
@@ -825,9 +824,7 @@ def _identity(
     scores: FloatArray,
     live: BoolArray,
 ) -> str:
-    # Its writer and its validator name the same content: one hash in the stage.
-    return seal_payload_digest(
-        "projection_hash",
+    return canonical_hash(
         {
             "kind": "AlphaProductScoreProjection",
             "recipe_hash": recipe_hash,
@@ -842,8 +839,7 @@ def _identity(
             "model_lineage_hashes": list(lineage_hashes),
             "scores": _array_hash(scores, dtype=np.dtype("<f8")),
             "live": _array_hash(live, dtype=np.dtype("?")),
-        },
-        digest=canonical_hash,
+        }
     )
 
 
@@ -999,7 +995,7 @@ def _alpha_live_array_hash(values: npt.NDArray[np.generic]) -> str:
     """The installed Alpha training-value identity, without importing its runtime."""
 
     contiguous = np.ascontiguousarray(values)
-    digest = identity_sha256()
+    digest = hashlib.sha256()
     digest.update(contiguous.dtype.str.encode("ascii"))
     digest.update(repr(contiguous.shape).encode("ascii"))
     digest.update(memoryview(contiguous).cast("B"))

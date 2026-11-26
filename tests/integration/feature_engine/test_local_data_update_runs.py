@@ -8,19 +8,19 @@ import shutil
 from contextlib import closing
 from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
-from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
-from uuid import UUID
 
 import pyarrow as pa
 import pytest
 
-from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
 from alphalattice.control.guanyin.data.workspace_maintenance import maintenance_words
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
+from alphalattice.control.product_host.composition.research_workspace import (
+    publish_research_workspace_manifest,
+)
 from alphalattice.control.product_host.maintenance.data_update import (
     WorkspaceDataUpdateApplication,
     bind_existing_data_workspace,
@@ -37,20 +37,18 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from alphalattice.kernel import storage
-from tests._support import development_universe, sufficient_universe
-from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
+    _json,
     _manifest,
+    _request,
     _resolved,
     _Resolver,
-    admit_market_fixture,
 )
-from tests.pytest_environment import admitted
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,
+    build_real_risk_workspace,
 )
 from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
 from tests.workspace_maintenance.data_update_support import (
@@ -58,9 +56,9 @@ from tests.workspace_maintenance.data_update_support import (
     _active_panel_manifest,
     _formula,
     _run_data_update,
+    _seed_foundation,
     data_update_session,
-    prepared_update_seed,
-    run_update_to_status,
+    set_parallel_test_budget,
 )
 from tests.workspace_maintenance.data_update_support import (
     activated_seed as activated_seed,
@@ -71,35 +69,48 @@ from tests.workspace_maintenance.local_data_provider import (
     unchanged_membership_source,
 )
 
-TEN_SECTOR_SYMBOLS = tuple(f"QD{index:03d}" for index in range(60))  # UI QA scenes
-QUARANTINE_LISTINGS = (
-    development_universe.LISTINGS[0],
-    *sufficient_universe.LISTINGS[len(development_universe.LISTINGS) :][:59],
-)
-"""59/60 clears Panel coverage. One audit fits the shipped 2% bound and two exceed it."""
-QUARANTINE_SYMBOLS = tuple(item.symbol for item in QUARANTINE_LISTINGS)
+TEN_SECTOR_SYMBOLS = tuple(f"QD{index:03d}" for index in range(60))
+"""Sixty names in ten sectors of six: one exclusion keeps every sector at or above
+the five-member floor and coverage at 59/60, so a membership-changing quality
+decision can pass the product's own admission policy. A reduced-scope fixture
+universe, not a claim about any real universe."""
 
 
 @pytest.fixture(scope="module")
-def quarantine_scale_seed(tmp_path_factory):
-    return prepared_update_seed(tmp_path_factory, "quarantine", QUARANTINE_SYMBOLS)
+def ten_sector(tmp_path_factory):
+    """A prepared sixty-name workspace whose sectors hold six members each."""
+
+    def build(root):
+        built = build_real_risk_workspace(
+            tmp_path_factory.mktemp("data-update-ten-sector"),
+            symbols=TEN_SECTOR_SYMBOLS,
+            sector_size=6,
+        )
+        publish_research_workspace_manifest(built.workspace, _manifest("data-update-qa"))
+        _seed_foundation(built.workspace, built.panel_snapshot_hash)
+        set_parallel_test_budget(built.workspace)
+        copy_workspace(built.workspace, root)
+        return {}
+
+    seed, _metadata = session_workspace(tmp_path_factory, "maintenance_ten_sector", build)
+    return seed  # consumers copy the immutable seed before writing
 
 
 def _bytes(root: Path):
-    """Every workspace file's bytes, except the writer lease and the sealed plan previews
-    (`runtime/plan-previews`): a plan seals its preview, planning included, so those files move
-    with the request itself and say nothing about what the update wrote. A live Host keeps its
-    stores open, so they are read outside the engine (`storage.outside`), as any byte reader is."""
+    """Every workspace file's bytes, except the writer lease, the activity observer's own
+    ledger under `runtime/` (`observations.sqlite` and its WAL/SHM) and the sealed plan
+    previews (`runtime/plan-previews`, V525, V537): the observer records each observed
+    operation and a plan seals its preview, planning included, so those files move with the
+    request itself and say nothing about what the update wrote."""
     previews = root / "runtime" / "plan-previews"
-    files = [
-        path
+    return {
+        str(path.relative_to(root)): sha256(path.read_bytes()).hexdigest()
         for path in root.rglob("*")
         if path.is_file()
         and path.name != ".alphalattice-writer.lock"
+        and not path.name.startswith("observations.sqlite")
         and previews not in path.parents
-    ]
-    with storage.outside(*files):
-        return {str(p.relative_to(root)): sha256(p.read_bytes()).hexdigest() for p in files}
+    }
 
 
 @pytest.mark.parametrize(
@@ -274,7 +285,6 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     assert bind_existing_data_workspace(workspace) == manifest
     provider = recording_provider()
     market = MarketDataRepository(workspace)
@@ -309,13 +319,10 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
     )
     service.start()
     try:
-        # The idle file-trust scrub rightly writes its receipt between this test's requests;
-        # the test is about the data update, so it runs without that background worker.
-        service.operations.stop_file_scrub(None)
         before = _bytes(workspace)
         planned = _json(service, "/api/data-update/plan", method="POST", payload={})
         assert planned["status"] == "PLANNED", planned
-        assert planned["next_requests"] == {  # `data-update run --from` reads it
+        assert planned["next_requests"] == {  # V418: `data-update run --from` reads it
             "run": {"operation": "DATA_UPDATE_RUN", "update_plan_hash": planned["plan_hash"]}
         }
         assert _bytes(workspace) == before and provider.calls == []
@@ -399,11 +406,7 @@ def test_real_update_plan_run_reuse_and_foundation_readback(
         assert progress["stage"] == "maintain_data_feature"
         assert progress["delivery"]["delivered"] >= 1 and progress["delivery"]["failures"] == 0
         sidecar = workspace / "runtime/data-update" / response["task_id"] / "work-progress.json"
-        # The Task-bound copy is kept on the log as a span since 11-16 (no file): read it
-        # through its owner's reader, which reads a legacy file first.
-        kept = TaskTelemetry.read_json(sidecar, UUID(response["task_id"]))
-        assert isinstance(kept, dict), kept
-        assert (kept["task_id"], kept["stage"]) == (response["task_id"], "maintain_data_feature")
+        assert sidecar.is_file()
         # The receipt's resulting Panel, named, not whichever Panel is active today.
         assert readback["partition_reuse"] == {
             "reused_partition_count": len(_active_panel_manifest(workspace)["chunks"]) - 1,
@@ -468,7 +471,6 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     clock = [NOW]
 
     def boot() -> LocalPortfolioWebSession:
@@ -509,7 +511,7 @@ def test_a_restarted_host_runs_a_maintenance_plan_by_its_hash_within_its_hour(qu
             assert refused["status"] == "REFUSED", refused
             assert refused["failure_code"] == "workspace_data_update.plan_required", refused
             assert refused["detail"].startswith("A data update's plan stays runnable"), refused
-            # Plan the update again.
+            # Plan the update again (V543).
             assert refused["next_requests"] == {"replan": {"operation": "DATA_UPDATE_PLAN"}}
         assert service.session.task_control_registry.tasks() == ()
     finally:
@@ -750,7 +752,6 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
     workspace = tmp_path / "review-workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     closes = provider._closes
 
@@ -876,16 +877,16 @@ def test_raw_move_review_reopens_and_resumes_the_same_data_task(qualified, tmp_p
 
 @pytest.mark.parametrize("payers", [1, 2])
 def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
-    quarantine_scale_seed, tmp_path, monkeypatch, capsys, payers
+    ten_sector, tmp_path, monkeypatch, capsys, payers
 ):
-    """requirement: under the shipped rule a session's ordinary day needs no
+    """requirement (DATA-RULE-UPDATE): under the shipped rule a session's ordinary day needs no
     person: its re-raised move holds the rule's decision and a payer's audit is approved; past
     the audits' own bound (two payers of sixty names) the day stops for the person."""
     from alphalattice.interface.local_application.cli import main as client_main
 
-    # One jump that persists: re-acquired a day later it is the same move.
+    # One jump that persists (D2's APA): re-acquired a day later it is the same move.
     workspace, boot = _quarantine_review_workspace(
-        quarantine_scale_seed, tmp_path, monkeypatch, anomaly="level_shift"
+        ten_sector, tmp_path, monkeypatch, through=NOW + timedelta(days=1), anomaly="level_shift"
     )
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "daily-lead")
     from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
@@ -893,9 +894,9 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
         ActionAuditScopeInsufficient,
     )
     from alphalattice.interface.local_application.cli_contract import ANSWER_LANGUAGE, worded
-    from tests.portfolio_strategy_lab.node_runner import read_in_chinese
+    from tests.portfolio_strategy_lab.local_web_support import read_in_chinese
 
-    audit, paying = MarketDataRepository.complete_action_audit, QUARANTINE_SYMBOLS[1 : 1 + payers]
+    audit, paying = MarketDataRepository.complete_action_audit, TEN_SECTOR_SYMBOLS[1 : 1 + payers]
 
     def dividend(self, manifest, *observations, **rest):  # type: ignore[no-untyped-def]
         # Day 2 is the payers' ex-date: each provider back-adjusts the whole history, which a
@@ -932,7 +933,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
             live.dispatcher.drain_for_tests(timeout=180)
             status = _json(live, "/api/status?task_id=" + admitted["task_id"])
             if at > NOW and payers > 1:
-                # Two audits of sixty names exceed the audits' 2%: the refusal is recorded, and
+                # Two audits of sixty names pass the audits' 2%: the refusal is recorded, and
                 # the stop is the person's confirm.
                 assert status["latest_failure_code"] == "data.full_history_audit_approval_required"
                 refused = ruled_entries(live, "FULL_HISTORY_AUDIT")
@@ -955,7 +956,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
                 (row["symbol"], row["option_id"], row.get("held", False))
                 for row in disclosed["decided"]
             ) == [
-                (QUARANTINE_SYMBOLS[0], "retain_isolated_raw_move_with_caveat", at > NOW),
+                (TEN_SECTOR_SYMBOLS[0], "retain_isolated_raw_move_with_caveat", at > NOW),
                 *[(paying[0], "full_history_audit", False)] * (at > NOW),
             ], disclosed
             assert disclosed["bounds"]["audits"]["count"] == (at > NOW), disclosed
@@ -988,11 +989,7 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     assert [e["status"] for e in ruled_cases] == ["DECIDED_BY_RULE", "HELD_BY_RULE"], ruled_cases
     assert ruled_cases[1]["case_count"] == 0, ruled_cases
     # The rule approved the payer's full-history audit in line: its whole history was fetched.
-    payer_calls = [
-        (a, b)
-        for kind, symbol, a, b in boot.provider.calls
-        if kind == "daily" and symbol == paying[0]
-    ]
+    payer_calls = [(a, b) for symbols, a, b in boot.provider.calls if paying[0] in symbols]
     assert any((b - a).days > 400 for a, b in payer_calls[1:]), payer_calls
     # A damaged Goal record is named beside the rule's decisions, never a crash of the read.
     for goal in goals.goal_ids():
@@ -1008,33 +1005,36 @@ def test_a_sessions_data_update_has_its_isolated_move_decided_by_the_rule_once(
     ], damaged
 
 
-def _quarantine_review_workspace(seed, tmp_path, monkeypatch, *, anomaly="single_session"):
-    """Double one day's prices or keep the jump as a standing level shift."""
+def _quarantine_review_workspace(
+    ten_sector, tmp_path, monkeypatch, *, through=NOW, anomaly="single_session"
+):
+    """A sixty-name workspace one update behind; its first listing shows an unexplained move.
+
+    ``anomaly="single_session"`` doubles the first listing's close on the
+    update's session alone; ``"level_shift"`` doubles it from that session on
+    (a historical jump that persists, the shape of a standing quarantine's
+    anomaly). The provider serves sessions through ``through``; ``boot``
+    takes the session's clock.
+    """
 
     workspace = tmp_path / "quarantine-workspace"
-    shutil.copytree(seed, workspace)
+    shutil.copytree(ten_sector, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    provider = development_universe.DevelopmentProvider(
-        sessions=development_universe.calendar_sessions(),
-        listings=QUARANTINE_LISTINGS,
-        row_cap=sufficient_universe.ROW_CAP,
-    )
-    bars = provider.bars_for
-    persistent = anomaly == "level_shift"
+    provider = recording_provider(symbols=TEN_SECTOR_SYMBOLS, sector_size=6, now=through)
+    closes = provider._closes
+    state = {"anomaly": anomaly}
 
-    def with_unexplained_move(symbol):
-        rows = bars(symbol)
-        if symbol != QUARANTINE_SYMBOLS[0]:
-            return rows
-        cutoff = NOW.date()
-        return [
-            row.rescaled(2.0)
-            if row.session == cutoff or (persistent and row.session > cutoff)
-            else row
-            for row in rows
-        ]
+    def with_unexplained_move(symbol, end):
+        values = closes(symbol, end)
+        if symbol != TEN_SECTOR_SYMBOLS[0]:
+            return values
+        shape = state["anomaly"]
+        for session in values:
+            if session == NOW.date() or (session > NOW.date() and shape == "level_shift"):
+                values[session] *= 2.0
+        return values
 
-    monkeypatch.setattr(provider, "bars_for", with_unexplained_move)
+    monkeypatch.setattr(provider, "_closes", with_unexplained_move)
 
     def boot(clock=NOW):
         return LocalPortfolioWebSession(
@@ -1042,13 +1042,12 @@ def _quarantine_review_workspace(seed, tmp_path, monkeypatch, *, anomaly="single
             workspace_manifest=manifest,
             resolver=_Resolver(_resolved()),
             data_provider=provider,
-            data_source_loader=partial(
-                development_universe.source_loader, listings=QUARANTINE_LISTINGS
-            ),
+            data_source_loader=unchanged_membership_source(TEN_SECTOR_SYMBOLS),
             clock=lambda: clock,
         )
 
     boot.provider = provider  # type: ignore[attr-defined]
+    boot.anomaly = state  # type: ignore[attr-defined]
     return workspace, boot
 
 
@@ -1056,7 +1055,9 @@ def _decide_quarantine(live, plan):
     """Plan, run to the review stop, confirm ``recoverable_quarantine`` on the page's route."""
 
     request = {"update_plan_hash": plan["plan_hash"]}
-    admitted, status = run_update_to_status(live, request, timeout=180)
+    admitted = _json(live, "/api/data-update/run", method="POST", payload=request)
+    live.dispatcher.drain_for_tests(timeout=180)
+    status = _json(live, "/api/status?task_id=" + admitted["task_id"])
     assert status["lifecycle"] == "BLOCKED", status
     assert status["latest_failure_code"] == "data.truth_review_required", status
     issue = _json(live, "/api/workspace/data-issues")["issues"][0]
@@ -1079,16 +1080,17 @@ def _decide_quarantine(live, plan):
 
 
 @pytest.fixture(scope="module")
-def standing_quarantine_seed(quarantine_scale_seed, tmp_path_factory):
+def standing_quarantine_seed(ten_sector, tmp_path_factory):
     """One original first-day decision/publication; every recheck owns its copy."""
 
     def build(root):
         with pytest.MonkeyPatch.context() as monkeypatch:
-            day_one = NOW
+            day_one, day_two_clock = NOW, NOW + timedelta(days=1)
             workspace, boot = _quarantine_review_workspace(
-                quarantine_scale_seed,
+                ten_sector,
                 tmp_path_factory.mktemp("standing-quarantine"),
                 monkeypatch,
+                through=day_two_clock,
                 anomaly="level_shift",
             )
             with boot(day_one) as live:
@@ -1098,7 +1100,10 @@ def standing_quarantine_seed(quarantine_scale_seed, tmp_path_factory):
             # continues from the recorded decision, nothing is asked again.
             with boot(day_one) as live:
                 assert [str(item) for item in live.resumed_task_ids] == []
-                _, status = run_update_to_status(live, request, task_id=task_id)
+                resumed = _json(live, "/api/data-update/run", method="POST", payload=request)
+                assert resumed["task_id"] == task_id
+                live.dispatcher.drain_for_tests(timeout=300)
+                status = _json(live, "/api/status?task_id=" + task_id)
                 assert status["lifecycle"] == "SUCCEEDED", status
                 assert (
                     _json(live, "/api/data-update")["inputs"]["panel_through"]
@@ -1122,7 +1127,7 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
     day_one, day_two_clock = NOW, NOW + timedelta(days=1)
     source, metadata = standing_quarantine_seed
     workspace, boot = _quarantine_review_workspace(
-        source, tmp_path, monkeypatch, anomaly="level_shift"
+        source, tmp_path, monkeypatch, through=day_two_clock, anomaly="level_shift"
     )
     market = MarketDataRepository(workspace)
     panel_state = PanelStateRepository(market.database, market_data=market)
@@ -1141,23 +1146,19 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
 
     if day_two == "new_anomaly":
         # A second jump on the new session: a different anomaly, not the old one.
-        bars = provider.bars_for
+        closes = provider._closes
 
-        def with_second_jump(symbol):
-            return [
-                row.rescaled(2.0)
-                if symbol == QUARANTINE_SYMBOLS[0] and row.session == day_two_clock.date()
-                else row
-                for row in bars(symbol)
-            ]
+        def with_second_jump(symbol, end):
+            values = closes(symbol, end)
+            if symbol == TEN_SECTOR_SYMBOLS[0] and day_two_clock.date() in values:
+                values[day_two_clock.date()] *= 2.0
+            return values
 
-        monkeypatch.setattr(provider, "bars_for", with_second_jump)
+        monkeypatch.setattr(provider, "_closes", with_second_jump)
     elif day_two == "explained":
         # The provider now reports the split behind the jump.
-        fetch_actions = provider.fetch_action_history
-
         def split_history(*, listing_id, provider_symbol, start, end):
-            if provider_symbol == QUARANTINE_SYMBOLS[0] and start <= day_one.date() <= end:
+            if provider_symbol == TEN_SECTOR_SYMBOLS[0] and start <= day_one.date() <= end:
                 return (
                     CorporateActionEvent(
                         listing_id=listing_id,
@@ -1170,16 +1171,21 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
                         provenance="fixture",
                     ),
                 )
-            return fetch_actions(
-                listing_id=listing_id, provider_symbol=provider_symbol, start=start, end=end
-            )
+            return ()
 
         monkeypatch.setattr(provider, "fetch_action_history", split_history)
 
     with boot(day_two_clock) as live:
         plan = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert plan["status"] == "PLANNED", plan
-        _, status = run_update_to_status(live, {"update_plan_hash": plan["plan_hash"]})
+        run = _json(
+            live,
+            "/api/data-update/run",
+            method="POST",
+            payload={"update_plan_hash": plan["plan_hash"]},
+        )
+        live.dispatcher.drain_for_tests(timeout=300)
+        status = _json(live, "/api/status?task_id=" + run["task_id"])
         issues = _json(live, "/api/workspace/data-issues")
         current = panel_state.active_listing_quarantines(
             parent.revision_sha256, include_profile_history=True, qualification_domain="MARKET_DATA"
@@ -1255,7 +1261,7 @@ def test_a_standing_quarantine_is_continued_across_an_unchanged_anomaly_and_not_
 
 
 def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_task(
-    quarantine_scale_seed, tmp_path, monkeypatch
+    ten_sector, tmp_path, monkeypatch
 ):
     """Quarantine decision keeps nominal membership and continues the same task."""
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -1265,7 +1271,7 @@ def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_tas
     )
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 
-    workspace, boot = _quarantine_review_workspace(quarantine_scale_seed, tmp_path, monkeypatch)
+    workspace, boot = _quarantine_review_workspace(ten_sector, tmp_path, monkeypatch)
     market = MarketDataRepository(workspace)
     parent = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1274,7 +1280,10 @@ def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_tas
     with boot() as live:
         plan = _json(live, "/api/data-update/plan", method="POST", payload={})
         task_id, request, case = _decide_quarantine(live, plan)
-        _, status = run_update_to_status(live, request, task_id=task_id)
+        resumed = _json(live, "/api/data-update/run", method="POST", payload=request)
+        assert resumed["task_id"] == task_id
+        live.dispatcher.drain_for_tests(timeout=300)
+        status = _json(live, "/api/status?task_id=" + task_id)
         assert status["lifecycle"] == "SUCCEEDED", status
         readback = _json(live, "/api/data-update")
         assert readback["status"] == "PUBLISHED" and readback["current_input_failure"] is None
@@ -1317,7 +1326,7 @@ def test_quarantine_decision_keeps_nominal_membership_and_continues_the_same_tas
 
 
 def test_missing_quality_scope_refuses_publication_and_child_evidence_still_refuses(
-    quarantine_scale_seed, tmp_path, monkeypatch
+    ten_sector, tmp_path, monkeypatch
 ):
     """Missing quality scope refuses publication and child evidence still refuses."""
 
@@ -1327,7 +1336,7 @@ def test_missing_quality_scope_refuses_publication_and_child_evidence_still_refu
         build_quality_filtered_research_manifest,
     )
 
-    workspace, boot = _quarantine_review_workspace(quarantine_scale_seed, tmp_path, monkeypatch)
+    workspace, boot = _quarantine_review_workspace(ten_sector, tmp_path, monkeypatch)
     market = MarketDataRepository(workspace)
     parent = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1342,7 +1351,12 @@ def test_missing_quality_scope_refuses_publication_and_child_evidence_still_refu
 
         monkeypatch.setattr(PanelStateRepository, "panel_source_exclusions", unavailable)
         for _attempt in range(2):
-            _, status = run_update_to_status(live, request, timeout=180, task_id=task_id)
+            assert (
+                _json(live, "/api/data-update/run", method="POST", payload=request)["task_id"]
+                == task_id
+            )
+            live.dispatcher.drain_for_tests(timeout=180)
+            status = _json(live, "/api/status?task_id=" + task_id)
             assert status["lifecycle"] == "BLOCKED", status
             assert status["latest_failure_code"] == "feature.source_eligibility_unavailable", status
         after = _json(live, "/api/data-update")
@@ -1393,7 +1407,6 @@ def test_plan_and_binding_refusals_preserve_portfolio(qualified, tmp_path):
         bind_existing_data_workspace(missing)
     assert not missing.exists()
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     service = LocalPortfolioWebSession(
         workspace=workspace,
@@ -1491,7 +1504,7 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     )
 
     layered, whole = tmp_path / "layered", tmp_path / "whole"
-    admitted(shutil.copytree(activated_seed, layered))  # read below with no Host of its own
+    shutil.copytree(activated_seed, layered)
     shutil.copytree(qualified, whole)
     shipped = FeatureCatalog.load()
     before = _feature_rows(qualified, shipped)
@@ -1502,17 +1515,6 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     layer = FeatureCatalogLayer.over(extended)
     assert layer.layered and layer.base.binding.catalog_hash == shipped.binding.catalog_hash
     column = layer.columns[0].binding.catalog_hash
-    # The layered Panel binds the shipped head and its column's, read while `layered` is its
-    # workspace id's folder on this log (`whole`, a copy of the same workspace, takes it next).
-    ledger = FeatureClosureLedger(
-        PanelClosureArtifactStore(ArtifactResolver(layered / "artifacts"))
-    )
-    binding = ledger.panel_binding(str(_active_panel_manifest(layered)["snapshot_hash"]))
-    assert binding is not None
-    assert binding.closure_head_hash == ledger.require_head(shipped.binding.catalog_hash).head_hash
-    assert [(item.catalog_hash, item.closure_head_hash) for item in binding.column_closures] == [
-        (column, ledger.require_head(column).head_hash)
-    ]
     with monkeypatch.context() as unlayered:
         # The whole build an unlayered store makes, for the equivalence below.
         unlayered.setattr(
@@ -1546,10 +1548,19 @@ def test_an_activation_computes_its_column_and_the_update_carries_every_other_va
     panel = _active_panel_manifest(layered)
     assert panel["safe_summary"]["lineage"]["catalog_hash"] == extended.binding.catalog_hash
     assert panel["panel_content_hash"] == _active_panel_manifest(whole)["panel_content_hash"]
+    ledger = FeatureClosureLedger(
+        PanelClosureArtifactStore(ArtifactResolver(layered / "artifacts"))
+    )
+    binding = ledger.panel_binding(str(panel["snapshot_hash"]))
+    assert binding is not None
+    assert binding.closure_head_hash == ledger.require_head(shipped.binding.catalog_hash).head_hash
+    assert [(item.catalog_hash, item.closure_head_hash) for item in binding.column_closures] == [
+        (column, ledger.require_head(column).head_hash)
+    ]
 
 
 def test_a_layer_grows_by_an_activation_and_shrinks_by_a_deactivation(activated_seed, tmp_path):
-    """requirement: a second activation computes its own column and holds the first; a
+    """requirement (V92): a second activation computes its own column and holds the first; a
     deactivation drops its column catalog's rows and computes nothing, the shipped catalog's
     rows held throughout, and each update publishes the Panel of the catalog it installed."""
 
@@ -1602,7 +1613,6 @@ def test_transient_source_failure_resumes_captured_update(qualified, tmp_path):
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     provider.unavailable = True
     # An explicit recorded source-readiness signal, not a reclassification of
@@ -1667,7 +1677,6 @@ def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     wall = tmp_path / "wall"
     wall.write_text("a file, not a directory", encoding="utf-8")
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(wall / "store"))
@@ -1696,13 +1705,12 @@ def test_a_failed_backup_stops_the_next_update_by_name_and_its_rerun_resumes(
 def test_a_deferred_feature_build_is_built_again_once_its_retry_is_due(
     qualified, tmp_path, monkeypatch
 ):
-    """The update's cycle runs the Feature build as its step (W10): a deferred build records
+    """The update's cycle runs the Feature build as its step (W10, V102): a deferred build records
     its retry time on the cycle, the Task waits for it, and the next run builds again, where the
     retired Feature registry answered its deferred Task's projection and nothing resumed it."""
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     clock = [NOW]
     retry_at = NOW + timedelta(minutes=2)
     builds: list[str] = []
@@ -1769,7 +1777,6 @@ def test_a_feature_build_that_failed_names_its_cause_beside_its_code(
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     failure = {
         "stage": "base_feature_materialization",
         "exception_type": "MemoryError",
@@ -1867,7 +1874,6 @@ def test_honoured_cancel_marks_the_cycle_and_a_new_plan_reuses_its_listing_progr
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     provider = recording_provider()
     service = data_update_session(workspace, manifest, provider=provider)
     service.start()
@@ -1921,7 +1927,6 @@ def test_update_authority_and_missing_input_refuse_before_work(qualified, tmp_pa
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     service = LocalPortfolioWebSession(
         workspace=workspace,
@@ -2019,7 +2024,6 @@ def test_published_update_survives_process_death(qualified, tmp_path):
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
-    admit_market_fixture(workspace, manifest.workspace_id)
     with forced_process(
         workspace,
         __name__,

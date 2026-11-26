@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.numpy.percentile",
+  "revision": "1.0.0",
+  "title": "NumPy percentile adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "numpy", "version": "2.5.1"},
+  "companion_distributions": [],
+  "callable": "numpy.percentile",
+  "arguments": [
+    {"schema_version": "1", "name": "method", "value_kind": "string", "has_default": true, "default": "linear", "allowed_values": ["linear"]},
+    {"schema_version": "1", "name": "q", "value_kind": "number_list", "required": true, "minimum": 0.0, "maximum": 100.0}
+  ],
+  "interactions": ["Interval levels and bootstrap samples remain owned by Validation."],
+  "assumptions": ["Percentiles consume deterministic bootstrap values supplied by the owner."],
+  "warnings": ["No alternate percentile method may be inferred from this package resource."],
+  "failure_modes": ["Unsupported percentile levels or method, or unavailable locked NumPy distribution."],
+  "owner_policy_ref": "reference:numerical-validation-metrics",
+  "official_source_url": "https://numpy.org/doc/stable/reference/generated/numpy.percentile.html"
+}

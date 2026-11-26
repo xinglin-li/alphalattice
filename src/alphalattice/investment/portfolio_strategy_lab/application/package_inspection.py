@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     ordered_listing_axis_hash,
 )
@@ -32,6 +31,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class PendingPackageInspector:

@@ -67,7 +67,6 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel im
 from alphalattice.capabilities.alpha_modeling.contracts import (  # noqa: E402
     AlphaModelRecipeEnvelope,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.investment.alpha_research.inputs.panel_feature_views import (  # noqa: E402
     PanelFeatureSourceArrays,
 )
@@ -83,6 +82,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (  # no
     SEED_MODEL_KIND,
     shift_quarter,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 # ------------------------------------------------------------------ provenance
 

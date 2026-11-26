@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.lightgbm.early-stopping",
+  "revision": "1.0.0",
+  "title": "LightGBM early_stopping adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "lightgbm", "version": "4.7.0"},
+  "companion_distributions": [],
+  "callable": "lightgbm.early_stopping",
+  "arguments": [
+    {"schema_version": "1", "name": "first_metric_only", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "min_delta", "value_kind": "number", "has_default": true, "default": 0.0, "minimum": 0.0},
+    {"schema_version": "1", "name": "stopping_rounds", "value_kind": "integer", "required": true, "minimum": 1.0},
+    {"schema_version": "1", "name": "verbose", "value_kind": "boolean", "has_default": true, "default": true}
+  ],
+  "interactions": ["The owner fixes 50 stopping rounds and supplies only preregistered validation data."],
+  "assumptions": ["At least one finite validation metric is available."],
+  "warnings": ["Final refit rounds are derived from successful fold best iterations without holdout access."],
+  "failure_modes": ["Unsupported callback argument or unavailable locked LightGBM distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.early_stopping.html"
+}

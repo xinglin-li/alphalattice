@@ -8,7 +8,6 @@ from dataclasses import replace
 
 from pydantic import BaseModel
 
-from alphalattice.capabilities.domain_contracts.recipe_identity import recipe_identity
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
 )
@@ -21,6 +20,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     INSTALLED_HETEROGENEOUS_BOOK_RECIPE,
     heterogeneous_package,
 )
+from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity
 
 
 def _renamed(value: object) -> object:

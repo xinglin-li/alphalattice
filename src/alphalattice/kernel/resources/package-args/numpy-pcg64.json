@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.numpy.random-pcg64",
+  "revision": "1.0.0",
+  "title": "NumPy PCG64 adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "numpy", "version": "2.5.1"},
+  "companion_distributions": [],
+  "callable": "numpy.random.PCG64",
+  "arguments": [
+    {"schema_version": "1", "name": "seed", "value_kind": "integer", "required": true, "minimum": 0.0}
+  ],
+  "interactions": ["The explicit seed is committed by the BootstrapSpec owner."],
+  "assumptions": ["The locked NumPy version defines the replayable bit stream."],
+  "warnings": ["No global random state or implicit bit generator is permitted."],
+  "failure_modes": ["Invalid seed or unavailable locked NumPy distribution."],
+  "owner_policy_ref": "reference:numerical-validation-protocol",
+  "official_source_url": "https://numpy.org/doc/stable/reference/random/bit_generators/pcg64.html"
+}

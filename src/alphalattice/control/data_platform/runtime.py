@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
@@ -24,10 +24,7 @@ from alphalattice.foundation.market_data_ops.sources.sanitization import (
     sanitize_payload,
 )
 from alphalattice.foundation.market_data_ops.storage.action_audit import ActionAuditObservation
-from alphalattice.foundation.market_data_ops.storage.duckdb import (
-    MarketDataRepository,
-)
-from alphalattice.kernel.clock import observation_time
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
 DEFAULT_LIVE_SYMBOL_BUDGET = 5
 
@@ -93,159 +90,152 @@ class PreFactorDataOperations:
         Raises:
             ValueError: The supplied observation clock is naive.
         """
-        with self.market_data.writing():  # one market data update
-            now = observed_at or observation_time()
-            if now.tzinfo is None:
-                raise ValueError("observed_at must be timezone-aware")
-            if request.manifest_revision != self.manifest.revision_sha256:
-                return self._blocked(request, "data.manifest_revision_mismatch", None, attempts=0)
-            if len(request.symbols) > self.max_live_symbols:
-                return self._blocked(request, "data.live_symbol_budget_exceeded", None, attempts=0)
-            listings = tuple(self.manifest.listing_for_symbol(symbol) for symbol in request.symbols)
-            if any(item is None for item in listings):
-                return self._blocked(request, "data.not_in_manifest", None, attempts=0)
-            resolved_listings = tuple(item for item in listings if item is not None)
-            if tuple(item.listing_id for item in resolved_listings) != request.listing_ids:
-                return self._blocked(request, "data.listing_identity_mismatch", None, attempts=0)
-            if request.panel_input is not None:
-                return self._use_frozen_panel(request)
-            if self.provider.name != self.manifest.profile.provider:
-                return self._blocked(
-                    request, "data.provider_not_bound_to_manifest", None, attempts=0
-                )
+        now = observed_at or datetime.now(UTC)
+        if now.tzinfo is None:
+            raise ValueError("observed_at must be timezone-aware")
+        if request.manifest_revision != self.manifest.revision_sha256:
+            return self._blocked(request, "data.manifest_revision_mismatch", None, attempts=0)
+        if len(request.symbols) > self.max_live_symbols:
+            return self._blocked(request, "data.live_symbol_budget_exceeded", None, attempts=0)
+        listings = tuple(self.manifest.listing_for_symbol(symbol) for symbol in request.symbols)
+        if any(item is None for item in listings):
+            return self._blocked(request, "data.not_in_manifest", None, attempts=0)
+        resolved_listings = tuple(item for item in listings if item is not None)
+        if tuple(item.listing_id for item in resolved_listings) != request.listing_ids:
+            return self._blocked(request, "data.listing_identity_mismatch", None, attempts=0)
+        if request.panel_input is not None:
+            return self._use_frozen_panel(request)
+        if self.provider.name != self.manifest.profile.provider:
+            return self._blocked(request, "data.provider_not_bound_to_manifest", None, attempts=0)
 
-            self.market_data.bootstrap(self.manifest)
-            fetch_start = self._refresh_start(request)
-            fetched = self._fetch_with_bounded_retry(request, fetch_start, observed_at=now)
-            if isinstance(fetched, PreFactorDataOutcome):
-                return fetched
-            payload, attempts = fetched
-            try:
-                batch = sanitize_payload(
-                    self.manifest, self.provider.name, payload, request.symbols
-                )
-            except CorruptedPayload as exc:
-                return self._record_and_block(
-                    request,
-                    code=f"data.sanitizer.{exc.code.casefold()}",
-                    effective_as_of=None,
-                    attempts=attempts,
-                    observed_at=now,
-                )
-
-            latest_by_listing: dict[str, date] = {}
-            for bar in batch.bars:
-                latest_by_listing[bar.listing_id] = max(
-                    latest_by_listing.get(bar.listing_id, bar.session_date), bar.session_date
-                )
-            if set(latest_by_listing) != set(request.listing_ids):
-                return self._record_and_block(
-                    request,
-                    code="data.partial_response",
-                    effective_as_of=None,
-                    attempts=attempts,
-                    observed_at=now,
-                )
-            effective_as_of = min(latest_by_listing.values())
-            if effective_as_of < request.requested_range_start:
-                return self._record_and_block(
-                    request,
-                    code="data.no_coverage_in_requested_range",
-                    effective_as_of=effective_as_of,
-                    attempts=attempts,
-                    observed_at=now,
-                )
-
-            # Sanitized daily observations are the bounded staging input for the
-            # short raw upsert. A full action audit is fetched only if a receipt
-            # cannot be reused after the just-observed raw evidence is persisted.
-            self.market_data.apply_validated_batch(
-                self.manifest,
-                batch,
-                ingestion_id=f"{request.request_id}:refresh:{attempts}",
+        self.market_data.bootstrap(self.manifest)
+        fetch_start = self._refresh_start(request)
+        fetched = self._fetch_with_bounded_retry(request, fetch_start, observed_at=now)
+        if isinstance(fetched, PreFactorDataOutcome):
+            return fetched
+        payload, attempts = fetched
+        try:
+            batch = sanitize_payload(self.manifest, self.provider.name, payload, request.symbols)
+        except CorruptedPayload as exc:
+            return self._record_and_block(
+                request,
+                code=f"data.sanitizer.{exc.code.casefold()}",
+                effective_as_of=None,
+                attempts=attempts,
                 observed_at=now,
             )
-            try:
-                for listing in resolved_listings:
-                    bars = self.market_data.raw_bars(listing.listing_id, through=effective_as_of)
-                    if not bars:
-                        raise RuntimeError("validated listing did not persist any daily bars")
-                    reusable = self.market_data.reusable_action_audit_receipt(
-                        self.manifest,
+
+        latest_by_listing: dict[str, date] = {}
+        for bar in batch.bars:
+            latest_by_listing[bar.listing_id] = max(
+                latest_by_listing.get(bar.listing_id, bar.session_date), bar.session_date
+            )
+        if set(latest_by_listing) != set(request.listing_ids):
+            return self._record_and_block(
+                request,
+                code="data.partial_response",
+                effective_as_of=None,
+                attempts=attempts,
+                observed_at=now,
+            )
+        effective_as_of = min(latest_by_listing.values())
+        if effective_as_of < request.requested_range_start:
+            return self._record_and_block(
+                request,
+                code="data.no_coverage_in_requested_range",
+                effective_as_of=effective_as_of,
+                attempts=attempts,
+                observed_at=now,
+            )
+
+        # Sanitized daily observations are the bounded staging input for the
+        # short raw upsert. A full action audit is fetched only if a receipt
+        # cannot be reused after the just-observed raw evidence is persisted.
+        self.market_data.apply_validated_batch(
+            self.manifest,
+            batch,
+            ingestion_id=f"{request.request_id}:refresh:{attempts}",
+            observed_at=now,
+        )
+        try:
+            for listing in resolved_listings:
+                bars = self.market_data.raw_bars(listing.listing_id, through=effective_as_of)
+                if not bars:
+                    raise RuntimeError("validated listing did not persist any daily bars")
+                reusable = self.market_data.reusable_action_audit_receipt(
+                    self.manifest,
+                    listing_id=listing.listing_id,
+                    provider=self.provider.name,
+                    requested_as_of=effective_as_of,
+                    now=now,
+                )
+                if reusable is not None:
+                    continue
+                self.market_data.complete_action_audit(
+                    self.manifest,
+                    ActionAuditObservation(
                         listing_id=listing.listing_id,
                         provider=self.provider.name,
-                        requested_as_of=effective_as_of,
-                        now=now,
-                    )
-                    if reusable is not None:
-                        continue
-                    self.market_data.complete_action_audit(
-                        self.manifest,
-                        ActionAuditObservation(
+                        actions=self.provider.fetch_action_history(
                             listing_id=listing.listing_id,
-                            provider=self.provider.name,
-                            actions=self.provider.fetch_action_history(
-                                listing_id=listing.listing_id,
-                                provider_symbol=listing.provider_symbol,
-                                start=bars[0].session_date,
-                                end=effective_as_of,
-                            ),
-                            adjusted_closes=self.provider.fetch_adjusted_close_history(
-                                listing_id=listing.listing_id,
-                                provider_symbol=listing.provider_symbol,
-                                start=bars[0].session_date,
-                                end=effective_as_of,
-                            ),
-                            history_start=bars[0].session_date,
-                            history_end=effective_as_of,
-                            observed_at=now,
+                            provider_symbol=listing.provider_symbol,
+                            start=bars[0].session_date,
+                            end=effective_as_of,
                         ),
-                    )[0]
-                resolver = self.artifact_resolver or ArtifactResolver(self.snapshot_root)
-                staged_snapshot_path = (
-                    self.snapshot_root / ".staging" / f"{request.request_id}-{uuid4().hex}.parquet"
-                )
-                snapshot_hash = self.panel_state.freeze_snapshot(
-                    self.manifest,
-                    staged_snapshot_path,
-                    as_of_session=effective_as_of,
-                    observed_at=now,
-                    requested_listing_ids=request.listing_ids,
-                )
-                snapshot_artifact = resolver.publish_feature_input(
-                    staged_snapshot_path, snapshot_hash
-                )
-                snapshot_path = resolver.resolve_feature_input(snapshot_artifact)
-            except ProviderFetchError as exc:
-                return self._provider_failure(request, exc, attempts=attempts, observed_at=now)
-            except FeatureAdmissionBlocked as exc:
-                return self._blocked(
-                    request,
-                    f"data.feature_admission.{exc.code.casefold()}",
-                    effective_as_of,
-                    attempts=attempts,
-                )
-            except Exception:
-                return self._record_and_block(
-                    request,
-                    code="data.postflight_failed",
-                    effective_as_of=effective_as_of,
-                    attempts=attempts,
-                    observed_at=now,
-                )
-            return PreFactorDataOutcome(
-                request_id=str(request.request_id),
-                status=PreFactorStatus.DATA_READY,
-                summary=(
-                    "Validated raw/action data was refreshed and frozen as a FeatureInputSnapshot; "
-                    "Factor Research has not started."
-                ),
-                effective_as_of=effective_as_of,
-                snapshot_path=snapshot_path,
-                snapshot_hash=snapshot_hash,
-                snapshot_artifact=snapshot_artifact,
+                        adjusted_closes=self.provider.fetch_adjusted_close_history(
+                            listing_id=listing.listing_id,
+                            provider_symbol=listing.provider_symbol,
+                            start=bars[0].session_date,
+                            end=effective_as_of,
+                        ),
+                        history_start=bars[0].session_date,
+                        history_end=effective_as_of,
+                        observed_at=now,
+                    ),
+                )[0]
+            resolver = self.artifact_resolver or ArtifactResolver(self.snapshot_root)
+            staged_snapshot_path = (
+                self.snapshot_root / ".staging" / f"{request.request_id}-{uuid4().hex}.parquet"
+            )
+            snapshot_hash = self.panel_state.freeze_snapshot(
+                self.manifest,
+                staged_snapshot_path,
+                as_of_session=effective_as_of,
+                observed_at=now,
+                requested_listing_ids=request.listing_ids,
+            )
+            snapshot_artifact = resolver.publish_feature_input(staged_snapshot_path, snapshot_hash)
+            snapshot_path = resolver.resolve_feature_input(snapshot_artifact)
+        except ProviderFetchError as exc:
+            return self._provider_failure(request, exc, attempts=attempts, observed_at=now)
+        except FeatureAdmissionBlocked as exc:
+            return self._blocked(
+                request,
+                f"data.feature_admission.{exc.code.casefold()}",
+                effective_as_of,
                 attempts=attempts,
             )
+        except Exception:
+            return self._record_and_block(
+                request,
+                code="data.postflight_failed",
+                effective_as_of=effective_as_of,
+                attempts=attempts,
+                observed_at=now,
+            )
+        return PreFactorDataOutcome(
+            request_id=str(request.request_id),
+            status=PreFactorStatus.DATA_READY,
+            summary=(
+                "Validated raw/action data was refreshed and frozen as a FeatureInputSnapshot; "
+                "Factor Research has not started."
+            ),
+            effective_as_of=effective_as_of,
+            snapshot_path=snapshot_path,
+            snapshot_hash=snapshot_hash,
+            snapshot_artifact=snapshot_artifact,
+            attempts=attempts,
+        )
 
     def _use_frozen_panel(self, request: DataOperationsRequest) -> PreFactorDataOutcome:
         """Validate and project an already published full-universe panel.
@@ -340,7 +330,6 @@ class PreFactorDataOperations:
                 ), attempt
             except ProviderFetchError as exc:
                 if exc.retryable and attempt < self.retry_budget:
-                    exc.backed_off(attempt, self.retry_budget)
                     continue
                 return self._provider_failure(
                     request, exc, attempts=attempt, observed_at=observed_at

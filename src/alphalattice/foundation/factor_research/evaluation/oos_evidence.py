@@ -14,11 +14,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.validation.screening_statistics import (
-    benjamini_yekutieli,
-    newey_west_mean_test,
-)
 from alphalattice.foundation.factor_research.evaluation.rank_correlation import (
     average_ranks_over_rows,
     average_ranks_vectorized,
@@ -31,6 +26,11 @@ from alphalattice.foundation.factor_research.evaluation.rank_correlation import 
 from alphalattice.foundation.factor_research.inputs.execution_target import FactorTargetSurface
 from alphalattice.foundation.factor_research.programs.sealed import seal_contract
 from alphalattice.foundation.factor_research.programs.walk_forward import FactorWalkForwardPlan
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.screening_statistics import (
+    benjamini_yekutieli,
+    newey_west_mean_test,
+)
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]

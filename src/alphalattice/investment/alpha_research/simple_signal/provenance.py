@@ -24,14 +24,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.factor_contracts import NUMERICAL_SPEC_FIELDS
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FeatureObservationClock,
     installed_feature_availability_policy,
     observation_clock_for,
 )
+from alphalattice.kernel.quant.factor_contracts import NUMERICAL_SPEC_FIELDS
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .standardize import SimpleSignalError
 

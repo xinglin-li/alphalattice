@@ -19,18 +19,12 @@ from collections.abc import Iterator
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
 import pytest
 
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressProjection
-from alphalattice.control.product_host.composition import evidence_review_resume as resume_module
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    AlternativeEvidenceRefreshCommand,
-    EvidenceReviewApplication,
-)
 from alphalattice.control.product_host.composition.evidence_source_ways import PACKAGE_RULE
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.evidence.alternative_evidence.analysis.contracts import EvidenceTopic
@@ -48,11 +42,9 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     UNIT_FAILURE_CATEGORY,
     AlternativeEvidenceDocumentTaskAdapter,
 )
-from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.cli import main as cli_main
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import format_book_weight
-from alphalattice.oversight.chief_risk_officer.decision.book_evidence import BookSelector
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
 )
@@ -81,25 +73,17 @@ from tests.alternative_evidence_desk.review_http_support import (
     _service,
     build_workspace,
 )
-from tests.pytest_environment import upgraded
 
+_run_one = run_one
 _http = http_body
-SMALL = 18  # the smallest tranche book (top_k 17 or more): units of 8, 8 and 2
-SMALL_BOOK = {"top_k": SMALL, "universe": 43}
-SMALL_ISSUERS, SMALL_UNITS = COVERAGE_ENTITIES[:SMALL], -(-SMALL // UNIT_LIMIT)
+_answer_unit = answer_unit
 
 
 @pytest.fixture(scope="module")
-def built_book(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """One real Portfolio path over the wide universe, or a test's smaller book; built once on a
-    data root of its own, its Portfolio results carried in its folder so each test's copy admits
-    them on its own root."""
-    with history.own_root(tmp_path_factory.mktemp("b-root")):
-        workspace, report = build_coverage_workspace(
-            tmp_path_factory.mktemp("b"), **getattr(request, "param", {})
-        )
-        history.carry_results(workspace, workspace)
-    return workspace, report
+def built_book(tmp_path_factory: pytest.TempPathFactory) -> Any:
+    """One real Portfolio path over the wide universe; built once for the module."""
+
+    return build_coverage_workspace(tmp_path_factory.mktemp("coverage-book"))
 
 
 @pytest.fixture
@@ -110,20 +94,11 @@ def book(built_book: Any, tmp_path: Path) -> Any:
     workspace, report = built_book
     copy = tmp_path / "workspace"
     shutil.copytree(workspace, copy)
-    upgraded(copy)
     return copy, report
 
 
 def _embedding_passes(service: Any) -> int:
-    """How many generations this runtime's retrieval built, each once: the store embeds a
-    chunk when its revision is published, so a build encodes what the cache lacks or nothing,
-    and every build counts here whichever it was."""
-    retrieval = service.review.evidence_task_adapter.runtime.retrieval
-    return int(
-        retrieval.passage_embedding_pass_count
-        + retrieval.incremental_build_count
-        + retrieval.generation_reuse_count
-    )
+    return int(service.review.evidence_task_adapter.runtime.retrieval.passage_embedding_pass_count)
 
 
 @pytest.fixture
@@ -272,11 +247,10 @@ def test_the_cro_cli_bundle_names_every_unreviewed_holding(
         service.session.stop()
 
 
-@pytest.mark.parametrize("built_book", [SMALL_BOOK], ids=["18"], indirect=True)
 def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
     book: Any, tmp_path: Path
 ) -> None:
-    """requirement: one review request over a book accounts for every
+    """requirement: one review request over a fifty-listing book accounts for every
     listing; the eight-issuer axis cuts execution units, never the scope; the
     packets, analyses and the CRO dossier are one book's, exactly."""
 
@@ -288,22 +262,23 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         section = service.evidence_cro()
         assert section["state"] == "AWAITING_ALTERNATIVE_EVIDENCE"
         progress = section["coverage_progress"]
-        assert progress["book_listings"] == SMALL
-        assert progress["mapped_issuers"] == SMALL
+        assert progress["book_listings"] == COVERAGE_BOOK_SIZE
+        assert progress["mapped_issuers"] == COVERAGE_BOOK_SIZE
         assert progress["unmapped_listings"] == 0
-        assert progress["units_total"] == SMALL_UNITS
+        assert progress["units_total"] == UNIT_COUNT
         assert progress["units_prepared"] == 0 and progress["complete"] is False
-        assert [unit["state"] for unit in progress["units"]] == ["NOT_STARTED"] * SMALL_UNITS
-        assert sum(unit["listing_count"] for unit in progress["units"]) == SMALL
+        assert [unit["state"] for unit in progress["units"]] == ["NOT_STARTED"] * UNIT_COUNT
+        assert sum(unit["listing_count"] for unit in progress["units"]) == COVERAGE_BOOK_SIZE
         assert {len(unit["entity_ids"]) for unit in progress["units"]} == {UNIT_LIMIT, 2}
 
-        # The preview describes the whole run, its units and one binding, over HTTP and the CLI.
-        preview = run_one(service, section["next_requests"]["preview"])
+        # The preview describes the whole run: seven units, one binding, and
+        # the same document over HTTP and the CLI path.
+        preview = _run_one(service, section["next_requests"]["preview"])
         assert service.get("/api/evidence/preview?" + urllib.parse.urlencode(selected)) == preview
         assert preview["status"] == "EVIDENCE_PREPARATION_READY", preview
-        assert preview["coverage"]["unit_count"] == SMALL_UNITS
+        assert preview["coverage"]["unit_count"] == UNIT_COUNT
         assert preview["coverage"]["units_prepared"] == 0
-        assert preview["recorded_candidate_count"] == 2 * SMALL
+        assert preview["recorded_candidate_count"] == 2 * COVERAGE_BOOK_SIZE
         # The preview hands out what was approved; the run is the Host's packing.
         run_hash = preview["preparation_binding"]["run_hash"]
         assert (
@@ -315,7 +290,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         # the unit's issuers -- no issuer without; the units were packed from
         # each issuer's own count (two), so eight issuers of two fit one unit.
         inventory = preview["source_inventory"]
-        assert inventory["issuers_with_source"] == SMALL
+        assert inventory["issuers_with_source"] == COVERAGE_BOOK_SIZE
         assert inventory["issuers_without_source"] == []
         assert {row["documents"] for row in inventory["issuers"]} == {2}
         assert {unit["capacity_per_issuer"] for unit in inventory["units"]} == {12}
@@ -327,9 +302,9 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         assert preview["preparation_binding"]["packing_rules_id"] == packing["rules_id"]
         assert {
             entity for unit in preview["coverage"]["units"] for entity in unit["ordered_entity_ids"]
-        } == set(SMALL_ISSUERS)
+        } == set(COVERAGE_ENTITIES)
         ids = [unit["unit_id"] for unit in preview["coverage"]["units"]]
-        assert sorted(ids) == [f"u{index:02d}" for index in range(1, SMALL_UNITS + 1)]
+        assert sorted(ids) == [f"u{index:02d}" for index in range(1, UNIT_COUNT + 1)]
 
         prepared = service.post("/api/evidence/prepare", _http(preview["next_requests"]["prepare"]))
         assert prepared["disposition"] == "ADMITTED", prepared
@@ -356,7 +331,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         assert all(not work.running and work.completed == work.total for work in reported.values())
         states = adapter.unit_states(task)
         assert {value["state"] for value in states.values()} == {"PREPARED"}, states
-        assert _embedding_passes(service) == SMALL_UNITS, "one corpus pass per unit"
+        assert _embedding_passes(service) == UNIT_COUNT, "one corpus pass per unit"
         # Units run heaviest holding first (the plan's order, which the runner
         # follows strictly); a unit's name is its membership, not its turn.
         first_stage = task.plan.work_items[0].stage_id
@@ -371,8 +346,8 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         assert section["state"] == "ANALYST_PACKET_PREPARED"
         progress = section["coverage_progress"]
         assert progress["run_hash"] == run_hash
-        assert progress["units_prepared"] == SMALL_UNITS and progress["complete"] is True
-        assert progress["issuers_prepared"] == SMALL
+        assert progress["units_prepared"] == UNIT_COUNT and progress["complete"] is True
+        assert progress["issuers_prepared"] == COVERAGE_BOOK_SIZE
         resolved = service.review.resolve_book(service.review.default_selector())
         assert progress["prepared_weight"] == format_book_weight(
             math.fsum(value.ending_weight for value in resolved.projection.positions)
@@ -380,13 +355,13 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         assert progress["analyzed_weight"] == format_book_weight(0.0)
         assert progress["units_analyzed"] == 0
         packets = {k: v for k, v in section["next_requests"].items() if k.startswith("packet_")}
-        assert len(packets) == SMALL_UNITS
-        again = run_one(service, preview["next_requests"]["prepare"])
+        assert len(packets) == UNIT_COUNT
+        again = _run_one(service, preview["next_requests"]["prepare"])
         assert again["disposition"] == "REUSED_EXACT" and again["task_id"] == str(task_id)
-        assert _embedding_passes(service) == SMALL_UNITS
-        preview_again = run_one(service, section["next_requests"]["preview"])
+        assert _embedding_passes(service) == UNIT_COUNT
+        preview_again = _run_one(service, section["next_requests"]["preview"])
         assert preview_again["prepared_task_id"] == str(task_id)
-        assert preview_again["coverage"]["units_prepared"] == SMALL_UNITS
+        assert preview_again["coverage"]["units_prepared"] == UNIT_COUNT
         # The run is the packing at its cutoff: when the counts the packing
         # is derived from move afterwards -- a run's own acquisition seals
         # plans at its cutoff, a later delta seals more -- its packets, its
@@ -404,7 +379,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
             drifted_units = review._units(
                 resolved.scope, evidence_as_of=adapter.run_of(task).evidence_as_of
             )
-            assert len(drifted_units) == SMALL_UNITS, "the sealed run, not the drifted counts"
+            assert len(drifted_units) == UNIT_COUNT, "the sealed run, not the drifted counts"
             first_packet = next(iter(sorted(packets)))
             drifted_read = service.get(
                 "/api/evidence/packet?"
@@ -416,10 +391,10 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
                     }
                 )
             )
-            assert drifted_read["coverage_unit"]["unit_count"] == SMALL_UNITS
-            still = run_one(service, preview["next_requests"]["prepare"])
+            assert drifted_read["coverage_unit"]["unit_count"] == UNIT_COUNT
+            still = _run_one(service, preview["next_requests"]["prepare"])
             assert still["disposition"] == "REUSED_EXACT" and still["task_id"] == str(task_id)
-            assert service.evidence_cro()["coverage_progress"]["units_total"] == SMALL_UNITS
+            assert service.evidence_cro()["coverage_progress"]["units_total"] == UNIT_COUNT
         finally:
             review._source_counts = counting
             review._unit_obligation_cache.clear()
@@ -434,12 +409,12 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
                     {**selected, "task_id": str(task_id), "evidence_unit_id": unit_id}
                 )
             )
-            assert exported == run_one(service, packets[key])
+            assert exported == _run_one(service, packets[key])
             assert exported["coverage_unit"]["unit_id"] == unit_id
-            assert exported["coverage_unit"]["unit_count"] == SMALL_UNITS
+            assert exported["coverage_unit"]["unit_count"] == UNIT_COUNT
             assert exported["prepared_unit_id"] == unit_id
             assert exported["submission_template"]["evidence_unit_id"] == unit_id
-            submitted = answer_unit(service, packets[key])
+            submitted = _answer_unit(service, packets[key])
             assert submitted["disposition"] == "ADMITTED"
             service.drain()
             if answered == 1:
@@ -448,36 +423,37 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
                 partial = service.evidence_cro()
                 assert partial["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW"
                 assert partial["coverage_progress"]["units_analyzed"] == 1
-                assert partial["coverage_progress"]["units_prepared"] == SMALL_UNITS
+                assert partial["coverage_progress"]["units_prepared"] == UNIT_COUNT
                 assert "1 of" in partial["explanation"]
                 assert (
                     len([k for k in partial["next_requests"] if k.startswith("packet_")])
-                    == SMALL_UNITS - 1
+                    == UNIT_COUNT - 1
                 )
         analyses = service.review.artifacts.values(
             "analysis-publications", AlternativeEvidenceAnalysisPublication
         )
-        assert len(analyses) == SMALL_UNITS
-        assert _embedding_passes(service) == SMALL_UNITS, "answers embed nothing"
+        assert len(analyses) == UNIT_COUNT
+        assert _embedding_passes(service) == UNIT_COUNT, "answers embed nothing"
         section = service.evidence_cro()
         assert section["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW", section["state"]
         progress = section["coverage_progress"]
-        assert progress["units_analyzed"] == SMALL_UNITS
-        assert progress["issuers_analyzed"] == SMALL
+        assert progress["units_analyzed"] == UNIT_COUNT
+        assert progress["issuers_analyzed"] == COVERAGE_BOOK_SIZE
         assert progress["units_reviewed"] == 0
         assert {unit["state"] for unit in progress["units"]} == {"ANALYZED"}
         assert all(unit["analysis_publication_hash"] for unit in progress["units"])
 
-        # One book's dossier: a child per unit, each finding and span qualified, all listings.
-        dossier_body = run_one(service, section["next_requests"]["dossier"])
+        # The dossier is one book's: seven exact children, every finding and
+        # span qualified by its publication, coverage over all fifty listings.
+        dossier_body = _run_one(service, section["next_requests"]["dossier"])
         assert dossier_body["status"] == "CRO_DOSSIER_READY", dossier_body
         assert (
             service.get("/api/cro/dossier?" + urllib.parse.urlencode(selected))["dossier"]
             == dossier_body["dossier"]
         )
         dossier = PortfolioReviewDossier.model_validate(dossier_body["dossier"])
-        assert len(dossier.evidence_children) == SMALL_UNITS
-        assert len(dossier.issuers) == SMALL
+        assert len(dossier.evidence_children) == UNIT_COUNT
+        assert len(dossier.issuers) == COVERAGE_BOOK_SIZE
         assert dossier.coverage.selected_issuer_coverage == 1.0
         assert dossier.coverage.reviewed_ending_weight_coverage == 1.0
         assert dossier.coverage.mapping_coverage == 1.0
@@ -485,7 +461,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         assert dossier.coverage.unavailable_reasons == ()
         assert {
             entity for finding in dossier.findings for entity in finding.affected_entities
-        } == set(SMALL_ISSUERS)
+        } == set(COVERAGE_ENTITIES)
         qualifiers = {
             child.analysis_publication_hash[:8].upper() for child in dossier.evidence_children
         }
@@ -504,10 +480,10 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         }
 
         # The CRO answer cites a qualified handle and is published against
-        # exactly these analyses; the export replays each of them.
-        finding = next(f for f in dossier.findings if SMALL_ISSUERS[0] in f.affected_entities)
+        # exactly these seven analyses; the export replays each of them.
+        finding = next(f for f in dossier.findings if COVERAGE_ENTITIES[0] in f.affected_entities)
         assessment = answer_from_issues(
-            dossier, _submission(_issue(finding.finding_handle, SMALL_ISSUERS[0]))
+            dossier, _submission(_issue(finding.finding_handle, COVERAGE_ENTITIES[0]))
         ).model_dump(mode="json")
         reviewed = service.post(
             "/api/cro/assessment",
@@ -517,7 +493,7 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         service.drain()
         section = service.evidence_cro()
         assert section["state"] == "REVIEW_PUBLISHED", section
-        assert section["coverage_progress"]["units_reviewed"] == SMALL_UNITS
+        assert section["coverage_progress"]["units_reviewed"] == UNIT_COUNT
         assert {unit["state"] for unit in section["coverage_progress"]["units"]} == {"REVIEWED"}
         publication_hash = section["review_publication_hash"]
         export = service.get(
@@ -540,25 +516,24 @@ def test_a_fifty_name_book_is_prepared_analysed_and_reviewed_as_one_request(
         service.session.stop()
 
 
-@pytest.mark.parametrize("built_book", [SMALL_BOOK], ids=["18"], indirect=True)
 def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
     book: Any, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """One unit failure is recorded and the rest of the book goes on."""
 
     workspace, report = book
-    missing = SMALL_ISSUERS[16]
-    documents = coverage_documents(tuple(e for e in SMALL_ISSUERS if e != missing))
+    missing = COVERAGE_ENTITIES[16]
+    documents = coverage_documents(tuple(e for e in COVERAGE_ENTITIES if e != missing))
     authority = coverage_authority(
         workspace, report, documents=documents, minimum_entity_coverage=1.0
     )
     service = start_coverage_service(workspace, authority, tmp_path)
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
         assert preview["source_inventory"]["issuers_without_source"] == [missing]
-        assert preview["source_inventory"]["issuers_with_source"] == SMALL - 1
+        assert preview["source_inventory"]["issuers_with_source"] == COVERAGE_BOOK_SIZE - 1
         # Said before the run: the one unit short of the floor, with the code it fails and the
-        # issuer without a source, and the ways on; the other units are offered.
+        # issuer without a source, and the ways on; the other units are offered (V541).
         units = preview["coverage"]["units"]
         unit = next(value for value in units if missing in value["ordered_entity_ids"])
         issuers = len(unit["ordered_entity_ids"])
@@ -569,15 +544,15 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert preview["coverage"]["units_short_of_sources"] == [
             {"unit_id": unit["unit_id"], "failure_code": code, "issuers_without_source": [missing]}
         ]
-        assert f"1 of {SMALL_UNITS} units fall short" in preview["source_limit"]
-        # Official acquisition first; a book of several units takes no package, since units under
-        # different packages cannot be reviewed together.
+        assert f"1 of {UNIT_COUNT} units fall short" in preview["source_limit"]
+        # Official acquisition first; a book of seven units takes no package, since units under
+        # different packages cannot be reviewed together (V546).
         ways = preview["source_ways"]
         assert "package" not in ways and ways["package_rule"] == PACKAGE_RULE
         assert ways["official"]["command"].endswith("evidence-consent set --per-issuer 3")
-        assert preview["acquisition_scope"]["units"] == SMALL_UNITS
+        assert preview["acquisition_scope"]["units"] == UNIT_COUNT
         assert preview["status"] == "EVIDENCE_PREPARATION_READY" and "failure_code" not in preview
-        prepared = run_one(service, preview["next_requests"]["prepare"])
+        prepared = _run_one(service, preview["next_requests"]["prepare"])
         assert prepared["disposition"] == "ADMITTED"
         service.drain()
         task_id = UUID(prepared["task_id"])
@@ -590,10 +565,8 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert failed[0]["failure_code"] == code
         assert failed[0]["failed_stage"] == "acquire_source_evidence"
         assert failed[0]["uncovered_entity_ids"] == (missing,)
-        assert (
-            sum(1 for value in states.values() if value["state"] == "PREPARED") == SMALL_UNITS - 1
-        )
-        assert _embedding_passes(service) == SMALL_UNITS - 1
+        assert sum(1 for value in states.values() if value["state"] == "PREPARED") == UNIT_COUNT - 1
+        assert _embedding_passes(service) == UNIT_COUNT - 1
         failures = service.review.artifacts.values(
             UNIT_FAILURE_CATEGORY, AlternativeEvidenceUnitFailure
         )
@@ -602,7 +575,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert failures[0].exception_type == "UnitSourcesShort"
         assert failures[0].exception_message == code
 
-        completed = run_one(service, {"operation": "STATUS", "task_id": task_id})
+        completed = _run_one(service, {"operation": "STATUS", "task_id": task_id})
         assert completed["lifecycle"] == "SUCCEEDED"
         assert completed["verified_stage_count"] == completed["total_stage_count"]
         assert completed["units_failed"] == 1
@@ -622,7 +595,7 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert completed["next_requests"]["network"] == {"operation": "NETWORK_ACCESS"}
         assert "preview" not in completed["next_requests"]
         assert completed["source_ways"] == ways
-        listed = run_one(service, {"operation": "TASKS"})
+        listed = _run_one(service, {"operation": "TASKS"})
         assert (
             next(row for row in listed["tasks"] if row["task_id"] == str(task_id))["detail"]
             == completed["detail"]
@@ -650,18 +623,18 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert said["detail"].startswith("证据准备已完成\uff0c其中 1 个单元失败\uff1a")
         assert f"{failed[0]['unit_id']}\uff08{issuers} 家发行人\uff09" in said["detail"]
 
-        section = run_one(service, completed["next_requests"]["coverage"])
+        section = _run_one(service, completed["next_requests"]["coverage"])
         assert section["state"] == "ANALYST_PACKET_PREPARED"
         progress = section["coverage_progress"]
         assert progress["units_failed"] == 1 and progress["complete"] is False
-        assert progress["units_prepared"] == SMALL_UNITS - 1
+        assert progress["units_prepared"] == UNIT_COUNT - 1
         assert progress["issuers_failed"] == len(failed[0]["ordered_entity_ids"])
-        assert progress["issuers_prepared"] + progress["issuers_failed"] == SMALL
+        assert progress["issuers_prepared"] + progress["issuers_failed"] == COVERAGE_BOOK_SIZE
         row = next(unit for unit in progress["units"] if unit["state"] == "FAILED")
         assert row["failure_code"] == failed[0]["failure_code"]
         assert row["packet_task_id"] is None
         # The failed unit says why and what to do, and names the issuer without a source; the
-        # book offers the ways to cover it beside the units it can review.
+        # book offers the ways to cover it beside the units it can review (V541).
         assert row["issuers_without_source"] == [missing]
         assert row["detail"] == refusal_words(code)["detail"] and "`source_ways`" in row["detail"]
         assert row["next_action"] == "ASK_FOR_OFFICIAL_ACQUISITION_OR_A_COVERING_PACKAGE"
@@ -669,11 +642,11 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         assert "package" not in section["source_ways"] and entities
         assert all("detail" not in unit for unit in progress["units"] if unit["state"] != "FAILED")
         packets = {k: v for k, v in section["next_requests"].items() if k.startswith("packet_")}
-        assert len(packets) == SMALL_UNITS - 1
+        assert len(packets) == UNIT_COUNT - 1
         assert f"packet_{failed[0]['unit_id']}" not in packets
         # The original review is still this Task: two reruns inspect it, never prepare again.
         count = len(service.registry.tasks())
-        preview_again = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        preview_again = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
         assert preview_again["next_requests"]["resume"] == {
             "operation": "STATUS",
             "task_id": str(task_id),
@@ -683,17 +656,17 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
             for k, v in preview_again["next_requests"].items()
             if k.startswith("analyst_bundle_")
         }
-        assert len(bundles) == SMALL_UNITS - 1
+        assert len(bundles) == UNIT_COUNT - 1
         assert all(v["task_id"] == str(task_id) for v in bundles.values())
         for _ in range(2):
-            status = run_one(service, {"operation": "STATUS", "task_id": task_id})
+            status = _run_one(service, {"operation": "STATUS", "task_id": task_id})
             assert (
                 status["units_failed"] == 1 and status["failed_units"] == completed["failed_units"]
             )
             assert len(service.registry.tasks()) == count
         # The failed unit's packet does not read: the answer is a refusal naming the code, with
-        # the book's coverage read as the way on.
-        refusal = run_one(
+        # the book's coverage read as the way on (V388).
+        refusal = _run_one(
             service,
             {
                 "operation": "EVIDENCE_PACKET",
@@ -708,14 +681,14 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
 
         # Preparing again is not exact reuse (a unit is missing) and costs no
         # embedding: every completed unit is carried in; the failure recurs.
-        again = run_one(service, preview["next_requests"]["prepare"])
+        again = _run_one(service, preview["next_requests"]["prepare"])
         assert again["disposition"] == "ADMITTED", again
         service.drain()
         second = service.registry.task(UUID(again["task_id"]))
         assert second.lifecycle is TaskLifecycle.SUCCEEDED
-        retried = run_one(service, {"operation": "STATUS", "task_id": second.task_id})
+        retried = _run_one(service, {"operation": "STATUS", "task_id": second.task_id})
         assert retried["failed_units"] == completed["failed_units"]
-        assert _embedding_passes(service) == SMALL_UNITS - 1
+        assert _embedding_passes(service) == UNIT_COUNT - 1
         first_receipts = {
             r.stage_id: r.evidence[0].content_hash for r in service.registry.stage_receipts(task_id)
         }
@@ -733,15 +706,15 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         # The healthy units are analysed and reviewed; the failed unit is
         # named as not reviewed and its listings stay in the denominator.
         for key in sorted(packets):
-            answer_unit(service, packets[key])
+            _answer_unit(service, packets[key])
             service.drain()
         section = service.evidence_cro()
         assert section["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW"
         assert "of" in section["explanation"]
-        dossier_body = run_one(service, section["next_requests"]["dossier"])
+        dossier_body = _run_one(service, section["next_requests"]["dossier"])
         dossier = PortfolioReviewDossier.model_validate(dossier_body["dossier"])
-        assert len(dossier.evidence_children) == SMALL_UNITS - 1
-        assert len(dossier.issuers) == SMALL - len(failed[0]["ordered_entity_ids"])
+        assert len(dossier.evidence_children) == UNIT_COUNT - 1
+        assert len(dossier.issuers) == COVERAGE_BOOK_SIZE - len(failed[0]["ordered_entity_ids"])
         assert dossier.coverage.selected_issuer_coverage < 1.0
         assert dossier.coverage.reviewed_ending_weight_coverage < 1.0
         assert dossier.coverage.mapping_coverage == 1.0
@@ -762,30 +735,30 @@ def test_one_unit_failure_is_recorded_and_the_rest_of_the_book_goes_on(
         clock=lambda: _NOW + timedelta(minutes=1),
     )
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        restored = run_one(service, preview["next_requests"]["prepare"])
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        restored = _run_one(service, preview["next_requests"]["prepare"])
         service.drain()
         adapter = service.review.evidence_task_adapter
         newest = service.registry.task(UUID(restored["task_id"]))
         assert newest.lifecycle is TaskLifecycle.SUCCEEDED
-        finished = run_one(service, {"operation": "STATUS", "task_id": newest.task_id})
+        finished = _run_one(service, {"operation": "STATUS", "task_id": newest.task_id})
         assert "failed_units" not in finished and "units_failed" not in finished
         assert {value["state"] for value in adapter.unit_states(newest).values()} == {"PREPARED"}
         assert adapter.unit_states(service.registry.task(task_id)) == states
         assert failures[0] in service.review.artifacts.values(
             UNIT_FAILURE_CATEGORY, AlternativeEvidenceUnitFailure
         )
-        section = run_one(service, {"operation": "EVIDENCE_CRO"})
+        section = _run_one(service, {"operation": "EVIDENCE_CRO"})
         progress = section["coverage_progress"]
-        # The units analysed before the failure are carried: only the failed one is read.
+        # The units analysed before the failure are carried (W3): only the failed one is read.
         recovered = list(failed[0]["ordered_entity_ids"])
         assert progress["units_failed"] == 0 and progress["units_prepared"] == 1, progress
-        assert progress["issuers_carried"] == SMALL - len(recovered), progress
+        assert progress["issuers_carried"] == len(COVERAGE_ENTITIES) - len(recovered), progress
         row = next(unit for unit in progress["units"] if unit["entity_ids"] == recovered)
         assert row["state"] == "PREPARED" and row["packet_task_id"] == restored["task_id"]
         request = section["next_requests"][f"packet_{row['unit_id']}"]
         assert request["task_id"] == restored["task_id"]
-        packet = run_one(service, request)
+        packet = _run_one(service, request)
         assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
         assert packet["prepared_task_id"] == restored["task_id"]
         assert packet["submission_template"]["evidence_unit_id"] == row["unit_id"]
@@ -805,7 +778,7 @@ def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
     )
     service = start_coverage_service(workspace, authority, tmp_path)
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
         code = "alternative_evidence.book_sources_short"
         assert preview["status"] == "EVIDENCE_PREREQUISITES_MISSING", preview["status"]
         assert preview["failure_code"] == code
@@ -820,14 +793,14 @@ def test_a_book_its_sources_cannot_cover_says_so_with_its_ways_on(
         with monkeypatch.context() as delegating:
             review = service.session.operations.review
             delegating.setattr(review, "network_delegation", lambda _caller: "first-use")
-            delegated = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+            delegated = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
         assert delegated["next_action"] == "ACQUIRE_UNDER_THE_FIRST_USE_DELEGATION"
         consent = delegated["source_ways"]["next_requests"]["consent"]
         assert consent["evidence_documents_per_issuer"] == 3
         assert "delegation" in delegated["source_ways"]["official"]["before"]
 
         # A run sent anyway, as a preview saved before would send it, fails each unit by name.
-        sent = run_one(
+        sent = _run_one(
             service,
             {
                 "operation": "EVIDENCE_PREPARE",
@@ -874,7 +847,7 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
     # its own units, as RR5d's did.
     probe = start_coverage_service(workspace, coverage_authority(workspace, report), tmp_path)
     try:
-        planned = run_one(probe, {"operation": "EVIDENCE_PREVIEW"})["coverage"]["units"]
+        planned = _run_one(probe, {"operation": "EVIDENCE_PREVIEW"})["coverage"]["units"]
     finally:
         probe.session.stop()
     (answered, answered_ids), (pending, pending_ids), (later, later_ids) = (
@@ -889,12 +862,12 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
     )
     directory = tmp_path / "analyst"
     try:
-        preview = run_one(first, {"operation": "EVIDENCE_PREVIEW"})
-        prepared = run_one(first, preview["next_requests"]["prepare"])
+        preview = _run_one(first, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = _run_one(first, preview["next_requests"]["prepare"])
         first.drain()
-        answer_unit(first, first.evidence_cro()["next_requests"][f"packet_{answered}"])
+        _answer_unit(first, first.evidence_cro()["next_requests"][f"packet_{answered}"])
         first.drain()
-        bundle = run_one(
+        bundle = _run_one(
             first,
             {
                 "operation": "AGENT_BUNDLE_PREPARE",
@@ -936,13 +909,13 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
         assert rows[pending]["detail"] == refusal_words(stale)["detail"]
         assert rows[pending]["next_action"] == "PREPARE_THE_UNIT_AGAIN"
         assert "detail" not in rows[answered]
-        # Neither its packet nor its Analyst's bundle is offered, which the Host would refuse;
-        # the preview its row names is offered bound.
+        # Neither its packet nor its Analyst's bundle is offered, which the Host would refuse
+        # (U79); the preview its row names is offered bound (V567).
         offered = section["next_requests"]
         assert not {f"packet_{pending}", f"analyst_bundle_{pending}"} & set(offered), offered
         assert offered["preview"] == {**offered["dossier"], "operation": "EVIDENCE_PREVIEW"}
         # Its Analyst's answer is refused naming what moved, with its unit and the way on.
-        refusal = run_one(
+        refusal = _run_one(
             second,
             {
                 "operation": "AGENT_ANSWER_SUBMIT",
@@ -956,11 +929,11 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
         assert refusal["next_requests"]["preview"]["operation"] == "EVIDENCE_PREVIEW"
 
         # The third unit prepared and answered under the new package, at its own cutoff.
-        preview = run_one(second, refusal["next_requests"]["preview"])
+        preview = _run_one(second, refusal["next_requests"]["preview"])
         assert preview["evidence_as_of"].startswith("2026-08-12T18:00:00"), preview
-        run_one(second, preview["next_requests"]["prepare"])
+        _run_one(second, preview["next_requests"]["prepare"])
         second.drain()
-        answer_unit(second, second.evidence_cro()["next_requests"][f"packet_{later}"])
+        _answer_unit(second, second.evidence_cro()["next_requests"][f"packet_{later}"])
         second.drain()
 
         # Two analyses at different cutoffs: no review reads them together, and every read on
@@ -969,7 +942,7 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
         section = second.evidence_cro()
         assert section["state"] == "AWAITING_ALTERNATIVE_EVIDENCE", section["state"]
         assert set(section["next_requests"]) == {"preview"}
-        dossier = run_one(second, {"operation": "CRO_REVIEW_DOSSIER"})
+        dossier = _run_one(second, {"operation": "CRO_REVIEW_DOSSIER"})
         assert dossier["disposition"] == "REFUSED_EVIDENCE_CUTOFFS_DIFFER", dossier
         late = re.fullmatch(
             r"chief_risk_officer\.dossier_cutoff_invalid:(\d+) citations? of 1 unit after the "
@@ -985,7 +958,7 @@ def test_units_prepared_under_two_packages_say_why_they_cannot_be_reviewed_toget
         )
         assert dossier["detail"].endswith(PACKAGE_RULE)
         assert dossier["next_requests"] == section["next_requests"]
-        cro = run_one(
+        cro = _run_one(
             second,
             {
                 "operation": "AGENT_BUNDLE_PREPARE",
@@ -1054,10 +1027,10 @@ def test_official_acquisition_reviews_a_wide_book_with_quiet_holdings_at_one_cut
     )
     service = start_coverage_service(workspace, authority, tmp_path)
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
         assert preview["status"] == "EVIDENCE_PREPARATION_READY", preview
         assert preview.get("source_ways") is None
-        prepared = run_one(service, preview["next_requests"]["prepare"])
+        prepared = _run_one(service, preview["next_requests"]["prepare"])
         assert prepared["disposition"] == "ADMITTED", prepared
         service.drain()
         task = service.registry.task(UUID(prepared["task_id"]))
@@ -1074,11 +1047,11 @@ def test_official_acquisition_reviews_a_wide_book_with_quiet_holdings_at_one_cut
         packets = {k: v for k, v in section["next_requests"].items() if k.startswith("packet_")}
         assert len(packets) == len(run.units)
         for key in sorted(packets):
-            answer_unit(service, packets[key])
+            _answer_unit(service, packets[key])
             service.drain()
         section = service.evidence_cro()
         assert section["state"] == "ALTERNATIVE_EVIDENCE_READY_FOR_REVIEW", section["explanation"]
-        body = run_one(service, section["next_requests"]["dossier"])
+        body = _run_one(service, section["next_requests"]["dossier"])
         dossier = PortfolioReviewDossier.model_validate(body["dossier"])
         assert dossier.evidence_as_of == run.evidence_as_of
         assert len(dossier.evidence_children) == len(run.units)
@@ -1155,16 +1128,15 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
 
     AlternativeEvidenceDocumentTaskAdapter.verify_stage = interrupt_fourth_unit  # type: ignore[method-assign]
     try:
-        preview = run_one(first, {"operation": "EVIDENCE_PREVIEW"})
-        prepared = run_one(first, preview["next_requests"]["prepare"])
+        preview = _run_one(first, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = _run_one(first, preview["next_requests"]["prepare"])
         first.drain()
     finally:
         AlternativeEvidenceDocumentTaskAdapter.verify_stage = original  # type: ignore[method-assign]
     task_id = UUID(prepared["task_id"])
     try:
         assert first.registry.task(task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-        passes_before_restart = _embedding_passes(first)
-        assert passes_before_restart == 3
+        assert _embedding_passes(first) == 3
         section = first.evidence_cro()
         assert section["state"] == "EVIDENCE_REFRESH_IN_PROGRESS"
         progress = section["coverage_progress"]
@@ -1173,21 +1145,19 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
     finally:
         first.session.stop()
 
-    second = start_coverage_service(workspace, coverage_authority(workspace, report), tmp_path)
+    second = start_coverage_service(workspace, authority, tmp_path)
     _one_core(second)
     try:
         assert second.session.resumed_task_ids == (task_id,)
         second.drain()
         assert second.registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
+        assert _embedding_passes(second) == UNIT_COUNT, "the three committed units were not redone"
         states = second.review.evidence_task_adapter.unit_states(second.registry.task(task_id))
-        assert passes_before_restart + _embedding_passes(second) == UNIT_COUNT, (
-            "the three committed units were not redone"
-        )
         assert {value["state"] for value in states.values()} == {"PREPARED"}
         section = second.evidence_cro()
         assert section["state"] == "ANALYST_PACKET_PREPARED"
         assert section["coverage_progress"]["complete"] is True
-        again = run_one(second, preview["next_requests"]["prepare"])
+        again = _run_one(second, preview["next_requests"]["prepare"])
         assert again["disposition"] == "REUSED_EXACT" and again["task_id"] == str(task_id)
         evidence_tasks = [
             task
@@ -1204,78 +1174,11 @@ def test_an_interrupted_run_resumes_after_restart_without_repeating_completed_un
         second.session.stop()
 
 
-@pytest.mark.proves("alternative_evidence.host_stop_preserves_coverage_run")
-@pytest.mark.parametrize("boundary", ["build", "search"])
-def test_host_stop_leaves_a_coverage_unit_to_resume(
-    single_service: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
-) -> None:
-    from threading import Event
-
-    from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
-    from alphalattice.evidence.alternative_evidence.retrieval.session import (
-        AlternativeEvidenceRetrievalSession,
-    )
-    from tests.alternative_evidence_desk.review_http_support import start_service
-
-    service = single_service
-    stopping, entered, release = Event(), Event(), Event()
-    service.session.stop_requested = stopping.is_set
-    adapter = service.review.evidence_task_adapter
-    runtime = adapter.runtime
-    owner, method = (
-        (runtime, "build_retrieval")
-        if boundary == "build"
-        else (AlternativeEvidenceRetrievalSession, "search")
-    )
-    original = getattr(owner, method)
-
-    def paused(*args, **kwargs):
-        entered.set()
-        assert release.wait(20)
-        if boundary == "build":
-            checkpoint()
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(owner, method, paused)
-    try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        prepared = run_one(service, preview["next_requests"]["prepare"])
-        task_id = UUID(prepared["task_id"])
-        assert entered.wait(20)
-        stopping.set()
-        service.session.dispatcher._begin_drain()
-        release.set()
-        assert service.session.dispatcher.close(timeout=20)
-        task = service.registry.task(task_id)
-        assert task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-        assert task.failure_code == "HOST_STOP_REQUESTED"
-        detail = service.get(f"/api/tasks/recovery?task_id={task_id}")["stop"]["detail"]
-        assert "Host" in detail and "resume" in detail
-        assert all(
-            item.evidence_kind != "alternative_evidence_unit_failure"
-            for state in service.registry.work_items(task_id)
-            for item in state.evidence
-        )
-        authority = service.session.review_authority
-        workspace = service.session.workspace
-        monkeypatch.setattr(owner, method, original)
-        service.session.stop()
-        again = start_service(workspace, authority, tmp_path)
-        try:
-            assert task_id in again.session.resumed_task_ids
-            again.drain()
-            assert again.registry.task(task_id).lifecycle is TaskLifecycle.SUCCEEDED
-        finally:
-            again.session.stop()
-    finally:
-        release.set()
-
-
 def test_a_single_unit_book_is_a_run_of_one_unit(single_service: Any) -> None:
     """Control: Single unit book is run of one unit."""
 
     service = single_service
-    preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+    preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
     assert preview["coverage"]["unit_count"] == 1
     (planned,) = preview["coverage"]["units"]
     assert (
@@ -1284,7 +1187,7 @@ def test_a_single_unit_book_is_a_run_of_one_unit(single_service: Any) -> None:
     )
     section = service.evidence_cro()
     assert section["coverage_progress"] is None
-    prepared = run_one(service, preview["next_requests"]["prepare"])
+    prepared = _run_one(service, preview["next_requests"]["prepare"])
     service.drain()
     task = service.registry.task(UUID(prepared["task_id"]))
     assert task.input.payload["purpose"] == COVERAGE_RUN_PURPOSE
@@ -1304,95 +1207,9 @@ def test_a_single_unit_book_is_a_run_of_one_unit(single_service: Any) -> None:
     assert packets[0]["evidence_unit_id"] == unit.unit_id
     adapter = service.review.evidence_task_adapter
     assert adapter.completed_unit(unit.preparation_intent_hash) == (task.task_id, unit.unit_id)
-    again = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+    again = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
     assert again["source_check"] == again["coverage"]["units"][0]["source_check"]
     assert again["prepared_task_id"] == prepared["task_id"]
-
-
-@pytest.mark.proves("alternative_evidence.review_rerun_joins_its_preparation")
-def test_a_rerun_joins_a_parked_preparation_and_the_supervisor_hands_it_back(
-    single_service: Any,
-) -> None:
-    """A second review admits nothing, and a parked preparation runs without anyone's RECOVER."""
-
-    service = single_service
-    review, registry = service.review, service.registry
-    selector = BookSelector(result_hash=service.result_hash())
-    coverage = review.resolve_coverage(selector, evidence_as_of=_NOW, read_inventory=True)
-    review.evidence_task_adapter.admit_run(coverage.run)
-    parked = AlternativeEvidenceRefreshCommand(
-        application=review, run=coverage.run, prepare_only=True, subject=selector
-    ).admit()  # its command is gone, as a Host's that returned before its turn came
-    count = len(registry.tasks())
-    for later in (timedelta(minutes=1), timedelta(hours=1)):
-        joined = review.refresh_evidence(
-            dispatcher=service.session.dispatcher,
-            selector=selector,
-            evidence_as_of=_NOW + later,
-            prepare_only=True,
-        )
-        assert (joined.disposition, joined.task_id) == ("REUSED_IN_FLIGHT", parked.task_id)
-        assert joined.evidence_as_of == _NOW
-    assert len(registry.tasks()) == count
-    # A request that passed the look before admission beside another: Task Control refuses it.
-    later = review.resolve_coverage(selector, evidence_as_of=_NOW + timedelta(hours=2))
-    admitted = AlternativeEvidenceRefreshCommand(
-        application=review, run=later.run, prepare_only=True
-    ).admit()
-    assert (admitted.joined, admitted.task_id) == (True, parked.task_id)
-    assert len(registry.tasks()) == count
-    supervisor = service.session.operations.supervisor
-    (incident,) = supervisor.supervise_once()
-    assert incident.code == "task_runtime.parked"  # a new Task's command may not be queued yet
-    assert not incident.attempts
-    supervisor.supervise_once()
-    service.drain()
-    assert registry.task(parked.task_id).lifecycle is TaskLifecycle.SUCCEEDED
-    (kept,) = [record for record in supervisor.store.records() if record.key == incident.key]
-    assert [(a.action, a.selected_by) for a in kept.attempts] == [("RECOVER", "HOST_SUPERVISOR")]
-
-
-@pytest.mark.proves("alternative_evidence.review_stands_on_its_answers")
-@pytest.mark.parametrize(
-    ("carried", "chosen"), [((), "older"), (("A", "B", "C"), "newest")], ids=["answers", "carried"]
-)
-def test_a_review_stands_on_the_run_that_accounts_for_most_issuers(
-    monkeypatch: pytest.MonkeyPatch, carried: tuple[str, ...], chosen: str
-) -> None:
-    """A later run nobody answered doesn't take the review from the run its analyses answer."""
-
-    def run(name: str, units: dict[str, tuple[str, ...]], held: tuple[str, ...] = ()) -> Any:
-        return SimpleNamespace(
-            name=name,
-            run_hash=name,
-            scope_hash="scope",
-            resource_binding_hash="package",
-            evidence_as_of=_NOW,
-            carried=held,
-            nothing_filed=(),
-            units=[
-                SimpleNamespace(
-                    obligation=SimpleNamespace(obligation_hash=key), ordered_entity_ids=entities
-                )
-                for key, entities in units.items()
-            ],
-        )
-
-    runs = [run("newest", {"new": ("A", "B", "C")}, carried), run("older", {"old": ("A", "B")})]
-    review = SimpleNamespace(
-        clock=lambda: _NOW,
-        evidence_task_adapter=SimpleNamespace(run_of=lambda run: run, carried_runs=lambda _: ()),
-        _run_tasks=lambda _scope, evidence_as_of=None: iter(runs),
-    )
-    monkeypatch.setattr(
-        resume_module,
-        "current_answers",
-        lambda *_a, **_k: [SimpleNamespace(obligation_hash="old")],
-    )
-    sealed = EvidenceReviewApplication._sealed_run(
-        review, SimpleNamespace(scope_hash="scope"), evidence_as_of=None
-    )
-    assert sealed.name == chosen
 
 
 def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_run(
@@ -1410,7 +1227,7 @@ def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_
     now = review.clock()
     coverage = review.resolve_coverage(chosen, evidence_as_of=now, prepare_only=True)
     (unit,) = coverage.run.units
-    # Exactly the Task a build before coverage runs admitted for a one-unit book.
+    # Exactly the Task a pre-C2 build admitted for a one-unit book.
     policy = replace(review.evidence_policy, admit_model_review=False)
     legacy = AlternativeEvidenceRefreshCommand(
         application=review,
@@ -1429,8 +1246,8 @@ def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_
     passes = _embedding_passes(service)
 
     # The run at the single preparation's own cutoff, as a preview captured then.
-    template = run_one(service, {"operation": "EVIDENCE_PREVIEW"})["next_requests"]["prepare"]
-    prepared = run_one(
+    template = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})["next_requests"]["prepare"]
+    prepared = _run_one(
         service,
         {
             **template,
@@ -1445,7 +1262,7 @@ def test_a_preparation_admitted_before_every_book_was_a_run_is_carried_into_the_
     assert _embedding_passes(service) == passes, "the single preparation was carried"
     states = adapter.unit_states(task)
     assert {value["state"] for value in states.values()} == {"PREPARED"}
-    packet = run_one(service, prepared["next_requests"][f"packet_{unit.unit_id}"])
+    packet = _run_one(service, prepared["next_requests"][f"packet_{unit.unit_id}"])
     assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
     assert packet["prepared_task_id"] == prepared["task_id"]
     # the single Task's own packet still reads by its id
@@ -1476,15 +1293,15 @@ def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: P
     )
     service = start_coverage_service(workspace, authority, tmp_path)
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        prepared = run_one(service, preview["next_requests"]["prepare"])
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = _run_one(service, preview["next_requests"]["prepare"])
         assert prepared["disposition"] == "ADMITTED", prepared
         service.drain()
         task_id = prepared["task_id"]
         adapter = service.review.evidence_task_adapter
         states = adapter.unit_states(service.registry.task(UUID(task_id)))
         unchanged = (len(service.registry.tasks()), service.review.artifacts.write_count)
-        ledger = run_one(service, {"operation": "EVIDENCE_LEDGER"})
+        ledger = _run_one(service, {"operation": "EVIDENCE_LEDGER"})
         assert ledger["status"] == "EVIDENCE_BOOK_LEDGER"
         assert (ledger["total_groups"], ledger["page_count"], ledger["groups_per_page"]) == (
             UNIT_COUNT,
@@ -1514,7 +1331,7 @@ def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: P
             assert sum(group["cells_by_state"].values()) == len(group["cells"])
         # A group's cells are its unit packet's own coverage cells.
         last = groups[-1]
-        detail = run_one(
+        detail = _run_one(
             service,
             {
                 "operation": "EVIDENCE_PACKET",
@@ -1533,7 +1350,7 @@ def test_the_book_ledger_reads_every_group_of_a_wide_book(book: Any, tmp_path: P
         } == {key: detail[key] for key in ("coverage_unit", "delivery", "continuation_request")}
         assert (len(service.registry.tasks()), service.review.artifacts.write_count) == unchanged
         with pytest.raises(ValueError, match="ledger_page_out_of_range:2 of 1"):
-            run_one(service, {"operation": "EVIDENCE_LEDGER", "ledger_page": 2})
+            _run_one(service, {"operation": "EVIDENCE_LEDGER", "ledger_page": 2})
     finally:
         service.session.stop()
 
@@ -1545,8 +1362,8 @@ def test_the_book_ledger_refuses_one_unreadable_receipt_and_keeps_healthy_groups
     workspace, report = book
     service = start_coverage_service(workspace, coverage_authority(workspace, report), tmp_path)
     try:
-        preview = run_one(service, {"operation": "EVIDENCE_PREVIEW"})
-        prepared = run_one(service, preview["next_requests"]["prepare"])
+        preview = _run_one(service, {"operation": "EVIDENCE_PREVIEW"})
+        prepared = _run_one(service, preview["next_requests"]["prepare"])
         assert prepared["disposition"] == "ADMITTED", prepared
         service.drain()
         task_id = prepared["task_id"]
@@ -1566,7 +1383,7 @@ def test_the_book_ledger_refuses_one_unreadable_receipt_and_keeps_healthy_groups
     reopened = coverage_authority(workspace, report)
     service = start_coverage_service(workspace, reopened, tmp_path)
     try:
-        ledger = run_one(service, {"operation": "EVIDENCE_LEDGER"})
+        ledger = _run_one(service, {"operation": "EVIDENCE_LEDGER"})
         assert ledger["status"] == "EVIDENCE_BOOK_LEDGER"
         assert len(ledger["groups"]) == UNIT_COUNT
         refused = next(group for group in ledger["groups"] if group["group_id"] == unit_id)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime
 from itertools import pairwise
@@ -15,10 +14,6 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioPerSideCostAssumption
 from alphalattice.capabilities.portfolio_backtesting.metrics import evaluate_net_simple_return_path
 from alphalattice.control.product_host.composition.portfolio_application import (
@@ -36,9 +31,6 @@ from alphalattice.control.product_host.composition.strategy_calibration import (
 )
 from alphalattice.control.product_host.composition.strategy_score_inputs import (
     workspace_score_source_identity,
-)
-from alphalattice.control.product_host.composition.task_kinds import (
-    PORTFOLIO_UPDATE_TASK_KIND,
 )
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -79,6 +71,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
     recipe_hashes_match,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 from .plain_refusals import refused
 
@@ -87,13 +83,13 @@ PLAN_FIELDS = ("decision_updates", "score_inputs")
 checkpoint's models bind. A plan binds them, never the whole manifest, so a publication of fields it
 does not read leaves it applicable (OW10)."""
 
-TASK_KIND = PORTFOLIO_UPDATE_TASK_KIND
+TASK_KIND = "portfolio_decision_update"
 STAGES = ("verify_update", "seal_market_observations", "publish_decision_settlement")
 
 
 IMPLEMENTATION_ROLE = "product_host.portfolio_updates"
-"""The role a move of this implementation is recorded under in `config/identity-successors/`,
-so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
 
 
 def _implementation_hash() -> str:
@@ -434,22 +430,15 @@ class PortfolioUpdateApplication:
         """
         if previous is None:
             return current
-        with self.store.decision_observation_reads() as read:
-            old = read(previous.source_snapshot_hash)
-            raw = self.raw_basis(previous, read=read)
-            return continue_issued_observations(old, current, raw_previous=raw)
+        old = self.store.load_decision_observation(previous.source_snapshot_hash)
+        raw = self.raw_basis(previous)
+        return continue_issued_observations(old, current, raw_previous=raw)
 
-    def raw_basis(
-        self,
-        previous: PortfolioUpdatePublication,
-        *,
-        read: Callable[[str], LocalQAMarketSnapshot] | None = None,
-    ) -> LocalQAMarketSnapshot:
+    def raw_basis(self, previous: PortfolioUpdatePublication) -> LocalQAMarketSnapshot:
         """Open the exact raw market basis used by a previous publication.
 
         Args:
             previous: Exact retained publication.
-            read: Reader held by the current observation comparison.
 
         Returns:
             Identity-validated raw market snapshot.
@@ -460,8 +449,7 @@ class PortfolioUpdateApplication:
         plan = self._load_plan(previous.plan_hash)
         if plan.raw_market_hash is None and previous.source_revision is not None:
             raise ValueError("portfolio_update.previous_raw_basis_missing")
-        acquire = self.store.load_decision_observation if read is None else read
-        return acquire(plan.raw_market_hash or plan.market_hash)
+        return self.store.load_decision_observation(plan.raw_market_hash or plan.market_hash)
 
     def revision_impact(
         self, current: LocalQAMarketSnapshot, previous: PortfolioUpdatePublication | None
@@ -526,7 +514,7 @@ class PortfolioUpdateApplication:
         if covered is None:
             raise ValueError("portfolio_update.observations_unavailable")
         through = through or covered[1]
-        history = self.store.decision_history(checkpoint.history_hash)
+        history = self.history(checkpoint.content_hash)
         previous = history[-1] if history else None
         # Same admitted request/source reopens its original plan, not a new child.
         for item in reversed(history):
@@ -927,30 +915,23 @@ class PortfolioUpdateApplication:
             raise ValueError("portfolio_update.stage_unknown")
         return StageExecutionResult(StageDisposition.READY, evidence=self._evidence(stage, content))
 
-    def _observed(
-        self,
-        plan: PortfolioUpdatePlan,
-        *,
-        read: Callable[[str], LocalQAMarketSnapshot] | None = None,
-    ) -> LocalQAMarketSnapshot:
-        scope = self.store.decision_observation_reads() if read is None else nullcontext(read)
-        with scope as acquire:
-            value = acquire(plan.market_hash)
-            if value.through != plan.observed_through:
-                raise ValueError("portfolio_update.observation_binding_invalid")
-            if plan.raw_market_hash is not None:
-                raw = acquire(plan.raw_market_hash)
-                if plan.prior_market_hash is None:
-                    raise ValueError("portfolio_update.continuation_parent_missing")
-                old = acquire(plan.prior_market_hash)
-                factual = (
-                    None
-                    if plan.prior_raw_market_hash is None
-                    else acquire(plan.prior_raw_market_hash)
-                )
-                if continue_issued_observations(old, raw, raw_previous=factual) != value:
-                    raise ValueError("portfolio_update.continuation_evidence_invalid")
-            return value
+    def _observed(self, plan: PortfolioUpdatePlan) -> LocalQAMarketSnapshot:
+        value = self.store.load_decision_observation(plan.market_hash)
+        if value.through != plan.observed_through:
+            raise ValueError("portfolio_update.observation_binding_invalid")
+        if plan.raw_market_hash is not None:
+            raw = self.store.load_decision_observation(plan.raw_market_hash)
+            if plan.prior_market_hash is None:
+                raise ValueError("portfolio_update.continuation_parent_missing")
+            old = self.store.load_decision_observation(plan.prior_market_hash)
+            factual = (
+                None
+                if plan.prior_raw_market_hash is None
+                else self.store.load_decision_observation(plan.prior_raw_market_hash)
+            )
+            if continue_issued_observations(old, raw, raw_previous=factual) != value:
+                raise ValueError("portfolio_update.continuation_evidence_invalid")
+        return value
 
     def verify_stage(
         self,

@@ -43,23 +43,3 @@ def test_a_later_question_reopens_only_its_goal_or_session(corruption):
     else:
         current = project([history[-1], question_row("", "ANSWERED")])
         assert current["pending"] and current["invalid"]
-
-
-@pytest.mark.proves("local_application.network_question_only_where_a_yes_opens_it")
-def test_a_network_stop_asks_the_person_only_when_their_yes_can_open_it(tmp_path, monkeypatch):
-    """The coded network question is put only where the person's yes opens the network."""
-    from datetime import UTC, datetime
-
-    from alphalattice.capabilities.domain_contracts.environment import OFFLINE_SWITCH
-    from alphalattice.control.workspace_runtime.network_access import set_network_access
-
-    now = datetime(2026, 11, 6, 21, tzinfo=UTC)
-    monkeypatch.delenv(OFFLINE_SWITCH, raising=False)
-    coded = [questions.person_question(questions.NETWORK_QUESTION)]
-    assert questions.network_question(tmp_path, now) == coded  # the closed default
-    set_network_access(tmp_path, enabled=True, now=now)
-    assert questions.network_question(tmp_path, now) == []
-    set_network_access(tmp_path, enabled=False, now=now)
-    assert questions.network_question(tmp_path, now) == coded
-    monkeypatch.setenv(OFFLINE_SWITCH, "1")
-    assert questions.network_question(tmp_path, now) == []  # no answer opens the switch

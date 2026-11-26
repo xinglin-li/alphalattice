@@ -22,9 +22,9 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.control.observation_runtime.guardian import RuntimeIncident
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
 
 INCIDENTS_DIRECTORY = Path("runtime") / "guanyin" / "incidents"
 """Under a workspace: one record per incident, named by its key."""
@@ -142,7 +142,7 @@ class RecoveryAttempt(_Record):
 
     ordinal: int = Field(ge=1)
     action: Literal["CANCEL", "RECOVER", "REPLAN"]
-    selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL", "HOST_SUPERVISOR"]
+    selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL"]
     expected_task_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     requested_at: datetime
     disposition: str = Field(min_length=1, max_length=120)

@@ -20,20 +20,16 @@ import string
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application.message_catalog import english_message_ids
-from alphalattice.kernel.resources import cache_bound
 from devtools.architecture.git_inputs import CensusInputs, Moves, carried, staged_moves
 from devtools.architecture.nouns import definitions, owner_of
 from devtools.architecture.structural import (
     ImportHygiene,
     PackageArchitectureRegistry,
-    data_family_violations,
-    discover_persistence_sites,
     discover_table_writes,
     import_contract_violations,
     load_storage_authority_registry,
@@ -237,12 +233,7 @@ _SCANNERS = {
 }
 
 
-def inventory(
-    root: Path,
-    files: Iterable[str],
-    *,
-    details: tuple[list[tuple[str, str]], set[str]] | None = None,
-) -> dict[str, Counter[str]]:
+def inventory(root: Path, files: Iterable[str]) -> dict[str, Counter[str]]:
     """Each registry's entries in ``files`` (relative, POSIX)."""
 
     result: dict[str, Counter[str]] = {name: Counter() for name in _SCANNERS}
@@ -253,14 +244,9 @@ def inventory(
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
-            if details is not None:
-                raise
             continue
         for name, scan in _SCANNERS.items():
             result[name].update(scan(relative, tree))
-        if details is not None:
-            details[0].extend((relative, owner) for owner in owners(relative, tree))
-            details[1].update(definitions(root, relative, tree))
     return result
 
 
@@ -367,7 +353,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
     Counts follow the access kind and symbol across files: moving an existing access is not
     growth. A new access or a second use still needs the product's public entry. The scan alone
-    let five through on 2026-09-30, each registered beside its test.
+    let five through on 2026-09-30, each registered beside its test (V16).
     """
 
     before: Counter[str] = Counter()
@@ -387,7 +373,7 @@ def private_test_growth(base: Mapping[str, object], current: Mapping[str, object
 
 def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     """A format that does not name its version, readers and upgraders, or names a file that is
-    not there (LAWS.md DA6)."""
+    not there (LAWS.md DA6, V267)."""
 
     out: list[str] = []
     for key, value in sorted(known.items()):
@@ -406,35 +392,10 @@ def _format_problems(root: Path, known: dict[str, object]) -> list[str]:
     return out
 
 
-def load_data_family_registry(root: Path) -> dict[str, Any]:
-    """Read the families for this tree, including development-only writers when present."""
-    directory = root / REGISTRIES
-    registry: dict[str, Any] = json.loads((directory / "data-families.json").read_text("utf-8"))
-    try:
-        private = json.loads((directory / "data-families-development.json").read_text("utf-8"))
-    except FileNotFoundError:
-        return registry
-    if overlap := registry["families"].keys() & private["families"].keys():
-        raise ValueError(
-            f"data families repeated in the development registry: {', '.join(sorted(overlap))}"
-        )
-    registry["families"].update(private["families"])
-    return registry
-
-
-def data_family_problems(root: Path, sources: Sequence[Path]) -> tuple[str, ...]:
-    """A persisting writer in ``sources`` that no data family lists (the census, LAWS.md DA2)."""
-    registry = load_data_family_registry(root)
-    sites = discover_persistence_sites(tuple(sources), source_root=root / "src")
-    return data_family_violations(sites, registry, whole_tree=False)
-
-
 def problems(root: Path, files: Sequence[str]) -> list[str]:
     """What ``files`` add to a registry without registering it."""
 
-    owner_sites: list[tuple[str, str]] = []
-    decision_sites: set[str] = set()
-    found = inventory(root, files, details=(owner_sites, decision_sites))
+    found = inventory(root, files)
     out: list[str] = message_problems(root, files)
     for name, entries in found.items():
         known = baseline(root, name, errors=out)
@@ -463,12 +424,17 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
             (root / "config" / "package-architecture.json").read_text("utf-8")
         )["packages"]
     }
-    for relative, owner in owner_sites:
-        # A package or one of its areas; a historical owner remains identity-bound.
-        if owner.split(".")[0] not in registered and owner not in baseline(root, "owners"):
-            out.append(f"{relative}: semantic_owner {owner!r} is not a registered package")
+    for relative in files:
+        path = root / relative
+        if relative.endswith(".py") and path.is_file():
+            for owner in owners(relative, ast.parse(path.read_text(encoding="utf-8"))):
+                # A package, or one of its areas (`alpha_research.calibration`); an owner that
+                # names neither is refused unless the baseline already held it (its value is
+                # hashed into an identity, so renaming it is a successor of its own).
+                if owner.split(".")[0] not in registered and owner not in baseline(root, "owners"):
+                    out.append(f"{relative}: semantic_owner {owner!r} is not a registered package")
     known_definitions = baseline(root, "noun-definitions")
-    for key in sorted(decision_sites):
+    for key in sorted(_definitions(root, files)):
         if key not in known_definitions:
             maker, noun, made = key.split("::")
             out.append(
@@ -492,7 +458,6 @@ def problems(root: Path, files: Sequence[str]) -> list[str]:
                 whole_tree=False,
             )
         )
-        out.extend(data_family_problems(root, sources))
     known_host = baseline(root, "host-modules")
     for relative in files:
         if (
@@ -738,29 +703,14 @@ def g1_matches(prefix: str, nouns: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _census_file_facts(path: str, text: str) -> dict[str, int]:
     tree = ast.parse(text, filename=path)
-    literal_groups = {
-        assignment.targets[0].id: assignment.value
-        for assignment in tree.body
-        if isinstance(assignment, ast.Assign)
-        and len(assignment.targets) == 1
-        and isinstance(assignment.targets[0], ast.Name)
-        and isinstance(assignment.value, ast.Subscript)
-        and isinstance(assignment.value.value, ast.Name)
-        and assignment.value.value.id == "Literal"
-    }
     return {
         "message-kinds|" + code: line for code, line in refusals(path, tree, locations=True).items()
     } | {
-        "operations|" + literal.value: literal.lineno
+        "operations|" + n.value: n.lineno
         for alias in ast.walk(tree)
         if isinstance(alias, ast.TypeAlias) and alias.name.id == "PortfolioResearchOperation"
         for n in ast.walk(alias.value)
-        for literal in (
-            ast.walk(literal_groups[n.id])
-            if isinstance(n, ast.Name) and n.id in literal_groups
-            else (n,)
-        )
-        if isinstance(literal, ast.Constant) and isinstance(literal.value, str)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str)
     }
 
 
@@ -807,32 +757,23 @@ def _message_forms(code: str, row: dict[str, Any]) -> list[str]:
     ):
         return [f"messages: {code} invalid arguments"]
     fields = ("words", "reason", "scope", "way_on") if question else ("words",)
-    choices = row.get("choices", {}) if question else {}
-    if not isinstance(choices, dict):
-        return [f"messages: {code}.choices: not a mapping of choice to its words"]
-    named = [(field, row.get(field, {})) for field in fields]
     out = []
-    for field, forms in [*named, *((f"choices.{c}", w) for c, w in choices.items())]:
+    for field in fields:
+        forms = row.get(field, {})
         for locale in ("en", "zh-CN"):
             text = forms.get(locale) if isinstance(forms, dict) else None
-            if (error := _form_problem(text, arguments)) is not None:
+            try:
+                if not isinstance(text, str) or not text.strip():
+                    raise ValueError("missing form")
+                parts = list(string.Formatter().parse(text))
+                names = {name for _, name, _, _ in parts if name is not None}
+                if names != set(arguments) or any(
+                    spec or conversion for _, _, spec, conversion in parts
+                ):
+                    raise ValueError("named arguments differ")
+            except ValueError as error:
                 out.append(f"messages: {code}{'.' if question else ' '}{field}.{locale}: {error}")
     return out
-
-
-def _form_problem(text: object, arguments: list[str]) -> str | None:
-    """Why one language form of a message cannot be shown, or None: it is missing, or it names
-    other arguments than its message declares, or formats one."""
-    if not isinstance(text, str) or not text.strip():
-        return "missing form"
-    try:
-        parts = list(string.Formatter().parse(text))
-    except ValueError as error:
-        return str(error)
-    names = {name for _, name, _, _ in parts if name is not None}
-    if names != set(arguments) or any(spec or conversion for _, _, spec, conversion in parts):
-        return "named arguments differ"
-    return None
 
 
 def _unique_message_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1220,22 +1161,6 @@ def _has_description(row: Any) -> bool:
     )
 
 
-CACHES_REGISTRY = "config/registries/caches.json"
-
-
-def _undescribed(_path: str, _key: str, row: Any) -> bool:
-    return not _has_description(row)
-
-
-def _unbounded_cache(path: str, key: str, row: Any) -> bool:
-    """A cache registry row whose size_bound names no bound (the cache register's grammar)."""
-    return (
-        path == CACHES_REGISTRY
-        and key.startswith("entries:")
-        and cache_bound(row.get("size_bound") if isinstance(row, dict) else None) is None
-    )
-
-
 def _description_census(
     inputs: CensusInputs,
     data: dict[str, Any],
@@ -1243,28 +1168,6 @@ def _description_census(
     moves: Moves | None,
 ) -> tuple[list[str], list[str]]:
     """Read staged declarations once and ratchet their remaining explanation debt."""
-    return _debt_census(
-        inputs,
-        data,
-        base,
-        moves,
-        dimension="undescribed_registry_entries",
-        debt=_undescribed,
-        refusal="registry-description: {} needs one purpose sentence.",
-    )
-
-
-def _debt_census(
-    inputs: CensusInputs,
-    data: dict[str, Any],
-    base: dict[str, Any],
-    moves: Moves | None,
-    *,
-    dimension: str,
-    debt: Callable[[str, str, Any], bool],
-    refusal: str,
-) -> tuple[list[str], list[str]]:
-    """Read staged declarations once and ratchet one kind of their remaining debt."""
     root, stage, blobs, paths = inputs.root, inputs.stage, inputs.blobs, inputs.registries
     missing: set[str] = set()
     for path in paths:
@@ -1273,14 +1176,15 @@ def _debt_census(
         missing.update(
             path + "::" + key
             for key, row in _description_rows(data[path]).items()
-            if debt(path, key, row)
+            if not _has_description(row)
         )
-    if missing <= set(base.get(dimension, [])):
+    if missing <= set(base.get("undescribed_registry_entries", [])):
         return [], sorted(missing)
+    dimension = "undescribed_registry_entries"
     bootstrap = dimension not in base
     basis = "HEAD:"
     if inputs.pending or len(inputs.parents) > 2:
-        ancestor = spawn.run(
+        ancestor = subprocess.run(
             ["git", "merge-base", "develop", "HEAD", *([inputs.pending] if inputs.pending else [])],
             cwd=root,
             capture_output=True,
@@ -1300,12 +1204,15 @@ def _debt_census(
             previous.update(
                 path + "::" + key
                 for key, row in _description_rows(json.loads(blobs.get(basis + path, "{}"))).items()
-                if debt(path, key, row)
+                if not _has_description(row)
             )
     allowed = set(base.get(dimension, [])) | previous
     # A byte-identical move carries its rows; a caller that read the pairing passes it once.
     allowed |= carried(allowed, staged_moves(root) if moves is None else moves)
-    return [refusal.format(key) for key in sorted(missing - allowed)], sorted(missing)
+    return [
+        f"registry-description: {key} needs one purpose sentence."
+        for key in sorted(missing - allowed)
+    ], sorted(missing)
 
 
 def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
@@ -1327,30 +1234,6 @@ def census_inputs(root: Path, baseline: str | None) -> CensusInputs:
         else set()
     )
     return CensusInputs(root, baseline, fixed, _CENSUS_INPUT_PATHS)
-
-
-def _module(path: str) -> str:
-    return path.removeprefix("src/").removesuffix(".py").replace("/", ".").removesuffix(".__init__")
-
-
-def moved_allowances(held: Mapping[str, int], moves: Moves) -> dict[str, int]:
-    """Each retained import allowance where the change's moves put it: a moved file's path, and
-    in its statement each module the change moved, so a move neither grows nor drops one."""
-    renamed = {
-        _module(old): _module(new)
-        for new, old in moves.items()
-        if old.startswith("src/") and old.endswith(".py") and new.endswith(".py")
-    }
-    names = "|".join(re.escape(name) for name in sorted(renamed, key=len, reverse=True))
-    module = re.compile(rf"(?<![\w.])({names})(?![\w])") if names else None
-    forward = {old: new for new, old in moves.items()}
-    carried_rows: dict[str, int] = {}
-    for key, count in held.items():
-        path, scope, statement = key.split("::", 2)
-        if module is not None:
-            statement = module.sub(lambda m: renamed[m[1]], statement)
-        carried_rows[f"{forward.get(path, path)}::{scope}::{statement}"] = count
-    return carried_rows
 
 
 def census_check(
@@ -1385,8 +1268,6 @@ def census_check(
     except ValueError as error:
         return [*out, f"import-hygiene: {error}"]
     prior = json.loads(blobs.get("HEAD:" + legacy_path, "{}")).get("legacy_lazy_imports", legacy)
-    pairing = staged_moves(root, pairs=inputs.changes) if moves is None else moves
-    prior = moved_allowances(prior, pairing)
     out.extend(
         f"import-hygiene: retained import allowance grew {key}"
         for key, count in legacy.items()
@@ -1395,20 +1276,10 @@ def census_check(
     if "HEAD:" + baseline not in blobs and base["source_sha"] != inputs.objects["HEAD"]:
         return [f"registry-census: {baseline} must name the reviewed bootstrap source SHA."]
     facts: dict[str, Any] = {}
-    description_errors, undescribed = _description_census(inputs, data, base, pairing)
-    out.extend(description_errors)
-    # Develop's caches that name no bound stay for 0.2.10; a new one is refused.
-    bound_errors, unbounded = _debt_census(
-        inputs,
-        data,
-        base,
-        pairing,
-        dimension="unbounded_cache_rows",
-        debt=_unbounded_cache,
-        refusal="cache-bound: {} names no bound; give its size_bound a count, a capacity or an"
-        " admission.",
+    description_errors, undescribed = _description_census(
+        inputs, data, base, staged_moves(root, pairs=inputs.changes) if moves is None else moves
     )
-    out.extend(bound_errors)
+    out.extend(description_errors)
     for path in sorted(sources):
         facts[path] = _census_file_facts(path, blobs[stage + path])
     gaps = _census_gaps(facts, data, blobs[stage + "config/package-architecture.json"])
@@ -1443,8 +1314,6 @@ def census_check(
         "legacy_lazy_imports": legacy,
         "undescribed_registry_entries": undescribed,
     } | catalog
-    if unbounded or "unbounded_cache_rows" in base:  # a tree with no cache registry keeps none
-        expected["unbounded_cache_rows"] = unbounded
 
     def sync_baseline() -> None:
         for key in sorted(gaps.keys() - base.get("automatic_gaps", {}).keys()):

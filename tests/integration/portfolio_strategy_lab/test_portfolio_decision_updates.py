@@ -11,8 +11,6 @@ from uuid import UUID
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
 from alphalattice.foundation.causal_outcomes.execution.readers import planned_local_qa_schedule
 from alphalattice.foundation.market_data_ops.sources.contracts import (
@@ -46,6 +44,7 @@ from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_weight,
     render_decision_update,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
@@ -634,31 +633,13 @@ def test_a_persons_activation_names_its_time_and_book_and_a_qa_admission_neither
             PortfolioDecisionCheckpoint.create(**{**raw, **broken})
 
 
-def test_a_calibrated_input_is_admitted_only_with_its_axis_activation(numerical, monkeypatch):
+def test_a_calibrated_input_is_admitted_only_with_its_axis_activation(numerical):
     """requirement (LS1): the calibration rule's activation is the book's 521st formation on
     the axis it serves, held where the axis is known: a checkpoint admits a prepared input only
     when its formations name that rule's session at that position."""
 
     n = numerical
     prepared = prepared_for(n, n.first)
-    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
-    from alphalattice.investment.portfolio_strategy_lab.application import calibration
-
-    raw = prepared.model_dump(mode="json")
-    payload = prepared.model_dump(mode="json", exclude={"content_hash"})
-    hashes = []
-
-    def counted(value):
-        if value == payload:
-            hashes.append(prepared.content_hash)
-        return canonical_hash(value)
-
-    monkeypatch.setattr(calibration, "canonical_hash", counted)
-    with stage_digests():
-        assert PreparedPortfolioComponentInput.model_validate(raw) == prepared
-        assert PreparedPortfolioComponentInput.model_validate(raw) == prepared
-        assert hashes == [prepared.content_hash]
-
     assert n.checkpoint.formation_sessions[521] == prepared.rule.activation_session
     require_proposal_position(
         checkpoint=n.checkpoint,
@@ -683,29 +664,10 @@ def test_a_calibrated_input_is_admitted_only_with_its_axis_activation(numerical,
         )
 
 
-def test_checkpoint_input_epoch_and_pending_guards(numerical, monkeypatch):
-    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
-    from alphalattice.investment.portfolio_strategy_lab.application import decision_updates
-
+def test_checkpoint_input_epoch_and_pending_guards(numerical):
     n = numerical
     checkpoint = n.checkpoint
     raw = checkpoint.model_dump(mode="json")
-    payload = checkpoint.model_dump(mode="json", exclude={"content_hash"})
-    hashes = []
-
-    def counted(value):
-        if value == payload:
-            hashes.append(checkpoint.content_hash)
-        return canonical_hash(value)
-
-    monkeypatch.setattr(decision_updates, "canonical_hash", counted)
-    with stage_digests():
-        assert PortfolioDecisionCheckpoint.model_validate(raw) == checkpoint
-        assert PortfolioDecisionCheckpoint.model_validate(raw) == checkpoint
-        assert hashes == [checkpoint.content_hash]
-        changed = raw | {"listing_labels": ["forged", *raw["listing_labels"][1:]]}
-        with pytest.raises(ValueError, match=r"portfolio_update\.identity_invalid"):
-            PortfolioDecisionCheckpoint.model_validate(changed)
     raw["initial_book"]["cash"] = 0.5
     with pytest.raises(ValueError):
         PortfolioDecisionCheckpoint.model_validate(raw)
@@ -789,55 +751,11 @@ def test_publication_commit_recovers_an_orphan_and_retains_exact_html(numerical,
         store.decision_history(n.checkpoint.content_hash)
 
 
-def _assert_shared_continuation_reads(numerical, tmp_path, monkeypatch):
-    """Comparing continuations shares proved parts until the next acquisition."""
-    from alphalattice.control.product_host.composition.portfolio_updates import (
-        PortfolioUpdateApplication,
-    )
-
-    store = PortfolioLedgerStore(tmp_path)
-    prior = snapshot_for(numerical, numerical.first)
-    raw = snapshot_for(numerical, numerical.first + 1)
-    issued = continue_issued_observations(prior, raw, raw_previous=prior)
-    store.publish_decision_observations(issued, raw, prior)
-    app = object.__new__(PortfolioUpdateApplication)
-    app.store = store
-    plan = SimpleNamespace(
-        market_hash=issued.content_hash,
-        observed_through=issued.through,
-        raw_market_hash=raw.content_hash,
-        prior_market_hash=prior.content_hash,
-        prior_raw_market_hash=prior.content_hash,
-    )
-    load = store.content.load_model
-    part_reads = []
-
-    def counted(**query):
-        if query["category"] == "decision-observation-parts":
-            part_reads.append(query["content_hash"])
-        return load(**query)
-
-    monkeypatch.setattr(store.content, "load_model", counted)
-    assert app._observed(plan) == issued
-    assert part_reads and len(part_reads) == len(set(part_reads))
-
-    removed = store.root / "decision-observation-parts" / f"{part_reads[0]}.json"
-    body = removed.read_bytes()
-    removed.unlink()
-    with pytest.raises(ValueError, match="artifact_missing"):
-        app._observed(plan)
-    removed.write_bytes(body)
-    assert app._observed(plan) == issued
-
-
-@pytest.mark.parametrize("parts", [False, True], ids=["one-model-file", "observation-parts"])
+@pytest.mark.parametrize("parts", [False, True])
 def test_exact_reuse_revalidates_observation_and_html_children(
     numerical, tmp_path, monkeypatch, parts
 ):
     """Real lost and damaged children stay distinct with or without error details."""
-    if parts:
-        with monkeypatch.context() as probe:
-            _assert_shared_continuation_reads(numerical, tmp_path / "shared", probe)
     from alphalattice.control.product_host.composition.portfolio_updates import (
         TASK_KIND,
         PortfolioUpdateApplication,
@@ -883,12 +801,11 @@ def test_exact_reuse_revalidates_observation_and_html_children(
                 path.write_bytes(b"tampered")
             try:
                 code = "artifact_missing" if missing else "artifact_tampered"
-                # A changed child is refused where it is proved: in full proof (LAWS.md EV2).
-                with full_content_proof(), pytest.raises(ValueError, match=code) as caught:
+                with pytest.raises(ValueError, match=code) as caught:
                     app.reusable(plan)
                 with monkeypatch.context() as patch:
                     patch.setattr(type(caught.value), "__str__", lambda e: e.args[0].split(":")[0])
-                    with full_content_proof(), pytest.raises(ValueError, match=code):
+                    with pytest.raises(ValueError, match=code):
                         app.reusable(plan)
                 if missing:
                     assert not path.exists()  # verification never repairs a missing child
@@ -1383,9 +1300,5 @@ def test_the_completed_scores_seam_refuses_a_changed_latest_chain_and_a_changed_
     (older,) = updates["older"]
     path = next((tmp_path / "artifacts").rglob(f"{older.snapshot_hash}.json"))
     path.write_bytes(path.read_bytes().replace(b"0.5", b"0.6"))
-    # A sealed score is proved under full proof (an export, the scrub; LAWS.md EV2).
-    with (
-        full_content_proof(),
-        pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"),
-    ):
+    with pytest.raises(ValueError, match=r"^Alpha JSON payload hash is invalid$"):
         completed(owner)

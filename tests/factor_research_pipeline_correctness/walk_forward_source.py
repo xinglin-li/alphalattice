@@ -12,11 +12,11 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import pyarrow as pa
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeChunk,
     CausalExecutionOutcomeManifest,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _manifest(listing_ids: tuple[str, ...]) -> CausalExecutionOutcomeManifest:

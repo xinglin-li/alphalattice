@@ -19,12 +19,11 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
-from time import monotonic
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import KeptListing, KeptObservations
 from alphalattice.control.product_host.composition.committee_answer import (
     answer_replay,
@@ -87,23 +86,17 @@ from alphalattice.interface.local_application.cli_contract import (
     schema_request,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.labels import label as installed_label
 from alphalattice.interface.local_application.native_bridge import SUBJECT_VALUE_CHARACTERS
 from alphalattice.interface.local_application.portfolio_research import (
+    CommitteeMessage,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.interface.local_application.questions import person_question
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
-from alphalattice.kernel.execution import EVENTS, EventDeadline
-from alphalattice.kernel.identity import identity_sha256, integrity_hmac_sha256, integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import bundle_slot, moment_text
-
-if TYPE_CHECKING:
-    from alphalattice.interface.local_application.portfolio_request_fields.goals import (
-        CommitteeMessage,
-    )
-
 
 ROLES: Final = ("PM", "ALPHA", "RISK", "CRO")
 CARDS: Final = {r: f"alphalattice_{r.lower()}" for r in ROLES[1:]} | {"PM": "research_lead"}
@@ -244,55 +237,7 @@ def settled(floor: Floor, now: datetime) -> bool:
 
 def member_key(seed: str, thread: str, role: str) -> str:
     """A member's key on one thread: it admits that member's messages there and nowhere else."""
-    return integrity_hmac_sha256(bytes.fromhex(seed), f"{thread}:{role}".encode())[:32]
-
-
-def addressed(read: Mapping[str, Any]) -> bool:
-    """Whether a member's read holds what its wait is for: a refusal, what the floor addresses
-    to it (`for_you`), the settled debate or the close."""
-    return read.get("status") != "COMMITTEE_FLOOR" or bool(
-        read.get("for_you") or read.get("settled") or read.get("stage") == "CLOSED"
-    )
-
-
-def read_addressed(
-    store: GoalStore,
-    task: str,
-    read: Callable[[datetime], dict[str, object]],
-    wait_seconds: float,
-    clock: Callable[[], datetime],
-) -> dict[str, object]:
-    """A member's read once the floor addresses it, or after ``wait_seconds``.
-
-    It reads again on each row filed under the floor's goal (a message, the open, a person's
-    answer) and at the floor's next moment on the clock (the stance window's close, the
-    discussion's, the time box's), and nothing is held between reads. Each read projects the
-    floor at the instant it is handed, and the next moment is the first after that instant: one
-    the clock passed since is read again at once.
-    """
-    found = floor_of(store, task)
-    if found is None:
-        return read(clock())
-    deadline = monotonic() + wait_seconds
-    with EVENTS.subscribed(("goal", str(found.goal_id))) as moved:
-        projected = clock()
-        heard, body = 0, read(projected)
-        while not addressed(body) and (left := deadline - monotonic()) > 0:
-            moments = (
-                body.get(k) for k in ("stances_close_at", "discussion_closes_at", "closes_at")
-            )
-            now = clock()
-            ahead = [
-                (at - now).total_seconds()
-                for at in (datetime.fromisoformat(str(m)) for m in moments if m)
-                if at > projected
-            ]
-            if (wake := min([left, *ahead])) > 0:
-                with suppress(EventDeadline):
-                    heard = moved.wait(heard, timeout=wake, what=f"floor {task}")
-            projected = clock()
-            body = read(projected)
-    return body
+    return hmac.new(bytes.fromhex(seed), f"{thread}:{role}".encode(), sha256).hexdigest()[:32]
 
 
 def floor_of(store: GoalStore, task: str) -> Floor | None:
@@ -475,12 +420,11 @@ def daily_asked(
         return done
     relay = (
         f'{COMMAND} committee daily --enabled true --person-said "<their words>" '
-        "--question-code committee.daily"  # the Host takes the registered words: none retyped
+        f'--asked "{DAILY_ASK}"'
     )
     return done | {
         "next_action": done.get("next_action") or "ASK_THE_PERSON_ONCE",
         "ask_now": [DAILY_ASK_HOW, DAILY_ASK, relay],
-        "person_questions": [person_question("committee.daily")],
     }
 
 
@@ -697,10 +641,6 @@ def open_floor(
     The floor is built before the store keeps its seed, so a floor that cannot be built leaves
     nothing behind.
     """
-    from alphalattice.interface.local_application.labels import (  # lazy: installed names
-        label as installed_label,
-    )
-
     task, held = str(readback["task_id"]), holdings(readback)
     label = installed_label(str(readback.get("strategy_package_id") or ""))
     proposal = readback["publication"].get("pending_proposal") or {}
@@ -1470,7 +1410,7 @@ def _proof(store: GoalStore, claims: Sequence[Mapping[str, Any]]) -> dict[str, s
         role = claim.get("role") or (floor.opened.get("role") if floor is not None else None)
         if floor is None or role not in {*ROLES[1:], *REVIEWERS}:
             continue
-        own = integrity_sha256(floor.key(str(role)).encode()).hexdigest()
+        own = sha256(floor.key(str(role)).encode()).hexdigest()
         if hmac.compare_digest(own, str(claim.get("key"))):
             cards.add(_card(floor, str(role)))
             if claim.get("spoke"):
@@ -2019,7 +1959,7 @@ def pm_route(floor: Floor) -> tuple[str, ...]:
 
 def thread_id(reference: str) -> str:
     """The thread a review bundle opens, named by the bundle's own record."""
-    return str(UUID(hex=identity_sha256(reference.encode()).hexdigest()[:32]))
+    return str(UUID(hex=sha256(reference.encode()).hexdigest()[:32]))
 
 
 def review_route(store: GoalStore, role: str, directory: str | None) -> tuple[str, ...] | None:

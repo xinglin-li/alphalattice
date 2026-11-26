@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,10 +32,9 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
-from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
-from alphalattice.capabilities.domain_contracts.persistence import replace_with_retry  # noqa: E402
 from alphalattice.interface.local_application.failure_codes import setup_failure  # noqa: E402
 from alphalattice.interface.local_application.message_catalog import catalog_words  # noqa: E402
+from alphalattice.kernel.shared_kernel.persistence import replace_with_retry  # noqa: E402
 
 ASSETS = ROOT / "src/alphalattice/interface/local_application/assets"
 REPLACE_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8)
@@ -326,7 +326,7 @@ def check():
     the parameter source (scripts/check_ui_parameters.py)."""
     import sys
 
-    spawn.run([sys.executable, str(ROOT / "scripts/check_ui_parameters.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/check_ui_parameters.py")], check=True)
     engines = concat(ENGINE_FILES, "engine")
     app = (
         '(()=>{"use strict";\n'
@@ -341,7 +341,7 @@ def check():
         for label, code in [("engines", engines), ("app", app), ("prelude", prelude), ("zh", zh)]:
             probe = Path(directory) / f"{label}.js"
             probe.write_text(code, encoding="utf-8")
-            spawn.run(["node", "--check", str(probe)], check=True)
+            subprocess.run(["node", "--check", str(probe)], check=True)
 
 
 def main(argv: list[str] | None = None) -> int:

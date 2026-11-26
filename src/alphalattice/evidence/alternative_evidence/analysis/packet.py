@@ -17,6 +17,7 @@ binding through this module's source closure and the receipt's
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -24,8 +25,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import NamedTuple
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import (
     AlternativeEvidenceClass,
@@ -45,7 +45,6 @@ from ..retrieval.session import (
     MAXIMUM_MATTER_READS,
     AlternativeEvidenceRetrievalSession,
     InspectedDocument,
-    ScopedChunks,
     passage_hash,
 )
 from .contracts import (
@@ -335,16 +334,27 @@ EVIDENCE_QUERY_PROGRAM: tuple[EvidenceQuery, ...] = (
 # twenty of the reranked order. It costs no further inference -- the passages
 # it admits were already scored.
 QUERY_TOP_K = 20
-# One fused English shortlist per search, bounded for the four-core Evidence path.
-RERANK_SHORTLIST_DEPTH = 3
+# How deep into each filing the cross-encoder reads for a question: the
+# filing's best twelve fused candidates, not the index spec's six. Measured on
+# the admitted corpus, a compliance statement a direct question ranked sixth
+# by the dense channel and twelfth by bm25 fused ninth in its 300-chunk
+# filing and was never scored; at twelve every one of the seven
+# source-confirmed facts reached a query's return, at six five did. Twelve is
+# a query-time choice of this program, carried on the request, so the index
+# and its generations keep their identity. Twice the pairs of six.
+RERANKER_DEPTH_PER_DOCUMENT = 12
 # Sixteen per issuer for twenty questions: each question's best passage for
 # the issuer, with the four weakest questions' passages dropped, before any
 # question's second. 128 for eight issuers; thirty-two reads of four.
 SPANS_PER_ISSUER = 16
 MAXIMUM_PACKET_SPANS = 128
 SPANS_PER_READ = 4
-# Pair ceiling for the twenty scheduled residual questions.
-RESIDUAL_RERANK_PAIR_BUDGET = 20 * RERANK_SHORTLIST_DEPTH
+# The residual search's cold rerank-pair budget for one session: half of
+# what the unconditional program can spend on a full unit (twenty questions,
+# twelve pairs per filing, twenty-four filings). A question that would start
+# after the budget is spent is recorded as skipped for budget, never run
+# over a narrower depth; the routing record reports what was spent.
+RESIDUAL_RERANK_PAIR_BUDGET = 20 * RERANKER_DEPTH_PER_DOCUMENT * 24 // 2
 # The integrated selection deals each issuer's sixteen residual spans by
 # issuer-topic cell -- every cell's best distinct candidate before any
 # cell's second -- and seals what the batch had no room for as a pending
@@ -372,7 +382,7 @@ RESIDUAL_RERANK_PAIR_BUDGET = 20 * RERANK_SHORTLIST_DEPTH
 # page covers nothing (its range is a placeholder line, its content rows
 # rendered from the original); a partial overlap leaves the candidate
 # pending and is reported apart.
-RESIDUAL_SELECTION_RULES_ID = "alternative-evidence.residual-selection.issuer-topic-cells.v5"
+RESIDUAL_SELECTION_RULES_ID = "alternative-evidence.residual-selection.issuer-topic-cells.v4"
 # The context-complete allocation (`allocation=CONTEXT_COMPLETE`, section
 # V's Gate A: a cell's later turns completed the source paragraph of the
 # focal it read before broadening; measured at +1 cumulative unit and -1
@@ -438,7 +448,7 @@ def query_program_hash(program: tuple[EvidenceQuery, ...] = EVIDENCE_QUERY_PROGR
                 ),
                 "top_k": QUERY_TOP_K,
                 "top_k_scope": "per-issuer document group",
-                "rerank_shortlist_depth": RERANK_SHORTLIST_DEPTH,
+                "reranker_depth_per_document": RERANKER_DEPTH_PER_DOCUMENT,
                 "maximum_spans": MAXIMUM_PACKET_SPANS,
                 "spans_per_issuer": SPANS_PER_ISSUER,
                 "spans_per_read": SPANS_PER_READ,
@@ -933,12 +943,13 @@ def _plan_corpus(generation: RetrievalGenerationRecord) -> str:
     """What a reading plan's identity binds of the index it reads.
 
     What a reading plan's identity binds of the index it reads: the
-    corpus under the spec (`index_id`) -- the same bytes under another
-    request are the same plan, which is what lets a reused selection be
-    continued -- and, for an earlier generation, the generation itself.
+    corpus commitment -- the same bytes under another request are the
+    same plan, which is what lets a reused selection be continued -- and,
+    for a legacy generation that commits to no corpus, the generation
+    itself.
     """
     if isinstance(generation, AlternativeEvidenceRetrievalGeneration):
-        return generation.index_id
+        return generation.corpus_hash
     return generation.generation_hash
 
 
@@ -2109,7 +2120,7 @@ def select_routed_evidence(
     # The residual search: each question over its topic's residual scope.
     records: list[EvidenceQueryRecord] = []
     best: dict[tuple[str, int, str, int, int], CellCandidate] = {}
-    scopes: dict[EvidenceTopic, tuple[ScopedChunks, ...]] = {}
+    scopes: dict[EvidenceTopic, tuple[tuple[str, int, int], ...]] = {}
     scope_windows: dict[tuple[str, EvidenceTopic], int] = {}
     routed_chunks: set[tuple[str, int]] = set()
     for cell in routing.cells:
@@ -2118,9 +2129,9 @@ def select_routed_evidence(
             ranges.setdefault(document_key, []).append((start, end))
         entries = session.scope_for(ranges) if ranges else ()
         scope_windows[(cell.entity_id, cell.topic)] = sum(
-            last - first + 1 for _key, first, last, _ranges in entries
+            last - first + 1 for _key, first, last in entries
         )
-        for key, first, last, _ranges in entries:
+        for key, first, last in entries:
             routed_chunks.update((key, ordinal) for ordinal in range(first, last + 1))
         scopes[cell.topic] = tuple(sorted({*scopes.get(cell.topic, ()), *entries}))
     run = skipped_scope = skipped_budget = 0
@@ -2155,14 +2166,14 @@ def select_routed_evidence(
                     hit_span_handles=(),
                     kind=query.kind,
                     disposition="SKIPPED_BUDGET",
-                    scope_windows=sum(last - first + 1 for _k, first, last, _ranges in scope),
+                    scope_windows=sum(last - first + 1 for _k, first, last in scope),
                 )
             )
             continue
         result = session.search(
             query=query.text,
             top_k=QUERY_TOP_K,
-            reranker_depth=min(RERANK_SHORTLIST_DEPTH, pair_budget - session.reranked_pairs),
+            reranker_depth=RERANKER_DEPTH_PER_DOCUMENT,
             scope=scope,
         )
         run += 1
@@ -2173,11 +2184,8 @@ def select_routed_evidence(
                 text=query.text,
                 hit_span_handles=tuple(hit.span_handle for hit in result.hits),
                 kind=query.kind,
-                scope_windows=sum(last - first + 1 for _k, first, last, _ranges in scope),
+                scope_windows=sum(last - first + 1 for _k, first, last in scope),
                 reranked_pairs=result.reranked_pairs,
-                rerank_fallback=result.rerank_fallback,
-                score_type=result.score_type,
-                hit_scores=tuple(hit.retrieval_score for hit in result.hits),
             )
         )
         local_ranks: dict[str, int] = {}
@@ -2267,9 +2275,7 @@ def select_routed_evidence(
         }
     )
     all_chunks = {
-        (key, ordinal)
-        for key, first, last, _ranges in everything
-        for ordinal in range(first, last + 1)
+        (key, ordinal) for key, first, last in everything for ordinal in range(first, last + 1)
     }
     inventoried_ranges = {
         key: [(r.body_start, r.body_end) for r in needs.inventory.regions]
@@ -2277,7 +2283,7 @@ def select_routed_evidence(
     }
     inventoried_chunks = {
         (key, ordinal)
-        for key, first, last, _ranges in session.scope_for(inventoried_ranges)
+        for key, first, last in session.scope_for(inventoried_ranges)
         for ordinal in range(first, last + 1)
     }
     unrouted = len(all_chunks - routed_chunks - inventoried_chunks)
@@ -3753,7 +3759,7 @@ def render_evidence_packet(
     def limitation_codes(limitations: Sequence[str]) -> list[str]:
         codes = []
         for sentence in limitations:
-            code = f"L-{identity_sha256(sentence.encode('utf-8')).hexdigest()[:8]}"
+            code = f"L-{hashlib.sha256(sentence.encode('utf-8')).hexdigest()[:8]}"
             limitation_texts[code] = sentence
             codes.append(code)
         return codes
@@ -3862,7 +3868,7 @@ __all__ = [
     "MAXIMUM_REFERENCE_SEARCHES",
     "MINIMUM_DELIVERY_BUDGET_BYTES",
     "QUERY_TOP_K",
-    "RERANK_SHORTLIST_DEPTH",
+    "RERANKER_DEPTH_PER_DOCUMENT",
     "RESIDUAL_RERANK_PAIR_BUDGET",
     "RESIDUAL_SELECTION_RULES_ID",
     "SPANS_PER_ISSUER",

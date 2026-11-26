@@ -29,11 +29,6 @@ from typing import Literal, Protocol, Self
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sector_treatment import (
-    SECTOR_HISTORY_BACKFILLED,
-    SectorHistoryTreatment,
-)
 from alphalattice.investment.alpha_research.targets.catalog import (
     AlphaTargetCatalog,
     build_installed_alpha_target_catalog,
@@ -47,6 +42,11 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
 from alphalattice.investment.alpha_research.targets.standardization import (
     RANK_GAUSS_STANDARDIZATION_ID,
     ROBUST_Z_STANDARDIZATION_ID,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sector_treatment import (
+    SECTOR_HISTORY_BACKFILLED,
+    SectorHistoryTreatment,
 )
 
 

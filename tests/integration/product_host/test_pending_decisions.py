@@ -32,7 +32,7 @@ def test_a_plan_outlives_the_host_that_answered_it_until_it_expires(tmp_path) ->
 
     from pydantic import BaseModel, model_validator
 
-    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     class _Plan(BaseModel):  # type: ignore[misc]
         value: int
@@ -79,7 +79,7 @@ def _kinds(**owners: object) -> dict[str, dict[str, object]]:
 
 
 def test_the_workspace_state_waits_on_a_person_from_its_owners_answers() -> None:
-    """requirement: a workspace with no verified input and no preparation under way waits
+    """requirement (V45): a workspace with no verified input and no preparation under way waits
     for its preparation; data past the newest input's end waits for a new input version; each
     names the request that takes it, and a preparation under way or refused is no decision."""
 
@@ -99,7 +99,7 @@ def test_the_workspace_state_waits_on_a_person_from_its_owners_answers() -> None
 
 
 def test_each_item_says_whom_it_waits_on_and_only_the_persons_are_counted() -> None:
-    """requirement: a step only a person may take waits on the PERSON; a step the agent
+    """requirement (STOPS-1): a step only a person may take waits on the PERSON; a step the agent
     takes and discloses, advice included, waits on the AGENT, and the headline counts only the
     person's. A preparation waits on the agent while a first-use goal delegates it."""
 
@@ -132,7 +132,7 @@ def test_each_item_says_whom_it_waits_on_and_only_the_persons_are_counted() -> N
 
 
 def test_a_plan_previewed_and_not_run_waits_until_it_expires() -> None:
-    """requirement: a PLAN previewed and not run is one decision, whoever previewed it,
+    """requirement (V45): a PLAN previewed and not run is one decision, whoever previewed it,
     with its preview and its RUN; the registry holds it runnable only until it expires."""
 
     preview = {"plan_hash": "a" * 64, "study_kind": "factor.screening-development"}
@@ -192,16 +192,12 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         "criteria": [{"criterion_id": "read", "text": "Read the retained work"}],
     }
 
-    opened_titles = iter(range(1, 100))
-
     def open_goal(kind="DATA"):
-        """A goal of the same question; its title tells it from the others, the declaration
-        being what finds a goal again."""
-        title = f"{declaration['title']} {next(opened_titles)}"
         opened = goals.operate(
             Request(
                 operation="GOAL_OPEN",
-                goal_declaration={**declaration, "kind": kind, "title": title},
+                goal_id=uuid4(),
+                goal_declaration={**declaration, "kind": kind},
             ),
             "HUMAN",
         )
@@ -292,7 +288,6 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             operations,
             "experiments",
             SimpleNamespace(
-                installed_implementation=operations.experiments.installed_implementation,
                 awaiting=lambda _: {
                     "curation": [str(study.task_id)],
                     "promotion": [str(study.task_id)],
@@ -304,9 +299,9 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
             ),
         )
         readers.setattr(
-            PortfolioResearchOperations,
+            operations,
             "data_issues",
-            property(lambda _: SimpleNamespace(readback=lambda **_: {"next_requests": offers})),
+            SimpleNamespace(readback=lambda **_: {"next_requests": offers}),
         )
         readers.setattr(
             PortfolioResearchOperations,
@@ -340,7 +335,7 @@ def test_retained_goal_requests_reach_only_their_exact_pending_decisions(
         # The public overview reader supplies metadata here; its composition wrapper and
         # canonical Task-kind check remain real, including the negative non-CRO binding.
         readers.setattr(
-            "alphalattice.control.product_host.composition.upgrade_overview.upgrade_overview",
+            "alphalattice.control.product_host.composition.portfolio_research_operations.upgrade_overview",
             lambda **_: overview,
         )
         answer = operations.pending_decisions()

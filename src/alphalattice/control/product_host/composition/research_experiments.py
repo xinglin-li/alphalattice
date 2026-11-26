@@ -2,56 +2,36 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, cast
 from uuid import UUID
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import ValidationError
 
 from alphalattice.capabilities.alpha_modeling.runtime.lightgbm_threads import (
     LightGBMThreads,
     lightgbm_threads,
 )
-from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.environment import numerical_thread_counts
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.experience_read import (
-    run_with_hypothesis,
-)
 from alphalattice.control.product_host.composition.plain_refusals import (
     explain,
-    refused,
     task_record_refusal,
 )
 from alphalattice.control.product_host.composition.research_authoring import (
     build_research_program_workflow,
-)
-from alphalattice.control.product_host.composition.research_experiment_blocks import (
-    CAPACITY_BLOCKS,
-    retryable_block,
-)
-from alphalattice.control.product_host.composition.research_experiment_blocks import (
-    RETRYABLE_ARTIFACT_BLOCKS as RETRYABLE_ARTIFACT_BLOCKS,
 )
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     STAGES as STAGES,
@@ -62,14 +42,10 @@ from alphalattice.control.product_host.composition.research_experiment_plan impo
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     AlphaExperimentSource,
     ExperimentPlan,
-    _check_evidence_window,
     checked_task_plan,
 )
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     _task_contract as _task_contract,
-)
-from alphalattice.control.product_host.composition.research_experiment_plan import (
-    review_requests as review_requests,
 )
 from alphalattice.control.product_host.composition.research_experiment_projection import (
     SAMPLE_SCHEME_SUPERSEDED,
@@ -91,12 +67,6 @@ from alphalattice.control.product_host.composition.research_prerequisites import
     holdings,
     prerequisites,
 )
-from alphalattice.control.product_host.composition.research_read_scopes import (
-    _VERIFIED_EVIDENCE,
-)
-from alphalattice.control.product_host.composition.research_read_scopes import (
-    verified_study_evidence as verified_study_evidence,
-)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceManifest,
@@ -105,7 +75,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.result_standing import study_standing
-from alphalattice.control.product_host.composition.task_kinds import VERIFICATION_LEDGER_DIRECTORY
 from alphalattice.control.product_host.data_preparation.feature_research import (
     ResearchFeatureBuildApplication,
 )
@@ -170,10 +139,8 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PreviewRegistry,
     RetainedPreview,
 )
-from alphalattice.control.product_host.storage.retention import StorageRetentionError
 from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
 from alphalattice.control.research_program.authoring.document import (
-    convert_authoring_document,
     load_authoring_document,
     require_authoring_document,
 )
@@ -183,7 +150,6 @@ from alphalattice.control.research_program.authoring.workflow import (
 )
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.task_control.contracts import (
-    StageFailureCause,
     TaskEvidence,
     TaskExecution,
     TaskExecutionCompatibility,
@@ -199,11 +165,7 @@ from alphalattice.control.task_control.runner import (
     StageExecutionResult,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.content_store import (
-    full_content_proof,
-    full_proof,
-    replace_shared_file,
-)
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
     TASK_LEASES,
     CpuBudgetStore,
@@ -211,7 +173,6 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     budget_cores,
     machine_load,
 )
-from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.factor_research.experiments.authoring import (
     FACTOR_EXPERIMENT_KIND,
     INSTALLED_REDUNDANCY_POLICIES,
@@ -255,7 +216,6 @@ from alphalattice.interface.local_application.failure_codes import (
     safe_failure_code,
 )
 from alphalattice.interface.local_application.portfolio_research import (
-    OperationCaller,
     PortfolioResearchOperationRequest,
 )
 from alphalattice.investment.alpha_research.candidates.qualification_task import (
@@ -319,6 +279,12 @@ from alphalattice.investment.risk_research.experiments.replay_identity import (
     replay_follows_recorded_moves,
 )
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.environment import numerical_thread_counts
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -332,22 +298,75 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
 )
 
+RETRYABLE_ARTIFACT_BLOCKS: frozenset[str] = frozenset(
+    {
+        "risk_research.covariance_chunk_identity_invalid",
+        "risk_research.covariance_chunk_tampered",
+        "risk_research.development_checkpoint_matrix_mismatch",
+        "risk_research.development_checkpoint_scope_mismatch",
+        "risk_research.development_checkpoint_axis_mismatch",
+        "research_authoring.evidence_artifact_unverifiable",
+    }
+)
+"""Stage refusals that name a required artifact that was missing or did not read.
+
+Once it is back, the same execution contract can continue from its verified prefix
+and checkpoint, so a person may ask for that. A scientific or permission refusal,
+an exhausted budget or an unrepaired source is not in this set and stays a stop.
+"""
+
+
+CAPACITY_BLOCKS = {
+    "storage.managed_capacity_exceeded": "Raise the cap (`storage set --cap-bytes <bytes>`) or "
+    "confirm a cleanup on the person's yes",
+    "storage.disk_space_insufficient": "Free disk space or move the workspace to a larger disk",
+}
+"""Capacity stops and their way on; the same declaration goes on once restored."""
+
+
+def retryable_block(failure_code: str | None) -> str | None:
+    """The repaired-artifact or operator-capacity stop this owner permits retrying."""
+    if not failure_code:
+        return None
+    code = failure_code.split(":", 1)[0]
+    return code if code in RETRYABLE_ARTIFACT_BLOCKS or code in CAPACITY_BLOCKS else None
+
+
+_VERIFIED_EVIDENCE: ContextVar[dict[tuple[object, ...], object] | None] = ContextVar(
+    "research_experiment_verified_evidence", default=None
+)
+_REUSE_VERIFIED: ContextVar[bool] = ContextVar("research_experiment_reuse_verified", default=False)
+
+LEDGER_READ_OPERATIONS = frozenset(
+    {
+        "EXPERIMENT_READBACK",
+        "EXPERIMENT_DRAFT",
+        "EXPERIMENT_PORTFOLIO_DRAFT",
+        "EXPERIMENT_CURATION",
+        "EXPERIMENT_HANDOFF_PREVIEW",
+    }
+)
+"""The reads that may answer from a study's earlier full verification (binding plan, L1).
+
+Fail-closed: every other operation that reads a study (export, publication, admission,
+comparison, replay, a run, a stage's verification) verifies it in full.
+"""
+
 _LEDGER_ENTRIES = 8
 """Studies whose verification is kept; each keeps only what a read shows (an Alpha study's
 verified graph holds about 130 MB of chunk tables on the real workspace, none of it kept)."""
 
-"""Under the workspace's `runtime/`: each study's last full verification, kept on disk as a read
-shows it, so a restart or a copy does not verify it in full again (EV2: a sealed file is proved
-at entry, at export and by the scrub, never on a read)."""
-_LEDGER_SCHEMA = 2
-"""Version 1 entries named the study's files by path, size, time and identity; they are not read,
-so a study kept by one costs one full check."""
+VERIFICATION_LEDGER_DIRECTORY = "verification-ledger"
+"""Under the workspace's `runtime/`: each Alpha study's last full verification, kept on disk as
+a read shows it, so a restart does not verify it in full again (V89, decision 5). Only there,
+since only there is hashing a measured cost (an Alpha readback re-derives every sealed chunk's
+hash, about 2 s on the real workspace; the other kinds read in 0.1-0.5 s)."""
 
 
 def _sealed_admission(workspace: Path, admission_hash: str) -> ResearchFoundationAdmission:
     """A sealed Foundation admission as its store reads it. A stored record that no longer
     matches its name (the store says so in a sentence, inside the Alpha study's closure) is
-    refused by the admission's own code, never the sentence (OP4)."""
+    refused by the admission's own code, never the sentence (V449, OP4)."""
 
     try:
         return read_foundation_admission(workspace / "artifacts", admission_hash)
@@ -368,16 +387,53 @@ class _VerifiedStudy:
     currency: dict[str, object]
     view: object
     record_hash: str
+    fingerprint: str
     verified_at: datetime
+    files: int
     implementation: str
+
+
+@contextmanager
+def verified_study_evidence(*, reuse_verified: bool = False) -> Iterator[None]:
+    """Verify each study's evidence once per operation, then release.
+
+    A study page or a research case reads several studies, and a comparison inside
+    it reads two of them again; each read walked the whole sealed graph and
+    re-derived every chunk's content hash (binding plan, B16: a case gathering
+    studies verified the same two Alpha studies twice in one request). Inside this
+    scope a Task's evidence is verified once per (Task, record version, readback
+    mode) and the verified result reused for the rest of the operation. An
+    operation run inside another (a case reading its studies) joins the scope
+    already open.
+
+    Across requests, a read in ``LEDGER_READ_OPERATIONS`` (``reuse_verified``) may
+    answer from the owner's ledger: the last full verification of the same Task
+    record, while no file under the study's output or input bundle changed its
+    path, size, modification time or file identity (binding plan, L1). A change that
+    keeps all four is caught by every export, publication and admission, which
+    verify in full, and by the sweep (V89). Its answer says so (``verification_basis``).
+    """
+    if _VERIFIED_EVIDENCE.get() is not None:
+        yield
+        return
+    token = _VERIFIED_EVIDENCE.set({})
+    reuse = _REUSE_VERIFIED.set(reuse_verified)
+    try:
+        yield
+    finally:
+        scope = _VERIFIED_EVIDENCE.get()
+        if scope is not None:
+            scope.clear()
+        _REUSE_VERIFIED.reset(reuse)
+        _VERIFIED_EVIDENCE.reset(token)
 
 
 def implementation_role(kind: str, *, lifecycle: bool = False) -> str:
     """The role a study kind's implementation is recorded under in the identity successors.
 
     A lifecycle Alpha study has a role of its own: its Program bound the implementation
-    until the Program-binding change, so a lifecycle study sealed before that change is
-    historical while every other Alpha study stays current across the same move.
+    until the binding plan's P, so a lifecycle study sealed before P is historical while
+    every other Alpha study stays current across the same move.
     """
     return f"research_experiment.{kind}{'.lifecycle' if lifecycle else ''}.implementation"
 
@@ -423,16 +479,16 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
     This composition file is not in it. What it composes -- the workflow, the
     executor and the inputs -- is re-derived at run time and must equal the sealed
     Program, execution preview and input authority (``_current``), so a change here
-    that moved a number would be refused through them.
+    that moved a number would be refused through them (binding plan, B5).
     """
     if kind == RISK_EXPERIMENT_KIND:
         root = resolve_playpen_root(Path(__file__))
-        rule = str(
+        return str(
             canonical_hash(
                 {
                     "risk_development": risk_development_source_closure_hash(root),
                     # The numerical code the run executes, which its Program no longer
-                    # seals, and which its authority no longer names.
+                    # seals, and which its authority no longer names (binding plan, P).
                     "risk_numerics": risk_numerical_source_closure_hash(root),
                     "host": source_rule_closure_hash(
                         root=root,
@@ -449,7 +505,6 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
                 }
             )
         )
-        return switched_identity(f"research_experiment.{kind}.implementation", rule, root=root)
     if kind == PORTFOLIO_EXPERIMENT_KIND:
         return portfolio_implementation_hash()
     closure = source_rule_closure_hash(
@@ -505,7 +560,7 @@ def _implementation_hash(kind: str = FACTOR_EXPERIMENT_KIND) -> str:
     )
     if kind == ALPHA_EXPERIMENT_KIND:
         # A lifecycle Program binds its method only; the code that runs it is bound here,
-        # with the rest of the kind's implementation.
+        # with the rest of the kind's implementation (binding plan, P).
         return str(canonical_hash({"alpha": closure, "lifecycle": lifecycle_implementation_hash()}))
     return closure
 
@@ -523,7 +578,7 @@ def refuse_authored_identity(section: Mapping[str, object]) -> None:
     The Host computes ``envelope_hash``: carried in a document, it would shape the managed
     output path before the envelope recomputes it, and so move the Program and the Plan for
     no change of selection. ``schema_id`` must name the installed envelope schema, since any
-    other well-formed string would move them the same way.
+    other well-formed string would move them the same way (V128).
 
     Args:
         section: The authored document's ``experiment`` section.
@@ -544,11 +599,12 @@ class ResearchExperimentApplication:
     replans = (
         TaskReplan(task_kind=TASK_KIND, preview="EXPERIMENT_PLAN", admitting="EXPERIMENT_RUN"),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers
+    (V188)."""
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes."""
+        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
         return self._manifests.current
 
     def __init__(
@@ -581,7 +637,7 @@ class ResearchExperimentApplication:
         )
         self._curation_lock = Lock()
         # A Foundation's preview is kept by its admission hash until it expires, sealed on
-        # disk, so its seal finds it beside a later preview and after a Host restart.
+        # disk, so its seal finds it beside a later preview and after a Host restart (V543).
         self._foundation_previews: PreviewRegistry[ResearchFoundationAdmission] = PreviewRegistry(
             model=ResearchFoundationAdmission,
             clock=clock,
@@ -600,8 +656,7 @@ class ResearchExperimentApplication:
         self._ledger: dict[tuple[UUID, bool], _VerifiedStudy] = {}
         self._ledger_lock = Lock()
         # Each study role's installed implementation, asked once: the code this Host serves.
-        self._installed: dict[tuple[str, bool], str] = {}
-        self._installed_lock = Lock()
+        self._installed: dict[str, str] = {}
 
     def _foundation_candidate(
         self,
@@ -706,7 +761,7 @@ class ResearchExperimentApplication:
         return admission
 
     def _foundation_listed(self, admission_hash: str) -> dict[str, object]:
-        """One sealed admission with its standing. Verified under the installed curation
+        """One sealed admission with its standing (V279). Verified under the installed curation
         policy it is `CURRENT`, and new work may start on it; otherwise it reads by its recorded
         graph, `HISTORICAL` with the code that refuses a draft or a plan on it."""
 
@@ -779,7 +834,7 @@ class ResearchExperimentApplication:
 
     def _development_routes(self, input_binding_hash: str) -> dict[str, object]:
         """With no prepared component source, an Alpha study begins at a sealed Foundation of the
-        input: each current one's draft, or the list that says how one is sealed."""
+        input (V303): each current one's draft, or the list that says how one is sealed."""
 
         root = (
             self.session.workspace / "artifacts/factor-research/research-desk/foundation-admissions"
@@ -811,7 +866,7 @@ class ResearchExperimentApplication:
 
     def _foundation_replan(self, admission_hash: str) -> dict[str, object]:
         """A seal whose preview is past its hour or was never kept here: preview it again, the
-        request bound to the kept preview's study, decision and input where one verifies."""
+        request bound to the kept preview's study, decision and input where one verifies (V543)."""
         kept = self._foundation_previews.get(admission_hash)
         return {
             "status": "REFUSED",
@@ -1078,7 +1133,7 @@ class ResearchExperimentApplication:
             raise AuthoringError("research_experiment.prepared_features_begin_with_factor")
         if kind not in FLOW_OF_KIND:
             raise AuthoringError("research_experiment.standalone_kind_not_installed")
-        # What the flow needs on this input, what the workspace holds of it, what next.
+        # What the flow needs on this input, what the workspace holds of it, what next (V367).
         needed = {"prerequisites": self._prerequisites(FLOW_OF_KIND[kind], binding)}
         if kind == ALPHA_EXPERIMENT_KIND:
             answer = lifecycle_controls(
@@ -1091,13 +1146,15 @@ class ResearchExperimentApplication:
                 return {**answer, **self._development_routes(binding.binding_hash), **needed}
             if answer["status"] == "DRAFT_READY":
                 # A lifecycle study plans from its prepared component source: the development
-                # path's curated-Factor prerequisite would contradict its ready draft.
+                # path's curated-Factor prerequisite would contradict its ready draft (FLOW-3).
                 return answer
             return {**answer, **needed}
         if kind == RISK_EXPERIMENT_KIND:
             return {**risk_controls(self.session, binding), **needed}
         bundle = read_factor_bundle(self.session.workspace, binding.binding_hash)
-        root = factor_input_paths(self.session.workspace, binding.binding_hash)[1]
+        root = confined(
+            self.session.workspace, f"research-inputs/{binding.binding_hash}/source/artifacts"
+        )
         panel = ArtifactResolver(root).load_feature_panel_manifest(
             ArtifactResolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)
         )
@@ -1196,7 +1253,7 @@ class ResearchExperimentApplication:
     def _prerequisites(
         self, flow: Flow, binding: ResearchWorkspaceExperimentInput
     ) -> dict[str, Any]:
-        """A flow's prerequisites on one input, from one read of the Tasks."""
+        """A flow's prerequisites on one input, from one read of the Tasks (V367)."""
         succeeded = [
             task
             for task in self.session.task_control_registry.tasks()
@@ -1213,7 +1270,7 @@ class ResearchExperimentApplication:
         )
 
     def intents(self) -> list[dict[str, object]]:
-        """Each research input's standard flows, what each needs, holds and asks next.
+        """Each research input's standard flows, what each needs, holds and asks next (V376).
 
         An agent's first read (`workspace show`) is its path: on each input, every flow's
         prerequisite results, the completed studies the workspace holds, what is missing and the
@@ -1298,7 +1355,7 @@ class ResearchExperimentApplication:
         return {"prerequisites": self._prerequisites(flow, binding)}
 
     def refusal_prerequisites(self, code: str, request: Any) -> dict[str, object]:
-        """A refusal meaning a prerequisite result is missing names the flow's."""
+        """A refusal meaning a prerequisite result is missing names the flow's (V367)."""
         flow = FLOW_OF_REFUSAL.get(code)
         if flow is None:
             return {}
@@ -1450,7 +1507,7 @@ class ResearchExperimentApplication:
             fields = alpha_question_fields(preparation.development_program)
             if fields != question_fields:
                 # A study of the goal the family leaves out, and the fields that split it off
-                #: the family is one question's, and this study asked another.
+                # (V293): the family is one question's, and this study asked another.
                 excluded.append(
                     {
                         "task_id": str(task.task_id),
@@ -1566,7 +1623,7 @@ class ResearchExperimentApplication:
             raise AuthoringError("portfolio_research.alpha_parent_required")
         if parent.alpha_source is None:
             # A model lifecycle replay holds models, not candidates: a book is drafted from a
-            # development study's candidate, which the refusal's prerequisites name.
+            # development study's candidate, which the refusal's prerequisites name (V486).
             raise AuthoringError("portfolio_research.alpha_development_required")
         body = self.readback(alpha_task_id)
         if body["status"] != "EXPERIMENT_PUBLISHED":
@@ -1688,7 +1745,7 @@ class ResearchExperimentApplication:
         """
         if (document is None) == (yaml_text is None):
             raise AuthoringError("research_experiment.one_document_required")
-        # One check for both entries, the YAML text and the object.
+        # One check for both entries, the YAML text and the object (V134).
         selected = (
             load_authoring_document(yaml_text)
             if yaml_text is not None
@@ -1830,8 +1887,10 @@ class ResearchExperimentApplication:
             program=sealed.program,
             authority=authority,
             execution_preview=preview,
-            implementation_hash=self.installed_implementation(
-                sealed.program.kind, qualification=qualification_family is not None
+            implementation_hash=(
+                _implementation_hash(sealed.program.kind)
+                if qualification_family is None
+                else _qualification_implementation_hash()
             ),
             origin_task_id=origin_task_id,
             alpha_source=alpha_source,
@@ -1860,7 +1919,7 @@ class ResearchExperimentApplication:
             "document": normalized,
             "numerical_call_count": 0,
             "execution_preview": preview,
-            # The goal's studies the qualification's family leaves out, and why.
+            # The goal's studies the qualification's family leaves out, and why (V293).
             **({"family_excluded_studies": list(excluded)} if excluded else {}),
             "task_id": None,
             "timing": self._timing(plan),
@@ -2193,7 +2252,7 @@ class ResearchExperimentApplication:
                     "again under the current binding."
                 ),
                 # The same request an ordinary re-PLAN offers, the upstream selection kept
-                # .
+                # (V140).
                 "next_requests": {"plan": self._replan_request(plan)},
             }
         finally:
@@ -2331,8 +2390,8 @@ class ResearchExperimentApplication:
                 ),
             )
             sealed = workflow.prepare(normalized, actor_kind=ActorKind.HUMAN, actor_id="preview")
-            # A replay reads sealed evidence, so the estimators' recorded moves carry its Program;
-            # a run stays exact, since its executor seals what it computes.
+            # A replay reads sealed evidence, so the estimators' recorded moves carry its Program
+            # (V314); a run stays exact, since its executor seals what it computes.
             if preview != plan.execution_preview or not (
                 sealed.program == plan.program
                 or (
@@ -2412,7 +2471,7 @@ class ResearchExperimentApplication:
         return workflow
 
     def book_source(self, task_id: UUID) -> dict[str, str | None] | None:
-        """The Alpha study and candidate a Portfolio study's plan names.
+        """The Alpha study and candidate a Portfolio study's plan names (V511).
 
         The way on from its stopped Task is bound to them: its draft request named neither.
 
@@ -2447,7 +2506,7 @@ class ResearchExperimentApplication:
         try:
             task = self.session.task_control_registry.task(task_id)
             if task.task_kind != TASK_KIND:
-                # Another owner's Task: its own kind, which the refusal names.
+                # Another owner's Task: its own kind, which the refusal names (V490).
                 return {"task_id": str(task_id), "kind": task.task_kind}
             plan = ExperimentPlan.model_validate(task.input.payload["plan"])
         except (KeyError, ValueError):
@@ -2529,13 +2588,12 @@ class ResearchExperimentApplication:
         if prior.portfolio_source is not None and binding != prior.binding:
             raise AuthoringError("portfolio_research.input_not_alpha_source")
         # An Alpha draft's handoff below verifies this bundle's files; its own read only
-        # names the Panel (the bundle is digested once per draft).
+        # names the Panel (binding plan, L2: the bundle is digested once per draft).
         bundle = read_factor_bundle(
             self.session.workspace, binding.binding_hash, verify=prior.alpha_source is None
         )
         document = json.loads(json.dumps(prior.document))
-        # A document authored under an earlier Host may carry the Host's own identity;
-        # a draft never does.
+        # A document authored before V128 may carry the Host's own identity; a draft never does.
         document["experiment"].pop("envelope_hash", None)
         document["experiment"].update(
             data_snapshot_handle=bundle.panel_snapshot_hash,
@@ -2620,7 +2678,7 @@ class ResearchExperimentApplication:
         """Run an explored declaration on its exact input's whole universe.
 
         Run an explored study's declaration on its input's whole universe: the one step
-        from the exploration lane to the promotion lane.
+        from the exploration lane to the promotion lane (binding plan, B17).
 
         An Alpha study is planned again with its universe widened and run, in this one
         request; a Portfolio study builds on its Alpha study's promotion, which this
@@ -2675,7 +2733,7 @@ class ResearchExperimentApplication:
                 return {
                     "status": "UPSTREAM_PROMOTION_ADMITTED",
                     "task_id": str(promoted_alpha),
-                    # The admitted or joined upstream Task a wait follows.
+                    # The admitted or joined upstream Task a wait follows (V137).
                     "follow_task_id": str(promoted_alpha),
                     "alpha_promotion": alpha,
                     "detail": (
@@ -2685,7 +2743,7 @@ class ResearchExperimentApplication:
                     ),
                     "next_requests": {
                         # The upstream Task a saved answer's wait follows
-                        # as `--wait` does.
+                        # as `--wait` does (V137, V446).
                         "task": {"operation": "STATUS", "task_id": str(promoted_alpha)},
                         "alpha": {
                             "operation": "EXPERIMENT_READBACK",
@@ -2785,13 +2843,7 @@ class ResearchExperimentApplication:
         )
 
     def run(
-        self,
-        plan_hash: str,
-        *,
-        caller: str,
-        agent_execution: AgentExecutionBinding | None,
-        hypothesis_id: str | None = None,
-        expected_goal: str | None = None,
+        self, plan_hash: str, *, caller: str, agent_execution: AgentExecutionBinding | None
     ) -> dict[str, object]:
         """Admit the caller and reuse or submit only the exact previewed experiment.
 
@@ -2807,8 +2859,6 @@ class ResearchExperimentApplication:
             AuthoringError: Neither an exact preview nor its admitted task exists, or caller
                 authority is absent.
         """
-        if hypothesis_id is not None:
-            history.hypothesis_goal(hypothesis_id, expected_goal=expected_goal)
         entry = self._previews.get(plan_hash)
         # No preview here: after a restart or eviction the only lawful answers
         # are the Task this exact plan already admitted, or a fresh explicit
@@ -2824,8 +2874,6 @@ class ResearchExperimentApplication:
         actor = self._admit_actor(plan, caller=caller, agent_execution=agent_execution)
         if entry is None:
             assert admitted is not None
-            if admitted.input.payload.get("hypothesis_id") != hypothesis_id:
-                raise AuthoringError("experience.hypothesis_existing_run")
             return self._existing_task_answer(admitted)
         if self._previews.expired(entry):
             return self._replan_refusal("research_experiment.preview_expired", entry)
@@ -2835,10 +2883,8 @@ class ResearchExperimentApplication:
             return self._replan_refusal(str(error), entry)
         task = self._matching_task(plan)
         if task is not None:
-            if task.input.payload.get("hypothesis_id") != hypothesis_id:
-                raise AuthoringError("experience.hypothesis_existing_run")
             return self._existing_task_answer(task)
-        sent = self.dispatcher.submit(ResearchExperimentCommand(self, plan, actor, hypothesis_id))
+        sent = self.dispatcher.submit(ResearchExperimentCommand(self, plan, actor))
         return {
             "status": sent.disposition,
             "task_id": str(sent.task_id) if sent.task_id else None,
@@ -2913,9 +2959,7 @@ class ResearchExperimentApplication:
             )
         return answer
 
-    def admit(
-        self, plan: ExperimentPlan, actor: ActorSubmissionBinding, hypothesis_id: str | None = None
-    ) -> CommandAdmission:
+    def admit(self, plan: ExperimentPlan, actor: ActorSubmissionBinding) -> CommandAdmission:
         """Admit the plan `run` verified in this same request; never a second verification.
 
         The dispatcher calls this synchronously from `run`'s submission, on the
@@ -2924,7 +2968,7 @@ class ResearchExperimentApplication:
         the only route here with a plan. The execution verifies again before
         any numerical work (`compatibility`, then the first stage).
         """
-        envelope, goal, workflow = _task_contract(plan, actor, hypothesis_id)
+        envelope, goal, workflow = _task_contract(plan, actor)
         registry = self.session.task_control_registry
         for task in registry.tasks():
             if (
@@ -2932,8 +2976,6 @@ class ResearchExperimentApplication:
                 and task.lifecycle is not TaskLifecycle.CANCELLED
                 and self._same_execution(self._of(task)[0], plan)
             ):
-                if task.input.payload.get("hypothesis_id") != hypothesis_id:
-                    raise AuthoringError("experience.hypothesis_existing_run")
                 return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         task = registry.admit(
             input_envelope=envelope, goal=goal, plan=workflow, observed_at=self.clock()
@@ -2958,13 +3000,12 @@ class ResearchExperimentApplication:
 
         scope = _VERIFIED_EVIDENCE.get()
         key = (task.task_id, task.record_hash, recorded_readback)
-        held = scope.get(key) if scope is not None else None
-        if held is not None:
+        if scope is not None and key in scope:
             return cast(
                 tuple[
                     ResearchExecutionEvidence, ResearchProgramWorkflow, ResearchExecutionEvidence
                 ],
-                held,
+                scope[key],
             )
         plan, actor = plan_actor if plan_actor is not None else self._of(task)
         stored: list[ResearchExecutionEvidence] = []
@@ -2989,17 +3030,30 @@ class ResearchExperimentApplication:
             scope[key] = (evidence, workflow, stored[0])
         return evidence, workflow, stored[0]
 
-    def installed_implementation(self, kind: str, *, qualification: bool = False) -> str:
-        """The implementation this Host loaded, shared by planning and study readback."""
-        key = kind, qualification
-        with self._installed_lock:
-            if key not in self._installed:
-                self._installed[key] = (
-                    _qualification_implementation_hash()
-                    if qualification
-                    else _implementation_hash(kind)
-                )
-            return self._installed[key]
+    def _study_fingerprint(self, plan: ExperimentPlan) -> tuple[str, int]:
+        """Every file a study's verification reads, by path, size, modification time and file
+        identity (decision 5: a copy, a restore or a sync changes one of them), and how many."""
+
+        roots = (
+            confined(self.session.workspace, plan.document["experiment"]["output_workspace"]),
+            factor_input_paths(self.session.workspace, plan.binding.binding_hash)[0].parent,
+        )
+        rows = []
+        for root in roots:
+            for directory, _dirs, names in os.walk(root):
+                for name in names:
+                    stat = os.stat(os.path.join(directory, name))
+                    rows.append(
+                        f"{directory}/{name}\t{stat.st_size}\t{stat.st_mtime_ns}\t{stat.st_ino}"
+                    )
+        digest = hashlib.sha256("\n".join(sorted(rows)).encode("utf-8")).hexdigest()
+        return digest, len(rows)
+
+    def _installed_implementation(self, plan: ExperimentPlan) -> str:
+        role = plan_implementation_role(plan)
+        if role not in self._installed:
+            self._installed[role] = plan_implementation_hash(plan)
+        return self._installed[role]
 
     def _ledger_path(self, key: tuple[UUID, bool]) -> Path:
         mode = "recorded" if key[1] else "current"
@@ -3010,14 +3064,11 @@ class ResearchExperimentApplication:
             / f"{key[0]}-{mode}.json"
         )
 
-    def _refused_path(self, task_id: UUID) -> Path:
-        return self._ledger_path((task_id, False)).with_name(f"{task_id}-refused.json")
-
     def _kept_on_disk(self, key: tuple[UUID, bool]) -> _VerifiedStudy | None:
-        """A study's verification kept on disk; a damaged entry costs a full check."""
+        """An Alpha study's verification kept on disk; a damaged entry costs a full check."""
         try:
             entry = json.loads(self._ledger_path(key).read_text(encoding="utf-8"))
-            if entry["schema_version"] != _LEDGER_SCHEMA or entry["task_id"] != str(key[0]):
+            if entry["schema_version"] != 1 or entry["task_id"] != str(key[0]):
                 return None
             return _VerifiedStudy(
                 evidence=ResearchExecutionEvidence.model_validate(entry["evidence"]),
@@ -3025,21 +3076,25 @@ class ResearchExperimentApplication:
                 currency=dict(entry["currency"]),
                 view=dict(entry["view"]),
                 record_hash=str(entry["record_hash"]),
+                fingerprint=str(entry["fingerprint"]),
                 verified_at=datetime.fromisoformat(entry["verified_at"]),
+                files=int(entry["files"]),
                 implementation=str(entry["implementation"]),
             )
         except (OSError, ValueError, KeyError, TypeError):
             return None
 
     def _keep_on_disk(self, key: tuple[UUID, bool], study: _VerifiedStudy) -> None:
-        """Keep a study's full verification as its read shows it."""
+        """Keep an Alpha study's full verification as its read shows it (V89)."""
         try:
             text = json.dumps(
                 {
-                    "schema_version": _LEDGER_SCHEMA,
+                    "schema_version": 1,
                     "task_id": str(key[0]),
                     "recorded_readback": key[1],
                     "record_hash": study.record_hash,
+                    "fingerprint": study.fingerprint,
+                    "files": study.files,
                     "implementation": study.implementation,
                     "verified_at": study.verified_at.isoformat(),
                     "evidence": study.evidence.model_dump(mode="json"),
@@ -3055,7 +3110,7 @@ class ResearchExperimentApplication:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Each writer stages its own file; a read another request holds open on Windows may
         # still keep the entry from being replaced, and then this read stands verified and
-        # the next one verifies again: keeping is a cache, never a reason to refuse.
+        # the next one verifies again: keeping is a cache, never a reason to refuse (V477).
         staged = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.partial")
         try:
             staged.write_text(text, encoding="utf-8")
@@ -3075,52 +3130,52 @@ class ResearchExperimentApplication:
     ) -> tuple[_VerifiedStudy, str]:
         """The study as its last full verification proved it, or verified in full now.
 
-        Answers with the basis: ``FULL``, or ``SEALED <time>`` when a read answered from the
-        full verification of the same Task record under the same installed implementation at
-        that time (EV2: its sealed files are proved at entry, at export and by the scrub). A
-        read in full proof, and a caller that takes the Alpha graph itself (``graph_sink``, a
-        comparison), always verify in full.
+        Answers with the basis: ``FULL``, or ``FILES_UNCHANGED ...`` when a ledger read
+        answered from an earlier full verification of the same Task record under the same
+        installed implementation, whose files all kept their path, size, modification time
+        and file identity: what was checked, and no more (V265). A caller that takes the
+        Alpha graph itself (``graph_sink``, a comparison) always verifies in full.
         """
 
         key = (task.task_id, recorded_readback)
-        installed = self.installed_implementation(
-            plan.program.kind, qualification=plan.qualification_family is not None
-        )
-        # A study the scrub refused is proved in full by every read until a check passes; its
-        # mark is read first, so an interrupted refusal holds
-        refused = self._refused_path(task.task_id).exists()
-        if not refused and not full_proof() and graph_sink is None:
+        fingerprint, files = self._study_fingerprint(plan)
+        installed = self._installed_implementation(plan)
+        if _REUSE_VERIFIED.get() and graph_sink is None:
             with self._ledger_lock:
                 kept = self._ledger.get(key)
-            if kept is None:
+            if kept is None and plan.alpha_source is not None:
                 kept = self._kept_on_disk(key)
             if (
                 kept is not None
                 and kept.record_hash == task.record_hash
+                and kept.fingerprint == fingerprint
                 and kept.implementation == installed
             ):
-                return kept, f"SEALED {kept.verified_at.isoformat()}"
-        with full_content_proof() if refused else nullcontext():
-            evidence, workflow, original = self._verified_evidence(
-                task, recorded_readback=recorded_readback, plan_actor=(plan, actor)
-            )
-            study = _VerifiedStudy(
-                evidence=evidence,
-                original=original,
-                currency=method_currency(workflow.verifier(plan.program.kind)),
-                view=self._verified_view(plan, evidence, workflow, output, graph_sink),
-                record_hash=task.record_hash,
-                verified_at=self.clock(),
-                implementation=installed,
-            )
-        if refused:
-            self._refused_path(task.task_id).unlink(missing_ok=True)
+                return kept, (
+                    f"FILES_UNCHANGED {kept.files} files kept their path, size, time and "
+                    f"identity since the full check at {kept.verified_at.isoformat()}"
+                )
+        evidence, workflow, original = self._verified_evidence(
+            task, recorded_readback=recorded_readback, plan_actor=(plan, actor)
+        )
+        study = _VerifiedStudy(
+            evidence=evidence,
+            original=original,
+            currency=method_currency(workflow.verifier(plan.program.kind)),
+            view=self._verified_view(plan, evidence, workflow, output, graph_sink),
+            record_hash=task.record_hash,
+            fingerprint=fingerprint,
+            verified_at=self.clock(),
+            files=files,
+            implementation=installed,
+        )
         with self._ledger_lock:
             self._ledger.pop(key, None)
             self._ledger[key] = study
             while len(self._ledger) > _LEDGER_ENTRIES:
                 self._ledger.pop(next(iter(self._ledger)))
-        self._keep_on_disk(key, study)
+        if plan.alpha_source is not None:
+            self._keep_on_disk(key, study)
         return study, "FULL"
 
     def _verified_view(
@@ -3192,7 +3247,7 @@ class ResearchExperimentApplication:
 
         Saved studies that wait on a person (N5): Factor studies nobody has curated and
         explored studies nobody has promoted. Read from the plans and the curation folders
-        alone, among the request's one reading of the Tasks: nothing is verified.
+        alone, among the request's one reading of the Tasks (V119): nothing is verified.
         """
         succeeded: list[tuple[TaskRecord, ExperimentPlan]] = []
         promoted: set[str] = set()
@@ -3222,7 +3277,7 @@ class ResearchExperimentApplication:
         return {"curation": curation, "promotion": promotion, "admitted": admitted}
 
     def waiting_previews(self, admitted: Iterable[str]) -> list[dict[str, object]]:
-        """Each PLAN previewed and not run while it is still runnable.
+        """Each PLAN previewed and not run while it is still runnable (V45).
 
         Args:
             admitted: The plans the one read of the Tasks found admitted (`awaiting`).
@@ -3376,7 +3431,7 @@ class ResearchExperimentApplication:
 
         Returns:
             Task state or verified study publication and report projection, with the study's
-            `standing`.
+            `standing` (V368).
         """
         body = self._readback(
             task_id,
@@ -3384,7 +3439,7 @@ class ResearchExperimentApplication:
             current_policy=current_policy,
             include_alpha_projection=include_alpha_projection,
         )
-        # What the study can claim, one standing from its marks.
+        # What the study can claim, one standing from its marks (V368).
         return {**body, "standing": study_standing(body).model_dump(mode="json")}
 
     def _verified_alpha_side(
@@ -3608,7 +3663,7 @@ class ResearchExperimentApplication:
                 "data_quality": data_quality,
                 "execution_preview": plan.execution_preview,
                 "position": position,
-                # Each metric's unit by its path, which a scoped read names.
+                # Each metric's unit by its path, which a scoped read names (V343).
                 "metric_units": {f"position.{k}": unit for k, unit in POSITION_UNITS.items()},
                 "preceding_position": rows[selected_index - 1] if selected_index else None,
                 "review_selector": review_selector,
@@ -3675,7 +3730,7 @@ class ResearchExperimentApplication:
                 **shared,
                 "next_requests": {
                     **next_requests,
-                    # The candidate is the reader's choice, named as one.
+                    # The candidate is the reader's choice, named as one (V136).
                     "portfolio-draft": {
                         "operation": "EXPERIMENT_PORTFOLIO_DRAFT",
                         "task_id": str(task_id),
@@ -3697,7 +3752,7 @@ class ResearchExperimentApplication:
         return {
             **shared,
             # The declaration's selection before the context it was screened in, which is
-            # its multiple-testing denominator, not the choice (SC3).
+            # its multiple-testing denominator, not the choice (V252, SC3).
             "declared_selection": {
                 "selected_factor_ids": list(receipt.selected_factor_ids),
                 "screened_factor_count": len(child.program.factor_ids),
@@ -3787,22 +3842,8 @@ class ResearchExperimentApplication:
         except (AlphaDevelopmentCancelled, PortfolioExperimentCancelled, RiskDevelopmentCancelled):
             return StageExecutionResult(StageDisposition.CANCELLED)
         except ValueError as error:
-            code = failure_code_from(error)
-            origin = error.__cause__
-            cause = None
-            if (
-                isinstance(origin, DataError)
-                and origin.failure.code == code == "data_layer.lineage_unregistered"
-            ):
-                cause = StageFailureCause.from_facts(
-                    {
-                        "exception_type": type(origin).__name__,
-                        "detail": origin.failure.message,
-                        "step": work_item.stage_id,
-                    }
-                )
             return StageExecutionResult(
-                StageDisposition.BLOCKED, failure_code=code, failure_cause=cause
+                StageDisposition.BLOCKED, failure_code=failure_code_from(error)
             )
 
     def _execute_stage(
@@ -3819,8 +3860,6 @@ class ResearchExperimentApplication:
                 authority=plan.authority,
                 program=plan.program,
                 binding=actor,
-                hypothesis_id=task.input.payload.get("hypothesis_id"),
-                task_id=str(task.task_id),
             )
             if plan.program.kind == ALPHA_EXPERIMENT_KIND:
                 with self._fit_threads(plan.program.program_hash):
@@ -3842,7 +3881,7 @@ class ResearchExperimentApplication:
         The fits run one at a time, so the run takes the budget's cores; LightGBM proves
         its sealed canary at that count first and refuses by name when it differs. What
         the fits used is appended to the workspace's execution log, beside the result and
-        never in it, with the thread counts of the numerical libraries the
+        never in it (binding plan, B3), with the thread counts of the numerical libraries the
         fits and the fold metrics run at, which can move a metric's last bits (PA3, V68).
         """
 
@@ -3958,33 +3997,27 @@ class ResearchExperimentApplication:
         return evidence
 
     def verify_saved_study(self, task: TaskRecord) -> None:
-        """Verify a saved study's sealed evidence in full, in the worker (the scrub, V89).
+        """Verify a saved study's sealed evidence in full, in the worker (the sweep, V89).
 
-        What reads keep of the study stands, its check's time moved to now, and a refusal the
-        scrub left on it clears. A study that does not verify raises, and the scrub refuses it
-        (``refuse_verification``).
+        What reads keep of the study stands where its files are still the ones just verified:
+        the kept check's time moves to now. A study that does not verify raises.
         """
+        plan, _actor = self._of(task)
+        fingerprint, _files = self._study_fingerprint(plan)
         self._verify_in_worker(task)
-        self._refused_path(task.task_id).unlink(missing_ok=True)
         now = self.clock()
         for key in ((task.task_id, True), (task.task_id, False)):
             with self._ledger_lock:
                 kept = self._ledger.get(key)
-                if kept is not None:
+                if kept is not None and kept.fingerprint == fingerprint:
                     self._ledger[key] = replace(kept, verified_at=now)
-            on_disk = self._kept_on_disk(key)
-            if on_disk is not None:
-                self._keep_on_disk(key, replace(on_disk, verified_at=now))
+            if plan.alpha_source is not None:
+                on_disk = self._kept_on_disk(key)
+                if on_disk is not None and on_disk.fingerprint == fingerprint:
+                    self._keep_on_disk(key, replace(on_disk, verified_at=now))
 
-    def refuse_verification(self, task_id: UUID, failure_code: str) -> None:
-        """Mark a study the scrub found changed and drop what reads keep of it.
-
-        Every read then proves it in full and refuses by name until a full check passes again
-        (EV2).
-        """
-        path = self._refused_path(task_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"failure_code": failure_code}), encoding="utf-8")
+    def forget_verification(self, task_id: UUID) -> None:
+        """Drop what reads keep of a study, so its next read verifies it in full."""
         for key in ((task_id, True), (task_id, False)):
             with self._ledger_lock:
                 self._ledger.pop(key, None)
@@ -4081,7 +4114,7 @@ class ResearchExperimentApplication:
             )
             return {
                 **portfolio_draft(prepared_portfolio, self._risk_studies(binding.binding_hash)),
-                # What the catalog holds and a study may not declare yet, and why.
+                # What the catalog holds and a study may not declare yet, and why (V313).
                 "not_available": list(NOT_AVAILABLE),
                 "research_input_id": binding.input_id,
                 "origin_task_id": str(request.task_id),
@@ -4129,7 +4162,9 @@ class ResearchExperimentApplication:
             return self.preview_readback(request.experiment_plan_hash)
         if op == "EXPERIMENT_RUN":
             assert request.experiment_plan_hash is not None
-            return run_with_hypothesis(self, request, caller, agent_execution)
+            return self.run(
+                request.experiment_plan_hash, caller=caller, agent_execution=agent_execution
+            )
         if op == "EXPERIMENTS":
             return self.listing()
         assert request.task_id is not None
@@ -4190,7 +4225,7 @@ class ResearchExperimentApplication:
                     "decision": result.decision.model_dump(mode="json"),
                     "next_requests": {
                         # The Alpha handoff on this decision, filled, so the receipt travels
-                        # by --from and is never copied.
+                        # by --from and is never copied (V391).
                         "handoff": {
                             "operation": "EXPERIMENT_HANDOFF_PREVIEW",
                             "task_id": str(request.task_id),
@@ -4244,11 +4279,11 @@ class ResearchExperimentApplication:
                 ),
             )
             # The plan this handoff starts, as a Foundation draft offers its own, so
-            # `study plan --from` plans it with its Factor source kept.
+            # `study plan --from` plans it with its Factor source kept (V361).
             preview["plan_request"] = {
                 "operation": "EXPERIMENT_PLAN",
                 # The input the handoff chose, beside its binding: the plan never falls back to
-                # the Factor study's own input under another input's binding.
+                # the Factor study's own input under another input's binding (V438).
                 "research_input_id": selected_binding.input_id
                 if selected_binding is not None
                 else request.research_input_id or plan.binding.input_id,
@@ -4278,7 +4313,7 @@ class ResearchExperimentApplication:
 def draft_revision(
     prior: tuple[str, str], input_id: str | None, binding_hash: str | None
 ) -> tuple[str, str | None]:
-    """The input and revision a draft copies its study onto.
+    """The input and revision a draft copies its study onto (V498).
 
     The origin's exact revision while its input stays; another input named without a revision
     takes that input's declared anchor (none, which its revisions resolve); a revision named
@@ -4299,6 +4334,22 @@ def draft_revision(
     return chosen, prior_hash if chosen == prior_input else None
 
 
+def review_requests(selector: Mapping[str, str]) -> dict[str, dict[str, str]]:
+    """The requests that take a book to its Evidence and CRO review, bound to the book.
+
+    Every answer that names a book for its review offers them -- a study book's readback, an
+    update's positions, a recorded choice of analysis -- so the agent continues the book it
+    read, never the workspace's default (V473, V483, V487).
+    """
+    return {
+        "review": {"operation": "EVIDENCE_CRO", **selector},
+        # The book's Evidence begins at its preview (V473).
+        "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
+        # Read the current Evidence state before it offers CRO work: a generic
+        # book read cannot know whether its bounded continuation is settled (P1).
+    }
+
+
 def _preview_readback_request(plan_hash: str) -> dict[str, object]:
     return {"operation": "EXPERIMENT_PREVIEW_READBACK", "experiment_plan_hash": plan_hash}
 
@@ -4310,7 +4361,6 @@ class ResearchExperimentCommand:
     application: ResearchExperimentApplication
     plan: ExperimentPlan | None = None
     actor: ActorSubmissionBinding | None = None
-    hypothesis_id: str | None = None
     command_kind: str = TASK_KIND
 
     def admit(self) -> CommandAdmission:
@@ -4324,7 +4374,7 @@ class ResearchExperimentCommand:
         """
         if self.plan is None or self.actor is None:
             raise AuthoringError("research_experiment.preview_required")
-        return self.application.admit(self.plan, self.actor, self.hypothesis_id)
+        return self.application.admit(self.plan, self.actor)
 
     def execute(self, task_id: UUID, *, expected_task_hash: str | None = None) -> None:
         """Execute one exact admitted experiment task.
@@ -4334,6 +4384,21 @@ class ResearchExperimentCommand:
             expected_task_hash: Optional optimistic task identity.
         """
         self.application.execute(task_id, expected_task_hash=expected_task_hash)
+
+
+def _check_evidence_window(plan: ExperimentPlan, evidence: ResearchExecutionEvidence) -> None:
+    """Refuse evidence whose sessions are not the window the plan previewed."""
+    if (
+        str(evidence.formation_sessions[0]) != plan.execution_preview["statistical_start"]
+        or str(evidence.formation_sessions[-1]) != plan.execution_preview["statistical_end"]
+        or len(evidence.formation_sessions) != plan.execution_preview["statistical_session_count"]
+        or (
+            plan.program.kind == FACTOR_EXPERIMENT_KIND
+            and plan.execution_preview["latest_outcome_session"]
+            > plan.document["experiment"]["sessions"]["as_of"]["session"]
+        )
+    ):
+        raise AuthoringError("research_experiment.evidence_window_mismatch")
 
 
 def verify_task_evidence(
@@ -4348,8 +4413,6 @@ def verify_task_evidence(
     cancelled: Callable[[], bool],
 ) -> ResearchExecutionEvidence:
     """The worker's side of a Task's check: its sealed evidence read back through its verifier.
-
-    Every sealed byte is proved (full proof: a stage's check of what it wrote, and the scrub).
 
     Args:
         workspace: The research workspace.
@@ -4371,175 +4434,13 @@ def verify_task_evidence(
         executors=(),
         verifier_kinds=(kind,),
     )
-    with full_content_proof():
-        return workflow.readback_sealed(
-            document,
-            program_hash=program_hash,
-            actor_kind=actor.actor_kind,
-            actor_id=actor.actor_id,
-            agent_execution=actor.agent_execution,
-            authority=authority,
-            recorded_readback=False,
-            stored_sink=[],
-        )[0]
-
-
-def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:
-    """The Alpha study and candidate a refused Portfolio declaration named."""
-    try:
-        document = (
-            load_authoring_document(request.experiment_yaml)
-            if request.experiment_yaml is not None
-            else request.experiment_document
-        )
-    except ValueError:
-        document = None
-    section = document.get("portfolio") if isinstance(document, Mapping) else None
-    if not isinstance(section, Mapping):
-        return {}
-    bindings = {
-        "task_id": section.get("alpha_task_id"),
-        "candidate_id": section.get("candidate_id"),
-    }
-    return {
-        key: value if isinstance(value, str) and value else None for key, value in bindings.items()
-    }
-
-
-def refused_document(operation: str, error: ValidationError) -> dict[str, object]:
-    """The refusal for an invalid document in an EXPERIMENT operation.
-
-    Args:
-        operation: The refused operation.
-        error: Its validation error.
-
-    Returns:
-        In a delivery export, the product's fault: nothing changed, send once more, then report
-        it. Elsewhere, the declaration to correct and replan.
-    """
-    if operation == "EXPERIMENT_DELIVERY_EXPORT":
-        return {
-            "status": "REFUSED",
-            **located_failure(error, "research_delivery.export_failed"),
-            "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_PROBLEM",
-        }
-    return {
-        "status": "REFUSED",
-        **located_failure(error, "research_experiment.document_invalid"),
-        "next_action": "CORRECT_DECLARATION_AND_REPLAN",
-        "next_requests": {"inputs": {"operation": "RESEARCH_INPUTS"}},
-    }
-
-
-class _ExperimentHost(Protocol):
-    """The Host operations used by the experiment route."""
-
-    @property
-    def experiments(self) -> ResearchExperimentApplication: ...
-
-    @property
-    def workspace_manifest(self) -> ResearchWorkspaceManifest: ...
-
-    @property
-    def workspace_session(self) -> WorkspaceApplicationSession: ...
-
-    def verify_all(self) -> dict[str, object]: ...
-
-    def _delivery_export(
-        self, request: PortfolioResearchOperationRequest, caller: OperationCaller
-    ) -> dict[str, object]: ...
-
-
-def route(call: WorkspaceOperationCall[_ExperimentHost]) -> dict[str, object]:
-    """Run an experiment request and keep the experiment owner's refusal fields."""
-
-    operations, request, caller = call.operations, call.request, call.caller
-    agent_execution = call.agent_execution
-    if request.operation == "EXPERIMENT_DECLARATION_CONVERT":
-        return cast(
-            dict[str, object],
-            convert_authoring_document(
-                document=request.experiment_document, text=request.experiment_yaml
-            ),
-        )
-    try:
-        if request.operation == "EXPERIMENT_FOUNDATION_SUMMARY":
-            from .foundation_summary import (  # lazy: Foundation summary requests only
-                read_foundation_summary,
-            )
-
-            assert request.foundation_admission_hash is not None
-            return read_foundation_summary(
-                operations.workspace_session.workspace, request.foundation_admission_hash
-            )
-        if request.operation == "EXPERIMENT_VERIFY_ALL":
-            return operations.verify_all()
-        if request.operation == "EXPERIMENT_DELIVERY_EXPORT":
-            return operations._delivery_export(request, caller)
-        return operations.experiments.operate(
-            request, caller=caller, agent_execution=agent_execution
-        )
-    except ValidationError as error:
-        return refused_document(request.operation, error)
-    except (ValueError, KeyError, OSError, StorageRetentionError) as error:
-        code = (
-            "task_control.task_not_found"
-            if isinstance(error, TaskNotFoundError)
-            else str(getattr(error, "failure_code", None))
-            if getattr(error, "failure_code", None)
-            else public_failure(error, "research_experiment.refused")
-        )
-        if code in {
-            "research_experiment.input_not_admitted",
-            "research_experiment.input_selection_required",
-        }:
-            offers = {"inputs": {"operation": "RESEARCH_INPUTS"}}
-            if (
-                code == "research_experiment.input_not_admitted"
-                and request.operation == "EXPERIMENT_CONTROLS"
-                and request.experiment_kind == "risk.covariance-development"
-            ):
-                inputs = operations.workspace_manifest.experiment_inputs or ()
-                if len(inputs) == 1 and inputs[0].binding_hash == request.input_binding_hash:
-                    offers["valid_values"] = {"operation": "RESEARCH_STRATEGY_CONTROLS"}
-            return {
-                "status": "REFUSED",
-                "failure_code": code,
-                "fields": [["research_input_id"]],
-                "message": (
-                    "Use a research input ID from RESEARCH_INPUTS; "
-                    "the Universe handle is a different declaration field."
-                    if code == "research_experiment.input_not_admitted"
-                    and request.research_input_id is not None
-                    else "Choose one admitted research input ID from RESEARCH_INPUTS; "
-                    "prepare the workspace first if none exists."
-                ),
-                "next_action": "RESEARCH_INPUTS",
-                "next_requests": offers,
-            }
-        located = getattr(error, "document_location", None)
-        return {
-            **refused(
-                code,
-                origin=str(request.origin_task_id) if request.origin_task_id else None,
-                portfolio=_portfolio_source(request),
-                **operations.experiments.study_facts(
-                    request.task_id,
-                    moved=code == "research_experiment.execution_binding_changed",
-                ),
-            ),
-            # Where a declaration sent as text stopped parsing.
-            **({"document_location": located} if located else {}),
-            # What the refusing owner knows each field may hold.
-            **(
-                {"expected": error.expected}
-                if isinstance(error, AuthoringError) and error.expected
-                else {}
-            ),
-            # A missing prerequisite result names the flow's and the way on.
-            **operations.experiments.refusal_prerequisites(code, request),
-        }
-
-
-if TYPE_CHECKING:
-    from .operation_route_families import WorkspaceOperationCall
+    return workflow.readback_sealed(
+        document,
+        program_hash=program_hash,
+        actor_kind=actor.actor_kind,
+        actor_id=actor.actor_id,
+        agent_execution=actor.agent_execution,
+        authority=authority,
+        recorded_readback=False,
+        stored_sink=[],
+    )[0]

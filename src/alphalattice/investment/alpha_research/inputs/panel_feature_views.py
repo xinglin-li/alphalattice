@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
+from hashlib import sha256
 from types import MappingProxyType
 from typing import Final, Literal, Self, cast
 
@@ -24,13 +25,8 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_model_digest,
-    seal_payload_digest,
-)
-from alphalattice.capabilities.quant.sector_history import sector_ids, sector_slices
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.quant.sector_history import sector_ids, sector_slices
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -180,8 +176,8 @@ def panel_array_hash(values: npt.NDArray[np.generic]) -> str:
             {
                 "dtype": array.dtype.str,
                 "shape": list(array.shape),
-                "finite_mask": identity_sha256(finite.tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
+                "finite_mask": sha256(finite.tobytes()).hexdigest(),
+                "finite_values": sha256(
                     np.ascontiguousarray(np.where(finite, array, 0), dtype=array.dtype).tobytes()
                 ).hexdigest(),
             }
@@ -191,9 +187,10 @@ def panel_array_hash(values: npt.NDArray[np.generic]) -> str:
 
 def _seal[T: _Contract](model: type[T], values: dict[str, object], field: str) -> T:
     provisional = model.model_construct(**values, **{field: "0" * 64})
-    payload = provisional.model_dump(mode="json", exclude={field})
-    identity = seal_payload_digest(field, payload, digest=canonical_hash)
-    return model(**values, **{field: identity})
+    return model(
+        **values,
+        **{field: str(canonical_hash(provisional.model_dump(mode="json", exclude={field})))},
+    )
 
 
 class FeatureTransformDescriptor(_Contract):
@@ -240,8 +237,8 @@ class FeatureTransformDescriptor(_Contract):
         Raises:
             PanelFeatureBoundaryError: descriptor_hash differs from the complete descriptor payload.
         """
-        if self.descriptor_hash != scoped_model_digest(
-            self, "descriptor_hash", digest=canonical_hash
+        if self.descriptor_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"descriptor_hash"})
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_transform_identity_invalid")
         return self
@@ -298,7 +295,7 @@ class FeatureRoleSelection(_Contract):
                 for values in self.source_transform_ids
             )
             or self.selection_hash
-            != scoped_model_digest(self, "selection_hash", digest=canonical_hash)
+            != canonical_hash(self.model_dump(mode="json", exclude={"selection_hash"}))
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_role_selection_invalid")
         return self
@@ -353,7 +350,8 @@ class PanelFeatureViewRecipe(_Contract):
         if (
             role_ids != tuple(value for value in _ROLE_ORDER if value in set(role_ids))
             or role_ids != tuple(dict.fromkeys(role_ids))
-            or self.recipe_hash != scoped_model_digest(self, "recipe_hash", digest=canonical_hash)
+            or self.recipe_hash
+            != canonical_hash(self.model_dump(mode="json", exclude={"recipe_hash"}))
         ):
             raise PanelFeatureBoundaryError("alpha_research.feature_view_recipe_invalid")
         return self
@@ -950,7 +948,7 @@ class PanelFeatureSourceArrays:
     ordered_sector_ids: tuple[str, ...]
     sector_by_listing_id: Mapping[str, str]
     """Each listing's Sector: a map every session reads, or the Panel's Sector history, whose
-    sessions each read the map in force there."""
+    sessions each read the map in force there (V346)."""
     raw_formula_values: FloatArray
     total_return_target_z: FloatArray
     raw_log_execution_returns: FloatArray
@@ -1232,7 +1230,7 @@ def assemble_panel_context_arrays(
         if eligible.size:
             latest[position] = int(eligible[-1])
 
-    # Each run of formations reads the Sectors in force there; one run while no
+    # Each run of formations reads the Sectors in force there (V346); one run while no
     # reclassification falls inside the window.
     sector_runs: tuple[tuple[slice, dict[str, IntArray]], ...] = tuple(
         (

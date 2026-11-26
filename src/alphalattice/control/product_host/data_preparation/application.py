@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Callable
-from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -15,16 +14,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from alphalattice.capabilities.causal_inputs.availability import information_available_at
-from alphalattice.capabilities.data.universe import FROZEN_UNIVERSE_SOURCES
-from alphalattice.capabilities.domain_contracts.domain.errors import (
-    AlphaLatticeError,
-    WorkspaceConflictError,
-)
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.delegation import DataIssueDelegation
@@ -45,6 +34,7 @@ from alphalattice.control.data_platform.readiness import (
     build_workspace_readiness,
 )
 from alphalattice.control.data_platform.task_telemetry import (
+    TELEMETRY_REPLACE_DELAYS,
     TaskTelemetry,
 )
 from alphalattice.control.observation_runtime.telemetry.progress import (
@@ -115,7 +105,6 @@ from alphalattice.control.task_control.runner import (
     StageExecutionResult,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.network_access import network_access
 from alphalattice.foundation.feature_engine.inputs.gateway import FeatureInputPolicy
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
@@ -137,12 +126,16 @@ from alphalattice.foundation.market_data_ops.sources.universe import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.kernel.data.universe import FROZEN_UNIVERSE_SOURCES
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 TASK_KIND = "workspace_preparation"
 STAGES = ("freeze_sources", "prepare_data", "prepare_features", "publish_inputs", "verify_inputs")
-PUBLISHING = "publishing"
-"""Each manifest a preparation is about to publish, recorded under the mutation gate before the
-write, so a request in between finds the Host's own manifest owned (the stage record follows)."""
 
 
 ListingUnitState = Literal[
@@ -157,7 +150,7 @@ ListingUnitState = Literal[
 
 
 def research_next(manifest: ResearchWorkspaceManifest) -> tuple[str, dict[str, dict[str, str]]]:
-    """A prepared workspace's next research step, as its first use takes it.
+    """A prepared workspace's next research step, as its first use takes it (FLOW-3).
 
     With no research strategy installed, `strategy controls` names the strategy's required
     Alpha and Risk studies, the shortest way to a book that runs forward; once one is
@@ -263,12 +256,13 @@ _LISTING_BINDING_KEYS = frozenset({"content_hash", "task_id", "input_hash"})
 
 class _ListingActivityDelivery:
     """Optional, bounded and coalesced: the recent listing-unit transitions of one stage
-    execution and their counts, recorded as one Task-bound span per delivery on the held log.
+    execution and their counts, written beside the Task's stage records as one atomically
+    replaced snapshot.
 
     Bounds: at most `RETAIN` rows are kept; one delivery attempt per `COALESCE_UNITS`
     observations or `COALESCE_SECONDS` of the product clock -- whether the last attempt
-    succeeded or not -- plus one at each chunk boundary (`flush`); each attempt appends one
-    observation, with no delivery retry. The
+    succeeded or not -- plus one at each chunk boundary (`flush`); each attempt waits at
+    most the telemetry replace budget (`TELEMETRY_REPLACE_DELAYS`, about 30 ms). The
     observer is synchronous in the runner's thread, so those bounds are the cost the
     runner pays: a few milliseconds per unit on average, never a wait per unit and never
     a stop, a retry or a change of the work. A failed attempt is counted with its typed
@@ -400,8 +394,8 @@ class _ListingActivityDelivery:
         data["content_hash"] = canonical_hash(data)
         self.delivery["attempts"] += 1
         try:
-            self.owner.telemetry.record_json(self.path, data)
-        except (OSError, ValueError, RuntimeError, AlphaLatticeError) as error:
+            self.owner.telemetry.replace_json(self.path, data, delays=TELEMETRY_REPLACE_DELAYS)
+        except (OSError, ValueError, RuntimeError) as error:
             self.owner.telemetry.delivery_failed(self.delivery, "LISTING_ACTIVITY", error)
             return
         self.sequence += 1
@@ -413,8 +407,8 @@ class _ListingActivityDelivery:
 
 
 IMPLEMENTATION_ROLE = "product_host.workspace_preparation"
-"""The role a move of this implementation is recorded under in `config/identity-successors/`,
-so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
+so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
 
 
 def _implementation() -> str:
@@ -515,7 +509,8 @@ class WorkspacePreparationApplication:
             admitting="WORKSPACE_PREPARE_CONFIRM",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers
+    (V188)."""
 
     def __init__(
         self,
@@ -543,7 +538,7 @@ class WorkspacePreparationApplication:
         self.data_rule = data_rule or (lambda _task_id: None)
         self.last_plan: WorkspacePreparationPlan | None = None
         # The newest plan, sealed on disk: a confirm after a restart finds it, and a newer
-        # plan removes it, one preparation running at a time.
+        # plan removes it, one preparation running at a time (V525).
         self._previews: PreviewRegistry[WorkspacePreparationPlan] = PreviewRegistry(
             model=WorkspacePreparationPlan,
             clock=clock,
@@ -994,7 +989,7 @@ class WorkspacePreparationApplication:
             else candidate_plan
         )
         # One assignment publishes the newest plan for the next plan's comparison; the
-        # answer is built from this plan and resume alone.
+        # answer is built from this plan and resume alone (V534).
         self.last_plan = plan
         captured_source = None
         recovery_work = None
@@ -1208,7 +1203,7 @@ class WorkspacePreparationApplication:
         if caller == "EXTERNAL_AUTOMATION" and grant_hash is None:
             # The plan's own Task keeps the grant a person admitted it under: its resume needs no
             # second copy, and the validator still checks that grant's term and scope. A new
-            # admission has no such Task and names its grant.
+            # admission has no such Task and names its grant (V484).
             grant_hash = next(
                 (
                     str(task.input.payload["data_issue_grant_hash"])
@@ -1454,8 +1449,8 @@ class WorkspacePreparationApplication:
 
     def _planned(self, plan_hash: str) -> WorkspacePreparationPlan | None:
         """The plan an answer named while it is runnable, kept by the store whether or not the
-        Host restarted since; a newer plan supersedes it. Never this Host's memory alone,
-        which ran a plan past its hour that a restarted Host refused."""
+        Host restarted since (V525); a newer plan supersedes it. Never this Host's memory alone,
+        which ran a plan past its hour that a restarted Host refused (V536)."""
         return self._previews.runnable(plan_hash)
 
     def _path(self, task_id: UUID, name: str) -> Path:
@@ -1579,11 +1574,15 @@ class WorkspacePreparationApplication:
 
         path = self._path(task.task_id, "listing-activity")
         try:
-            data = self.telemetry.read_json(path, task.task_id)
+            present = path.exists()
+        except OSError as error:
+            return unreadable(type(error).__name__)
+        if not present:
+            return {"availability": "NONE", **report} if report else None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             return unreadable(type(error).__name__)
-        if data is None:
-            return {"availability": "NONE", **report} if report else None
         if not isinstance(data, dict) or data.get("content_hash") != canonical_hash(
             {k: v for k, v in data.items() if k != "content_hash"}
         ):
@@ -1658,39 +1657,13 @@ class WorkspacePreparationApplication:
             manifest_hash: Exact manifest identity.
 
         Returns:
-            Whether a retained preparation stage published, or is publishing, this manifest.
+            Whether a retained preparation stage published this manifest.
         """
         return any(
-            manifest_hash in (claimed or {}).get("manifest_hashes", ())
-            or (record is not None and record["manifest_hash"] == manifest_hash)
+            record is not None and record["manifest_hash"] == manifest_hash
             for task in self.tasks()
-            for claimed, record in (
-                (
-                    self._load(task.task_id, PUBLISHING, optional=True),
-                    self._load(task.task_id, STAGES[3], optional=True),
-                ),
-            )
+            for record in (self._load(task.task_id, STAGES[3], optional=True),)
         )
-
-    def _publish(self, task: TaskRecord, **bindings: Any) -> ResearchWorkspaceManifest:
-        """Bind `bindings` onto the manifest as it stands under the gate (an installation since
-        stays), claiming the result as this preparation's before it is written."""
-
-        def bind(current: ResearchWorkspaceManifest) -> ResearchWorkspaceManifest:
-            updated = current.with_bindings(**bindings)
-            self._claim(task, updated)
-            return updated
-
-        gate = self.session.mutation_gate
-        return update_research_workspace_manifest(self.session.workspace, bind, gate=gate)[1]
-
-    def _claim(self, task: TaskRecord, manifest: ResearchWorkspaceManifest) -> None:
-        """Record that this preparation publishes `manifest`, before the manifest is written."""
-        claimed = self._load(task.task_id, PUBLISHING, optional=True)
-        hashes = [] if claimed is None else claimed["manifest_hashes"]
-        if manifest.manifest_hash not in hashes:
-            hashes = [*hashes, manifest.manifest_hash]
-            self._save(task, PUBLISHING, {"manifest_hashes": hashes}, progress=True)
 
     def execute_stage(
         self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
@@ -1710,15 +1683,7 @@ class WorkspacePreparationApplication:
             stage = work_item.stage_id
             existing = self._load(task.task_id, stage, optional=True)
             if existing is None:
-                # A stage that writes market data is one market data update: its reads take the
-                # workspace's own tables, its buffer, and the Host publishes what it wrote once,
-                # at the stage's end, not after each listing's writes
-                market = MarketDataRepository(self.session.workspace)
-                update = market.writing() if stage in STAGES[1:3] else nullcontext()
-                # The stage opens the market database call by call: one instance serves them, and
-                # its publish too, which ends inside the hold.
-                with WorkspaceDatabase(self.session.workspace).hold(), update:
-                    result = self._perform(task, plan, stage, execution)
+                result = self._perform(task, plan, stage, execution)
                 if isinstance(result, StageExecutionResult):
                     return result
                 existing = self._save(task, stage, result)
@@ -1864,8 +1829,7 @@ class WorkspacePreparationApplication:
                 self._save(task, "progress", self._progress_values(stage, retained), progress=True)
             minimum_target_listings = FeatureInputPolicy().minimum_sector_size
             deferred: StageExecutionResult | None = None
-            outcome = None
-            while outcome is None or outcome.status is CurrentUniverseOnboardingStatus.RUNNING:
+            while True:
                 if cancelled():
                     return StageExecutionResult(StageDisposition.CANCELLED)
                 self._capacity(task)
@@ -1892,6 +1856,8 @@ class WorkspacePreparationApplication:
                 self._save(task, "progress", self._progress_values(stage, outcome), progress=True)
                 if deferred is not None:
                     return deferred
+                if outcome.status is not CurrentUniverseOnboardingStatus.RUNNING:
+                    break
             if outcome.status is not CurrentUniverseOnboardingStatus.COMPLETED:
                 return StageExecutionResult(
                     StageDisposition.DEFERRED
@@ -1915,9 +1881,13 @@ class WorkspacePreparationApplication:
                 panel_snapshot_hash=feature["snapshot_hash"],
                 completed_at=self.clock(),
                 bind_configuration=True,
-                claim=lambda manifest: self._claim(task, manifest),
             )
-            updated = self._publish(task, data_update=plan.binding)
+            # Onto the manifest as it stands: an installation since does not go (V194).
+            _, updated = update_research_workspace_manifest(
+                root,
+                lambda current: current.with_bindings(data_update=plan.binding),
+                gate=self.session.mutation_gate,
+            )
             return {"binding_hash": binding.binding_hash, "manifest_hash": updated.manifest_hash}
         if stage == STAGES[4]:
             inputs = self._load(task.task_id, STAGES[3])
@@ -1932,7 +1902,6 @@ class WorkspacePreparationApplication:
                 workspace=root,
                 binding_hash=bundle.binding_hash,
                 document=normalize_factor_document(factor_template(bundle), binding, bundle),
-                bundle=bundle,
             )
             return {"binding_hash": inputs["binding_hash"], "status": "RESEARCH_INPUTS_READY"}
         raise ValueError("workspace_preparation.stage_unknown")
@@ -2022,8 +1991,7 @@ class WorkspacePreparationApplication:
                     }
                 ),
             )
-            outcome = None
-            while outcome is None or outcome.status is MaintenanceStatus.RUNNING:
+            while True:
                 if cancelled():
                     return StageExecutionResult(StageDisposition.CANCELLED)
                 self._capacity(task)
@@ -2063,6 +2031,8 @@ class WorkspacePreparationApplication:
                     },
                     progress=True,
                 )
+                if outcome.status is not MaintenanceStatus.RUNNING:
+                    break
             if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
                 return StageExecutionResult(
                     StageDisposition.DEFERRED

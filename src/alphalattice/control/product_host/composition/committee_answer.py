@@ -7,7 +7,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any, Protocol
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class AnswerThread(Protocol):

@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, get_args
 
@@ -15,8 +16,6 @@ import numpy.typing as npt
 import pyarrow as pa
 import yaml  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import RebalanceClock
 from alphalattice.capabilities.portfolio_inputs.session_marks import (
@@ -100,7 +99,8 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -429,7 +429,6 @@ def prepare_portfolio_handoff(
         lambda output: prepare_portfolio_market_inputs(
             source=source,
             source_workspace=source_workspace,
-            cutoff_us=envelope.sessions.as_of.selection_cutoff_us,
             artifact_root=artifact_root,
             output=market_root,
             scores=scores,
@@ -676,7 +675,6 @@ def prepare_portfolio_market_inputs(
     *,
     source: PortfolioExperimentSource | PortfolioMarketContext,
     source_workspace: Path,
-    cutoff_us: int | None = None,
     artifact_root: Path,
     output: Path,
     scores: DevelopmentScoreMatrix,
@@ -712,7 +710,7 @@ def prepare_portfolio_market_inputs(
         PortfolioExperimentCancelled: Tradability preparation cancels at an immutable chunk
             boundary.
     """
-    market = MarketDataRepository(source_workspace, cutoff_us=cutoff_us)
+    market = MarketDataRepository(source_workspace)
     manifest = market.load_universe_manifest_revision(source.universe_revision)
     sessions, listings = source.formation_sessions, source.ordered_listing_ids
     reader = CausalExecutionOutcomeDevelopmentReader(artifact_root)
@@ -794,7 +792,7 @@ def prepare_portfolio_market_inputs(
     )
     if (
         local_qa is not None
-        and identity_sha256(np.ascontiguousarray(realized, dtype="<f8").tobytes()).hexdigest()
+        and sha256(np.ascontiguousarray(realized, dtype="<f8").tobytes()).hexdigest()
         != local_qa.binding.returns_hash
     ):
         raise AuthoringError("portfolio_research.local_qa_outcome_values_mismatch")

@@ -19,7 +19,6 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     COST_BPS_PER_SIDE_INCREMENT_TENTHS,
     COST_BPS_PER_SIDE_TENTHS_PER_BP,
@@ -34,6 +33,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class PublicControlError(ValueError):

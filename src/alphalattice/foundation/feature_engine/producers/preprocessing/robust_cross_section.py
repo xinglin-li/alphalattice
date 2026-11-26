@@ -5,11 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, cast
+from hashlib import sha256
+from typing import cast
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.cross_section import (
+from alphalattice.foundation.feature_engine.contracts import (
+    FeaturePanelBinding,
+    PanelAdmissionSummary,
+    canonical_hash,
+)
+from alphalattice.kernel.quant.cross_section import (
     MAD_SCALE,
     MIN_COVERAGE,
     MIN_SECTOR_SAMPLE,
@@ -18,15 +25,6 @@ from alphalattice.capabilities.quant.cross_section import (
     median_mad_winsor,
     robust_zscore,
 )
-from alphalattice.foundation.feature_engine.contracts import (
-    FeaturePanelBinding,
-    PanelAdmissionSummary,
-    canonical_hash,
-)
-from alphalattice.kernel.identity import identity_sha256
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 SMALL_SECTOR_WARNING_BELOW = 10
 PANEL_SESSION_BATCH_SIZE = 126
@@ -62,8 +60,8 @@ def _array_digest(values: np.ndarray) -> str:
                 "kind": "PanelArrayDigest",
                 "dtype": str(values.dtype),
                 "shape": list(values.shape),
-                "finite_mask": identity_sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
-                "finite_values": identity_sha256(
+                "finite_mask": sha256(np.ascontiguousarray(finite).tobytes()).hexdigest(),
+                "finite_values": sha256(
                     np.ascontiguousarray(np.where(finite, values, 0.0), dtype=np.float64).tobytes()
                 ).hexdigest(),
             }
@@ -197,8 +195,6 @@ class PanelCrossSectionKernel:
             ValueError: Rows are empty or duplicated, axes or sectors are invalid, temporal
                 membership is incomplete, or source eligibility contradicts the recorded policy.
         """
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         if isinstance(feature_rows, pd.DataFrame):
             is_empty = feature_rows.empty
         else:

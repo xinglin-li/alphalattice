@@ -12,21 +12,11 @@ Use the existing policy and generators; this document grants no guard waiver.
 | Declare Small, Medium, or Large with a size marker or registered requirement layer. | `devtools.testing.collection` resolves the declaration and `config/registries/test-sizes.json` owns the bounds. |
 | Small: at most 1 s and 10 MB of temporary data; no subprocess or network. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; `testing.layer_contract` checks process and network use. Growth inside a pre-existing shared directory is not attributed; use a registered dataset. |
 | Medium: at most 30 s and 500 MB of temporary data. | `test_size.admission_limit` checks phases and `tmp_path` and new worker temporary-root entries; growth inside a pre-existing shared directory is not attributed. |
-| Large runs in the nightly; a declared `release_only` case runs at promotion or through explicit evidence selection with `ALPHALATTICE_TEST_LANE=release`. | `test_size.large_contract` requires the admitted lane rule for a new or changed Large test. |
+| Large runs only in the nightly. | `test_size.large_contract` requires a `nightly_only` size rule for a new or changed Large test. |
 | Use registered test datasets in place; do not copy read-only data. | `TEST-DATA` in `scripts/check_test_shape.py` refuses a new data file under `tests/` until `data_files` in `config/registries/test-sizes.json` names it with its reason; request a private writable copy only when the test must write. |
-| A new test starts at unit. A requirement added or raised above unit says, in one sentence, why a lower layer cannot prove it. | `lower_layer` in its row of `config/registries/requirements.json`; `devtools.testing.requirements.admission` refuses the row without it. |
-| An area's integration share of test functions may only fall. | `TEST-PYRAMID` in the fast guard compares each area's share under `tests/<layer>/<area>/` with the base's, and names the area that rose. |
 | A new test file names its one source module and goes at its mapped owner path. | `TEST-LAYOUT` in `scripts/check_test_shape.py` checks added files against `devtools.testing.layout`. |
 | Keep the median to one new test function per card. | `TEST-GROWTH` reports the count in the fast guard; review judges the median, not a per-card refusal. |
-| A test that starts a child process opens no console window: pass `creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)`, or skip the test on Windows. | `scripts/test_antipattern_rules.yml` (ast-grep) in `scripts/check_test_shape.py` refuses a new case by name; existing ones are counted in the antipattern baselines and may only fall. |
-| Child contracts start processes through `alphalattice.capabilities.domain_contracts.spawn`; routing and argument tests use a fake runner. A child has a finite timeout and closed stdin unless it is fed; a piped child uses bounded `communicate` or an owned interactive session when a later input depends on an earlier response. | `test-child-unbounded` in `scripts/check_test_shape.py`, held per test function (`file::rule::function`) in the antipattern baselines, which only fall. |
-| A Python child uses `sys.executable`, and text children decode explicitly as UTF-8. | `test-child-bare-python` and `test-child-text-encoding` in `scripts/check_test_shape.py` refuse new direct violations. |
-| A test that starts a model turn (`claude -p`, `codex exec`, a provider SDK or API host) is marked `@pytest.mark.paid_agent`. | `test-paid-agent` in the same check refuses an unmarked one; `devtools.testing.collection` deselects the class from every run that does not set `ALPHALATTICE_PAID_AGENT_RUN=1`. |
-| A test GitHub's public Verify runs is never run in the nightly: each test in a module the public export publishes, marked none of `real_evidence`, `paid_agent` or `performance` and not `nightly_only` by its Large rule, carries the `github` marker; the Verify selects `-m github` and the nightly leaves those to it. | `release.public_manifest.declare_github` declares it at collection (tests/conftest.py) by the manifest's own rule for a test module, so a published test is never left undeclared and a private one is never declared (`tests/structural/test_public_manifest.py`). |
-| A kernel performance row (an operation's budget, or the hot loop's cost with the kernel's owners plugged in) is marked `@pytest.mark.performance` and judged on this machine's measurement. | `devtools.testing.collection` deselects it from every run that does not set `ALPHALATTICE_PERFORMANCE_RUN=1`, and refuses that run unless it is serial with the `performance` group (pytest-benchmark measures nothing under xdist); the command is in `tests/integration/testing/test_performance.py`. |
-| Size is a review signal, not a refusal: a file over 100 KB or a high test share is named, and review judges the split. | `scripts/check_test_shape.py` prints `test_shape.signal`; a function's complexity is held by Ruff's C901, PLR0912 and PLR0915 scores in the antipattern baselines, which may only fall. |
-| Whole-tree structural checks under about a second run in the commit stage when the tree they read changed; slower ones run post-merge. | `whole_tree_guards` in `config/registries/test-sizes.json` names what they read and which are slow; `devtools.testing.sizes.moved` defers the rest, and a changed holder or registered fence may still run in the commit stage. |
-| A census that reads every file runs in the commit stage when the change alters what it reads, whatever its cost. | A `selection_readers` facet row names its facet in `devtools.pipeline.facets` and the files it reads (`within`); the stage requires the census when a changed file's facet differs between base and head. A census that builds its answer from its facet is exact. |
+| Whole-tree structural checks run post-merge by default. | `devtools.testing.sizes.moved` defers them; a changed holder or registered fence may still run in the commit stage. |
 
 For a new non-structural file, put `TEST_SOURCE = "src/<owner package>/<module>.py"` or its
 `scripts/<subpath>/<module>.py` path at module level and mark each test with its registered requirement. The target is
@@ -137,10 +127,6 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 
 - Parameterize a dimension only when it is the requirement; multiply only the work that reads it.
 - Move parameter-independent checks out of the parametrized function.
-- Name each parametrized case pytest would name by its position (an object, a list, a dict or a
-  computed case list) with `ids=` or `pytest.param(..., id=...)`; a case of literal values names
-  itself. `scripts/check_test_shape.py` refuses such an unnamed case in an added or changed test,
-  and any growth of a test's Ruff PT011, PT012, PT014, PT015 or PT017 findings.
 - Build an expensive environment, export, history, workspace, Host or model once in a shared module/session fixture.
 - Share setup read-only; isolate each case's mutations.
 - Give each function one behavior; split chained checks so workers can run them in parallel.
@@ -163,10 +149,8 @@ Require an agent route or an existing named UI-only exception for UI writes; ref
 - Reuse unchanged passing proof; rerun changed or failed nodes.
 - Use normal stage producers for steps a failed stage never reached.
 - Keep mandatory files and declared reach in selection; a size edit alone cannot defer them.
-- Name a file mandatory (`mandatory` in `config/registries/test-sizes.json`) only when it is a second-scale static scan any change can break; every other test, structural ones included, runs by reach on a commit and whole in the nightly.
-- Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run. Set `ALPHALATTICE_TEST_LANE=release` when selecting declared `release_only` evidence cases; their frozen inputs remain prerequisites of that run.
+- Use `scripts/check_playpen.py --evidence` for the admitted daily or affected-owner evidence run.
 - Declare structural reach in `config/registries/test-sizes.json`; undeclared structural checks stay whole.
-- Declare an OS dependency with a platform `skipif` on the test or its parameter, so placement reads it before the run. Keep general assertions outside an OS-only journey. Frozen-workspace and optional-runtime acceptance belongs to its declared evidence/release tier, with its inputs supplied there; preserve the explicit evidence entry point and never discover a missing prerequisite by skipping inside a commit-tier test.
 - Make `per_file` scans read Python through `scanned()` or `in_scope()` in `tests/structural/source_shape_samples.py`.
 - Run a scoped scan whole when its own file or a declared input changes; refuse reads outside the changed scope.
 - Declare cross-file inputs; use `+*` for additions or deletions.

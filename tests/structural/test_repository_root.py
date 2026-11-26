@@ -2,11 +2,10 @@
 loose, and no local file of the checkout it was started from."""
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
-
-from alphalattice.capabilities.domain_contracts import spawn
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,7 +34,7 @@ def _assert_root_complete(root: Path) -> None:
     """The root as git tracks it at HEAD, never the working tree: a checkout's ignored or untracked
     local files (CLAUDE.local.md, AGENTS.override.md) are never the product's."""
     tracked = set(
-        spawn.run(
+        subprocess.run(
             ("git", "-c", "core.quotepath=false", "ls-tree", "-r", "--name-only", "HEAD"),
             cwd=root,
             check=True,
@@ -53,7 +52,7 @@ def _assert_root_complete(root: Path) -> None:
 def _root_fixture(root: Path, case: str) -> Path:
     """A committed root with every required file, then the case's local or tracked addition."""
     git = ("git", "-c", "user.name=t", "-c", "user.email=t@localhost")
-    spawn.run(("git", "init", "-q", str(root)), check=True)
+    subprocess.run(("git", "init", "-q", str(root)), check=True)
     (root / "docs").mkdir()
     for name in (*ROOT_REQUIRED, "docs/README.md"):
         (root / name).write_text("x\n", encoding="utf-8")
@@ -62,8 +61,8 @@ def _root_fixture(root: Path, case: str) -> Path:
         (root / "NOTES.md").write_text("a stray note\n", encoding="utf-8")
     if case == "tracked hidden python":
         (root / ".hidden.py").write_text("x = 1\n", encoding="utf-8")
-    spawn.run((*git, "add", "-A"), cwd=root, check=True)
-    spawn.run((*git, "commit", "-q", "-m", "root"), cwd=root, check=True)
+    subprocess.run((*git, "add", "-A"), cwd=root, check=True)
+    subprocess.run((*git, "commit", "-q", "-m", "root"), cwd=root, check=True)
     for local in ("CLAUDE.local.md", "AGENTS.override.md", "scratch.md"):  # ignored, and untracked
         (root / local).write_text("a maintainer's own\n", encoding="utf-8")
     return root
@@ -88,7 +87,7 @@ def test_canonical_product_design_and_repository_root_are_complete(tmp_path, cas
     _assert_root_complete(root)
     if case != "this checkout":
         return
-    tracked_markdown = spawn.run(
+    tracked_markdown = subprocess.run(
         ("git", "-c", "core.quotepath=false", "ls-files", "*.md"),
         cwd=ROOT,
         check=True,

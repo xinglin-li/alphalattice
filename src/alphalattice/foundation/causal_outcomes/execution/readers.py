@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -13,11 +13,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
-from alphalattice.foundation.data_layer import history
-from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
@@ -25,6 +21,8 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,
@@ -32,10 +30,8 @@ from .artifacts import (
     METHOD_BINDING_CATEGORY,
     _canonical_local_qa_table,
     _ExecutionOutcomeArtifactStore,
-    chunk_identity,
-    rows_intact,
 )
-from .compile import _action_dividends, _schema, derive_causal_execution_row
+from .compile import _SCHEMA_ID, _action_dividends, _schema, derive_causal_execution_row
 from .contracts import (
     CausalExecutionOutcomeChunk,
     CausalExecutionOutcomeManifest,
@@ -139,11 +135,16 @@ def read_local_qa_market_snapshot(
         raise ValueError("causal_outcomes.qa_source_support_absent")
     bars: list[RawDailyBar] = []
     actions: list[CorporateActionEvent] = []
-    bars_by_listing = store.raw_bars_by_listing(listing_ids, start=start, through=through)
-    actions_by_listing = store.actions_by_listing(listing_ids)
-    for listing in listing_ids:
-        bars.extend(bars_by_listing[listing])
-        actions.extend(v for v in actions_by_listing[listing] if v.effective_date <= through)
+    with store._connect(read_only=True) as connection:
+        for listing in listing_ids:
+            bars.extend(
+                store.raw_bars(listing, start=start, through=through, _connection=connection)
+            )
+            actions.extend(
+                v
+                for v in store.actions(listing, _connection=connection)
+                if v.effective_date <= through
+            )
     return LocalQAMarketSnapshot.create(
         source_hash=manifest.revision_sha256,
         through=through,
@@ -615,28 +616,31 @@ def read_local_qa_execution_rows(
     bars: dict[tuple[date, str], RawDailyBar] = {}
     rows: list[dict[str, object]] = []
     dividend_axis = ExecutionOutcomeSessionAxis(axis)
-    bars_by_listing = store.raw_bars_by_listing(listing_ids, start=start, through=through)
-    actions_by_listing = store.actions_by_listing(listing_ids)
-    for listing in listing_ids:
-        for bar in bars_by_listing[listing]:
-            bars[bar.session_date, listing] = bar
-        dividends = _action_dividends(actions_by_listing[listing], through=through)
-        for point in points:
-            rows.append(
-                derive_causal_execution_row(
-                    listing_id=listing,
-                    symbol=listing,
-                    point=point,
-                    entry_bar=bars.get((point.entry_session, listing)),
-                    holding_bar=bars.get((point.holding_end_session, listing)),
-                    period_dividend_split_adjusted=period_dividend_for_point(
-                        recipe=method,
-                        dividends=dividends,
-                        ordered_sessions=dividend_axis,
-                        point=point,
-                    ),
-                )
+    with store._connect(read_only=True) as connection:
+        for listing in listing_ids:
+            for bar in store.raw_bars(
+                listing, start=start, through=through, _connection=connection
+            ):
+                bars[bar.session_date, listing] = bar
+            dividends = _action_dividends(
+                store.actions(listing, _connection=connection), through=through
             )
+            for point in points:
+                rows.append(
+                    derive_causal_execution_row(
+                        listing_id=listing,
+                        symbol=listing,
+                        point=point,
+                        entry_bar=bars.get((point.entry_session, listing)),
+                        holding_bar=bars.get((point.holding_end_session, listing)),
+                        period_dividend_split_adjusted=period_dividend_for_point(
+                            recipe=method,
+                            dividends=dividends,
+                            ordered_sessions=dividend_axis,
+                            point=point,
+                        ),
+                    )
+                )
     return pa.Table.from_pylist(rows, schema=_schema()), bars, axis
 
 
@@ -650,7 +654,7 @@ def _rows_for_sessions(
     selected = tuple(value for value in chunks if value.year in years)
     if not selected:
         return pa.table({})
-    table = pa.concat_tables([store.read_chunk(value) for value in selected])
+    table = pa.concat_tables([pq.read_table(store.resolve_chunk(value)) for value in selected])
     mask = pc.is_in(table["formation_session"], value_set=pa.array(sessions, type=pa.date32()))
     return table.filter(mask)
 
@@ -668,7 +672,9 @@ def _matured_sessions(
     method's span.
     """
     tables = [
-        store.read_chunk(chunk, columns=["formation_session", "holding_end_session"])
+        pq.read_table(
+            store.resolve_chunk(chunk), columns=["formation_session", "holding_end_session"]
+        )
         for chunk in chunks
     ]
     if not tables:
@@ -759,7 +765,10 @@ class CausalExecutionOutcomeDevelopmentReader:
             "actual_session_span",
         )
         tables = tuple(
-            self.artifacts.read_chunk(chunk, columns=["listing_id", *schedule_columns])
+            pq.read_table(
+                self.artifacts.resolve_chunk(chunk),
+                columns=["listing_id", *schedule_columns],
+            )
             for chunk in manifest.development_chunks
         )
         if not tables:
@@ -1202,7 +1211,7 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
                 or durable.formation_sessions != self.formation_sessions
             ):
                 raise ValueError("policy holdout execution outcome release authority changed")
-            self.artifacts.read_chunk(durable.extension_chunk)
+            self.artifacts.resolve_chunk(durable.extension_chunk)
             return durable
 
         extension = self._build_extension_chunk(
@@ -1299,33 +1308,35 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         recipe = build_one_session_recipe()
         axis = (point.formation_session, point.entry_session, point.holding_end_session)
         rows: list[dict[str, object]] = []
-        ids = tuple(listing.listing_id for listing in listings)
-        bars_by_listing = self.market_store.raw_bars_by_listing(
-            ids, start=point.entry_session, through=point.holding_end_session
-        )
-        actions_by_listing = self.market_store.actions_by_listing(ids)
-        for listing in listings:
-            by_session = {
-                value.session_date: value for value in bars_by_listing[listing.listing_id]
-            }
-            dividends = _action_dividends(
-                actions_by_listing[listing.listing_id], through=point.holding_end_session
-            )
-            rows.append(
-                derive_causal_execution_row(
-                    listing_id=listing.listing_id,
-                    symbol=listing.symbol,
-                    point=point,
-                    entry_bar=by_session.get(point.entry_session),
-                    holding_bar=by_session.get(point.holding_end_session),
-                    period_dividend_split_adjusted=period_dividend_for_point(
-                        recipe=recipe,
-                        dividends=dividends,
-                        ordered_sessions=axis,
-                        point=point,
-                    ),
+        connection = self.market_store._connect(read_only=True)
+        try:
+            for listing in listings:
+                bars = self.market_store.raw_bars(
+                    listing.listing_id,
+                    start=point.entry_session,
+                    through=point.holding_end_session,
+                    _connection=connection,
                 )
-            )
+                by_session = {value.session_date: value for value in bars}
+                actions = self.market_store.actions(listing.listing_id, _connection=connection)
+                dividends = _action_dividends(actions, through=point.holding_end_session)
+                rows.append(
+                    derive_causal_execution_row(
+                        listing_id=listing.listing_id,
+                        symbol=listing.symbol,
+                        point=point,
+                        entry_bar=by_session.get(point.entry_session),
+                        holding_bar=by_session.get(point.holding_end_session),
+                        period_dividend_split_adjusted=period_dividend_for_point(
+                            recipe=recipe,
+                            dividends=dividends,
+                            ordered_sessions=axis,
+                            point=point,
+                        ),
+                    )
+                )
+        finally:
+            connection.close()
         return self.artifacts.publish_chunk(
             split="SEALED_HOLDOUT",
             table=pa.Table.from_pylist(rows, schema=_schema()),
@@ -1336,7 +1347,7 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         if cached is not None:
             return cached
         table = (
-            self.artifacts.read_chunk(chunk)
+            pq.read_table(self.artifacts.resolve_chunk(chunk))
             .combine_chunks()
             .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
         )
@@ -1346,8 +1357,21 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             or not rows
             or min(row["formation_session"] for row in rows) != chunk.first_formation_session
             or max(row["formation_session"] for row in rows) != chunk.last_formation_session
-            or not rows_intact(rows)
-            or chunk_identity(table) != chunk.content_hash
+            or any(
+                row["row_hash"]
+                != canonical_hash({key: value for key, value in row.items() if key != "row_hash"})
+                for row in rows
+            )
+            or canonical_hash(
+                {
+                    "schema": _SCHEMA_ID,
+                    "rows": tuple(
+                        (row["listing_id"], row["formation_session"], row["row_hash"])
+                        for row in rows
+                    ),
+                }
+            )
+            != chunk.content_hash
         ):
             raise ValueError("policy holdout execution outcome chunk is tampered")
         self._verified_tables[chunk.content_hash] = table
@@ -1424,7 +1448,10 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
             self.artifacts.load_json(category="manifests", uri=manifest_ref)
         )
         tables = [
-            self.artifacts.read_chunk(chunk, columns=["formation_session", "holding_end_session"])
+            pq.read_table(
+                self.artifacts.resolve_chunk(chunk),
+                columns=["formation_session", "holding_end_session"],
+            )
             for chunk in self._authorized_chunks(manifest)
         ]
         table = pa.concat_tables(tables)
@@ -1441,107 +1468,8 @@ class CausalExecutionOutcomePolicyHoldoutReader(CausalExecutionOutcomeDevelopmen
         raise PermissionError("GENERIC_SEALED_HOLDOUT_RELEASE_AUTHORITY_UNAVAILABLE")
 
 
-def committed_outcome_chunks(
-    workspace: Path,
-) -> Iterator[tuple[_ExecutionOutcomeArtifactStore, CausalExecutionOutcomeChunk, Path]]:
-    """Each outcome chunk `workspace` committed, its store and the path of its legacy file: the
-    manifests its markers commit, in its artifacts and its research inputs (development chunks
-    only there), and its policy-holdout extensions. A chunk with no file there was written to the
-    catalog of the data root it was served on."""
-
-    def json_files(folder: Path) -> list[Path]:
-        try:
-            return sorted(path for path in folder.iterdir() if path.suffix == ".json")
-        except FileNotFoundError:
-            return []
-
-    workspace = workspace.resolve()
-    roots = [(workspace / "artifacts", False)]
-    inputs = workspace / "research-inputs"
-    if inputs.is_dir():
-        roots.extend(
-            (path / "source/artifacts", True) for path in sorted(inputs.iterdir()) if path.is_dir()
-        )
-    for artifact_root, bound in roots:
-        if not artifact_root.resolve().is_relative_to(workspace):
-            raise ValueError("causal_outcomes.upgrade_path_invalid")
-        store = _ExecutionOutcomeArtifactStore(artifact_root)
-        published = {
-            CausalExecutionOutcomeMarker.model_validate_json(path.read_bytes()).snapshot_hash
-            for path in json_files(store.root / "markers")
-        }
-        diagnostic = {marker.snapshot_hash for marker in store.development_only_markers()}
-        readers = (
-            (store.manifests(), published, CausalExecutionOutcomeDevelopmentReader),
-            (store.development_only_manifests(), diagnostic, DevelopmentOnlyExecutionOutcomeReader),
-        )
-        chunks: list[CausalExecutionOutcomeChunk] = []
-        for manifests, markers, reader_type in readers:
-            reader = reader_type(artifact_root)
-            for manifest in manifests:
-                if manifest.snapshot_hash not in markers:
-                    continue  # no marker: the old producer never committed it
-                reader.marker_for_snapshot(manifest.snapshot_hash)
-                reader.resolve_method_seal(manifest.snapshot_hash)
-                chunks.extend(manifest.development_chunks)
-                if not bound and isinstance(manifest, CausalExecutionOutcomeManifest):
-                    chunks.extend(manifest.sealed_holdout_chunks)
-        if not bound:
-            for index in json_files(store.root / "policy-holdout-releases" / "by-claim"):
-                release = CausalExecutionOutcomePolicyHoldoutReader.load_release(
-                    artifact_root=artifact_root, claim_hash=index.stem
-                )
-                chunks.append(release.extension_chunk)
-        for chunk in chunks:
-            path = store._parquet_path(chunk.split, chunk.content_hash)
-            if not path.resolve().is_relative_to(workspace):
-                raise ValueError("causal_outcomes.upgrade_path_invalid")
-            yield store, chunk, path
-
-
-def execution_outcome_upgrade_family() -> Family:
-    """The upgrade runner's one migration, verification and rollback switch for outcomes."""
-
-    def legacy_tables(runner: UpgradeRunner) -> Iterator[tuple[str, pa.Table]]:
-        for workspace in runner.workspaces:
-            for store, chunk, path in committed_outcome_chunks(workspace):
-                if not path.exists():  # written to the catalog only, by this version
-                    held = history.read_execution_outcome(chunk.content_hash, ["listing_id"])
-                    if held.num_rows != chunk.row_count:  # else outcome_missing refused it
-                        raise ValueError("causal_outcomes.upgrade_chunk_invalid")
-                    continue  # the catalog holds its rows: nothing to upgrade
-                table = (
-                    pq.read_table(store.resolve_chunk(chunk))
-                    .combine_chunks()
-                    .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
-                )
-                if table.num_rows != chunk.row_count:
-                    raise ValueError("causal_outcomes.upgrade_chunk_invalid")
-                yield chunk.content_hash, table
-
-    def step(runner: UpgradeRunner) -> None:
-        for digest, table in legacy_tables(runner):
-            actual = history.write_execution_outcome(
-                digest, table, upgrade_owner=(runner.log, runner.root)
-            )
-            artifact = runner.map_id("execution-outcomes", digest, actual)
-            if actual != artifact:
-                raise ValueError("causal_outcomes.upgrade_chunk_invalid")
-
-    def verify(runner: UpgradeRunner) -> bool:
-        for digest, old in legacy_tables(runner):
-            new = history.read_execution_outcome(digest).cast(_schema())
-            if not old.equals(new):
-                return False
-        return True
-
-    return Family("execution-outcomes", step, verify)
-
-
 __all__ = [
     "CausalExecutionOutcomeDevelopmentReader",
     "CausalExecutionOutcomePolicyHoldoutReader",
     "CausalOutcomeDevelopmentRows",
-    "committed_outcome_chunks",
-    "execution_outcome_upgrade_family",
 ]

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.foundation_summary import read_foundation_summary
 from alphalattice.foundation.factor_research.publication.artifacts import (
     FactorResearchArtifactStore,
@@ -16,6 +15,7 @@ from alphalattice.foundation.research_foundation.contracts import (
     ResearchFoundationAdmission,
     ResearchFoundationBinding,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 

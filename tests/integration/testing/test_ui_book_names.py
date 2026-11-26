@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.portfolio_strategy_lab.node_runner import run_node
+from tests.portfolio_strategy_lab.local_web_support import run_node
 
 
 @pytest.mark.parametrize("case", ["history-names", "evidence-book-choices"])

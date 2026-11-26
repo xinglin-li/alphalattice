@@ -8,14 +8,10 @@ import numpy as np
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import panel_member_counts
-from alphalattice.foundation.feature_engine.panels.logical_semantic_index import (
-    logical_calendar_hash,
-)
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SLICE_ALGORITHM_IDENTITY = "ordered-session-row-hash-digest"
 
@@ -128,12 +124,11 @@ class FeaturePanelSemanticIndexService:
             "catalog_hash": str(lineage["catalog_hash"]),
             "listing_set_hash": str(manifest["listing_set_hash"]),
             "active_listing_count": int(manifest["active_listing_count"]),
-            "calendar_hash": logical_calendar_hash(tuple(item.session_date for item in sessions)),
+            "calendar_hash": canonical_hash([item.session_date for item in sessions]),
             "slice_algorithm_identity": SLICE_ALGORITHM_IDENTITY,
             "sessions": [item.model_dump(mode="json") for item in sessions],
         }
-        sealed = seal_payload_digest("index_hash", identity, digest=canonical_hash)
-        index = FeaturePanelSemanticIndex(**identity, index_hash=sealed)
+        index = FeaturePanelSemanticIndex(**identity, index_hash=canonical_hash(identity))
         descriptor = self.resolver.publish_feature_panel_semantic_index(
             payload=index.model_dump(mode="json"), index_hash=index.index_hash
         )

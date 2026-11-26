@@ -15,10 +15,6 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    number_deciding_closure,
-    number_deciding_rule,
-)
 from alphalattice.investment.risk_research.contracts import (
     CovarianceRecipe,
     default_covariance_recipe,
@@ -58,6 +54,10 @@ from alphalattice.investment.risk_research.experiments.observation import Numeri
 from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
 from alphalattice.investment.risk_research.experiments.window import (
     resolve_development_input_binding,
+)
+from alphalattice.kernel.shared_kernel.source_identity import (
+    number_deciding_closure,
+    number_deciding_rule,
 )
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,

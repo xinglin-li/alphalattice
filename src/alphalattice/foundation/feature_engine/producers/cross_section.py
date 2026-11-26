@@ -10,21 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import (
-    seal_payload_digest,
-    seal_scoped_model,
-)
-from alphalattice.capabilities.domain_contracts.spans import span
-from alphalattice.capabilities.quant.cross_section import (
-    MAD_SCALE,
-    MIN_COVERAGE,
-    MIN_SECTOR_SAMPLE,
-    WINSOR_MULTIPLIER,
-)
+import pandas as pd
+
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
@@ -46,9 +35,15 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelMaterialization,
     cross_section_policy_hash,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.cross_section import (
+    MAD_SCALE,
+    MIN_COVERAGE,
+    MIN_SECTOR_SAMPLE,
+    WINSOR_MULTIPLIER,
+)
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 
 CellOwnership = Mapping[tuple[str, str], frozenset[str]]
 """``(receipt_hash, factor_id) -> sessions`` a Panel attributes to that batch."""
@@ -319,11 +314,8 @@ class SectorNeutralPanelMaterializer:
                 "boundary_identity": observation.boundary_identity,
             }
             records_out.append(
-                seal_scoped_model(
-                    PanelFactorClippingRecord,
-                    record_values,
-                    field="record_hash",
-                    digest=canonical_hash,
+                PanelFactorClippingRecord(
+                    **record_values, record_hash=canonical_hash(record_values)
                 )
             )
         evidence_values: dict[str, object] = {
@@ -348,9 +340,7 @@ class SectorNeutralPanelMaterializer:
         }
         return PanelClippingEvidence(
             **{**evidence_values, "factor_records": tuple(records_out)},
-            evidence_hash=seal_payload_digest(
-                "evidence_hash", evidence_values, digest=canonical_hash
-            ),
+            evidence_hash=canonical_hash(evidence_values),
         )
 
     def materialize(

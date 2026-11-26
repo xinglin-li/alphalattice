@@ -27,7 +27,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 ANSWER_CORRECTION_BOUND: int = 2
 """Corrections allowed after the first answer (the first trial needed one)."""

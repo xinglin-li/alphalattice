@@ -21,8 +21,6 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import validate_hash_compatible
 from alphalattice.control.product_host.composition.answer_turns import ANSWER_FILING
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -35,16 +33,12 @@ from alphalattice.control.product_host.composition.evidence_review_resume import
     CURRENT_WITHIN,
     answered_units,
     current_answers,
-    preparation_in_flight,
     preview_binding,
     preview_units,
     resumable_preparation,
     resume_offers,
     resumed,
-    review_run,
-    same_preparation,
     unanswered,
-    units_short_of_sources,
 )
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     EVIDENCE_INSTALL_TASK_KIND,
@@ -67,9 +61,6 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
-from alphalattice.control.product_host.composition.task_kinds import (
-    EVIDENCE_REVIEW_RUNTIME_FILE,
-)
 from alphalattice.control.product_host.storage.inventory import storage_capacity_scope
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -128,6 +119,7 @@ from alphalattice.evidence.alternative_evidence.runtime.coverage import (
     coverage_intent_hash,
     coverage_unit_ids,
     coverage_units,
+    sources_short,
 )
 from alphalattice.evidence.alternative_evidence.runtime.policy import (
     RETIRED_SELECTION_EXPLANATION,
@@ -169,6 +161,7 @@ from alphalattice.interface.local_application.evidence_cro import (
     book_projection,
 )
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.interface.local_application.labels import title
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     ValidatedPortfolioHandoff,
 )
@@ -181,7 +174,8 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
-from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sealing import validate_hash_compatible
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     CarriedReading,
@@ -291,7 +285,7 @@ _INSTALLED_AUTHORITY = (
 
 DOSSIER_STANDINGS = frozenset({"REFUSED_EVIDENCE_CUTOFFS_DIFFER", "REFUSED_DOSSIER_INVALID"})
 """A dossier the book's current analyses cannot make: a refusal at every read on the review
-route, and at the book's readback its standing, never a failed read."""
+route, and at the book's readback its standing, never a failed read (V546)."""
 
 
 def _stamp(moment: datetime) -> str:
@@ -307,7 +301,7 @@ def _cutoffs_differ(
     ],
     carried: tuple[CarriedReading, ...],
 ) -> ReviewOutcome | None:
-    """The refusal of units read at different cutoffs, said before the dossier refuses.
+    """The refusal of units read at different cutoffs, said before the dossier refuses (V546).
 
     A dossier reads as of its children's earliest cutoff, and every citation must be available
     by then: late evidence is never admitted as early. Units prepared at different cutoffs -- two
@@ -365,7 +359,7 @@ def _cutoffs_differ(
 
 
 def _dossier_refused(chosen: BookSelector, error: ValidationError) -> ReviewOutcome:
-    """Any other refusal of the dossier's own model, said with its code and a way on.
+    """Any other refusal of the dossier's own model, said with its code and a way on (V546).
 
     The checks of the dossier's consistency -- its children, entities, citations, issues,
     authority -- are the CRO record's; a refusal of one is not the evidence's fault, and a read
@@ -409,7 +403,7 @@ class ResolvedEvidenceQuestion:
 class ResolvedCoverage:
     """The book's whole obligation at one cutoff: its units, sealed as one run.
 
-    Every book is a run (since 2026-09-23). A book that fits one unit is a run
+    Every book is a run (C2, 2026-09-23). A book that fits one unit is a run
     of one unit whose request, obligation and intent are exactly those a
     single preparation of the same book carried, so a single preparation's
     completion is that unit's completion.
@@ -462,7 +456,7 @@ _BUNDLE_FIELDS = frozenset(
 
 
 def with_analyst_bundles(requests: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-    """Each packet request with the Analyst's bundle request beside it.
+    """Each packet request with the Analyst's bundle request beside it (V295).
 
     `packet` and `packet_<unit>` gain `analyst_bundle` and `analyst_bundle_<unit>`: the same
     book, Task and unit as `AGENT_BUNDLE_PREPARE` for the Analyst, the bundle's directory left
@@ -485,6 +479,51 @@ def with_analyst_bundles(requests: dict[str, dict[str, str]]) -> dict[str, dict[
                 **{key: value for key, value in request.items() if key in _BUNDLE_FIELDS},
             }
     return found
+
+
+def units_short_of_sources(
+    inventory: Mapping[str, object], mode: AlternativeEvidenceMode, *, floor: float
+) -> list[dict[str, object]]:
+    """The units RECORDED mode cannot prepare, each with the code it would fail (V445, V541).
+
+    A packet reads only the documents the workspace holds. A unit whose issuers holding one fall
+    short of the installed floor fails `alternative_evidence.minimum_entity_coverage_not_met`
+    at its acquisition, the same rule its refusal applies (`sources_short`); one whose issuers
+    hold none under a floor that admits that fails `alternative_evidence.document_set_empty`.
+    Under official acquisition the filing index is read at the run, so none is named.
+
+    Args:
+        inventory: The preview's source inventory: each issuer, its unit and its documents.
+        mode: The Host's evidence mode.
+        floor: The installed package's minimum issuer coverage.
+
+    Returns:
+        Each such unit in the run's order, heaviest first: its id, its code and its issuers
+        without a source; empty outside RECORDED mode.
+    """
+    if mode is not AlternativeEvidenceMode.RECORDED:
+        return []
+    units: dict[str, list[tuple[str, int]]] = {}
+    for issuer in cast(list[dict[str, object]], inventory.get("issuers") or []):
+        units.setdefault(str(issuer.get("unit_id")), []).append(
+            (str(issuer.get("entity_id")), int(cast(int, issuer.get("documents") or 0)))
+        )
+    named: list[dict[str, object]] = []
+    for unit_id, issuers in units.items():
+        entities = tuple(entity for entity, _documents in issuers)
+        sourced = {entity for entity, documents in issuers if documents}
+        short = sources_short(entities, sourced, floor=floor)
+        if short is not None or not sourced:
+            named.append(
+                {
+                    "unit_id": unit_id,
+                    "failure_code": "alternative_evidence.document_set_empty"
+                    if short is None
+                    else str(short),
+                    "issuers_without_source": list(entities if short is None else short.uncovered),
+                }
+            )
+    return named
 
 
 @dataclass(frozen=True, slots=True)
@@ -583,7 +622,7 @@ def agent_answer_result(
             ),
             **({"task_id": body["task_id"]} if isinstance(body.get("task_id"), str) else {}),
             # The Task the answer started, its state beside the verdict: a wait follows it to its
-            # end, not the verdict's (OP18).
+            # end, not the verdict's (OP18, V580).
             **(
                 {"task_lifecycle": body["lifecycle"]}
                 if isinstance(body.get("lifecycle"), str)
@@ -606,7 +645,7 @@ def agent_answer_result(
             },
             "next_action": "RETURN_THE_RECEIPT_TO_YOUR_LEAD",
             # For the lead: the Task the answer started and the book it answered for, so the
-            # work goes on from this answer and no earlier one is looked for.
+            # work goes on from this answer and no earlier one is looked for (V406).
             **(
                 {
                     "next_requests": {
@@ -662,8 +701,7 @@ class AlternativeEvidenceRefreshCommand:
     A book's coverage run, which carries every unit's request itself; or one
     unit's own Task -- its submitted analysis or its continuation -- by its
     request, obligation and admission. The Host admits no single preparation
-    of a whole book since coverage runs were introduced; one admitted before
-    recovers as it was admitted.
+    of a whole book since C2; one admitted before recovers as it was admitted.
     """
 
     application: EvidenceReviewApplication
@@ -702,18 +740,12 @@ class AlternativeEvidenceRefreshCommand:
         """
         envelope, goal, plan = self.contract()
         now = self.application.clock()
-        admission = self.application.session.task_control_registry.admit(
+        record = self.application.session.task_control_registry.admit(
             input_envelope=envelope,
             goal=goal,
             plan=plan,
             observed_at=now,
-            same_work=(
-                None
-                if self.run is None
-                else same_preparation(self.run, prepare_only=self.prepare_only)
-            ),
-        )
-        record = admission.record
+        ).record
         if self.subject is not None:
             self.application.record_task_admission(
                 record.task_id,
@@ -723,11 +755,7 @@ class AlternativeEvidenceRefreshCommand:
                 book=self.subject_book,
             )
         self._task_id = record.task_id
-        return CommandAdmission(
-            task_id=record.task_id,
-            lifecycle=record.lifecycle.value,
-            joined=admission.duplicate_active and self.run is not None,  # another request won
-        )
+        return CommandAdmission(task_id=record.task_id, lifecycle=record.lifecycle.value)
 
     def contract(self) -> tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan]:
         """Compile exact coverage-run or document-refresh task input and resource authority.
@@ -938,10 +966,6 @@ class EvidenceReviewApplication:
 
     def book_context(self, book: SealedBook) -> EvidenceTaskContext:
         """Name the already verified book without opening it again on a progress read."""
-        from alphalattice.interface.local_application.labels import (  # lazy: installed names
-            title,
-        )
-
         package_id: str | None
         shown: str | None
         if book.update_subject is not None:
@@ -1023,10 +1047,6 @@ class EvidenceReviewApplication:
                 )
                 context["evidence_as_of"] = dossier.evidence_as_of.isoformat()
                 if dossier.update_subject is not None:
-                    from alphalattice.interface.local_application.labels import (  # lazy: title
-                        title,
-                    )
-
                     package_id = dossier.update_subject.strategy_package_id
                     context.update(
                         name=title(package_id),
@@ -1065,7 +1085,7 @@ class EvidenceReviewApplication:
         TaskReplan(task_kind=CRO_REVIEW_COMMAND, admitting="CRO_REVIEW"),
     )
     """The re-plans of the Task kinds this route admits, which the recovery view offers
-: the CRO review has no confirmation-free preview."""
+    (V188): the CRO review has no confirmation-free preview."""
 
     workspace_id: str
     workspace: Path
@@ -1096,7 +1116,7 @@ class EvidenceReviewApplication:
     response_schema_hash: str = "0" * 64
     typed_user_authority: str = "local product reviewer"
     portfolio_report_link: str = "/report"
-    clock: Callable[[], datetime] = utc_now
+    clock: Callable[[], datetime] = lambda: datetime.now(tz=UTC)
     runtime_path: Path | None = None
     read_update: Callable[[UUID, str], dict[str, object]] | None = None
     installed_temporal_statements: Callable[[date, date], tuple[str, ...]] | None = None
@@ -1126,12 +1146,12 @@ class EvidenceReviewApplication:
     _sealed_export: tuple[str, datetime, dict[str, object]] | None = field(
         default=None, init=False, repr=False
     )
-    """The export citation pages slice: `EvidenceReviewDelivery`'s, the last it sealed."""
+    """The export citation pages slice (V94): `EvidenceReviewDelivery`'s, the last it sealed."""
     _sealed_export_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
     _answer_turns: dict[str, threading.Lock] = field(default_factory=dict, init=False, repr=False)
-    """One lock a binding: its answers are numbered and filed one at a time."""
+    """One lock a binding: its answers are numbered and filed one at a time (V557)."""
     _answer_turns_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
@@ -1290,7 +1310,7 @@ class EvidenceReviewApplication:
     def _open_book(
         self, inputs: PortfolioEvidenceReviewInputs, selector: BookSelector
     ) -> SealedBook:
-        """The book a request's selector names, its Task refused by the selector's code.
+        """The book a request's selector names, its Task refused by the selector's code (V546).
 
         A study's selector that names a Task of another kind -- an installed strategy's public
         development replay, say, whose book is its result -- is refused by that kind, and a
@@ -2016,8 +2036,8 @@ class EvidenceReviewApplication:
         )
         floor = resources.minimum_entity_coverage
         short = units_short_of_sources(inventory, self.evidence_policy.mode, floor=floor)
-        # Offered if a unit can prepare or all holdings carry, else its ways are the
-        # person's; live reads the index.
+        # Offered if a unit can prepare or all holdings carry (W3), else its ways are the
+        # person's (V541); live reads the index.
         source_ready = (
             len(short) < len(run.units) + len(run.carried) * (not run.units)
             if self.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
@@ -2034,7 +2054,7 @@ class EvidenceReviewApplication:
         ways: dict[str, object] = {}
         if short:
             ways = {
-                # Said before any run, not learnt from a failed coverage.
+                # Said before any run, not learnt from a failed coverage (V445, V541).
                 "source_limit": (
                     "This Host reads only the documents the workspace holds (RECORDED), and a "
                     "unit is prepared only when enough of its issuers hold one for the installed "
@@ -2064,9 +2084,10 @@ class EvidenceReviewApplication:
             evidence_as_of=run.evidence_as_of, caller=caller
         )
         if network_refusal is not None:
+            envelope, _goal, _plan = coverage_run_task_contract(run=run, prepare_only=True)
             reusable = (
                 completed is not None
-                or self._refresh_in_flight(scope, prepare_only=True) is not None
+                or self._refresh_in_flight(coverage, identity=envelope.input_hash) is not None
             )
             if not reusable:
                 source_ready = False
@@ -2237,7 +2258,7 @@ class EvidenceReviewApplication:
                     "packet through its bundle (bundle prepare). Saved evidence and "
                     "reviews remain readable."
                 ),
-                # The request the words name, the book filled.
+                # The request the words name, the book filled (V305).
                 next_requests={
                     "analyst_bundle": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -2261,29 +2282,6 @@ class EvidenceReviewApplication:
                 failure_code="alternative_evidence.matter_selection_policy_retired",
             )
         now = self.clock()
-        scope = self.resolve_book(chosen).scope
-        if (
-            evidence_as_of is None
-            or next(self._run_tasks(scope, evidence_as_of=evidence_as_of), None) is None
-        ) and self._refresh_in_flight(scope, prepare_only=prepare_only):
-            # Before the index is read again; a captured intent still has to hold.
-            if preparation_binding_hash is not None:
-                held = self.resolve_coverage(
-                    chosen, evidence_as_of=evidence_as_of or now, prepare_only=prepare_only
-                ).run
-                if preparation_binding_hash != coverage_intent_hash(
-                    held, policy=self.evidence_policy.run_request(held)
-                ):
-                    return self._run_binding_refusal(
-                        preparation_binding_hash,
-                        run=held,
-                        preview={"operation": "EVIDENCE_PREVIEW", **chosen.request_fields()},
-                    )
-            joined = self._join_in_flight(
-                scope, prepare_only=prepare_only, selector=chosen, explicit=selector is not None
-            )
-            if joined is not None:
-                return joined
         try:
             coverage = self.resolve_coverage(
                 chosen,
@@ -2314,46 +2312,40 @@ class EvidenceReviewApplication:
         )
 
     def _refresh_in_flight(
-        self, scope: PortfolioIssuerScope, *, prepare_only: bool
+        self, coverage: ResolvedCoverage, *, identity: str
     ) -> ReviewOutcome | None:
-        """The book's preparation in flight (`preparation_in_flight`), as a request's answer."""
+        """The refresh already in flight for this exact run, when one is.
 
-        held = preparation_in_flight(self, scope, prepare_only=prepare_only)
-        return None if held is None else self._joined(*held)
+        Two callers asking the same question -- a second click, a second session submitting the same
+        captured intent -- get the one Task that is queued or running for it, not a second
+        acquisition of the same bodies behind it. The same question means the same Task input (run,
+        cutoff, resource binding, purpose). A request for another cutoff, another package or another
+        purpose -- or a single preparation queued before every book was a run -- is another
+        question: it is not answered by the active Task, and the existing queue admits or refuses it
+        as busy. Decided last, after every reuse and refusal of the request itself, so a completed
+        preparation for the exact run is still `REUSED_EXACT`.
+        """
 
-    def _joined(self, active: TaskRecord, run: AlternativeEvidenceCoverageRun) -> ReviewOutcome:
+        active = self._active_refresh_task(scope=coverage.resolved.scope)
+        if active is None:
+            return None
+        adapter = self.evidence_task_adapter
+        if adapter is None or adapter.run_of(active) is None:
+            return None
+        if active.input.input_hash != identity:
+            return None
         projection = self.session.task_control_registry.safe_projection(active.task_id)
         return ReviewOutcome(
             disposition="REUSED_IN_FLIGHT",
             detail=(
-                "This book's preparation is already "
+                "This exact preparation is already "
                 f"{projection.lifecycle.value.lower().replace('_', ' ')}; this request "
                 "joins it instead of acquiring the same sources twice."
             ),
             task_id=active.task_id,
             lifecycle=projection.lifecycle.value,
-            evidence_as_of=run.evidence_as_of,
+            evidence_as_of=coverage.run.evidence_as_of,
         )
-
-    def _join_in_flight(
-        self,
-        scope: PortfolioIssuerScope,
-        *,
-        prepare_only: bool,
-        selector: BookSelector,
-        explicit: bool,
-    ) -> ReviewOutcome | None:
-        """Join the preparation in flight, recording this book as a subject of its Task."""
-        joined = self._refresh_in_flight(scope, prepare_only=prepare_only)
-        if joined is not None and joined.task_id is not None:
-            self.record_task_admission(
-                joined.task_id,
-                selector,
-                now=self.clock(),
-                explicit=explicit,
-                book=self.resolve_book(selector).book,
-            )
-        return joined
 
     def _refresh_coverage(
         self,
@@ -2376,8 +2368,7 @@ class EvidenceReviewApplication:
         and still reads is reused whole; a run some of whose units failed or
         expired is admitted again, and the adapter carries every unit that
         did complete -- in any run, or in a single preparation admitted
-        before coverage runs were introduced -- into it instead of preparing it
-        twice.
+        before C2 -- into it instead of preparing it twice.
         """
 
         adapter = self.evidence_task_adapter
@@ -2393,7 +2384,8 @@ class EvidenceReviewApplication:
         if not run.units:
             # Nothing is left to read: every holding's filings in the window were read earlier, or
             # it filed nothing. The run is sealed where every run is -- the review reads it -- and
-            # nothing executes; the last review carries forward when nothing it read has changed.
+            # nothing executes; the last review carries forward when nothing it read has changed
+            # (W3).
             adapter.admit_run(run)
             return self._nothing_new(run, selector=selector, dispatcher=dispatcher)
         deadline = run.units[0].request.acquisition_deadline
@@ -2433,13 +2425,19 @@ class EvidenceReviewApplication:
                     failure_code="alternative_evidence.acquisition_deadline_exceeded",
                     next_requests={"preview": preview},
                 )
-        in_flight = self._join_in_flight(
-            coverage.resolved.scope,
-            prepare_only=coverage.prepare_only,
-            selector=selector,
-            explicit=explicit,
+        envelope, _goal, _plan = coverage_run_task_contract(
+            run=run, prepare_only=coverage.prepare_only
         )
+        in_flight = self._refresh_in_flight(coverage, identity=envelope.input_hash)
         if in_flight is not None:
+            if in_flight.task_id is not None:
+                self.record_task_admission(
+                    in_flight.task_id,
+                    selector,
+                    now=now,
+                    explicit=explicit,
+                    book=coverage.resolved.book,
+                )
             return in_flight
         network_refusal = self._source_acquisition_refusal(
             evidence_as_of=run.evidence_as_of, caller=caller
@@ -2455,14 +2453,8 @@ class EvidenceReviewApplication:
             subject_explicit=explicit,
             subject_book=coverage.resolved.book,
         )
-        submission = dispatcher.submit(command)
-        if submission.disposition == "JOINED":
-            assert submission.task_id is not None
-            task = self.session.task_control_registry.task(submission.task_id)
-            held = adapter.run_of(task)
-            assert held is not None
-            return self._joined(task, held)
-        return replace(_submitted(submission), evidence_as_of=run.evidence_as_of)
+        submitted = _submitted(dispatcher.submit(command))
+        return replace(submitted, evidence_as_of=run.evidence_as_of)
 
     def continue_evidence(
         self,
@@ -2674,7 +2666,7 @@ class EvidenceReviewApplication:
         adapter = self.evidence_task_adapter
         task = self.session.task_control_registry.task(task_id)
         if adapter is not None and task.task_kind != adapter.task_kind:
-            # A review carried forward is no preparation: it has no packet.
+            # A review carried forward is no preparation: it has no packet (V434).
             return {}
         run = None if adapter is None else adapter.run_of(task)
         if run is None:
@@ -2894,8 +2886,8 @@ class EvidenceReviewApplication:
             return ReviewOutcome(
                 disposition="REFUSED_NO_BOOK_TO_REVIEW",
                 # What names a book, where a request that named a Task or a unit alone read
-                # as an empty workspace; an experiment's book is no default, and the
-                # history read is the way to one.
+                # as an empty workspace; an experiment's book is no default (V242), and the
+                # history read is the way to one (V295).
                 detail=_NO_BOOK_NAMED,
                 next_requests={"history": {"operation": "RESEARCH_HISTORY"}},
             )
@@ -2927,7 +2919,7 @@ class EvidenceReviewApplication:
                     "dossier through its bundle (bundle prepare). Saved reviews "
                     "remain readable."
                 ),
-                # The request the words name, the book filled.
+                # The request the words name, the book filled (V305).
                 next_requests={
                     "cro_bundle": {
                         "operation": "AGENT_BUNDLE_PREPARE",
@@ -2957,7 +2949,7 @@ class EvidenceReviewApplication:
         self, dossier: PortfolioReviewDossier, *, dispatcher: LocalBackgroundDispatcher
     ) -> ReviewOutcome | None:
         """The last fresh review of this dossier's basis, carried forward as of
-        its cutoff with no model call, or nothing: the holdings, their
+        its cutoff with no model call (W3), or nothing: the holdings, their
         bands, the findings and the open issues are what the CRO last assessed,
         so its assessment stands and is routed again on this dossier."""
 
@@ -3038,11 +3030,10 @@ class EvidenceReviewApplication:
         *,
         evidence_as_of: datetime | None = None,
         read_at: datetime | None = None,
-        resolved: ResolvedBookScope | None = None,
     ) -> PortfolioReviewDossier | ReviewOutcome:
         """Read the dossier at the same cutoff its delivery and submission bind."""
         dossier, _cutoff = self._review_dossier_read(
-            chosen, evidence_as_of=evidence_as_of, read_at=read_at, resolved=resolved
+            chosen, evidence_as_of=evidence_as_of, read_at=read_at
         )
         return dossier
 
@@ -3052,14 +3043,12 @@ class EvidenceReviewApplication:
         *,
         evidence_as_of: datetime | None = None,
         read_at: datetime | None = None,
-        resolved: ResolvedBookScope | None = None,
     ) -> tuple[PortfolioReviewDossier | ReviewOutcome, datetime | None]:
         """The book's review dossier. With no run and no current analysis its cutoff is the
         time it is read: ``read_at``, the time a bundle or a first part sealed, so every later
-        read of that review resolves the same dossier; the clock only for a first read.
+        read of that review resolves the same dossier; the clock only for a first read (V255).
         """
-        if resolved is None:
-            resolved = self.resolve_book(chosen)
+        resolved = self.resolve_book(chosen)
         active = self.active_evidence_refresh(scope=resolved.scope)
         if active is not None:
             return (
@@ -3211,9 +3200,10 @@ class EvidenceReviewApplication:
     def _sealed_run(
         self, scope: PortfolioIssuerScope, *, evidence_as_of: datetime | None
     ) -> AlternativeEvidenceCoverageRun | None:
-        """The run this scope sealed at this cutoff -- without one, `review_run`'s -- which
-        `_units` and the review both read: a coverage Task's run, or a run with nothing left to
-        read, sealed and never a Task. The latter is the newest only by a later cutoff."""
+        """The run this scope sealed at this cutoff -- without one, its newest --
+        which `_units` and the review both read: a coverage Task's run, or a run
+        with nothing left to read, sealed and never a Task. The latter is the
+        newest only by a later cutoff."""
 
         adapter = self.evidence_task_adapter
         if adapter is None:
@@ -3234,8 +3224,6 @@ class EvidenceReviewApplication:
             if found is None or run.evidence_as_of > found.evidence_as_of:
                 found = run
             break
-        if evidence_as_of is None and found is not None:
-            return review_run(self, scope, found)
         return found
 
     def _carried_readings(
@@ -3252,7 +3240,7 @@ class EvidenceReviewApplication:
         carries and the carried holdings it answers for (each held by its latest
         reading) -- and those an open issue of the register rests on, with the
         findings it cites, whatever their filing's age or the contract they were
-        sealed under (`carried_reading_admitted`); never an analysis
+        sealed under (W3; `carried_reading_admitted`); never an analysis
         the review reads as one of its units (`exclude`). With them, the carried
         holdings whose reading no longer reads under the current contract."""
 
@@ -3403,7 +3391,7 @@ class EvidenceReviewApplication:
 
         Admit one review answer: screened risk by risk, refused with every
         problem in plain words, or its risks bound and routed by the Task. ``read_at`` is
-        when its dossier was read, so the answer meets that dossier.
+        when its dossier was read, so the answer meets that dossier (V255).
         """
         if caller not in {"HUMAN", "EXTERNAL_AUTOMATION"}:
             raise PortfolioEvidenceReviewError(
@@ -3860,7 +3848,7 @@ class EvidenceReviewApplication:
         input_hash: str | None,
         newly_filed: bool,
     ) -> dict[str, object] | None:
-        """Resolve the generic filed answer and exact admitted Task for observation.
+        """Resolve the generic filed answer and exact admitted Task for observation (V691).
 
         Exact retries use the first filed acceptable answer with this digest, including
         its original author. An unfiled answer and a correction confer no credit. The
@@ -3956,7 +3944,7 @@ class EvidenceReviewApplication:
         acceptable answer only when a Task admits it, so a refused request or
         an exact reuse never spends one of the bundle's answers. A bundle whose
         corrections ran out (DONE) reads no other answer: the same one again is
-        its own record, whose receipt the exact reuse returns. An accepted
+        its own record, whose receipt the exact reuse returns (V417). An accepted
         answer closes nothing: another is a review of its own."""
 
         bundle_key = str(canonical_hash(binding))
@@ -3990,7 +3978,7 @@ class EvidenceReviewApplication:
     @contextmanager
     def _answer_turn(self, binding: dict[str, object]) -> Iterator[None]:
         """Hold one binding's turn: its next answer is counted, admitted and filed before another
-        is counted, so two answers sent at once are numbered one and two, each kept."""
+        is counted, so two answers sent at once are numbered one and two, each kept (V557)."""
         key = str(canonical_hash(binding))
         with self._answer_turns_lock:
             turn = self._answer_turns.setdefault(key, threading.Lock())
@@ -3999,8 +3987,8 @@ class EvidenceReviewApplication:
 
     def _file_answer(self, record: AgentAnswerRecord) -> bool:
         """File one answer in its slot. The same record again is the one filed -- a DONE answer
-        sent again, however old its record -- and another in a slot already taken is
-        refused, never skipped."""
+        sent again (V417), however old its record -- and another in a slot already taken is
+        refused, never skipped (V557)."""
         if not self.artifacts.exists(ANSWER_CATEGORY, record.record_hash):
             if record.verdict is AnswerVerdict.CORRECT and (intent := ANSWER_FILING.get()):
                 intent(record)  # named on its thread before it exists
@@ -4069,10 +4057,10 @@ class EvidenceReviewApplication:
 
         The published recommendation this workspace holds for this exact book,
         if any: the newest, chosen from the publication records and read once
-        -- a book reviewed every day holds a review a day.
+        -- a book reviewed every day holds a review a day (W3).
 
         `use_selected_analysis=False` reads the book's latest published review independently
-        of a currently selected Evidence analysis, as an activation decision requires.
+        of a currently selected Evidence analysis, as an activation decision requires (V614).
         `result_hash` binds that read to the exact installed result the book Task published.
         """
         wanted = (
@@ -4646,17 +4634,9 @@ class EvidenceReviewApplication:
             )
         return selector
 
-    def _verify_external_review_context(
-        self, dossier: PortfolioReviewDossier, book: SealedBook | None
-    ) -> None:
-        resolved = None
-        if book is not None:
-            projection, scope = compile_portfolio_scope(self.inputs(), book)
-            resolved = ResolvedBookScope(book=book, projection=projection, scope=scope)
+    def _verify_external_review_context(self, dossier: PortfolioReviewDossier) -> None:
         current = self._resolve_review_dossier(
-            self._selector_for_dossier(dossier),
-            read_at=dossier.evidence_as_of,
-            resolved=resolved,
+            self._selector_for_dossier(dossier), read_at=dossier.evidence_as_of
         )
         if (
             not isinstance(current, PortfolioReviewDossier)
@@ -4664,7 +4644,7 @@ class EvidenceReviewApplication:
         ):
             raise PortfolioEvidenceReviewError("chief_risk_officer.external_review_context_changed")
 
-    def _verify_update_subject(self, subject: PortfolioUpdateReviewSubject) -> SealedBook:
+    def _verify_update_subject(self, subject: PortfolioUpdateReviewSubject) -> None:
         book = open_sealed_book(
             self.inputs(),
             BookSelector(
@@ -4677,7 +4657,6 @@ class EvidenceReviewApplication:
             raise PortfolioEvidenceReviewError(
                 "product_host.evidence_review_update_subject_mismatch"
             )
-        return book
 
     def _run(
         self,
@@ -4693,7 +4672,6 @@ class EvidenceReviewApplication:
             adapters={adapter.task_kind: adapter},  # type: ignore[attr-defined]
             runtime_path=str(self.runner_runtime_path()),
             clock=self.clock,
-            task_scope=lambda task: self.session.task_resources(task, self.clock),
             stage_scope=storage_capacity_scope,
         )
         try:
@@ -4743,7 +4721,7 @@ class EvidenceReviewApplication:
         """
         if self.runtime_path is not None:
             return self.runtime_path
-        return self.workspace / "runtime" / EVIDENCE_REVIEW_RUNTIME_FILE
+        return self.workspace / "runtime" / "evidence-review-checkpoints.sqlite"
 
 
 __all__ = [

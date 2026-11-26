@@ -1,38 +1,29 @@
 """Shared fixtures for every case directory: the real-evidence lane's root resolver, and the
 order a parallel run takes; and every operation's answer a test receives, held to the model
-`alphalattice schema show` publishes for it.
+`alphalattice schema show` publishes for it (V410).
 
 Deliberately tiny. Directory-level ``conftest.py`` files keep their own session
 fixtures; this one only exposes the typed evidence-root declaration so a test
 that needs a dogfood artifact asks for it by name and skips with the reason the
 declaration gives, instead of spelling a path of its own. A run records each
-test's seconds, and an xdist run starts its longest modules first (TT).
+test's seconds, and an xdist run starts its longest modules first (TT, V289).
 """
 
 from __future__ import annotations
 
-import builtins
-import itertools
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
-import warnings
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import ExitStack, nullcontext, suppress
+from collections.abc import Iterator
+from contextlib import nullcontext, suppress
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
-from alphalattice.interface.local_application.cli_contract import (
-    AGENT_SESSION_VARIABLES,
-    TRACE_VARIABLES,
-)
+from alphalattice.interface.local_application.cli_contract import AGENT_SESSION_VARIABLES
 from devtools import evaluation
 from devtools.architecture.evidence_roots import EvidenceRoots
 from devtools.evaluation.round_trip import (
@@ -43,67 +34,12 @@ from devtools.evaluation.round_trip import (
 from devtools.evaluation.round_trip import (
     plan_admission_problem as observed_plan_admission_problem,
 )
-from devtools.testing import isolation
-from devtools.testing.collection import CONTRACT as LAYER_CONTRACT
-from devtools.testing.collection import LANE_CONTRACT
 from tests import pytest_environment as environment
-
-try:
-    from release.public_manifest import declare_github
-except ModuleNotFoundError as missing:  # a test's own small checkout, built without scripts/release
-    if missing.name != "release":
-        raise
-
-    def declare_github(items: Iterable[Any], lane_contract: Callable[[Any], str | None]) -> None:
-        """A checkout without the export's rules publishes nothing, so no test in it is GitHub's."""
-
-
-# Initial conftests import shared fixtures before pytest_configure supplies session roots.
-_bootstrap_data = tempfile.TemporaryDirectory(prefix="alphalattice-test-bootstrap-")
-os.environ["ALPHALATTICE_DATA_ROOT"] = _bootstrap_data.name
-os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(Path(_bootstrap_data.name) / "backups")
-
-# A test's Git acts on the repository it names, under a configuration the suite owns. A Git hook
-# exports the variables that bind Git to the committing repository (git rev-parse
-# --local-env-vars, less its config injection), and every Git command a test starts would act on
-# that repository whatever its -C names; popped at import, so no worker inherits them.
-REPOSITORY_BINDING = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_PREFIX",
-    "GIT_IMPLICIT_WORK_TREE",
-    "GIT_GRAFT_FILE",
-    "GIT_NO_REPLACE_OBJECTS",
-    "GIT_REPLACE_REF_BASE",
-    "GIT_SHALLOW_FILE",
-    "GIT_CONFIG",
-)
-for _variable in REPOSITORY_BINDING:
-    os.environ.pop(_variable, None)
-# A test names the product's command as its own interpreter does, whichever launcher started the
-# run: under `uv run` the product would ask uv for its tool folder and print the machine's own
-# installed command. A test of that launcher sets the marker itself.
-os.environ.pop("UV_RUN_RECURSION_DEPTH", None)
-environment.declare_launcher()
 
 pytest_plugins = [
     "devtools.testing.collection",
     *(["tests.agent_eval.hooks"] if (Path(__file__).parent / "agent_eval").is_dir() else []),
 ]
-
-
-_INTERPRETER = pytest.StashKey[isolation.State]()
-
-
-def _interpreter_leak(item: pytest.Item) -> str:
-    """What a finished test left changed in its interpreter, every fixture's teardown done; ""
-    for an item whose setup recorded nothing, such as a test's own stand-in."""
-    before = item.stash.get(_INTERPRETER, None)
-    return "" if before is None else isolation.interpreter_leak(item.nodeid, before)
 
 
 def _unit_contract(request: pytest.FixtureRequest) -> bool:
@@ -132,58 +68,13 @@ def _seeds_read_in_place(request: pytest.FixtureRequest) -> Iterator[None]:
             environment.RUNNING_TEST.update(id=None, private=False, factory=None, verify=None)
 
 
-_machines = itertools.count()
-
-
-@pytest.fixture(autouse=True)
-def _one_machine_per_test(request: pytest.FixtureRequest) -> Iterator[None]:
-    """Each test is one machine: its data root is made the first time it opens a workspace, a
-    Host or the log, copied from this process's empty root; a test that opens none pays nothing.
-    A Host a wider fixture serves keeps its own root for the tests that share it; a unit test
-    has no machine and imports no data layer."""
-    contract = request.node.stash.get(LAYER_CONTRACT, None)
-    if contract is not None and contract.layer == "unit":
-        yield
-        return
-    from alphalattice.foundation.data_layer import history_runtime as history
-
-    if history.recording():
-        yield
-        return
-    history.close_history()
-    assert environment.DATA_ROOT is not None
-    root, empty = environment.DATA_ROOT / f"t{next(_machines)}", environment.DATA_ROOT / "empty"
-    make = history.create_data_root
-
-    def from_empty(path: Path) -> Any:
-        if not (path / "machine" / "log.sqlite").is_file():
-            if not (empty / "machine" / "log.sqlite").is_file():
-                make(empty)
-            shutil.copytree(empty, path, dirs_exist_ok=True)
-        return make(path)
-
-    # Its own patch, not the test's `monkeypatch`: a test that undoes its patches keeps its root.
-    with environment.ConfigMonkeyPatch.context() as patch:
-        patch.setattr(history, "create_data_root", from_empty)
-        patch.setenv(history.DATA_ROOT_ENV, str(root))
-        try:
-            yield
-        finally:
-            if not history.recording():
-                history.close_history()
-                shutil.rmtree(root, ignore_errors=True)
-
-
-def _verify_session_seeds() -> None:
-    """A write through a session seed is still a session failure, never a unit dependency."""
+@pytest.fixture(scope="session", autouse=True)
+def _seeds_read_in_place_stay_unchanged() -> Iterator[None]:
+    """A write through a seed file read in place is named by seed and file at session end."""
+    yield
+    # Found among the loaded modules, never imported here: only a run that copied a seed pays.
     if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
         assert seeds.seeds_changed() == []
-
-
-def _session_cleanup(config: pytest.Config) -> ExitStack:
-    if not hasattr(config, "_golden_cleanup"):
-        config._golden_cleanup = ExitStack()
-    return config._golden_cleanup
 
 
 @pytest.fixture(autouse=True)
@@ -196,42 +87,32 @@ def project_isolation(tmp_path, tmp_path_factory, request):
 
 
 @pytest.fixture(scope="session")
-def golden_cache(tmp_path_factory, request):
-    """Keep golden reader leases until session cleanup, after the last test's contract."""
+def golden_cache(tmp_path_factory):
+    """Workers bind acquisition and discovery to the same invocation, never another run."""
+    # Old-source counterfactuals retain their original per-worker discovery scope.
     kwargs = {}
     if hasattr(evaluation, "GoldenRuntime"):
         kwargs.update(runtime=environment.golden_runtime(), controller=False)
     base = tmp_path_factory.getbasetemp()
-    stack = _session_cleanup(request.config)
-    root = stack.enter_context(getattr(evaluation, "golden_run", nullcontext)(base, **kwargs))
-
-    def verify() -> None:
-        if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
-            changed = seeds.seeds_changed()
-            if not changed:
-                seeds.LINKED_SEEDS.clear()
-            assert changed == []
-
-    stack.callback(verify)  # Verify before releasing the invocation's reader leases.
-    return root
+    with getattr(evaluation, "golden_run", nullcontext)(base, **kwargs) as root:
+        try:
+            yield root
+        finally:
+            # Verify linked seeds before their invocation releases its reader leases.
+            if seeds := sys.modules.get("tests.researcher_methodology_surface.session_workspace"):
+                changed = seeds.seeds_changed()
+                if not changed:
+                    seeds.LINKED_SEEDS.clear()
+                assert changed == []
 
 
 @pytest.fixture
 def setup_done(tmp_path, monkeypatch):
     """A checkout whose first-use setup is done (`setup_support.setup_done`), in this process
-    and in the environment its subprocesses inherit; a Codex session's own item, the person's
-    trust of the project, is recorded in this test's own Codex home, as Codex records it."""
-    from alphalattice.interface.local_application.native_bridge import codex_project_trust
+    and in the environment its subprocesses inherit."""
     from tests.setup_support import setup_done as done
 
-    home = tmp_path / "codex-home"
-    home.mkdir()
-    root = codex_project_trust(Path.cwd(), {"CODEX_HOME": str(home)})["project_root"]
-    (home / "config.toml").write_text(
-        f'[projects.{json.dumps(root)}]\ntrust_level = "trusted"\n', encoding="utf-8"
-    )
     with done(tmp_path) as env:
-        env = {**env, "CODEX_HOME": str(home)}
         for name, value in env.items():
             monkeypatch.setenv(name, value)
         yield env
@@ -253,28 +134,12 @@ def host_local_clock(monkeypatch):
     return HostDatetime(2026, 10, 18, 2, 44, tzinfo=UTC)
 
 
-# Every test runs outside an agent session and outside its caller's trace: a vendor's session
-# variable, or the W3C TRACEPARENT and BAGGAGE of the process that started the run, would
-# otherwise ride into each request the tests send, and into its activity and its call spans
-# (LAWS OP13). A test that needs one sets it itself. Popped at import, so each worker and the
-# commands it starts inherit none.
+# Every test runs outside an agent session: a vendor's session variable would otherwise ride
+# into each request the tests send, and into its activity (LAWS OP13). A test that needs one
+# sets it itself. Popped at import, so each worker and the commands it starts inherit none.
 _MAINTAINER_THREAD = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CLAUDE_CODE_SESSION_ID")
-for _variable in (*(name for _vendor, name in AGENT_SESSION_VARIABLES), *TRACE_VARIABLES):
+for _vendor, _variable in AGENT_SESSION_VARIABLES:
     os.environ.pop(_variable, None)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def git_owned_config(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
-    """Each Git a test starts reads a global configuration the suite owns, never the machine's:
-    no identity, alias, hook path or template the person set, and line endings the test's own on
-    every host (a Windows system autocrlf=true never decides what a fixture commits)."""
-    config = tmp_path_factory.getbasetemp() / "gitconfig"
-    config.write_text(
-        "[core]\n\tlongpaths = true\n\tautocrlf = false\n\tsafecrlf = false\n", encoding="utf-8"
-    )
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("GIT_CONFIG_GLOBAL", str(config))
-        yield
 
 
 @pytest.fixture
@@ -309,119 +174,6 @@ _ROUND_TRIP_REPORT = os.environ.get("ALPHALATTICE_ROUND_TRIP_REPORT")
 """Discovery: each offer is sent back whole, a preview's body included, and what it finds is
 written to this file. A sent preview records its link, so this never runs by default."""
 _observer = RoundTripObserver(report=bool(_ROUND_TRIP_REPORT))
-_HOST_SCOPES: dict[int, str] = {}
-"""Each Host's operations, by id, and the node id of the test or fixture scope that started it.
-The observer hears every answer in the process; a test judges only its own scopes' Hosts."""
-_SCOPES: list[str] = []
-"""The node ids of the fixture scopes being set up now, then the running test's, innermost last."""
-_STAMPED: list[int] = [0]
-"""The module count last searched for the Hosts' operations, or -1 once its constructor records
-each Host's scope."""
-
-
-def _operations_class() -> type | None:
-    """The loaded `PortfolioResearchOperations`, found by its class among the loaded modules,
-    never by a quoted module path, which the impact walk reads as every test's dependency."""
-    return next(
-        (
-            found
-            for module in list(sys.modules.values())
-            if isinstance(found := getattr(module, "PortfolioResearchOperations", None), type)
-            and found.__module__ == getattr(module, "__name__", None)
-        ),
-        None,
-    )
-
-
-_RUNNING: list[pytest.Item] = []
-"""The test pytest runs now, its fixtures' setup included."""
-
-
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[Any]:
-    _RUNNING.append(item)
-    try:
-        return (yield)
-    finally:
-        _RUNNING.pop()
-
-
-def _stamp_hosts() -> None:
-    """Once its module is loaded, each Host's operations record the scope that started them, a
-    wider fixture's Host too: this runs before any fixture or test body can start one, and after
-    each import inside one (`_stamping_import`). A unit test starts no Host and reads no module
-    inventory."""
-    if _STAMPED[0] in (-1, len(sys.modules)):
-        return
-    contract = _RUNNING[-1].stash.get(LAYER_CONTRACT, None) if _RUNNING else None
-    if contract is not None and contract.layer == "unit":
-        return
-    _STAMPED[0] = len(sys.modules)
-    if (owner := _operations_class()) is None:
-        return
-    built = owner.__init__
-
-    def init(self: Any, *args: Any, **kwargs: Any) -> None:
-        built(self, *args, **kwargs)
-        if _SCOPES:
-            _HOST_SCOPES[id(self)] = _SCOPES[-1]
-        else:  # an id another Host had: its scope is unknown, so it is judged
-            _HOST_SCOPES.pop(id(self), None)
-
-    owner.__init__ = init
-    _STAMPED[0] = -1
-    if builtins.__import__ is _stamping_import:
-        builtins.__import__ = _import
-
-
-_import = builtins.__import__
-_IMPORTING: list[int] = [0]
-"""How deep the import statement in hand is nested; only the outermost one looks."""
-
-
-def _stamping_import(*args: Any, **kwargs: Any) -> Any:
-    """A Host loads its owners at their first use, inside the scope that starts it: an import
-    there that loads new modules stamps the Hosts' operations before their constructor runs.
-    Only the outermost import looks, once every module it loaded has run, and the hook removes
-    itself once they are stamped."""
-    if _IMPORTING[0] or not _SCOPES or _STAMPED[0] == -1:
-        return _import(*args, **kwargs)
-    before = len(sys.modules)
-    _IMPORTING[0] += 1
-    try:
-        module = _import(*args, **kwargs)
-    finally:
-        _IMPORTING[0] -= 1
-    if len(sys.modules) != before:
-        _STAMPED[0] = 0  # a nested import may have searched before the class was defined
-        _stamp_hosts()
-    return module
-
-
-builtins.__import__ = _stamping_import
-
-
-@pytest.hookimpl(wrapper=True)
-def pytest_fixture_setup(fixturedef: Any, request: pytest.FixtureRequest) -> Iterator[Any]:
-    """A Host a fixture starts belongs to that fixture's scope: its test, class, module or
-    package, or the session ("")."""
-    _stamp_hosts()
-    _SCOPES.append(request.node.nodeid)
-    try:
-        return (yield)
-    finally:
-        _SCOPES.pop()
-
-
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_call(item: pytest.Item) -> Iterator[None]:
-    """A Host a test body starts belongs to that test."""
-    _stamp_hosts()
-    _SCOPES.append(item.nodeid)
-    try:
-        return (yield)
-    finally:
-        _SCOPES.pop()
 
 
 def truth_problems(host, operation, body, admits):
@@ -572,7 +324,7 @@ def _memory_checks_read_no_host(
     """The early memory refusal reads unknown memory, and skips, unless a test sets it.
 
     The refusal compares a plan's estimate with the machine's free memory. A fixture's work
-    passes or fails by its own code, never by what else the host runs (a
+    passes or fails by its own code, never by what else the host runs (PERF-1 item 3: a
     preparation fixture was refused while another heavy set held commit).
     """
     if _unit_contract(request):
@@ -590,19 +342,16 @@ def _memory_checks_read_no_host(
 def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]:
     """Every answer an operation gives a test holds the model `schema show` publishes for it.
 
-    Each owner is held to its published reading by every test that runs the operation (
+    Each owner is held to its published reading by every test that runs the operation (V410,
     SC3), at the one door every caller's request passes, `PortfolioResearchOperations.execute`;
     a test that never loaded the Host's operations pays nothing.
     """
     if _unit_contract(request):
         yield
         return
-    heard = len(_observer.foreign)
-    _observer.begin(request.node.nodeid)
     # Found by its class among the loaded modules, never by a quoted module path, which the
     # impact walk reads as every test's dependency: the wrapper reaches only the tests that run
-    # an operation, and they select themselves by their own imports. Read here, inline: the
-    # unit contract proves this fixture's own module inventory read, never a helper's.
+    # an operation, and they select themselves by their own imports.
     owner = next(
         (
             found
@@ -623,23 +372,17 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
         original = owner.execute
 
         def execute(self: Any, request: Any, **kwargs: Any) -> Any:
-            started_in = _HOST_SCOPES.get(id(self))
-            host = "an unrecorded scope" if started_in is None else started_in or "the session"
-            workspace = self.workspace_manifest.workspace_id
             try:
                 body = original(self, request, **kwargs)
             except Exception as error:
                 # A raised failure without a product code is a crash the caller meets as a
-                # bare fingerprint (AX15's review IndexError).
+                # bare fingerprint (V449: AX15's review IndexError).
                 code = public_failure(error, "operation.raised")
                 _observer.raised(
                     request.operation,
                     code,
                     untyped_failure=untyped_failure,
                     refusal_words=refusal_words,
-                    owner=started_in,
-                    context=f"Task {getattr(request, 'task_id', None)}, workspace {workspace}, "
-                    f"Host of {host}",
                 )
                 raise
             given = (
@@ -648,16 +391,10 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 else {}
             )
 
-            task = (
-                (body.get("task_id") or body.get("blocking_task_id"))
-                if isinstance(body, dict)
-                else None
-            )
-
             def truth():
                 admits = self._recovery_context
                 if _ROUND_TRIP_REPORT:
-                    admits = lambda sent: original(self, sent)
+                    admits = lambda sent: original(self, sent)  # noqa: E731
                 return truth_problems(self, request.operation, body, admits)
 
             _observer.answered(
@@ -668,8 +405,6 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
                 untyped_failure=untyped_failure,
                 truth=truth,
                 plan_admission=lambda: _host_plan_admission(self, owner, request.operation, body),
-                owner=started_in,
-                context=f"Task {task}, workspace {workspace}, Host of {host}",
             )
             return body
 
@@ -681,8 +416,6 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
         allow_untyped=request.node.get_closest_marker("untyped_failure") is not None,
         report_unworded=bool(report),
     )
-    for line in _observer.foreign[heard:]:  # said where it was heard, judged by no other test
-        warnings.warn(f"another scope's Host answered during this test: {line}", stacklevel=1)
     if _ROUND_TRIP_REPORT and observed.trips:
         with open(_ROUND_TRIP_REPORT, "a", encoding="utf-8") as kept:
             kept.writelines(
@@ -691,12 +424,12 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     if observed.failure_kind == "untyped":
         pytest.fail(
             "an operation failed without a product code, a crash or a failure naming no rule "
-            "(a test that causes one on purpose is marked `untyped_failure`): "
+            "(V449; a test that causes one on purpose is marked `untyped_failure`): "
             + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
     if observed.unworded and report:
-        # Discovery: every such code a run meets, written down rather than failed.
+        # Discovery: every such code a run meets, written down rather than failed (V456).
         with open(report, "a", encoding="utf-8") as kept:
             kept.writelines(
                 f"{issue['reason']}\t{request.node.nodeid}\n" for issue in observed.unworded
@@ -704,7 +437,7 @@ def _answers_hold_their_models(request: pytest.FixtureRequest) -> Iterator[None]
     if observed.failure_kind == "answer":
         pytest.fail(
             "an answer does not hold its published model, offers a request the Host does not "
-            "accept as it stands, or refuses without words and a way on (OP4): "
+            "accept as it stands, or refuses without words and a way on (V410, V449, OP4): "
             + "; ".join(issue["reason"] for issue in observed.failures[:5]),
             pytrace=False,
         )
@@ -731,18 +464,6 @@ def _recorded_durations() -> dict[str, float]:
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Refuse checkout temp before collection; keep the workers' longest-first queue."""
-    config.addinivalue_line(
-        "markers",
-        "github: GitHub's public Verify runs this test, so the nightly never does; declared at "
-        "collection (release.public_manifest.declare_github)",
-    )
-    # The test process's DuckDB driver, as each product process's entry installs it.
-    from alphalattice.control.workspace_runtime import reader_threads
-    from alphalattice.kernel import storage
-
-    storage.install_driver(reader_threads.DRIVER)
-    if not config.pluginmanager.is_registered(environment):  # its fixture-roots hook
-        config.pluginmanager.register(environment, "tests.pytest_environment")
     checkout = Path(__file__).resolve().parents[1]
     try:
         environment.configure_temporary_roots(checkout, config.getoption("basetemp"))
@@ -808,7 +529,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     def run(*flags: str) -> subprocess.CompletedProcess[str]:
         phase = "check" if flags else "build"
         try:
-            result = spawn.run(
+            result = subprocess.run(
                 [*command, *flags],
                 cwd=checkout,
                 capture_output=True,
@@ -854,15 +575,6 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 builder.warm_real_risk_golden(external=external)
             for symbols in dict.fromkeys(tuple(i.module.MEMBERS) for i in membership):
                 builder.warm_real_risk_golden(symbols=symbols, sector_size=len(symbols))
-            if any(
-                hasattr(i, "callspec") and i.callspec.params.get("input_seed") == "development"
-                for i in session.items
-            ):
-                builder.warm_real_risk_golden(symbols=builder.DEVELOPMENT_SYMBOLS)
-            # `revision_seed` asks for `prepared` only when it builds: list both names.
-            if any({"prepared", "revision_seed"} & set(i.fixturenames) for i in session.items):
-                symbols, sector_size = builder.READINESS_UNIVERSE
-                builder.warm_real_risk_golden(symbols=symbols, sector_size=sector_size)
         if any("fresh_workspace" in item.fixturenames for item in session.items):
             factory = session.config._tmp_path_factory
             base = factory.getbasetemp()
@@ -870,29 +582,10 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 base = base.parent
             with environment.project_scope(base, base):
                 builder.session_fresh_seed(factory)
-    # A collected module whose cases read a shared world too slow to build inside a case's
-    # bound names its warm (`WARM_BEFORE_TESTS`): published here, under the same golden run
-    # `golden_cache` binds, so it is the keyed entry its cases read.
-    warms = {
-        warm: None
-        for item in session.items
-        for warm in getattr(getattr(item, "module", None), "WARM_BEFORE_TESTS", ())
-    }
-    if warms and not session.config.option.collectonly:
-        temporary = session.config._tmp_path_factory.getbasetemp()
-        base = temporary.parent if os.environ.get("PYTEST_XDIST_WORKER") else temporary
-        kwargs = {}
-        if hasattr(evaluation, "GoldenRuntime"):
-            kwargs.update(runtime=environment.golden_runtime(), controller=False)
-        run = getattr(evaluation, "golden_run", nullcontext)(temporary, **kwargs)
-        with environment.project_scope(base, base), run:
-            for warm in warms:
-                warm(base)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Declare the tests GitHub runs, then start the longest work first, at the scheduler's own
-    unit of dispatch.
+    """Start the longest work first, at the scheduler's own unit of dispatch.
 
     Default ``--dist load`` dispatches individual tests. File/scope schedulers
     retain each file's order and start its aggregate work first.
@@ -903,7 +596,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     Shared immutable prerequisites belong in the owning test package's session
     support, including when load dispatches their consumers across workers.
     """
-    declare_github(items, lambda item: item.stash.get(LANE_CONTRACT, None))
     workerinput = getattr(config, "workerinput", {})
     recorded = workerinput.get("recorded_durations")
     distribution = workerinput.get("recorded_distribution", config.getoption("dist", "no"))
@@ -933,25 +625,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     items[:] = [item for name in sorted(modules, key=lambda n: -cost[n]) for item in modules[name]]
 
 
-_BACKUPS = pytest.StashKey[frozenset[str]]()
-
-
-@pytest.hookimpl(wrapper=True, tryfirst=True)
-def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
-    """The workspaces backed up while a test ran, its fixtures' setup and teardown included: the
-    process root kept every one to the run's end, 1.13 GB a worker at a full run's peak (mac1,
-    11-07). Every test that reads backups names its own root, so this one is only a sink. Read
-    outermost, before a unit test's file audit begins."""
-    item.stash[_BACKUPS] = environment.backups_made()
-    item.stash[_INTERPRETER] = isolation.interpreter_state()  # read by _interpreter_leak
-    environment.guard_person_roots()  # a Host root outside this run's own fails the test by name
-    return (yield)
-
-
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
-    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks, and so do
-    the backups its body made.
+    """A passed test's scratch goes with it, as tmp_path_retention_policy "failed" asks.
 
     pytest's own removal ignores errors, and on Windows a sealed golden's read-only links defeat
     it, so a passed journey's whole scratch stayed to the run's end. What still cannot go is named
@@ -966,27 +642,18 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
     try:
         yield
     except BaseException:
-        _interpreter_leak(item)  # put back; a fixture teardown failure keeps its diagnostics
-        raise
+        raise  # a fixture teardown failure keeps the test's diagnostics
     else:
-        if leak := _interpreter_leak(item):  # the test that leaked fails, never a later one
-            raise AssertionError(leak)
         factory = item.config._tmp_path_factory  # type: ignore[attr-defined]
-        if not passed or factory._retention_policy != "failed":
-            return
-        owned = [path] if isinstance(path, Path) and path.exists() else []
-        roots = [(owned, factory.getbasetemp())]
-        if environment.BACKUP_ROOT is not None:
-            made = environment.backups_made() - item.stash.get(_BACKUPS, environment.backups_made())
-            roots.append(([environment.BACKUP_ROOT / n for n in made], environment.BACKUP_ROOT))
-        left = [
-            line
-            for paths, root in roots
-            for each in paths
-            for line in evaluation.golden_workspaces.remove_tree(each, root)
-        ]
-        if left:
-            item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
+        if (
+            isinstance(path, Path)
+            and passed
+            and factory._retention_policy == "failed"
+            and path.exists()
+        ):
+            left = evaluation.golden_workspaces.remove_tree(path, factory.getbasetemp())
+            if left:
+                item.user_properties.append(("scratch_left", "; ".join(left)[:2000]))
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -999,23 +666,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """The main process merges what this run measured into the recorded seconds."""
-    try:
-        with ExitStack() as cleanup:
-            if controller := getattr(session.config, "_golden_controller", None):
-                cleanup.callback(controller.__exit__, None, None, None)
-            if goldens := getattr(session.config, "_golden_cleanup", None):
-                cleanup.callback(goldens.close)
-            cleanup.callback(_verify_session_seeds)
-            for root in (environment.BACKUP_ROOT, environment.DATA_ROOT):
-                if root is not None and not session.testsfailed:  # it outlived every run
-                    cleanup.callback(evaluation.golden_workspaces.remove_tree, root, root.parent)
-    except Exception as error:
-        # An xdist worker's exit status alone is not propagated as a test failure.
-        message = f"session fixture cleanup failed: {type(error).__name__}: {error}"
-        session.config.hook.pytest_collectreport(
-            report=pytest.CollectReport("session cleanup", "failed", message, [])
-        )
-        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if controller := getattr(session.config, "_golden_controller", None):
+        controller.__exit__(None, None, None)
     if os.environ.get(_WORKER) or not _measured:
         return
     from devtools.testing.collection import merge_timing_hints

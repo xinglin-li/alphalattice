@@ -19,8 +19,6 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
-
 ROOT = Path(__file__).resolve().parents[3]
 SOLVERS = ("cvxpy", "osqp", "optuna")
 OPTIMIZER = "alphalattice.investment.portfolio_strategy_lab.optimizer.service"
@@ -45,7 +43,7 @@ EXCLUDED_PACKAGES = (
 
 
 def _probe(body: str) -> subprocess.CompletedProcess[str]:
-    return spawn.run(
+    return subprocess.run(
         [sys.executable, "-c", body],
         cwd=ROOT,
         env={**os.environ, "PYTHONPATH": str(ROOT / "src"), "ALPHALATTICE_NETWORK_DISABLED": "1"},
@@ -168,19 +166,6 @@ def test_the_public_risk_surface_reaches_no_excluded_research_lane() -> None:
             "runpy.run_path('scripts/run_public_portfolio_research.py', run_name='probe')",
             False,
         ),
-        pytest.param(
-            "import runpy, sys\n"
-            "sys.argv = ['alphalattice', '--help']\n"
-            "try:\n"
-            "    runpy.run_path('scripts/run_alphalattice.py', run_name='__main__')\n"
-            "except SystemExit as exit:\n"
-            "    assert exit.code == 0\n"
-            "heavy = {'duckdb', 'numpy', 'pandas', 'pyarrow', 'pydantic'}\n"
-            "loaded = sorted(heavy & set(sys.modules))\n"
-            "assert not loaded, loaded",
-            True,
-            id="cli-help",
-        ),
     ],
 )
 def test_each_complete_public_entrypoint_keeps_the_process_import_closure_clean(
@@ -235,7 +220,7 @@ def test_the_host_starts_without_its_heavy_libraries_or_its_strategy_source_hash
         "loaded = sorted(n for n in sys.modules if n.split('.')[0] in heavy or n == 'scipy.stats');"
         "assert not loaded, loaded; "
         "assert not installed_strategies.installed_strategy_source_hash.cache_info().currsize\n"
-        "from alphalattice.capabilities.domain_contracts import environment\n"
+        "from alphalattice.kernel.shared_kernel import environment\n"
         "from alphalattice.investment.risk_research.estimators import covariance\n"
         "with covariance.risk_numerical_thread_policy():\n"  # cold: LedoitWolf's first estimate
         "    import sklearn.covariance\n"

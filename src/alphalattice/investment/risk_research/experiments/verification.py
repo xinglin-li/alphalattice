@@ -50,7 +50,6 @@ from alphalattice.investment.risk_research.experiments.window import (
     RiskDevelopmentInputBinding,
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import (
-    HistoricalCovarianceReader,
     RiskArtifactError,
     RiskArtifactStore,
 )
@@ -452,14 +451,18 @@ class RiskEvidenceVerifier:
 
     @staticmethod
     def _verify_chunks(store: RiskArtifactStore, surface: RiskDevelopmentCovarianceSurface) -> None:
-        """Verify the sealed payload of every chunk on the surface's declared axes."""
+        """Descend into the surface's own chunk list.
+
+        ``chunk_path`` re-reads each chunk and checks its byte length and
+        SHA-256, so this is where the packed matrices are actually verified
+        rather than assumed present.
+        """
+
         if not surface.chunks:
             raise AuthoringError("research_authoring.evidence_surface_has_no_chunks")
-        reader = HistoricalCovarianceReader(store.root.parent)
         try:
             for chunk in surface.chunks:
-                with reader.lease(chunk, ordered_listing_ids=surface.chunk_listing_ids(chunk)):
-                    pass
+                store.chunk_path(chunk)
         except (RiskArtifactError, OSError) as error:
             raise AuthoringError(
                 f"research_authoring.evidence_artifact_unverifiable:{error}"

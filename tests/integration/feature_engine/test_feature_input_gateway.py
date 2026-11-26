@@ -1846,10 +1846,10 @@ def test_admission_only_failure_is_bound_to_the_existing_workspace_cycle(tmp_pat
 def test_remediation_failure_reason_is_stable_and_never_raw_text() -> None:
     """A stable code and bounded safe text per exception kind; nothing raw."""
 
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
     from alphalattice.control.data_platform.maintenance.contracts import (
         remediation_failure_reason,
     )
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
     assert remediation_failure_reason(ValueError("feature_input.resolution_policy_changed")) == (
         "feature_input.resolution_policy_changed",

@@ -19,16 +19,12 @@ from typing import Any
 
 import pytest
 
-from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.evidence_cro import (
     _ANSWERED_ROUTE_IN_WORDS,
     render_review_export,
 )
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
-)
-from tests._support.alternative_evidence_desk_fixtures import (
-    review_on_the_store as review_on_the_store,
 )
 from tests.alternative_evidence_desk.portfolio_coverage_support import (
     COVERAGE_BOOK_SIZE,
@@ -45,9 +41,6 @@ from tests.alternative_evidence_desk.portfolio_coverage_support import (
     start_coverage_service,
 )
 from tests.alternative_evidence_desk.review_dossiers import ControlledRisk, controlled_answer
-from tests.pytest_environment import upgraded
-
-pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
 
 QUIET = "QA05"
 MISSING = "QA17"
@@ -55,12 +48,7 @@ MISSING = "QA17"
 
 @pytest.fixture(scope="module")
 def built_book(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """The book, built once on a data root of its own, its Portfolio results carried in its folder
-    for each copy."""
-    with history.own_root(tmp_path_factory.mktemp("completion-root")):
-        workspace, report = build_coverage_workspace(tmp_path_factory.mktemp("completion-book"))
-        history.carry_results(workspace, workspace)
-    return workspace, report
+    return build_coverage_workspace(tmp_path_factory.mktemp("completion-book"))
 
 
 @pytest.fixture
@@ -70,7 +58,7 @@ def book(built_book: Any, tmp_path: Path) -> Any:
     workspace, report = built_book
     copy = tmp_path / "workspace"
     shutil.copytree(workspace, copy)
-    return upgraded(copy), report
+    return copy, report
 
 
 def _prepared_and_analysed(service: Any) -> dict[str, Any]:

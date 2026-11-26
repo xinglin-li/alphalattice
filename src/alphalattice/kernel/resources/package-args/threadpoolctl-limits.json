@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.threadpoolctl.threadpool-limits",
+  "revision": "1.0.0",
+  "title": "threadpoolctl threadpool_limits adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "threadpoolctl", "version": "3.6.0"},
+  "companion_distributions": [],
+  "callable": "threadpoolctl.threadpool_limits",
+  "arguments": [
+    {"schema_version": "1", "name": "limits", "value_kind": "integer", "required": true, "minimum": 1.0}
+  ],
+  "interactions": ["The limit affects supported native pools loaded in the process and is restored on context exit."],
+  "assumptions": ["The deterministic owner records backend information separately."],
+  "warnings": ["The context is process-scoped and does not promise per-task isolation."],
+  "failure_modes": ["Unsupported limit or unavailable locked threadpoolctl distribution."],
+  "owner_policy_ref": "reference:numerical-risk-estimation",
+  "official_source_url": "https://github.com/joblib/threadpoolctl"
+}

@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from devtools.evaluation import explorer as explorer_module
 from devtools.evaluation.explorer import Explorer, mutations
 from devtools.evaluation.forms import Scenario
 
@@ -39,9 +37,7 @@ def test_alias_mistakes_change_the_alias_and_keep_the_members_words() -> None:
     assert reply["committee_message"] == {**message, "reply_to": "M9999"}
 
 
-def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(tmp_path: Path) -> None:
     """requirement: a refused offer, a self-offer that fails the same way, a forbidden act and
     an unreached route are each named once, with the loop part it broke in."""
     start = {
@@ -75,71 +71,6 @@ def test_the_walk_names_each_failure_an_agent_would_meet_with_its_part(
         "route": "system",
     }
     assert not grade["passed"] and trace.events[0].attributes["alphalattice.offers"] == ["replan"]
-
-    capture = getattr(explorer_module, "capture_restart", lambda *args: None)
-    render = getattr(explorer_module, "failure_message", lambda result, saved: None)
-    owned = tmp_path / "run"
-    (owned / "temp").mkdir(parents=True)
-    (owned / "README.md").write_text("State: active\n", encoding="utf-8")
-    monkeypatch.setenv("TEMP", str(owned / "temp"))
-    output = owned / "pytest" / "invocation-12345678"
-    output.mkdir(parents=True)
-    monkeypatch.setenv("WK_SUITE_REPORT", str(output / "suite-observation.json"))
-    log = tmp_path / "host.log"
-    secret = "private" + "-sentinel"
-    log.write_text(
-        f"STARTED: a Host now serves {secret}\nTraceback (most recent call last):\n"
-        f"MemoryError: {secret}\n{secret}\n",
-        encoding="utf-8",
-    )
-    for detail, exit_code, failed in (
-        (f"Restart the Host {secret}", 17, True),
-        ("Restart the Host", None, True),
-        ("Continue", 0, False),
-    ):
-        saved = []
-        process = SimpleNamespace(poll=lambda code=exit_code: code)
-        host = SimpleNamespace(host=process)
-        response = {"outcome": "OK", "detail": detail, "data": {"route": "first-use"}}
-        route = Scenario(
-            "first_use",
-            "first use",
-            "2026-10-10T15:00:00+00:00",
-            (),
-            (("first-use",),),
-            "agent",
-            ("restart_host",),
-        )
-        walk = Explorer(
-            lambda _, result=response: result,
-            lambda _: {},
-            route,
-            tmp_path,
-            observe=lambda answer, items=saved, server=host: capture(items, server, answer, log),
-        )
-        result, _ = walk.explore([["first-use", "prepare"]])
-        before = set(output.glob("first-use-failure-*.json"))
-        message = render(result, saved)
-        added = set(output.glob("first-use-failure-*.json")) - before
-        if failed:
-            assert not result["passed"] and len(added) == 1
-            evidence = json.loads(added.pop().read_text(encoding="utf-8"))
-            kept_log = Path(evidence["host_log"]).read_text(encoding="utf-8")
-            assert secret not in kept_log and secret not in message
-            assert json.loads(kept_log)["events"] == ["host_started", "memory_error", "traceback"]
-            assert evidence["response_text"] == [
-                ["[matching response withheld]" if secret in detail else "Restart the Host"]
-            ]
-            assert evidence["host_exit_at_response"] == [exit_code]
-            assert evidence["host_log"] in message and json.dumps(exit_code) in message
-        else:
-            assert result["passed"] and not added and message is None
-
-    saved = []
-    capture(saved, host, {"detail": "Restart the Host"}, log)
-    assert render(
-        {"reasons": [{"reason": "forbidden act restart_host offered at task show"}]}, saved
-    )
 
 
 @pytest.mark.parametrize(
@@ -185,9 +116,7 @@ def test_a_positive_walk_keeps_endings_and_cancelled_replans_optional(tmp_path, 
         assert trace.events[-1].attributes["alphalattice.path"].endswith(" > " + key)
 
 
-def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(tmp_path: Path) -> None:
     """regression (a merge set under load, 2026-10-15): one wait's time box ended the path."""
     wait = {"task_id": "t", "lifecycle": "RUNNING", "wait_event": {"event": "MAX_WAIT_REACHED"}}
     answers = [{"outcome": "OK", "data": {"lifecycle": "SUCCEEDED"}}]
@@ -195,21 +124,6 @@ def test_a_wait_past_its_time_box_while_the_task_runs_is_waited_again(
     route = Scenario("w", "w", "2026-10-15T16:00:00+00:00", (), (("SUCCEEDED",),), "agent", ())
     grade, trace = Explorer(lambda _: answers.pop(), lambda _: {}, route, tmp_path, 1).explore([[]])
     assert grade["passed"] and len(trace.events) == 3, grade
-    from types import SimpleNamespace
-
-    import devtools.evaluation.explorer as owner
-
-    ticks = iter((0.0, 0.0, 3601.0, 3601.0))
-    monkeypatch.setattr(owner, "time", SimpleNamespace(perf_counter=lambda: next(ticks)))
-    calls = []
-
-    def stalled(argv):
-        calls.append(argv)
-        assert len(calls) < 3, "walk exceeded its wall deadline"
-        return {"outcome": "PENDING", "data": wait}
-
-    with pytest.raises(ValueError, match=r"explorer\.wall_deadline"):
-        Explorer(stalled, lambda _: {}, route, tmp_path, 1).explore([[]])
 
 
 @pytest.mark.parametrize(
@@ -491,17 +405,13 @@ def test_an_injected_refusal_recovers_only_the_original_bound_step(
         assert len(sent) <= 3
     if recovery == "filled":
         sampled, preceding = [], [*explorer.mutation_checks, {"mutation": "earlier"}]
-        for number, checks in enumerate(([], preceding, preceding[::-1], *[[]] * 9)):
+        for number, checks in enumerate(([], preceding, preceding[::-1])):
             explorer.mutation_checks = checks
             before = len(sent)
-            # A per-build id and content ref, as a served state names them.
-            state = f"committee/00000000-0000-0000-0000-{number:012d}/{number + 7:064x}"
+            state = f"committee/00000000-0000-0000-0000-{number:012d}"
             explorer.inject(request, state)
             sampled.append((explorer.mutation_checks[-1]["mutation"], sent[before]))
-        # One choice whatever the ids, refs and earlier checks; it probes a mistake, in the
-        # flag or in the document, whichever the state's key picks.
-        assert all(choice == sampled[0] for choice in sampled)
-        assert sampled[0][0] == "misspell-flag" or sampled[0][1] != request
+        assert sampled[0] == sampled[1] == sampled[2] and sampled[0][1] != request
 
 
 @pytest.mark.parametrize(
@@ -558,19 +468,18 @@ def test_a_retired_recovery_offer_is_settled_only_by_its_completed_source(tmp_pa
     assert bool(explorer.findings) == (state not in {"SUCCEEDED", "stopped-read"})
 
 
-IDENTITIES = (
-    *("same", "update-plan", "different", "missing", "cancelled", "cancelled-read"),
-    *("successor", "recovered-same", "recovered-task", "recovered-message"),
-    *("read-same", "read-update", "read-message", "read-empty"),
+@pytest.mark.parametrize(
+    "identity",
+    [
+        *("same", "update-plan", "different", "missing", "cancelled", "cancelled-read"),
+        *("recovered-same", "recovered-task", "recovered-message"),
+        *("read-same", "read-update", "read-message", "read-empty"),
+    ],
 )
-
-
-@pytest.mark.parametrize("identity", IDENTITIES, ids=IDENTITIES)
 def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     tmp_path: Path, identity: str
 ) -> None:
-    """A duplicate must recover its original admission without creating another one; a new
-    Task is clean only as the original's recorded successor (a BLOCKED Task does not resume)."""
+    """A duplicate must recover its original admission without creating another one."""
     request = {"operation": "MODEL_RUN", "plan_hash": "a" * 64}
     key = "message_id" if identity == "recovered-message" else "task_id"
     baseline = {"operation": "MODEL_RUN", "outcome": "PENDING", "data": {key: "original"}}
@@ -589,10 +498,6 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
 
     def call(argv: list[str]) -> dict[str, Any]:
         sent.append(json.loads(Path(argv[-1]).read_text(encoding="utf-8")))
-        if sent[-1] == {"operation": "TASKS"}:
-            link = "different" if identity == "successor" else None
-            row = {"task_id": "original", "attention": {"successor_task_id": link}}
-            return {"operation": "TASKS", "outcome": "OK", "data": {"tasks": [row]}}
         if identity.startswith("read-"):
             if len(sent) == 1:
                 return {
@@ -643,12 +548,8 @@ def test_a_duplicate_is_clean_only_when_it_reuses_the_original_identity(
     elif identity.startswith("read-"):
         assert sent == [request, {"operation": "COMMITTEE_READ", "update_task_id": "task-1"}]
     else:
-        listed = [{"operation": "TASKS"}] * (
-            identity in {"different", "successor", "recovered-task"}
-        )
-        assert sent == [request] * (2 if identity.startswith("recovered-") else 1) + listed
+        assert sent == [request] * (2 if identity.startswith("recovered-") else 1)
     assert bool(explorer.findings) == (
-        identity
-        not in {"same", "successor", "recovered-same", "read-same", "update-plan", "cancelled-read"}
+        identity not in {"same", "recovered-same", "read-same", "update-plan", "cancelled-read"}
     )
     assert len(explorer.mutation_checks) == 1

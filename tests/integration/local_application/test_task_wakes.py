@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,8 +15,6 @@ from uuid import uuid4
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
-from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.control.task_control.contracts import TaskEvidence, TaskStageReceipt
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.client import LocalResearchClient
@@ -23,7 +22,7 @@ from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest as Request,
 )
-from tests.portfolio_strategy_lab.cli_support import cli_environment
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/run_alphalattice.py"
@@ -86,7 +85,7 @@ def _task(live, salt: str):  # type: ignore[no-untyped-def]
 
 def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,type-arg]
     """The lead's call: a real CLI process that answers and exits before the Task ends."""
-    done = spawn.run(
+    done = subprocess.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -97,7 +96,7 @@ def _register(live, task, *, env=None) -> dict:  # type: ignore[no-untyped-def,t
         text=True,
         encoding="utf-8",
         timeout=120,
-        env=cli_environment() if env is None else env,
+        env=env,
     )
     assert done.returncode == 0, done.stdout + done.stderr
     answer = json.loads(done.stdout)["data"]

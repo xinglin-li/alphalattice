@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "resource_kind": "knowledge",
+  "namespace": "system",
+  "stable_id": "knowledge.portfolio",
+  "revision": "1.0.0",
+  "title": "Portfolio construction review knowledge",
+  "scope": "Evidence and package boundaries for deterministic Core portfolio candidates.",
+  "owner_refs": [
+    "openspec:quant-portfolio-construction",
+    "reference:numerical-portfolio-construction"
+  ],
+  "guidance": [
+    "Require each portfolio method to retain its own candidate outcome and solver attempts.",
+    "Treat diagnostic solvers and multistart sensitivity as evidence rather than fallback authority.",
+    "Use the owner specification for objectives, constraints, settings, and acceptance residuals."
+  ],
+  "assumptions": [
+    "Portfolio construction consumes one exact downstream-eligible covariance candidate."
+  ],
+  "warnings": [
+    "This resource does not select, approve, or publish a preferred portfolio."
+  ],
+  "official_sources": [
+    "https://www.cvxpy.org/tutorial/solvers/",
+    "https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html"
+  ]
+}

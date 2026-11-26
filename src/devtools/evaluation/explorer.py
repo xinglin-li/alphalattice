@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
 from collections.abc import Callable, Iterator
@@ -21,7 +20,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from .forms import Grade, IssuePart, Scenario, Trace, TraceEvent
 from .intent import FORBIDDEN, contains, proposes
@@ -41,120 +39,6 @@ _CHOICE = re.compile(r"<[^<>]+>")
 _OPERATOR_SWITCH = "RESTART_WITHOUT_OPERATOR_OFFLINE_SWITCH"
 _ENDING = ("CANCEL", "_ABANDON", "_STOP")
 _DEFERRED = ("deferred", "warning", "Deferred")
-
-
-def _diagnostic_words(catalog, refusal_resource):
-    """Copy only bounded words shipped by the product; never arbitrary response text."""
-    try:
-        refusals = catalog(refusal_resource).values()
-        messages = catalog("config/registries/messages.json")["entries"].values()
-        words = [
-            row.get(key) for row in refusals for key in ("detail", "stop_detail", "next_action")
-        ]
-        words += [word for row in messages for word in row.get("words", {}).values()]
-        return {word for word in words if isinstance(word, str) and len(word) <= 512}
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError):
-        return set()
-
-
-def capture_restart(
-    saved,
-    host,
-    answer,
-    log,
-    *,
-    acts=("restart_host",),
-    catalog=None,
-    refusal_resource=None,
-    code_reader=None,
-):
-    """Remember bounded response text the forbidden-offer grader will see."""
-    patterns = [FORBIDDEN.get(act, r"\b" + act.replace("_", r"[\s_-]+") + r"\b") for act in acts]
-    allowed = {"Restart the Host", "restart the Host", "restart the host", "????", "web serve"}
-    matches = [
-        line
-        for pattern in patterns
-        if (line := next((s for s in _said(answer) if proposes(s, pattern)), None)) is not None
-    ]
-    if matches and catalog:
-        allowed.update(_diagnostic_words(catalog, refusal_resource))
-    lines = list(
-        dict.fromkeys(
-            line if line in allowed else "[matching response withheld]" for line in matches
-        )
-    )
-    if lines:
-        data = answer.get("data")
-        raw = answer.get("failure_code") or (
-            data.get("failure_code") if isinstance(data, dict) else None
-        )
-        code = (
-            code_reader(raw.partition(":")[0] if isinstance(raw, str) else raw)
-            if code_reader
-            else None
-        )
-        saved.append((lines, host.host.poll(), host.host, log, code))
-
-
-def _host_log_summary(log):
-    """Extract fixed event classes while withholding arbitrary child output."""
-    events = set()
-    unclassified = 0
-    with log.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            if line.startswith("STARTED: a Host now serves "):
-                events.add("host_started")
-            elif line.strip() == "Stopping.":
-                events.add("host_stopping")
-            elif line.strip() == "Traceback (most recent call last):":
-                events.add("traceback")
-            elif line.startswith("MemoryError:") or line.strip() == "MemoryError":
-                events.add("memory_error")
-            else:
-                unclassified += 1
-    return {"events": sorted(events), "unclassified_lines": unclassified}
-
-
-def failure_message(grade, saved):
-    """Keep the finding and Host log in the run evidence copied by the nightly."""
-    if not any(
-        row.get("reason", "").startswith("forbidden act ") for row in grade.get("reasons", [])
-    ):
-        return None
-    log = saved[0][3] if saved else None
-    evidence = {
-        "response_text": [lines for lines, _, _, _, _ in saved],
-        "failure_codes": [code for _, _, _, _, code in saved],
-        "response_error": None if saved else "forbidden-offer response unavailable",
-        "host_exit_at_response": [exit_code for _, exit_code, _, _, _ in saved],
-        "host_exit_after": [host.poll() for _, _, host, _, _ in saved],
-    }
-    report = os.environ.get("WK_SUITE_REPORT")
-    temp = os.environ.get("TEMP") or os.environ.get("TMPDIR")
-    root = Path(report).parent if report else Path(temp).parent if temp else None
-    try:
-        if not report and (root is None or not (root / "README.md").is_file()):
-            root = log.parent if log else None
-        if root is None:
-            return f"first-use evidence destination unavailable\n{json.dumps(evidence)}"
-        target = root / f"first-use-failure-{uuid4().hex}.json"
-        copied_log = target.with_suffix(".log")
-        try:
-            if log is None:
-                raise FileNotFoundError("host log unavailable")
-            copied_log.write_text(json.dumps(_host_log_summary(log)), encoding="utf-8")
-            log_error = None
-        except OSError as error:
-            log_error = type(error).__name__
-        evidence.update(
-            host_log=str(copied_log) if log_error is None else None,
-            log_error=log_error,
-        )
-        raw = json.dumps(evidence, ensure_ascii=False, indent=1)
-        target.write_text(raw, encoding="utf-8")
-        return f"first-use evidence: {target}\nHost log: {evidence['host_log']}\n{raw}"
-    except OSError as error:
-        return f"first-use evidence write failed: {type(error).__name__}\n{json.dumps(evidence)}"
 
 
 def data_decision_findings(
@@ -249,7 +133,7 @@ def research_update_findings(
 def evidence_reuse_findings(store: Path, before: frozenset[str]) -> list[dict[str, str]]:
     """A later day reads no filing an earlier analysis read, nor scores a selection over one.
 
-    The filing is the unit of reuse. `store` is the Evidence artifact root and `before`
+    The filing is the unit of reuse (W3). `store` is the Evidence artifact root and `before`
     the records it held before the day; the day's own records are the rest.
     """
 
@@ -530,7 +414,6 @@ class Explorer:
     observe: Callable[[dict[str, Any]], None] = lambda _: None
     terminal: Callable[[dict[str, Any]], bool] = lambda _: False
     terminal_reached: bool = False
-    _deadline: float = field(default=float("inf"), init=False, repr=False)
 
     def inject(
         self,
@@ -560,9 +443,7 @@ class Explorer:
         if baseline is not None:
             variants = [("duplicate", request, "same admission")]
         elif kinds is None and variants:
-            # Content refs differ per build, so the probed mistake is keyed on the state with
-            # every id and ref normalized, as mistake_key reads a finding's state.
-            state = re.sub(r"[0-9a-f-]{32,}", "<ref>", where)
+            state = re.sub(r"\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b", "<id>", where)
             key = f"{self.scenario.id}|{state}|{operation}|{','.join(sorted(required))}"
             index = int(hashlib.sha256(key.encode()).hexdigest(), 16) % len(variants)
             variants = [variants[index]]
@@ -626,11 +507,7 @@ class Explorer:
             identities = {k: before[k] for k in keys if before.get(k) is not None}
             repeated = _data(corrected or answer)
             same = identities and all(repeated.get(k) == v for k, v in identities.items())
-            if (
-                operation not in self.read_operations
-                and not same
-                and not self._successor(before, repeated, where)
-            ):
+            if operation not in self.read_operations and not same:
                 reason, corrected = "duplicate admission differs or has no identity proof", None
         row = {
             "state": where,
@@ -645,26 +522,6 @@ class Explorer:
             "reason": reason,
         }
         return row, corrected
-
-    def _successor(self, before: dict[str, Any], repeated: dict[str, Any], where: str) -> bool:
-        """A resend admitted after its Task stopped is that Task's recorded successor.
-
-        A BLOCKED Task does not resume, so the Host admits the same work again and records the
-        link; the task list proves it, whether the original stopped before the resend or not.
-        """
-        original, successor = before.get("task_id"), repeated.get("task_id")
-        if not original or not successor or original == successor:
-            return False
-        document = self.work / f"successor-{len(self.events)}.json"
-        document.write_text(json.dumps({"operation": "TASKS"}), encoding="utf-8")
-        listed = self._send(["request", "--file", str(document)], where + " > successor")
-        self.events[-1].attributes["alphalattice.mutation"] = "duplicate"
-        return any(
-            task.get("task_id") == original
-            and (task.get("attention") or {}).get("successor_task_id") == successor
-            for task in _data(listed).get("tasks", [])
-            if isinstance(task, dict)
-        )
 
     def _discovered_binding(
         self, original: dict[str, Any], request: dict[str, Any], sent: dict[str, Any]
@@ -874,7 +731,6 @@ class Explorer:
 
     def explore(self, starts: list[list[str]]) -> tuple[Grade, Trace]:
         """Walk every path from each start; the grade names each broken path and its part."""
-        self._deadline = time.perf_counter() + 3600
         for argv in starts:
             if self.terminal_reached:
                 break
@@ -893,8 +749,6 @@ class Explorer:
         return {"passed": not reasons, "reasons": reasons, "finding": None}, trace
 
     def _send(self, argv: list[str], path: str, run: Call | None = None) -> dict[str, Any]:
-        if time.perf_counter() >= self._deadline:
-            raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
         started = datetime.now(UTC).isoformat()
         answer = (run or self.call)(argv)
         self.events.append(
@@ -1034,32 +888,14 @@ class Explorer:
         task = _data(answer).get("task_id")
         if answer.get("outcome") != "PENDING" or not task or _state(answer) in STOPPED:
             return answer
-        ended = self._wait(task, where)
-        while (
-            ended.get("outcome") == "PENDING"
-            and not ended.get("failure_code")
-            and (_data(ended).get("wait_event") or {}).get("event") == "MAX_WAIT_REACHED"
-            and not self._spent()
-        ):
-            ended = self._wait(task, where)
-        if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
-            return ended
-        return None
-
-    def _wait(self, task: Any, where: str) -> dict[str, Any]:
-        """One wait on the admitted Task, its time box cut to the walk's time left."""
-        remaining = self._deadline - time.perf_counter()
-        if remaining <= 0:
-            raise ValueError("explorer.wall_deadline: walk exceeded 3600 seconds")
-        waited = [
-            "activity",
-            "wait",
-            "--task",
-            str(task),
-            "--max-wait",
-            str(min(self.time_box, remaining)),
-        ]
-        return self._send(waited, where + " > wait")
+        waited = ["activity", "wait", "--task", str(task), "--max-wait", str(self.time_box)]
+        while True:
+            ended = self._send(waited, where + " > wait")
+            if ended.get("outcome") != "PENDING" or ended.get("failure_code"):
+                return ended
+            event = (_data(ended).get("wait_event") or {}).get("event")
+            if event != "MAX_WAIT_REACHED" or self._spent():
+                return None
 
     def _grade(self, answer: dict[str, Any], where: str, code: str) -> bool:
         """Grade one answer as an agent reads it; whether it is a stop."""

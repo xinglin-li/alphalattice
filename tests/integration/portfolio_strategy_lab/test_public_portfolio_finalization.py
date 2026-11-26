@@ -27,8 +27,6 @@ import numpy.typing as npt
 import pyarrow as pa
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.recipe_identity import recipe_identity
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioWalkForwardState
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -134,6 +132,8 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity
 from alphalattice.oversight.model_validation.protected_gate import (
     ProtectedValidationGate,
     ProtectedValidationGateError,
@@ -153,8 +153,6 @@ An executor is handed it for the same reason the application derives it from its
 resolver: a report rebuilt from a stored ledger still has to say which strategy
 produced it, and a protected release rebuilds exactly that way.
 """
-
-pytestmark = pytest.mark.usefixtures("portfolio_result_history")
 
 DEVELOPMENT_SESSIONS = (date(2024, 1, 2), date(2024, 1, 3), date(2024, 2, 1))
 # Strictly after the development boundary, and deliberately a different length:
@@ -319,9 +317,7 @@ def test_a_synthetic_finalization_runs_once_under_one_task(tmp_path: Path) -> No
     assert finalized.package.protected_formation_count == len(PROTECTED_SESSIONS)
 
 
-def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none() -> None:
     """The firewall the receipt exists to be: identities, limits, no number."""
 
     fields = set(PortfolioValidationReceipt.model_fields)
@@ -344,80 +340,6 @@ def test_the_validation_receipt_carries_no_metric_and_the_handoff_copies_none(
             claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
             sealed_at=datetime.now(UTC),
         )
-
-    # A legacy workspace upgrades; the gate then reads the catalog alone.
-    from alphalattice.foundation.data_layer import history
-    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
-    from alphalattice.oversight.model_validation.protected_gate import (
-        PermitClaimRecord,
-        validation_upgrade_family,
-    )
-
-    root, workspace = tmp_path / "data", tmp_path / "workspace"
-    workspace.mkdir()
-    history.close_history()
-    monkeypatch.setenv(history.DATA_ROOT_ENV, str(root))
-    store = ProtectedValidationStore(workspace / "runtime" / "artifacts")
-    receipt = PortfolioValidationReceipt.create(
-        permit_hash="1" * 64,
-        candidate_hash="2" * 64,
-        package_hash="3" * 64,
-        fixture_hash="4" * 64,
-        pre_protected_state_hash="5" * 64,
-        closure="CLOSED_EXACT",
-        claim_limits=(CLAIM_LIMIT_NO_RESELECTION,),
-        sealed_at=datetime.fromisoformat("2026-01-01T10:00:00+05:30"),
-    )
-    claim = PermitClaimRecord.create(
-        permit_hash=receipt.permit_hash,
-        candidate_hash=receipt.candidate_hash,
-        package_hash=receipt.package_hash,
-        receipt_hash=receipt.receipt_hash,
-        claimed_at=datetime.now(UTC),
-    )
-    assert store.publish_receipt(receipt) == receipt.receipt_hash
-    assert store.publish_claim(claim) == claim.claim_hash
-    history.open_history("validation-ws", "validation", workspace, root)
-    try:
-        family = validation_upgrade_family(lambda _: "validation-ws")
-        assert family.holds(workspace)
-        log = history.opened_log()[0]
-        runner = UpgradeRunner(
-            root,
-            log,
-            (workspace,),
-            (family,),
-            lambda *_: {"workspace": "fixture"},
-            subject="validation-test",
-        )
-        runner.run()
-        assert family.verify(runner) and not family.holds(workspace)
-        reads = (
-            lambda: store.find_receipt_for_permit(receipt.permit_hash),
-            lambda: store.load_receipt(receipt.receipt_hash),
-            lambda: store.find_claim(receipt.permit_hash),
-        )
-        assert tuple(read() for read in reads) == (receipt, receipt, claim)
-        assert history.validation_claim(receipt.permit_hash) == claim.model_dump(mode="json")
-        other = PortfolioValidationReceipt.create(
-            **receipt.model_dump(mode="python", exclude={"receipt_hash", "permit_hash"}),
-            permit_hash="6" * 64,
-        )
-        wrong = history.validation_receipt_table(
-            [other.model_dump(mode="python")], {other.receipt_hash: "other"}
-        )
-        with monkeypatch.context() as changed:
-            changed.setattr(history, "read_validation_receipts", lambda *args, **kwargs: wrong)
-            for read in reads[:2]:
-                with pytest.raises(ValueError, match="receipt_index_tampered"):
-                    read()
-        with pytest.raises(ValueError, match="claim_clock_invalid"):
-            PermitClaimRecord.create(
-                **claim.model_dump(exclude={"claim_hash", "claimed_at"}),
-                claimed_at=datetime(2025, 1, 1),
-            )
-    finally:
-        history.close_history()
 
 
 # ============================== rows 4 and 5: interruption and exact recovery
@@ -776,47 +698,15 @@ def test_the_pending_package_is_not_visible_as_a_normal_result(tmp_path: Path) -
 
 def test_the_default_declared_path_produces_its_own_report_with_no_winner(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Row 9: one admitted product choice, no comparator, no selection receipt."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    from alphalattice.foundation.data_layer import history
-
-    root = history.data_root()
-    history.open_history("portfolio-test", "portfolio", workspace, root)
-    try:
-        with WorkspaceApplicationSession.acquire(workspace) as session:
-            wired = _wire(session)
-            report = wired.development.report(wired.result_hash)
-            payload = report.model_dump(mode="json")
-            saved = wired.ledger.load_result(wired.result_hash)
-            execution, together = wired.ledger.load_execution_and_report(
-                saved.execution_ledger_hash, saved.report_hash
-            )
-            assert execution == wired.ledger.load_execution(saved.execution_ledger_hash)
-            assert together == report
-            assert not (
-                wired.ledger.root / "execution-ledgers" / f"{saved.execution_ledger_hash}.json"
-            ).is_file()
-            assert not (wired.ledger.root / "reports" / f"{saved.report_hash}.json").is_file()
-            assert wired.ledger.load_execution(saved.execution_ledger_hash) == execution
-            assert wired.ledger.load_report(saved.report_hash) == report
-    finally:
-        history.close_history()
-
-    from alphalattice.capabilities.data.errors import DataError
-
-    unavailable = PortfolioLedgerStore(tmp_path / "unavailable-artifacts")
-    for publish in (
-        lambda: unavailable.publish_execution(execution),
-        lambda: unavailable.publish_report(report),
-    ):
-        with pytest.raises(DataError) as refusal:
-            publish()
-        assert refusal.value.failure.code == "data_layer.history_unavailable"
-    assert not list(unavailable.root.rglob("*.json"))
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        wired = _wire(session)
+        report = wired.development.report(wired.result_hash)
+        payload = report.model_dump(mode="json")
 
     assert report.window_guard.disposition == "DESCRIPTIVE_SUBWINDOW"
     assert not report.window_guard.may_select_or_promote
@@ -1066,10 +956,12 @@ def test_a_sealed_output_that_does_not_follow_from_the_inputs_fails(tmp_path: Pa
             "one_way_turnovers": turnovers,
         }
         forged_ledger_hash = canonical_hash(forged_identity)
-        wired.ledger._publish_execution_body(
-            PortfolioExecutionLedger.model_validate(
-                {**forged_identity, "ledger_hash": forged_ledger_hash}
-            )
+        (wired.ledger.root / "execution-ledgers" / f"{forged_ledger_hash}.json").write_bytes(
+            json.dumps(
+                {**forged_identity, "ledger_hash": forged_ledger_hash},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
         )
         forged_result_identity = {
             k: v
@@ -1810,8 +1702,14 @@ def test_a_ledger_without_replay_children_is_refused_before_any_work(
             },
         )
         stripped_hash = canonical_hash(identity)
-        wired.ledger._publish_execution_body(
-            PortfolioExecutionLedger.model_validate({**identity, "ledger_hash": stripped_hash})
+        path = wired.ledger.root / "execution-ledgers" / f"{stripped_hash}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(
+            json.dumps(
+                {**identity, "ledger_hash": stripped_hash},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
         )
         stripped_result = result.model_dump(mode="json", exclude={"result_hash"}, exclude_none=True)
         stripped_result["execution_ledger_hash"] = stripped_hash
@@ -2334,11 +2232,6 @@ def _serialize_legacy_path(
         """
 
         content_hash = canonical_hash(identity)
-        if category == "execution-ledgers":  # a ledger's body is held only in the catalog
-            store._publish_execution_body(
-                PortfolioExecutionLedger.model_validate({**identity, identity_field: content_hash})
-            )
-            return content_hash
         path = store.root / category / f"{content_hash}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(
@@ -3254,10 +3147,12 @@ def test_the_gate_refuses_a_program_whose_axis_disagrees_with_its_ledger(
             "ledger_coverage": forged_coverage.model_dump(mode="json"),
         }
         forged_report_hash = canonical_hash(forged_report_identity)
-        wired.pending._publish_report_body(
-            PortfolioDeclaredPathReport.model_validate(
-                {**forged_report_identity, "report_hash": forged_report_hash}
-            )
+        (wired.pending.root / "reports" / f"{forged_report_hash}.json").write_bytes(
+            json.dumps(
+                {**forged_report_identity, "report_hash": forged_report_hash},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
         )
         result = wired.pending.load_result(produced.protected_result_hash)
         forged_result_identity = {
@@ -4090,14 +3985,6 @@ def test_the_application_read_back_seam_needs_no_prerequisite(tmp_path: Path) ->
         )
         candidate = _candidate(wired)
         finalized = wired.application.finalize(candidate=candidate, fixture=_fixture())
-        released = wired.ledger.load_result(finalized.package.protected_result_hash)
-        # The release adopts the ledger and the report into the catalog alone.
-        assert not (
-            wired.ledger.root / "execution-ledgers" / f"{released.execution_ledger_hash}.json"
-        ).exists()
-        assert not (wired.ledger.root / "reports" / f"{released.report_hash}.json").exists()
-        ledger = wired.ledger.load_execution(released.execution_ledger_hash)
-        assert ledger.ledger_hash == released.execution_ledger_hash
         receipt = wired.application.read_back(
             finalized.package.protected_result_hash, package=finalized.package
         )

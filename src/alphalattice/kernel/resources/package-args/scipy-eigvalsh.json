@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.scipy.eigvalsh",
+  "revision": "1.0.0",
+  "title": "SciPy eigvalsh adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "scipy", "version": "1.18.0"},
+  "companion_distributions": [],
+  "callable": "scipy.linalg.eigvalsh",
+  "arguments": [
+    {"schema_version": "1", "name": "check_finite", "value_kind": "boolean", "has_default": true, "default": true, "allowed_values": [true]}
+  ],
+  "interactions": ["Matrix symmetry and eligibility remain governed by Quant."],
+  "assumptions": ["The deterministic caller supplies a validated real symmetric matrix."],
+  "warnings": ["Eigenvalues alone do not authorize matrix repair or clipping."],
+  "failure_modes": ["Disabled finite checking or unavailable locked SciPy distribution."],
+  "owner_policy_ref": "reference:numerical-risk-estimation",
+  "official_source_url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigvalsh.html"
+}

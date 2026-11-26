@@ -11,14 +11,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -83,6 +75,11 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 )
 from alphalattice.investment.risk_research.experiments.window import REQUIRED_LOOKBACK_SESSIONS
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 TASK_KIND = "research_strategy_preparation"
 IMPLEMENTATION_ROLE = "product_host.research_strategy_preparation"
@@ -99,9 +96,9 @@ PLAN_FIELDS = (
 """The manifest fields a strategy plan reads and its installation writes, and no others:
 the installed strategy, its defaults and the bindings an installation must find empty,
 and the inputs it was prepared from. A publication of other fields (a model's training
-inputs, a data update) leaves the plan applicable."""
-"""A move of `implementation_hash` recorded in `config/identity-successors/` keeps a
-plan sealed under its predecessor preparable."""
+inputs, a data update) leaves the plan applicable (V180)."""
+"""A move of `implementation_hash` recorded in `config/identity-successors.json` keeps a
+plan sealed under its predecessor preparable (binding plan, B14)."""
 STAGE = "materialize_verified_lifecycle_portfolio_inputs"
 
 
@@ -111,9 +108,8 @@ def implementation_hash() -> str:
     Returns:
         Exact installed implementation identity; no closure record is changed.
     """
-    root = resolve_playpen_root(Path(__file__))
-    rule = source_rule_closure_hash(
-        root=root,
+    return source_rule_closure_hash(
+        root=resolve_playpen_root(Path(__file__)),
         semantic_owner="product_host",
         numerical_role="LOCAL_FROZEN_RECIPE_INPUT_PREPARATION",
         tracked_paths=tuple(
@@ -137,12 +133,11 @@ def implementation_hash() -> str:
             )
         ),
     )
-    return switched_identity(IMPLEMENTATION_ROLE, rule, root=root)
 
 
 def _require_promoted(row: dict[str, Any]) -> None:
     """A strategy is prepared and installed only from studies on the whole universe: an
-    exploration study is refused until it is promoted."""
+    exploration study is refused until it is promoted (binding plan, B17)."""
 
     if row.get("research_lane") == "EXPLORATION":
         raise ValueError(f"research_lane.exploration_not_promoted:{row['task_id']}")
@@ -234,7 +229,8 @@ class ResearchStrategyPreparation:
             admitting="RESEARCH_STRATEGY_PREPARE",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers
+    (V188)."""
 
     def __init__(
         self,
@@ -256,7 +252,7 @@ class ResearchStrategyPreparation:
         self.list_experiments = list_experiments
         self.last_plan: ResearchStrategyPlan | None = None
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again.
+        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
         self._plans: PreviewRegistry[ResearchStrategyPlan] = PreviewRegistry(
             model=ResearchStrategyPlan,
             clock=self.clock,
@@ -361,10 +357,10 @@ class ResearchStrategyPreparation:
             # The components no completed lifecycle study holds yet, each with its first step.
             "missing_components": missing,
             # The window the Risk study's `experiment.sessions` must cover, per calibrated Alpha
-            # study; empty until one completes.
+            # study; empty until one completes (V533, FLOW-3).
             "risk_windows": windows,
             # The declaration is filled when its parents are determined, else the reader's to
-            # write.
+            # write (V136).
             "next_requests": {
                 **self._component_routes(missing, input_binding_hash),
                 **({} if covering else {"risk": self._risk_route(input_binding_hash)}),
@@ -414,7 +410,7 @@ class ResearchStrategyPreparation:
     def _risk_windows(
         self, alphas: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], tuple[date, ...]]:
-        """Each completed calibrated Alpha study's window a Risk study must cover."""
+        """Each completed calibrated Alpha study's window a Risk study must cover (V533)."""
         calibrated = {
             v.component_id
             for recipe in FROZEN_RESEARCH_BOOK_RECIPES
@@ -458,7 +454,7 @@ class ResearchStrategyPreparation:
     def _component_routes(
         self, missing: list[str], input_binding_hash: str | None = None
     ) -> dict[str, dict[str, object]]:
-        """Each missing component's first step toward its lifecycle study (RR5).
+        """Each missing component's first step toward its lifecycle study (V505, RR5).
 
         Its study's controls once its training inputs are prepared on the input, else the
         plan of those inputs. The input is bound when the workspace has one, and left to
@@ -558,13 +554,13 @@ class ResearchStrategyPreparation:
         needed = (schedule[0].formation_session, schedule[-1].formation_session)
         if risk_start > needed[0] or risk_end < needed[1]:
             # The window the strategy needs and the one its Risk study covers, so the way on
-            # is a Risk study over that window (RR5d).
+            # is a Risk study over that window (V533, RR5d).
             raise ValueError(
                 "research_strategy.risk_parent_support_incomplete:"
                 f"needed {needed[0]}..{needed[1]}, Risk study {risk_start}..{risk_end}"
             )
         # The Risk history every formation needs before it, judged by the one owner the
-        # materialization reads, so a plan admits only what its preparation runs.
+        # materialization reads, so a plan admits only what its preparation runs (V596).
         surface_root, surface = risk_return_surface(
             self.session.workspace, self.read_experiment(request.risk_task_id)
         )
@@ -604,7 +600,7 @@ class ResearchStrategyPreparation:
             else f"artifacts/research-strategy-inputs/{request_hash}"
         )
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between.
+        # may have replaced in between (V534).
         planned = ResearchStrategyPlan.create(
             workspace_manifest_hash=manifest_fields_hash(
                 read_research_workspace_manifest(self.session.workspace), PLAN_FIELDS
@@ -705,7 +701,7 @@ class ResearchStrategyPreparation:
                     allow_blocked=True,
                 )
             if existing.lifecycle in {TaskLifecycle.BLOCKED, TaskLifecycle.RECOVERY_REQUIRED}:
-                # This plan's Task only, never another of its kind.
+                # This plan's Task only, never another of its kind (V529).
                 dispatcher.resume(
                     {TASK_KIND: ResearchStrategyCommand(self)}, only_task_id=existing.task_id
                 )

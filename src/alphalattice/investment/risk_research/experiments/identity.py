@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 RISK_DEVELOPMENT_SOURCE_PATHS = (
     "src/alphalattice/investment/risk_research/estimators/capability.py",
@@ -112,7 +112,7 @@ RISK_NUMERICAL_SOURCE_PATHS = (
 """The numerical code a development run executes: the covariance estimator, the matrix
 identity, the formation axis, the returns and their projection, taken by the rule (each
 entry and what it imports inside the number-deciding packages, as syntax without
-docstrings or comments, LAWS ID3). A study plan binds these bytes; no
+docstrings or comments, LAWS ID3). A study plan binds these bytes (binding plan, P); no
 build file is an entry, and the installed versions are bound where they are read (ID6).
 
 It used to be derived from the frozen production closure, whose pin retired with M01

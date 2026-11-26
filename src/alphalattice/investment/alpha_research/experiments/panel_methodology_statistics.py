@@ -16,14 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     session_grouped_rank_ic,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.metrics import (
     annualized_volatility,
     break_even_cost_bps,
     maximum_drawdown,
     sortino_ratio,
 )
-from alphalattice.capabilities.validation.screening_statistics import gross_decile_spread
 from alphalattice.investment.alpha_research.scores.score_filters import (
     RAW_SCORE_INPUT_MODE,
     RAW_SCORE_TEMPORAL_FILTER_METHOD_ID,
@@ -34,6 +32,8 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     row_axis_hash,
     score_value_hash,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.screening_statistics import gross_decile_spread
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]

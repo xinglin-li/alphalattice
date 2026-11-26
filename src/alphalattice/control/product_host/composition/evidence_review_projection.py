@@ -52,16 +52,19 @@ from alphalattice.interface.local_application.evidence_cro import (
     project_published_review,
     source_authority_not_admitted,
 )
+from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import (
     format_book_change,
     format_book_weight,
 )
+from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioReviewInputIncomplete,
 )
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewDossier,
+    PortfolioReviewPublication,
 )
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.coverage.selections import (
     recorded_selection,
@@ -88,7 +91,7 @@ if TYPE_CHECKING:
 
 class _UnitPacket(NamedTuple):
     """A prepared unit's packet request and the window it was prepared for, which no packet
-    request takes: an offered request is one the Host accepts as it stands."""
+    request takes: an offered request is one the Host accepts as it stands (V449)."""
 
     request: dict[str, str]
     evidence_as_of: str
@@ -96,7 +99,7 @@ class _UnitPacket(NamedTuple):
 
 
 class _UnitWay(NamedTuple):
-    """A failed unit's words, way on and issuers without a source."""
+    """A failed unit's words, way on and issuers without a source (V541)."""
 
     detail: str
     next_action: str
@@ -105,7 +108,7 @@ class _UnitWay(NamedTuple):
 
 class _FailedUnit(NamedTuple):
     """A unit the book's newest run failed to prepare: its issuers, its code, its words and,
-    when it failed for its sources, the issuers without one."""
+    when it failed for its sources, the issuers without one (V541)."""
 
     unit_id: str
     entity_ids: tuple[str, ...]
@@ -138,6 +141,50 @@ class EvidenceCroProjector:
             "state": "NOT_READ",
             "next_requests": {"review": {"operation": "EVIDENCE_CRO", **selector.request_fields()}},
         }
+
+    @staticmethod
+    def review_metadata(
+        app: EvidenceReviewApplication,
+    ) -> tuple[tuple[PortfolioReviewPublication, ...], tuple[tuple[str, str], ...]]:
+        """Discover verified review metadata, retaining failures beside readable peers.
+
+        Args:
+            app: The Evidence owner whose sealed publication store is read.
+
+        Returns:
+            Strictly loaded publication metadata and named record or location refusals.
+            Full selected readback still verifies every descendant at its owner.
+        """
+        store = app.review_publications.store
+        directory = store.root / "cro-review-publications"
+        paths = []
+        refused: list[tuple[str, str]] = []
+        try:
+            for path in directory.iterdir():
+                if path.name.endswith(".json"):
+                    paths.append(path)
+        except FileNotFoundError:
+            if not paths:
+                return (), ()
+            refused.append(("cro-review-publications", "research_history.entry_unreadable"))
+        except OSError as error:
+            refused.append(
+                (
+                    "cro-review-publications",
+                    public_failure(error, "research_history.entry_unreadable"),
+                )
+            )
+        readable: list[PortfolioReviewPublication] = []
+        for path in sorted(paths):
+            try:
+                readable.append(
+                    store.load("cro-review-publications", path.stem, PortfolioReviewPublication)
+                )
+            except (ValueError, OSError) as error:
+                refused.append(
+                    (path.stem, public_failure(error, "research_history.entry_unreadable"))
+                )
+        return tuple(readable), tuple(refused)
 
     def __init__(
         self, app: EvidenceReviewApplication, delivery: EvidenceReviewDelivery | None = None
@@ -190,7 +237,7 @@ class EvidenceCroProjector:
             explanation = projection.explanation
             if not managed and (refresh or review):
                 explanation = explanation + " " + MANAGED_WORK_NOTE
-            # Requests determine actions; pending analysis offers no CRO review.
+            # Requests determine actions; pending analysis offers no CRO review (V198).
             offered = tuple(
                 action
                 for action, enabled in (("REFRESH_EVIDENCE", refresh), ("REVIEW_WITH_CRO", review))
@@ -204,7 +251,7 @@ class EvidenceCroProjector:
             )
 
         if publication_hash is not None:
-            # Read the owner's verified export without rewriting it.
+            # Read the owner's verified export without rewriting it (V151).
             read_context: dict[str, object] = {}
             snapshot, verified, analyses = self.delivery.verified_read_view(
                 chosen, publication_hash, read_context=read_context
@@ -374,10 +421,10 @@ class EvidenceCroProjector:
         }
         # Eligible earlier readings can support a dossier even when every unit
         # lacks a current analysis. The dossier owner decides their eligibility.
-        dossier = self.app._resolve_review_dossier(chosen, resolved=resolved)
+        dossier = self.app._resolve_review_dossier(chosen)
         if isinstance(dossier, ReviewOutcome) and dossier.disposition in DOSSIER_STANDINGS:
             # A dossier these analyses cannot make is the book's standing, said with its way on;
-            # the book's read never fails on it.
+            # the book's read never fails on it (V546).
             packaged = self.app.evidence_policy.mode is AlternativeEvidenceMode.RECORDED
             return finish(
                 replace(
@@ -573,7 +620,7 @@ class EvidenceCroProjector:
                     }
                 )
                 # A way on a stale row names in words is offered bound (S1): the preview, which
-                # prepares its unit again under the authority now held.
+                # prepares its unit again under the authority now held (V567).
                 stale_way = refusal_words(STALE_PACKET)["next_action"]
                 if progress is not None and any(
                     row.next_action == stale_way for row in progress.units
@@ -582,7 +629,7 @@ class EvidenceCroProjector:
                 return finish(projection, next_requests=next_requests, review=True, refresh=True)
             # How each unit's analysis came to be the one; a carried child
             # is an earlier reading, never a selection, and its analysis may
-            # have expired since. A review of carried readings alone
+            # have expired since (W3). A review of carried readings alone
             # chose among no analyses.
             children = recorded.dossier.evidence_children
             labels = {
@@ -764,7 +811,7 @@ class EvidenceCroProjector:
         progress: EvidenceCroCoverageProgress | None,
     ) -> dict[str, object] | None:
         """The ways on for a book prepared in part: for its units that failed for their sources
-        under the recorded package, beside the units it reviews."""
+        under the recorded package, beside the units it reviews (V541)."""
 
         if self.app.evidence_policy.mode is not AlternativeEvidenceMode.RECORDED:
             return None
@@ -779,7 +826,7 @@ class EvidenceCroProjector:
     ) -> dict[str, object] | None:
         """The ways on for the units that failed for their sources under the recorded package:
         the person's official acquisition, and a package only for a book of one unit, which one
-        package covers whole."""
+        package covers whole (V541, V546)."""
 
         short = [unit for unit in failed if unit.sources_short]
         if not short:
@@ -836,7 +883,7 @@ class EvidenceCroProjector:
         return failed
 
     def _unit_way(self, state: dict[str, object], entities: tuple[str, ...]) -> _UnitWay:
-        """A failed unit's words, way on and issuers without a source: those its failure
+        """A failed unit's words, way on and issuers without a source (V541): those its failure
         sealed, every issuer of a unit that held no document, and none named by a failure sealed
         before, which recorded none."""
 
@@ -892,7 +939,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except ValueError:
+                except (ValueError, KnowledgeRetrievalError):
                     continue
                 if now > expires_at:
                     return evidence_as_of, expires_at
@@ -937,7 +984,7 @@ class EvidenceCroProjector:
             run = adapter.run_of(task)
             if run is None or adapter.stale_authority(task) is not None:
                 # A run prepared under authority the Host no longer holds offers no packet, which
-                # the Host would refuse; its rows say so, with the preview.
+                # the Host would refuse; its rows say so, with the preview (V547, U79).
                 continue
             states = adapter.unit_states(task)
             for unit in run.units:
@@ -950,7 +997,7 @@ class EvidenceCroProjector:
                     continue
                 try:
                     evidence_as_of, expires_at = adapter.preparation_window(task, unit.unit_id)
-                except ValueError:
+                except (ValueError, KnowledgeRetrievalError):
                     continue
                 if now > expires_at:
                     continue
@@ -998,7 +1045,7 @@ class EvidenceCroProjector:
             if run is not None and (sealed is None or run.run_hash == sealed.run_hash):
                 run_hash = run.run_hash
                 nothing_filed = run.nothing_filed
-                # Packets prepared under a package an install has since replaced.
+                # Packets prepared under a package an install has since replaced (V547).
                 stale = adapter.stale_authority(latest)
                 states = {
                     tuple(cast(tuple[str, ...], value["ordered_entity_ids"])): value
@@ -1010,7 +1057,7 @@ class EvidenceCroProjector:
                 if latest.lifecycle in {TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED}:
                     works, preparation = _preparation_work(adapter, latest, run, states)
         # A review reads an analysis only after it is published: the reviews
-        # older than every analysis asked about are not read (daily ones).
+        # older than every analysis asked about are not read (W3's daily ones).
         analysed = [
             value.evidence.publication.published_at
             for value in (selections or {}).values()
@@ -1201,7 +1248,7 @@ class EvidenceCroProjector:
 
 def _sources_cannot_cover(failed: list[_FailedUnit], *, total: int, recorded: bool) -> bool:
     """Whether every unit of the book failed for too few sources under the recorded package, so
-    that the book cannot be reviewed until its sources change."""
+    that the book cannot be reviewed until its sources change (V541)."""
     return recorded and len(failed) == total and all(unit.sources_short for unit in failed)
 
 

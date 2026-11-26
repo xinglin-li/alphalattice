@@ -13,7 +13,6 @@ SRC = PLAYPEN_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.investment.alpha_research.candidates.artifacts import (  # noqa: E402
     AlphaGoalResearchArtifactStore,
 )
@@ -23,6 +22,7 @@ from alphalattice.investment.alpha_research.candidates.committer import (  # noq
 from alphalattice.investment.alpha_research.publication.artifacts import (  # noqa: E402
     AlphaCurrentArtifactStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 
 def _resolved_workspace_pair(baseline_workspace: Path, output_workspace: Path) -> tuple[Path, Path]:

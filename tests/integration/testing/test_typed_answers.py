@@ -1,4 +1,4 @@
-"""The typed reads answer what their published models say."""
+"""The typed reads answer what their published models say (binding plan, CLI-16)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from alphalattice.interface.local_application.cli_contract import TASK_STATE_FIE
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
 
 STUDY_READS = frozenset(
     {"EXPERIMENTS", "EXPERIMENT_READBACK", "RESEARCH_INPUTS", "RESEARCH_HISTORY"}
@@ -26,7 +25,7 @@ STUDY_READS = frozenset(
 def test_each_task_and_book_read_answers_its_published_model(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """contract: on a workspace with a finished run, each typed read's
+    """contract (binding plan, CLI-16): on a workspace with a finished run, each typed read's
     answer validates against the model `alphalattice schema show` publishes for it; the study
     reads are checked beside a published study."""
 

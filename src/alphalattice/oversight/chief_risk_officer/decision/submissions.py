@@ -15,11 +15,10 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
+from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
@@ -94,16 +93,14 @@ def build_portfolio_review_policy_binding(playpen_root: Path) -> CROHostPolicyBi
         "kind": "CROHostPolicyBinding",
         "owner_id": "chief_risk_officer.portfolio_review",
         "policy_version": "2026-09-02",
-        "contract_schema_hash": seal_payload_digest(
-            "contract_schema_hash",
+        "contract_schema_hash": canonical_hash(
             {
                 "dossier": schema_structure(PortfolioReviewDossier),
                 "answer": schema_structure(PortfolioReviewAnswer),
                 "submission": schema_structure(PortfolioReviewAssessmentSubmission),
                 "receipt": schema_structure(PortfolioReviewReceipt),
                 "recommendation": schema_structure(PortfolioReviewRecommendation),
-            },
-            digest=canonical_hash,
+            }
         ),
         "validation_source_hash": source_rule_closure_hash(
             root=playpen_root.resolve(),
@@ -165,7 +162,7 @@ _SEVERITY: dict[CRORiskSeverity, CROSeverityIfTrue] = {
 class ScreenedReviewAnswer(ScreenedAnswer[PortfolioReviewAnswerRisk]):
     """Record screened risks, texts, and open-issue resolutions.
 
-    Each resolution is accepted on its own.
+    Each resolution is accepted on its own (W3).
     """
 
     resolved: tuple[PortfolioReviewAnswerResolution, ...] = ()
@@ -339,7 +336,7 @@ def normalize_review_answer(
         for value in answer.resolved
     )
     # An open issue the reviewer neither states again nor resolves stands as
-    # last assessed: carried, never dropped.
+    # last assessed: carried, never dropped (W3).
     addressed = {value.open_issue_handle for value in issues} | {
         value.open_issue_handle for value in resolutions
     }
@@ -402,7 +399,7 @@ def seal_portfolio_review(
     finding this dossier does not contain is refused rather than routed.
     `dropped` names what was not accepted and why. The receipt records the
     basis the assessment rests on, so a later dossier on the same basis finds
-    it; `carried` is that earlier assessment when it carries
+    it (W3); `carried` is that earlier assessment when it carries
     forward, routed on this dossier as it was sealed (in its handles).
     """
     decision_policy = CROHostPolicyBinding.model_validate(decision_policy)

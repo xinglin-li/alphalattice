@@ -21,7 +21,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LAGGED_XS_DISPERSION_RECIPE_ID = "LAGGED_XS_DISPERSION"
 EWMA_XS_DISPERSION_RECIPE_ID = "EWMA_XS_DISPERSION"

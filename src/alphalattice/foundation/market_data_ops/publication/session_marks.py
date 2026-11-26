@@ -20,6 +20,7 @@ set by construction, and the ratio cannot straddle an adjustment boundary.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -35,15 +36,14 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_row_hashes
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ProjectedBar,
     project_research_series,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.arrow_identity import canonical_row_hashes
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -391,7 +391,7 @@ def _metadata_identity(metadata: Mapping[bytes, bytes]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    return identity_sha256(serialized).hexdigest()
+    return hashlib.sha256(serialized).hexdigest()
 
 
 class SessionMarkArtifactStore:
@@ -672,27 +672,26 @@ def publish_market_session_marks(
 ) -> SessionMarkSurface:
     """Publish the local-bar projection shared by research and Campaign consumers."""
     bars_by_listing: dict[str, tuple[ProjectedBar, ...]] = {}
-    raw_by_listing = market.raw_bars_by_listing(
-        listing_ids, start=sessions[0], through=sessions[-1]
-    )
-    if not all(raw_by_listing.values()):
-        raise SessionMarkError("market_data_ops.session_mark_source_absent")
-    actions_by_listing = market.actions_by_listing(listing_ids)
-    for listing in listing_ids:
-        raw = raw_by_listing[listing]
-        actions = tuple(
-            v
-            for v in actions_by_listing[listing]
-            if raw[0].session_date <= v.effective_date <= raw[-1].session_date
-        )
-        projected = project_research_series(
-            raw, actions, daily_price_basis=manifest.profile.daily_price_basis
-        )
-        by_session = {v.session_date: v for v in projected}
-        try:
-            bars_by_listing[listing] = tuple(by_session[s] for s in sessions)
-        except KeyError as error:
-            raise SessionMarkError("market_data_ops.session_mark_source_absent") from error
+    with market._connect(read_only=True) as connection:
+        for listing in listing_ids:
+            raw = market.raw_bars(
+                listing, start=sessions[0], through=sessions[-1], _connection=connection
+            )
+            if not raw:
+                raise SessionMarkError("market_data_ops.session_mark_source_absent")
+            actions = tuple(
+                v
+                for v in market.actions(listing, _connection=connection)
+                if raw[0].session_date <= v.effective_date <= raw[-1].session_date
+            )
+            projected = project_research_series(
+                raw, actions, daily_price_basis=manifest.profile.daily_price_basis
+            )
+            by_session = {v.session_date: v for v in projected}
+            try:
+                bars_by_listing[listing] = tuple(by_session[s] for s in sessions)
+            except KeyError as error:
+                raise SessionMarkError("market_data_ops.session_mark_source_absent") from error
     return publish_session_mark_surface(
         store=store,
         bars_by_listing=bars_by_listing,

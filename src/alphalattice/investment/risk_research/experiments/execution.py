@@ -27,8 +27,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.quant.sector_history import SectorHistory, sector_subset
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
 from alphalattice.investment.risk_research.estimators.capability import RiskRecipeAdmission
 from alphalattice.investment.risk_research.estimators.catalog import (
@@ -73,6 +71,8 @@ from alphalattice.investment.risk_research.experiments.window import (
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.quant.sector_history import SectorHistory, sector_subset
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

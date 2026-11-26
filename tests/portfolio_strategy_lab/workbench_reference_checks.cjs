@@ -34,8 +34,7 @@ const meanings={
   'live-review.js:CELL_STATE:COMPLETE':'planned delivery',
   'live-review.js:contWords:COMPLETE':'continuation completion',
   'live-review.js:cycle:COMPLETE':'delivery counts',
-  'live-review.js:viewFacts:COMPLETE':'delivery facts',
-  'live-workspace.js:HEALTH_STATUS:PASS':'one named data-health check passed, its check id shown beside it'
+  'live-review.js:viewFacts:COMPLETE':'delivery facts'
 };
 assert.deepEqual([...readers].sort(),Object.keys(meanings).sort(),
   'every COMPLETE/PASS reader has a reviewed scope');

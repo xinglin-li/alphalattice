@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import fields, replace
 from datetime import datetime
 from pathlib import Path
@@ -19,8 +20,6 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.evidence.alternative_evidence.analysis.read_model import earlier_findings
 from alphalattice.evidence.alternative_evidence.analysis.views import render_analyst_bundle
 from alphalattice.evidence.alternative_evidence.contracts import AlternativeEvidenceRequest
@@ -30,9 +29,8 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
-from alphalattice.interface.local_application.cli_contract import join, shell
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
-from alphalattice.interface.local_application.questions import person_question
+from alphalattice.interface.local_application.labels import label
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     BookSelector,
     PortfolioEvidenceReviewError,
@@ -356,12 +354,17 @@ class EvidenceReviewBundles:
                     "agent_bundle.analyst_unit_required:"
                     + ",".join(unit.unit_id for unit in run.units)
                 )
-            packet, context, *_ = self.app._book_packet(chosen, task_id=task_id, unit_id=unit_id)
-            bundle = render_analyst_bundle(
-                packet,
-                task_procedure=procedure,
-                earlier=self._earlier_findings(packet.request),
-            )
+            # The bundle the lead waits on runs above the book's other units: their
+            # model work waits at its next call while it is written (F2).
+            with adapter.runtime.foreground() if adapter is not None else nullcontext():
+                packet, context, *_ = self.app._book_packet(
+                    chosen, task_id=task_id, unit_id=unit_id
+                )
+                bundle = render_analyst_bundle(
+                    packet,
+                    task_procedure=procedure,
+                    earlier=self._earlier_findings(packet.request),
+                )
             submission = self.app._analysis_submission(
                 chosen,
                 task_id=task_id,
@@ -398,13 +401,7 @@ class EvidenceReviewBundles:
                     },
                 )
             subject = dossier.update_subject
-            installed = None
-            if subject:
-                from alphalattice.interface.local_application.labels import (  # lazy: title
-                    label,
-                )
-
-                installed = label(subject.strategy_package_id)
+            installed = label(subject.strategy_package_id) if subject else None
             bundle = render_review_bundle(
                 dossier,
                 task_procedure=procedure,
@@ -651,107 +648,3 @@ def _routed(files: tuple[tuple[str, str], ...], route: tuple[str, ...]) -> list[
     """The bundle's files with its route closing the README, the member's one final action."""
     end = "\n\n" + "\n\n".join(route) + "\n"
     return [(n, t.rstrip("\n") + end if n == "README.md" else t) for n, t in files]
-
-
-ANALYST_READS_PATH: Final = Path("runtime") / "review-analyst-reads.json"
-"""The person's standing answer how the lead reads a review's Analyst bundles, and the count of
-bundles it was answered for; none means never answered, and nothing stands in for it."""
-ANALYST_READS_MODES: Final = ("SUBAGENTS", "IN_SESSION")
-ANALYST_READS_WORDS: Final = {
-    "SUBAGENTS": "Each Analyst bundle is read by its own subagent, started from its shipped role.",
-    "IN_SESSION": "The lead session reads each Analyst bundle itself, one after another.",
-    "UNANSWERED": "Never answered: a review that hands out more than one bundle asks the person.",
-}
-ANALYST_READS_ASK_HOW: Final = (
-    "Before starting the Analysts, ask the person once, in these words, and read the bundles as "
-    "they answer. Run the command after the question once, with their choice as `--mode` and "
-    "their words verbatim in place of `<their words>`:"
-)
-"""How a review asks: its bundles wait for the answer, which then stands for later reviews."""
-_COMMAND: Final = join(list(command_prefix()), shell())
-
-
-def analyst_reads(workspace: Path) -> tuple[str, int] | None:
-    """The standing answer and the bundle count it covers; None when never answered.
-
-    A record this owner did not write reads as never answered, so the person is asked again.
-    """
-    try:
-        record = json.loads((workspace / ANALYST_READS_PATH).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(record, dict) or (record.get("schema"), record.get("version")) != (
-        "review-analyst-reads",
-        1,
-    ):
-        return None
-    mode, count = record.get("mode"), record.get("answered_for")
-    if mode not in ANALYST_READS_MODES or type(count) is not int or count < 1:
-        return None
-    return mode, count
-
-
-def analyst_reads_answer(workspace: Path, bundles: int | None = None) -> dict[str, object]:
-    """The setting as `analyst-reads show` and its set read it, asking when a review needs it.
-
-    Args:
-        workspace: The workspace root.
-        bundles: The Analyst bundles a review hands out now, when a review reads it.
-
-    Returns:
-        Its standing, the count it covers and the request that turns it; with more than one
-        bundle and no answer covering them, `ask_now` and the coded question.
-    """
-    kept = analyst_reads(workspace)
-    mode, count = kept or ("UNANSWERED", None)
-    answer: dict[str, object] = {
-        "status": "ANALYST_READS",
-        "analyst_reads": mode,
-        "answered_for": count,
-        "detail": ANALYST_READS_WORDS[mode],
-        "next_requests": {
-            "set": {
-                "operation": "ANALYST_READS_SET",
-                "analyst_reads_mode": ANALYST_READS_MODES[mode == "SUBAGENTS"],
-                "analyst_reads_bundles": count,
-            }
-        }
-        if kept
-        else {},
-    }
-    if bundles is None or bundles < 2 or (count or 0) >= bundles:
-        return answer
-    question = person_question("review.analyst_reads")
-    relay = (
-        f"{_COMMAND} analyst-reads set --mode <SUBAGENTS or IN_SESSION> --bundles {bundles} "
-        '--person-said "<their words>" --question-code review.analyst_reads'
-    )
-    return answer | {
-        "ask_now": [ANALYST_READS_ASK_HOW, question["words"], relay],
-        "person_questions": [question],
-    }
-
-
-def set_analyst_reads(
-    workspace: Path, *, mode: str, bundles: int, relayed_by: str | None
-) -> dict[str, object]:
-    """Atomically write the person's answer for this many bundles, then read it back.
-
-    Args:
-        workspace: The workspace root.
-        mode: `SUBAGENTS` or `IN_SESSION`.
-        bundles: The bundle count the person answered for; a review with more asks again.
-        relayed_by: The agent session that relayed the person's words, if one did.
-
-    Returns:
-        The setting's answer.
-    """
-    path = workspace / ANALYST_READS_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_suffix(".json.tmp")
-    record = {"schema": "review-analyst-reads", "version": 1, "mode": mode}
-    staged.write_text(
-        json.dumps(record | {"answered_for": bundles, "relayed_by": relayed_by}), "utf-8"
-    )
-    replace_shared_file(staged, path)
-    return analyst_reads_answer(workspace)

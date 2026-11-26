@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
-import pytest
 
 from alphalattice.control.workspace_runtime.verified_facts import (
     forget_year_facts,
@@ -105,73 +104,14 @@ def test_an_edit_while_the_store_was_closed_ends_the_facts_and_is_seen(tmp_path:
     assert edited != after
 
 
-class _Counted:
-    """A connection that keeps the first word of each statement it is given, one per row."""
-
-    def __init__(self, connection: duckdb.DuckDBPyConnection) -> None:
-        self.connection, self.statements = connection, []
-
-    def execute(self, sql: str, *args: object) -> duckdb.DuckDBPyConnection:
-        self.statements.append(sql.split()[0])
-        return self.connection.execute(sql, *args)
-
-    def executemany(self, sql: str, rows: list[object]) -> duckdb.DuckDBPyConnection:
-        self.statements.extend(sql.split()[0] for _ in rows)
-        return self.connection.executemany(sql, rows)
-
-
-# Each case after the first record: its transactions, each its writes and whether it commits;
-# then the facts they leave.
-WRITES = {
-    "overwrite": (
-        [([{2023: "a", 2024: "b", 2025: "c"}], True), ([{2024: "d"}], True)],
-        {2023: "a", 2024: "d", 2025: "c"},
-    ),
-    "repeat": (
-        [([{2024: "a", 2025: "b"}], True), ([{2024: "a", 2025: "b"}], True)],
-        {2024: "a", 2025: "b"},
-    ),
-    "revert": ([([{2025: "a"}], True), ([{2025: "b"}], True), ([{2025: "a"}], True)], {2025: "a"}),
-    "revert then repeat": (
-        [
-            ([{2024: "x", 2025: "a"}], True),
-            ([{2025: "b"}], True),
-            ([{2025: "a"}], True),
-            ([{2024: "x", 2025: "a"}], True),
-        ],
-        {2024: "x", 2025: "a"},
-    ),
-    "two writes before one publish": (
-        [([{2024: "a"}, {2024: "b", 2025: "c"}], True)],
-        {2024: "b", 2025: "c"},
-    ),
-    "a kill before the commit": (
-        [([{2024: "a"}], True), ([{2024: "z", 2025: "b"}], False)],
-        {2024: "a"},
-    ),
-}
-
-
-@pytest.mark.parametrize("case", list(WRITES), ids=list(WRITES))
-def test_a_store_that_predates_the_table_holds_no_facts_until_its_first_record(case: str) -> None:
-    """recovery: a store without the year-fact table holds no facts until its first record, and
-    each record after is one INSERT that overwrites, repeats, reverts and commits as row by row."""
-    connection = _Counted(duckdb.connect())
+def test_a_store_that_predates_the_table_holds_no_facts_until_its_first_record() -> None:
+    """recovery: a store without the year-fact table answers no facts and ends none, inside a
+    writer's transaction, and its first record creates the table."""
+    connection = duckdb.connect()
     fact = {"kind": "k", "scope": "s", "basis": "b", "epoch": "e"}
     connection.execute("BEGIN TRANSACTION")
-    assert year_facts(connection.connection, **fact, years=(2025,)) == {}
-    forget_year_facts(connection.connection, "k", years=(2025,))
+    assert year_facts(connection, **fact, years=(2025,)) == {}
+    forget_year_facts(connection, "k", years=(2025,))
     record_year_facts(connection, **fact, values={2025: "v"})
     connection.execute("COMMIT")
-    assert year_facts(connection.connection, **fact, years=(2025,)) == {2025: "v"}
-    transactions, facts = WRITES[case]
-    for writes, commits in transactions:
-        connection.execute("BEGIN TRANSACTION")
-        for values in writes:
-            before = connection.statements.count("INSERT")
-            record_year_facts(connection, **fact, values=values)
-            assert connection.statements.count("INSERT") == before + 1
-        connection.execute("COMMIT" if commits else "ROLLBACK")
-    assert year_facts(connection.connection, **fact, years=range(2020, 2030)) == facts | (
-        {} if 2025 in facts else {2025: "v"}
-    )
+    assert year_facts(connection, **fact, years=(2025,)) == {2025: "v"}

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
-from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
@@ -14,11 +12,9 @@ from pydantic import ValidationError
 
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.publication.goals import GoalRefusal
-from alphalattice.control.workspace_runtime.network_access import network_access
-from alphalattice.interface.local_application.cli_contract import refusal_words, worded
+from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import located_failure, within
 from alphalattice.interface.local_application.goals import (
-    DAILY_NETWORK_ASK,
     Goal,
     GoalDeclaration,
     GoalReferenceRequest,
@@ -28,7 +24,7 @@ from alphalattice.interface.local_application.goals import (
 )
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
-    validate_request_document,
+    PortfolioResearchRequestDocument,
 )
 
 # Task Control's lifecycle: a moving Task must end before a goal completes; one waiting on
@@ -78,7 +74,12 @@ def missing_items(
     outcome = criteria_outcome(submission)
     if outcome is not None and submission.outcome != outcome:
         need("goal.outcome_contradicts_criteria", outcome=outcome)
-    missing.extend(_deliverable_items(goal, submission))
+    delivered = {d.deliverable_id for d in submission.deliverables}
+    for slot in goal.declaration.deliverables:
+        if slot.required and slot.deliverable_id not in delivered:
+            need("goal.deliverable_missing", deliverable_id=slot.deliverable_id)
+    for slot_id in sorted(delivered - {d.deliverable_id for d in goal.declaration.deliverables}):
+        need("goal.deliverable_unknown", deliverable_id=slot_id)
     cited = {
         *(ref for a in submission.criteria for ref in a.evidence),
         *(ref for d in submission.deliverables for ref in d.references),
@@ -92,32 +93,6 @@ def missing_items(
             need("goal.reference_unverified", reference_id=reference_id, failure_code=code)
     named = {task for p in submission.problems for task in p.task_ids}
     return missing + _task_items(tasks, named)
-
-
-def _deliverable_items(goal: Goal, submission: GoalSubmission) -> list[dict[str, Any]]:
-    """Check declared slots and require a verified delivery when a Goal is achieved."""
-    items: list[dict[str, Any]] = []
-    delivered = {d.deliverable_id for d in submission.deliverables}
-    slots = {d.deliverable_id for d in goal.declaration.deliverables}
-    required = {d.deliverable_id for d in goal.declaration.deliverables if d.required}
-    for slot_id in sorted(required - delivered):
-        items.append({"code": "goal.deliverable_missing", "deliverable_id": slot_id})
-    if submission.outcome == "ACHIEVED" and not delivered and not required:
-        items.append(
-            {
-                "code": "goal.deliverable_missing",
-                "deliverable_id": sorted(slots)[0] if slots else "result",
-            }
-        )
-    for slot_id in sorted(delivered - (slots or {"result"})):
-        items.append({"code": "goal.deliverable_unknown", "deliverable_id": slot_id})
-    return items
-
-
-def first_use_answered(workspace: Path, clock: Callable[[], datetime]) -> bool:
-    """Whether the workspace's daily-network question was answered."""
-    origin = network_access(workspace, now=clock()).set_by or {}
-    return bool(origin.get("asked") == DAILY_NETWORK_ASK)
 
 
 def _task_items(tasks: tuple[GoalTaskFact, ...], named: set[UUID]) -> list[dict[str, Any]]:
@@ -153,10 +128,7 @@ def criteria_outcome(submission: GoalSubmission) -> str | None:
 
 
 def corrected(
-    goal: Goal,
-    submission: GoalSubmission,
-    missing: list[dict[str, Any]],
-    offered: Mapping[str, Any],
+    submission: GoalSubmission, missing: list[dict[str, Any]], offered: Mapping[str, Any]
 ) -> dict[str, Any] | None:
     """The submission as the Host can correct it, the agent's words unchanged.
 
@@ -164,7 +136,6 @@ def corrected(
     references the goal lacks, cites each attach offered beside it.
 
     Args:
-        goal: The open goal whose references may support a delivery.
         submission: The agent's completion document.
         missing: Its missing items.
         offered: The attaches offered beside it, by `attach:<reference_id>`.
@@ -184,29 +155,7 @@ def corrected(
         evidence = answer.get("evidence") or []
         if answer["criterion_id"] in bare or (evidence and set(evidence) <= absent):
             answer["evidence"] = cited
-    _first_use_delivery(goal, document, cited)
     return None if document == sent else document
-
-
-def _first_use_delivery(goal: Goal, document: dict[str, Any], cited: list[str]) -> None:
-    """Fill the implicit first-use result only from the author's available evidence."""
-    if (
-        goal.declaration.kind == "FIRST_USE"
-        and not goal.declaration.deliverables
-        and document["outcome"] == "ACHIEVED"
-        and not document.get("deliverables")
-    ):
-        available = {r.reference_id for r in goal.references} | set(cited)
-        evidence = next(
-            (
-                [ref for ref in answer.get("evidence", ()) if ref in available]
-                for answer in document.get("criteria", ())
-                if answer.get("evidence")
-            ),
-            [],
-        )
-        if evidence:
-            document["deliverables"] = [{"deliverable_id": "result", "references": evidence}]
 
 
 UPDATE_KIND = "portfolio_public_watermark_advancement"
@@ -285,7 +234,6 @@ def submission_grammar(reference_operations: Mapping[str, tuple[str, ...]]) -> d
     return {
         "reference_id": f"{pattern}: an id of the goal's own, never a Task or result id; "
         "attach a stage's read under it first, or declare it in the submission's references.",
-        "deliverable": str(worded("goal.delivery.default_slot")),
         "problem": {
             "problem_id": "An id in the reference_id grammar.",
             "text": "What stayed unresolved.",
@@ -312,7 +260,7 @@ def resubmit(
     request: dict[str, Any] = {
         "operation": "GOAL_SUBMIT",
         "goal_id": str(goal.goal_id),
-        "goal_submission": corrected(goal, submission, missing, offered),
+        "goal_submission": corrected(submission, missing, offered),
     }
     if inline:
         document = request["goal_submission"] or submission.model_dump(mode="json")
@@ -331,7 +279,7 @@ def resubmit(
 def reference_request(document: dict[str, Any]) -> PortfolioResearchOperationRequest:
     """A reference's read as its request, a refusal located under the reference's `request`."""
     try:
-        read = validate_request_document(document)
+        read = PortfolioResearchRequestDocument.model_validate(document)
         request: PortfolioResearchOperationRequest = read.to_operation_request()
     except ValidationError as error:
         raise within(error, "request") from error
@@ -369,7 +317,7 @@ def goal_refusal(
         offers = {"show": {"operation": "GOAL_SHOW", **named}, **offered}
         if attributed_goal_id is not None:
             _required, allowed = request.field_contract(request.operation)
-            retry = validate_request_document(
+            retry = PortfolioResearchRequestDocument.model_validate(
                 {
                     "operation": request.operation,
                     **{name: getattr(request, name) for name in allowed},
@@ -466,12 +414,6 @@ def completion_template(goal: Goal, references: Sequence[dict[str, Any]] = ()) -
         lines += [
             f"  # {deliverable.kind}, {need}: {said(deliverable.description)}",
             f"  - deliverable_id: {quoted(deliverable.deliverable_id)}",
-            f"    references: {json.dumps(selected or ['<reference id>'])}",
-        ]
-    if not declared.deliverables:
-        lines += [
-            "  deliverables:",
-            '  - deliverable_id: "result"',
             f"    references: {json.dumps(selected or ['<reference id>'])}",
         ]
     if references:

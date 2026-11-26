@@ -37,11 +37,8 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
-from tests.pytest_environment import upgraded
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json
 from tests.researcher_methodology_surface.real_workspace import (
-    FACTOR_SCALE,
     OBSERVED_AT,
     _source_loader_for,
 )
@@ -56,10 +53,7 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
     assert manifest.strategy_installation == "NOT_INSTALLED"
     assert manifest.default_strategy_package_id is None
     assert manifest.data_update is not None and len(manifest.experiment_inputs) == 1
-    # This test is its own machine: the input goes with the workspace as a carried store, and
-    # the Host composed from it keeps the input here, as it would on another machine.
-    with LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT):
-        bundle = read_factor_bundle(root, manifest.experiment_inputs[0].binding_hash)
+    bundle = read_factor_bundle(root, manifest.experiment_inputs[0].binding_hash)
     assert bundle.database_snapshot_hash is not None
     with WorkspaceApplicationSession.acquire(root) as session:
         app = WorkspacePreparationApplication(session, clock=lambda: OBSERVED_AT)
@@ -68,7 +62,7 @@ def test_initialization_creates_real_factor_inputs_and_reopens_without_strategie
         assert planned["status"] == "ALREADY_PREPARED"
         # With no research strategy installed, the first use goes on at its controls, the
         # shortest way to a book that runs forward; a study on the input stays offered for
-        # exploration.
+        # exploration (FLOW-3).
         assert planned["next_action"] == view["next_action"] == "RESEARCH_STRATEGY_CONTROLS"
         assert planned["next_requests"]["strategy_controls"] == {
             "operation": "RESEARCH_STRATEGY_CONTROLS"
@@ -164,12 +158,12 @@ def test_historical_frozen_budget_is_fully_checked_but_never_grants_current_capa
     tmp_path: Path,
     budget_defect: str,
 ) -> None:
-    """legacy outer/inner seals and derivation hold; admission reads the live cap."""
+    """V680: legacy outer/inner seals and derivation hold; admission reads the live cap."""
 
-    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.storage.contracts import resolve_storage_budget
     from alphalattice.control.task_control.runner import StageDisposition
     from alphalattice.control.workspace_runtime.storage.capacity import StorageCapStore
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
@@ -260,8 +254,8 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
 ) -> None:
     """Publication retries preserve bytes, clean staging and reach Task failure codes."""
 
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.kernel.shared_kernel import persistence
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("retry"))
@@ -286,7 +280,7 @@ def test_stage_file_replace_outlives_a_momentary_sharing_violation(
             real_replace(source, destination)
 
         monkeypatch.setattr(persistence.os, "replace", flaky)
-        monkeypatch.setattr(persistence, "pause", lambda _: None)
+        monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
         values = app._save(task, "progress", {"completed": 1}, progress=True)
         assert len(calls) == 3
         assert app._load(task.task_id, "progress") == values
@@ -462,13 +456,12 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
 ) -> None:
     """An exact live grant resumes the same Task after data and storage stops."""
 
-    from alphalattice.capabilities.domain_contracts import persistence
     from alphalattice.interface.local_application.cli import main as client_main
     from alphalattice.interface.local_application.client import LocalResearchClient
+    from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_readiness.unexplained_move import unexplained_move
 
-    # Its preparation runs a Factor study, whose walk-forward policy needs FACTOR_SCALE's history.
-    provider, symbols = unexplained_move(standard=FACTOR_SCALE)
+    provider, symbols = unexplained_move()
     calls = []
     for name in ("fetch_daily", "fetch_action_history", "fetch_adjusted_close_history"):
         original = getattr(provider, name)
@@ -481,7 +474,7 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
     root = tmp_path / "delegated"
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     live.data_provider = provider
-    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
+    live.data_source_loader = _source_loader_for(symbols)
     with live:
         registry, app = live.session.task_control_registry, live.operations.preparation
         plan = _json(live, "/api/workspace/preparation/plan", method="POST", payload={})
@@ -560,7 +553,7 @@ def test_a_delegated_data_decision_carries_its_preparation_past_a_storage_stop(
             real_replace(source, destination)
 
         monkeypatch.setattr(persistence.os, "replace", refused)
-        monkeypatch.setattr(persistence, "pause", lambda _: None)
+        monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
         confirmed = agent.request(continuation)
         assert confirmed["task_id"] == str(stopped.task_id), confirmed
         live.dispatcher.drain_for_tests(timeout=900)
@@ -662,31 +655,18 @@ def test_optional_progress_delivery_never_governs_the_stage(
     typed cause and the work goes on; a file that cannot be read, is malformed or is
     another Task's is never promoted, and the last valid observation is kept."""
 
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
-    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.observation_runtime.telemetry.progress import (
         WorkProgressUpdate,
         WorkspaceProgressPublisher,
     )
-    from alphalattice.control.product_host.maintenance.data_update import (
-        WorkspaceDataUpdateApplication,
-    )
+    from alphalattice.kernel.shared_kernel import persistence
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("telemetry")
     )
-    # An unrelated old Task's optional observations cannot stop either owner opening.
-    old_task = uuid4()
-    legacy = {
-        tmp_path / "runtime" / owner / str(old_task) / f"{channel}.json": b"{not json"
-        for owner in ("preparation", "data-update")
-        for channel in ("work-progress", "listing-activity")
-    }
-    for path, content in legacy.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
@@ -694,14 +674,6 @@ def test_optional_progress_delivery_never_governs_the_stage(
             provider=recording_provider(),
             source_loader=_source_loader_for(("AAA", "BBB")),
         )
-        WorkspaceDataUpdateApplication(
-            session=session,
-            manifest=read_research_workspace_manifest(tmp_path),
-            clock=lambda: OBSERVED_AT,
-            provider=recording_provider(),
-            source_loader=_source_loader_for(("AAA", "BBB")),
-        )
-        assert {path: path.read_bytes() for path in legacy} == legacy
         task = session.task_control_registry.task(
             app.confirm(app.plan()["plan_hash"], caller="HUMAN").task_id
         )
@@ -734,12 +706,15 @@ def test_optional_progress_delivery_never_governs_the_stage(
         # The sidecar replace is refused for good: the sink still returns the projection,
         # the workspace projection is still published, the failure is counted with its
         # typed code, and the earlier valid sidecar stays what the readback shows.
-        real_record = app.telemetry.record_json
+        real_replace = os.replace
 
-        def refuse_sidecar(path, data):
-            raise WorkspaceConflictError("log delivery refused", code="catalog.replace_blocked")
+        def refuse_sidecar(source, destination):
+            if Path(destination) == sidecar:
+                raise PermissionError("persistent sharing violation")
+            real_replace(source, destination)
 
-        monkeypatch.setattr(app.telemetry, "record_json", refuse_sidecar)
+        monkeypatch.setattr(persistence.os, "replace", refuse_sidecar)
+        monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
         heartbeat = publisher.read().heartbeat_sequence
         assert sink(update.model_copy(update={"completed_units": 4})) is not None
         assert publisher.read().heartbeat_sequence == heartbeat + 1
@@ -752,8 +727,10 @@ def test_optional_progress_delivery_never_governs_the_stage(
             "type": "WorkspaceConflictError",
             "at": OBSERVED_AT.isoformat(),
         }
-        assert not sidecar.exists(), "no sidecar is written by log telemetry"
-        monkeypatch.setattr(app.telemetry, "record_json", real_record)
+        assert list(sidecar.parent.glob("*")) and all(
+            not name.name.startswith("tmp") for name in sidecar.parent.iterdir()
+        ), "no temporary survives a refused replace"
+        monkeypatch.setattr(persistence.os, "replace", real_replace)
 
         # The workspace projection itself refuses: nothing is written, nothing raised.
         def refuse_publish(_update):
@@ -771,8 +748,7 @@ def test_optional_progress_delivery_never_governs_the_stage(
 
         # Read failures: a torn or foreign file is never promoted; the last valid
         # observation this process wrote stays beside an UNREADABLE answer.
-        valid = json.dumps(app.telemetry.read_json(sidecar, task.task_id)).encode()
-        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        valid = sidecar.read_bytes()
         sidecar.write_bytes(b"{not json")
         unreadable = app.readback()["work_progress"]
         assert unreadable["availability"] == "UNREADABLE"
@@ -841,13 +817,12 @@ def test_optional_progress_delivery_never_governs_the_stage(
                 raise PermissionError("metadata unavailable")
             return real_exists(self)
 
-        real_exists = Path.is_file
-        monkeypatch.setattr(Path, "is_file", refuse_stat)
+        real_exists = Path.exists
+        monkeypatch.setattr(Path, "exists", refuse_stat)
         assert app.readback()["work_progress"]["cause"] == "PermissionError"
-        monkeypatch.setattr(Path, "is_file", real_exists)
+        monkeypatch.setattr(Path, "exists", real_exists)
         # The durable stage record keeps its fail-closed write regardless.
         progress_path = app._path(task.task_id, "progress")
-        real_replace = os.replace
 
         def refuse_progress(source, destination):
             if Path(destination) == progress_path:
@@ -866,9 +841,11 @@ def test_listing_activity_is_bound_bounded_and_optional(
 ) -> None:
     """Listing activity telemetry is bound to its listing, bounded in size, and optional."""
 
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
-    from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
+    from alphalattice.control.product_host.data_preparation.application import (
+        TELEMETRY_REPLACE_DELAYS,
+    )
     from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
+    from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     symbols = ("AAA", "BBB", "CCC", "FAIL")
@@ -879,17 +856,18 @@ def test_listing_activity_is_bound_bounded_and_optional(
     sidecar_path: list[Path] = []
     refused: list[int] = []
     observed = [OBSERVED_AT]
-    real_record = TaskTelemetry.record_json
+    real_replace = os.replace
 
-    def refuse_second_sidecar_write(path, data):
+    def refuse_second_sidecar_write(source, destination):
         # Refuse the tenth transition's telemetry retry; the chunk still carries its rows.
-        if sidecar_path and path == sidecar_path[0]:
+        if sidecar_path and Path(destination) == sidecar_path[0]:
             refused.append(1)
-            if len(refused) == 2:
-                raise WorkspaceConflictError("log delivery refused", code="catalog.replace_blocked")
-        real_record(path, data)
+            if 2 <= len(refused) <= 2 + len(TELEMETRY_REPLACE_DELAYS):
+                raise PermissionError("persistent sharing violation")
+        real_replace(source, destination)
 
-    monkeypatch.setattr(TaskTelemetry, "record_json", staticmethod(refuse_second_sidecar_write))
+    monkeypatch.setattr(persistence.os, "replace", refuse_second_sidecar_write)
+    monkeypatch.setattr(persistence.time, "sleep", lambda _: None)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
@@ -1018,7 +996,6 @@ def test_listing_activity_is_bound_bounded_and_optional(
 
         # A malformed snapshot is a typed invalid read beside the last valid one; the
         # retained rows are not lost to it.
-        sidecar_path[0].parent.mkdir(parents=True, exist_ok=True)
         sidecar_path[0].write_bytes(b"{not json")
         unreadable = app.readback()["listing_activity"]
         assert unreadable["availability"] == "UNREADABLE"
@@ -1094,7 +1071,7 @@ def test_listing_counts_follow_each_listings_own_transition(tmp_path: Path) -> N
                 )
             )
 
-        counts = lambda: (  # a compact view of the four moving counts
+        counts = lambda: (  # noqa: E731 - a compact view of the four moving counts
             delivery.counts["raw_ready"],
             delivery.counts["quality_eligible"],
             delivery.counts["feature_ready"],
@@ -1149,30 +1126,29 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
 ) -> None:
     """Listing delivery stays cheap under persistent refusal."""
 
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
-    from alphalattice.control.data_platform.task_telemetry import TaskTelemetry
+    from alphalattice.control.product_host.data_preparation import application as owner
     from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
         CurrentUniverseOnboardingOutcome,
         CurrentUniverseOnboardingStatus,
         ListingUnitObservation,
     )
+    from alphalattice.kernel.shared_kernel import persistence
     from tests.workspace_maintenance.local_data_provider import recording_provider
 
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cost"))
     sleeps: list[float] = []
     replaces: list[Path] = []
     refusing = [True]
-    real_record = TaskTelemetry.record_json
+    real_replace = os.replace
 
-    def record(path, data):
-        if refusing[0] and path.name == "listing-activity.json":
-            replaces.append(path)
-            raise WorkspaceConflictError("log delivery refused", code="catalog.replace_blocked")
-        real_record(path, data)
+    def replace(source, destination):
+        if refusing[0] and Path(destination).name == "listing-activity.json":
+            replaces.append(Path(destination))
+            raise PermissionError("persistent sharing violation")
+        real_replace(source, destination)
 
-    monkeypatch.setattr(TaskTelemetry, "record_json", staticmethod(record))
-    monkeypatch.setattr(persistence, "pause", sleeps.append)
+    monkeypatch.setattr(persistence.os, "replace", replace)
+    monkeypatch.setattr(persistence.time, "sleep", sleeps.append)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
@@ -1231,7 +1207,8 @@ def test_listing_delivery_stays_cheap_under_persistent_refusal(
         assert delivery.delivery["attempts"] == 2
         assert delivery.delivery["failures"] == 2
         assert delivery.delivery["delivered"] == 0
-        assert sleeps == [] and len(replaces) == 2
+        assert len(sleeps) == 2 * len(owner.TELEMETRY_REPLACE_DELAYS)
+        assert sum(sleeps) <= 0.2
         assert len(delivery.rows) == 10 and delivery.observed == 10
         assert not delivery.path.exists()
         assert delivery.counts == {
@@ -1330,11 +1307,6 @@ def test_admitted_recorded_sources_offer_only_the_confirm_under_the_offline_swit
 
 
 def test_missing_source_authority_refuses_before_task_or_market_database(tmp_path: Path):
-    """Without source authority the plan offers no confirm and the confirm is refused; a
-    permission that ends after the sources are captured is refused by name by the data stage,
-    before any market database exists."""
-    from tests.workspace_maintenance.local_data_provider import recording_provider
-
     publish_research_workspace_manifest(
         tmp_path, ResearchWorkspaceManifest.research_only("offline")
     )
@@ -1350,22 +1322,6 @@ def test_missing_source_authority_refuses_before_task_or_market_database(tmp_pat
         with pytest.raises(ValueError, match="source_access_not_admitted"):
             app.confirm(plan["plan_hash"], caller="HUMAN")
         assert not session.task_control_registry.tasks()
-        assert not (tmp_path / "market-data.duckdb").exists()
-        loader = _source_loader_for(("AAA", "BBB"))
-
-        def captured_then_expired(**kwargs):
-            sources = loader(**kwargs)
-            app.provider = None  # the permission ends once the sources are captured
-            return sources
-
-        app.provider, app.source_loader = recording_provider(), captured_then_expired
-        task = app.confirm(app.plan()["plan_hash"], caller="HUMAN")
-        app.execute(task.task_id)
-        record = session.task_control_registry.task(task.task_id)
-        assert (record.lifecycle.value, record.failure_code) == (
-            "BLOCKED",
-            "workspace_preparation.source_access_not_admitted",
-        )
         assert not (tmp_path / "market-data.duckdb").exists()
 
 
@@ -1391,7 +1347,7 @@ def test_a_preview_past_its_hour_is_refused_by_the_host_that_planned_it(tmp_path
 
 
 def test_a_preview_past_its_hour_offers_the_preparation_again(tmp_path: Path):
-    """regression (the sweep of S1): a confirm past the preview's hour was refused
+    """regression (V543, the sweep of S1): a confirm past the preview's hour was refused
     `workspace_preparation.preview_required` with its words and no request; it offers planning
     the preparation again."""
 
@@ -1468,7 +1424,7 @@ def test_empty_start_and_actor_boundary_without_strategy_or_data_authority(
         assert live.operations.evidence_install.official_source is source
         with monkeypatch.context() as missing:
             missing.setattr(
-                "alphalattice.control.product_host.composition.evidence_authority_setup.run_setup",
+                "alphalattice.control.product_host.composition.portfolio_research_operations.run_setup",
                 Mock(side_effect=FileNotFoundError("risk.json")),
             )
             refusal = live.operations.execute(
@@ -1532,7 +1488,6 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
         inspect_existing_data_workspace,
     )
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-    from alphalattice.kernel import storage
     from tests.researcher_methodology_surface.real_workspace import build_real_risk_workspace
     from tests.workspace_readiness.storage_support import future_sample
 
@@ -1552,24 +1507,15 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
     assert manifest.data_update is not None and not manifest.experiment_inputs
     assert (root / "market-data.duckdb").read_bytes() == database
     assert bind_existing_data_workspace(root) == manifest
-    # A bound folder this data root has not served owes its first start's upgrade, which the
-    # person acknowledges before the Host composes; this is that acknowledged start.
-    upgraded(root)
 
     class NoSources:
         def __getattribute__(self, name):
             raise AssertionError(f"qualified local preparation accessed sources: {name}")
 
-    def held_bytes() -> bytes:
-        # The live Host holds the file, and Windows refuses a bare read of it: a byte reader
-        # names the file to its owner first, as every reader outside the engine does.
-        with storage.outside(root / "market-data.duckdb"):
-            return (root / "market-data.duckdb").read_bytes()
-
     start = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
     start.data_provider = NoSources()
     with start as live:
-        before_read = held_bytes()
+        before_read = (root / "market-data.duckdb").read_bytes()
         too_late = live.operations.preparation.plan(
             requested_formation_session=datetime.fromisoformat(
                 inspection["inputs"]["panel_through"]
@@ -1577,25 +1523,24 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
             - timedelta(days=1),
         )
         assert too_late["failure_code"] == "workspace_preparation.local_inputs_after_requested_date"
-        assert held_bytes() == before_read
+        assert (root / "market-data.duckdb").read_bytes() == before_read
         assert not live.session.task_control_registry.tasks()
         through = datetime.fromisoformat(inspection["inputs"]["panel_through"]).date()
         late = through + timedelta(days=7)
         market = MarketDataRepository(root)
         assert market.manifest_raw_range(data.manifest) == market.market_reference_raw_range("SPY")
-        listing_id = data.manifest.listings[0].listing_id
-        for table, field, served in (
-            ("raw_daily_bar_current", "data_through", market.raw_bars),
-            (
-                "provider_adjusted_close_current",
-                "adjusted_through",
-                market.provider_adjusted_closes,
-            ),
+        for table, field in (
+            ("raw_daily_bar_current", "data_through"),
+            ("provider_adjusted_close_current", "adjusted_through"),
         ):
-            with future_sample(market, live.session.mutation_gate, table, listing_id, late):
-                # The later row is world's, where the Host serves it, not only the stage's buffer.
-                assert late in {row.session_date for row in served(listing_id, through=late)}
-                mutated = held_bytes()
+            with future_sample(
+                market,
+                live.session.mutation_gate,
+                table,
+                data.manifest.listings[0].listing_id,
+                late,
+            ):
+                mutated = (root / "market-data.duckdb").read_bytes()
                 refused = live.operations.preparation.plan(requested_formation_session=through)
                 assert refused["source_inputs"][field] == str(through)
                 assert refused["source_through"] == str(late)
@@ -1604,7 +1549,7 @@ def test_explicit_qualified_data_binding_creates_its_manifest_without_manual_jso
                     == "workspace_preparation.local_inputs_after_requested_date"
                 )
                 assert not live.session.task_control_registry.tasks()
-                assert held_bytes() == mutated
+                assert (root / "market-data.duckdb").read_bytes() == mutated
         perform = live.operations.preparation._perform
 
         def interrupt_before_publication(task, plan, stage, execution):
@@ -1691,10 +1636,8 @@ def test_source_inspection_is_read_only_and_explains_missing_qualification(
         assert not root.exists()
 
 
-def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp_path, monkeypatch):
-    """Cancel requested during hydration is honoured at the chunk boundary; the data stage's
-    hydration runs inside one market data update, which the Host admits once when it ends."""
-    from contextlib import contextmanager
+def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp_path):
+    """Cancel requested during hydration is honoured at the chunk boundary."""
 
     from alphalattice.control.workspace_runtime.database import live_workspace_connections
     from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
@@ -1703,18 +1646,6 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
     publish_research_workspace_manifest(tmp_path, ResearchWorkspaceManifest.research_only("cancel"))
     provider = recording_provider()
     market = MarketDataRepository(tmp_path)
-    writing, updates = MarketDataRepository.writing, []
-
-    @contextmanager
-    def counted(repository):
-        with writing(repository) as mark:
-            updates.append(repository.path)
-            try:
-                yield mark
-            finally:
-                updates.pop()
-
-    monkeypatch.setattr(MarketDataRepository, "writing", counted)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         app = WorkspacePreparationApplication(
             session,
@@ -1730,7 +1661,6 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
             # The runner is at its network edge; the request lands on Task
             # Control's store and is accepted before the fetch returns.
             if not accepted:
-                accepted.append(bool(updates))  # the fetch runs inside the stage's update
                 current = session.task_control_registry.task(task.task_id)
                 session.task_control_registry.request_cancel(
                     task_id=task.task_id,
@@ -1742,7 +1672,7 @@ def test_cancel_requested_during_hydration_is_honoured_at_the_chunk_boundary(tmp
 
         provider.fetch_daily = cancel_while_fetching  # type: ignore[method-assign]
         app.execute(task.task_id)
-        assert accepted == [True, "CANCEL_REQUESTED"]
+        assert accepted == ["CANCEL_REQUESTED"]
         assert session.task_control_registry.task(task.task_id).lifecycle.value == "CANCELLED"
         # Honoured at the chunk boundary: the chunk's units are persisted and kept.
         disclosure = market.latest_current_universe_onboarding_disclosure(
@@ -2107,7 +2037,7 @@ def test_a_deferred_preparation_confirmed_again_goes_to_its_owner(tmp_path, monk
     sent: list[object] = []
 
     def submit(command: WorkspacePreparationCommand) -> CommandSubmission:
-        """The owner refuses the plan before its retry time."""
+        """The owner refuses the plan before its retry time, as V375 has it."""
         sent.append(command)
         return CommandSubmission(
             command_kind=command.command_kind,
@@ -2159,8 +2089,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         class Owners(PortfolioResearchOperations):
             """The operations entry over a real plan answer and a recording admission."""
 
-            def _execute(self, request, *, caller, agent_execution, direct_person):
-                assert not direct_person
+            def _execute(self, request, *, caller, agent_execution):
                 reached.append(request.operation)
                 if request.operation == "WORKSPACE_PREPARE_PLAN":
                     return app.plan()
@@ -2172,7 +2101,6 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             PortfolioResearchOperationRequest(operation="WORKSPACE_PREPARE_PLAN"),
             caller="EXTERNAL_AUTOMATION",
             agent_execution=None,
-            direct_person=False,
         )
         estimate = plan["resource_estimate"]
         assert estimate["label"] == "ESTIMATE" and estimate["peak_memory_bytes"] > 0
@@ -2183,9 +2111,6 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
             "EXECUTION_ONLY",
         )
         assert datetime.fromisoformat(estimate["cpu_sampled_at"]).utcoffset().total_seconds() == 0
-        assert (
-            estimate["cpu_load"]["busy_processors"] is not None
-        )  # automatic sizing reads the load
         assert estimate["basis_details"]["reference_units"] == 520
         assert estimate["basis_details"]["reference_wall_seconds"] == 390
         assert estimate["basis_details"]["plan_units"] is None
@@ -2197,7 +2122,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
         peak = estimate["peak_memory_bytes"]
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak - 1)
         refused = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
         )
         assert refused["status"] == "REFUSED"
         assert refused["failure_code"] == resource_estimates.MEMORY_INSUFFICIENT
@@ -2210,7 +2135,7 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
 
         monkeypatch.setattr(resource_estimates, "available_work_memory_bytes", lambda: peak)
         admitted = operations._execute_within_memory(
-            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None, direct_person=False
+            confirm, caller="EXTERNAL_AUTOMATION", agent_execution=None
         )
         assert admitted["status"] == "ADMITTED" and reached[-1] == "WORKSPACE_PREPARE_CONFIRM"
 
@@ -2243,8 +2168,6 @@ def test_a_plan_estimate_refuses_its_confirm_before_admission_when_memory_is_sho
                 gate.plan_answered("EXPERIMENT_PLAN", alpha)
                 assert alpha["resource_estimate"]["wall_seconds"] == expected
                 assert alpha["resource_estimate"]["cpu_budget"] == budget
-                # A fixed budget never waits for a load sample it does not use (each stage checks).
-                assert alpha["resource_estimate"]["cpu_load"]["busy_processors"] is None
                 assert alpha["plan_hash"] == component
                 assert alpha["resource_estimate"]["basis_details"]["cpu_scaling_cap"] == 1.5
             assert alpha["resource_estimate"]["peak_memory_bytes"] == int(3.3 * 2**30)

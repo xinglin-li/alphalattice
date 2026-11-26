@@ -6,16 +6,14 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol
 
 import numpy as np
 import numpy.typing as npt
+import osqp  # type: ignore[import-untyped]
+import scipy.sparse as sp  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-
-if TYPE_CHECKING:
-    import osqp
-    import scipy.sparse as sp
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -475,8 +473,6 @@ class _OSQPTemplate:
         maximum_one_way_turnover: float | None = None,
         strict_accuracy: bool = False,
     ) -> tuple[FloatArray, int, FloatArray, int]:
-        import osqp  # lazy: not at the Host's start
-
         capacity = self.capacity
         if any(value.shape != (capacity, capacity) for value in (hessian,)) or any(
             value.shape != (capacity,) for value in (local_scores, reference, lower, upper)
@@ -566,8 +562,6 @@ class _OSQPTemplate:
 
 
 def _build_osqp_template(capacity: int) -> _OSQPTemplate:
-    import scipy.sparse as sp  # lazy: not at the Host's start
-
     variable_count = capacity * 2
     weight_pattern = sp.triu(
         sp.csc_matrix(np.ones((capacity, capacity), dtype=np.float64)),
@@ -608,8 +602,6 @@ def _build_osqp_template(capacity: int) -> _OSQPTemplate:
 
 def _build_capped_osqp_template(capacity: int) -> _OSQPTemplate:
     """Build the successor-only cap row without changing the legacy problem."""
-
-    import scipy.sparse as sp  # lazy: not at the Host's start
 
     unbanded = _build_osqp_template(capacity)
     constraints = sp.vstack(
@@ -681,8 +673,6 @@ class _BandedTemplate:
         exposure_upper: float,
         strict_accuracy: bool = False,
     ) -> tuple[FloatArray, int, FloatArray, int]:
-        import osqp  # lazy: not at the Host's start
-
         capacity = self.capacity
         if (
             hessian.shape != (capacity, capacity)
@@ -791,8 +781,6 @@ class _BandedTemplate:
 
 
 def _build_banded_template(top_k: int, sector_count: int) -> _BandedTemplate:
-    import scipy.sparse as sp  # lazy: not at the Host's start
-
     capacity = top_k * 2
     variable_count = capacity * 2
     weight_pattern = sp.triu(

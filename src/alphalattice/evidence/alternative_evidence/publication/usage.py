@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceContract,
     seal_contract,
     validate_contract_identity,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.usage import TokenCoverage
 
 if TYPE_CHECKING:

@@ -48,7 +48,6 @@ from alphalattice.capabilities.causal_inputs.schedules import (
     resolve_strategy_decision_schedule,
     session_clocks_from_execution_rows,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     FIVE_SESSION_RECIPE_ID,
     build_five_session_recipe,
@@ -63,6 +62,7 @@ from alphalattice.investment.risk_research.experiments.temporal import (
     resolve_risk_readiness_policy,
     risk_covariance_authority,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 NEXT_OPEN = "NEXT_OPEN_AFTER_OFFICIAL_CLOSE"
 _OPEN_HOUR, _CLOSE_HOUR = 13, 20

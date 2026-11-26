@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import importlib.util
 import json
 import os
 import re
 import shlex
+import subprocess
 import sys
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,10 +17,8 @@ from typing import Any
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.evidence_review_workspace import (
     admit_evidence_review_workspace,
-    verify_evidence_review_workspace,
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     SETUP_OPTIONS,
@@ -129,7 +126,7 @@ def acquisition(monkeypatch: pytest.MonkeyPatch, installer_universe: dict[str, s
     transport.probes = []
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: (
             transport.probes.append(1)
             or SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH)
@@ -190,7 +187,7 @@ def test_a_request_while_the_install_publishes_needs_no_restart(tmp_path, acquis
         )
         PortfolioResearchOperations._refresh_prepared_inputs(host)  # type: ignore[arg-type]
 
-    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))
+    snapshot = lambda *_: before.append(read_research_workspace_manifest(tmp_path))  # noqa: E731
     task, _, _ = _install(tmp_path, served=[], during=snapshot, hold=refresh)
     assert task.lifecycle.value == "SUCCEEDED", task.failure_code
     with pytest.raises(ValueError, match="configuration_changed_restart_required"):
@@ -282,7 +279,6 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     """requirement: a Host without the retrieval runtime blocks its install by name, the package
     bound before stays bound, and the declared environment filled afterwards is read in place;
     the same request sent again continues the blocked Task, which then reads as resolved."""
-    from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.interface.local_application import retrieval_environment
 
     environment, (major, minor) = tmp_path / "declared-retrieval", sys.version_info[:2]
@@ -316,7 +312,6 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
     from alphalattice.control.product_host.composition.task_recovery import (
         resolved_read,
         task_attention,
-        way_on,
     )
     from alphalattice.control.workspace_runtime.network_access import set_network_access
 
@@ -332,23 +327,14 @@ def test_an_install_in_a_host_without_the_retrieval_runtime_blocks_by_name(
         )
     assert (fact.resolution, fact.successor_task_id) == ("SUCCESSOR_SUCCEEDED", str(again.task_id))
     read: dict[str, object] = {"lifecycle": "BLOCKED", "next_requests": {}}
-    way_on(read, explain(task.failure_code, lifecycle="BLOCKED"), {}, {}, True)
-    commands = read["next_commands"]
-    assert isinstance(commands, dict) and set(commands) == {"environment", "packs"}
     resolved_read(read, fact)  # what the Tasks page and a status read show for the stop
-    assert "next_commands" not in read
     assert read["next_requests"] == {
         "successor": {"operation": "STATUS", "task_id": str(again.task_id)}
     }
 
 
-def test_source_setup_preflights_acquires_and_preserves_prior_authority(
-    tmp_path,
-    tmp_path_factory,
-    monkeypatch,
-):
+def test_source_setup_preflights_acquires_and_preserves_prior_authority(tmp_path, monkeypatch):
     """Build a real Evidence package to verify installed scope, capture time and prior authority."""
-    from scripts import install_retrieval_pack as installer
     from scripts import materialize_evidence_cro_authority as setup
 
     from alphalattice.control.product_host.composition import portfolio_result_context
@@ -432,10 +418,9 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     transport = SecFixtureTransport()
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -489,70 +474,10 @@ def test_source_setup_preflights_acquires_and_preserves_prior_authority(
     with pytest.raises(ValueError, match="entity_scope_outside_universe"):
         setup.materialize(args)
     args.entities = ["AAPL"]
-    with monkeypatch.context() as missing_runtime:
-        missing_runtime.setattr(setup, "load", lambda: False)
-        with pytest.raises(RuntimeError, match=r"evidence_review\.semantic_capability_not_ready"):
-            setup.materialize(args)
-
-        store_root = tmp_path_factory.mktemp("evidence-model-store").resolve()
-        default_store = tmp_path_factory.mktemp("default-model-store").resolve()
-        model_store = setup.model_store
-        held = tmp_path / "held-pack-files"
-        held.mkdir()
-        data = b"pinned fixture bytes"
-        (held / "fixture.bin").write_bytes(data)
-        packs = tuple(
-            replace(pack, files=(("fixture.bin", hashlib.sha256(data).hexdigest()),))
-            for pack in model_store.RETRIEVAL_STORE_PACKS
-        )
-        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(store_root))
-        missing_runtime.setenv("ALPHALATTICE_SHELL", "posix")
-        missing_runtime.setattr(model_store, "RETRIEVAL_STORE_PACKS", packs)
-        missing_runtime.setitem(model_store.INSTALLABLE, model_store.RETRIEVAL_STORE, packs)
-        missing_runtime.setattr(Path, "home", classmethod(lambda _: tmp_path))
-        missing_runtime.setattr(
-            model_store, "hub_fetcher", lambda **_: model_store.local_directory_fetcher(held)
-        )
-        missing_runtime.setattr(args, "semantic_model", None)
-        missing_runtime.setattr(args, "model_store", store_root)
-        with pytest.raises(
-            (RuntimeError, ValueError), match=r"semantic_capability_not_ready|pack_not_installed"
-        ) as refused:
-            setup.materialize(args)
-        assert str(refused.value) == "evidence_review.semantic_capability_not_ready"
-        missing_runtime.setattr(setup, "load", lambda: True)
-        with pytest.raises(
-            ValueError, match=r"model_store\.pack_not_installed:.*:ABSENT"
-        ) as absent:
-            setup.materialize(args)
-        # The explicit input survives a different application default during recovery.
-        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(default_store))
-        refused = setup.setup_refusal(args, absent.value, now=datetime.now(UTC))
-        assert set(refused["next_commands"]) == {"packs"}
-        status = shlex.split(refused["next_commands"]["packs"])[-5:]
-        assert status == ["--status", "--view", "summary", "--store", str(store_root)]
-        pack = refused["pack"]
-        assert pack["store"] == str(store_root) and pack["before"]
-        command = shlex.split(pack["install"])[-5:]
-        assert command == [
-            "--install",
-            model_store.RETRIEVAL_STORE,
-            "--network",
-            "--store",
-            str(store_root),
-        ]
-        without_consent = [part for part in command if part != "--network"]
-        with pytest.raises(SystemExit, match="admitted download"):
-            installer.main(without_consent)
-        assert not any(store_root.iterdir())
-        assert installer.main(command) == 0
-        assert not any(default_store.iterdir())
-        missing_runtime.setenv("ALPHALATTICE_MODEL_STORE", str(store_root))
-        assert setup.materialize(args)["status"] == "EVIDENCE_SOURCE_PREFLIGHT"
     with monkeypatch.context() as unavailable:
         unavailable.setattr(
             setup,
-            "store_capability",
+            "probe_hybrid_retrieval_capabilities",
             lambda *_: SimpleNamespace(status="UNAVAILABLE"),
         )
         with pytest.raises(RuntimeError, match="semantic_capability_not_ready") as raised:
@@ -696,10 +621,9 @@ def test_recorded_source_conversion_does_not_claim_a_new_sec_capture(
     installer_universe.update({"AAPL": "US-AAPL"})
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -809,10 +733,9 @@ def _rr5f_book(
     universe.update({ticker: f"US-{ticker}" for ticker in tickers})
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "load", lambda: True)
     monkeypatch.setattr(
         setup,
         "admit_official_source",
@@ -1042,7 +965,7 @@ def test_a_recorded_import_whose_knowledge_root_lacks_an_object_names_it_under_t
 knowledge root's own case is the recorded import's above."""
 
 
-@pytest.mark.parametrize("option", sorted(_OPTION_CASES), ids=str)
+@pytest.mark.parametrize("option", sorted(_OPTION_CASES))
 def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offers_table(
     option, tmp_path, monkeypatch, capsys, installer_universe
 ):
@@ -1070,10 +993,9 @@ def test_every_option_the_setup_refuses_on_names_what_it_must_hold_from_the_offe
     installer_universe.update({"AAPL": "US-AAPL"})
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "load", lambda: True)
     pack = tmp_path / "outside" if option == "semantic_model" else workspace / "authority/pack"
     roots = ("--source-artifact-root", str(tmp_path / "artifacts")) if "source" in option else ()
     argv = ["--workspace", str(workspace), "--semantic-model", str(pack), *roots]
@@ -1138,10 +1060,9 @@ def test_listing_authority_admits_the_universe_and_rebinds_offline(
     installer_universe.update({"AAPL": "US-AAPL", "ZZZZ": "US-ZZZZ", "brk.b": "US-BRKB"})
     monkeypatch.setattr(
         setup,
-        "store_capability",
+        "probe_hybrid_retrieval_capabilities",
         lambda *_: SimpleNamespace(status="READY", logical_hash=CAPABILITY_HASH),
     )
-    monkeypatch.setattr(setup, "load", lambda: True)
     args = setup._parser().parse_args(
         [
             "--workspace",
@@ -1234,13 +1155,10 @@ def test_research_only_evidence_binding_preserves_inputs_without_installing_a_st
 
 
 def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, monkeypatch, capsys):
-    from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
     from alphalattice.control.product_host.composition import entry as run_alphalattice
-    from alphalattice.control.product_host.composition import web_launcher
     from alphalattice.control.product_host.composition.research_workspace import (
         publish_research_workspace_manifest,
     )
-    from alphalattice.interface.local_application import retrieval_environment
 
     binding, _registry = _package(tmp_path)
     publish_research_workspace_manifest(
@@ -1249,7 +1167,8 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     interpreter = tmp_path / "declared-python.exe"
     interpreter.write_bytes(b"selector-test-only")
-    monkeypatch.setattr(retrieval_environment, "interpreter_path", lambda: interpreter)
+    monkeypatch.setattr(run_alphalattice, "interpreter_path", lambda: interpreter)
+    # Patch imported functions at the consumer, and module attributes at their module.
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
     spawned = []
@@ -1261,7 +1180,7 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     )
     monkeypatch.setenv("PYTHONPATH", str(foreign_source))
     monkeypatch.setattr(
-        web_launcher,
+        run_alphalattice,
         "attached_child",
         lambda args, **kwargs: spawned.append((args, kwargs)) or 0,
     )
@@ -1272,24 +1191,18 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert command[1:3] == ["-m", "alphalattice.control.product_host.composition.web_launcher"]
     assert command[3:] == args
     assert options["env"]["PYTHONPATH"].split(os.pathsep) == [
-        str(resolve_playpen_root(Path(__file__)) / "src"),
+        str(run_alphalattice.ROOT / "src"),
         str(foreign_source),
     ]
     assert os.environ["PYTHONPATH"] == str(foreign_source)
     detached = []
-    monkeypatch.setattr(web_launcher, "main", lambda a, **kw: detached.append(kw) or 0)
+    monkeypatch.setattr(run_alphalattice, "start", lambda a, **kw: detached.append(kw) or 0)
     assert run_alphalattice.serve([*args[:-1], "--detach"]) == 0
-    assert detached == [
-        {
-            "host_interpreter": interpreter,
-            "new_research": False,
-            "native_threads_prepared": True,
-        }
-    ]
+    assert detached == [{"host_interpreter": interpreter, "new_research": False}]
     assert set(options) == {"env"}  # cwd and stdin retain their caller meaning.
     # Run the actual module from outside the checkout with that child's source
     # binding: dependency-only environments and hostile sibling paths both work.
-    opened = spawn.run(
+    opened = subprocess.run(
         [sys.executable, *command[1:3], "--help"],
         cwd=tmp_path,
         env=options["env"],
@@ -1312,10 +1225,9 @@ def test_cli_selects_only_the_declared_local_retrieval_environment(tmp_path, mon
     assert len(spawned) == 2
     # An uninitialized workspace must still reach the ordinary initializer.
     started = []
-    monkeypatch.setattr(web_launcher, "main", lambda args, **kw: started.append((args, kw)) or 0)
+    monkeypatch.setattr(run_alphalattice, "start", lambda args: started.append(args) or 0)
     empty_args = ["--workspace", str(tmp_path / "empty"), "--no-browser"]
-    assert run_alphalattice.serve(empty_args) == 0
-    assert started == [(empty_args, {"own_process_tree": True, "native_threads_prepared": True})]
+    assert run_alphalattice.serve(empty_args) == 0 and started == [empty_args]
 
 
 def test_workspace_authority_installs_the_existing_runtime_and_no_model_actor(
@@ -1365,20 +1277,6 @@ def test_a_semantic_capability_mismatch_refuses_installation(tmp_path: Path) -> 
             binding=binding,
             semantic_capability_reader=lambda _runtime: "d" * 64,
         )
-
-
-@pytest.mark.proves("alternative_evidence.runtime_refuses_without_retrieval")
-def test_a_workspace_without_the_retrieval_runtime_refuses_rather_than_degrades(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A sealed test authority still needs a local retrieval runtime."""
-    binding, _registry = _package(tmp_path, managed=False)
-    monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(tmp_path / "empty-model-store"))
-    with pytest.raises(
-        ResearchWorkspaceError,
-        match=r"evidence_review\.semantic_capability_invalid.*bekko-static-512-int8",
-    ):
-        verify_evidence_review_workspace(workspace=tmp_path, binding=binding)
 
 
 @pytest.mark.parametrize("managed", [True, False])

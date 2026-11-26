@@ -8,16 +8,12 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_model_digest,
-    seal_scoped_model,
-)
-from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.enums import RebalanceFrequency
 
 _FORMULA_ID = "formation-close-next-common-open-following-common-open-simple-return"
 _ACTION_ID = "provider-split-adjusted-open-and-period-dividend"
@@ -57,8 +53,8 @@ class LocalQAMarketSnapshot(_Contract):
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        values.pop("content_hash", None)
-        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
+        payload = cls.model_construct(**values).model_dump(mode="json", exclude={"content_hash"})
+        return cls(**payload, content_hash=canonical_hash(payload))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_snapshot(self) -> Self:
@@ -85,7 +81,8 @@ class LocalQAMarketSnapshot(_Contract):
                 not (v.formation_session < v.entry_session < v.holding_end_session)
                 for v in self.schedule
             )
-            or self.content_hash != scoped_model_digest(self, "content_hash", digest=canonical_hash)
+            or self.content_hash
+            != canonical_hash(self.model_dump(mode="json", exclude={"content_hash"}))
         ):
             raise ValueError("causal_outcomes.qa_market_snapshot_invalid")
         return self

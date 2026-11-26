@@ -3,7 +3,7 @@
 A module equal to its previous version in syntax -- the parsed tree without its docstrings
 and other bare strings, which is what every identity closure by rule hashes (R1) -- runs as
 it did and moves no such closure. It is neutral, and the gate's impact step selects no
-tests for it, unless something reads its text:
+tests for it (V80), unless something reads its text (V95):
 
 - a byte closure tracks it (a literal path of `source_file_closure_hash`,
   `source_component_hash` or `source_content_hash`); for a byte closure whose files are
@@ -22,7 +22,7 @@ tests for it, unless something reads its text:
 A model's docstring is prose its JSON schema shows but no hash binds: every schema hash
 takes the schema's structure alone (SH, SC3), so a docstring edit is neutral too.
 
-A move is proved the same way, definition by definition: a changed file whose only
+A move is proved the same way, definition by definition (V215): a changed file whose only
 changes are definitions moved syntax-equal to or from another changed file, and the imports
 and `__all__` entries that follow them, behaves as before; its own tests and the tests that
 name its module (patching its objects) are the ones a move can break, not every importer's.
@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -43,10 +44,8 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts import spawn
-from alphalattice.capabilities.domain_contracts.source_identity import source_bytes_syntax_sha256
+from alphalattice.kernel.shared_kernel.source_identity import source_bytes_syntax_sha256
 from devtools.architecture import structural
-from devtools.architecture.git_inputs import read_blobs
 from devtools.architecture.identity_closures import closure_sites
 
 _BYTE_PRIMITIVES = frozenset(
@@ -59,7 +58,7 @@ _RULE_PRIMITIVES = frozenset(
         # The Desk helpers that hand their listed paths to `switched_source_identity`.
         "portfolio_adapter_implementation_hash",
         "implementation_content_hash",
-        # A reader that walks a module's syntax tree, as the operation table does.
+        # A reader that walks a module's syntax tree, as the operation table does (V356).
         "source_syntax_tree",
     }
 )
@@ -69,7 +68,7 @@ _SOURCE_READERS = frozenset({"getsource", "getsourcelines", "getsourcefile"})
 _BYTE_READERS = frozenset({"read_bytes", "read_text"})
 _SCANNED = ("src", "scripts")
 _PREFILTER = ("getsource", "__file__", "__doc__", "tool", ".py")
-_PRIMITIVES_MODULE = "src/alphalattice/capabilities/domain_contracts/source_identity.py"
+_PRIMITIVES_MODULE = "src/alphalattice/kernel/shared_kernel/source_identity.py"
 """The primitives' own module reads every file a rule closure hashes, as syntax: not a text read."""
 
 
@@ -78,7 +77,7 @@ def source_syntax_tree(path: Path) -> ast.Module:
 
     The parsed tree without its docstrings and other bare string statements, what a rule
     closure hashes (R1): no prose edit reaches what such a reader finds, so a path handed here
-    is not a text read.
+    is not a text read (V356).
 
     Args:
         path: The module's file.
@@ -394,12 +393,9 @@ def _path_bindings(tree: ast.Module) -> dict[str, list[ast.expr]]:
             target = node.targets[0]
             if isinstance(target, ast.Name):
                 bindings.setdefault(target.id, []).append(node.value)
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and node.value is not None
-            and isinstance(node.target, ast.Name)
-        ):
-            bindings.setdefault(node.target.id, []).append(node.value)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            if isinstance(node.target, ast.Name):
+                bindings.setdefault(node.target.id, []).append(node.value)
     return bindings
 
 
@@ -477,7 +473,7 @@ def _checkout_path(parts: tuple[str, ...] | None) -> str | None:
 
 
 def _built_paths(tree: ast.Module, relative: str, sources: Mapping[str, Path]) -> set[str]:
-    """The source files a byte closure reaches through paths it builds: joins and globs."""
+    """The source files a byte closure reaches through paths it builds: joins and globs (V254)."""
 
     bindings = _path_bindings(tree)
     found: set[str] = set()
@@ -768,23 +764,26 @@ def _bare_string(statement: ast.stmt) -> bool:
 # -- the command ------------------------------------------------------------------------------
 
 
-def git_previous(
-    root: Path, revision: str, changed: Iterable[str]
-) -> Callable[[str], bytes | None]:
-    """Batch the previous Python bytes used by both verdict passes.
+def git_previous(root: Path, revision: str) -> Callable[[str], bytes | None]:
+    """Read each path's bytes at `revision`, None where it did not exist.
 
-    Paths absent at the revision read as None. Preserve the stored source encoding.
+    Args:
+        root: The checkout.
+        revision: The commit the change is measured against.
+
+    Returns:
+        The reader.
     """
-    prefix = f"{revision}:"
-    specs = [prefix + path for path in changed if path.endswith(".py")]
-    if bad := next((spec for spec in specs if "\n" in spec), None):
-        raise ValueError(f"Git batch input contains a newline: {bad!r}")
-    blobs = read_blobs(specs, root)
-    previous = {
-        spec[len(prefix) :]: source.encode("utf-8", errors="surrogateescape")
-        for spec, source in blobs.items()
-    }
-    return previous.get
+
+    def read(path: str) -> bytes | None:
+        completed = subprocess.run(
+            ("git", "-C", str(root), "show", f"{revision}:{path}"),
+            capture_output=True,
+            check=False,
+        )
+        return completed.stdout if completed.returncode == 0 else None
+
+    return read
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -808,10 +807,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         diff.append("--cached")
     elif args.base:
         diff.append(args.base)
-    changed = spawn.run([*diff, "-z"], capture_output=True, text=True, check=True).stdout.split(
-        "\0"
-    )
-    previous = git_previous(root, args.base or "HEAD", changed)
+    changed = subprocess.run(diff, capture_output=True, text=True, check=True).stdout.split()
+    previous = git_previous(root, args.base or "HEAD")
     for verdict in neutral_verdicts(root, changed, previous):
         print(f"{'NEUTRAL' if verdict.neutral else 'CHANGED'} {verdict.path}: {verdict.reason}")
     for path, names in sorted(moved_files(root, changed, previous).items()):

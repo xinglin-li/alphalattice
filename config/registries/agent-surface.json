@@ -1,12 +1,5 @@
 {
   "entries": {
-    "answer:ACTIVITY_LIST.calls": {
-      "required": true,
-      "schema": {
-        "additionalProperties": true,
-        "type": "object"
-      }
-    },
     "answer:ACTIVITY_LIST.cursor": {
       "required": true,
       "schema": {
@@ -777,228 +770,6 @@
         "type": "string"
       }
     },
-    "answer:ANALYST_READS.analyst_reads": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS.answered_for": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:ANALYST_READS.ask_now": {
-      "required": false,
-      "schema": {
-        "default": null,
-        "items": {},
-        "type": "array"
-      }
-    },
-    "answer:ANALYST_READS.detail": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:ANALYST_READS.next_requests": {
-      "required": true,
-      "schema": {
-        "additionalProperties": true,
-        "type": "object"
-      }
-    },
-    "answer:ANALYST_READS.person_questions": {
-      "required": false,
-      "schema": {
-        "default": null,
-        "items": {},
-        "type": "array"
-      }
-    },
-    "answer:ANALYST_READS.read_request": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:ANALYST_READS.status": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET.analyst_reads": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET.answered_for": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:ANALYST_READS_SET.attributed_goal_id": {
-      "required": false,
-      "schema": {
-        "default": null,
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET.detail": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:ANALYST_READS_SET.next_requests": {
-      "required": true,
-      "schema": {
-        "additionalProperties": true,
-        "type": "object"
-      }
-    },
-    "answer:ANALYST_READS_SET.status": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:ANALYST_READS_SET/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
     "answer:CANCEL.attributed_goal_id": {
       "required": false,
       "schema": {
@@ -1115,14 +886,6 @@
             "type": "null"
           }
         ]
-      }
-    },
-    "answer:CANCEL.restored_membership": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
       }
     },
     "answer:CANCEL.running_since": {
@@ -3661,14 +3424,6 @@
         "type": "string"
       }
     },
-    "answer:DATA_UPDATE_PLAN.restored_membership": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
-      }
-    },
     "answer:DATA_UPDATE_PLAN.source_access": {
       "required": true,
       "schema": {
@@ -3765,14 +3520,6 @@
           }
         ],
         "default": null
-      }
-    },
-    "answer:DATA_UPDATE_READBACK.daily_health": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
       }
     },
     "answer:DATA_UPDATE_READBACK.detail": {
@@ -6343,14 +6090,6 @@
         "type": "integer"
       }
     },
-    "answer:EVIDENCE_PREVIEW.resumable_preparation": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
-      }
-    },
     "answer:EVIDENCE_PREVIEW.retrieval": {
       "required": true,
       "schema": {
@@ -6707,501 +6446,6 @@
       }
     },
     "answer:EVIDENCE_SELECT/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.budget": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.cutoff_us": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.goal": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.known_seq": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.parts": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF.used": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_BRIEF/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.by_condition": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.cutoff_us": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:EXPERIENCE_CLASS.effective_n": {
-      "required": true,
-      "schema": {
-        "additionalProperties": true,
-        "type": "object"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:EXPERIENCE_CLASS.known_seq": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.members": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.search": {
-      "required": true,
-      "schema": {
-        "additionalProperties": true,
-        "type": "object"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.spread": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.trial": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS.width": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_CLASS/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_READ.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:EXPERIENCE_READ.notes": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_READ.trials": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_READ.unattributed_in_page": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_READ/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:EXPERIENCE_RECALL.hits": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_RECALL.score_type": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECALL/ErrorInfo.reason": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.cost_usd": {
-      "required": true,
-      "schema": {
-        "type": "number"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.error_info": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:EXPERIENCE_RECORD.input_tokens": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.note_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.output_tokens": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.place": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.seconds": {
-      "required": true,
-      "schema": {
-        "type": "number"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.status": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.trials": {
-      "required": true,
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_RECORD.verdict": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.category": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.domain": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.field_violations": {
-      "required": true,
-      "schema": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.message": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.message_id": {
-      "required": true,
-      "schema": {
-        "type": "string"
-      }
-    },
-    "answer:EXPERIENCE_RECORD/ErrorInfo.reason": {
       "required": true,
       "schema": {
         "type": "string"
@@ -16446,13 +15690,6 @@
         "default": null
       }
     },
-    "answer:HOST_STOP.finishing_task_ids": {
-      "required": true,
-      "schema": {
-        "items": {},
-        "type": "array"
-      }
-    },
     "answer:HOST_STOP.next_action": {
       "required": true,
       "schema": {
@@ -17450,56 +16687,9 @@
     },
     "answer:OPERATION_LIST": {
       "$defs": {
-        "ErrorInfo": {
-          "additionalProperties": false,
-          "properties": {
-            "category": {
-              "type": "string"
-            },
-            "domain": {
-              "type": "string"
-            },
-            "field_violations": {
-              "items": {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "message": {
-              "type": "string"
-            },
-            "message_id": {
-              "type": "string"
-            },
-            "reason": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "category",
-            "domain",
-            "reason",
-            "message_id",
-            "message",
-            "field_violations"
-          ],
-          "type": "object"
-        },
         "FilteredOperationListAnswer": {
           "additionalProperties": false,
           "properties": {
-            "error_info": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ErrorInfo"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
-            },
             "operation_fields": {
               "additionalProperties": true,
               "type": "object"
@@ -17536,17 +16726,6 @@
             "capacity": {
               "additionalProperties": true,
               "type": "object"
-            },
-            "error_info": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ErrorInfo"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
             },
             "execution_mode": {
               "type": "string"
@@ -21282,14 +20461,6 @@
         "type": "object"
       }
     },
-    "answer:RESEARCH_UPDATE_PLAN.restored_membership": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
-      }
-    },
     "answer:RESEARCH_UPDATE_PLAN.score_sessions": {
       "required": false,
       "schema": {
@@ -21398,14 +20569,6 @@
       "schema": {
         "default": null,
         "type": "string"
-      }
-    },
-    "answer:RESEARCH_UPDATE_READBACK.daily_health": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_READBACK.detail": {
@@ -21724,14 +20887,6 @@
       "schema": {
         "default": null,
         "type": "string"
-      }
-    },
-    "answer:RESEARCH_UPDATE_RUN.resumed_on_own_move": {
-      "required": false,
-      "schema": {
-        "additionalProperties": true,
-        "default": null,
-        "type": "object"
       }
     },
     "answer:RESEARCH_UPDATE_RUN.retry_after_at": {
@@ -22301,20 +21456,6 @@
         ]
       }
     },
-    "answer:STATUS.storage": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/TaskStorageStatus"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
     "answer:STATUS.task_id": {
       "required": true,
       "schema": {
@@ -22392,76 +21533,6 @@
       "required": true,
       "schema": {
         "type": "string"
-      }
-    },
-    "answer:STATUS/TaskScratchCleanup.removed": {
-      "required": true,
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "answer:STATUS/TaskScratchCleanup.unproved": {
-      "required": true,
-      "schema": {
-        "additionalProperties": {
-          "type": "string"
-        },
-        "type": "object"
-      }
-    },
-    "answer:STATUS/TaskStorageStatus.bytes_by_category": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:STATUS/TaskStorageStatus.reclaimable_bytes": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:STATUS/TaskStorageStatus.scratch_cleanup": {
-      "required": true,
-      "schema": {
-        "$ref": "#/$defs/TaskScratchCleanup"
-      }
-    },
-    "answer:STATUS/TaskStorageStatus.unavailable": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
       }
     },
     "answer:STORAGE_CAP_SET.capacity": {
@@ -24730,20 +23801,6 @@
         "default": null
       }
     },
-    "answer:TASKS/TaskRow.storage": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/TaskStorageStatus"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
     "answer:TASKS/TaskRow.submitted_by": {
       "required": false,
       "schema": {
@@ -24796,76 +23853,6 @@
       "required": true,
       "schema": {
         "type": "integer"
-      }
-    },
-    "answer:TASKS/TaskScratchCleanup.removed": {
-      "required": true,
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "answer:TASKS/TaskScratchCleanup.unproved": {
-      "required": true,
-      "schema": {
-        "additionalProperties": {
-          "type": "string"
-        },
-        "type": "object"
-      }
-    },
-    "answer:TASKS/TaskStorageStatus.bytes_by_category": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:TASKS/TaskStorageStatus.reclaimable_bytes": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:TASKS/TaskStorageStatus.scratch_cleanup": {
-      "required": true,
-      "schema": {
-        "$ref": "#/$defs/TaskScratchCleanup"
-      }
-    },
-    "answer:TASKS/TaskStorageStatus.unavailable": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
       }
     },
     "answer:TASK_GUARDIAN.counts": {
@@ -25399,24 +24386,6 @@
         "type": "boolean"
       }
     },
-    "answer:TASK_RECOVERY/TaskScratchCleanup.removed": {
-      "required": true,
-      "schema": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      }
-    },
-    "answer:TASK_RECOVERY/TaskScratchCleanup.unproved": {
-      "required": true,
-      "schema": {
-        "additionalProperties": {
-          "type": "string"
-        },
-        "type": "object"
-      }
-    },
     "answer:TASK_RECOVERY/TaskStatusAnswer.cancel_available": {
       "required": true,
       "schema": {
@@ -25592,20 +24561,6 @@
         ]
       }
     },
-    "answer:TASK_RECOVERY/TaskStatusAnswer.storage": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/TaskStorageStatus"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
     "answer:TASK_RECOVERY/TaskStatusAnswer.task_id": {
       "required": true,
       "schema": {
@@ -25643,58 +24598,6 @@
       "required": true,
       "schema": {
         "type": "integer"
-      }
-    },
-    "answer:TASK_RECOVERY/TaskStorageStatus.bytes_by_category": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:TASK_RECOVERY/TaskStorageStatus.reclaimable_bytes": {
-      "required": true,
-      "schema": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      }
-    },
-    "answer:TASK_RECOVERY/TaskStorageStatus.scratch_cleanup": {
-      "required": true,
-      "schema": {
-        "$ref": "#/$defs/TaskScratchCleanup"
-      }
-    },
-    "answer:TASK_RECOVERY/TaskStorageStatus.unavailable": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
       }
     },
     "answer:TASK_REMEDIATE.answer": {
@@ -25987,21 +24890,6 @@
         "anyOf": [
           {
             "$ref": "#/$defs/ErrorInfo"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "answer:UPGRADE_OVERVIEW.first_start": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": true,
-            "type": "object"
           },
           {
             "type": "null"
@@ -26381,12 +25269,6 @@
         "type": "string"
       }
     },
-    "answer:WORKSPACE_BACKUP.bytes": {
-      "required": true,
-      "schema": {
-        "type": "integer"
-      }
-    },
     "answer:WORKSPACE_BACKUP.error_info": {
       "required": false,
       "schema": {
@@ -26478,12 +25360,6 @@
       "required": true,
       "schema": {
         "type": "string"
-      }
-    },
-    "answer:WORKSPACE_BACKUPS.bytes": {
-      "required": true,
-      "schema": {
-        "type": "integer"
       }
     },
     "answer:WORKSPACE_BACKUPS.error_info": {
@@ -27607,17 +26483,6 @@
       ]
     },
     "command:activity wait": {},
-    "command:analyst-reads": {},
-    "command:analyst-reads set": {
-      "operations": [
-        "ANALYST_READS_SET"
-      ]
-    },
-    "command:analyst-reads show": {
-      "operations": [
-        "ANALYST_READS"
-      ]
-    },
     "command:answer": {},
     "command:answer show": {},
     "command:automation": {},
@@ -27708,7 +26573,6 @@
         "COMMITTEE_SUBMIT"
       ]
     },
-    "command:committee verdict": {},
     "command:committee wait": {},
     "command:cpu-budget": {},
     "command:cpu-budget set": {
@@ -27841,32 +26705,6 @@
     "command:evidence-consent show": {
       "operations": [
         "EVIDENCE_CONSENT"
-      ]
-    },
-    "command:experience": {},
-    "command:experience brief": {
-      "operations": [
-        "EXPERIENCE_BRIEF"
-      ]
-    },
-    "command:experience class": {
-      "operations": [
-        "EXPERIENCE_CLASS"
-      ]
-    },
-    "command:experience list": {
-      "operations": [
-        "EXPERIENCE_READ"
-      ]
-    },
-    "command:experience recall": {
-      "operations": [
-        "EXPERIENCE_RECALL"
-      ]
-    },
-    "command:experience record": {
-      "operations": [
-        "EXPERIENCE_RECORD"
       ]
     },
     "command:feature": {},
@@ -28301,7 +27139,6 @@
     "command:serve": {},
     "command:session": {},
     "command:session bind": {},
-    "command:session exporters": {},
     "command:session unbind": {},
     "command:session usage": {
       "operations": [
@@ -28334,7 +27171,6 @@
         "STORAGE_EVIDENCE_REBUILD"
       ]
     },
-    "command:storage reclaim": {},
     "command:storage set": {
       "operations": [
         "STORAGE_CAP_SET"
@@ -28780,12 +27616,6 @@
         "PROCEED_WITH_NOTES"
       ]
     },
-    "message:PERSON_QUESTION/committee.daily": {
-      "operations": [
-        "COMMITTEE_DAILY_SET"
-      ],
-      "owner": "alphalattice.interface.local_application"
-    },
     "message:PERSON_QUESTION/network.daily_updates": {
       "operations": [
         "NETWORK_ACCESS_SET",
@@ -28796,18 +27626,6 @@
     "message:PERSON_QUESTION/network.workspace_access": {
       "operations": [
         "NETWORK_ACCESS_SET"
-      ],
-      "owner": "alphalattice.interface.local_application"
-    },
-    "message:PERSON_QUESTION/review.analyst_reads": {
-      "operations": [
-        "ANALYST_READS_SET"
-      ],
-      "owner": "alphalattice.interface.local_application"
-    },
-    "message:PERSON_QUESTION/workspace.select_existing": {
-      "operations": [
-        "NATIVE_CONFIGURE"
       ],
       "owner": "alphalattice.interface.local_application"
     },
@@ -28877,23 +27695,6 @@
         "bundle_directory"
       ]
     },
-    "operation:ANALYST_READS": {
-      "allowed": [
-        "analyst_reads_bundles"
-      ],
-      "required": []
-    },
-    "operation:ANALYST_READS_SET": {
-      "allowed": [
-        "analyst_reads_bundles",
-        "analyst_reads_mode",
-        "person_confirmation"
-      ],
-      "required": [
-        "analyst_reads_bundles",
-        "analyst_reads_mode"
-      ]
-    },
     "operation:CANCEL": {
       "allowed": [
         "expected_task_hash",
@@ -28925,8 +27726,7 @@
         "committee_key",
         "committee_role",
         "committee_seen",
-        "update_task_id",
-        "wait_seconds"
+        "update_task_id"
       ],
       "required": [
         "update_task_id"
@@ -29365,59 +28165,6 @@
         "analysis_publication_hash"
       ]
     },
-    "operation:EXPERIENCE_BRIEF": {
-      "allowed": [
-        "experience_budget",
-        "experience_known_at",
-        "goal_id"
-      ],
-      "required": [
-        "goal_id"
-      ]
-    },
-    "operation:EXPERIENCE_CLASS": {
-      "allowed": [
-        "experience_known_at",
-        "experience_trial",
-        "experience_width"
-      ],
-      "required": [
-        "experience_trial"
-      ]
-    },
-    "operation:EXPERIENCE_READ": {
-      "allowed": [
-        "experience_hypothesis",
-        "experience_method",
-        "experience_workspace",
-        "goal_id",
-        "history_limit"
-      ],
-      "required": []
-    },
-    "operation:EXPERIENCE_RECALL": {
-      "allowed": [
-        "experience_known_at",
-        "experience_limit",
-        "experience_query",
-        "experience_workspace"
-      ],
-      "required": [
-        "experience_query"
-      ]
-    },
-    "operation:EXPERIENCE_RECORD": {
-      "allowed": [
-        "review_note",
-        "review_subject",
-        "review_verdict"
-      ],
-      "required": [
-        "review_note",
-        "review_subject",
-        "review_verdict"
-      ]
-    },
     "operation:EXPERIMENTS": {
       "allowed": [],
       "required": []
@@ -29687,7 +28434,6 @@
     },
     "operation:EXPERIMENT_RUN": {
       "allowed": [
-        "experience_hypothesis",
         "experiment_plan_hash",
         "recovery_task_hash",
         "recovery_task_id"
@@ -29891,9 +28637,7 @@
     "operation:GOAL_NARRATIVE": {
       "allowed": [
         "goal_hash",
-        "goal_id",
-        "goal_seen",
-        "wait_seconds"
+        "goal_id"
       ],
       "required": []
     },
@@ -30278,7 +29022,6 @@
     },
     "operation:STATUS": {
       "allowed": [
-        "status_section",
         "task_id",
         "wait_seconds"
       ],
@@ -31186,311 +29929,6 @@
       "type": "Path"
     },
     "option:activity/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--asked": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--bundles": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads set/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads set/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:analyst-reads set/--mode": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:analyst-reads set/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads set/--person-said": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--question-code": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--repeat": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:analyst-reads set/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads set/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads set/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--bundles": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads show/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads show/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:analyst-reads show/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:analyst-reads show/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads show/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:analyst-reads show/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads show/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads show/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:analyst-reads/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:analyst-reads/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:analyst-reads/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -33953,12 +32391,6 @@
       "required": false,
       "type": null
     },
-    "option:committee show/--wait-seconds": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
     "option:committee show/--workspace": {
       "choices": null,
       "nargs": null,
@@ -34097,137 +32529,6 @@
       "type": "Path"
     },
     "option:committee submit/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:committee verdict/--file": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:committee verdict/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--key": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:committee verdict/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:committee verdict/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:committee verdict/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:committee verdict/--role": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--update": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:committee verdict/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:committee verdict/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -38366,637 +36667,6 @@
       "required": false,
       "type": null
     },
-    "option:experience brief/--budget": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience brief/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience brief/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--known-at": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience brief/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:experience brief/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience brief/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience brief/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience brief/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience brief/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience class/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience class/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--known-at": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience class/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:experience class/--of-trial": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience class/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience class/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--width": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience class/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience class/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience list/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience list/--from-workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--hypothesis": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--limit": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience list/--method": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:experience list/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience list/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience list/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience list/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience list/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience recall/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience recall/--from-workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--known-at": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--limit": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience recall/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:experience recall/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience recall/--query": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience recall/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience recall/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience recall/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--choices": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience record/--file": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--format": {
-      "choices": [
-        "json",
-        "yaml",
-        "html"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience record/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--list-next": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--max-wait": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience record/--next-from": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "int"
-    },
-    "option:experience record/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience record/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:experience record/--reviews": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--section": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--verdict": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--wait": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:experience record/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:experience record/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
     "option:feature activate/--asked": {
       "choices": null,
       "nargs": null,
@@ -41732,12 +39402,6 @@
       "required": false,
       "type": null
     },
-    "option:goal narrative/--seen": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
     "option:goal narrative/--view": {
       "choices": [
         "compact",
@@ -41751,12 +39415,6 @@
     "option:goal narrative/--wait": {
       "choices": null,
       "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:goal narrative/--wait-seconds": {
-      "choices": null,
-      "nargs": null,
       "required": false,
       "type": null
     },
@@ -48313,12 +45971,6 @@
       "required": false,
       "type": null
     },
-    "option:research-update show/--update": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
     "option:research-update show/--view": {
       "choices": [
         "compact",
@@ -50808,67 +48460,6 @@
       "required": false,
       "type": null
     },
-    "option:session exporters/--configure-claude": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:session exporters/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:session exporters/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:session exporters/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:session exporters/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:session exporters/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:session exporters/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:session exporters/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:session exporters/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
     "option:session unbind/--goal": {
       "choices": null,
       "nargs": null,
@@ -51682,79 +49273,6 @@
       "type": "Path"
     },
     "option:storage rebuild/-h": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--asked": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--confirm": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--goal": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--help": {
-      "choices": null,
-      "nargs": 0,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--lang": {
-      "choices": [
-        "en",
-        "zh"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--output": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:storage reclaim/--person-said": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--request-timeout": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "float"
-    },
-    "option:storage reclaim/--view": {
-      "choices": [
-        "compact",
-        "full",
-        "summary"
-      ],
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
-    "option:storage reclaim/--workspace": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": "Path"
-    },
-    "option:storage reclaim/-h": {
       "choices": null,
       "nargs": 0,
       "required": false,
@@ -54537,12 +52055,6 @@
       "required": false,
       "type": null
     },
-    "option:study run/--hypothesis": {
-      "choices": null,
-      "nargs": null,
-      "required": false,
-      "type": null
-    },
     "option:study run/--lang": {
       "choices": [
         "en",
@@ -57092,7 +54604,6 @@
     "refusal:activity.failure_detail_withheld": {},
     "refusal:activity.limit_invalid": {},
     "refusal:activity.observation_id_invalid": {},
-    "refusal:activity.observer_failed": {},
     "refusal:activity.query_field_unknown": {},
     "refusal:activity.query_parameter_invalid": {},
     "refusal:activity.query_selection_conflict": {},
@@ -57105,10 +54616,8 @@
     "refusal:actor_execution.specialist_reference_invalid": {},
     "refusal:actor_execution.specialist_text_empty": {},
     "refusal:actor_execution.usage_model_id_inconsistent": {},
-    "refusal:agent_bundle.admission_busy": {},
     "refusal:agent_bundle.analyst_task_required": {},
     "refusal:agent_bundle.analyst_unit_required": {},
-    "refusal:agent_bundle.answer_replay_inconsistent": {},
     "refusal:agent_bundle.answer_settled": {},
     "refusal:agent_bundle.answer_slot_taken": {},
     "refusal:agent_bundle.directory_holds_another_bundle": {},
@@ -57123,9 +54632,6 @@
     "refusal:agent_bundle.seal_bound_exceeded": {},
     "refusal:agent_bundle.specialist_task_changed": {},
     "refusal:agent_bundle.specialist_task_required": {},
-    "refusal:agent_telemetry.host_unavailable": {},
-    "refusal:agent_telemetry.payload_invalid": {},
-    "refusal:agent_telemetry.signal_invalid": {},
     "refusal:alpha_modeling.lightgbm_thread_canary_mismatch": {},
     "refusal:alpha_research.active_marker_compare_and_swap_failed": {},
     "refusal:alpha_research.active_path_downside_variance_zero": {},
@@ -57261,7 +54767,6 @@
     "refusal:alpha_research.current_score_readback_failed": {},
     "refusal:alpha_research.current_sector_map_unavailable": {},
     "refusal:alpha_research.dependence_policy_input_invalid": {},
-    "refusal:alpha_research.development_artifact_identity_invalid": {},
     "refusal:alpha_research.development_child_estimator_missing": {},
     "refusal:alpha_research.development_child_fit_evidence_missing": {},
     "refusal:alpha_research.development_child_lineage_invalid": {},
@@ -58217,7 +55722,6 @@
     "refusal:alternative_evidence.external_submission_identity_invalid": {},
     "refusal:alternative_evidence.external_submission_invalid": {},
     "refusal:alternative_evidence.finding_handle_duplicate": {},
-    "refusal:alternative_evidence.first_unit_wait_expired": {},
     "refusal:alternative_evidence.host_policy_binding_invalid": {},
     "refusal:alternative_evidence.host_policy_unauthorized": {},
     "refusal:alternative_evidence.identity_invalid": {},
@@ -58428,8 +55932,6 @@
     "refusal:arrow_identity.member_names_must_be_strings": {},
     "refusal:arrow_identity.rows_member_already_present": {},
     "refusal:arrow_identity.values_member_already_present": {},
-    "refusal:budget.inconsistent_inode_receipt": {},
-    "refusal:budget.invalid_inode_receipt": {},
     "refusal:catalog.json": {},
     "refusal:catalog.replace_blocked": {},
     "refusal:causal_inputs.admission_result_disposition_inconsistent": {},
@@ -58474,7 +55976,6 @@
     "refusal:causal_inputs.target_is_not_a_decision_input": {},
     "refusal:causal_outcomes.existing_snapshot_carries_a_different_method": {},
     "refusal:causal_outcomes.legacy_snapshot_requires_explicit_method_migration": {},
-    "refusal:causal_outcomes.outcome_store_invalid": {},
     "refusal:causal_outcomes.publication_contract_not_installed_for_recipe": {},
     "refusal:causal_outcomes.qa_calendar_disagrees": {},
     "refusal:causal_outcomes.qa_calendar_support_absent": {},
@@ -58492,8 +55993,6 @@
     "refusal:causal_outcomes.qa_session_axis_invalid": {},
     "refusal:causal_outcomes.qa_session_not_completed": {},
     "refusal:causal_outcomes.qa_source_support_absent": {},
-    "refusal:causal_outcomes.upgrade_chunk_invalid": {},
-    "refusal:causal_outcomes.upgrade_path_invalid": {},
     "refusal:chief_risk_officer.actor_execution_evidence_invalid": {},
     "refusal:chief_risk_officer.answer_problems": {},
     "refusal:chief_risk_officer.carried_review_invalid": {},
@@ -58591,61 +56090,6 @@
     "refusal:data.universe_spy_axis_misaligned": {},
     "refusal:data.universe_spy_return_non_finite": {},
     "refusal:data.unrepaired_split_adjustment": {},
-    "refusal:data_layer.admission_column_foreign": {},
-    "refusal:data_layer.admission_key_repeated": {},
-    "refusal:data_layer.admission_lineage_invalid": {},
-    "refusal:data_layer.admission_out_of_order": {},
-    "refusal:data_layer.admission_source_time_missing": {},
-    "refusal:data_layer.array_collected": {},
-    "refusal:data_layer.array_digest_reused": {},
-    "refusal:data_layer.array_invalid": {},
-    "refusal:data_layer.array_missing": {},
-    "refusal:data_layer.array_profile_mismatch": {},
-    "refusal:data_layer.array_tampered": {},
-    "refusal:data_layer.artifact_body_missing": {},
-    "refusal:data_layer.artifact_body_unexpected": {},
-    "refusal:data_layer.artifact_held_unknown": {},
-    "refusal:data_layer.artifact_holder_unnamed": {},
-    "refusal:data_layer.artifact_trial_unregistered": {},
-    "refusal:data_layer.below_free_floor": {},
-    "refusal:data_layer.chain_broken": {},
-    "refusal:data_layer.data_folder_unreadable": {},
-    "refusal:data_layer.definition_not_owner": {},
-    "refusal:data_layer.definition_superseded": {},
-    "refusal:data_layer.derived_files_need_host": {},
-    "refusal:data_layer.event_attrs_form": {},
-    "refusal:data_layer.event_attrs_missing": {},
-    "refusal:data_layer.event_secret": {},
-    "refusal:data_layer.event_text_missing": {},
-    "refusal:data_layer.event_text_unbound": {},
-    "refusal:data_layer.event_text_unexpected": {},
-    "refusal:data_layer.event_type_unregistered": {},
-    "refusal:data_layer.extension_unavailable": {},
-    "refusal:data_layer.handle_outside_root": {},
-    "refusal:data_layer.history_unavailable": {},
-    "refusal:data_layer.host_running": {},
-    "refusal:data_layer.input_invalid": {},
-    "refusal:data_layer.input_missing": {},
-    "refusal:data_layer.lag_rule_unknown": {},
-    "refusal:data_layer.lag_rule_version_moved": {},
-    "refusal:data_layer.legacy_anchor_missing": {},
-    "refusal:data_layer.legacy_table_unanchored": {},
-    "refusal:data_layer.lineage_unregistered": {},
-    "refusal:data_layer.live_ref_held": {},
-    "refusal:data_layer.outcome_collected": {},
-    "refusal:data_layer.outcome_incomplete": {},
-    "refusal:data_layer.outcome_missing": {},
-    "refusal:data_layer.result_key_present": {},
-    "refusal:data_layer.return_series_invalid": {},
-    "refusal:data_layer.review_before_its_end": {},
-    "refusal:data_layer.review_trial_unknown": {},
-    "refusal:data_layer.review_trials_need_a_review_task": {},
-    "refusal:data_layer.review_unknown_goal": {},
-    "refusal:data_layer.review_workspace_disagrees": {},
-    "refusal:data_layer.schema_mismatch": {},
-    "refusal:data_layer.staging_taken": {},
-    "refusal:data_layer.trial_unknown": {},
-    "refusal:data_layer.world_table_not_admitted": {},
     "refusal:data_tradability.adv20_warmup_unavailable": {},
     "refusal:data_tradability.artifact_identity_invalid": {},
     "refusal:data_tradability.artifact_uri_invalid": {},
@@ -58701,11 +56145,9 @@
     "refusal:devtools.evidence_root_declaration_invalid": {},
     "refusal:devtools.private_evidence_lane_unavailable": {},
     "refusal:domain.invalid": {},
-    "refusal:evaluation.profile_workspace_unobserved": {},
     "refusal:evidence_review.accession_scope_invalid": {},
     "refusal:evidence_review.accession_scope_requires_one_entity": {},
     "refusal:evidence_review.acquisition_window_invalid": {},
-    "refusal:evidence_review.analyst_reads_human_only": {},
     "refusal:evidence_review.artifact_escapes_workspace": {},
     "refusal:evidence_review.artifact_unreadable": {},
     "refusal:evidence_review.authority_identity_invalid": {},
@@ -58740,7 +56182,6 @@
     "refusal:evidence_review.model_base_url_not_normalized": {},
     "refusal:evidence_review.model_name_not_normalized": {},
     "refusal:evidence_review.model_profile_identity_invalid": {},
-    "refusal:evidence_review.model_store_not_the_hosts": {},
     "refusal:evidence_review.package_path_escapes_workspace": {},
     "refusal:evidence_review.preflight_requires_a_source": {},
     "refusal:evidence_review.rebind_requires_installed_authority": {},
@@ -58770,24 +56211,6 @@
     "refusal:execution.cpu_budget_invalid": {},
     "refusal:execution.cpu_budget_unreadable": {},
     "refusal:execution.memory_insufficient": {},
-    "refusal:experience.brief_budget_invalid": {},
-    "refusal:experience.class_width_unknown": {},
-    "refusal:experience.goal_unknown": {},
-    "refusal:experience.history_unavailable": {},
-    "refusal:experience.hypothesis_existing_run": {},
-    "refusal:experience.hypothesis_goal": {},
-    "refusal:experience.hypothesis_unknown": {},
-    "refusal:experience.hypothesis_workspace": {},
-    "refusal:experience.known_at_invalid": {},
-    "refusal:experience.layer_unknown": {},
-    "refusal:experience.note_incomplete": {},
-    "refusal:experience.recall_models_missing": {},
-    "refusal:experience.recall_query_invalid": {},
-    "refusal:experience.trial_unknown": {},
-    "refusal:experience.trials_malformed": {},
-    "refusal:experience.unit_unknown": {},
-    "refusal:experience.verdict_unknown": {},
-    "refusal:explorer.wall_deadline": {},
     "refusal:factor_formula.comparison_invalid": {},
     "refusal:factor_formula.constant_invalid": {},
     "refusal:factor_formula.not_canonical": {},
@@ -58976,7 +56399,6 @@
     "refusal:feature_closure.root_unavailable": {},
     "refusal:feature_closure.row_hash_digest_input_invalid": {},
     "refusal:feature_closure.sector_map_capture_failed": {},
-    "refusal:feature_closure.sector_map_unserved": {},
     "refusal:feature_closure.store_readback_mismatch": {},
     "refusal:feature_engine.availability_policy_identity_invalid": {},
     "refusal:feature_engine.calendar_formula_declares_skip": {},
@@ -59031,7 +56453,6 @@
     "refusal:feature_input.case_page_invalid": {},
     "refusal:feature_input.case_record_tampered": {},
     "refusal:feature_input.case_resolution_authority_absent": {},
-    "refusal:feature_input.case_store_unavailable": {},
     "refusal:feature_input.continuation_identity_absent": {},
     "refusal:feature_input.continuation_identity_mismatch": {},
     "refusal:feature_input.continuation_source_not_active": {},
@@ -59063,20 +56484,16 @@
     "refusal:feature_panel.base_closure_incomplete": {},
     "refusal:feature_panel.base_formula_request_invalid": {},
     "refusal:feature_panel.base_row_not_materialized": {},
-    "refusal:feature_panel.chunk_unserved": {},
-    "refusal:feature_panel.derived_reads_unserved": {},
     "refusal:feature_panel.identity_migration_cas_failed": {},
     "refusal:feature_panel.legacy_base_source_missing": {},
     "refusal:feature_panel.legacy_replay_layout_invalid": {},
     "refusal:feature_panel.legacy_replay_layout_unproven": {},
     "refusal:feature_panel.listing_axis_mismatch": {},
     "refusal:feature_panel.logical_content_mismatch": {},
-    "refusal:feature_panel.market_observation_invalid": {},
     "refusal:feature_panel.membership_count_invalid": {},
     "refusal:feature_panel.membership_epochs_missing": {},
     "refusal:feature_panel.membership_epochs_overlap": {},
     "refusal:feature_panel.membership_session_missing": {},
-    "refusal:feature_panel.panel_reads_unknown": {},
     "refusal:feature_panel.recipe_input_mismatch": {},
     "refusal:feature_panel.reference_population_empty": {},
     "refusal:feature_panel.rematerialization_content_mismatch": {},
@@ -59099,7 +56516,6 @@
     "refusal:feature_research.completed_preparation_required": {},
     "refusal:feature_research.create_factor_id_mismatch": {},
     "refusal:feature_research.definition_cycle": {},
-    "refusal:feature_research.document_invalid": {},
     "refusal:feature_research.execution_changed_rebuild": {},
     "refusal:feature_research.finish_or_recover_existing_task": {},
     "refusal:feature_research.formula_implementation_changed_replan": {},
@@ -59146,7 +56562,6 @@
     "refusal:feature_research.value_index_mismatch": {},
     "refusal:feature_storage.row_catalog_identity_absent": {},
     "refusal:feature_storage.row_catalog_identity_mismatch": {},
-    "refusal:feature_storage.workspace_before_0_2_7": {},
     "refusal:feature_trial.alpha_candidate_ambiguous": {},
     "refusal:feature_trial.completed_study_required": {},
     "refusal:feature_trial.feature_adds_no_factor": {},
@@ -59189,8 +56604,6 @@
     "refusal:goal.conclusion_requires_evidence": {},
     "refusal:goal.continuation_requires_parent_goal": {},
     "refusal:goal.cursor_moved_reload": {},
-    "refusal:goal.declaration_index_invalid": {},
-    "refusal:goal.declaration_untyped": {},
     "refusal:goal.duplicate_identifier": {},
     "refusal:goal.event_filing_invalid": {},
     "refusal:goal.event_not_filed": {},
@@ -59203,8 +56616,6 @@
     "refusal:goal.goal_id_mismatch": {},
     "refusal:goal.goal_id_required": {},
     "refusal:goal.head_invalid": {},
-    "refusal:goal.hypothesis_must_be_open": {},
-    "refusal:goal.id_is_the_hosts": {},
     "refusal:goal.identity_mismatch": {},
     "refusal:goal.not_found": {},
     "refusal:goal.operation_not_supported": {},
@@ -59227,9 +56638,6 @@
     "refusal:guanyin.incident_record_tampered": {},
     "refusal:guanyin.incident_record_unreadable": {},
     "refusal:guanyin.remedy_not_offered": {},
-    "refusal:host_facts.fake_source_missing": {},
-    "refusal:host_facts.observation_incomplete": {},
-    "refusal:host_facts.observed_at_without_offset": {},
     "refusal:knowledge.access_denied": {},
     "refusal:live_evidence.causal_time_invalid": {},
     "refusal:local_application.advancement_not_wired": {},
@@ -59320,10 +56728,6 @@
     "refusal:local_web.analysis_publication_hash_required": {},
     "refusal:local_web.application_absent": {},
     "refusal:local_web.assets_stale": {},
-    "refusal:local_web.call_context_invalid": {},
-    "refusal:local_web.call_context_missing": {},
-    "refusal:local_web.call_end_invalid": {},
-    "refusal:local_web.child_ownership_unavailable": {},
     "refusal:local_web.detached_breakaway_denied": {},
     "refusal:local_web.goal_header_invalid": {},
     "refusal:local_web.goal_id_invalid": {},
@@ -59338,16 +56742,12 @@
     "refusal:local_web.task_id_invalid": {},
     "refusal:local_web.task_id_required": {},
     "refusal:local_web_session.writer_still_live": {},
-    "refusal:market_data.action_kind_unknown": {},
     "refusal:market_data.capability_file_invalid": {},
     "refusal:market_data.covered_listing_identity_unavailable": {},
     "refusal:market_data.execution_return_gross_invalid": {},
     "refusal:market_data.execution_return_input_invalid": {},
     "refusal:market_data.execution_return_non_finite": {},
-    "refusal:market_data.market_calendar_ambiguous": {},
     "refusal:market_data.market_profile_invalid": {},
-    "refusal:market_data.market_reads_unknown": {},
-    "refusal:market_data.workspace_identity_ambiguous": {},
     "refusal:market_data_ops.quality_governance_inputs_request_invalid": {},
     "refusal:market_data_ops.raw_close_volume_request_invalid": {},
     "refusal:market_data_ops.session_mark_absent": {},
@@ -59382,7 +56782,6 @@
     "refusal:market_data_ops.session_mark_surface_not_this_handle": {},
     "refusal:market_data_ops.source_prefix_request_invalid": {},
     "refusal:market_data_ops.universe_manifest_membership_changed": {},
-    "refusal:market_data_ops.universe_workspace_unmeasured": {},
     "refusal:model_declaration.recipe_parameters_differ": {},
     "refusal:model_declaration.unreadable": {},
     "refusal:model_extension.editable_checkout_required": {},
@@ -59473,15 +56872,10 @@
     "refusal:native_bridge.start_not_observed": {},
     "refusal:native_bridge.usage_catching_up": {},
     "refusal:native_bridge.usage_cumulative_mismatch": {},
-    "refusal:native_bridge.usage_disabled": {},
     "refusal:native_bridge.usage_reader_busy": {},
     "refusal:native_bridge.usage_reading_human_only": {},
     "refusal:native_bridge.workspace_mismatch": {},
     "refusal:native_bridge.workspace_missing": {},
-    "refusal:native_meter.host_instance_changed": {},
-    "refusal:native_meter.host_listener_ambiguous": {},
-    "refusal:native_meter.host_listener_unmeasured": {},
-    "refusal:native_meter.host_port_unmeasured": {},
     "refusal:native_usage.read_limit_exceeded": {},
     "refusal:observation.correlation_ambiguous": {},
     "refusal:observation.correlation_selector_invalid": {},
@@ -59502,40 +56896,11 @@
     "refusal:person_confirmation.beyond_its_question": {},
     "refusal:person_confirmation.decision_mismatch": {},
     "refusal:person_confirmation.not_the_persons_words": {},
-    "refusal:person_confirmation.question_code_required": {},
     "refusal:person_confirmation.question_mismatch": {},
-    "refusal:person_confirmation.question_missing": {},
     "refusal:person_confirmation.question_unknown": {},
-    "refusal:person_confirmation.question_words_differ": {},
     "refusal:person_confirmation.refused": {},
     "refusal:person_confirmation.repeat_unknown": {},
     "refusal:person_confirmation.session_required": {},
-    "refusal:pipeline.definition_missing": {},
-    "refusal:pipeline.definition_unreadable": {},
-    "refusal:pipeline.flake_evidence_unavailable": {},
-    "refusal:pipeline.out_used": {},
-    "refusal:pipeline.plugin_unknown": {},
-    "refusal:pipeline.plugin_unloadable": {},
-    "refusal:pipeline.receipt_cost_unmeasured": {},
-    "refusal:pipeline.receipt_incomplete": {},
-    "refusal:pipeline.receipt_inconsistent": {},
-    "refusal:pipeline.receipt_malformed": {},
-    "refusal:pipeline.receipt_mismatch": {},
-    "refusal:pipeline.receipt_missing": {},
-    "refusal:pipeline.receipt_unknown": {},
-    "refusal:pipeline.receipt_unreadable": {},
-    "refusal:pipeline.row_invalid": {},
-    "refusal:pipeline.row_provided_twice": {},
-    "refusal:pipeline.row_unprovided": {},
-    "refusal:pipeline.row_unregistered": {},
-    "refusal:pipeline.row_unused": {},
-    "refusal:pipeline.schema_unknown": {},
-    "refusal:pipeline.size_overhead_unmeasured": {},
-    "refusal:pipeline.size_selection_unmeasured": {},
-    "refusal:pipeline.size_workspace_unmeasured": {},
-    "refusal:pipeline.stage_invalid": {},
-    "refusal:pipeline.stage_unknown": {},
-    "refusal:pipeline.workspace_unreadable": {},
     "refusal:portfolio_advancement.correction_did_not_supersede": {},
     "refusal:portfolio_advancement.correction_identity_invalid": {},
     "refusal:portfolio_advancement.lane_advanced_without_an_artifact": {},
@@ -60088,7 +57453,6 @@
     "refusal:portfolio_strategy_lab.anchor_axis_empty": {},
     "refusal:portfolio_strategy_lab.anchor_pool_empty": {},
     "refusal:portfolio_strategy_lab.anchor_recipe_identity_invalid": {},
-    "refusal:portfolio_strategy_lab.array_store_invalid": {},
     "refusal:portfolio_strategy_lab.artifact_absent": {},
     "refusal:portfolio_strategy_lab.artifact_identity_invalid": {},
     "refusal:portfolio_strategy_lab.artifact_identity_reused": {},
@@ -60560,7 +57924,6 @@
     "refusal:process_capacity.parallelism_override_invalid": {},
     "refusal:process_capacity.resolution_input_invalid": {},
     "refusal:process_capacity.resolved_plan_invalid": {},
-    "refusal:process_metrics.cpu_unavailable": {},
     "refusal:process_metrics.monitor_already_started": {},
     "refusal:process_metrics.monitor_not_started": {},
     "refusal:process_metrics.sample_interval_invalid": {},
@@ -60662,24 +58025,10 @@
     "refusal:replay.receipt_binding": {},
     "refusal:replay.receipt_coverage": {},
     "refusal:replay.receipt_incomplete": {},
-    "refusal:replay.receipt_interval": {},
     "refusal:replay.receipt_legs": {},
     "refusal:replay.receipt_peak": {},
     "refusal:replay.receipt_profile": {},
     "refusal:replay.receipt_time": {},
-    "refusal:requirements.duplicate_key": {},
-    "refusal:requirements.entries_out_of_order": {},
-    "refusal:requirements.legacy_absent": {},
-    "refusal:requirements.legacy_missing": {},
-    "refusal:requirements.legacy_seed_target_invalid": {},
-    "refusal:requirements.legacy_seed_unplaced": {},
-    "refusal:requirements.legacy_seeded": {},
-    "refusal:requirements.row_invalid": {},
-    "refusal:requirements.schema": {},
-    "refusal:requirements.schema_ambiguous": {},
-    "refusal:requirements.schema_candidate_unreadable": {},
-    "refusal:requirements.unknown_id": {},
-    "refusal:requirements.unregistered": {},
     "refusal:research_authoring.alpha_composition_incomplete": {},
     "refusal:research_authoring.as_of_precedes_end": {},
     "refusal:research_authoring.authority_identity_invalid": {},
@@ -60848,7 +58197,6 @@
     "refusal:research_experiment.evidence_window_mismatch": {},
     "refusal:research_experiment.execution_binding_changed": {},
     "refusal:research_experiment.factor_parent_required": {},
-    "refusal:research_experiment.hypothesis_invalid": {},
     "refusal:research_experiment.input_authority_changed": {},
     "refusal:research_experiment.input_database_binding_mismatch": {},
     "refusal:research_experiment.input_database_tampered": {},
@@ -60863,14 +58211,12 @@
     "refusal:research_experiment.input_link_not_admitted": {},
     "refusal:research_experiment.input_manifest_identity_mismatch": {},
     "refusal:research_experiment.input_manifest_invalid": {},
-    "refusal:research_experiment.input_market_selection_unavailable": {},
     "refusal:research_experiment.input_not_selected": {},
     "refusal:research_experiment.input_publication_conflict": {},
     "refusal:research_experiment.insufficient_listing_support": {},
     "refusal:research_experiment.method_or_input_not_installed": {},
     "refusal:research_experiment.official_close_cutoff_required": {},
     "refusal:research_experiment.one_document_required": {},
-    "refusal:research_experiment.outcome_body_incomplete": {},
     "refusal:research_experiment.outcome_method_not_admitted": {},
     "refusal:research_experiment.outcomes_after_declared_cutoff": {},
     "refusal:research_experiment.output_not_host_managed": {},
@@ -60951,7 +58297,6 @@
     "refusal:research_lane.sample_handle_invalid": {},
     "refusal:research_strategy.completed_parent_required": {},
     "refusal:research_strategy.completed_preparation_required": {},
-    "refusal:research_strategy.declaration_invalid": {},
     "refusal:research_strategy.duplicate_parent": {},
     "refusal:research_strategy.evidence_binding_mismatch": {},
     "refusal:research_strategy.evidence_invalid": {},
@@ -61025,7 +58370,6 @@
     "refusal:research_update.source_changed_during_seal": {},
     "refusal:research_update.source_changed_requires_new_plan": {},
     "refusal:research_update.stage_binding_invalid": {},
-    "refusal:research_update.stage_missing": {},
     "refusal:research_update.stage_unknown": {},
     "refusal:research_update.strategy_package_required": {},
     "refusal:research_update.target_before_publication": {},
@@ -61063,7 +58407,6 @@
     "refusal:research_workspace.training_source_outside_workspace": {},
     "refusal:research_workspace.training_source_unresolved": {},
     "refusal:research_workspace.uninstalled_strategy_conflict": {},
-    "refusal:result_cache.request_invalid": {},
     "refusal:risk_report.completed_portfolio_required": {},
     "refusal:risk_report.completed_risk_required": {},
     "refusal:risk_report.cutoff_after_portfolio": {},
@@ -61163,7 +58506,6 @@
     "refusal:risk_research.development_input_binding_identity_invalid": {},
     "refusal:risk_research.development_input_session_axis_invalid": {},
     "refusal:risk_research.development_input_window_too_wide": {},
-    "refusal:risk_research.development_realized_axis_empty": {},
     "refusal:risk_research.development_surface_adapter_route_invalid": {},
     "refusal:risk_research.development_surface_axis_invalid": {},
     "refusal:risk_research.development_surface_capability_route_invalid": {},
@@ -61244,8 +58586,6 @@
     "refusal:risk_research.return_chunk_uri_invalid": {},
     "refusal:risk_research.return_formation_session_invalid": {},
     "refusal:risk_research.return_listing_scope_invalid": {},
-    "refusal:risk_research.return_market_observation_unverified": {},
-    "refusal:risk_research.return_omission_invalid": {},
     "refusal:risk_research.return_price_basis_unsupported": {},
     "refusal:risk_research.return_read_axis_invalid": {},
     "refusal:risk_research.return_read_axis_mismatch": {},
@@ -61271,7 +58611,6 @@
     "refusal:risk_research.review_decision_identity_invalid": {},
     "refusal:risk_research.review_identity_invalid": {},
     "refusal:risk_research.review_submission_identity_invalid": {},
-    "refusal:risk_research.risk_store_invalid": {},
     "refusal:risk_research.selected_method_binding_identity_invalid": {},
     "refusal:risk_research.series_component_mismatch": {},
     "refusal:risk_research.series_formation_coverage_invalid": {},
@@ -61463,16 +58802,6 @@
     "refusal:shared_kernel.source_inventory_invalid": {},
     "refusal:shared_kernel.source_resource_outside_runtime": {},
     "refusal:shared_kernel.source_syntax_unreadable": {},
-    "refusal:spawn.encoding_invalid": {},
-    "refusal:spawn.initial_thread_unavailable": {},
-    "refusal:spawn.session_input_closed": {},
-    "refusal:spawn.session_owns_stdin": {},
-    "refusal:spawn.session_stop_unconfirmed": {},
-    "refusal:spawn.session_terminal": {},
-    "refusal:spawn.stdin_unfed": {},
-    "refusal:spawn.stop_scope_invalid": {},
-    "refusal:spawn.timeout_invalid": {},
-    "refusal:spawn.tree_not_stopped": {},
     "refusal:storage.cap_setting_invalid": {},
     "refusal:storage.cap_setting_unreadable": {},
     "refusal:storage.cleanup_interrupted": {},
@@ -61488,7 +58817,6 @@
     "refusal:storage.evidence_runtime_not_admitted": {},
     "refusal:storage.human_confirmation_required": {},
     "refusal:storage.input_binding_missing": {},
-    "refusal:storage.input_pin_retired": {},
     "refusal:storage.input_pin_unavailable": {},
     "refusal:storage.managed_capacity_exceeded": {},
     "refusal:storage.plan_invalid": {},
@@ -61569,13 +58897,10 @@
     "refusal:task_control.child_workers_invalid": {},
     "refusal:task_control.database_authorities_conflict": {},
     "refusal:task_control.database_authority_unreadable": {},
-    "refusal:task_control.heartbeat_import_unequal": {},
     "refusal:task_control.heartbeat_signal_invalid": {},
     "refusal:task_control.heartbeat_store_unreadable": {},
-    "refusal:task_control.heartbeat_task_unbound": {},
     "refusal:task_control.ledger_rebuilt": {},
     "refusal:task_control.legacy_database_state_present": {},
-    "refusal:task_control.live_lease_present": {},
     "refusal:task_control.orphan_cancel_command_absent": {},
     "refusal:task_control.orphan_command_mismatch": {},
     "refusal:task_control.orphan_execution_absent": {},
@@ -61592,69 +58917,26 @@
     "refusal:task_control.recovery_version_stale": {},
     "refusal:task_control.recovery_waits_for_the_running_task": {},
     "refusal:task_control.registry_database_not_canonical": {},
-    "refusal:task_control.runtime_retirement_conflict": {},
     "refusal:task_control.start_version_stale": {},
     "refusal:task_control.task_not_found": {},
     "refusal:task_control.tasks_running_invalid": {},
     "refusal:task_control.tasks_waiting_invalid": {},
-    "refusal:task_control.telemetry_clock_naive": {},
-    "refusal:task_control.telemetry_import_conflict": {},
-    "refusal:task_control.telemetry_import_unequal": {},
-    "refusal:task_control.telemetry_import_unreadable": {},
-    "refusal:task_control.telemetry_log_unavailable": {},
-    "refusal:task_control.telemetry_task_unbound": {},
     "refusal:task_control.wake_registration_invalid": {},
     "refusal:task_control.wake_task_stopped": {},
     "refusal:task_control.workspace_root_expected": {},
     "refusal:tasks.artifact_readback_absent": {},
     "refusal:tasks.artifact_readback_failed": {},
     "refusal:tasks.cursor_moved_reload": {},
-    "refusal:test_layout.fixture_collision": {},
-    "refusal:test_layout.fixture_scope": {},
-    "refusal:test_layout.fixture_visibility": {},
-    "refusal:test_layout.input_unreadable": {},
-    "refusal:test_layout.path_collision": {},
-    "refusal:test_layout.path_invalid": {},
-    "refusal:test_layout.preimage_changed": {},
-    "refusal:test_layout.registry_collision": {},
-    "refusal:test_layout.registry_invalid": {},
-    "refusal:test_layout.unmapped_reference": {},
-    "refusal:test_size.admission_invalid": {},
-    "refusal:test_size.admission_limit": {},
-    "refusal:test_size.admission_limits": {},
-    "refusal:test_size.admission_unmeasured": {},
-    "refusal:test_size.budget_admission": {},
-    "refusal:test_size.changed_identity": {},
-    "refusal:test_size.changed_unmeasured": {},
     "refusal:test_size.conflicting": {},
-    "refusal:test_size.cost": {},
-    "refusal:test_size.cost_unmeasured": {},
-    "refusal:test_size.data_files_invalid": {},
     "refusal:test_size.declaration_invalid": {},
     "refusal:test_size.default_size": {},
     "refusal:test_size.defaults": {},
-    "refusal:test_size.fence_invalid": {},
-    "refusal:test_size.footprint_unmeasured": {},
-    "refusal:test_size.framework_fixtures_invalid": {},
-    "refusal:test_size.growth": {},
-    "refusal:test_size.lane_unknown": {},
     "refusal:test_size.large": {},
-    "refusal:test_size.large_contract": {},
-    "refusal:test_size.large_duplicate": {},
-    "refusal:test_size.large_reason": {},
-    "refusal:test_size.limits": {},
-    "refusal:test_size.mandatory_missing": {},
     "refusal:test_size.owner_conflict": {},
     "refusal:test_size.owner_missing": {},
-    "refusal:test_size.required_selection_invalid": {},
     "refusal:test_size.rule": {},
     "refusal:test_size.schema": {},
     "refusal:test_size.sizes": {},
-    "refusal:test_size.whole_tree_guards_invalid": {},
-    "refusal:testing.layer_contract": {},
-    "refusal:testing.layer_contract_unmeasured": {},
-    "refusal:testing.worker_capture_unavailable": {},
-    "refusal:testing.worker_identity_unknown": {},
     "refusal:universe_membership.decision_precedes_observation": {},
     "refusal:universe_membership.effective_session_precedes_knowledge": {},
     "refusal:universe_membership.effective_session_unavailable": {},
@@ -61664,11 +58946,6 @@
     "refusal:universe_membership.observation_precedes_previous": {},
     "refusal:universe_membership.observation_session_mismatch": {},
     "refusal:universe_membership.timestamp_timezone_required": {},
-    "refusal:upgrade.acknowledged": {},
-    "refusal:upgrade.backup_space": {},
-    "refusal:upgrade.in_progress": {},
-    "refusal:upgrade.plan_changed": {},
-    "refusal:upgrade.refused": {},
     "refusal:upgrade_overview.confirmation_stale": {},
     "refusal:validation.artifact_invalid": {},
     "refusal:validation.attempt_input_mismatch": {},
@@ -61677,8 +58954,6 @@
     "refusal:validation.insufficient_history": {},
     "refusal:validation.invalid_split_spec": {},
     "refusal:validation.timeline_invalid": {},
-    "refusal:wait.stopped": {},
-    "refusal:wait.timeout": {},
     "refusal:workbench.completed_authored_portfolio_required": {},
     "refusal:workbench.forward_holdings_source_mismatch": {},
     "refusal:workbench.performance_selection_invalid": {},
@@ -61770,9 +59045,7 @@
     "refusal:workspace_data_update.valuation_scope_invalid": {},
     "refusal:workspace_data_update.workspace_manifest_changed": {},
     "refusal:workspace_database.access_mode_conflict_on_this_thread": {},
-    "refusal:workspace_database.derived_setup_absent": {},
     "refusal:workspace_database.read_only_retention_cannot_write": {},
-    "refusal:workspace_database.runtime_extension_refused": {},
     "refusal:workspace_maintenance.candidate_data_recheck_history_invalid": {},
     "refusal:workspace_maintenance.candidate_data_recheck_incomplete": {},
     "refusal:workspace_maintenance.candidate_data_recheck_scope_invalid": {},
@@ -61786,7 +59059,6 @@
     "refusal:workspace_maintenance.initialization_consent_required": {},
     "refusal:workspace_maintenance.manifest_update_consent_required": {},
     "refusal:workspace_maintenance.membership_change_without_effective_session": {},
-    "refusal:workspace_maintenance.membership_owner_unproved": {},
     "refusal:workspace_maintenance.membership_revision_mismatch": {},
     "refusal:workspace_maintenance.precision_kept_without_authority": {},
     "refusal:workspace_maintenance.semantic_index_handoff_failed": {},
@@ -61957,40 +59229,6 @@
         "anyOf": [
           {
             "pattern": "^[0-9a-f]{64}$",
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.analyst_reads_bundles": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maximum": 10000,
-            "minimum": 1,
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.analyst_reads_mode": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "enum": [
-              "SUBAGENTS",
-              "IN_SESSION"
-            ],
             "type": "string"
           },
           {
@@ -62629,153 +59867,6 @@
         "default": null
       }
     },
-    "request:Request.experience_budget": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maximum": 32000,
-            "minimum": 100,
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_hypothesis": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_known_at": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_limit": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maximum": 20,
-            "minimum": 1,
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_method": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_query": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 512,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_trial": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_width": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "enum": [
-              "recipe",
-              "method_version",
-              "method"
-            ],
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.experience_workspace": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
     "request:Request.experiment_curation": {
       "required": false,
       "schema": {
@@ -63113,21 +60204,6 @@
           {
             "maxLength": 64,
             "minLength": 1,
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.goal_seen": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "pattern": "^[0-9a-f]{16}$",
             "type": "string"
           },
           {
@@ -63717,21 +60793,6 @@
         "default": null
       }
     },
-    "request:Request.review_note": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
     "request:Request.review_policy_hash": {
       "required": false,
       "schema": {
@@ -63784,40 +60845,6 @@
         "anyOf": [
           {
             "pattern": "^[0-9a-f]{64}$",
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.review_subject": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "pattern": "^(trial|task|goal):[0-9A-Za-z-]{1,64}$",
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.review_verdict": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "enum": [
-              "success",
-              "failure",
-              "inconclusive"
-            ],
             "type": "string"
           },
           {
@@ -63983,21 +61010,6 @@
           {
             "additionalProperties": true,
             "type": "object"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      }
-    },
-    "request:Request.status_section": {
-      "required": false,
-      "schema": {
-        "anyOf": [
-          {
-            "const": "storage",
-            "type": "string"
           },
           {
             "type": "null"
@@ -64697,11 +61709,6 @@
         "GOAL_SUBMIT",
         "GOAL_ABANDON",
         "RESEARCH_HISTORY",
-        "EXPERIENCE_READ",
-        "EXPERIENCE_BRIEF",
-        "EXPERIENCE_CLASS",
-        "EXPERIENCE_RECALL",
-        "EXPERIENCE_RECORD",
         "EXPERIMENT_COMPARE",
         "EXPERIMENT_ALPHA_COMPARE",
         "EXPERIMENT_DELIVERY_EXPORT",
@@ -64843,8 +61850,6 @@
         "SESSION_USAGE_READ",
         "USAGE_READING",
         "USAGE_READING_SET",
-        "ANALYST_READS",
-        "ANALYST_READS_SET",
         "CPU_BUDGET_SHOW",
         "CPU_BUDGET_SET",
         "HOST_STOP",
@@ -65014,116 +62019,11 @@
   },
   "release": "0.2.0.dev0",
   "retirements": {
-    "answer:STORAGE_PLAN.bindings": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
-      "replacement": "answer:STORAGE_PLAN.targets",
-      "status": "Deprecated"
-    },
-    "answer:STORAGE_READBACK.inputs": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
-      "replacement": "answer:STORAGE_READBACK.evidence",
-      "status": "Deprecated"
-    },
-    "operation:STORAGE_EVIDENCE_REBUILD": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since.",
-      "replacement": "operation:STORAGE_READBACK",
-      "status": "Deprecated"
-    },
-    "refusal:causal_outcomes.outcome_store_invalid": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The execution outcome rollback setting is retired; outcomes are read from the catalog.",
-      "replacement": "refusal:data_layer.outcome_missing",
-      "status": "Deprecated"
-    },
-    "refusal:data_layer.derived_files_need_host": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.",
-      "replacement": "refusal:data_layer.history_unavailable",
-      "status": "Deprecated"
-    },
-    "refusal:feature_panel.chunk_unserved": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The opt-in derived Panel reads are retired; a missing chunk is refused as the stored reader refuses it.",
-      "replacement": "refusal:feature_panel.logical_content_mismatch",
-      "status": "Deprecated"
-    },
-    "refusal:feature_panel.derived_reads_unserved": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The opt-in derived Panel reads are retired; Panel chunks are read from the workspace.",
-      "replacement": "refusal:feature_panel.logical_content_mismatch",
-      "status": "Deprecated"
-    },
-    "refusal:feature_panel.panel_reads_unknown": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The Panel read setting is retired; Panel chunks are read from the workspace.",
-      "replacement": "refusal:feature_panel.logical_content_mismatch",
-      "status": "Deprecated"
-    },
-    "refusal:market_data.market_reads_unknown": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The market read setting is retired; world serves market reads, with the workspace's tables before admission.",
-      "replacement": "refusal:data_layer.world_table_not_admitted",
-      "status": "Deprecated"
-    },
     "refusal:native_bridge.child_not_a_specialist": {
       "reason": "Usage is read independently of specialist-role verification; the separate verification fact remains.",
       "removed_in": "0.1.6",
       "replacement": "native usage delivery with binding verification",
       "status": "Removed"
-    },
-    "refusal:portfolio_strategy_lab.array_store_invalid": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The array store setting is retired; the Strategy Lab's lanes are read from the data root.",
-      "replacement": "refusal:data_layer.array_missing",
-      "status": "Deprecated"
-    },
-    "refusal:risk_research.risk_store_invalid": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The Risk store setting is retired; covariance is read from the catalog, with the packed file before admission.",
-      "replacement": "refusal:risk_research.covariance_chunk_incomplete",
-      "status": "Deprecated"
-    },
-    "refusal:storage.evidence_generation_record_misfiled": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The Host's retrieval store keeps no per-generation evidence index, so none is rebuilt, pinned or released; the operation has always refused since.",
-      "replacement": "operation:STORAGE_READBACK",
-      "status": "Deprecated"
-    },
-    "refusal:storage.input_binding_missing": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "Research inputs are kept once on this machine while a study names them; storage cleanup no longer holds or releases them.",
-      "replacement": "refusal:data_layer.input_missing",
-      "status": "Deprecated"
-    },
-    "refusal:task_control.runtime_retirement_conflict": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The upgrade no longer restores old Task runtime files; the pre-upgrade backup is the way back.",
-      "replacement": "refusal:task_control.heartbeat_import_unequal",
-      "status": "Deprecated"
-    },
-    "refusal:workspace_database.derived_setup_absent": {
-      "announced": "0.2.8",
-      "earliest_removal": "0.3.0",
-      "reason": "The opt-in derived Feature view is retired; Feature values are read from the workspace's table.",
-      "replacement": "refusal:data_layer.history_unavailable",
-      "status": "Deprecated"
     },
     "view:full": {
       "announced": "0.2.4",

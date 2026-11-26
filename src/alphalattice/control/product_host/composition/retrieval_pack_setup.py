@@ -1,17 +1,18 @@
-"""Install, import or inspect the retrieval store's model packs.
+"""Install, import or inspect the retrieval model packs of the supported recipes.
 
     <retrieval python> scripts/install_retrieval_pack.py --status
-    <retrieval python> scripts/install_retrieval_pack.py --install retrieval-store --network
-    <retrieval python> scripts/install_retrieval_pack.py --import retrieval-store --from <pack-dir>
+    <retrieval python> scripts/install_retrieval_pack.py --install hybrid-v3-bge-small-en --network
+    <gpu python>       scripts/install_retrieval_pack.py --install hybrid-v3-qwen3-gpu --network
+    <retrieval python> scripts/install_retrieval_pack.py --import hybrid-v2-minilm --from <pack-dir>
 
 (`<retrieval python>` is `.venv-retrieval/Scripts/python.exe` on Windows and
-`.venv-retrieval/bin/python` elsewhere.)
+`.venv-retrieval/bin/python` elsewhere; `<gpu python>` is `.venv-gpu`'s, alike.)
 
 Packs live in the application model store (`--store`, else
 `ALPHALATTICE_MODEL_STORE`, else the platform's application-data directory),
 never in the Git checkout or a workspace: a store there, or one this process
 cannot write, is refused by name, `--store <directory>` the way on, and every
-other failure is answered in words too. `--install` fetches the pinned
+other failure is answered in words too (V539). `--install` fetches the pinned
 revision's files from the Hub over HTTPS only with `--network` (an
 explicitly admitted setup step; the product's `ALPHALATTICE_NETWORK_DISABLED`
 stays as it is for everything else), printing the bytes as they arrive;
@@ -30,17 +31,18 @@ import argparse
 import sys
 from pathlib import Path
 
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.knowledge import model_store
-from alphalattice.interface.local_application.cli_contract import join, shell, worded
+from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.failure_codes import setup_failure
 from alphalattice.interface.local_application.read_views import emit_owner
+from alphalattice.kernel.knowledge import model_store
+from alphalattice.kernel.knowledge.hybrid_contracts import SUPPORTED_RECIPES
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 PLAYPEN = resolve_playpen_root(Path(__file__))
 
 
 def _outside_checkout_and_workspaces(store: Path) -> Path:
-    """The store, refused by name when it lies in the checkout or in a workspace.
+    """The store, refused by name when it lies in the checkout or in a workspace (V539).
 
     Packs stay outside both: the checkout is code, a workspace binds a pack by a link to the
     store. A store named by `--store` or `ALPHALATTICE_MODEL_STORE` keeps that boundary as the
@@ -65,16 +67,6 @@ _ELSEWHERE = (
 )
 _AGAIN = "Every file already verified is kept, so the same command continues where it stopped."
 _WORDS: dict[str, tuple[str, str]] = {
-    "model_store.pointer_unreadable": (
-        "The saved model-store pointer at {subject} could not be read or names an unavailable "
-        "store. Repair that pointer or set ALPHALATTICE_MODEL_STORE to the intended store.",
-        "REPAIR_THE_MODEL_STORE_POINTER",
-    ),
-    "model_store.pointer_unwritable": (
-        "The pack is kept, but its model-store pointer at {subject} could not be written. "
-        "Repair access to that path or set ALPHALATTICE_MODEL_STORE for the Host.",
-        "REPAIR_THE_MODEL_STORE_POINTER",
-    ),
     "model_store.store_unwritable": (
         "This process cannot create or write the model store, so no pack was installed. "
         + _ELSEWHERE,
@@ -120,12 +112,12 @@ _WORDS: dict[str, tuple[str, str]] = {
         "IMPORT_FROM_A_DIRECTORY_HOLDING_THE_PACK",
     ),
 }
-"""Each refusal the installer meets, in words with its way on: its own, since it never
+"""Each refusal the installer meets, in words with its way on (V539): its own, since it never
 reaches the Host."""
 
 
 def pack_command(*arguments: str) -> list[str]:
-    """This installer with these arguments, as the person runs it.
+    """This installer with these arguments, as the person runs it (V590).
 
     The checkout's script, or the installed module.
     """
@@ -135,46 +127,13 @@ def pack_command(*arguments: str) -> list[str]:
     return [sys.executable, "-m", module, *arguments]
 
 
-def setup_guidance(code: str, *, store: Path | None = None) -> dict[str, object]:
-    """The runtime fill or the model pack setup that an Evidence refusal needs."""
-    if code in (
-        "evidence_review.semantic_capability_not_ready",
-        "evidence_review.retrieval_environment_not_loaded",
-    ):
-        from alphalattice.interface.local_application.retrieval_environment import (  # lazy: fill
-            fill_command,
-        )
-
-        return {
-            "next_commands": {
-                "environment": join(fill_command(), shell()),
-                "packs": join(pack_command("--status", "--view", "summary"), shell()),
-            }
-        }
-    if code.partition(":")[0] != "model_store.pack_not_installed":
-        return {}
-    store = Path(store or model_store.default_store_root()).resolve()
-    install = pack_command(
-        "--install", model_store.RETRIEVAL_STORE, "--network", "--store", str(store)
-    )
-    return {
-        "next_commands": {"packs": join(_status_command(store), shell())},
-        "pack": {
-            "store": str(store),
-            "install": join(install, shell()),
-            "before": "Run this command under the open first-use Goal's model download delegation "
-            "or with the person's explicit consent. --network authorizes the pack download.",
-        },
-    }
-
-
 def _status_command(store: Path) -> list[str]:
     """The installer's read-only check of this store, as the person runs it."""
     return pack_command("--status", "--view", "summary", "--store", str(store))
 
 
 def _refused(code: str, store: Path, error: Exception) -> dict[str, object]:
-    """Build a refusal with its words and way on, the store it names beside it."""
+    """Build a refusal with its words and way on, the store it names beside it (V539)."""
     base, _sep, subject = code.partition(":")
     detail, next_action = _WORDS.get(
         base,
@@ -199,21 +158,20 @@ def _refused(code: str, store: Path, error: Exception) -> dict[str, object]:
 def _status(store: Path) -> dict[str, object]:
     return {
         "store": str(store),
-        model_store.RETRIEVAL_STORE: {
-            pack.pack_id: model_store.pack_status(store, pack).status
-            for pack in model_store.RETRIEVAL_STORE_PACKS
+        "recipes": {
+            recipe: model_store.recipe_readiness(store, recipe) for recipe in SUPPORTED_RECIPES
         },
         "claim": "Pack presence and hashes; no retrieval quality is implied by a READY pack.",
     }
 
 
 def _install(store: Path, recipe: str, *, network: bool, source: Path | None) -> dict[str, object]:
-    if recipe != model_store.RETRIEVAL_STORE:
-        raise SystemExit(f"unsupported recipe: {recipe}; {model_store.RETRIEVAL_STORE}")
+    if recipe not in model_store.RECIPE_PACKS:
+        raise SystemExit(f"unsupported recipe: {recipe}; one of {', '.join(SUPPORTED_RECIPES)}")
     if source is None and not network:
         raise SystemExit("--install needs --network (an admitted download) or --from <directory>")
     results = {}
-    encoder, reranker = model_store.RETRIEVAL_STORE_PACKS
+    encoder, reranker = model_store.RECIPE_PACKS[recipe]
     for pack in (encoder, reranker):
         if source is not None:
             # A pack directory as a workspace holds it: the encoder at the
@@ -233,13 +191,18 @@ def _install(store: Path, recipe: str, *, network: bool, source: Path | None) ->
 
         def progress(name: str, index: int, total: int, pack_id: str = pack.pack_id) -> None:
             """Read the captured source document under its admitted contract."""
-            print(f"{pack_id}: {index}/{total} {name}", flush=True)
+            print(f"{pack_id}: {index}/{total} {name}", flush=True)  # noqa: T201  # progress
 
         status = model_store.install_pack(store, pack, fetch, progress=progress)
         results[pack.pack_id] = status.status
     if model_store.PACK_INSTALLED in results.values():
         model_store.remember_store(store)
-    return {"store": str(store), "recipe": recipe, "packs": results}
+    return {
+        "store": str(store),
+        "recipe": recipe,
+        "packs": results,
+        **model_store.recipe_readiness(store, recipe),
+    }
 
 
 def _bytes_printer(pack_id: str) -> model_store.Received:
@@ -252,7 +215,7 @@ def _bytes_printer(pack_id: str) -> model_store.Received:
         if done - shown.get(name, -step) >= step or done == total:
             shown[name] = done
             whole = f" of {total / 1e6:.1f}" if total else ""
-            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)
+            print(f"{pack_id}: {name} {done / 1e6:.1f}{whole} MB", flush=True)  # noqa: T201  # progress
 
     return received
 
@@ -266,18 +229,16 @@ def main(argv: list[str] | None = None) -> int:
         "--store", type=Path, help="The application model store (default: the platform's)."
     )
     parser.add_argument(
-        "--status", action="store_true", help="The retrieval store's packs as they stand."
+        "--status", action="store_true", help="Every recipe's packs and runtime as they stand."
     )
     parser.add_argument(
-        "--install",
-        metavar="RECIPE",
-        help="Fetch the retrieval store's packs at their pinned revisions.",
+        "--install", metavar="RECIPE", help="Fetch the recipe's packs at their pinned revisions."
     )
     parser.add_argument(
         "--import",
         dest="import_recipe",
         metavar="RECIPE",
-        help="Import the retrieval store's packs from --from.",
+        help="Import the recipe's encoder pack from --from.",
     )
     parser.add_argument(
         "--from", dest="source", type=Path, help="A directory holding a pack's files, for --import."
@@ -294,9 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments.command_line = tuple(pack_command(*(sys.argv[1:] if argv is None else argv)))
     if (arguments.view or arguments.output) and (arguments.install or arguments.import_recipe):
         parser.error(str(worded("read.summary")).format(pointer="--status"))
-    store = arguments.store or model_store._platform_store_root()
+    store = arguments.store or model_store.default_store_root()
     try:
-        store = (arguments.store or model_store.default_store_root()).resolve()
+        store = store.resolve()
         if arguments.install:
             payload = _install(
                 _outside_checkout_and_workspaces(store),

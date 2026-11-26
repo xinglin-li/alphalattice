@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -13,46 +14,16 @@ from uuid import uuid4
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import latest
-from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
-from alphalattice.kernel.identity import identity_sha256, integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
-def _metadata_hash(source: Path | Mapping[bytes, bytes]) -> str:
-    """The hash of a chunk's recorded metadata: read from the file `source`, or already read."""
-    metadata = (
-        source
-        if isinstance(source, Mapping)
-        else pq.ParquetFile(source).schema_arrow.metadata or {}
-    )
+def _metadata_hash(path: Path) -> str:
+    metadata = pq.ParquetFile(path).schema_arrow.metadata or {}
     normalized = {
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return integrity_sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _matches_binding_digest(payload: Mapping[str, object], field: str, expected: object) -> bool:
-    identity = dict(payload)
-    return (
-        isinstance(expected, str)
-        and identity.pop(field, None) == expected
-        and not _breaks_seal(identity, field, expected)
-    )
-
-
-def _breaks_seal(identity: dict[str, object], field: str, expected: str) -> bool:
-    """Whether `identity` does not hash to `expected`, checked once per stage for its content: its
-    writer's check and its readers' share one hash."""
-    return scoped_payload_digest(identity, field, expected, digest=canonical_hash) != expected
-
-
-ADJUSTED_RETURN_CHAIN = "adjusted-return-chain"
-"""The stage slot of an adjusted-return revision chain's identity: its builder, its publisher and
-its readers hash the same deltas once per stage."""
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -258,7 +229,6 @@ class ArtifactResolver:
             pq.write_table(table.replace_schema_metadata(merged), staged, compression="zstd")
             os.replace(staged, target)
             self._validate_feature_panel_chunk(target, content_hash)
-            file_sha256(target, written=True)
         staged.unlink(missing_ok=True)
         return ArtifactDescriptor(
             kind="feature-panel-chunk",
@@ -292,7 +262,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-manifest",
             content_hash=snapshot_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.feature_panel_manifest_uri(snapshot_hash),
         )
 
@@ -302,9 +272,7 @@ class ArtifactResolver:
         """Publish the row-hash-only preflight index without changing panel bytes."""
         self._require_hash(index_hash)
         identity = dict(payload)
-        if identity.pop("index_hash", None) != index_hash or _breaks_seal(
-            identity, "index_hash", index_hash
-        ):
+        if identity.pop("index_hash", None) != index_hash or canonical_hash(identity) != index_hash:
             raise ValueError("feature panel semantic index identity is invalid")
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
@@ -322,7 +290,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="feature-panel-semantic-index",
             content_hash=index_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.feature_panel_semantic_index_uri(index_hash),
         )
 
@@ -358,7 +326,11 @@ class ArtifactResolver:
         graph the marker describes exists.
         """
         self._require_hash(binding_hash)
-        if not _matches_binding_digest(payload, "binding_hash", binding_hash):
+        identity = dict(payload)
+        if (
+            identity.pop("binding_hash", None) != binding_hash
+            or canonical_hash(identity) != binding_hash
+        ):
             raise ValueError("panel preprocessing binding identity is invalid")
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
@@ -378,7 +350,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-preprocessing-binding",
             content_hash=binding_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.panel_preprocessing_binding_uri(binding_hash),
         )
 
@@ -395,7 +367,11 @@ class ArtifactResolver:
         payload = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("panel preprocessing binding payload is invalid")
-        if not _matches_binding_digest(payload, "binding_hash", binding_hash):
+        identity = dict(payload)
+        if (
+            identity.pop("binding_hash", None) != binding_hash
+            or canonical_hash(identity) != binding_hash
+        ):
             raise ValueError("panel preprocessing binding identity is invalid")
         return payload
 
@@ -426,10 +402,7 @@ class ArtifactResolver:
         identity = dict(payload)
         if (
             identity.pop("evidence_hash", None) != evidence_hash
-            or scoped_payload_digest(
-                identity, "evidence_hash", evidence_hash, digest=canonical_hash
-            )
-            != evidence_hash
+            or canonical_hash(identity) != evidence_hash
         ):
             raise ValueError("panel clipping evidence identity is invalid")
         serialized = json.dumps(
@@ -448,7 +421,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clipping-evidence",
             content_hash=evidence_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.panel_clipping_evidence_uri(evidence_hash),
         )
 
@@ -478,10 +451,7 @@ class ArtifactResolver:
         identity = dict(payload)
         if (
             identity.pop("evidence_hash", None) != evidence_hash
-            or scoped_payload_digest(
-                identity, "evidence_hash", evidence_hash, digest=canonical_hash
-            )
-            != evidence_hash
+            or canonical_hash(identity) != evidence_hash
         ):
             raise ValueError("panel clipping evidence identity is invalid")
         return payload
@@ -517,8 +487,7 @@ class ArtifactResolver:
         if (
             payload.get("receipt_hash") != receipt_hash
             or not isinstance(record_hash, str)
-            or scoped_payload_digest(identity, "record_hash", record_hash, digest=canonical_hash)
-            != record_hash
+            or canonical_hash(identity) != record_hash
         ):
             raise ValueError("panel clip observation identity is invalid")
         serialized = json.dumps(
@@ -541,7 +510,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="panel-clip-observation",
             content_hash=record_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.panel_clip_observation_uri(receipt_hash),
         )
 
@@ -563,86 +532,13 @@ class ArtifactResolver:
         if (
             payload.get("receipt_hash") != receipt_hash
             or not isinstance(record_hash, str)
-            or scoped_payload_digest(identity, "record_hash", record_hash, digest=canonical_hash)
-            != record_hash
+            or canonical_hash(identity) != record_hash
         ):
             raise ValueError("panel clip observation identity is invalid")
         return payload
 
     def _panel_preprocessing_marker_path(self, panel_content_hash: str) -> Path:
         return self.root / "feature-panel" / "preprocessing-markers" / f"{panel_content_hash}.json"
-
-    @staticmethod
-    def _verify_panel_preprocessing_marker(
-        payload: object, panel_content_hash: str
-    ) -> dict[str, object]:
-        if not isinstance(payload, dict):
-            raise ValueError("panel preprocessing marker payload is invalid")
-        marker_hash = str(payload.get("marker_hash", ""))
-        if not _matches_binding_digest(payload, "marker_hash", marker_hash):
-            raise ValueError("panel preprocessing marker identity is invalid")
-        if payload.get("panel_content_hash") != panel_content_hash:
-            raise ValueError("panel preprocessing marker does not name this panel")
-        return payload
-
-    def _same_panel_preprocessing_method(
-        self,
-        sealed: Mapping[str, object],
-        proposed: Mapping[str, object],
-        *,
-        panel_content_hash: str,
-    ) -> bool:
-        exact = ("recipe_id", "recipe_hash", "implementation_id", "panel_binding_hash")
-        if any(sealed.get(field) != proposed.get(field) for field in exact):
-            return False
-        roles = {
-            "catalog_hash": "feature_engine.preprocessing_catalog",
-            "implementation_binding_hash": (
-                f"feature_engine.preprocessing_implementation.{sealed.get('recipe_id')}"
-            ),
-        }
-        rotated = {field for field in roles if sealed.get(field) != proposed.get(field)}
-        before_ref = sealed.get("preprocessing_binding_hash")
-        after_ref = proposed.get("preprocessing_binding_hash")
-        if not rotated:
-            return before_ref == after_ref
-        for field in rotated:
-            before = sealed.get(field)
-            if not isinstance(before, str) or latest(roles[field], before) != proposed.get(field):
-                return False
-
-        self._verify_panel_preprocessing_marker(sealed, panel_content_hash)
-        # The enclosing hashes rotate with their children. Verify both sealed bindings and
-        # compare all their other fields, including the policy hash that the marker omits.
-        if not isinstance(before_ref, str) or not isinstance(after_ref, str):
-            return False
-        bindings = []
-        for ref, marker in ((before_ref, sealed), (after_ref, proposed)):
-            binding = self.load_panel_preprocessing_binding(ref)
-            if binding is None or any(
-                binding.get(field) != marker.get(field) for field in (*exact, *roles)
-            ):
-                return False
-            if "implementation_binding_hash" in rotated:
-                implementation = binding.get("implementation")
-                if (
-                    not isinstance(implementation, dict)
-                    or implementation.get("implementation_id") != marker.get("implementation_id")
-                    or not _matches_binding_digest(
-                        implementation,
-                        "implementation_binding_hash",
-                        marker.get("implementation_binding_hash"),
-                    )
-                ):
-                    return False
-            bindings.append(binding)
-        changed_fields = {"binding_hash", *rotated}
-        if "implementation_binding_hash" in rotated:
-            changed_fields.add("implementation")
-        old, new = bindings
-        return {field: value for field, value in old.items() if field not in changed_fields} == {
-            field: value for field, value in new.items() if field not in changed_fields
-        }
 
     def publish_panel_preprocessing_marker(
         self, *, payload: Mapping[str, object], panel_content_hash: str
@@ -664,7 +560,12 @@ class ArtifactResolver:
             canonical_hash(identity) != marker_hash
         ):
             raise ValueError("panel preprocessing marker identity is invalid")
+        serialized = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        ).encode("utf-8")
         target = self._panel_preprocessing_marker_path(panel_content_hash)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staged = target.with_name(f".{panel_content_hash}.{uuid4().hex}.tmp")
         if target.exists():
             # One Panel content can legitimately be produced by more than one
             # build -- a full materialization and a later incremental replay
@@ -672,26 +573,31 @@ class ArtifactResolver:
             # their clipping receipts differ. What may *not* differ is which
             # method produced it. The first marker therefore stands, and a
             # rewrite is refused only when it disagrees about the method.
-            marker_bytes = target.read_bytes()
-            existing = json.loads(marker_bytes)
-            if not self._same_panel_preprocessing_method(
-                existing, payload, panel_content_hash=panel_content_hash
-            ):
+            existing = json.loads(target.read_text(encoding="utf-8"))
+            method_fields = (
+                "recipe_id",
+                "recipe_hash",
+                "implementation_id",
+                "implementation_binding_hash",
+                "catalog_hash",
+                "panel_binding_hash",
+                "preprocessing_binding_hash",
+            )
+            if any(existing.get(field) != payload.get(field) for field in method_fields):
                 raise ValueError("panel preprocessing marker contradicts the sealed method")
-            marker_hash = str(existing["marker_hash"])
-        else:
-            marker_bytes = json.dumps(
-                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-            ).encode("utf-8")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            staged = target.with_name(f".{panel_content_hash}.{uuid4().hex}.tmp")
-            staged.write_bytes(marker_bytes)
-            os.replace(staged, target)
-            staged.unlink(missing_ok=True)
+            return ArtifactDescriptor(
+                kind="panel-preprocessing-marker",
+                content_hash=str(existing["marker_hash"]),
+                metadata_hash=hashlib.sha256(target.read_bytes()).hexdigest(),
+                uri=f"playpen://feature-panel/preprocessing-marker/{panel_content_hash}",
+            )
+        staged.write_bytes(serialized)
+        os.replace(staged, target)
+        staged.unlink(missing_ok=True)
         return ArtifactDescriptor(
             kind="panel-preprocessing-marker",
             content_hash=marker_hash,
-            metadata_hash=integrity_sha256(marker_bytes).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=f"playpen://feature-panel/preprocessing-marker/{panel_content_hash}",
         )
 
@@ -704,9 +610,16 @@ class ArtifactResolver:
         target = self._panel_preprocessing_marker_path(panel_content_hash)
         if not target.is_file():
             return None
-        return self._verify_panel_preprocessing_marker(
-            json.loads(target.read_text(encoding="utf-8")), panel_content_hash
-        )
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("panel preprocessing marker payload is invalid")
+        identity = dict(payload)
+        marker_hash = identity.pop("marker_hash", None)
+        if marker_hash != str(payload.get("marker_hash")) or (
+            canonical_hash(identity) != marker_hash
+        ):
+            raise ValueError("panel preprocessing marker identity is invalid")
+        return payload
 
     def load_feature_panel_semantic_index(self, uri: str) -> dict[str, object]:
         """Read a semantic index and verify its URI-bound canonical identity.
@@ -732,9 +645,7 @@ class ArtifactResolver:
         if not isinstance(payload, dict):
             raise ValueError("feature panel semantic index payload is invalid")
         identity = dict(payload)
-        if identity.pop("index_hash", None) != index_hash or _breaks_seal(
-            identity, "index_hash", index_hash
-        ):
+        if identity.pop("index_hash", None) != index_hash or canonical_hash(identity) != index_hash:
             raise ValueError("feature panel semantic index content is invalid")
         return payload
 
@@ -770,17 +681,12 @@ class ArtifactResolver:
                 raise ValueError("adjusted-return revision delta is invalid")
             identity = dict(value)
             semantic_hash = identity.pop("semantic_hash", None)
-            if not isinstance(semantic_hash, str) or _breaks_seal(
-                identity, "semantic_hash", semantic_hash
-            ):
+            if semantic_hash != canonical_hash(identity):
                 raise ValueError("adjusted-return revision delta identity is invalid")
             delta_hashes.append(str(semantic_hash))
         if payload.get("cursor") != len(delta_hashes):
             raise ValueError("adjusted-return revision cursor is invalid")
-        chained = stage_digest(
-            (ADJUSTED_RETURN_CHAIN, tuple(delta_hashes)), delta_hashes, canonical_hash
-        )
-        if chained != chain_hash:
+        if canonical_hash(delta_hashes) != chain_hash:
             raise ValueError("adjusted-return revision chain is invalid")
 
         serialized = json.dumps(
@@ -815,7 +721,7 @@ class ArtifactResolver:
         return ArtifactDescriptor(
             kind="adjusted-return-semantic-revision",
             content_hash=chain_hash,
-            metadata_hash=integrity_sha256(serialized).hexdigest(),
+            metadata_hash=hashlib.sha256(serialized).hexdigest(),
             uri=self.adjusted_return_semantic_revision_uri(chain_hash),
         )
 
@@ -851,15 +757,10 @@ class ArtifactResolver:
                 raise ValueError("adjusted-return semantic revision delta is invalid")
             identity = dict(value)
             semantic_hash = identity.pop("semantic_hash", None)
-            if not isinstance(semantic_hash, str) or _breaks_seal(
-                identity, "semantic_hash", semantic_hash
-            ):
+            if semantic_hash != canonical_hash(identity):
                 raise ValueError("adjusted-return semantic revision delta identity is invalid")
             delta_hashes.append(str(semantic_hash))
-        chained = stage_digest(
-            (ADJUSTED_RETURN_CHAIN, tuple(delta_hashes)), delta_hashes, canonical_hash
-        )
-        if payload.get("chain_hash") != chain_hash or chained != chain_hash:
+        if payload.get("chain_hash") != chain_hash or canonical_hash(delta_hashes) != chain_hash:
             raise ValueError("adjusted-return semantic revision chain is invalid")
         return payload
 
@@ -933,7 +834,7 @@ class ArtifactResolver:
         serialized_identity = json.dumps(
             identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
-        projection_hash = identity_sha256(serialized_identity).hexdigest()
+        projection_hash = hashlib.sha256(serialized_identity).hexdigest()
         payload = {**identity, "projection_hash": projection_hash}
         serialized = json.dumps(
             payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -974,11 +875,11 @@ class ArtifactResolver:
             raise ValueError("artifact is not a feature panel chunk")
         if descriptor.uri != self.feature_panel_chunk_uri(descriptor.content_hash):
             raise ValueError("feature panel chunk URI does not match its content hash")
-        stored = self._feature_panel_chunk_path(descriptor.content_hash)
-        self._validate_feature_panel_chunk(stored, descriptor.content_hash)
-        if _metadata_hash(stored) != descriptor.metadata_hash:
+        path = self._feature_panel_chunk_path(descriptor.content_hash)
+        self._validate_feature_panel_chunk(path, descriptor.content_hash)
+        if _metadata_hash(path) != descriptor.metadata_hash:
             raise ValueError("feature panel chunk metadata hash does not match descriptor")
-        return stored
+        return path
 
     def inspect_feature_panel_snapshot(self, manifest_uri: str) -> dict[str, object]:
         """Return only the safe summary; no path or matrix crosses the boundary."""
@@ -1004,7 +905,7 @@ class ArtifactResolver:
         identity = dict(payload)
         identity.pop("snapshot_hash", None)
         if (
-            identity_sha256(
+            hashlib.sha256(
                 json.dumps(
                     identity,
                     ensure_ascii=False,
@@ -1106,7 +1007,7 @@ class ArtifactResolver:
             raise ValueError("artifact content hash must be lowercase SHA-256")
 
     @staticmethod
-    def _validate_feature_panel_chunk(path: Path, content_hash: str) -> Mapping[bytes, bytes]:
+    def _validate_feature_panel_chunk(path: Path, content_hash: str) -> None:
         if not path.is_file():
             raise FileNotFoundError("content-addressed feature panel chunk is missing")
         metadata = pq.ParquetFile(path).schema_arrow.metadata or {}
@@ -1114,7 +1015,6 @@ class ArtifactResolver:
             raise ValueError("artifact is not a FeaturePanelChunk")
         if metadata.get(b"alphalattice.chunk_hash", b"").decode("utf-8") != content_hash:
             raise ValueError("feature panel chunk hash does not match requested URI")
-        return metadata
 
     @staticmethod
     def _load_feature_panel_manifest(path: Path, snapshot_hash: str) -> dict[str, object]:
@@ -1135,7 +1035,7 @@ class ArtifactResolver:
         claimed_hash = payload.get("projection_hash")
         identity = dict(payload)
         identity.pop("projection_hash", None)
-        actual_hash = identity_sha256(
+        actual_hash = hashlib.sha256(
             json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
                 "utf-8"
             )

@@ -24,86 +24,70 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Self
 
-import psutil
+import psutil  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.waits import pause
-from alphalattice.kernel.config import Change, declare
-from alphalattice.kernel.resources import logical_cpu_count
-
-_metric_lock = threading.RLock()
-_metric_reader: Any = None
-_metric_pid = 0
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
-def _after_fork() -> None:
-    """Do not inherit a locked reader when a POSIX worker starts by fork."""
-    global _metric_lock
-    _metric_lock = threading.RLock()
+def _windows_memory_bytes() -> tuple[int, int]:
+    """Read current and peak Windows working sets without platform-only exports."""
+    loader: Any = getattr(ctypes, "WinDLL", None)
+    if loader is None:
+        return 0, 0
 
+    class _Counters(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("PageFaultCount", ctypes.c_ulong),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+            ("PrivateUsage", ctypes.c_size_t),
+        ]
 
-if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_after_fork)
-
-
-def _current_process_values() -> tuple[float, int]:
-    """Collect the standard process CPU time and RSS from the local SDK reader."""
-    global _metric_pid, _metric_reader
-    with _metric_lock:
-        if _metric_pid != os.getpid():
-            from opentelemetry.instrumentation.system_metrics import (  # lazy: first sample
-                SystemMetricsInstrumentor,
-            )
-            from opentelemetry.sdk.metrics import MeterProvider  # lazy: first sample
-            from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # lazy: first sample
-
-            # The standard instrumentor is a singleton; this owner must not reset another's.
-            own_type = type(
-                "_ProcessMetricsInstrumentor", (SystemMetricsInstrumentor,), {"_instance": None}
-            )
-            instrumentor = own_type(
-                config={
-                    "process.cpu.time": ["user", "system"],
-                    "process.memory.usage": None,
-                    "process.thread.count": None,
-                }
-            )
-            reader = InMemoryMetricReader()
-            provider = MeterProvider(metric_readers=[reader], shutdown_on_exit=False)
-            instrumentor.instrument(meter_provider=provider, raise_exception_on_conflict=True)
-            _metric_reader, _metric_pid = reader, os.getpid()
-        data = _metric_reader.get_metrics_data()
-        values: dict[str, list[float]] = {}
-        if data is not None:
-            for resource in data.resource_metrics:
-                for scope in resource.scope_metrics:
-                    for metric in scope.metrics:
-                        values[metric.name] = [
-                            float(point.value) for point in metric.data.data_points
-                        ]
-        cpu = values.get("process.cpu.time", [])
-        if len(cpu) != 2:
-            raise RuntimeError("process_metrics.cpu_unavailable")
-        rss = values.get("process.memory.usage", [])
-        # The old reader has no /proc source on macOS. Preserve its unavailable value for
-        # capacity readers while the instrumentor still exposes the standard process metric.
-        memory = 0 if sys.platform == "darwin" else int(rss[0]) if rss else 0
-        return sum(cpu), memory
+    counters = _Counters()
+    counters.cb = ctypes.sizeof(counters)
+    kernel32 = loader("kernel32", use_last_error=True)
+    psapi = loader("psapi", use_last_error=True)
+    get_current_process = kernel32.GetCurrentProcess
+    get_current_process.restype = ctypes.c_void_p
+    get_memory_info = psapi.GetProcessMemoryInfo
+    get_memory_info.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_Counters),
+        ctypes.c_ulong,
+    ]
+    get_memory_info.restype = ctypes.c_bool
+    if not get_memory_info(get_current_process(), ctypes.byref(counters), counters.cb):
+        return 0, 0
+    return int(counters.WorkingSetSize), int(counters.PeakWorkingSetSize)
 
 
 def current_rss_bytes() -> int:
     """Return current resident memory in bytes, or zero when unavailable."""
-    return _current_process_values()[1]
+    if os.name == "nt":
+        return _windows_memory_bytes()[0]
+    try:
+        sysconf = getattr(os, "sysconf", None)
+        if not callable(sysconf):
+            return 0
+        page_count = int(Path("/proc/self/statm").read_text(encoding="ascii").split()[1])
+        return page_count * int(sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError, IndexError, AttributeError):
+        return 0
 
 
 def peak_rss_bytes() -> int:
-    """Return the operating system's process-lifetime peak resident memory in bytes."""
+    """Return process peak resident memory in bytes, or zero when unavailable."""
     if os.name == "nt":
-        try:
-            return int(psutil.Process().memory_info().peak_wset)
-        except (OSError, AttributeError, psutil.Error):
-            return 0
+        return _windows_memory_bytes()[1]
+
     resource: Any = importlib.import_module("resource")  # lazy: POSIX.
     value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     return value if value > 10_000_000 else value * 1024
@@ -183,14 +167,14 @@ def _windows_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str
         children: dict[int, list[int]] = {}
         entry = _ProcessEntry()
         entry.dwSize = ctypes.sizeof(entry)
-        found = first(snapshot, ctypes.byref(entry))
-        if not found:
+        if not first(snapshot, ctypes.byref(entry)):
             return (root_pid,), "PROCESS_TREE_ENUMERATION_UNAVAILABLE"
-        while found:
+        while True:
             children.setdefault(int(entry.th32ParentProcessID), []).append(int(entry.th32ProcessID))
             entry = _ProcessEntry()
             entry.dwSize = ctypes.sizeof(entry)
-            found = next_entry(snapshot, ctypes.byref(entry))
+            if not next_entry(snapshot, ctypes.byref(entry)):
+                break
         return _descendants(root_pid, children), None
     finally:
         kernel32.CloseHandle(snapshot)
@@ -220,7 +204,7 @@ def _linux_descendant_process_ids(root_pid: int) -> tuple[tuple[int, ...], str |
 
 class _ProcessExited(Exception):
     """A descendant that exited between the tree's enumeration and its read: gone, not
-    unreadable, so its absence is no limitation of the measurement."""
+    unreadable, so its absence is no limitation of the measurement (V472)."""
 
 
 _ERROR_INVALID_PARAMETER = 87
@@ -261,7 +245,7 @@ def _windows_process_usage(process_id: int) -> tuple[float, int] | None:
     kernel32 = loader("kernel32", use_last_error=True)
     handle = kernel32.OpenProcess(0x0400 | 0x0010, False, process_id)
     if not handle:
-        if sys.platform == "win32" and ctypes.get_last_error() == _ERROR_INVALID_PARAMETER:
+        if ctypes.get_last_error() == _ERROR_INVALID_PARAMETER:
             raise _ProcessExited
         return None
     try:
@@ -327,7 +311,7 @@ def _process_tree_sample(root_pid: int, *, include_descendants: bool) -> _Proces
         usage: tuple[float, int] | None
         try:
             if process_id == root_pid:
-                usage = _current_process_values()
+                usage = (process_cpu_seconds(), current_rss_bytes())
             elif os.name == "nt":
                 usage = _windows_process_usage(process_id)
             elif Path("/proc").is_dir():
@@ -368,7 +352,7 @@ class ProcessResourceMonitor:
         self._sample_interval_seconds = sample_interval_seconds
         self._include_live_descendants = include_live_descendants
         self._root_pid = os.getpid()
-        self._logical_cpu_count = max(1, logical_cpu_count() or 1)
+        self._logical_cpu_count = max(1, os.cpu_count() or 1)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._start_wall = 0.0
@@ -380,7 +364,6 @@ class ProcessResourceMonitor:
         self._process_tree_peak_rss_bytes = 0
         self._process_tree_peak_live_descendant_count = 0
         self._instrumentation_limitation: str | None = None
-        self._sample_error: Exception | None = None
         self._usage: ProcessResourceUsage | None = None
 
     def start(self) -> None:
@@ -403,11 +386,7 @@ class ProcessResourceMonitor:
 
     def _sample_until_stopped(self) -> None:
         while not self._stop.wait(self._sample_interval_seconds):
-            try:
-                self._sample()
-            except Exception as error:
-                self._sample_error = error
-                return
+            self._sample()
 
     def _sample(self, *, initial: bool = False) -> None:
         wall = time.perf_counter()
@@ -432,9 +411,7 @@ class ProcessResourceMonitor:
                 self._peak_machine_cpu_percent,
                 max(0.0, usage),
             )
-        self._peak_rss_bytes = max(
-            self._peak_rss_bytes, sample.rss_bytes_by_pid.get(self._root_pid, 0)
-        )
+        self._peak_rss_bytes = max(self._peak_rss_bytes, current_rss_bytes())
         self._process_tree_peak_rss_bytes = max(
             self._process_tree_peak_rss_bytes,
             sum(sample.rss_bytes_by_pid.values()),
@@ -466,8 +443,6 @@ class ProcessResourceMonitor:
         self._stop.set()
         self._thread.join()
         self._sample()
-        if self._sample_error is not None:
-            raise self._sample_error
         wall_seconds = max(0.0, self._last_wall - self._start_wall)
         average = (
             self._total_cpu_seconds / wall_seconds / self._logical_cpu_count * 100.0
@@ -856,7 +831,7 @@ def runtime_machine_capacity() -> RuntimeMachineCapacity:
     """
     total, available = _memory_capacity()
     return RuntimeMachineCapacity(
-        detected_logical_processors=max(1, logical_cpu_count() or 1),
+        detected_logical_processors=max(1, os.cpu_count() or 1),
         allowed_logical_processor_ids=current_allowed_logical_processors(),
         total_memory_bytes=total,
         available_memory_bytes=available,
@@ -868,7 +843,7 @@ def worker_processes(cores: int) -> int:
 
     An execution parameter, never an identity: work spread over them answers what one worker
     answers, which the owner that spreads it proves. The cores are the CPU budget's for the Task
-    (the operator's); one stays with the process that hands the work out and
+    (the operator's; binding plan, B7); one stays with the process that hands the work out and
     writes what comes back, never fewer than one worker. Memory admits as many workers of this
     process's current size as fit in the share of available memory a runtime plan admits by
     default: a worker imports what its parent imported, so the parent's size is a cautious
@@ -1019,7 +994,7 @@ def resolve_runtime_capacity_plan(
 
 def default_logical_processor_budget() -> int:
     """Half of this machine's logical processors, and never fewer than one."""
-    detected = logical_cpu_count() or 1
+    detected = os.cpu_count() or 1
     return max(1, detected // LOGICAL_PROCESSOR_BUDGET_DIVISOR)
 
 
@@ -1067,18 +1042,18 @@ def current_allowed_logical_processors() -> tuple[int, ...]:
 
     A container, a job object or an operator may already have narrowed this
     process before it started. That narrowing is authority from outside and must
-    never be widened by a bound that only knows about ``logical_cpu_count()``.
+    never be widened by a bound that only knows about ``os.cpu_count()``.
     """
     if os.name == "nt":
         mask = _windows_process_mask()
-        detected = logical_cpu_count() or 1
+        detected = os.cpu_count() or 1
         return tuple(index for index in range(detected) if mask & (1 << index))
     getter = getattr(os, "sched_getaffinity", None)
     if callable(getter):
         return tuple(sorted(getter(0)))
     if sys.platform == "darwin":
         # macOS has no processor affinity that could have narrowed this process: all are its.
-        return tuple(range(logical_cpu_count() or 1))
+        return tuple(range(os.cpu_count() or 1))
     raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
 
 
@@ -1110,7 +1085,7 @@ def bind_process_logical_processors(
     stop oversubscribing inside the allowance rather than merely being throttled
     by it.
     """
-    detected = logical_cpu_count() or 1
+    detected = os.cpu_count() or 1
     allowed = current_allowed_logical_processors()
     if not allowed:
         raise ProcessCapacityError("process_capacity.logical_processor_bound_unenforceable")
@@ -1148,17 +1123,14 @@ def bind_process_logical_processors(
     library_threads = configured if library_thread_limit is None else int(library_thread_limit)
     if library_threads < 1 or library_threads > configured:
         raise ProcessCapacityError("process_capacity.library_thread_budget_invalid")
-    thread_variables = (
+    for name in (
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         "MKL_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
-    )
-    declare(
-        Change("process-capacity", dict.fromkeys(thread_variables, str(library_threads))),
-        native=True,
-    )
+    ):
+        os.environ[name] = str(library_threads)
 
     return {
         "kind": "ProcessCapacityBound",
@@ -1215,7 +1187,7 @@ def busy_logical_processors(
 
     The count is bounded by the processors counted and includes work outside this process.
     A process confined to some processors shares those, not the machine: with
-    `processor_ids` each is read on its own and only theirs is counted, so a busy
+    `processor_ids` each is read on its own and only theirs is counted (V357), so a busy
     machine outside them leaves them free. When processor-time counters are unavailable,
     the reader uses a bounded load-average fallback if the operating system exposes one.
 
@@ -1234,12 +1206,12 @@ def busy_logical_processors(
         if shares:
             busy = sum(float(shares[i]) for i in processor_ids if 0 <= i < len(shares)) / 100.0
             return round(min(float(len(processor_ids)), max(0.0, busy)), 1)
-    detected = logical_cpu_count() or 1
+    detected = os.cpu_count() or 1
     first = _system_times()
     if first is None:
         getter = getattr(os, "getloadavg", None)
         return None if getter is None else min(float(detected), float(getter()[0]))
-    pause(interval_seconds)
+    time.sleep(interval_seconds)
     second = _system_times()
     if second is None or second[1] <= first[1]:
         return None
@@ -1254,7 +1226,8 @@ def process_cpu_seconds() -> float:
     was *allowed* and what it actually used are different facts, and only the
     second one can show that a ceiling was doing anything.
     """
-    return _current_process_values()[0]
+    times = os.times()
+    return float(times.user + times.system)
 
 
 __all__ = [

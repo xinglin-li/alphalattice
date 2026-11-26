@@ -5,12 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from alphalattice.capabilities.domain_contracts.environment import recorded_environment
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.project_layout import source_root
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    current_module_name,
-    number_deciding_rule,
+from alphalattice.kernel.shared_kernel.environment import recorded_environment
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import source_root
+from alphalattice.kernel.shared_kernel.source_identity import (
     switched_source_identity,
 )
 
@@ -22,20 +20,6 @@ _FULL_PARITY_DOMAINS = frozenset({"FOUNDATION_INPUT", "ARRAY_VALUES", "MODEL_KER
 def _domain_source_paths(
     playpen_root: Path,
 ) -> dict[AlphaVerificationDomain, dict[str, Path]]:
-    rule = number_deciding_rule(playpen_root)  # one binding snapshot for the whole table
-    # The sources a move relocated, by stable identity name, so that a move rotates no identity
-    # reading them.
-    moved = {
-        stable: source_root(playpen_root)
-        .joinpath(*current_module_name(stable, rule).split("."))
-        .with_suffix(".py")
-        for stable in (
-            "alphalattice.kernel.quant.cross_section",
-            "alphalattice.kernel.validation.splitting",
-            "alphalattice.kernel.validation.return_model_statistics",
-        )
-    }
-
     return {
         "FOUNDATION_INPUT": {
             "feature_engine.producers.base_materializer": source_root(playpen_root)
@@ -63,7 +47,11 @@ def _domain_source_paths(
             / "producers"
             / "preprocessing"
             / "robust_cross_section.py",
-            "kernel.quant.cross_section": moved["alphalattice.kernel.quant.cross_section"],
+            "kernel.quant.cross_section": source_root(playpen_root)
+            / "alphalattice"
+            / "kernel"
+            / "quant"
+            / "cross_section.py",
             "feature_engine.resources.desktop_feature_catalog": source_root(playpen_root)
             / "alphalattice"
             / "foundation"
@@ -182,9 +170,11 @@ def _domain_source_paths(
             / "causal_outcomes"
             / "execution"
             / "methods.py",
-            "alphalattice.kernel.validation.splitting": moved[
-                "alphalattice.kernel.validation.splitting"
-            ],
+            "alphalattice.kernel.validation.splitting": source_root(playpen_root)
+            / "alphalattice"
+            / "kernel"
+            / "validation"
+            / "splitting.py",
         },
         "MODEL_KERNEL": {
             "alpha_research.targets.component_training": source_root(playpen_root)
@@ -244,9 +234,11 @@ def _domain_source_paths(
             / "alpha_research"
             / "evaluation"
             / "viability.py",
-            "alphalattice.kernel.validation.return_model_statistics": moved[
-                "alphalattice.kernel.validation.return_model_statistics"
-            ],
+            "alphalattice.kernel.validation.return_model_statistics": source_root(playpen_root)
+            / "alphalattice"
+            / "kernel"
+            / "validation"
+            / "return_model_statistics.py",
         },
         "QUALIFICATION_POLICY": {
             "alpha_research.evaluation.stability": source_root(playpen_root)

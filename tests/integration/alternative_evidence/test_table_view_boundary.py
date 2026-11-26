@@ -25,8 +25,7 @@ from alphalattice.evidence.alternative_evidence.documents.tables import (
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     AlternativeEvidenceResolvedSpan,
 )
-from alphalattice.evidence.alternative_evidence.storage import world_reads
-from alphalattice.evidence.live_evidence.online_sources import not_carried_tables, table_lines
+from alphalattice.kernel.live_evidence.online_sources import not_carried_tables, table_lines
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text,
     _open_recorded,
@@ -46,13 +45,6 @@ from tests.alternative_evidence_desk.table_view_support import (
     original_html,
     year_headed_html,
 )
-
-
-@pytest.fixture(autouse=True)
-def _objects_are_the_authority(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A view renders from the workspace's retained original here: world serves no body,
-    as it serves none to a Host whose world holds no evidence."""
-    monkeypatch.setattr(world_reads, "serving", lambda: None)
 
 
 def test_the_catalogue_and_the_rendering_agree_with_the_original() -> None:
@@ -168,7 +160,7 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
         request = _request(("AAPL",), budget=3)
         _registry, _snapshot, source_set = _acquire(runtime, transport, request)
         document_set = runtime.canonicalize(
-            source_set=source_set, published_at=request.evidence_as_of, as_of=request.evidence_as_of
+            source_set=source_set, published_at=request.evidence_as_of
         )
         assert len(document_set.documents) == 1
         generation = runtime.build_retrieval(
@@ -237,9 +229,7 @@ def test_a_table_view_is_delivered_through_the_verified_session_read(tmp_path: P
                 canonical.workspace_document_id, canonical.workspace_revision
             )
             text = content.decode("utf-8")
-            original = runtime.original_reader(document_set, as_of=None)(
-                canonical.workspace_document_id
-            )
+            original = runtime.original_reader(document_set)(canonical.workspace_document_id)
             assert original is not None
             assert original[1] == span.table_view.parent_source_content_hash
             _verify_table_view(span, text=text, reference=canonical, original=original)

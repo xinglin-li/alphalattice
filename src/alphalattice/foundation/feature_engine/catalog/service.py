@@ -9,8 +9,6 @@ from typing import cast
 
 from pydantic import BaseModel, TypeAdapter
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
@@ -27,6 +25,8 @@ from alphalattice.foundation.feature_engine.producers.factors.core_bundle import
     NUMERICAL_SPEC_FIELDS,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _NUMERICAL_FIELDS = frozenset(NUMERICAL_SPEC_FIELDS)
 _RESEARCH_CLASSIFICATION_FIELDS = frozenset({"core_anchor", "family", "track"})

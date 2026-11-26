@@ -43,12 +43,6 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    source_component_id,
-    switched_source_identity,
-)
 from alphalattice.investment.alpha_research.experiments.selected_scores import (
     AlphaSelectedRowAxis,
     AlphaSelectedScoreProjection,
@@ -58,6 +52,12 @@ from alphalattice.investment.alpha_research.targets.materialization import (
 )
 from alphalattice.investment.alpha_research.verification.identity import (
     alpha_numerical_environment_identity,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.source_identity import (
+    source_component_id,
+    switched_source_identity,
 )
 
 from .return_unit import (

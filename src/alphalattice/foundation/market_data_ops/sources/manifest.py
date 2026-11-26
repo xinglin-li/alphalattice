@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
@@ -16,10 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from alphalattice.foundation.market_data_ops.sources.universe import (
     ORIGINAL_RESEARCH_WHITELIST_STANDARD,
     CurrentUniverseBootstrap,
-    ResearchWhitelistStandard,
     membership_fingerprint,
 )
-from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.research_authoring.selection import load_safe_yaml_document
 
 _LISTING_NAMESPACE = UUID("1d8862b4-a419-4d1a-999d-cf70583f9957")
@@ -204,17 +203,12 @@ def read_market_profile(path: Path) -> MarketProfileDocument:
 
 def _canonical_hash(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return identity_sha256(payload.encode("utf-8")).hexdigest()
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def default_qualification_policy_hash(
-    standard: ResearchWhitelistStandard = ORIGINAL_RESEARCH_WHITELIST_STANDARD,
-) -> str:
-    """Stable identity of a current-universe history-quality policy, the original's by default.
-    The Factor floor is research scale, not a quality rule, so it is no part of this identity."""
-    return _canonical_hash(
-        {name: rule for name, rule in asdict(standard).items() if name != "minimum_factor_listings"}
-    )
+def default_qualification_policy_hash() -> str:
+    """Stable identity of the current-universe history-quality policy."""
+    return _canonical_hash(asdict(ORIGINAL_RESEARCH_WHITELIST_STANDARD))
 
 
 def qualification_obligation(kind: str, identity: str) -> str:
@@ -224,11 +218,9 @@ def qualification_obligation(kind: str, identity: str) -> str:
     return f"{kind}:{identity}"
 
 
-def history_quality_obligation(
-    standard: ResearchWhitelistStandard = ORIGINAL_RESEARCH_WHITELIST_STANDARD,
-) -> str:
-    """Return the onboarding obligation for each research manifest admitted under `standard`."""
-    return qualification_obligation("history_quality", default_qualification_policy_hash(standard))
+def history_quality_obligation() -> str:
+    """Return the onboarding obligation for each research manifest."""
+    return qualification_obligation("history_quality", default_qualification_policy_hash())
 
 
 def qualification_policy_identity(obligations: Iterable[str]) -> str:
@@ -295,10 +287,6 @@ def build_current_index_acquisition_manifest(
         )
         for candidate in bootstrap.source_manifest.candidates
     )
-    # The original standard's manifest names no obligation and keeps its recorded identity;
-    # another standard's history floor is named, so no derivation claims the original's.
-    original = bootstrap.standard == ORIGINAL_RESEARCH_WHITELIST_STANDARD
-    obligations = () if original else (history_quality_obligation(bootstrap.standard),)
     content = {
         "kind": "current-index-acquisition",
         "candidate_manifest_hash": bootstrap.source_manifest.content_hash,
@@ -313,7 +301,7 @@ def build_current_index_acquisition_manifest(
         "universe_components": CURRENT_UNIVERSE_COMPONENTS,
         "survivorship_bias_warning": True,
         "research_use_class": CURRENT_UNIVERSE_RESEARCH_ONLY,
-    } | ({} if original else {"qualification_obligations": list(obligations)})
+    }
     revision = _canonical_hash(content)
     return UniverseManifest(
         manifest_id=f"{profile.market_profile_id}:acquisition:{revision[:16]}",
@@ -323,12 +311,7 @@ def build_current_index_acquisition_manifest(
         universe_membership_basis=CURRENT_ACTIVE_SURVIVORS,
         is_point_in_time_historical=False,
         membership_fingerprint=membership_fingerprint(bootstrap.source_manifest),
-        qualification_policy_hash=(
-            default_qualification_policy_hash()
-            if original
-            else qualification_policy_identity(obligations)
-        ),
-        qualification_obligations=obligations,
+        qualification_policy_hash=default_qualification_policy_hash(),
     )
 
 

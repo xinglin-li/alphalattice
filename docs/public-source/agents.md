@@ -1,5 +1,5 @@
 # Work with research agents
-Last checked: 2026-11-23 against 0.2.9
+Last checked: 2026-11-04 against 0.2.4
 
 Claude Code or Codex leads your research; AlphaLattice calculates, validates and
 records it. The installing agent continues in the same session, and a session

@@ -7,17 +7,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from alphalattice.control.product_host.composition.feature_trials import FeatureTrials
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    carried_binding_check,
-)
-from alphalattice.foundation.data_layer.history import move_carried
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
+from tests.portfolio_strategy_lab.local_web_support import _json, _resolved, _Resolver
 
 
 def _facts(body: dict) -> dict:  # type: ignore[type-arg]
@@ -27,36 +21,11 @@ def _facts(body: dict) -> dict:  # type: ignore[type-arg]
     return {key: value for key, value in body.items() if key != "verification_basis"}
 
 
-def refused_at_the_edges(
-    live: LocalPortfolioWebSession, task_id: str, read: dict[str, object]
-) -> str:
-    """A study with a sealed file changed in place, read as EV2 holds it: a read answers from the
-    last full check, saying so, with the facts `read` held; the export proves the bytes and
-    refuses by name; once the scrub marks the study, its reads prove in full and refuse by name.
-    Returns the scrub's Task."""
-
-    readback = f"/api/experiments/readback?task_id={task_id}"
-    held = _json(live, readback)
-    assert held["verification_basis"].startswith("SEALED ") and _facts(held) == _facts(read)
-    refused = _json(live, f"/api/experiments/export?task_id={task_id}")
-    assert refused["status"] == "REFUSED" and refused["failure_code"], refused
-    scrub = live.operations.verify_all()
-    assert scrub["status"] == "ADMITTED", scrub
-    live.dispatcher.drain_for_tests()
-    assert str(task_id) in live.operations.sweep.failed_studies()
-    refused = _json(live, readback)
-    assert refused["status"] == "REFUSED" and refused["failure_code"], refused
-    return str(scrub["task_id"])
-
-
 @contextmanager
 def _session(root: Path) -> Iterator[LocalPortfolioWebSession]:
-    root = root.resolve()
-    manifest = read_research_workspace_manifest(root)
-    move_carried(root, manifest.workspace_id, input_check=carried_binding_check)
     session = LocalPortfolioWebSession(
         workspace=root,
-        workspace_manifest=manifest,
+        workspace_manifest=read_research_workspace_manifest(root),
         resolver=_Resolver(_resolved()),
     )
     with session as live:
@@ -93,37 +62,6 @@ def _drain_trial(live: LocalPortfolioWebSession) -> threading.Event:
     event.clear()
     live.dispatcher.drain_for_tests(timeout=600)
     return event
-
-
-def assert_trial_reads_during_saves(trials: FeatureTrials, trial_id: str) -> None:
-    """Every one of 20,000 reads sees the whole record while another thread saves it."""
-    trial, together = trials._read(trial_id), threading.Barrier(2, timeout=30)
-    completed, failures = {"reads": 0, "writes": 0}, []
-
-    def save_repeatedly():
-        together.wait()
-        for _ in range(20_000):
-            try:
-                trials._save(trial)
-            except OSError as error:
-                failures.append(("write", type(error).__name__))
-            completed["writes"] += 1
-
-    writer = threading.Thread(target=save_repeatedly, daemon=True)
-    writer.start()
-    try:
-        together.wait()
-        for _ in range(20_000):
-            try:
-                assert trials._read(trial_id) == trial
-            except OSError as error:
-                failures.append(("read", type(error).__name__))
-            completed["reads"] += 1
-    finally:
-        writer.join(timeout=120)
-    assert not writer.is_alive()
-    assert completed == {"reads": 20_000, "writes": 20_000}
-    assert failures == [], (len(failures), failures[:8])
 
 
 def _alpha_payload(case, parameters=None, handle="capability-1"):

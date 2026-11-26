@@ -8,7 +8,6 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.candidates.artifacts import (
     AlphaGoalResearchArtifactStore,
 )
@@ -29,6 +28,7 @@ from alphalattice.investment.sector_research.models.legacy_excess_ema import (
     SectorEmaAlphaSurface,
     sector_ema_table_content_hash,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _sessions(count: int) -> tuple[date, ...]:

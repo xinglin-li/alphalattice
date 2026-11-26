@@ -16,11 +16,6 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    checkout_root,
-    number_deciding_closure,
-    number_deciding_rule,
-)
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioTargetDecision
 from alphalattice.investment.portfolio_strategy_lab.optimizer import service as optimizer_service
 from alphalattice.investment.portfolio_strategy_lab.optimizer.service import PortfolioOptimizer
@@ -36,6 +31,11 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
     portfolio_adapter_implementation_hash,
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.search_domain import SearchAxis
+from alphalattice.kernel.shared_kernel.source_identity import (
+    checkout_root,
+    number_deciding_closure,
+    number_deciding_rule,
+)
 
 CASE_PACKAGE = "portfolio_strategy_lab"
 """This case study is the adapter's package for content identity purposes.

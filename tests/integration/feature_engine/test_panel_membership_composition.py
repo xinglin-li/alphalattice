@@ -15,7 +15,6 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -28,6 +27,7 @@ from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelCompositionBinding,
     PreparedPanelComposition,
 )
+from alphalattice.kernel.quant.sector_history import SectorHistory
 
 FACTORS = ("factor_a", "factor_b")
 SECTORS = {"L1": "Energy", "L2": "Energy", "L3": "Tech", "L4": "Tech"}

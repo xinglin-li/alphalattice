@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import multiprocessing
+import os
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
@@ -13,10 +13,6 @@ from typing import Literal, cast
 
 import pyarrow as pa
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.validation.enums import RebalanceFrequency
-from alphalattice.capabilities.validation.schedule_contracts import cadence_threshold_profile
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
@@ -26,13 +22,12 @@ from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelRea
 from alphalattice.foundation.feature_engine.panels.semantic_index import (
     FeaturePanelSemanticIndexService,
 )
-from alphalattice.foundation.market_data_ops.sources.contracts import (
-    CorporateActionEvent,
-    RawDailyBar,
-)
+from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.execution import execution_port
-from alphalattice.kernel.resources import worker_width
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.enums import RebalanceFrequency
+from alphalattice.kernel.validation.schedule_contracts import cadence_threshold_profile
 
 from .artifacts import (
     DEVELOPMENT_ONLY_MANIFEST_CATEGORY,
@@ -221,7 +216,8 @@ def _derivation_workers(configured: int | None) -> int:
     Host that knows its allowance passes it as ``derivation_workers`` and
     never gets more workers than that allowance.
     """
-    return min(DERIVATION_WORKER_CEILING, worker_width(configured))
+    allowed = configured if configured is not None else (os.cpu_count() or 1)
+    return max(1, min(DERIVATION_WORKER_CEILING, allowed))
 
 
 class CausalExecutionOutcomePublisher:
@@ -481,37 +477,25 @@ class CausalExecutionOutcomePublisher:
                 },
             )
 
+        connection = self.store._connect(read_only=True)
         try:
             if parallel:
                 workers = min(workers, len(listings))
                 try:
-                    pool = execution_port().register_pool(
-                        ProcessPoolExecutor(
-                            max_workers=workers,
-                            mp_context=multiprocessing.get_context("spawn"),
-                            initializer=_initialize_derivation_worker,
-                            initargs=(derivation,),
-                        ),
-                        name="causal-derivation",
+                    pool = ProcessPoolExecutor(
+                        max_workers=workers,
+                        initializer=_initialize_derivation_worker,
+                        initargs=(derivation,),
                     )
                 except (OSError, MemoryError) as error:
                     raise ChildStartFailed(error) from error
             window = workers * DERIVATION_WINDOW_PER_WORKER
-            # Each window's listings' bars in one read, so the bars held at once stay a window's.
-            held_actions = self.store.actions_by_listing([v.listing_id for v in listings])
-            held_bars: dict[str, tuple[RawDailyBar, ...]] = {}
-            for index, listing in enumerate(listings):
-                if listing.listing_id not in held_bars:
-                    held_bars = self.store.raw_bars_by_listing(
-                        [v.listing_id for v in listings[index : index + window]],
-                        through=market_as_of,
-                    )
-                bars = held_bars[listing.listing_id]
-                actions = tuple(
-                    value
-                    for value in held_actions[listing.listing_id]
-                    if value.effective_date <= market_as_of
+            for listing in listings:
+                bars = self.store.raw_bars(
+                    listing.listing_id, through=market_as_of, _connection=connection
                 )
+                actions = self.store.actions(listing.listing_id, _connection=connection)
+                actions = tuple(value for value in actions if value.effective_date <= market_as_of)
                 raw_rows_read += len(bars)
                 action_rows_read += len(actions)
                 actions_by_listing[listing.listing_id] = actions
@@ -543,6 +527,7 @@ class CausalExecutionOutcomePublisher:
             for listing_id, future in in_flight:
                 consume(listing_id, future.result())
         finally:
+            connection.close()
             if pool is not None:
                 pool.shutdown(wait=True, cancel_futures=True)
         self._publish_progress(
@@ -953,7 +938,7 @@ class CausalExecutionOutcomePublisher:
             ):
                 raise ValueError("causal execution marker-last readback differs")
             for chunk in surface.published_chunks(manifest):
-                self.artifacts.read_chunk(chunk)
+                self.artifacts.resolve_chunk(chunk)
         receipt_values = {
             "kind": "CausalExecutionOutcomeReceipt",
             "snapshot_hash": manifest.snapshot_hash,

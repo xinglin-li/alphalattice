@@ -24,7 +24,6 @@ from pathlib import Path
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule  # noqa: E402
 from alphalattice.control.data_platform.preflight import (  # noqa: E402
     resolve_trading_session_authority,
 )
@@ -48,6 +47,7 @@ from alphalattice.foundation.market_data_ops.sources.universe import (  # noqa: 
 from alphalattice.foundation.market_data_ops.storage.duckdb import (  # noqa: E402
     MarketDataRepository,
 )
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule  # noqa: E402
 
 DEFAULT_WORKSPACE = PLAYPEN_ROOT / "experiments" / "current-universe-onboarding" / "workspace"
 DEFAULT_PROFILE = PLAYPEN_ROOT / "config" / "market-profiles" / "us-current-index-research.yaml"

@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "namespace": "SYSTEM_FIXTURE",
+  "stable_id": "recorded.macro-stress",
+  "revision": "1.0.0",
+  "synthetic": true,
+  "contains_personal_data": false,
+  "source_urn": "urn:alphalattice:recorded-evidence:macro-stress",
+  "title": "Synthetic macro stress",
+  "content": "Synthetic scenario: broad financing conditions tighten while market volatility rises; only de-risking or human review may follow.",
+  "content_sha256": "de3cd7dfe78e2db192a822ad6ad095522b3e001d2cb55578b9399f8291788e1f",
+  "claim_scope": "RISK",
+  "relation": "SUPPORTING",
+  "permitted_effects": ["DE_RISK", "HUMAN_REVIEW"],
+  "published_at": "2026-01-15T12:00:00Z",
+  "available_at": "2026-01-15T12:05:00Z",
+  "retrieved_at": "2026-01-15T12:10:00Z",
+  "expires_at": "2030-01-01T00:00:00Z",
+  "license_id": "CC0-1.0",
+  "redistribution_allowed": true
+}

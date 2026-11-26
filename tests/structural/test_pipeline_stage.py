@@ -10,10 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
 from devtools.pipeline import receipt, stage
 from devtools.pipeline.definition import DefinitionError
-from devtools.testing import sizes
 from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,167 +45,18 @@ CASES = {  # host, plugin bodies, the providers or the refusal's code
     "a plugin with no PROVIDES": ("workshop", ["X = 1"], "plugin_unloadable"),
     "two plugins of one name": ("workshop", [SHOP + "\nNAME = 'x'"] * 2, "plugin_unloadable"),
 }
-DECISION_CASES = (
-    "a workshop row with no plugin",
-    "two plugins for a row",
-    "a plugin for no row",
-    "a plugin with no PROVIDES",
-    "two plugins of one name",
-)
-
-
-def _assert_provider_refusal(tmp_path, case):
-    """Provider decisions reject each invalid declaration before a journey starts."""
-    host, bodies, wanted = CASES[case]
-    rows = {
-        "ok": stage.Row("ok", "command", "devtools.pipeline", "r", ("workshop", "public")),
-        "red": stage.Row("red", "command", "devtools.pipeline", "r", ("workshop", "public")),
-        "local": stage.Row("local", "workshop", "devtools.pipeline", "r", ("workshop",)),
-        "job": stage.Row("job", "ci-job", "devtools.pipeline", "r", ("public",), job="w"),
-    }
-    pipeline_stage = stage.Stage("commit", 1, "r", "line", "card", 1, tuple(rows))
-    definition = stage.Definition("0" * 64, {"commit": pipeline_stage}, rows)
-    paths = [tmp_path / f"shop{i}.py" for i in range(len(bodies))]
-    for path, body in zip(paths, bodies, strict=True):
-        path.write_text(body, encoding="utf-8")
-    with pytest.raises(DefinitionError) as refused:
-        stage.resolve(definition, pipeline_stage, host, stage.plugins(paths))
-    assert refused.value.code == "pipeline." + wanted
 
 
 @pytest.mark.proves("pipeline.stage_runs_each_row_by_one_provider")
 @pytest.mark.proves("pipeline.stage_target_is_separate_from_stop")
 @pytest.mark.proves("pipeline.cost_receipt_contains_required_nodes")
-@pytest.mark.proves("pipeline.slow_guards_run_when_the_change_touches_what_they_read")
-@pytest.mark.parametrize("case", CASES, ids=str)
+@pytest.mark.parametrize("case", CASES)
 def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
-    tmp_path, request, case, monkeypatch
+    tmp_path, case, monkeypatch
 ):
-    if case in DECISION_CASES:
-        _assert_provider_refusal(tmp_path, case)
-        return
-    request.getfixturevalue("synthetic_history")
     host, bodies, wanted = CASES[case]
-    if case == "public":
-        with monkeypatch.context() as patch:
-
-            def stalled_git(*args, **kwargs):
-                assert kwargs["stdin"] == subprocess.DEVNULL and kwargs["timeout"] > 0
-                raise subprocess.TimeoutExpired("git", kwargs["timeout"])
-
-            patch.setattr(stage.spawn, "run", stalled_git)
-            with pytest.raises(DefinitionError, match=r"pipeline\.workspace_unreadable"):
-                stage._workspace(tmp_path, "develop")
-        with monkeypatch.context() as patch:
-            patch.setenv("ALPHALATTICE_DATA_ROOT", "person-root")
-            environments = []
-
-            def still_running(*args, **kwargs):
-                environments.append(kwargs["env"])
-                raise stage.spawn.TreeNotStopped("spawn.tree_not_stopped: child")
-
-            patch.setattr(stage.spawn, "run", still_running)
-            context = SimpleNamespace(
-                root=tmp_path, stage="commit", deadline=stage.time.monotonic() + 1
-            )
-            result = stage._call(["fake"], tmp_path / "timed.log", context, {})
-            assert result["status"] == "ERROR" and result["stopped"] == "reap"
-            assert "pipeline.child_reap_timeout" in (tmp_path / "timed.log").read_text()
-            stage._call(
-                ["fake"], tmp_path / "timed.log", context, {"ALPHALATTICE_DATA_ROOT": "test"}
-            )
-            assert "ALPHALATTICE_DATA_ROOT" not in environments[0]
-            assert environments[1]["ALPHALATTICE_DATA_ROOT"] == "test"
     if case == "size-required":
         assert hasattr(stage, "derived_holders"), "the stage must select declared owner proofs"
-        census_path = "scripts/fake_census.py"
-        reader_node = "tests/test_registered.py::test_sentence"
-        rows = stage.selection_readers(
-            {
-                "selection_readers": {
-                    reader_node: {
-                        "inputs": ["src/product/words.json"],
-                        "census": census_path,
-                        "sample": "tests/fake_sample.py",
-                        "conditional_inputs": ["config/registries/messages.json"],
-                    }
-                }
-            }
-        )
-        census_source = 'OWNERS = {"control/product_host/new_owner.py": (set(), set())}\n'
-        assert stage.registered_holders(
-            {"src/alphalattice/control/product_host/new_owner.py"},
-            {census_path: census_source},
-            rows,
-        ) == (reader_node,)
-        assert stage.registered_holders({"src/product/words.json"}, {}, rows) == (reader_node,)
-        assert stage.registered_holders({"src/product/words.json.bak"}, {}, rows) == ()
-        assert (
-            stage.registered_holders(
-                {"config/registries/messages.json"}, {census_path: census_source}, rows
-            )
-            == ()
-        )
-        assert stage.registered_holders(
-            {"config/registries/messages.json"},
-            {census_path: census_source + '\nCATALOG = "config/registries/messages.json"\n'},
-            rows,
-        ) == (reader_node,)
-        literal = {reader_node: {"inputs": [], "literal_root": "src/product/"}}
-        own = {"tests/test_registered.py": 'tree("words.py")'}
-        named = stage.selection_readers({"selection_readers": literal})
-        assert stage.registered_holders({"src/product/words.py"}, own, named) == (reader_node,)
-        assert stage.registered_holders({"src/product/other.py"}, own, named) == ()
-        with pytest.raises(ValueError):
-            stage.selection_readers(
-                {"selection_readers": {reader_node: {"inputs": ["../outside"]}}}
-            )
-        graph = tmp_path / "graph"
-        helper = graph / "tests/support/second.py"
-        helper.parent.mkdir(parents=True)
-        helper.write_text(
-            "from product.owner import run\nVALUE = run()\n"
-            "class Runner:\n def call(self): return run()\n"
-            "def invoke(): return run()\n",
-            encoding="utf-8",
-        )
-        (helper.parent / "first.py").write_text(
-            "from tests.support.second import invoke\ndef forward(): return invoke()\n",
-            encoding="utf-8",
-        )
-        script = graph / "scripts/support.py"
-        script.parent.mkdir()
-        script.write_text(
-            "from product.owner import run\ndef via_script(): return run()\n", encoding="utf-8"
-        )
-        reader = graph / "tests/test_reader.py"
-        reader.write_text(
-            "def test_reader():\n from tests.support.first import forward\n forward()\n"
-            "def test_alias():\n import tests.support.second\n tests.support.second.invoke()\n"
-            "def test_script():\n from scripts.support import via_script\n via_script()\n"
-            "def test_value():\n from tests.support.second import VALUE\n assert VALUE\n"
-            "def test_import_only():\n from tests.support.second import VALUE\n"
-            "def test_class():\n from tests.support.second import Runner\n Runner().call()\n"
-            "def test_other():\n pass\n",
-            encoding="utf-8",
-        )
-        assert hasattr(stage, "helper_holders")
-        assert stage.helper_holders(graph, {"src/product/owner.py"}) == (
-            "tests/test_reader.py::test_alias",
-            "tests/test_reader.py::test_class",
-            "tests/test_reader.py::test_import_only",
-            "tests/test_reader.py::test_reader",
-            "tests/test_reader.py::test_script",
-            "tests/test_reader.py::test_value",
-        )
-        assert stage.helper_holders(graph, {"src/product/other.py"}) == ()
-        assert (
-            "tests/integration/product_host/test_workspace_activity.py::"
-            "test_cursor_reconnect_restart_and_typed_read_refusals"
-            in stage.helper_holders(
-                ROOT, {"src/alphalattice/control/product_host/composition/web_launcher.py"}
-            )
-        )
         old, new = "a" * 40, "b" * 40
 
         def pair(path):
@@ -226,220 +75,64 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             "test_every_capped_client_waiter_has_its_cap_rule_reviewed"
         )
         assert stage.derived_holders(
-            [pair(".agents/skills/alphalattice-research/references/specialist-handoff.md")]
+            [pair(".agents/skills/alphalattice-research/references/specialist-handoff.md")], {}
         ) == (materializer,)
-        assert stage.derived_holders([pair(".agents/skills-lookalike/no.md")]) == ()
-        assert stage.derived_holders([pair(".codex/agents/alphalattice_risk.toml")]) == (
+        assert stage.derived_holders([pair(".agents/skills-lookalike/no.md")], {}) == ()
+        assert stage.derived_holders([pair(".codex/agents/alphalattice_risk.toml")], {}) == (
             materializer,
         )
-        assert stage.derived_holders([pair("config/registries/messages.json")]) == (materializer,)
-        assert stage.derived_holders([pair("config/registries/messages-backup.json")]) == ()
+        assert stage.derived_holders([pair("config/registries/messages.json")], {}) == (
+            materializer,
+        )
+        assert stage.derived_holders([pair("config/registries/messages-backup.json")], {}) == ()
         cli = "src/alphalattice/interface/local_application/cli.py"
-        assert stage.derived_holders([pair(cli)]) == (materializer,)
-        policy = json.loads((ROOT / "config/registries/test-sizes.json").read_text("utf-8"))
-        facet_rows = stage.selection_readers(policy)
-
-        lifecycle = "tests/structural/test_lifecycle_tables.py::" + (
-            "test_every_lifecycle_set_is_registered_with_its_reason"
-        )
-        typed = "tests/integration/product_host/test_local_web_service.py::" + (
-            "test_every_web_handler_preserves_every_typed_owner_exception"
-        )
-        caches = "tests/integration/resources/test_caches.py::" + (
-            "test_every_cache_the_product_holds_is_registered_with_the_bound_its_source_holds"
-        )
-        census = {
-            n: r for n, r in facet_rows.items() if n in {host_holder, lifecycle, typed, caches}
-        }
-
-        def facets(path, before, after, rows=census):
-            return stage.facet_holders([pair(path)], {old: before, new: after}, rows)
-
+        assert stage.derived_holders([pair(cli)], {old: "pass", new: "pass"}) == (materializer,)
         owner = "src/alphalattice/control/product_host/composition/answer_turns.py"
-        assert facets(owner, "def f(deadline): pass", "def f(): pass") == (host_holder,)
-        assert facets(owner, "def f(deadline): pass", "def f(deadline): return 1") == ()
-        assert facets(owner, "def f(): pass", "def f(max_wait): pass") == (host_holder,)
+        assert stage.derived_holders(
+            [pair(owner)], {old: "def f(deadline): pass", new: "def f(): pass"}
+        ) == (host_holder,)
+        assert (
+            stage.derived_holders([pair(owner)], {old: "def f(): pass", new: "def f(): pass"}) == ()
+        )
         with pytest.raises(SyntaxError):
-            facets(owner, "def f(deadline): pass", "def (")
+            stage.derived_holders([pair(owner)], {old: "def f(deadline): pass", new: "def ("})
+        assert stage.derived_holders(
+            [pair(owner)], {old: "def f(): pass", new: "def f(max_wait): pass"}
+        ) == (host_holder,)
         client_path = "src/alphalattice/interface/local_application/client.py"
-        assert stage.derived_holders([pair(client_path)]) == (client,)
-        # 11-04..07: a census meets the change it reads in the card's own stage, by its facet.
-        anywhere = "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py"
-        assert facets(anywhere, "", "X = {'QUEUED', 'RUNNING'}") == (lifecycle,)
-        assert facets("tests/x.py", "", "X = {'QUEUED', 'RUNNING'}") == ()
-        error = "class E(ValueError):\n"
-        assert facets(anywhere, error + " x = 1", error + " def __init__(self, i): pass") == (
-            typed,
-        )
-        assert facets(anywhere, error + " x = 1", error + " x = 2") == ()
-        assert facets(
-            anywhere,
-            "from .one import Base\nclass E(Base): pass",
-            "from .two import Base\nclass E(Base): pass",
-        ) == (typed,)
-        # 11-25: the cache census reads a bound through a module constant, a new weak map and a
-        # cached function's scope, and no edit inside a cached function's body.
-        sized = "_HELD = {}\n@lru_cache(maxsize=_HELD)\ndef f(k):\n    return k\n"
-        assert facets(anywhere, sized.format(8), sized.format(16)) == (caches,)
-        assert facets(anywhere, "", "_BELLS = weakref.WeakKeyDictionary()") == (caches,)
-        assert facets(anywhere, "_P = WeakKeyDictionary()", "_P = OrderedDict()") == (caches,)
-        nested = "def {}():\n    @lru_cache(maxsize=8)\n    def f(k):\n        return k\n"
-        assert facets(anywhere, nested.format("A"), nested.format("B")) == (caches,)
-        assert facets(anywhere, sized.format(8), sized.format(8) + "    k += 1\n") == ()
-        # 11-15: a slow whole-tree guard meets the change it reads by its own row, never the broad
-        # match (a module-proof red reached develop when only the nightly ran it).
-        guard = "tests/x.py::"
-        slow_rows = stage.selection_readers(
-            {
-                "selection_readers": {
-                    guard + "modules": {"facet": "module_presence", "within": ["src/*.py"]},
-                    guard + "contracts": {"facet": "class_declarations", "within": ["src/*.py"]},
-                    guard + "calls": {
-                        "facet": "mentions",
-                        "within": ["src/*.py"],
-                        "words": ["plan"],
-                    },
-                    guard + "holders": {"facet": "defined_tests", "within": ["tests/*.py"]},
-                    guard + "tree": {"inputs": ["src/web/*"]},
-                }
-            }
-        )
-        told, untold = "plan(x,\n  protocol=1)", "plan(x)"
-        zero = "0" * 40
-
-        def slow_facets(path, before, after):  # None is an absent side: a zero object, mode 0
-            meta = [
-                ":" + ("000000" if before is None else "100644"),
-                "000000" if after is None else "100644",
-                zero if before is None else old,
-                zero if after is None else new,
-                "A" if before is None else "D" if after is None else "M",
-            ]
-            found = stage.facet_holders([(meta, path)], {old: before, new: after}, slow_rows)
-            return tuple(n.removeprefix(guard) for n in found)
-
-        model = "class M(Base):\n model_config = C(frozen={})"
-        for path, before, after, selected in (
-            (anywhere, "def g(): return 1", "def g(): return 2", ()),  # touches no guard's read
-            (anywhere, "x = 1", None, ("modules",)),  # a module deleted
-            (anywhere, None, "", ("modules",)),  # an empty module added
-            (anywhere, "x = 1", "", ()),  # a module emptied, still there
-            (anywhere, model.format(True), model.format(False), ("contracts",)),
-            (anywhere, "def g():\n f(x,\n  protocol=1)", "def g():\n f(x)", ()),
-            (anywhere, "def g():\n " + told, "def g():\n " + untold, ("calls",)),
-            ("tests/unit/test_a.py", "def test_a(): pass", "def test_b(): pass", ("holders",)),
-            ("tests/unit/test_a.py", "def test_a(): pass", "def test_a(): return", ()),
-        ):
-            assert slow_facets(path, before, after) == selected, after
-        assert stage.registered_holders({"src/web/js/x.js"}, {}, slow_rows) == (guard + "tree",)
-        assert stage.registered_holders({"src/webs.js"}, {}, slow_rows) == ()
-        rule = policy["whole_tree_guards"]
-        orphans = [
-            pattern
-            for pattern in rule["slow"]
-            if pattern.rstrip("*") not in facet_rows
-            and sizes.classify(pattern.rstrip("*"), [], policy)[0] != "large"
-        ]
-        assert orphans == [], "give each slow whole-tree guard its selection_readers row"
-        with pytest.raises(ValueError):
-            stage.facet_holders([pair(anywhere)], {}, facet_rows)
-        for bad in (
-            {"facet": "x", "within": []},
-            {"facet": "mentions", "within": ["src/*.py"]},  # a word facet names its words
-            {"facet": "lifecycle_sets", "within": ["src/*.py"], "words": ["x"]},
-            {"facet": "mentions", "within": ["src/*.py"], "words": [" "]},
-        ):
-            with pytest.raises(ValueError):
-                stage.selection_readers({"selection_readers": {lifecycle: bad}})
+        assert set(
+            stage.derived_holders(
+                [pair(client_path)], {old: "def f(deadline): pass", new: "def f(): pass"}
+            )
+        ) == {client, host_holder}
         monkeypatch.setattr(
             stage,
             "changed_families",
-            lambda root, base, head, **kwargs: [
-                "tests/test_new.py::test_one",
-                "tests/e2e/test_journey.py::test_journey",
-                "tests/test_heavy.py::test_heavy",
-            ],
+            lambda root, base, head, **kwargs: ["tests/test_new.py::test_one"],
             raising=False,
         )
     (tmp_path / "config/registries").mkdir(parents=True)
     for name in ("owners-map.json", "test-sizes.json"):
         shutil.copy(ROOT / "config/registries" / name, tmp_path / "config/registries" / name)
-    if case == "size-required":
-        size_file = tmp_path / "config/registries/test-sizes.json"
-        size_policy = json.loads(size_file.read_text(encoding="utf-8"))
-        size_policy["selection_readers"] = rows | {host_holder: facet_rows[host_holder]}
-        size_policy["large"].append(
-            {
-                "pattern": "tests/test_heavy.py::test_heavy*",
-                "owner": "tests",
-                "reason": "Exercises the long observed computation.",
-            }
-        )
-        size_file.write_text(json.dumps(size_policy), encoding="utf-8")
     config = tmp_path / "config/pipeline.toml"
     config.write_text(DEFINITION, "utf-8")
     (tmp_path / "uv.lock").write_text("locked-test-environment\n", encoding="utf-8")
-    if case == "size-required":
-        helper = tmp_path / "tests/support/host.py"
-        helper.parent.mkdir(parents=True)
-        helper.write_text(
-            "from alphalattice.control.product_host.new_owner import wait\n"
-            "def call(): return wait()\n",
-            encoding="utf-8",
-        )
-        script = tmp_path / "scripts/support.py"
-        script.parent.mkdir(parents=True)
-        script.write_text(helper.read_text(encoding="utf-8"), encoding="utf-8")
-        census = tmp_path / census_path
-        census.parent.mkdir(parents=True, exist_ok=True)
-        census.write_text(
-            'OWNERS = {"control/product_host/new_owner.py": (set(), set())}\n', encoding="utf-8"
-        )
-        journey = tmp_path / "tests/e2e/test_journey.py"
-        journey.parent.mkdir(parents=True)
-        journey.write_text(
-            "def test_journey():\n from tests.support.host import call\n call()\n",
-            encoding="utf-8",
-        )
-        test = tmp_path / "tests/test_host.py"
-        test.write_text(
-            "def test_host():\n from tests.support.host import call\n call()\n"
-            "def test_script():\n from scripts.support import call\n call()\n",
-            encoding="utf-8",
-        )
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
-    for words in (["add", "-A"], ["commit", "-qm", "c"]):
-        spawn.run([*git, *words], check=True)
+    for words in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "c"]):
+        subprocess.run([*git, *words], check=True)
     if case == "size-required":
-        before = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        before = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         skill = tmp_path / ".agents/skills/example/references/handoff.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("owner", encoding="utf-8")
         deadline = tmp_path / "src/alphalattice/control/product_host/new_owner.py"
         deadline.parent.mkdir(parents=True)
         deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-        spawn.run([*git, "add", "-A"], check=True)
-        spawn.run([*git, "commit", "-qm", "derived owners"], check=True)
-        after = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
-        original_test = test.read_text(encoding="utf-8")
-        test.write_text("def test_host(): pass\n", encoding="utf-8")
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-qm", "derived owners"], check=True)
+        after = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         selected, _ = stage._size_selection("commit", {"base": before, "head": after}, (), tmp_path)
-        test.write_text(original_test, encoding="utf-8")
-        with pytest.raises(DefinitionError, match=r"pipeline\.stage_invalid"):
-            stage._size_selection(
-                "commit",
-                {"base": before, "head": after},
-                ("tests/e2e/test_journey.py::test_journey",),
-                tmp_path,
-            )
-        assert set(selected) == {
-            materializer,
-            host_holder,
-            "tests/test_new.py::test_one",
-            "tests/test_host.py::test_host",
-            "tests/test_host.py::test_script",
-            reader_node,
-        }
+        assert set(selected) == {materializer, host_holder, "tests/test_new.py::test_one"}
         from scripts import check_alpha_verification_impact as impact_runner
 
         with monkeypatch.context() as own:
@@ -451,33 +144,31 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
             assert set(impact_runner._declared_holders(changed, base=before, staged=False)) == {
                 materializer,
                 host_holder,
-                reader_node,
             }
             deadline.unlink()
-            spawn.run([*git, "add", "-u"], check=True)
-            assert set(impact_runner._declared_holders((changed[1],), base=None, staged=True)) == {
+            subprocess.run([*git, "add", "-u"], check=True)
+            assert impact_runner._declared_holders((changed[1],), base=None, staged=True) == (
                 host_holder,
-                reader_node,
-            }
+            )
             deadline.write_text("def wait(deadline): pass\n", encoding="utf-8")
-            spawn.run([*git, "add", changed[1]], check=True)
+            subprocess.run([*git, "add", changed[1]], check=True)
             outside = tmp_path / "docs/moved-handoff.md"
             outside.parent.mkdir(exist_ok=True)
-            spawn.run(
+            subprocess.run(
                 [*git, "mv", changed[0], outside.relative_to(tmp_path).as_posix()], check=True
             )
             assert impact_runner._declared_holders(
                 (outside.relative_to(tmp_path).as_posix(),), base=None, staged=True
             ) == (materializer,)
-            spawn.run(
+            subprocess.run(
                 [*git, "mv", outside.relative_to(tmp_path).as_posix(), changed[0]], check=True
             )
         unrelated = tmp_path / "docs/unrelated.md"
         unrelated.parent.mkdir(exist_ok=True)
         unrelated.write_text("not an owner", encoding="utf-8")
-        spawn.run([*git, "add", "-A"], check=True)
-        spawn.run([*git, "commit", "-qm", "unrelated"], check=True)
-        next_head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-qm", "unrelated"], check=True)
+        next_head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         selected, _ = stage._size_selection(
             "commit", {"base": after, "head": next_head}, (), tmp_path
         )
@@ -526,9 +217,6 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         if case == "size-required":
             assert set(json.loads((out / "size-required").read_text("utf-8"))) == {
                 "tests/test_new.py::test_one",
-                "tests/test_host.py::test_host",
-                "tests/test_host.py::test_script",
-                reader_node,
                 materializer,
                 host_holder,
             }
@@ -543,13 +231,10 @@ def test_a_stage_runs_each_row_by_its_one_provider_into_a_receipt_that_verifies(
         source.parent.mkdir(parents=True)
         source.write_text(
             """import pytest
-@pytest.mark.medium
+@pytest.mark.large
 @pytest.mark.parametrize('value',[1,2],ids=['one','two'])
 def test_cost_family(value):
     assert value > 0
-@pytest.mark.large
-def test_slow():
-    assert True
 def test_control():
     assert True
 """,
@@ -584,15 +269,22 @@ def test_control():
             "--workers",
             "1",
         ]
+        env = child_environment(ALPHALATTICE_TEST_LANE="merge", PYTHONPATH=str(ROOT / "src"))
         family = source.relative_to(tmp_path).as_posix() + "::test_cost_family"
-        env = child_environment(
-            ALPHALATTICE_TEST_LANE="merge",
-            PYTHONPATH=str(ROOT / "src"),
-            PYTEST_ADDOPTS="--deselect=" + family,
-        )
+        ordinary = tmp_path / "ordinary"
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0
         )
+        done = subprocess.run(
+            [*argv, "--out", str(ordinary)],
+            env=env,
+            capture_output=True,
+            timeout=30,
+            creationflags=flags,
+        )
+        assert done.returncode == 0, done.stderr
+        with pytest.raises(receipt.ReceiptError, match="missing required tests"):
+            receipt.verify(ordinary / "receipt.jsonl", required_tests=[family], within_limits=True)
         cache = source.parent / "__pycache__"
         cache.mkdir(exist_ok=True)
         (cache / "fixture.pyc").write_bytes(b"bytecode is not source")
@@ -600,11 +292,11 @@ def test_control():
             ["add", "config/pipeline.toml", "scripts/pipeline.py", relative, "pytest.ini"],
             ["commit", "-qm", "cost fixture", "-m", "Change-Kind: cost"],
         ):
-            spawn.run([*git, *words], check=True)
-        tracked = spawn.check_output([*git, "ls-files", "-z"]).split(b"\0")
+            subprocess.run([*git, *words], check=True)
+        tracked = subprocess.check_output([*git, "ls-files", "-z"]).split(b"\0")
         assert not any(name.endswith(b".pyc") for name in tracked)
         cost = tmp_path / "cost"
-        done = spawn.run(
+        done = subprocess.run(
             [*argv, "--out", str(cost), "--required-tests", family],
             env=env,
             capture_output=True,
@@ -612,7 +304,7 @@ def test_control():
             creationflags=flags,
         )
         assert done.returncode == 0, done.stderr
-        head = spawn.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        head = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
         assert (
             receipt.verify(
                 cost / "receipt.jsonl",
@@ -623,34 +315,20 @@ def test_control():
             )["result"]
             == "PASS"
         )
-        slow = spawn.run(
-            [
-                *argv,
-                "--out",
-                str(tmp_path / "slow"),
-                "--required-tests",
-                family.replace("test_cost_family", "test_slow"),
-            ],
-            env=env,
-            capture_output=True,
-            timeout=30,
-            creationflags=flags,
-        )
-        assert slow.returncode != 0 and b"missing required tests" in slow.stderr
-        for ran, absent in ((tmp_path / "slow", family), (cost, family + "[missing]")):
-            with pytest.raises(receipt.ReceiptError, match="missing required tests"):
-                receipt.verify(ran / "receipt.jsonl", required_tests=[absent], within_limits=True)
-        with pytest.raises(DefinitionError) as outside:
-            stage.run(
-                tmp_path,
-                "commit",
-                out=tmp_path / "outside",
-                required_tests=["../test_x.py::test_x"],
-                **asked,
+        for label, selected in (
+            ("missing", family + "[missing]"),
+            ("outside", "../test_x.py::test_x"),
+        ):
+            bad = subprocess.run(
+                [*argv, "--out", str(tmp_path / label), "--required-tests", selected],
+                env=env,
+                capture_output=True,
+                timeout=30,
+                creationflags=flags,
             )
-        assert outside.value.code == "pipeline.stage_invalid"
-        spawn.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
-        refused = spawn.run(
+            assert bad.returncode != 0
+        subprocess.run([*git, "commit", "--allow-empty", "-qm", "ordinary"], check=True)
+        refused = subprocess.run(
             [*argv, "--out", str(tmp_path / "not-cost"), "--required-tests", family],
             env=env,
             capture_output=True,

@@ -16,9 +16,6 @@ import pytest
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
 )
-from alphalattice.evidence.alternative_evidence.runtime.service import (
-    AlternativeEvidenceDocumentIntelligenceRuntime,
-)
 from alphalattice.evidence.alternative_evidence.sources.acquisition import (
     AlternativeEvidenceTaskCancelled,
 )
@@ -30,8 +27,10 @@ from alphalattice.evidence.alternative_evidence.sources.sec_edgar import (
     AlternativeEvidenceCommitRefused,
     SecEdgarSource,
 )
-from alphalattice.evidence.alternative_evidence.storage import world_reads
-from alphalattice.foundation.data_layer import recall
+from alphalattice.evidence.alternative_evidence.storage.inventory import INDEX_ROOT
+from alphalattice.kernel.knowledge.hybrid_contracts import (
+    HYBRID_INDEX_SCHEMA_VERSION,
+)
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     EIGHT_K,
@@ -56,13 +55,6 @@ from tests.alternative_evidence_desk.sec_scenario_transport import (
     SecScenarioTransport,
     filing_body,
 )
-
-
-@pytest.fixture(autouse=True)
-def _objects_are_the_authority(monkeypatch: pytest.MonkeyPatch) -> None:
-    """These tests keep and verify the workspace's own source objects: world serves no body,
-    as it serves none to a Host whose world holds no evidence."""
-    monkeypatch.setattr(world_reads, "serving", lambda: None)
 
 
 def test_a_fresh_source_check_with_no_change_downloads_no_body_again(tmp_path: Path) -> None:
@@ -527,28 +519,29 @@ def test_a_denied_transport_makes_no_reuse_claim_and_names_the_refusal(tmp_path:
 def test_a_lost_index_is_rebuilt_from_committed_assets_without_a_download(
     tmp_path: Path,
 ) -> None:
-    """A lost index is rebuilt from committed assets without a download: the Host's held search
-    dropped, a session reopens from the store's chunks and vectors, never asking the source or
-    encoding a passage again."""
+    """A lost index is rebuilt from committed assets without a download."""
 
     transport = _transport()
     runtime = _runtime(tmp_path)
     try:
-        request = _request()
-        _r, _snapshot, source_set = _acquire(runtime, transport, request)
-        document_set = runtime.canonicalize(source_set=source_set, published_at=NOW, as_of=NOW)
+        _r, _snapshot, source_set = _acquire(runtime, transport, _request())
+        document_set = runtime.canonicalize(source_set=source_set, published_at=NOW)
         generation = runtime.build_retrieval(document_set=document_set, built_at=NOW)
-        objects_before = _source_objects(runtime)
-        encoded = runtime.retrieval.embedded_chunk_count
-        transport.reset_calls()
-        recall.close()
-        session = runtime.open_session(
-            document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
+        database = (
+            runtime.documents.workspace.root
+            / Path(*INDEX_ROOT.split("/"))
+            / HYBRID_INDEX_SCHEMA_VERSION
+            / f"{generation.corpus_hash}-{generation.index_spec_hash}.db"
         )
-        session.close()
-        assert transport.calls == [], "a reopen never asks the source"
+        assert database.is_file()
+        objects_before = _source_objects(runtime)
+        transport.reset_calls()
+        database.unlink()
+        report = runtime.rebuild_retrieval(generation.index_id)
+        assert database.is_file(), report
+        assert transport.calls == [], "a rebuild never asks the source"
         assert _source_objects(runtime) == objects_before, "originals untouched"
-        assert runtime.retrieval.embedded_chunk_count == encoded, "vectors, not the model"
+        assert runtime.retrieval.passage_embedding_pass_count == 1, "vectors, not the model"
     finally:
         runtime.close()
 
@@ -653,8 +646,8 @@ def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
         }
         kept = next(d for d in source_set.documents if d.revision == TEN_K.accession)
         assert kept.content_sha256 == original.content_sha256
-        assert runtime.documents.resolve_source_object(original, as_of=None).content == (
-            runtime.documents.resolve_source_object(kept, as_of=None).content
+        assert runtime.documents.resolve_source_object(original).content == (
+            runtime.documents.resolve_source_object(kept).content
         )
         assert len(_source_objects(runtime)) == 4 and _commits(runtime) == 4
     finally:
@@ -662,15 +655,9 @@ def test_an_amendment_fetches_only_itself_and_the_original_stays_as_sealed(
 
 
 def test_a_corrupt_commit_record_is_a_named_integrity_refusal_not_a_cache_miss(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """A corrupt commit record is a named integrity refusal not a cache miss."""
-
-    # The acquisition's own local integrity, as without a Host: world's admission of the same
-    # damaged record is issue 1119-C1-1.
-    monkeypatch.setattr(
-        AlternativeEvidenceDocumentIntelligenceRuntime, "admit_to_world", lambda _self: None
-    )
 
     transport = _transport()
     first = _runtime(tmp_path)

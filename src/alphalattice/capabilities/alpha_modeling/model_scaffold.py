@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 from .declaration import AlphaModelDeclaration, installed_declaration, read_declaration
 from .model_contract import locked_distributions

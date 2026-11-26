@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.research_foundation.contracts import ResearchFoundationBinding
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..evaluation.contracts import AlphaMetricPolicy
 from ..inputs.folds import AlphaFoldArrayPlan, AlphaFoldArrays, build_alpha_fold_commitment

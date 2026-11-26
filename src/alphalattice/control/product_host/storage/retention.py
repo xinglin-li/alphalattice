@@ -5,17 +5,23 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
+from hashlib import file_digest
 from pathlib import Path
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.storage.contracts import (
     PhysicalAvailability,
     StorageEvictionPlan,
 )
-from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
+EVIDENCE_INDEX_PREFIX = "runtime/evidence-knowledge/.system/knowledge-indexes/"
+EVIDENCE_VECTOR_PREFIX = "runtime/evidence-knowledge/.system/knowledge-vectors/"
+"""Where the evidence index payloads live, relative to the workspace: the one
+evidence root an approved plan may release, through the index owner's own
+eviction so a marker stays where the file was."""
 
 
 def require_available_input(workspace: Path, relative: str) -> None:
@@ -41,9 +47,8 @@ def require_available_input(workspace: Path, relative: str) -> None:
 
 
 def file_content_hash(path: Path) -> str:
-    """The file's SHA-256 through the trust record: a plan's hash serves its cleanup's check."""
-    digest: str = file_sha256(path)
-    return digest
+    with path.open("rb") as stream:
+        return file_digest(stream, "sha256").hexdigest()
 
 
 def pending_input_cleanups(workspace: Path) -> tuple[str, ...]:
@@ -155,26 +160,25 @@ class BoundedStorageRetentionOwner:
         *,
         references_hash: str,
         eligible_targets: dict[str, str],
+        evidence_evictor: Callable[[str, str], int] | None = None,
     ) -> int:
         """Journal authorised intent before unlink; recovery repeats this exact plan.
 
+        An evidence index target is released by `evidence_evictor(relative,
+        plan_hash)` -- the index owner removes the file and leaves its marker --
+        never by a bare unlink; without an evictor such a target is refused.
         A target the journalled plan already released is not asked to be
         eligible again: it is gone, and the resume releases only what remains.
-        A started plan resumes even when the references changed since it was
-        journalled (a reference field retired, say): its intent is admitted, and
-        each target it still holds must be eligible under the current roots.
         """
         if not _HASH.fullmatch(plan_hash):
             raise StorageRetentionError("storage.plan_invalid", "Invalid plan identity.")
         path = self.governance_root / "input-plans" / f"{plan_hash}.json"
         payload = json.loads(path.read_text(encoding="utf-8"))
-        started = self.governance_root / "input-cleanup-started" / f"{plan_hash}.json"
-        if canonical_hash(payload) != plan_hash or (
-            payload["references_hash"] != references_hash and not started.is_file()
-        ):
+        if canonical_hash(payload) != plan_hash or payload["references_hash"] != references_hash:
             raise StorageRetentionError(
                 "storage.cleanup_plan_stale", "Storage references changed; preview again."
             )
+        started = self.governance_root / "input-cleanup-started" / f"{plan_hash}.json"
         completed = self.governance_root / "input-cleanup-completed" / f"{plan_hash}.json"
         for name, digest in payload["targets"].items():
             released = started.exists() and not (self.workspace / name).exists()
@@ -192,24 +196,37 @@ class BoundedStorageRetentionOwner:
         targets = []
         for relative, expected in payload["targets"].items():
             target = (self.workspace / relative).resolve()
-            if started.exists() and not target.exists():
-                continue  # released by this plan's start (a 0.2.7 input copy among them)
+            evidence_index = relative.startswith(EVIDENCE_INDEX_PREFIX) and relative.endswith(".db")
+            evidence_vector = relative.startswith(EVIDENCE_VECTOR_PREFIX) and relative.endswith(
+                (".f32", ".blocks.json")
+            )
+            if (evidence_index or evidence_vector) and evidence_evictor is None:
+                raise StorageRetentionError(
+                    "storage.cleanup_target_protected",
+                    "An evidence object can be released only by its owner; none is admitted.",
+                )
             allowed = (
-                relative.startswith(
-                    (
-                        "artifacts/feature-panel/chunks/",
-                        "artifacts/data-operations/execution-outcomes/development/chunks/",
+                relative.startswith("research-inputs/")
+                or (
+                    relative.startswith(
+                        (
+                            "artifacts/feature-panel/chunks/",
+                            "artifacts/data-operations/execution-outcomes/development/chunks/",
+                        )
                     )
+                    and relative.endswith(".parquet")
                 )
-                and relative.endswith(".parquet")
-            ) or (
-                relative.startswith(
-                    (
-                        "artifacts/alpha-research/current/workspace-observation-history/",
-                        "artifacts/data-operations/execution-outcomes/local-qa-preparation/",
+                or evidence_index
+                or evidence_vector
+                or (
+                    relative.startswith(
+                        (
+                            "artifacts/alpha-research/current/workspace-observation-history/",
+                            "artifacts/data-operations/execution-outcomes/local-qa-preparation/",
+                        )
                     )
+                    and relative.endswith((".parquet", ".json"))
                 )
-                and relative.endswith((".parquet", ".json"))
             )
             if (
                 not target.is_relative_to(self.workspace)
@@ -231,7 +248,12 @@ class BoundedStorageRetentionOwner:
         for target in targets:
             if not target.exists():
                 continue
-            target.unlink()
+            relative = target.relative_to(self.workspace).as_posix()
+            if relative.startswith((EVIDENCE_INDEX_PREFIX, EVIDENCE_VECTOR_PREFIX)):
+                assert evidence_evictor is not None
+                evidence_evictor(relative, plan_hash)
+            else:
+                target.unlink()
             deleted += 1
         self._publish_availability(tuple(payload["targets"]), plan_hash)
         self._publish("input-cleanup-completed", plan_hash, payload)

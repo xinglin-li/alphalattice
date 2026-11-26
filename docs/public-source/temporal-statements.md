@@ -1,5 +1,5 @@
 # Read a result's temporal statement
-Last checked: 2026-11-23 against 0.2.9
+Last checked: 2026-10-22 against 0.2.3
 
 Read the Panel's temporal marks with evaluation and input history. Later data never improves an earlier sealed result. Missing evidence stays `NOT_RECORDED`; infer no historical statement from a result date.
 
@@ -39,4 +39,4 @@ Neither promises complete historical classification. `sector_observed_on`, `sect
 
 `price_basis: split_adjusted` uses current provider split basis and adjusted-close back-adjustment for later splits and dividends. `unadjusted` uses as-traded prices and volumes and only splits known per session. Scale invariance does not make split-basis data point in time. Formula `_pit` leaves reconstruct as-traded values re-based to their session, with the controls' fractional-adjustment volume assumption. Unknown marks remain in `statements`.
 
-Source contracts: [temporal marks](../../src/alphalattice/foundation/feature_engine/publication/temporal_statement.py), [readback timing](../../src/alphalattice/control/product_host/research_authoring/timing.py), [Sector vocabulary](../../src/alphalattice/capabilities/domain_contracts/sector_treatment.py), [effective sessions](../../src/alphalattice/foundation/market_data_ops/sources/sector_forward.py).
+Source contracts: [temporal marks](../../src/alphalattice/foundation/feature_engine/publication/temporal_statement.py), [readback timing](../../src/alphalattice/control/product_host/research_authoring/timing.py), [Sector vocabulary](../../src/alphalattice/kernel/shared_kernel/sector_treatment.py), [effective sessions](../../src/alphalattice/foundation/market_data_ops/sources/sector_forward.py).

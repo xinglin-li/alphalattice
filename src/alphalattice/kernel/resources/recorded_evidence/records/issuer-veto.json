@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "namespace": "SYSTEM_FIXTURE",
+  "stable_id": "recorded.issuer-veto",
+  "revision": "1.0.0",
+  "synthetic": true,
+  "contains_personal_data": false,
+  "source_urn": "urn:alphalattice:recorded-evidence:issuer-veto",
+  "title": "Synthetic issuer veto",
+  "content": "Synthetic scenario: an issuer reports a control failure that invalidates the current action premise; veto, de-risking, or human review may follow.",
+  "content_sha256": "e6d95ae8b5db671371c24c3232f5c96f9011a02185f6a43df8ca63fc1cdbbe12",
+  "claim_scope": "CONSTRAINT",
+  "relation": "CONTRADICTING",
+  "permitted_effects": ["DE_RISK", "HUMAN_REVIEW", "VETO"],
+  "published_at": "2026-01-16T13:00:00Z",
+  "available_at": "2026-01-16T13:02:00Z",
+  "retrieved_at": "2026-01-16T13:05:00Z",
+  "expires_at": "2030-01-01T00:00:00Z",
+  "license_id": "CC0-1.0",
+  "redistribution_allowed": true
+}

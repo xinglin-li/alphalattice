@@ -28,8 +28,8 @@ def offline_execution_environment() -> Iterator[None]:
 
 # They tamper with their seed's market data on purpose, so each gets a private copy.
 PRIVATE_DATA = {
-    "test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body",
-    "test_input_tamper_refuses_a_replay_without_losing_historical_readback",
+    "test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool",
+    "test_input_and_result_tamper_refuse_without_losing_historical_readback",
 }
 
 

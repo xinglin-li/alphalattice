@@ -9,22 +9,12 @@ the machine. Task Control reads it each time it admits a Task.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from alphalattice.kernel.resources import logical_cpu_count
-
-if TYPE_CHECKING:
-    from alphalattice.control.task_control.contracts import (
-        ResearchPlan,
-        TaskInputEnvelope,
-        TaskRecord,
-    )
 
 QUEUE_SETTING_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, with the CPU budget: a setting, not evidence."""
@@ -53,41 +43,6 @@ class TaskQueueSetting(BaseModel):  # type: ignore[misc]
     tasks_running: TasksRunning = "auto"
     chosen_by: Chooser = "DEFAULT"
     chosen_at: datetime | None = None
-
-
-def active_same_work(  # type: ignore[no-untyped-def]
-    connection,
-    workspace_id: str,
-    verified: Callable[[str, str], TaskRecord],
-    input_envelope: TaskInputEnvelope,
-    plan: ResearchPlan,
-    same_work: Callable[[TaskRecord], bool] | None,
-) -> TaskRecord | None:
-    """The unfinished Task of this workspace an admission would repeat, read inside its unit."""
-    rows = connection.execute(
-        """
-        SELECT task_id, record_json FROM workspace_task
-        WHERE workspace_id = ? AND input_hash = ? AND plan_hash = ?
-          AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
-        ORDER BY admitted_us DESC
-        """,
-        [workspace_id, input_envelope.input_hash, plan.plan_hash],
-    ).fetchall()
-    if rows:
-        return verified(str(rows[0][0]), rows[0][1])
-    if same_work is None:
-        return None
-    rows = connection.execute(
-        """
-        SELECT task_id, record_json FROM workspace_task
-        WHERE workspace_id = ? AND task_kind = ?
-          AND lifecycle NOT IN ('SUCCEEDED', 'BLOCKED', 'CANCELLED')
-        ORDER BY admitted_us DESC
-        """,
-        [workspace_id, input_envelope.task_kind],
-    ).fetchall()
-    active = (verified(str(row[0]), row[1]) for row in rows)
-    return next((task for task in active if same_work(task)), None)
 
 
 def queue_setting_path(runtime_root: Path) -> Path:
@@ -148,7 +103,7 @@ def waiting_places(setting: TaskQueueSetting) -> tuple[int, str]:
     if setting.tasks_waiting != "auto":
         return setting.tasks_waiting, f"set to {setting.tasks_waiting}"
     affinity = getattr(os, "sched_getaffinity", None)
-    processors = len(affinity(0)) if affinity is not None else logical_cpu_count() or 1
+    processors = len(affinity(0)) if affinity is not None else os.cpu_count() or 1
     places = max(1, processors // PROCESSORS_PER_WAITING_PLACE)
     return places, (
         f"auto: one waiting place per {PROCESSORS_PER_WAITING_PLACE} of the {processors} processors"
@@ -159,6 +114,6 @@ def running_places(setting: TaskQueueSetting) -> tuple[int, str]:
     """How many Tasks may run at once now, and why."""
     if setting.tasks_running != "auto":
         return setting.tasks_running, f"set to {setting.tasks_running}"
-    processors = logical_cpu_count() or 1
+    processors = os.cpu_count() or 1
     places = 2 if processors >= PROCESSORS_FOR_TWO_RUNNING else 1
     return places, f"auto: {places} at once on {processors} processors"

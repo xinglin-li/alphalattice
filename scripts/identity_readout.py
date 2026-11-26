@@ -31,7 +31,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 TABLE = ROOT / "config" / "identity-roles.json"
-SUCCESSORS = ROOT / "config" / "identity-successors"
+SUCCESSORS = ROOT / "config" / "identity-successors.json"
 REACH = ROOT / "config" / "registries" / "identity-reach.json"
 
 
@@ -84,39 +84,44 @@ def record(changes: dict[str, tuple[str, str]], change: str, reason: str) -> lis
             "identity_readout: these roles compare exactly, so a move makes their current "
             f"plans historical; give them a role that follows recorded moves first: {exact}"
         )
-    from alphalattice.foundation.data_layer.log import uuid7
-
-    moves = [
-        {
-            "role": role,
-            "predecessor": predecessor,
-            "successor": successor,
-            "change": change,
-            "reason": reason,
-        }
-        for role, (predecessor, successor) in changes.items()
-    ]
-    document = {"schema": "identity-successors", "version": 1, "moves": moves}
-    SUCCESSORS.mkdir(exist_ok=True)
-    with (SUCCESSORS / f"1-{uuid7()}.json").open("x", encoding="utf-8", newline="\n") as stream:
-        stream.write(json.dumps(document, indent=1, ensure_ascii=False) + "\n")
+    document = json.loads(SUCCESSORS.read_text(encoding="utf-8"))
+    for role, (predecessor, successor) in changes.items():
+        document["moves"].append(
+            {
+                "role": role,
+                "predecessor": predecessor,
+                "successor": successor,
+                "change": change,
+                "reason": reason,
+            }
+        )
+    SUCCESSORS.write_bytes((json.dumps(document, indent=1, ensure_ascii=False) + "\n").encode())
     return sorted(changes)
 
 
 def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str], str]]:
     """Which roles an edit to each area may move, and how each area is reached (GB, ID8).
 
-    Each role's installed value is computed with both rule closures watched (form 1's walk and
-    form 2's): every module either reaches is one whose code the role hashes. A module's area is
-    its package.
+    Each role's installed value is computed with the rule closure's walk watched: every module
+    the walk reaches is one whose syntax the role hashes. A module's area is its package.
     """
 
-    from alphalattice.capabilities.domain_contracts.source_identity import observe_source_closures
+    from alphalattice.kernel.shared_kernel import source_identity
 
+    walk = source_identity.number_deciding_closure
     reached: list[dict[str, str]] = []
+
+    def watched(
+        entries: tuple[str, ...], *, root: Path, rule: Any, excluded: frozenset[str] = frozenset()
+    ) -> dict[str, str]:
+        found = walk(entries, root=root, rule=rule, excluded=excluded)
+        reached.append(found)
+        return found
+
     areas: dict[str, set[str]] = {}
     edges: dict[tuple[str, str], str] = {}
-    with observe_source_closures(reached.append):
+    source_identity.number_deciding_closure = watched  # looked up at call time
+    try:
         for entry in roles(table):
             reached.clear()
             installed(entry)
@@ -126,6 +131,8 @@ def reach(table: Path = TABLE) -> tuple[dict[str, set[str]], dict[tuple[str, str
                 area = _area(module)
                 areas.setdefault(area, set()).add(role)
                 edges.setdefault((area, role), _how_reached(module, modules))
+    finally:
+        source_identity.number_deciding_closure = walk
     return areas, edges
 
 
@@ -147,7 +154,7 @@ def _area(module: str) -> str:
 def _how_reached(module: str, modules: set[str]) -> str:
     """The first module of the closure that imports this one, or that it is an entry."""
 
-    from alphalattice.capabilities.domain_contracts.source_identity import source_module_imports
+    from alphalattice.kernel.shared_kernel.source_identity import source_module_imports
 
     for importer in sorted(modules - {module}):
         file = _file_of(importer)

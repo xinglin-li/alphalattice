@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.experiments.bindings import (
     AlphaExperimentAdmissionError,
     build_alpha_experiment_request,
     build_candidate_execution_binding,
     build_development_surface_binding,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.alpha_research.candidate_inventories import (
     load_full_alpha_candidate_inventory,
     load_initial_candidate_inventory,
@@ -136,70 +134,3 @@ def test_arbitrary_ridge_parameter_is_rejected_before_request_hashing() -> None:
             listing_set_hash=canonical_hash(FIXTURE_LISTING_IDS),
             ordered_listing_ids=FIXTURE_LISTING_IDS,
         )
-
-
-@pytest.mark.proves("alpha_research.foundation_feature_axis_is_frozen")
-def test_foundation_axis_cannot_be_narrowed_or_reordered_by_a_direct_compiler():
-
-    from alphalattice.investment.alpha_research.experiments.authoring import AlphaExperimentCompiler
-
-    # Catalogs are irrelevant to this pure axis check; no Program or authority is fabricated.
-    compiler = AlphaExperimentCompiler(
-        target_recipes=Mock(),
-        model_mandate=Mock(),
-        model_catalog=Mock(),
-        panel_factor_ids=("a", "b"),
-        factor_evidence_factor_ids=("a", "b"),
-        factor_evidence_checkpoint_hash="a" * 64,
-        research_foundation_hash="b" * 64,
-    )
-    assert compiler._resolve_feature_axis({"ordered_feature_ids": ["a", "b"]}) == ("a", "b")
-    for axis in (["a"], ["b", "a"], ["c"]):
-        with pytest.raises(ValueError, match=r"research_foundation\.feature_axis_frozen"):
-            compiler._resolve_feature_axis({"ordered_feature_ids": axis})
-
-
-@pytest.mark.proves("alpha_research.historical_sector_coverage_is_bound")
-def test_historical_sector_coverage_is_bound_without_moving_legacy_foundations():
-    from alphalattice.capabilities.validation.enums import RebalanceFrequency
-    from alphalattice.investment.alpha_research.inputs.development_foundation import (
-        AlphaDevelopmentExecutionOutcomeRef,
-        AlphaDevelopmentFoundationBinding,
-    )
-
-    digest = "1" * 64
-    legacy = AlphaDevelopmentFoundationBinding.create(
-        research_cadence=RebalanceFrequency.DAILY,
-        feature_panel_snapshot_hash=digest,
-        logical_panel_hash=digest,
-        logical_semantic_index_hash=digest,
-        ordered_factor_ids=("factor",),
-        selected_factor_ids=("factor",),
-        execution_outcome=AlphaDevelopmentExecutionOutcomeRef(
-            research_cadence=RebalanceFrequency.DAILY,
-            snapshot_hash=digest,
-            manifest_ref="fixture",
-            listing_set_hash=digest,
-        ),
-        factor_development_receipt_hash=digest,
-        factor_development_checkpoint_hash=digest,
-        factor_development_program_hash=digest,
-        factor_development_binding_hash=digest,
-        sector_revision=digest,
-    )
-    payload = legacy.model_dump(mode="json")
-    assert "sector_coverage_hash" not in payload
-    assert AlphaDevelopmentFoundationBinding.model_validate(payload) == legacy
-    expanded = AlphaDevelopmentFoundationBinding.create(
-        **{
-            k: getattr(legacy, k)
-            for k in type(legacy).model_fields
-            if k not in {"foundation_hash", "sector_coverage_hash"}
-        },
-        sector_coverage_hash="2" * 64,
-    )
-    assert expanded.foundation_hash != legacy.foundation_hash
-    assert expanded.sector_revision == legacy.sector_revision
-    tampered = {**expanded.model_dump(mode="json"), "sector_coverage_hash": "3" * 64}
-    with pytest.raises(ValueError, match="development_foundation_identity_invalid"):
-        AlphaDevelopmentFoundationBinding.model_validate(tampered)

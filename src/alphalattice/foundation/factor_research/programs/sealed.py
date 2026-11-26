@@ -6,7 +6,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from alphalattice.capabilities.domain_contracts.sealing import seal_model_validated
+from alphalattice.kernel.shared_kernel.sealing import seal_model_validated
 
 _Model = TypeVar("_Model", bound=BaseModel)
 

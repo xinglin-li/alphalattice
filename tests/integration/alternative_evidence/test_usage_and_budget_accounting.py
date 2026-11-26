@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
@@ -23,6 +22,7 @@ from alphalattice.evidence.alternative_evidence.publication.usage import (
     ProviderStageUsageRecord,
     record_provider_stage_usage,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _usage(call_count: int = 1, **overrides: Any) -> Any:

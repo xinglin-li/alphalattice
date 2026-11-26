@@ -17,7 +17,7 @@ from alphalattice.control.product_host.composition.local_web_session import (
     OPERATION_ROUTES,
 )
 from alphalattice.control.research_program.authoring import document as authoring_document
-from alphalattice.interface.local_application import call_span, native_setup
+from alphalattice.interface.local_application import native_setup
 from alphalattice.interface.local_application.activity import (
     ACTIVITY_MAXIMUM_LIMIT,
     ActivityReadQuery,
@@ -27,7 +27,6 @@ from alphalattice.interface.local_application.cli_contract import (
     AGENT_VENDOR_HEADER,
     CLIENT_HEADER,
     INSTANCE_HEADER,
-    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     WORKSPACE_HEADER,
     command_table,
     refusal_words,
@@ -37,11 +36,7 @@ from alphalattice.interface.local_application.failure_codes import untyped_failu
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument,
 )
-from alphalattice.interface.local_application.web import (
-    SESSION_COOKIE,
-    SESSION_HEADER,
-    LocalWebResponse,
-)
+from alphalattice.interface.local_application.web import SESSION_COOKIE, SESSION_HEADER
 
 HASH = "a" * 64
 TASK = "00000000-0000-4000-8000-000000000001"
@@ -70,8 +65,6 @@ HASH_FIELDS = frozenset(
 )
 LITERAL_SEEDS = {
     "storage_cap_bytes": "auto",
-    "review_subject": "trial:probe",
-    "review_verdict": "success",
     "finding_handle": "FIND-PROBE",
     "remedy": "CANCEL",
     "experiment_yaml": "{}",
@@ -129,8 +122,6 @@ REQUIRED_SEED_FIELDS = frozenset(
         "evidence_documents_per_issuer",
         "evidence_index_id",
         "evidence_setup",
-        "experience_query",
-        "experience_trial",
         "experiment_curation",
         "experiment_document",
         "experiment_plan_hash",
@@ -143,7 +134,6 @@ REQUIRED_SEED_FIELDS = frozenset(
         "foundation_admission_hash",
         "goal_declaration",
         "goal_hash",
-        "goal_id",
         "goal_reference",
         "goal_reference_id",
         "goal_statement",
@@ -162,9 +152,6 @@ REQUIRED_SEED_FIELDS = frozenset(
         "research_input_plan_hash",
         "result_hash",
         "review_answer",
-        "review_note",
-        "review_subject",
-        "review_verdict",
         "review_dossier_hash",
         "review_policy_hash",
         "review_schema_hash",
@@ -188,10 +175,6 @@ REQUIRED_SEED_FIELDS = frozenset(
         "window_limit",
     }
 )
-CALL_BAGGAGE = (
-    "alphalattice.call_started_us=1,alphalattice.call_parent=-,alphalattice.command=task%20list"
-)
-"""A CLI call's own baggage, as `call_span.begin` writes it."""
 PUBLIC_SEAMS = frozenset(
     {
         "execute",
@@ -201,9 +184,6 @@ PUBLIC_SEAMS = frozenset(
         "read",
         "read_external",
         "admitted_session_project",
-        "record",
-        "receive",
-        "publish",
     }
 )
 ACTIVATION_OPERATIONS = frozenset({"STRATEGY_ACTIVATE", "STRATEGY_DEACTIVATE"})
@@ -350,24 +330,8 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
                 "admitted_session_project",
                 None,
             ),
-            ("POST", call_span.CALL_PATH): ({"ended_us": 2, "exit_code": 0}, "record", None),
-            ("POST", SECTOR_DEVELOPMENT_PUBLISH_PATH): (
-                {
-                    "causal_outcome_snapshot_hash": HASH,
-                    "sector_revision": HASH,
-                    "method_id": "sector_persistence",
-                    "training_start": "2024-08-01",
-                    "training_end": "2024-08-02",
-                    "forecast_start": "2024-08-05",
-                    "forecast_end": "2024-08-09",
-                },
-                "publish",
-                None,
-            ),
         }
     )
-    for signal in ("logs", "traces", "metrics"):
-        plans[("POST", f"/v1/{signal}")] = {}, "receive", None
     assert seeded_fields == REQUIRED_SEED_FIELDS, {
         "new_seed_fields": sorted(seeded_fields - REQUIRED_SEED_FIELDS),
         "retired_seed_fields": sorted(REQUIRED_SEED_FIELDS - seeded_fields),
@@ -383,27 +347,16 @@ def registered_route_probes(live: Any) -> tuple[RouteProbe, ...]:
 
 
 def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
-    """Find the public method a route calls, with its owner when one instance is held."""
-    if seam == "publish":
-        from alphalattice.investment.sector_research.experiments.service import (
-            SectorResearchDevelopmentService,
-        )
-
-        return SectorResearchDevelopmentService, seam, None
     if seam == "load_authoring_document":
         return authoring_document, seam, None
     if seam == "admitted_session_project":
         return native_setup, seam, None
-    if seam == "record":  # a CLI call's end, recorded in the Host's history
-        return call_span, seam, None
     if seam in {"execute", "session_projection"}:
         owner = live.operations
     elif seam == "open_html":
         owner = live.service
     elif seam in {"read", "read_external"}:
         owner = live.activity
-    elif seam == "receive":
-        owner = live.native_usage_reader
     elif seam in {"activate", "deactivate"}:
         owner = live.operations.activations
     elif seam == "configure":
@@ -416,10 +369,8 @@ def public_seam(live: Any, seam: str) -> tuple[Any, str, Any | None]:
 
 
 def loopback_request(
-    connection: HTTPConnection | None, live: Any, probe: RouteProbe
+    connection: HTTPConnection, live: Any, probe: RouteProbe
 ) -> tuple[int, dict[str, Any]]:
-    """The probe over the loopback socket; with no connection, through the two calls the Host's
-    HTTP server makes for it (preflight, dispatch), skipping only the socket and HTTP parsing."""
     route, fields = probe.route, dict(probe.fields)
     target, body = route.path, b""
     if route.method == "GET" and fields:
@@ -442,8 +393,6 @@ def loopback_request(
         )
         if probe.seam == "admitted_session_project":
             headers.update({AGENT_VENDOR_HEADER: "codex", AGENT_SESSION_HEADER: TASK})
-        if probe.seam == "record":  # the call the end names: its span, started at 1 us
-            headers |= {"traceparent": f"00-{'a' * 32}-{'b' * 16}-01", "baggage": CALL_BAGGAGE}
     else:
         headers.update(
             {
@@ -452,27 +401,17 @@ def loopback_request(
                 "Origin": f"http://127.0.0.1:{live.web.bound_port}",
             }
         )
-    if connection is None:
-        headers |= {"Host": f"127.0.0.1:{live.web.bound_port}", "Content-Length": str(len(body))}
-        outcome = application.preflight(method=route.method, target=target, headers=headers)
-        if not isinstance(outcome, LocalWebResponse):
-            outcome = application.dispatch(outcome, body)
-        status, kind, raw = int(outcome.status), outcome.content_type, outcome.body
-    else:
-        connection.request(route.method, target, body=body, headers=headers)
-        response = connection.getresponse()
-        status, kind, raw = response.status, response.getheader("Content-Type", ""), response.read()
-    assert kind.startswith("application/json"), (probe.key, status, raw[:200])
+    connection.request(route.method, target, body=body, headers=headers)
+    response = connection.getresponse()
+    raw = response.read()
+    assert response.getheader("Content-Type", "").startswith("application/json"), (
+        probe.key,
+        response.status,
+        raw[:200],
+    )
     answer = json.loads(raw)
     assert isinstance(answer, dict), (probe.key, answer)
-    return status, answer
-
-
-def over_loopback(live: Any, probe: RouteProbe) -> tuple[int, dict[str, Any]]:
-    """The probe over a loopback connection of its own, closed after its answer."""
-    assert live.web is not None
-    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
-        return loopback_request(connection, live, probe)
+    return response.status, answer
 
 
 def assert_owner_refusal(answer: dict[str, Any], case: RefusalCase) -> None:
@@ -529,39 +468,33 @@ def exercise_matrix(
 ) -> None:
     cases = tuple(cases)
     assert cases and live.web is not None
-    # Each handler x case runs once through the Host's preflight and dispatch; the socket and
-    # HTTP parsing around them are the same for every case, so only a route's first case
-    # crosses them, each on its own loopback connection: the server closes a keep-alive socket
-    # idle past its handler timeout, and a route's in-process cases can outlast it.
-    for probe in probes:
-        original_handler = probe.route.handler
-        for index, case in enumerate(cases):
-            with monkeypatch.context() as patch:
-                counter = inject_public_refusal(patch, live, probe, case)
-                status, answer = (
-                    over_loopback(live, probe)
-                    if index == 0
-                    else loopback_request(None, live, probe)
+    # One real persistent loopback connection avoids thousands of TIME_WAIT ports.
+    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
+        for probe in probes:
+            original_handler = probe.route.handler
+            for case in cases:
+                with monkeypatch.context() as patch:
+                    counter = inject_public_refusal(patch, live, probe, case)
+                    status, answer = loopback_request(connection, live, probe)
+                label = (probe.key, case.name, probe.seam)
+                assert counter["calls"] == 1, (label, "owner not reached", status, answer)
+                assert live.web.application.routes[probe.key].handler is original_handler, label
+                # Native setup and Task Control publish these refusals as owner answers;
+                # other raised owner refusals keep the HTTP400 boundary.
+                owner_returned = (
+                    probe.seam == "admitted_session_project"
+                    and case.name
+                    == "alphalattice.interface.local_application.native_bridge.NativeBridgeError"
+                ) or (
+                    probe.seam == "load_authoring_document"
+                    and case.name in RETURNED_TASK_AUTHORITY_ERRORS
                 )
-            label = (probe.key, case.name, probe.seam)
-            assert counter["calls"] == 1, (label, "owner not reached", status, answer)
-            assert live.web.application.routes[probe.key].handler is original_handler, label
-            # Native setup and Task Control publish these refusals as owner answers;
-            # other raised owner refusals keep the HTTP400 boundary.
-            owner_returned = (
-                probe.seam == "admitted_session_project"
-                and case.name
-                == "alphalattice.interface.local_application.native_bridge.NativeBridgeError"
-            ) or (
-                probe.seam == "load_authoring_document"
-                and case.name in RETURNED_TASK_AUTHORITY_ERRORS
-            )
-            assert status == (200 if owner_returned else expected_status), (
-                label,
-                status,
-                answer,
-            )
-            assert_owner_refusal(answer, case)
+                assert status == (200 if owner_returned else expected_status), (
+                    label,
+                    status,
+                    answer,
+                )
+                assert_owner_refusal(answer, case)
 
 
 def exercise_registered_handler_matrix(
@@ -672,19 +605,20 @@ def exercise_untyped_fault_matrix(live: Any, monkeypatch: Any) -> None:
         representatives[probe.seam] = probe
     assert set(representatives) == PUBLIC_SEAMS | ACTIVATION_SEAMS
     assert live.web is not None
-    for probe in representatives.values():
-        original_handler = probe.route.handler
-        with monkeypatch.context() as patch:
-            counter = inject_public_refusal(patch, live, probe, fault)
-            status, answer = over_loopback(live, probe)
-        label = (probe.key, probe.seam)
-        assert counter["calls"] == 1, (label, "owner not reached", status, answer)
-        assert live.web.application.routes[probe.key].handler is original_handler, label
-        assert status == 500, (label, status, answer)
-        code = answer.get("failure_code") or answer.get("refused")
-        assert untyped_failure(str(code)), (label, answer)
-        assert str(code).startswith("local_web.handler_failed:RuntimeError:"), (label, answer)
-        assert marker not in json.dumps(answer, ensure_ascii=False), (label, answer)
+    with closing(HTTPConnection("127.0.0.1", live.web.bound_port, timeout=10)) as connection:
+        for probe in representatives.values():
+            original_handler = probe.route.handler
+            with monkeypatch.context() as patch:
+                counter = inject_public_refusal(patch, live, probe, fault)
+                status, answer = loopback_request(connection, live, probe)
+            label = (probe.key, probe.seam)
+            assert counter["calls"] == 1, (label, "owner not reached", status, answer)
+            assert live.web.application.routes[probe.key].handler is original_handler, label
+            assert status == 500, (label, status, answer)
+            code = answer.get("failure_code") or answer.get("refused")
+            assert untyped_failure(str(code)), (label, answer)
+            assert str(code).startswith("local_web.handler_failed:RuntimeError:"), (label, answer)
+            assert marker not in json.dumps(answer, ensure_ascii=False), (label, answer)
 
 
 __all__ = [

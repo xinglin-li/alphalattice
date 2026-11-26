@@ -15,14 +15,6 @@ from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear import
     build_regularized_linear_search_domain,
 )
 from alphalattice.capabilities.alpha_modeling.catalog import build_installed_alpha_model_catalog
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitSpec,
-    ValidationTimeline,
-)
-from alphalattice.capabilities.validation.enums import SplitMode
-from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.investment.alpha_research.experiments.bindings import (
     AlphaDevelopmentProgramAuthorityError,
 )
@@ -52,6 +44,14 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
     AlphaTargetLane,
     build_alpha_target_policy,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitSpec,
+    ValidationTimeline,
+)
+from alphalattice.kernel.validation.enums import SplitMode
+from alphalattice.kernel.validation.splitting import build_research_split
 from tests.alpha_research.fixtures import research_foundation_binding
 from tests.autonomous_alpha_consumer.external_consumer import (
     ADAPTER_ID,

@@ -1,6 +1,5 @@
 """The Host owns complete profile reads; the CLI bounds only their display."""
 
-import inspect
 import json
 from datetime import datetime, timedelta
 from unittest.mock import Mock
@@ -8,7 +7,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from alphalattice.control.observation_runtime.log_reads import LogObservations
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.publication.goals import session_work_declaration
 from alphalattice.control.task_control.queue import write_queue_setting
@@ -22,8 +20,8 @@ from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel import clock as clocks
-from alphalattice.kernel.clock import ReplayClock
+from alphalattice.kernel.shared_kernel import clocks
+from alphalattice.kernel.shared_kernel.clocks import ReplayClock
 from tests.portfolio_strategy_lab.cli_support import _cli
 from tests.workspace_task_runner.task_control_support import task_contract
 
@@ -189,34 +187,27 @@ def test_profile_aligns_two_hosts_without_charging_the_scripted_date_jump(
 
 
 @pytest.mark.parametrize("kind,namespace", [("FIRST_USE", "research"), ("RESEARCH", "portfolio")])
-@pytest.mark.parametrize("clock_declared", [True, False])
-@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True, ids=["now"])
+@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True)
 def test_host_profile_scopes_unions_reads_once_and_writes_nothing(
-    live, monkeypatch, kind, namespace, clock_declared
+    live, monkeypatch, kind, namespace
 ):
-    """A served read scopes the history and phase owner once and preserves every stored input."""
-    live.clock.clock_domain = "UTC" if clock_declared else None
-    default_clock = (
-        inspect.signature(LocalPortfolioWebSession.from_workspace).parameters["clock"].default
-    )
-    assert clocks.clock_metadata(default_clock).get("clock_domain") == "UTC"
+    """A served read scopes the ledger and phase owner once and preserves every stored input."""
     write_queue_setting(
         live.workspace / "runtime", 2, chosen_by="HUMAN", chosen_at=NOW, field="tasks_waiting"
     )
     client, goal, registry, runtime = _profile_scene(live, monkeypatch, kind, namespace)
     _profile_scene(live, monkeypatch, "OPERATIONS", "foreign")
     monkeypatch.setattr(live.operations, "heartbeats", TaskHeartbeatReader(runtime, runtime))
-    log = live.activity._reads
-    assert log is not None
+    ledger = live.activity._ledger
     before_bytes = {p: p.read_bytes() for p in live.workspace.rglob("*.json*")}
-    before = log.head_ordinal(), registry.tasks()
-    calls, original = [], LogObservations.observations_after
+    before = ledger.head_ordinal(), registry.tasks()
+    calls, original = [], ledger.observations_after
 
-    def page(self, cursor, *, limit):
+    def page(cursor, *, limit):
         calls.append(cursor.ordinal)
-        return original(self, cursor, limit=1)
+        return original(cursor, limit=1)
 
-    monkeypatch.setattr(LogObservations, "observations_after", page)
+    monkeypatch.setattr(ledger, "observations_after", page)
     from alphalattice.control.product_host.composition import workspace_activity
 
     reads, reader = [], workspace_activity.read_stage_spans
@@ -239,12 +230,9 @@ def test_host_profile_scopes_unions_reads_once_and_writes_nothing(
     assert len(reads) == 1 and reads[0][0] == runtime
     assert calls[0] == 0 and calls == sorted(set(calls))
     assert answer == read()
-    assert before == (log.head_ordinal(), registry.tasks())
+    assert before == (ledger.head_ordinal(), registry.tasks())
     assert before_bytes == {p: p.read_bytes() for p in live.workspace.rglob("*.json*")}
     assert "UNPAIRED_RPC" not in {gap["code"] for gap in answer["gaps"]}
-    assert (
-        "CLOCK_DOMAINS_UNALIGNED" in {gap["code"] for gap in answer["gaps"]}
-    ) is not clock_declared
     assert answer["cache_counts"]["status"] == "UNOBSERVED" and "critical_path" not in answer
     assert all(v["en"] != v["zh-CN"] for v in answer["labels"].values())
     assert not answer.keys() & {"ask_now", "person_questions"}
@@ -265,7 +253,7 @@ def test_active_profile_window_keeps_background_work_after_the_last_rpc(live, mo
 
 @pytest.mark.parametrize("language", ["en", "zh"])
 @pytest.mark.parametrize("fault", ["stages", "unreadable"])
-@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True, ids=["fixed-host-clock"])
+@pytest.mark.parametrize("live", [Mock(return_value=NOW)], indirect=True)
 def test_cli_profile_bounds_stdout_but_keeps_complete_output(
     live, monkeypatch, tmp_path, language, fault
 ):
@@ -275,7 +263,6 @@ def test_cli_profile_bounds_stdout_but_keeps_complete_output(
     )
     if fault == "unreadable":
         path = stage_spans_path(runtime, registry.tasks()[0].task_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{\n" * 1000, encoding="utf-8")
     complete = client.request({"operation": "GOAL_PROFILE", "goal_id": goal})
     saved = tmp_path / "profile.json"

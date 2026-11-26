@@ -6,22 +6,17 @@ import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, cast
+from typing import Any, Literal, Self, cast
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.persistence import (
-    DURABLE_REPLACE_DELAYS,
-    replace_with_retry,
-)
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
-from alphalattice.capabilities.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
 from alphalattice.foundation.feature_engine.catalog.research_values import ResearchFormulaValues
@@ -57,10 +52,10 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.adapters imp
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     build_installed_panel_preprocessing_catalog,
 )
-from alphalattice.kernel.identity import integrity_sha256
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.quant.sector_history import reclassification_payload, sector_slices
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.persistence import DURABLE_REPLACE_DELAYS, replace_with_retry
 
 DEVELOPMENT_RAW_FORMULA_SURFACE_CATEGORY = "development/raw-formula-surface"
 DEVELOPMENT_METHODOLOGY_SURFACE_CATEGORY = "development/feature-methodology-surface"
@@ -162,8 +157,6 @@ def _materialize_by_run(
     Returns:
         The transformed rows and their child identity.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     runs = sector_slices(sector_by_listing_id, sessions)
     if len(runs) == 1:
         result = adapter.materialize(
@@ -207,8 +200,6 @@ def _merge_preprocessing(
     *,
     normalize_base_dates: bool = False,
 ) -> pd.DataFrame:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     join = ["session_date", "listing_id"]
     values = rows.loc[:, [*join, *factor_ids]].copy()
     values["session_date"] = pd.to_datetime(values["session_date"]).dt.date
@@ -547,8 +538,6 @@ class DevelopmentFeatureOverlayService:
         The returned call count belongs to this attempt, not an old publication.
         """
 
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         def checkpoint() -> None:
             if cancelled():
                 raise ValueError("feature_research.cancelled_at_safe_checkpoint")
@@ -786,7 +775,7 @@ class DevelopmentFeatureOverlayService:
             listing_ids=listing_ids,
             candidate_ids=axis,
             columns=columns,
-            parquet_sha256=integrity_sha256(content).hexdigest(),
+            parquet_sha256=sha256(content).hexdigest(),
             raw_column_references=raw_column_references,
             preparation_admission_hash=admission.admission_hash,
             row_count=len(transformed),
@@ -908,8 +897,6 @@ class DevelopmentFeatureOverlayService:
         previous_overlay: DevelopmentFeatureOverlayManifest | None = None,
     ) -> DevelopmentFeatureOverlayManifest | NoAdmittedCandidatesReceipt:
         """Materialize an admitted development overlay on the base Panel."""
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         receipts = admission_receipts or admit_factor_development_capabilities()
         capabilities = {
             item.factor_id: item for item in build_installed_factor_development_capabilities()
@@ -1149,8 +1136,6 @@ def read_raw_development_feature_overlay(
     *, output_root: Path, overlay_hash: str
 ) -> tuple[DevelopmentFeatureOverlayManifest, pd.DataFrame]:
     """Read the successor raw formula surface; transformed-only legacy fails closed."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     manifest, raw = _read_verified_overlay(output_root=output_root, overlay_hash=overlay_hash)
     if raw is not None:
         return manifest, pd.DataFrame(
@@ -1182,8 +1167,6 @@ def load_development_raw_formula_surface(
     *, output_root: Path, surface_hash: str
 ) -> tuple[DevelopmentRawFormulaSurfaceManifest, pd.DataFrame]:
     """Load a raw formula surface after verifying its manifest and bytes."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     directory = output_root / DEVELOPMENT_RAW_FORMULA_SURFACE_CATEGORY / surface_hash
     marker = directory / "manifest.json"
     if not marker.is_file():

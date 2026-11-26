@@ -11,7 +11,7 @@ import re
 import sqlite3
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping
 from enum import StrEnum
 from functools import partial
 from importlib.util import resolve_name
@@ -31,13 +31,14 @@ class GenerationModel(StrEnum):
     BY_CATALOG = "BY_CATALOG"
     BY_REVISION = "BY_REVISION"
     OPERATIONAL_PROJECTION = "OPERATIONAL_PROJECTION"
+    LEGACY_MIGRATION_ONLY = "LEGACY_MIGRATION_ONLY"
 
 
 class StorageAuthorityGroup(_Contract):
     tables: tuple[str, ...] = Field(min_length=1)
     database: str = Field(min_length=1)
-    """The file the tables live in: `workspace` (the market-data DuckDB), `log` (the data root's
-    log.sqlite), `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
+    """The file the tables live in: `workspace` (the market-data DuckDB), `task-control`,
+    `task-heartbeats`, `observation`, `knowledge-index`, `knowledge-hybrid-index`."""
     semantic_role: str = Field(min_length=1)
     generation_model: GenerationModel
     authority_owner: str = Field(min_length=1)
@@ -233,7 +234,7 @@ class PackageArchitecture(_Contract):
     product_area: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     capability_owner: str = Field(min_length=1)
     role: PackageArchitectureRole
-    dependency_level: int = Field(ge=-5)
+    dependency_level: int = Field(ge=0)
     authority_kind: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$")
     allowed_peer_dependencies: tuple[str, ...]
     artifact_writer: bool
@@ -242,11 +243,6 @@ class PackageArchitecture(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_peer_inventory(self) -> PackageArchitecture:
-        if self.dependency_level < 0:
-            if not self.physical_namespace_target.startswith("alphalattice.kernel."):
-                raise ValueError("negative dependency levels belong to kernel ports")
-            if self.allowed_peer_dependencies:
-                raise ValueError("kernel ports cannot declare peers")
         if self.allowed_peer_dependencies != tuple(sorted(set(self.allowed_peer_dependencies))):
             raise ValueError("package peer dependencies must be sorted and unique")
         if self.package_id in self.allowed_peer_dependencies:
@@ -268,16 +264,8 @@ class PackageArchitectureRegistry(_Contract):
     deferred_imports: dict[str, str] = Field(default_factory=dict)
     legacy_lazy_imports: dict[str, int] = Field(default_factory=dict)
     private_import_fences: dict[str, dict[str, str]] = Field(default_factory=dict)
-    owned_product_imports: dict[str, str] = Field(default_factory=dict)
-    """A backend's root module and the sole product package ID that may import it."""
-
     retired_imports: dict[str, str] = Field(default_factory=dict)
     """Each logical owner a cutover retired, with its reason; import_contracts.build bans it."""
-    wall_clock_reads: dict[str, str] = Field(default_factory=dict)
-    owned_imports: dict[str, tuple[str, ...]] = Field(default_factory=dict)
-    """Product package paths and the external imports each owns."""
-
-    worker_count_reads: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_inventory(self) -> PackageArchitectureRegistry:
@@ -288,16 +276,6 @@ class PackageArchitectureRegistry(_Contract):
         if len(targets) != len(set(targets)):
             raise ValueError("package architecture registry repeats a physical target")
         known = set(package_ids)
-        kernel = tuple(
-            row.physical_namespace_target for row in self.packages if row.dependency_level < 0
-        )
-        for importer, backends in self.kernel_deferred_backends.items():
-            if (
-                not all(part.isidentifier() for part in importer.split("."))
-                or not any(importer == port or importer.startswith(port + ".") for port in kernel)
-                or any(not backend.isidentifier() for backend in backends)
-            ):
-                raise ValueError(f"invalid kernel backend declaration for {importer}")
         unknown = sorted(
             {
                 peer
@@ -308,42 +286,16 @@ class PackageArchitectureRegistry(_Contract):
         )
         if unknown:
             raise ValueError(f"package architecture registry has unknown peers: {unknown}")
-        for backend, package_id in self.owned_product_imports.items():
-            if not backend.isidentifier() or package_id not in known:
-                raise ValueError(f"invalid product import owner: {backend} -> {package_id}")
         reasons = [
             *self.deferred_imports.values(),
             *(r for f in self.private_import_fences.values() for r in f.values()),
             *self.retired_imports.values(),
-            *self.worker_count_reads.values(),
-            *self.wall_clock_reads.values(),
         ]
         if any(
             not re.fullmatch(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*", name)
             for name in self.retired_imports
         ):
             raise ValueError("a retired import is a dotted logical module name")
-        if any(
-            "." not in name or not all(part.isidentifier() for part in name.split("."))
-            for name in self.worker_count_reads
-        ):
-            raise ValueError("a worker-count ban names a dotted API")
-        if any(
-            not all(part.isidentifier() for part in name.split(".")) or "." not in name
-            for name in self.wall_clock_reads
-        ):
-            raise ValueError("a wall-clock ban names a dotted API")
-        owned_names = [name for imports in self.owned_imports.values() for name in imports]
-        if len(owned_names) != len(set(owned_names)):
-            raise ValueError("an external import has more than one declaration")
-        for owner, imports in self.owned_imports.items():
-            if not re.fullmatch(r"alphalattice(?:\.[a-z_][a-z0-9_]*)+", owner):
-                raise ValueError("an import owner is a product package path")
-            if not imports or any(
-                not re.fullmatch(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*", name)
-                for name in imports
-            ):
-                raise ValueError("an owned import is a dotted module name")
         if any(not reason.strip() for reason in reasons):
             raise ValueError("package import declarations require their reason")
         return self
@@ -351,16 +303,6 @@ class PackageArchitectureRegistry(_Contract):
     @property
     def by_package(self) -> dict[str, PackageArchitecture]:
         return {value.package_id: value for value in self.packages}
-
-    @property
-    def kernel_deferred_backends(self) -> dict[str, set[str]]:
-        """Resolve the importer and external root of each scoped backend declaration."""
-        declarations: dict[str, set[str]] = {}
-        for entry in self.deferred_imports:
-            importer, sep, backend = entry.partition(" -> ")
-            if sep:
-                declarations.setdefault(importer, set()).add(backend)
-        return declarations
 
 
 _CREATE_TABLE = re.compile(
@@ -583,21 +525,6 @@ def _table_writes_of(data: bytes, module: str) -> list[list[str]]:
         for node in texts
         for match in _TEMPORARY_TABLE.finditer(str(node.value))
     }
-    classes, functions = _writer_spans(tree)
-    for node in texts:
-        writer = _enclosing_writer(node.lineno, classes, functions)
-        found.update(
-            (table, kind, f"{module}:{writer}", package)
-            for kind, table in _statement_writes(str(node.value))
-            if table.upper() not in _SQL_WORDS and table.lower() not in temporary
-        )
-    return sorted(map(list, found))
-
-
-def _writer_spans(
-    tree: ast.Module,
-) -> tuple[list[tuple[int, int, str]], list[tuple[int, int, str]]]:
-    """Each class's and each top-level function's lines and name, for ``_enclosing_writer``."""
     classes = [
         (node.lineno, node.end_lineno or node.lineno, node.name)
         for node in ast.walk(tree)
@@ -608,7 +535,14 @@ def _writer_spans(
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     ]
-    return classes, functions
+    for node in texts:
+        writer = _enclosing_writer(node.lineno, classes, functions)
+        found.update(
+            (table, kind, f"{module}:{writer}", package)
+            for kind, table in _statement_writes(str(node.value))
+            if table.upper() not in _SQL_WORDS and table.lower() not in temporary
+        )
+    return sorted(map(list, found))
 
 
 def _statement_texts(tree: ast.Module) -> list[ast.Constant]:
@@ -722,176 +656,6 @@ def table_writer_violations(
             f"registered table {table} is created nowhere"
             for table in sorted(set(owners) - created)
         )
-    return tuple(sorted(set(violations)))
-
-
-_PERSISTING_CALLS = frozenset(
-    {
-        "write_text",
-        "write_bytes",
-        "write_table",
-        "write_dataset",
-        "to_parquet",
-        "write_new",
-        "replace_with_retry",
-        "publish_json",
-        "publish_bytes",
-        "publish_model",
-        "publish_research_workspace_manifest",
-    }
-)
-"""A call by this name, on any receiver or bare, persists bytes (the shared write helpers and the
-content store's publishers included)."""
-_PERSISTING_MODULE_CALLS = {
-    "os": frozenset({"replace", "rename"}),
-    "json": frozenset({"dump"}),
-    "np": frozenset({"save", "savez", "savez_compressed"}),
-    "numpy": frozenset({"save", "savez", "savez_compressed"}),
-    "shutil": frozenset({"copy", "copy2", "copyfile", "copytree", "move"}),
-    "sqlite3": frozenset({"connect"}),
-    "duckdb": frozenset({"connect"}),
-}
-
-
-def discover_persistence_sites(
-    sources: tuple[Path, ...], *, source_root: Path
-) -> dict[str, list[str]]:
-    """Each writer in ``sources`` that persists outside SQL text, with the calls it makes: a file
-    opened for writing, a file written, replaced or copied, a JSON, Parquet or NumPy write, an
-    SQLite or DuckDB connect, a shared write helper or a content-store publish. The writer is the
-    module and its innermost class or top-level function, as a table write names it."""
-
-    found: dict[str, set[str]] = {}
-    this = sys.modules[__name__]
-    with kept_facts("persistence-sites", this):  # each file's sites, kept by its bytes
-        for path in sources:
-            module = _logical_module_for_path(path, source_root=source_root)
-            rows = kept_fact(
-                this,
-                "persistence-sites " + module,
-                path.read_bytes(),
-                partial(_persistence_sites_of, module=module),
-                _string_rows,
-            )
-            for writer, call in rows:
-                found.setdefault(writer, set()).add(call)
-    return {writer: sorted(calls) for writer, calls in sorted(found.items())}
-
-
-def _persistence_sites_of(data: bytes, module: str) -> list[list[str]]:
-    """One module's persisting calls from its bytes, as [writer, call]."""
-    tree = ast.parse(file_text(data))
-    classes, functions = _writer_spans(tree)
-    return sorted(
-        map(
-            list,
-            {
-                (f"{module}:{_enclosing_writer(node.lineno, classes, functions)}", call)
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Call) and (call := _persisting_call(node))
-            },
-        )
-    )
-
-
-def _persisting_call(node: ast.Call) -> str:
-    """The persisting call ``node`` makes, or an empty string."""
-    function = node.func
-    name = function.attr if isinstance(function, ast.Attribute) else getattr(function, "id", "")
-    if name in _PERSISTING_CALLS:
-        return name
-    owner = function.value if isinstance(function, ast.Attribute) else None
-    if isinstance(owner, ast.Name) and name in _PERSISTING_MODULE_CALLS.get(owner.id, ()):
-        target = node.args[0] if node.args else None
-        if isinstance(target, ast.Constant) and target.value == ":memory:":
-            return ""  # an in-memory database persists nothing
-        return f"{owner.id}.{name}"
-    if name == "open" and isinstance(owner, ast.Name) and owner.id == "os":
-        flags = node.args[1] if len(node.args) > 1 else None
-        return "" if flags is not None and _read_only_flags(flags) else "os.open"
-    return "open" if name == "open" and _opens_to_write(node, builtin=owner is None) else ""
-
-
-def _opens_to_write(node: ast.Call, *, builtin: bool) -> bool:
-    """Whether ``open(path, mode)`` or ``path.open(mode)`` writes, appends, creates or updates.
-
-    A mode not written as one string counts by every string it names, and as a write when it
-    names none: a mode chosen at run time cannot be read here, nor can a receiver's type, so an
-    ``open`` that is not a file's (a store's key, a URL) is listed with its reason instead.
-    """
-    position = 1 if builtin else 0
-    for value in (
-        *node.args[position : position + 1],
-        *(keyword.value for keyword in node.keywords if keyword.arg == "mode"),
-    ):
-        modes = [
-            part.value
-            for part in ast.walk(value)
-            if isinstance(part, ast.Constant) and isinstance(part.value, str)
-        ]
-        if not modes or any(set(mode) & set("wax+") for mode in modes):
-            return True
-    return False
-
-
-_READ_FLAGS = frozenset({"O_RDONLY", "O_BINARY", "O_NOINHERIT", "O_CLOEXEC", "O_NOFOLLOW"})
-"""``os.open`` flags that open a file only to read it."""
-
-
-def _read_only_flags(flags: ast.expr) -> bool:
-    """Whether ``flags`` is ``os`` flag names joined by ``|``, each one that only reads."""
-    if isinstance(flags, ast.BinOp) and isinstance(flags.op, ast.BitOr):
-        return _read_only_flags(flags.left) and _read_only_flags(flags.right)
-    name = flags.attr if isinstance(flags, ast.Attribute) else getattr(flags, "id", "")
-    return name in _READ_FLAGS
-
-
-def authority_groups(storage: StorageAuthorityRegistry, artifacts: Any) -> tuple[str, ...]:
-    """Each storage and artifact authority group by its key: its first table or first path."""
-    return (
-        *(f"table:{group.tables[0]}" for group in storage.groups),
-        *(f"artifacts:{group.path_prefixes[0]}" for group in artifacts.groups),
-    )
-
-
-def data_family_violations(
-    sites: Mapping[str, Sequence[str]],
-    registry: Mapping[str, Any],
-    *,
-    groups: Iterable[str] = (),
-    whole_tree: bool = True,
-) -> tuple[str, ...]:
-    """What persists outside every data family (config/registries/data-families.json).
-
-    Each persisting writer is a family's writer, a write helper or a writer that persists
-    nothing (with its reason). Read over the whole tree, each listed writer still persists and
-    each storage and artifact authority group is covered by exactly one family.
-    """
-
-    families = registry.get("families", {})
-    listed = {writer for family in families.values() for writer in family.get("writers", ())}
-    listed |= set(registry.get("helpers", {})) | set(registry.get("not_persisting", {}))
-    violations = [
-        f"{writer} persists ({', '.join(calls)}) outside every data family; list it under its "
-        "family in config/registries/data-families.json"
-        for writer, calls in sites.items()
-        if writer not in listed
-    ]
-    if whole_tree:
-        covered: dict[str, list[str]] = {}
-        for name, family in families.items():
-            for group in family.get("covers", ()):
-                covered.setdefault(group, []).append(name)
-        violations += [
-            f"data families list {writer}, which persists nothing"
-            for writer in sorted(listed - set(sites))
-        ]
-        violations += [
-            f"authority group {group} is covered by {len(covered.get(group, ()))} data families, "
-            "not one (config/registries/data-families.json)"
-            for group in sorted(set(groups) | set(covered))
-            if group not in groups or len(covered.get(group, ())) != 1
-        ]
     return tuple(sorted(set(violations)))
 
 
@@ -1369,20 +1133,7 @@ def kept_fact(
 
 
 def discover_python_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
-    """Return logical names for one source-root Python module's imports."""
-    return tuple(
-        sorted(
-            {
-                name
-                for physical in _physical_imports(path, source_root=source_root)
-                if (name := _logical_module_name(physical))
-            }
-        )
-    )
-
-
-def _physical_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
-    """Return absolute import names before resolving them to logical owners.
+    """Return normalized absolute imports for one source-root Python module.
 
     The answer is a function of the module's place under the source root and its bytes alone,
     so it is kept by those and a changed file misses. A read, decode, parse or escape error is
@@ -1411,13 +1162,13 @@ def _physical_imports(path: Path, *, source_root: Path) -> tuple[str, ...]:
 
 
 def _imports_of(data: bytes, path: Path, package_parts: list[str]) -> list[str]:
-    """One module's physical import candidates from its bytes and its package's place."""
+    """One module's normalized absolute imports from its bytes and its package's place."""
     imports: set[str] = set()
     text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")  # as read_text decodes
     tree = ast.parse(text, filename=str(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
+            imports.update(_logical_module_name(alias.name) for alias in node.names)
             continue
         if not isinstance(node, ast.ImportFrom):
             continue
@@ -1428,9 +1179,9 @@ def _imports_of(data: bytes, path: Path, package_parts: list[str]) -> list[str]:
             base_parts = [*package_parts[:retained]]
             if node.module:
                 base_parts.extend(node.module.split("."))
-            base = ".".join(base_parts)
+            base = _logical_module_name(".".join(base_parts))
         else:
-            base = node.module or ""
+            base = _logical_module_name(node.module or "")
         if base:
             imports.add(base)
         imports.update(
@@ -1473,8 +1224,19 @@ def discover_package_dependencies(
 ) -> tuple[tuple[str, str], ...]:
     """Return top-level package edges for tracked Python sources."""
 
+    modules_by_path = dict(discover_python_modules(paths, source_root=source_root))
+    packages = {module.split(".", maxsplit=1)[0] for module in modules_by_path.values()}
+    edges: set[tuple[str, str]] = set()
     with kept_facts("package-imports", sys.modules[__name__]):  # each module's, by its bytes
-        return _internal_dependencies(paths, source_root=source_root, package_level=True)
+        for path, module in modules_by_path.items():
+            owner = module.split(".", maxsplit=1)[0]
+            if owner not in packages:
+                continue
+            for imported in discover_python_imports(path, source_root=source_root):
+                target = imported.split(".", maxsplit=1)[0]
+                if target in packages and target != owner:
+                    edges.add((owner, target))
+    return tuple(sorted(edges))
 
 
 def package_architecture_violations(
@@ -1513,15 +1275,14 @@ def package_architecture_violations(
 
 def _import_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> tuple[str, bool]:
     ancestors = []
-    deferred = False
-    child = node
-    while (parent := parents.get(child)) is not None:
+    parent = parents.get(node)
+    while parent is not None:
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             ancestors.append(parent)
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) and child in parent.body:
-            deferred = True
-        child = parent
-    return ".".join(n.name for n in reversed(ancestors)) or "<module>", deferred
+        parent = parents.get(parent)
+    return ".".join(n.name for n in reversed(ancestors)) or "<module>", any(
+        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ancestors
+    )
 
 
 def _imported_module(node: ast.AST, target: str, modules: set[str]) -> str:
@@ -1530,42 +1291,15 @@ def _imported_module(node: ast.AST, target: str, modules: set[str]) -> str:
     return target.rpartition(".")[0]
 
 
-_FILE_TRUST_ROOT = "alphalattice.kernel.identity"
-_FILE_TRUST_PRIMITIVES = frozenset(
-    {
-        "file_stamp",
-        "handle_stamp",
-        "integrity_sha256_path",
-        "integrity_sha256_stream",
-    }
-)
-_FILE_TRUST_TARGETS = {
-    f"{module}.{primitive}"
-    for module in (
-        _FILE_TRUST_ROOT,
-        f"{_FILE_TRUST_ROOT}.file_facts",
-        f"{_FILE_TRUST_ROOT}._digests",
-    )
-    for primitive in _FILE_TRUST_PRIMITIVES
-}
-_FILE_TRUST_OWNERS = {
-    _FILE_TRUST_ROOT,
-    f"{_FILE_TRUST_ROOT}.file_facts",
-    "alphalattice.control.workspace_runtime.verified_facts",
-}
-
-
 def import_contract_violations(
     sources: Mapping[str, str],
     *,
     registry: PackageArchitectureRegistry,
     modules: set[str] | None = None,
 ) -> tuple[str, ...]:
-    """Enforce backend ownership, declared lazy modules and cross-owner private fences."""
+    """Enforce declared lazy modules and exact cross-owner private equality fences."""
     modules = {n.removesuffix(".__init__") for n in (sources if modules is None else modules)}
     roots = sorted(registry.packages, key=lambda r: -len(r.physical_namespace_target))
-    packages = registry.by_package
-    kernel_backends = registry.kernel_deferred_backends
 
     def owner(name: str) -> str:
         for entry in roots:
@@ -1579,9 +1313,6 @@ def import_contract_violations(
 
     this = sys.modules[__name__]
 
-    external = {
-        name: owner for owner, imports in registry.owned_imports.items() for name in imports
-    }
     seen: set[tuple[str, str]] = set()  # this module's private imports, per module
     eager: set[str] = set()  # this module's top-level imports, per module
 
@@ -1590,7 +1321,6 @@ def import_contract_violations(
 
     def inspect_module(qualified: str, source: str) -> None:
         module = qualified.removesuffix(".__init__")
-        backends = kernel_backends.get(module, ())
         sites = kept_fact(
             this,
             "import-sites " + qualified,
@@ -1603,15 +1333,7 @@ def import_contract_violations(
         eager.update(imported_module(site[1], t) for site in sites if site[6] for t in site[7])
         for line, kind, scope, deferred, lazy, text, _top, targets in sites:
             located = f"{module}:{line}"
-            if module.startswith("alphalattice.") and module not in _FILE_TRUST_OWNERS:
-                out.extend(
-                    f"{located}: file-verification-owner-required {target}"
-                    for target in targets
-                    if target in _FILE_TRUST_TARGETS
-                )
-            if kind == "file-trust-reference":
-                continue
-            if deferred and not lazy and not all(t.partition(".")[0] in backends for t in targets):
+            if deferred and not lazy:
                 site = f"src/{qualified.replace('.', '/')}.py::{scope}::{text}"
                 if retained[site] < 1:
                     out.append(f"{located}: unexplained-function-import {text}")
@@ -1620,55 +1342,10 @@ def import_contract_violations(
                 check_target(
                     module, located, scope, deferred, imported_module(kind, target), target
                 )
-                if kind == "call":
-                    check_kernel_load(module, located, deferred, target)
-                    check_owned_import(module, located, target)
-
-    def check_kernel_load(module: str, located: str, deferred: bool, target: str) -> None:
-        # Import Linter sees statements. Apply the same boundaries to literal load calls
-        # using the import-hygiene scan and require a declaration for a deferred backend.
-        source = packages.get(owner(module))
-        destination = packages.get(owner(target))
-        if source is None or source == destination:
-            return
-        if source.dependency_level < 0:
-            if destination is not None and destination.dependency_level >= source.dependency_level:
-                out.append(f"{located}: kernel-loads-non-lower-package {target}")
-            if (
-                destination is None
-                and target.partition(".")[0] not in sys.stdlib_module_names
-                and (
-                    not deferred or target.partition(".")[0] not in kernel_backends.get(module, ())
-                )
-            ):
-                out.append(f"{located}: undeclared-kernel-backend {target}")
-        if (
-            destination is not None
-            and destination.dependency_level < 0
-            and target != destination.physical_namespace_target
-        ):
-            out.append(f"{located}: kernel-port-required {target}")
-
-    def check_owned_import(module: str, located: str, target: str) -> None:
-        if module.partition(".")[0] != "alphalattice":
-            return
-        for name, importer in external.items():
-            if (target == name or target.startswith(name + ".")) and not (
-                module == importer or module.startswith(importer + ".")
-            ):
-                out.append(f"{located}: owned-import {target}; use {importer}")
 
     def check_target(
         module: str, located: str, scope: str, deferred: bool, imported: str, target: str
     ) -> None:
-        backend = target.partition(".")[0]
-        backend_owner = registry.owned_product_imports.get(backend)
-        if (
-            backend_owner
-            and module.partition(".")[0] == "alphalattice"
-            and owner(module) != backend_owner
-        ):
-            out.append(f"{located}: {backend} is owned by {backend_owner}")
         if deferred and imported in eager:
             out.append(f"{located}: repeated-function-import {imported}")
         if not target.startswith(("alphalattice.", "devtools.")):
@@ -1691,7 +1368,7 @@ def import_contract_violations(
 
     with kept_facts("import-sites", this):  # each module's import sites, kept by its bytes
         for qualified, source in sources.items():
-            if qualified == "alphalattice" or qualified.startswith(("alphalattice.", "devtools.")):
+            if qualified.startswith(("alphalattice.", "devtools.")):
                 inspect_module(qualified, source)
     out.extend(
         f"stale-legacy-import {k}"
@@ -1758,30 +1435,10 @@ def _import_sites(data: bytes, qualified: str) -> list[list[Any]]:
         scope, deferred = _import_scope(node, parents)
         line = getattr(node, "lineno", 0)
         lazy = bool(re.search(r"#\s*lazy:\s*\S", lines[getattr(node, "lineno", 1) - 1]))
-        kind = "call" if isinstance(node, ast.Call) else "other"
-        if isinstance(node, ast.ImportFrom):
-            kind = "from"
+        kind = "from" if isinstance(node, ast.ImportFrom) else "other"
         sites.append(
             [line, kind, scope, deferred, lazy, ast.unparse(node), id(node) in top, targets]
         )
-    bindings: dict[str, str] = {}
-    for node in nodes:
-        if isinstance(node, ast.ImportFrom):
-            for alias, target in zip(node.names, targets_of(node), strict=True):
-                bindings[alias.asname or alias.name] = target
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                root = alias.name.partition(".")[0]
-                bindings[alias.asname or root] = alias.name if alias.asname else root
-    for node in nodes:
-        if not (isinstance(node, ast.Attribute) and node.attr in _FILE_TRUST_PRIMITIVES):
-            continue
-        head, _, rest = ast.unparse(node).partition(".")
-        target = f"{bindings.get(head, head)}.{rest}"
-        if target in _FILE_TRUST_TARGETS:
-            sites.append(
-                [node.lineno, "file-trust-reference", "", False, False, "", False, [target]]
-            )
     return sites
 
 
@@ -1836,13 +1493,9 @@ def discover_python_modules(
 
 
 def _logical_module_for_path(path: Path, *, source_root: Path) -> str:
-    return _logical_module_name(_physical_module_for_path(path, source_root=source_root))
-
-
-def _physical_module_for_path(path: Path, *, source_root: Path) -> str:
     relative = path.relative_to(source_root).with_suffix("")
     parts = relative.parts[:-1] if relative.parts[-1] == "__init__" else relative.parts
-    return ".".join(parts)
+    return _logical_module_name(".".join(parts))
 
 
 def _logical_module_name(module: str) -> str:
@@ -1853,10 +1506,7 @@ def _logical_module_name(module: str) -> str:
         len(parts) == 2 and parts[0] == "alphalattice" and parts[1] in _PHYSICAL_NAMESPACE_GROUPS
     ):
         return ""
-    if parts[:3] == ["alphalattice", "kernel", "resources"]:
-        # The shipped product resources keep their existing logical package ID.
-        parts = ["kernel_resources", *parts[3:]]
-    elif len(parts) >= 3 and parts[0] == "alphalattice" and parts[1] in _PHYSICAL_NAMESPACE_GROUPS:
+    if len(parts) >= 3 and parts[0] == "alphalattice" and parts[1] in (_PHYSICAL_NAMESPACE_GROUPS):
         parts = parts[2:]
     elif len(parts) >= 2 and parts[0] == "devtools" and parts[1] in _DEVTOOLS_PACKAGES:
         parts = [_DEVTOOLS_PACKAGES[parts[1]], *parts[2:]]
@@ -1877,27 +1527,13 @@ def discover_module_dependencies(
 ) -> tuple[tuple[str, str], ...]:
     """Return import edges whose owners and targets are tracked source modules."""
 
-    return _internal_dependencies(paths, source_root=source_root, package_level=False)
-
-
-def _internal_dependencies(
-    paths: tuple[Path, ...], *, source_root: Path, package_level: bool
-) -> tuple[tuple[str, str], ...]:
-    """Resolve against tracked physical names before assigning logical owner IDs."""
-    physical_by_path = {
-        path: _physical_module_for_path(path, source_root=source_root) for path in paths
-    }
-    logical = {name: _logical_module_name(name) for name in physical_by_path.values()}
-    if package_level:
-        logical = {name: owner.partition(".")[0] for name, owner in logical.items()}
+    modules_by_path = dict(discover_python_modules(paths, source_root=source_root))
+    modules = set(modules_by_path.values())
     edges: set[tuple[str, str]] = set()
-    for path, physical in physical_by_path.items():
-        owner = logical[physical]
-        if not owner:
-            continue
-        for imported in _physical_imports(path, source_root=source_root):
-            if (target := logical.get(imported)) and target != owner:
-                edges.add((owner, target))
+    for path, owner in modules_by_path.items():
+        for imported in discover_python_imports(path, source_root=source_root):
+            if imported in modules and imported != owner:
+                edges.add((owner, imported))
     return tuple(sorted(edges))
 
 
@@ -2103,8 +1739,7 @@ def content_store_absence_violations(sources: Mapping[str, str]) -> tuple[str, .
 
 
 def evaluation_imports(sources: Mapping[str, str], entry: str) -> list[tuple[str, int, str]]:
-    """Evaluation imports past its forms, stdlib, YAML, Inspect AI (the release gates' runner,
-    adopted 2026-11-09) and the `module:name` entry; dynamic ones."""
+    """Evaluation imports past its forms, stdlib, YAML and the `module:name` entry; dynamic ones."""
     (module, _, name), failures = entry.partition(":"), []
     for path, text in sources.items():
         for node in ast.walk(ast.parse(text)):
@@ -2117,7 +1752,7 @@ def evaluation_imports(sources: Mapping[str, str], entry: str) -> list[tuple[str
                 names = [node.module or ""]
             for imported in names:
                 if not (
-                    imported.split(".")[0] in sys.stdlib_module_names | {"yaml", "inspect_ai"}
+                    imported.split(".")[0] in sys.stdlib_module_names | {"yaml"}
                     or imported.startswith("devtools.evaluation.")
                 ):
                     failures.append((path, getattr(node, "lineno", 0), imported))

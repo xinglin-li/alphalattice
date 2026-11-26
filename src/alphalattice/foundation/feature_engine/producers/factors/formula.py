@@ -39,13 +39,14 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from fractions import Fraction
 from functools import cache
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.observation_clock import formula_skip_sessions
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
 
 from .formula_language import (
     EWM_SPAN,
@@ -64,9 +65,6 @@ from .formula_language import (
     signatures,
     units,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 FORMULA_ID: Final = "factor.formula"
 FORMULA_SECTOR_ID: Final = "factor.formula.sector"
@@ -244,25 +242,26 @@ def formula_controls() -> dict[str, object]:
         "research_leaves": {
             "sector_return": (
                 "the day's equal-weight log return of the listing's Sector, with the Sector in "
-                "force at each session; point in time from T0 and the first recorded "
+                "force at each session (V346); point in time from T0 and the first recorded "
                 "classification backfilled before it, as the study's statement says; a factor "
                 "reading it is tried and reviewed, and is activated once the daily build carries "
-                "its Sector child; the plan keeps it under factor.formula.sector"
+                "its Sector child (V359); the plan keeps it under factor.formula.sector"
             ),
             **{
                 leaf: (
                     f"the session's {leaf.removesuffix('_pit')} as it traded, re-based to the "
                     "session the value is for, so no later split moves it and a level form (a "
-                    "price floor, a dollar threshold) reads the price as it stood; "
+                    "price floor, a dollar threshold) reads the price as it stood (V345); "
                     + (
                         "the share volume re-based by share splits alone: a fractional split "
                         "ratio is a price adjustment, and the provider's share volume before one "
-                        "is assumed scaled by it as by a split, which cannot be checked offline; "
+                        "is assumed scaled by it as by a split, which cannot be checked offline "
+                        "(V348); "
                         if leaf == "volume_pit"
                         else ""
                     )
-                    + "the daily build carries the as-traded fields for a catalog that reads them, "
-                    "so a factor reading it is tried, reviewed and activated as any "
+                    + "the daily build carries the as-traded fields for a catalog that reads them "
+                    "(V395), so a factor reading it is tried, reviewed and activated as any "
                     "formula is; the plan keeps it under factor.formula.point_in_time"
                 )
                 for leaf in FORMULA_POINT_IN_TIME_INDEX
@@ -414,8 +413,6 @@ def compute_formula(source: pd.DataFrame, specification: FactorSpec) -> pd.Serie
     Raises:
         FormulaError: `factor_formula.not_canonical` for a formula kept in another spelling.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     skip = formula_skip_sessions(specification)
     tree = formula_tree(specification.formula, skip=skip)
     if canonical(tree) != specification.formula:
@@ -477,8 +474,6 @@ def _rebased_to_each_session(
     Returns:
         The values, in the same layout, the skip applied.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     carried = {name: pd.DataFrame(index).ffill().to_numpy() for name, index in indices.items()}
     rows, columns = next(iter(panels.values())).shape
     started = np.zeros((rows, columns), dtype=bool)

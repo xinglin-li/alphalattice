@@ -8,21 +8,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sector_treatment import (
-    SECTOR_HISTORY_BACKFILLED,
-    SECTOR_HISTORY_FORWARD,
-)
-from alphalattice.capabilities.quant.sector_history import (
-    SectorHistory,
-    SectorReclassification,
-    exposure_sector_ids,
-    reclassification_payload,
-    sector_exposure,
-    sector_slices,
-    sector_subset,
-    sector_treatment_of,
-)
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -47,6 +32,21 @@ from alphalattice.foundation.market_data_ops.sources.sector_forward import (
     sector_effective_session,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.quant.sector_history import (
+    SectorHistory,
+    SectorReclassification,
+    exposure_sector_ids,
+    reclassification_payload,
+    sector_exposure,
+    sector_slices,
+    sector_subset,
+    sector_treatment_of,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sector_treatment import (
+    SECTOR_HISTORY_BACKFILLED,
+    SECTOR_HISTORY_FORWARD,
+)
 from tests.workspace_maintenance.acquisition_manifest import acquisition_manifest
 
 MONDAY, TUESDAY, WEDNESDAY, THURSDAY = (date(2026, 8, day) for day in (3, 4, 5, 6))

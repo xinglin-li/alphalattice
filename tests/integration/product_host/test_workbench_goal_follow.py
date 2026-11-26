@@ -12,7 +12,6 @@ from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
@@ -36,6 +35,7 @@ from alphalattice.interface.local_application.portfolio_research import (
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     PortfolioExperimentSource,
 )
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task import (
     portfolio_review_task_contract,
 )
@@ -52,8 +52,7 @@ from tests.feature_input_gateway.gateway_support import (
     _sectors,
     _temporal,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.node_runner import run_node
+from tests.portfolio_strategy_lab.local_web_support import _json, run_node
 from tests.workspace_task_runner.task_control_support import digest
 
 
@@ -143,10 +142,11 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
         live.operations.goals,
         live.activity,
     )
-    publication = digest("qa-follow-publication")
+    goal_id, publication = uuid4(), digest("qa-follow-publication")
     opened = goals.operate(
         PortfolioResearchOperationRequest(
             operation="GOAL_OPEN",
+            goal_id=goal_id,
             goal_declaration={
                 "kind": "OPERATIONS",
                 "title": "QA fixture: follow exact owner checkpoints",
@@ -162,7 +162,6 @@ def test_real_task_events_follow_the_attributed_goal_and_preserve_manual_reading
         "HUMAN",
     )
     goal = goals.store.load(opened["goal_hash"])
-    goal_id = goal.goal_id
     artifacts: dict[UUID, ArtifactReference] = {}
     observer.attach(
         dispatcher=live.dispatcher,

@@ -3513,7 +3513,7 @@
     "name": "inputs",
     "kind": "array",
     "required": true,
-    "meaning": "Deprecated in 0.2.8, always empty: research inputs are kept once on the data root while a binding names them, outside storage cleanup."
+    "meaning": "Each research input version kept: its roots, bytes, and whether all its files are present."
    },
    {
     "name": "evidence",
@@ -3619,7 +3619,7 @@
     "name": "bindings",
     "kind": "array",
     "required": true,
-    "meaning": "Deprecated in 0.2.8, always empty: research inputs are kept once on the data root while a binding names them, outside storage cleanup."
+    "meaning": "The research input versions no root keeps, whose copies the plan releases, by binding hash."
    },
    {
     "name": "retained_bytes",
@@ -8817,12 +8817,6 @@
  "DATA_UPDATE_READBACK": {
   "fields": [
    {
-    "name": "daily_health",
-    "kind": "object",
-    "required": false,
-    "meaning": "The selected Task's or workspace's latest Daily health observation. It names the Task and target session and carries five checks with stable IDs, verdicts and counts. An unavailable count is null."
-   },
-   {
     "name": "status",
     "kind": "string",
     "required": true,
@@ -10029,12 +10023,6 @@
  "RESEARCH_UPDATE_READBACK": {
   "fields": [
    {
-    "name": "daily_health",
-    "kind": "object",
-    "required": false,
-    "meaning": "The Daily health observation for this Task. It names the target session and carries five checks with stable IDs, verdicts and counts. An unavailable count is null."
-   },
-   {
     "name": "summary",
     "kind": "object",
     "required": false,
@@ -10481,12 +10469,6 @@
     "meaning": "Each Task the page names or you watch, keyed by its exact Task id, as its status read shows it. An unprojectable canonical record has REFUSED status, code, words and workspace/backup requests; no lifecycle, progress or artifact is inferred."
    },
    {
-    "name": "calls",
-    "kind": "object",
-    "required": true,
-    "meaning": "The CLI call at the root of each trace the page's items are in, keyed by trace id: its command, its agent session, its start and, once it ended, its end and exit code. A call still running has no end; an item outside any call's trace names none."
-   },
-   {
     "name": "observer",
     "kind": "object",
     "required": true,
@@ -10540,7 +10522,7 @@
     "name": "observation_id",
     "kind": "string",
     "required": true,
-    "meaning": "The recorded observation, by its id: the opaque id of the log event that keeps it."
+    "meaning": "The recorded observation, by its id."
    },
    {
     "name": "source_id",
@@ -10908,92 +10890,6 @@
    }
   ]
  },
- "ANALYST_READS": {
-  "fields": [
-   {
-    "name": "status",
-    "kind": "string",
-    "required": true,
-    "meaning": "The answer's status: `ANALYST_READS`."
-   },
-   {
-    "name": "analyst_reads",
-    "kind": "string",
-    "required": true,
-    "meaning": "`SUBAGENTS` when each Analyst bundle is read by its own subagent; `IN_SESSION` when the lead session reads each itself; `UNANSWERED` when the person never answered. A record the product did not write reads as `UNANSWERED`."
-   },
-   {
-    "name": "answered_for",
-    "kind": "integer|null",
-    "required": true,
-    "meaning": "The most Analyst bundles the person's answer covers; a review that hands out more asks again. Null while unanswered."
-   },
-   {
-    "name": "detail",
-    "kind": "string",
-    "required": true,
-    "meaning": "What the standing answer means for a review, in words."
-   },
-   {
-    "name": "next_requests",
-    "kind": "object",
-    "required": true,
-    "meaning": "Once answered, the request that turns the answer the other way for the same count, as `set`; only a person's relayed answer sends it. Empty while unanswered: no answer is offered for them."
-   },
-   {
-    "name": "ask_now",
-    "kind": "array",
-    "required": false,
-    "meaning": "When the request names more than one bundle and no answer covers that many: how to ask, the one question in its registered words, and the command that relays the person's answer for that count."
-   },
-   {
-    "name": "person_questions",
-    "kind": "array",
-    "required": false,
-    "meaning": "With `ask_now`: the registered question `review.analyst_reads`, its words and its two choices."
-   }
-  ]
- },
- "ANALYST_READS_SET": {
-  "fields": [
-   {
-    "name": "status",
-    "kind": "string",
-    "required": true,
-    "meaning": "The answer's status: `ANALYST_READS`, after the setting."
-   },
-   {
-    "name": "analyst_reads",
-    "kind": "string",
-    "required": true,
-    "meaning": "`SUBAGENTS` when each Analyst bundle is read by its own subagent; `IN_SESSION` when the lead session reads each itself; `UNANSWERED` when the person never answered. A record the product did not write reads as `UNANSWERED`."
-   },
-   {
-    "name": "answered_for",
-    "kind": "integer|null",
-    "required": true,
-    "meaning": "The most Analyst bundles the person's answer covers; a review that hands out more asks again. Null while unanswered."
-   },
-   {
-    "name": "detail",
-    "kind": "string",
-    "required": true,
-    "meaning": "What the standing answer means for a review, in words."
-   },
-   {
-    "name": "next_requests",
-    "kind": "object",
-    "required": true,
-    "meaning": "Once answered, the request that turns the answer the other way for the same count, as `set`; only a person's relayed answer sends it. Empty while unanswered: no answer is offered for them."
-   },
-   {
-    "name": "attributed_goal_id",
-    "kind": "string",
-    "required": false,
-    "meaning": "The goal the Host counted this request toward, by its id; only when the request named a goal or its agent session holds one."
-   }
-  ]
- },
  "CPU_BUDGET_SHOW": {
   "fields": [
    {
@@ -11158,19 +11054,13 @@
     "name": "status",
     "kind": "string",
     "required": true,
-    "meaning": "`HOST_STOPPING`: the Host is stopping work at safe points and retaining it for resumption."
+    "meaning": "`HOST_STOPPING`: the Host answered and now stops once its running work has ended."
    },
    {
     "name": "detail",
     "kind": "string",
     "required": true,
-    "meaning": "What the stop waits for and what it leaves: work reaches safe points and can resume."
-   },
-   {
-    "name": "finishing_task_ids",
-    "kind": "array",
-    "required": true,
-    "meaning": "The Tasks still executing when the Host answered, by id; their live status remains readable while they finish."
+    "meaning": "What the stop waits for and what it leaves: Tasks finish, nothing is cancelled."
    },
    {
     "name": "next_action",
@@ -11193,12 +11083,6 @@
     "kind": "string",
     "required": true,
     "meaning": "The directory outside the workspace that holds the backups."
-   },
-   {
-    "name": "bytes",
-    "kind": "integer",
-    "required": true,
-    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
    },
    {
     "name": "last_automatic_attempt",
@@ -11239,12 +11123,6 @@
     "kind": "string",
     "required": true,
     "meaning": "The directory outside the workspace that holds the backups."
-   },
-   {
-    "name": "bytes",
-    "kind": "integer",
-    "required": true,
-    "meaning": "The bytes the backup root holds on disk: its kept generations and the objects they name."
    },
    {
     "name": "last_automatic_attempt",

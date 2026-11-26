@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import ClassVar, cast
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     PanelLogicalMembershipEpoch,
-    identity_payload,
-    seal_logical_identity,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LOGICAL_SLICE_ALGORITHM_IDENTITY = "ordered-logical-row-digest"
 """The logical digests' algorithm. A change to them bumps it: a publication takes an unchanged
@@ -34,8 +31,6 @@ class FeaturePanelLogicalSemanticIndex(BaseModel):  # type: ignore[misc]
     """Bind logical Panel sessions, factors, and membership to slice identity."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-
-    IDENTITY_EXCLUDES_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"membership_epochs"})
 
     kind: str = "FeaturePanelLogicalSemanticIndex"
     logical_panel_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -63,14 +58,9 @@ class FeaturePanelLogicalSemanticIndex(BaseModel):  # type: ignore[misc]
         for item in self.sessions:
             if item.row_count != self.expected_row_count(item.session_date):
                 raise ValueError("logical semantic index has an incomplete session")
-        if self.calendar_hash != logical_calendar_hash(dates):
+        if self.calendar_hash != canonical_hash(dates):
             raise ValueError("logical semantic index calendar hash is invalid")
-        digest = stage_digest(
-            (type(self), "index_hash", self.index_hash),
-            identity_payload(self, "index_hash"),
-            canonical_hash,
-        )
-        if self.index_hash != digest:
+        if self.index_hash != canonical_hash(_index_identity(self)):
             raise ValueError("logical semantic index hash is invalid")
         return self
 
@@ -107,9 +97,11 @@ class FeaturePanelLogicalSemanticIndex(BaseModel):  # type: ignore[misc]
         )
 
 
-def logical_calendar_hash(dates: tuple[date, ...]) -> str:
-    """The canonical calendar identity of the ordered dates shared by the revision and index."""
-    return stage_digest(("logical-calendar", dates), dates, canonical_hash)
+def _index_identity(index: FeaturePanelLogicalSemanticIndex) -> dict[str, object]:
+    excluded = {"index_hash"}
+    if index.membership_epochs is None:
+        excluded.add("membership_epochs")
+    return cast(dict[str, object], index.model_dump(mode="json", exclude=excluded))
 
 
 def build_logical_semantic_index(
@@ -129,12 +121,15 @@ def build_logical_semantic_index(
         "listing_set_hash": listing_set_hash,
         "factor_ids": factor_ids,
         "active_listing_count": active_listing_count,
-        "calendar_hash": logical_calendar_hash(tuple(item.session_date for item in sessions)),
+        "calendar_hash": canonical_hash(tuple(item.session_date for item in sessions)),
         "slice_algorithm_identity": LOGICAL_SLICE_ALGORITHM_IDENTITY,
         "sessions": sessions,
         "membership_epochs": membership_epochs,
     }
-    return seal_logical_identity(FeaturePanelLogicalSemanticIndex, values, "index_hash")
+    provisional = FeaturePanelLogicalSemanticIndex.model_construct(**values, index_hash="0" * 64)
+    return FeaturePanelLogicalSemanticIndex(
+        **values, index_hash=canonical_hash(_index_identity(provisional))
+    )
 
 
 __all__ = [
@@ -142,5 +137,4 @@ __all__ = [
     "FeaturePanelLogicalSemanticIndex",
     "FeaturePanelLogicalSessionSemantic",
     "build_logical_semantic_index",
-    "logical_calendar_hash",
 ]

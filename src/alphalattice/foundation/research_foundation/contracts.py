@@ -7,13 +7,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.domain.enums import DataValidityClass
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sector_treatment import (
+from alphalattice.kernel.shared_kernel.domain.enums import DataValidityClass
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SECTOR_HISTORY_FORWARD,
 )
-from alphalattice.capabilities.validation.enums import RebalanceFrequency
+from alphalattice.kernel.validation.enums import RebalanceFrequency
 
 
 class _ContractModel(BaseModel):

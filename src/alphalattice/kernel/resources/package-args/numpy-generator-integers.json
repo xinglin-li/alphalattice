@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.numpy.random-generator-integers",
+  "revision": "1.0.0",
+  "title": "NumPy Generator.integers adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "numpy", "version": "2.5.1"},
+  "companion_distributions": [],
+  "callable": "numpy.random.Generator.integers",
+  "arguments": [
+    {"schema_version": "1", "name": "dtype", "value_kind": "string", "has_default": true, "default": "int64", "allowed_values": ["int64", "uint64"]},
+    {"schema_version": "1", "name": "endpoint", "value_kind": "boolean", "has_default": true, "default": false, "allowed_values": [false]},
+    {"schema_version": "1", "name": "high", "value_kind": "integer", "required": true, "minimum": 1.0},
+    {"schema_version": "1", "name": "low", "value_kind": "integer", "required": true, "minimum": 0.0},
+    {"schema_version": "1", "name": "size", "value_kind": "integer_list", "required": true, "minimum": 1.0}
+  ],
+  "interactions": ["Bounds and the two-element JSON size list are derived by the deterministic bootstrap algorithm."],
+  "assumptions": ["Generator is constructed explicitly from the governed PCG64 instance."],
+  "warnings": ["This argument schema does not define block sampling semantics."],
+  "failure_modes": ["Invalid bounds, size, dtype, endpoint, or unavailable locked NumPy distribution."],
+  "owner_policy_ref": "reference:numerical-validation-protocol",
+  "official_source_url": "https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.integers.html"
+}

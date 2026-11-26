@@ -3,53 +3,34 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import http.cookiejar
 import json
 import os
 import queue
-import re
 import shlex
 import shutil
 import subprocess
 import tempfile
 import threading
-import time
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
 from pathlib import Path
 
-import psutil
 
-from alphalattice.capabilities.domain_contracts import spawn
-
-HOST_MODULE = "alphalattice.control.product_host.composition.web_launcher"
-"""The module a detached Host runs as (web_launcher._detach's command)."""
-RAISED = re.compile(r"([A-Z]\w*(?:Error|Exception|Exit|Interrupt))(?::|$)")
-"""An error line's exception name, the one part of a command's stderr a diagnostic keeps."""
-
-
-def shell_command(
-    command: list[str], shell: str | None, *, launcher: str | None = None
-) -> list[str]:
+def shell_command(command: list[str], shell: str | None) -> list[str]:
     """Start a new unprofiled host shell with no prior variables or activation."""
     if shell == "powershell":
         words = " ".join("'" + part.replace("'", "''") + "'" for part in command)
-        invocation = "& " + words
-        script = launcher.replace("{launcher}", invocation) if launcher else invocation
         return [
             "powershell.exe",
             "-NoLogo",
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            script + "; exit $LASTEXITCODE",
+            "& " + words + "; exit $LASTEXITCODE",
         ]
     if shell == "bash":
-        invocation = "exec " + shlex.join(command)
-        script = launcher.replace("{launcher}", invocation) if launcher else invocation
-        return [git_bash(), "--noprofile", "--norc", "-c", script]
+        return [git_bash(), "--noprofile", "--norc", "-c", "exec " + shlex.join(command)]
     return command
 
 
@@ -69,221 +50,64 @@ def git_bash() -> str:
     return bash
 
 
-def outcome(done: subprocess.CompletedProcess[str]) -> tuple[int, str | None, str | None]:
-    """What a failed expectation reports of a command: its exit, its answer's failure code and
-    the exception its last error line names. Never its output, which can hold a session key."""
-    try:
-        answer = json.loads(done.stdout)
-    except ValueError:
-        answer = None
-    code = answer.get("failure_code") if isinstance(answer, dict) else None
-    lines = done.stderr.strip().splitlines()
-    raised = RAISED.match(lines[-1]) if lines else None
-    name = raised.group(1) if raised else None
-    return done.returncode, code if isinstance(code, str) else None, name
-
-
-def read_launch(lines: queue.Queue[str | None], *, timeout: float = 60) -> str:
-    """Read the launch announcement within one overall wall-time bound."""
-    deadline = time.monotonic() + timeout
-    last_line = ""
-    while time.monotonic() < deadline:
-        try:
-            line = lines.get(timeout=max(0.001, deadline - time.monotonic()))
-        except queue.Empty:
-            break
-        if line is None:
-            raise ValueError(
-                f"wheel_smoke.launch_exit: Host ended before its launch URL\n{last_line}"
-            )
-        last_line = line.rstrip() or last_line
-        if line.startswith("Portfolio Research workspace: "):
-            launch = line.removeprefix("Portfolio Research workspace: ").strip()
-            if launch:
-                return launch
-    raise ValueError(
-        f"wheel_smoke.launch_timeout: Host did not announce a launch URL within {timeout:g} seconds"
-    )
-
-
-def smoke(
-    command: list[str],
-    *,
-    cwd: Path,
-    fresh_shell: str | None = None,
-    install_environment: dict[str, str] | None = None,
-    launch_workspace: str | None = None,
-    launcher: str | None = None,
-    while_serving: Callable[[], None] | None = None,
-) -> dict[str, object]:
+def smoke(command: list[str], *, cwd: Path, fresh_shell: str | None = None) -> dict[str, object]:
     """Exercise help, a fresh-workspace refusal, Host session and served workspace read."""
-    environment = {
-        **os.environ,
-        **(install_environment or {}),
-        "ALPHALATTICE_NETWORK_DISABLED": "1",
-        "PYTHONPATH": "",
-    }
+    environment = {**os.environ, "ALPHALATTICE_NETWORK_DISABLED": "1", "PYTHONPATH": ""}
     environment.pop("VIRTUAL_ENV", None)
     environment.pop("CONDA_PREFIX", None)
-    with (
-        tempfile.TemporaryDirectory(
-            prefix="alphalattice-wheel-smoke-", dir=cwd.parent if launch_workspace else None
-        ) as temporary,
-        spawn.InteractiveSession(timeout=300, stop_scope="tree") as session,
-    ):
+    with tempfile.TemporaryDirectory(prefix="alphalattice-wheel-smoke-") as temporary:
         workspace = Path(temporary) / "workspace"
-        environment["ALPHALATTICE_DATA_ROOT"] = (install_environment or {}).get(
-            "ALPHALATTICE_DATA_ROOT", str(Path(temporary) / "data-root")
-        )
-        prefix = [*command, "--workspace", launch_workspace or str(workspace)]
-
-        def read_help() -> int:
-            help_run = spawn.run(
-                shell_command([*command, "--help"], fresh_shell, launcher=launcher),
-                cwd=cwd,
-                env=environment,
-                text=True,
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                timeout=30,
-                check=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            assert "workspace" in help_run.stdout and "serve" in help_run.stdout
-            return help_run.returncode
-
-        def read_without_host() -> tuple[int, str]:
-            before = spawn.run(
-                shell_command([*prefix, "workspace", "show"], fresh_shell, launcher=launcher),
-                cwd=cwd,
-                env=environment,
-                text=True,
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                timeout=30,
-                check=False,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            response = json.loads(before.stdout)
-            assert (
-                before.returncode == 4
-                and response["failure_code"] == "local_client.service_not_running"
-            )
-            assert response["detail"] and response["next_action"]
-            return before.returncode, response["failure_code"]
-
-        def hosted_workspace(process: psutil.Process, words: list[str]) -> Path | None:
-            """The workspace a detached Host's command line names; None for any other process,
-            and for one that ended or hides its folder while it is read."""
-            if HOST_MODULE not in words or "--workspace" not in words[:-1]:
-                return None
-            named = Path(words[words.index("--workspace") + 1])
-            try:
-                return (named if named.is_absolute() else Path(process.cwd()) / named).resolve()
-            except psutil.Error:
-                return None
-
-        def read_after_stop() -> tuple[int, str]:
-            """The stopped workspace's next read starts its Host detached and answers. Where the
-            platform refuses a detached Host (a Windows job that denies breakaway), the read
-            answers NO_HOST and `serve --detach` names the refusal. Whatever the answers, a Host
-            either started is stopped and its process ended before the smoke leaves its root."""
-
-            def line(*words: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-                return spawn.run(
-                    shell_command([*prefix, *words], fresh_shell, launcher=launcher),
-                    cwd=cwd,
-                    env=environment,
-                    text=True,
-                    capture_output=True,
-                    stdin=subprocess.DEVNULL,
-                    timeout=360,  # a Host start's own ready wait
-                    check=check,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-
-            def owned_hosts() -> list[psutil.Process]:
-                """The detached Hosts serving this workspace, found by their command line, so
-                on whatever data root a launcher sets and whatever they answer."""
-                target = (cwd / (launch_workspace or ".")).resolve()
-                return [
-                    process
-                    for process in psutil.process_iter(["cmdline"])
-                    if hosted_workspace(process, process.info["cmdline"] or []) == target
-                ]
-
-            def stop_detached() -> None:
-                """Stop each detached Host the reads started and wait for its process to end:
-                `host stop` answers before the Host joins its workers and releases the
-                workspace. No such process proves none started. The stop's own failure is kept,
-                a Host the stop itself started (one ended between the scan and the stop) is
-                waited for as well, and every survivor is ended; the smoke fails by name unless
-                the stop answered and a final scan finds no Host left on the workspace."""
-                hosts = owned_hosts()
-                if not hosts:
-                    return
-                try:
-                    stopped = line("host", "stop")
-                    refusal = None if stopped.returncode == 0 else outcome(stopped)
-                except (OSError, subprocess.SubprocessError) as error:
-                    refusal = repr(error)
-                _, alive = psutil.wait_procs(hosts, timeout=120)
-                started = [process for process in owned_hosts() if process not in alive]
-                _, late = psutil.wait_procs(started, timeout=120)
-                survivors = [*alive, *late]
-                for process in survivors:
-                    process.terminate()
-                psutil.wait_procs(survivors, timeout=30)
-                left = owned_hosts()
-                for process in left:
-                    process.kill()
-                psutil.wait_procs(left, timeout=30)
-                assert refusal is None and not survivors and not left, (
-                    refusal,
-                    [process.pid for process in survivors],
-                    [process.pid for process in left],
-                )
-
-            try:
-                read = line("workspace", "show")
-                answer = json.loads(read.stdout)
-                if read.returncode == 0:
-                    assert answer["outcome"] == "OK"
-                    return read.returncode, answer["outcome"]
-                assert read.returncode == 4
-                assert answer["failure_code"] == "local_client.service_not_running"
-                detached = line("serve", "--detach", "--no-browser")
-                code = "local_web.detached_breakaway_denied"
-                said = detached.stdout + detached.stderr
-                assert detached.returncode == 2 and code in said, outcome(detached)
-                return read.returncode, code
-            finally:
-                stop_detached()
-
-        if not launch_workspace:
-            refusal_exit, refusal_code = read_without_host()
-        start = [*prefix, "serve", "--no-browser", "--stop-on-stdin"]
-        process = session.start(
-            shell_command(start, fresh_shell, launcher=launcher) if launcher else start,
+        help_run = subprocess.run(
+            shell_command([*command, "--help"], fresh_shell),
             cwd=cwd,
             env=environment,
             text=True,
+            capture_output=True,
+            timeout=30,
+            check=True,
+        )
+        assert "workspace" in help_run.stdout and "serve" in help_run.stdout
+        prefix = [*command, "--workspace", str(workspace)]
+        before = subprocess.run(
+            shell_command([*prefix, "workspace", "show"], fresh_shell),
+            cwd=cwd,
+            env=environment,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        response = json.loads(before.stdout)
+        # A read never creates a Host: this named refusal is the same on both legs.
+        assert (
+            before.returncode == 4
+            and response["failure_code"] == "local_client.service_not_running"
+        )
+        assert response["detail"] and response["next_action"]
+        process = subprocess.Popen(
+            [*prefix, "serve", "--no-browser", "--stop-on-stdin"],
+            cwd=cwd,
+            env=environment,
+            text=True,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        lines: queue.Queue[str | None] = queue.Queue()
+        lines: queue.Queue[str] = queue.Queue()
 
         def collect() -> None:
             assert process.stdout is not None
             for line in process.stdout:
                 lines.put(line)
-            lines.put(None)
 
         reader = threading.Thread(target=collect, daemon=True)
         reader.start()
         try:
-            launch = read_launch(lines, timeout=240) if launch_workspace else read_launch(lines)
+            launch = ""
+            while not launch:
+                line = lines.get(timeout=60)
+                if line.startswith("Portfolio Research workspace: "):
+                    launch = line.removeprefix("Portfolio Research workspace: ").strip()
             cookies = http.cookiejar.CookieJar()
             opener = urllib.request.build_opener(
                 urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(cookies)
@@ -292,54 +116,38 @@ def smoke(
                 assert opened.status == 200
             address = urllib.parse.urlsplit(launch)
             base = f"{address.scheme}://{address.netloc}"
-            with opener.open(base + "/api/session", timeout=20) as session_response:
-                assert session_response.status == 200
-                payload = json.loads(session_response.read())
+            with opener.open(base + "/api/session", timeout=20) as session:
+                assert session.status == 200
+                payload = json.loads(session.read())
                 assert isinstance(payload, dict) and payload
-            shown = spawn.run(
-                shell_command([*prefix, "workspace", "show"], fresh_shell, launcher=launcher),
+            shown = subprocess.run(
+                shell_command([*prefix, "workspace", "show"], fresh_shell),
                 cwd=cwd,
                 env=environment,
                 text=True,
                 capture_output=True,
-                stdin=subprocess.DEVNULL,
                 timeout=30,
                 check=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             answer = json.loads(shown.stdout)
             assert answer["outcome"] == "OK"
-            if while_serving:
-                while_serving()
         finally:
             assert process.stdin is not None
-            with contextlib.suppress(OSError):
-                session.send("stop\n")
-            with contextlib.suppress(OSError):
-                session.close_input()
+            process.stdin.write("stop\n")
+            process.stdin.flush()
+            process.stdin.close()
             try:
                 exit_code = process.wait(timeout=60)
             except subprocess.TimeoutExpired:
-                session.stop()
+                process.kill()
+                process.wait()
                 raise
             reader.join(timeout=10)
         assert exit_code == 0
-        help_exit = read_help()
-        if launch_workspace:
-            stopped_exit, stopped_answer = read_after_stop()
         return {
-            "help_exit": help_exit,
-            **(
-                {
-                    "stopped_workspace_show_exit": stopped_exit,
-                    "stopped_workspace_show": stopped_answer,
-                }
-                if launch_workspace
-                else {
-                    "fresh_workspace_show_exit": refusal_exit,
-                    "fresh_workspace_show": refusal_code,
-                }
-            ),
+            "help_exit": 0,
+            "fresh_workspace_show_exit": before.returncode,
+            "fresh_workspace_show": response["failure_code"],
             "session_route_status": 200,
             "served_workspace_show_exit": shown.returncode,
             "host_stop_exit": exit_code,

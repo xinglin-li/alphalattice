@@ -7,13 +7,13 @@ from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from operator import itemgetter
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import duckdb
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.catalog.layer import FeatureCatalogLayer
 from alphalattice.foundation.feature_engine.inputs.closure_source import (
     FeatureClosureSourceRepository,
@@ -47,9 +47,7 @@ from alphalattice.foundation.feature_engine.storage.contracts import (
     FeatureRowIdentity,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _Candidate = tuple[date, str, str, str, int, int]
 """One row of a transition: its session and listing (its key), its serialized cutoffs, its row
@@ -282,8 +280,6 @@ class FeatureBaseClosureCoordinator:
     ) -> tuple[str, ...]:
         """A first load's batch: its part held no row when the load began, so no row of the
         batch replaces one, and none is compared or recorded key by key."""
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         expected_receipts = self._expected_receipts(bounded)
         cutoff_sets: MutableMapping[tuple[tuple[str, ...], str], tuple[str, str]] = {}
         writes = []
@@ -536,8 +532,6 @@ class FeatureBaseClosureCoordinator:
         dict[tuple[date, str], str],
         tuple[FeatureMaterializationWrite, ...],
     ]:
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         candidates: list[_Candidate] = []
         derived: list[
             tuple[
@@ -647,8 +641,6 @@ class FeatureBaseClosureCoordinator:
     def _expected_receipts(
         self, writes: tuple[FeatureMaterializationWrite, ...]
     ) -> tuple[str, ...]:
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         receipts: list[str] = []
         for write in writes:
             if not isinstance(write.rows, pd.DataFrame) or write.rows.empty:
@@ -685,8 +677,6 @@ class FeatureBaseClosureCoordinator:
     def _patch_table(
         self, writes: tuple[FeatureMaterializationWrite, ...], rows: tuple[_Candidate, ...]
     ) -> pa.Table:
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         payload: dict[str, pa.Array] = {
             "session_date": pa.array([row[0] for row in rows], type=pa.date32()),
             "listing_id": pa.array([row[1] for row in rows], type=pa.string()),

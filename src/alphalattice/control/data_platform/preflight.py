@@ -25,15 +25,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, cast
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_inputs.benchmark import (
     build_portfolio_benchmark_surface,
 )
-from alphalattice.foundation.feature_engine.storage.repositories import (
-    FeatureStateRepository,
-    projected_feature_frames,
-)
+from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
 from alphalattice.foundation.market_data_ops.returns.execution import open_to_open_simple_return
 from alphalattice.foundation.market_data_ops.runtime.diagnostics import (
     UniverseSpyDivergenceDiagnostic,
@@ -45,6 +40,8 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     build_trading_session_authority,
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 #: The common US research venues. One spelling, shared by the execution axis and
 #: this preflight, so a session is a session everywhere in the product.
@@ -359,21 +356,18 @@ def evaluate_universe_spy_divergence_preflight(
     store = FeatureStateRepository(workspace.resolve(), market_data=market)
     per_session: dict[date, list[float]] = {session: [] for session in formation_sessions}
     lineage: list[tuple[str, str, str]] = []
-    members = sorted(listing.listing_id for listing in manifest.listings)
-    # One database instance and one read per table for every listing: a read per
-    # listing opens a connection and binds the market relations each time, and
-    # that was most of this preflight's time.
+    # One database instance for the whole read: each listing's frame is three
+    # short reads, and an instance open per read (three per listing, a
+    # metadata read each) was most of this preflight's time.
     with market.database.retain(read_only=True):
-        frames = projected_feature_frames(
-            store,
-            manifest,
-            members,
-            through=max(formation_sessions) + date.resolution * 10,
-            start=min(formation_sessions),
-        )
-        for listing_id in members:
-            rows, raw_hash, action_hash = frames[listing_id]
-            lineage.append((listing_id, raw_hash, action_hash))
+        for listing in sorted(manifest.listings, key=lambda item: item.listing_id):
+            rows, raw_hash, action_hash = store.projected_feature_frame(
+                manifest,
+                listing_id=listing.listing_id,
+                through=max(formation_sessions) + date.resolution * 10,
+                start=min(formation_sessions),
+            )
+            lineage.append((listing.listing_id, raw_hash, action_hash))
             sessions = tuple(cast(date, row["session_date"]) for row in rows)
             position = {value: index for index, value in enumerate(sessions)}
             for formation in formation_sessions:

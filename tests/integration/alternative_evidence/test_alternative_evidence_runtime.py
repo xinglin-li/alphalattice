@@ -285,10 +285,7 @@ def test_live_calls_follow_the_admitted_evidence_classes(tmp_path: Path) -> None
     assert any("/companyfacts/" in value for value in facts_transport.calls)
 
 
-def test_http_transport_enforces_retry_size_failure_and_official_boundaries(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+def test_http_transport_enforces_retry_size_failure_and_official_boundaries() -> None:
     calls = 0
     clock = [0.0]
     sleeps: list[float] = []
@@ -567,17 +564,7 @@ def test_auto_reads_the_load_on_the_processors_it_may_use(monkeypatch: pytest.Mo
     assert cores == 3 and reason.startswith("auto: 3 of 4")
 
 
-@pytest.mark.parametrize(
-    "system",
-    [
-        "darwin",
-        "linux",
-        pytest.param(
-            "win32",
-            marks=pytest.mark.skipif(sys.platform != "win32", reason="Reads Windows memory status"),
-        ),
-    ],
-)
+@pytest.mark.parametrize("system", ["darwin", "linux", "win32"])
 def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> None:
     """requirement: macOS (no SC_AVPHYS_PAGES, no affinity) and Linux read total and available
     memory, page cache counted free; Windows keeps its own status whatever psutil says."""
@@ -587,17 +574,18 @@ def test_memory_is_read_by_each_platforms_own_measure(monkeypatch, system) -> No
     memory = SimpleNamespace(total=16 * gib + 1, available=9 * gib)
     monkeypatch.setattr(process_metrics.psutil, "virtual_memory", lambda: memory)
     if system == "win32":
+        if sys.platform != "win32":
+            pytest.skip("Windows reads its own memory status")
         assert process_metrics.runtime_machine_capacity().total_memory_bytes != memory.total
         return
     pages = {"SC_PAGE_SIZE": 4096, "SC_PHYS_PAGES": memory.total // 4096}
     if system == "linux":  # free pages alone: 1 GiB, the page cache not counted
         pages["SC_AVPHYS_PAGES"] = gib // 4096
-    machine = SimpleNamespace(name="posix", sysconf=pages.__getitem__)
+    machine = SimpleNamespace(name="posix", cpu_count=lambda: 4, sysconf=pages.__getitem__)
     if system == "linux":
         machine.sched_getaffinity = lambda _pid: {0, 1, 2, 3}
     monkeypatch.setattr(process_metrics, "os", machine)
     monkeypatch.setattr(process_metrics, "sys", SimpleNamespace(platform=system))
-    monkeypatch.setattr(process_metrics, "logical_cpu_count", lambda: 4)
     capacity = process_metrics.runtime_machine_capacity()
     assert (capacity.total_memory_bytes, capacity.available_memory_bytes) == (memory.total, 9 * gib)
     assert capacity.allowed_logical_processor_ids == (0, 1, 2, 3)

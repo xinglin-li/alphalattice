@@ -1,13 +1,14 @@
-"""Each admitted Task's frozen request: what it was admitted to do (LAWS DA2).
+"""Each admitted Task's frozen request, kept beside the Task Control store (LAWS DA2).
 
-Since 0.2.8 a Task's frozen request is the text of its admission on the log (`task.requested`),
-kept forever with the record it was admitted under. A 0.2.7 workspace kept them here instead, as
-content-addressed files beside its Task Control store; they are read once, when the workspace's
-Tasks move onto the log, and set aside with that store after the log is verified to hold them.
+The store's rows are the Task's lifecycle; what the Task was admitted to do -- its input, goal,
+plan, queue place and who submitted it -- is also written here, content-addressed, before its
+row. A store that is lost or replaced lists its Tasks again from these files: what each was
+admitted to do stays readable, and its progress is not claimed.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, cast
@@ -15,12 +16,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import ResearchGoal, ResearchPlan, TaskInputEnvelope
 
 REQUESTS_DIRECTORY = "task-requests"
-"""Under a 0.2.7 workspace's `runtime/`, beside its Task Control store."""
+"""Under the workspace's `runtime/`, beside the Task Control store."""
 
 
 class SubmittingAgent(BaseModel):  # type: ignore[misc]
@@ -54,20 +55,33 @@ def requests_root(runtime_root: Path) -> Path:
     return runtime_root / REQUESTS_DIRECTORY
 
 
-def read_frozen(runtime_root: Path) -> tuple[tuple[TaskAdmissionRequest, str], ...]:
-    """Every frozen request with its exact text, in admission order; one that does not read is
-    refused by name."""
+def write_request(runtime_root: Path, request: TaskAdmissionRequest) -> Path:
+    """Write one frozen request under its content hash; the same request is the same file."""
+    document = request.model_dump(mode="json")
+    root = requests_root(runtime_root)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{canonical_hash(document)}.json"
+    if not path.is_file():
+        staged = path.with_name(f"{path.name}.partial")
+        staged.write_text(request.model_dump_json(), encoding="utf-8")
+        os.replace(staged, path)
+    return path
+
+
+def read_requests(runtime_root: Path) -> tuple[TaskAdmissionRequest, ...]:
+    """Every frozen request, in admission order; one that does not read is refused by name."""
     root = requests_root(runtime_root)
     if not root.is_dir():
         return ()
-    frozen: list[tuple[TaskAdmissionRequest, str]] = []
+    requests: list[TaskAdmissionRequest] = []
     for path in sorted(root.glob("*.json")):
         try:
-            text = path.read_bytes().decode("utf-8")
-            request = cast(TaskAdmissionRequest, TaskAdmissionRequest.model_validate_json(text))
+            request = cast(
+                TaskAdmissionRequest, TaskAdmissionRequest.model_validate_json(path.read_bytes())
+            )
         except (OSError, ValueError) as error:
             raise ValueError(f"task_control.admission_request_unreadable:{path.name}") from error
         if path.stem != canonical_hash(request.model_dump(mode="json")):
             raise ValueError(f"task_control.admission_request_unreadable:{path.name}")
-        frozen.append((request, text))
-    return tuple(sorted(frozen, key=lambda pair: pair[0].admission_sequence))
+        requests.append(request)
+    return tuple(sorted(requests, key=lambda request: request.admission_sequence))

@@ -19,19 +19,16 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, cast
+from typing import Literal, Self, cast
 
 import numpy as np
-import pyarrow as pa
-import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.source_identity import (
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.source_identity import (
     switched_source_identity,
 )
 
@@ -39,14 +36,10 @@ from ..contracts import SectorResearchError, grid_to_matrix, sector_array_identi
 from ..models.contracts import SectorForecastRecipe
 from ..targets.execution import SectorTargetEvidence
 
-if TYPE_CHECKING:
-    from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
-
 SECTOR_TARGET_EVIDENCE_CATEGORY = "development/sector-target-evidence"
 SECTOR_FORECAST_SURFACE_CATEGORY = "development/sector-forecast-surfaces"
 SECTOR_FORECAST_EVALUATION_CATEGORY = "development/sector-forecast-evaluations"
 SECTOR_EXPERIMENT_EVIDENCE_CATEGORY = "development/sector-experiment-evidence"
-SECTOR_DEVELOPMENT_EXECUTION_ROLE = "sector_research.development_execution"
 SECTOR_SHRINK_CALIBRATION_CATEGORY = "development/sector-shrink-calibrations"
 SECTOR_METHOD_COMPARISON_CATEGORY = "development/sector-method-comparisons"
 SECTOR_CAMPAIGN_DOSSIER_CATEGORY = "development/sector-campaign-dossiers"
@@ -54,19 +47,6 @@ SECTOR_CAMPAIGN_DECISION_CATEGORY = "development/sector-campaign-decisions"
 SECTOR_CAMPAIGN_REPLAY_CATEGORY = "development/sector-campaign-replays"
 
 _PREFIX = "playpen://sector-research/"
-_RESULT_CATEGORIES = {
-    SECTOR_TARGET_EVIDENCE_CATEGORY: "evidence_hash",
-    SECTOR_FORECAST_SURFACE_CATEGORY: "surface_hash",
-    SECTOR_FORECAST_EVALUATION_CATEGORY: "evaluation_hash",
-}
-_EVALUATION_FIELDS = ("evaluated_counts", "mean_errors", "mean_squared_errors")
-_DATED_RESULT_GRIDS = {
-    "SectorTargetEvidence": (
-        "formation_sessions",
-        ("sector_target_values", "economic_diagnostic_values"),
-    ),
-    "SectorForecastSurface": ("forecast_formation_sessions", ("values",)),
-}
 
 
 def sector_artifact_uri(category: str, content_hash: str) -> str:
@@ -425,88 +405,6 @@ class SectorArtifactReadbackError(ValueError):
     """A stored Sector development artifact exists but does not verify."""
 
 
-def _result_series(payload: dict[str, object]) -> tuple[dict[str, object], pa.Table]:
-    """Split the dated numeric grids from their sealed Sector descriptor."""
-    date_axis, fields = _DATED_RESULT_GRIDS[cast(str, payload["kind"])]
-    sessions = cast(list[str], payload[date_axis])
-    descriptor = {key: value for key, value in payload.items() if key not in fields}
-    dates = pc.cast(pa.array(sessions), pa.date32())
-    columns = len(cast(list[str], payload["ordered_sectors"]))
-    dates = pc.take(dates, pa.array(np.repeat(np.arange(len(sessions)), columns)))
-    tables = []
-    for field in fields:
-        grid = cast(list[list[float | None]], payload[field])
-        values = pa.array(grid, type=pa.list_(pa.float64())).flatten()
-        names = np.tile([f"{field}:{column}" for column in range(columns)], len(sessions))
-        table = pa.table({"name": pa.array(names), "session_date": dates, "value": values})
-        tables.append(table.filter(pc.is_valid(values)))
-    table = pa.concat_tables(tables).sort_by([("name", "ascending"), ("session_date", "ascending")])
-    return descriptor, table
-
-
-def _restore_result_series(descriptor: dict[str, object], rows: pa.Table) -> dict[str, object]:
-    """Rebuild the sealed grids in their original date and Sector order."""
-    date_axis, fields = _DATED_RESULT_GRIDS[cast(str, descriptor["kind"])]
-    sessions = cast(list[str], descriptor[date_axis])
-    columns = len(cast(list[str], descriptor["ordered_sectors"]))
-    dates = pc.cast(pa.array(sessions), pa.date32())
-    names = pa.array([f"{field}:{column}" for field in fields for column in range(columns)])
-    row_names = pc.index_in(rows["name"], value_set=names)
-    row_dates = pc.index_in(rows["session_date"], value_set=dates)
-    if row_names.null_count or row_dates.null_count or rows["value"].null_count:
-        raise SectorArtifactReadbackError("sector artifact result rows are invalid")
-    name_index, date_index = row_names.to_numpy(), row_dates.to_numpy()
-    if np.unique(name_index * len(sessions) + date_index).size != rows.num_rows:
-        raise SectorArtifactReadbackError("sector artifact result rows are invalid")
-    data: np.ndarray[Any, np.dtype[np.object_]] = np.full(
-        (len(fields) * columns, len(sessions)), None, dtype=object
-    )
-    data[name_index, date_index] = rows["value"].to_numpy()
-    grids = {
-        field: data[offset * columns : (offset + 1) * columns].T.tolist()
-        for offset, field in enumerate(fields)
-    }
-    return descriptor | grids
-
-
-def _result_evaluation(payload: dict[str, object]) -> tuple[dict[str, object], pa.Table]:
-    columns = len(cast(list[str], payload["ordered_sectors"]))
-    return (
-        {key: value for key, value in payload.items() if key not in _EVALUATION_FIELDS},
-        pa.table(
-            {
-                "sector_index": pa.array(np.arange(columns), type=pa.int32()),
-                "evaluated_count": pa.array(payload["evaluated_counts"], type=pa.int64()),
-                "mean_error": pa.array(payload["mean_errors"], type=pa.float64()),
-                "mean_squared_error": pa.array(payload["mean_squared_errors"], type=pa.float64()),
-            }
-        ),
-    )
-
-
-def _restore_result_evaluation(descriptor: dict[str, object], rows: pa.Table) -> dict[str, object]:
-    sectors = len(cast(list[str], descriptor["ordered_sectors"]))
-    if rows["sector_index"].to_pylist() != list(range(sectors)):
-        raise SectorArtifactReadbackError("sector evaluation result rows are invalid")
-    return descriptor | {
-        "evaluated_counts": rows["evaluated_count"].to_pylist(),
-        "mean_errors": rows["mean_error"].to_pylist(),
-        "mean_squared_errors": rows["mean_squared_error"].to_pylist(),
-    }
-
-
-def _result_category(payload: Mapping[str, object]) -> str:
-    kinds = {
-        "SectorTargetEvidence": SECTOR_TARGET_EVIDENCE_CATEGORY,
-        "SectorForecastSurface": SECTOR_FORECAST_SURFACE_CATEGORY,
-        "SectorForecastEvaluation": SECTOR_FORECAST_EVALUATION_CATEGORY,
-    }
-    try:
-        return kinds[cast(str, payload["kind"])]
-    except KeyError as error:
-        raise SectorArtifactReadbackError("sector artifact result kind is invalid") from error
-
-
 class SectorDevelopmentArtifactStore:
     """Immutable content-addressed JSON evidence under ``sector-research/``.
 
@@ -554,42 +452,20 @@ class SectorDevelopmentArtifactStore:
         identity.pop(identity_field)
         if canonical_hash(identity) != content_hash:
             raise SectorResearchError("sector_research.artifact_identity_field_invalid")
-        if category in _RESULT_CATEGORIES and self._results_mode() == "catalog":
-            self._publish_results(((category, content_hash, payload),))
-            return sector_artifact_uri(category, content_hash)
         serialized = self._json_bytes(payload)
         target = self._path(category, content_hash)
-        if target.exists() and target.read_bytes() != serialized:
-            raise SectorResearchError("sector_research.artifact_identity_reused")
+        if target.exists():
+            if target.read_bytes() != serialized:
+                raise SectorResearchError("sector_research.artifact_identity_reused")
         else:
             self._atomic_write(target, serialized)
         return sector_artifact_uri(category, content_hash)
 
-    def _load(
-        self,
-        *,
-        category: str,
-        content_hash: str,
-        identity_field: str,
-        experiment: str | None = None,
-    ) -> dict[str, object]:
-        if category in _RESULT_CATEGORIES and self._results_mode() == "catalog":
-            return self._load_result(category, content_hash, identity_field, experiment=experiment)
-        return self._load_legacy(category, content_hash, identity_field)
-
-    def _load_legacy(
-        self, category: str, content_hash: str, identity_field: str
-    ) -> dict[str, object]:
+    def _load(self, *, category: str, content_hash: str, identity_field: str) -> dict[str, object]:
         target = self._path(category, content_hash)
         if not target.is_file():
             raise FileNotFoundError(f"sector artifact is missing: {category}/{content_hash}")
         payload = json.loads(target.read_text(encoding="utf-8"))
-        return self._checked_payload(payload, content_hash, identity_field)
-
-    @staticmethod
-    def _checked_payload(
-        payload: object, content_hash: str, identity_field: str
-    ) -> dict[str, object]:
         if not isinstance(payload, dict) or payload.get(identity_field) != content_hash:
             raise SectorArtifactReadbackError("sector artifact requested identity is invalid")
         identity = dict(payload)
@@ -597,79 +473,6 @@ class SectorDevelopmentArtifactStore:
         if canonical_hash(identity) != content_hash:
             raise SectorArtifactReadbackError("sector artifact payload hash is invalid")
         return cast(dict[str, object], payload)
-
-    @staticmethod
-    def _results_mode() -> str:
-        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
-
-        catalog = history.data_root() / "machine" / "catalog.sqlite"
-        # The catalog on a data root, the files on a standalone workspace.
-        return "catalog" if history.recording() or catalog.is_file() else "legacy"
-
-    def _publish_results(
-        self,
-        results: tuple[tuple[str, str, dict[str, object]], ...],
-        *,
-        experiment: str | None = None,
-        upgrade_owner: tuple[Any, Path] | None = None,
-    ) -> dict[str, str]:
-        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
-
-        specs = []
-        descriptors = []
-        for category, digest, payload in results:
-            evaluation = category == SECTOR_FORECAST_EVALUATION_CATEGORY
-            table = "sector_evaluation" if evaluation else "series"
-            split = _result_evaluation if evaluation else _result_series
-            descriptor, rows = split(payload)
-            target = self._path(f"result-descriptors/{category}", digest)
-            serialized = self._json_bytes(descriptor)
-            if target.exists():
-                if target.read_bytes() != serialized:
-                    raise SectorResearchError("sector_research.artifact_identity_reused")
-            else:
-                descriptors.append((target, serialized))
-            specs.append((digest, table, rows))
-        artifacts: dict[str, str] = history.write_sector_results(
-            specs, experiment=experiment, upgrade_owner=upgrade_owner
-        )
-        for target, content in descriptors:
-            self._atomic_write(target, content)
-        return artifacts
-
-    def _load_result(
-        self,
-        category: str,
-        content_hash: str,
-        identity_field: str,
-        *,
-        experiment: str | None = None,
-    ) -> dict[str, object]:
-        from alphalattice.foundation.data_layer import history  # lazy: Host telemetry
-
-        self._require_hash(content_hash)
-        evaluation = category == SECTOR_FORECAST_EVALUATION_CATEGORY
-        table = "sector_evaluation" if evaluation else "series"
-        try:
-            profile, rows = history.read_sector_result(content_hash, table, experiment=experiment)
-        except DataError as error:
-            if error.failure.code != "data_layer.sector_result_missing":
-                raise
-            raise FileNotFoundError(
-                f"sector artifact is missing: {category}/{content_hash}"
-            ) from error
-        if profile.get("descriptor") != content_hash or (
-            experiment is not None and profile.get("experiment") != experiment
-        ):
-            raise SectorArtifactReadbackError("sector artifact descriptor is invalid")
-        target = self._path(f"result-descriptors/{category}", content_hash)
-        if not target.is_file():
-            raise SectorArtifactReadbackError("sector artifact descriptor is missing")
-        descriptor = json.loads(target.read_text(encoding="utf-8"))
-        if not isinstance(descriptor, dict) or _result_category(descriptor) != category:
-            raise SectorArtifactReadbackError("sector artifact result kind is invalid")
-        restore = _restore_result_evaluation if evaluation else _restore_result_series
-        return self._checked_payload(restore(descriptor, rows), content_hash, identity_field)
 
     # ------------------------------------------------------------------ publish
     def publish_target_evidence(self, value: SectorTargetEvidence) -> str:
@@ -688,41 +491,6 @@ class SectorDevelopmentArtifactStore:
             value=value,
             identity_field="evaluation_hash",
         )
-
-    def publish_experiment_results(
-        self,
-        target: SectorTargetEvidence,
-        surface: SectorForecastSurface,
-        evaluation: SectorForecastEvaluation,
-        experiment: SectorExperimentEvidence,
-    ) -> str:
-        """Publish all children before the experiment's root becomes visible."""
-        if self._results_mode() == "catalog":
-            self._publish_results(
-                (
-                    (
-                        SECTOR_TARGET_EVIDENCE_CATEGORY,
-                        target.evidence_hash,
-                        target.model_dump(mode="json"),
-                    ),
-                    (
-                        SECTOR_FORECAST_SURFACE_CATEGORY,
-                        surface.surface_hash,
-                        surface.model_dump(mode="json"),
-                    ),
-                    (
-                        SECTOR_FORECAST_EVALUATION_CATEGORY,
-                        evaluation.evaluation_hash,
-                        evaluation.model_dump(mode="json"),
-                    ),
-                ),
-                experiment=experiment.experiment_hash,
-            )
-        else:
-            self.publish_target_evidence(target)
-            self.publish_forecast_surface(surface)
-            self.publish_evaluation(evaluation)
-        return self.publish_experiment_evidence(experiment)
 
     def publish_experiment_evidence(self, value: SectorExperimentEvidence) -> str:
         return self._publish(
@@ -756,10 +524,7 @@ class SectorDevelopmentArtifactStore:
             ),
         )
 
-    def load_evaluation(
-        self, content_hash: str, *, experiment: str | None = None
-    ) -> SectorForecastEvaluation:
-        """Read the sealed measures for an evaluation, scoped to its experiment when named."""
+    def load_evaluation(self, content_hash: str) -> SectorForecastEvaluation:
         return cast(
             SectorForecastEvaluation,
             SectorForecastEvaluation.model_validate(
@@ -767,7 +532,6 @@ class SectorDevelopmentArtifactStore:
                     category=SECTOR_FORECAST_EVALUATION_CATEGORY,
                     content_hash=content_hash,
                     identity_field="evaluation_hash",
-                    experiment=experiment,
                 )
             ),
         )
@@ -792,10 +556,7 @@ class SectorDevelopmentArtifactStore:
     def list_category(self, category: str) -> tuple[str, ...]:
         """Published hashes in one category, canonical name order, unloaded."""
 
-        if category in _RESULT_CATEGORIES and self._results_mode() == "catalog":
-            root = self.root / "result-descriptors" / category
-        else:
-            root = self.root / category
+        root = self.root / category
         if not root.is_dir():
             return ()
         return tuple(sorted(path.stem for path in root.glob("*.json")))
@@ -825,140 +586,6 @@ class SectorDevelopmentArtifactStore:
                 )
             ),
         )
-
-
-def sector_results_upgrade_family() -> Family:
-    """Move the dated Sector series and verify every old value before switching readers."""
-    from alphalattice.foundation.data_layer.upgrade import Family  # lazy: first start
-
-    def stores(workspace: Path) -> Iterator[SectorDevelopmentArtifactStore]:
-        workspace = workspace.resolve()
-        roots = [workspace / "artifacts"]
-        inputs = workspace / "research-inputs"
-        if inputs.is_dir():
-            roots.extend(
-                path / "source" / "artifacts" for path in sorted(inputs.iterdir()) if path.is_dir()
-            )
-        for root in roots:
-            if not root.resolve().is_relative_to(workspace):
-                raise SectorResearchError("sector_research.upgrade_path_invalid")
-            yield SectorDevelopmentArtifactStore(root)
-
-    def read_legacy(
-        store: SectorDevelopmentArtifactStore, category: str, digest: str, identity: str
-    ) -> dict[str, object]:
-        if not store._path(category, digest).resolve().is_relative_to(store.root.resolve()):
-            raise SectorResearchError("sector_research.upgrade_path_invalid")
-        return store._load_legacy(category, digest, identity)
-
-    experiment_children = (
-        (SECTOR_TARGET_EVIDENCE_CATEGORY, "target_evidence_hash"),
-        (SECTOR_FORECAST_SURFACE_CATEGORY, "forecast_surface_hash"),
-        (SECTOR_FORECAST_EVALUATION_CATEGORY, "evaluation_hash"),
-    )
-
-    def documents(folder: Path) -> list[Path]:
-        try:
-            return sorted(path for path in folder.iterdir() if path.suffix == ".json")
-        except FileNotFoundError:
-            return []
-
-    def legacy(
-        store: SectorDevelopmentArtifactStore,
-    ) -> Iterator[tuple[str | None, tuple[tuple[str, str, dict[str, object]], ...]]]:
-        found: set[tuple[str, str]] = set()
-        roots = store.root / SECTOR_EXPERIMENT_EVIDENCE_CATEGORY
-        for path in documents(roots):
-            experiment = read_legacy(
-                store, SECTOR_EXPERIMENT_EVIDENCE_CATEGORY, path.stem, "experiment_hash"
-            )
-            children = tuple(
-                (category, cast(str, experiment[field])) for category, field in experiment_children
-            )
-            retained = tuple(
-                (
-                    category,
-                    digest,
-                    read_legacy(store, category, digest, _RESULT_CATEGORIES[category]),
-                )
-                for category, digest in children
-                if store._path(category, digest).is_file()
-            )
-            if len(retained) == len(children):
-                yield path.stem, retained
-            else:
-                # A retained experiment must have its complete graph. A newer experiment
-                # may cite a mixture of retained and catalog-only results.
-                readback = {
-                    (category, digest): store._load_result(
-                        category,
-                        digest,
-                        _RESULT_CATEGORIES[category],
-                        experiment=path.stem
-                        if category == SECTOR_FORECAST_EVALUATION_CATEGORY
-                        else None,
-                    )
-                    for category, digest in children
-                }
-                if any(
-                    readback[category, digest] != payload for category, digest, payload in retained
-                ):
-                    raise SectorArtifactReadbackError(
-                        "sector artifact differs from its retained file"
-                    )
-            found.update(children)
-        for category, identity in _RESULT_CATEGORIES.items():
-            for path in documents(store.root / category):
-                if (category, path.stem) not in found:
-                    yield (
-                        None,
-                        ((category, path.stem, read_legacy(store, category, path.stem, identity)),),
-                    )
-
-    def step(runner: UpgradeRunner) -> None:
-        for workspace in runner.workspaces:
-            for store in stores(workspace):
-                for experiment, results in legacy(store):
-                    artifacts = store._publish_results(
-                        results, experiment=experiment, upgrade_owner=(runner.log, runner.root)
-                    )
-                    for category, digest, _ in results:
-                        old = (
-                            f"{experiment}/{digest}"
-                            if experiment and category == SECTOR_FORECAST_EVALUATION_CATEGORY
-                            else digest
-                        )
-                        artifact = artifacts[digest]
-                        if runner.map_id("sector-results", old, artifact) != artifact:
-                            raise SectorResearchError("sector_research.upgrade_identity_invalid")
-
-    def equal(store: SectorDevelopmentArtifactStore) -> bool:
-        for experiment, results in legacy(store):
-            for category, digest, payload in results:
-                owner = experiment if category == SECTOR_FORECAST_EVALUATION_CATEGORY else None
-                if (
-                    store._load_result(
-                        category, digest, _RESULT_CATEGORIES[category], experiment=owner
-                    )
-                    != payload
-                ):
-                    return False
-        return True
-
-    def verify(runner: UpgradeRunner) -> bool:
-        return all(equal(store) for workspace in runner.workspaces for store in stores(workspace))
-
-    def holds(workspace: Path) -> bool:
-        try:
-            return not all(equal(store) for store in stores(workspace))
-        except FileNotFoundError:
-            return True
-        except SectorArtifactReadbackError as error:
-            if str(error) != "sector artifact descriptor is missing":
-                raise
-            return True
-
-    return Family("sector-results", step, verify, holds)
 
 
 __all__ = [

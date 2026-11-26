@@ -24,13 +24,6 @@ from pydantic import (
     model_validator,
 )
 
-from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.source_identity import (
-    source_rule_closure_hash,
-    switched_identity,
-)
 from alphalattice.capabilities.portfolio_backtesting.clocks import ScoredFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioCostPolicy,
@@ -47,8 +40,6 @@ from alphalattice.capabilities.portfolio_backtesting.reference_marks import Refe
 from alphalattice.capabilities.portfolio_backtesting.segments import (
     run_portfolio_walk_forward_segment,
 )
-from alphalattice.foundation.data_layer import history
-from alphalattice.foundation.data_layer.arrays import packed_digest
 from alphalattice.investment.alpha_research.experiments.development_contracts import (
     canonical_score_value_identity,
 )
@@ -69,10 +60,12 @@ from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
 )
 from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import TrancheBookRecipe
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
-    PortfolioPublicationError,
     PortfolioResearchArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.decomposition import RiskAllocationProjection
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -370,13 +363,12 @@ def implementation_hash() -> str:
     )
     # The numerics this code runs on are the environment, provenance and never this
     # identity (LAWS.md ID6).
-    rule = source_rule_closure_hash(
+    return source_rule_closure_hash(
         root=_ROOT,
         tracked_paths=tuple("src/alphalattice/" + p for p in paths),
         semantic_owner="portfolio_strategy_lab",
         numerical_role="AUTHORED_EW_REPLAY",
     )
-    return switched_identity(f"research_experiment.{KIND}.implementation", rule, root=_ROOT)
 
 
 class PortfolioExperimentCompiler:
@@ -811,30 +803,6 @@ def _lane(store: PortfolioResearchArtifactStore, digest: str, shape: tuple[int, 
     return np.frombuffer(data, dtype="<f8").reshape(shape)
 
 
-def _publish_lane(store: PortfolioResearchArtifactStore, values: FloatArray) -> str:
-    """Keep the proved packed bytes of a replay lane whose receipt names its shape."""
-    try:
-        return store.publish_array(category=LANES, values=values)
-    except PortfolioPublicationError as error:
-        origin = error.__cause__
-        if (
-            not isinstance(origin, DataError)
-            or origin.failure.code != "data_layer.array_digest_reused"
-        ):
-            raise
-        payload = values.tobytes(order="C")
-        digest = packed_digest(payload)
-        profile = history.array_profile(digest)
-        if (
-            profile is None
-            or profile["kind"] != "columns"
-            or profile["columns"] != [["value", values.dtype.str]]
-            or store.load_packed_bytes(category=LANES, content_hash=digest) != payload
-        ):
-            raise
-        return store.publish_array(category=LANES, values=values.reshape(profile["shape"]))
-
-
 def _reopen_segment(
     store: PortfolioResearchArtifactStore, digest: str
 ) -> tuple[PortfolioReplaySegment, PortfolioWalkForwardSegmentResult, FloatArray, FloatArray]:
@@ -1103,7 +1071,9 @@ class PortfolioExperimentExecutor:
                 )
                 sleeves, targets = _book_state(provider)
                 lanes = {
-                    name: _publish_lane(store, np.ascontiguousarray(value, dtype="<f8"))
+                    name: store.publish_array(
+                        category=LANES, values=np.ascontiguousarray(value, dtype="<f8")
+                    )
                     for name, value in {
                         "executed": segment.executed_weights,
                         "targets": targets,

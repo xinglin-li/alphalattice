@@ -1796,11 +1796,8 @@ class FeatureInputGovernanceService:
             for listing, reasons in qualification.exclusions
         }
         latest_bar: date | None = None
-        observed = self.market_data.raw_bar_sessions_by_listing(
-            qualification.pending_listing_ids, through=qualification.session
-        )
         for listing in qualification.pending_listing_ids:
-            sessions = observed[listing]
+            sessions = self.market_data.raw_bar_sessions(listing, through=qualification.session)
             if qualification.session in sessions:
                 raise ValueError("feature.baseline_member_row_not_materialized")
             excluded[listing] = ("BASE_MARKET_OBSERVATION_UNAVAILABLE",)

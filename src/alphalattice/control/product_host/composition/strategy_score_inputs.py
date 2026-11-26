@@ -13,15 +13,11 @@ from datetime import date, datetime
 from itertools import groupby
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.spans import span
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
-from alphalattice.capabilities.quant.sector_history import sector_ids, sector_subset
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import (
     WorkspaceDataUpdateBinding,
@@ -73,7 +69,6 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.market_data_ops.storage.rebase import recorded as recorded_rebases
 from alphalattice.foundation.market_data_ops.storage.source_prefix import (
@@ -102,43 +97,11 @@ from alphalattice.investment.alpha_research.targets.component_training import (
     compile_frozen_component_training_targets,
 )
 from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
-
-if TYPE_CHECKING:
-    import pandas as pd
-
-    from alphalattice.capabilities.quant.sector_history import SectorHistory
-    from alphalattice.foundation.feature_engine.contracts import PanelSourceExclusion
-    from alphalattice.foundation.feature_engine.storage.contracts import SectorReferenceState
-    from alphalattice.foundation.market_data_ops.sources.membership import MembershipSchedule
-
-
-TRAINING_TARGET_METHOD_ID: Final = "EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET"
-"""The target a training view's `total_return_target_z` holds, compiled over its own inputs."""
-
-
-class _FormationWorld(NamedTuple):
-    """What the store says at one formation and clock: its Sector state, completed sessions,
-    membership, Panel exclusions and Sector history, and the world catalog's snapshot it read."""
-
-    sector: SectorReferenceState
-    clocks: dict[date, Any]
-    axis: tuple[date, ...]
-    sessions: tuple[date, ...]
-    schedule: MembershipSchedule
-    listings: tuple[str, ...]
-    exclusions: tuple[PanelSourceExclusion, ...]
-    sector_history: SectorHistory | None
-    served: int | None
-    """`_world_snapshot` before the reads: any write to world after it moves it."""
-
-
-def _world_snapshot(market: MarketDataRepository) -> int | None:
-    """World's latest catalog snapshot, or None while the workspace's own tables serve it."""
-    with world_reads.reading(market.path) as cursor:
-        if cursor is None:
-            return None
-        ((latest,),) = cursor.execute("SELECT max(snapshot_id) FROM lake.snapshots()").fetchall()
-        return int(latest)
+from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.quant.sector_history import sector_ids, sector_subset
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 @dataclass(frozen=True)
@@ -162,8 +125,6 @@ class PreparedWorkspaceComponentInputs:
     formula_values: Mapping[str, FloatArray]
     raw_simple: FloatArray
     actions: tuple[tuple[CorporateActionEvent, ...], ...]
-    world: _FormationWorld
-    """The capture formation's world, read under `source_proof`: a read at `through` takes it."""
     dependency_prefix_hash: str | None = None
     stable_session_count: int = 0
     reused_history_hash: str | None = None
@@ -255,7 +216,6 @@ def _workspace_history_prefix_proof(
     factor_ids: tuple[str, ...],
     extension_factor_ids: tuple[str, ...],
     feature_prefix_proof: str | None = None,
-    world: _FormationWorld | None = None,
 ) -> _PrefixProof:
     """Bind actual source values and the dependency axes of a completed prefix, whole, by its
     axes alone, and for each listing (its raw bars, actions and stored Feature values).
@@ -265,8 +225,12 @@ def _workspace_history_prefix_proof(
     values must still agree before an immutable preparation can be reused. The
     market reference's adjusted closes are not among them: no captured value reads
     them (training reads them live), and a provider restating them daily kept every
-    real day cold. A capture's own sessions take its `world`, read at its formation.
+    real day cold.
     """
+    readiness = market.readiness.load("us-current-index-research")
+    if readiness is None or readiness.active_manifest_id is None:
+        raise ValueError("strategy_score.workspace_not_qualified")
+    manifest = market.load_universe_manifest(readiness.active_manifest_id)
     with market.database.read_transaction() as connection:
         data, market_listing = market_data_source_prefix_proofs(
             market,
@@ -293,33 +257,25 @@ def _workspace_history_prefix_proof(
         end=sessions[-1],
         as_of_timestamp=observed_at,
     )
-    if world is None:
-        readiness = market.readiness.load("us-current-index-research")
-        if readiness is None or readiness.active_manifest_id is None:
-            raise ValueError("strategy_score.workspace_not_qualified")
-        manifest = market.load_universe_manifest(readiness.active_manifest_id)
-        profile = manifest.profile.market_profile_id
-        schedule = market.membership_schedule(
-            profile,
-            sessions=sessions,
-            fallback_listing_ids=tuple(item.listing_id for item in manifest.listings),
-        )
-        history = feature.sector_history(manifest, listing_ids=listings)
-        exclusions = PanelStateRepository(
-            market.database, market_data=market
-        ).panel_source_exclusions(
-            market_profile_id=profile, sessions=sessions, listing_ids=listings
-        )
-    else:
-        schedule, history, exclusions = world.schedule, world.sector_history, world.exclusions
+    schedule = market.membership_schedule(
+        manifest.profile.market_profile_id,
+        sessions=sessions,
+        fallback_listing_ids=tuple(item.listing_id for item in manifest.listings),
+    )
     membership = []
     for (members, basis), days in groupby(
         sessions, key=lambda day: (schedule.members(day), schedule.basis(day))
     ):
         run = tuple(days)
         membership.append((run[0], run[-1], members, basis))
+    history = feature.sector_history(manifest, listing_ids=listings)
     if history is None or set(listings) - set(history):
         raise ValueError("strategy_score.sector_coverage_incomplete")
+    exclusions = PanelStateRepository(market.database, market_data=market).panel_source_exclusions(
+        market_profile_id=manifest.profile.market_profile_id,
+        sessions=sessions,
+        listing_ids=listings,
+    )
     registry = default_extension_kernel_registry()
     bundle = desktop_core_feature_bundle()
     axes = str(
@@ -607,8 +563,6 @@ def _rows_since(
     connection: object = None,
 ) -> pd.DataFrame:
     """Stored Feature rows of each read (`_reads`): their keys and values, one frame."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     extra = {} if connection is None else {"_connection": connection}
     frames = [
         feature.feature_rows(
@@ -733,7 +687,8 @@ def _kept_history_reuse(
     binding: WorkspaceDataUpdateBinding,
     history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None,
     *,
-    world: _FormationWorld,
+    sessions: tuple[date, ...],
+    listings: tuple[str, ...],
     points: tuple[CausalExecutionSchedulePoint, ...],
     observed_at: datetime,
     kept: set[str],
@@ -746,7 +701,6 @@ def _kept_history_reuse(
     listing by listing when only listings moved beside the same axes.
     """
     kept_stored, selected_stored, kept_extensions, selected_extensions = selections
-    sessions, listings = world.sessions, world.listings
     restored: Mapping[str, FloatArray] | None = None
     restated: tuple[int, ...] = ()
     candidate_sessions = _kept_candidate(history, listings, sessions, points)
@@ -834,7 +788,6 @@ def _kept_history_reuse(
             factor_ids=selected_stored,
             extension_factor_ids=selected_extensions,
             feature_prefix_proof=feature_proofs[-1],
-            world=world,
         )
     current = proved.listings(listing_proofs[-1])
     closed_of = dict(zip(sorted(listings), closed, strict=True))
@@ -847,18 +800,41 @@ def _kept_history_reuse(
     )
 
 
-def _formation_world(
-    market: MarketDataRepository,
-    feature: FeatureStateRepository,
+def _read_workspace_component_inputs(
+    workspace: Path,
     *,
     formation: date,
     observed_at: datetime,
-) -> _FormationWorld:
-    served = _world_snapshot(market)
+    expected_source_hash: str,
+    ordered_feature_ids: tuple[str, ...] = (),
+    training_factor_ids: tuple[str, ...] = (),
+    prepared: PreparedWorkspaceComponentInputs | None = None,
+    capture: bool = False,
+    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None = None,
+) -> tuple[
+    FrozenPriceVolumeInputs | None,
+    PanelFeatureSourceArrays | None,
+    PreparedWorkspaceComponentInputs | None,
+]:
+    if workspace_score_source_identity(workspace) != expected_source_hash:
+        raise ValueError("strategy_score.source_revision_changed")
+    market = MarketDataRepository(workspace)
+    proof = _market_source_proof(market) if capture or prepared is not None else None
+    if prepared is not None:
+        if (
+            prepared.workspace != workspace.resolve()
+            or prepared.source_hash != expected_source_hash
+            or prepared.observed_at != observed_at
+            or formation > prepared.through
+        ):
+            raise ValueError("strategy_score.prepared_input_binding_invalid")
+        if proof != prepared.source_proof:
+            raise ValueError("strategy_score.source_revision_changed")
     readiness = market.readiness.load("us-current-index-research")
     if readiness is None or readiness.active_manifest_id is None:
         raise ValueError("strategy_score.workspace_not_qualified")
     manifest = market.load_universe_manifest(readiness.active_manifest_id)
+    feature = FeatureStateRepository(market.database, market_data=market)
     sector = feature.current_sector_state(manifest)
     covered = market.manifest_raw_range(manifest)
     if sector is None or covered is None or not covered[0] <= formation <= covered[1]:
@@ -888,70 +864,6 @@ def _formation_world(
     # Historical leavers remain observations; already admitted future entrants
     # may warm up their own history without entering earlier references.
     listings = tuple(sorted(set(schedule.union) | set(schedule.admitted_listing_ids)))
-    exclusions = PanelStateRepository(market.database, market_data=market).panel_source_exclusions(
-        market_profile_id=manifest.profile.market_profile_id,
-        sessions=sessions,
-        listing_ids=listings,
-    )
-    return _FormationWorld(
-        sector,
-        clocks,
-        axis,
-        sessions,
-        schedule,
-        listings,
-        exclusions,
-        feature.sector_history(manifest, listing_ids=listings),
-        served,
-    )
-
-
-def _read_workspace_component_inputs(
-    workspace: Path,
-    *,
-    formation: date,
-    observed_at: datetime,
-    expected_source_hash: str,
-    ordered_feature_ids: tuple[str, ...] = (),
-    training_factor_ids: tuple[str, ...] = (),
-    prepared: PreparedWorkspaceComponentInputs | None = None,
-    capture: bool = False,
-    history: tuple[WorkspaceObservationHistoryHead, Mapping[str, FloatArray]] | None = None,
-) -> tuple[
-    FrozenPriceVolumeInputs | None,
-    PanelFeatureSourceArrays | None,
-    PreparedWorkspaceComponentInputs | None,
-]:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
-    market = MarketDataRepository(workspace)
-    if prepared is None:
-        if workspace_score_source_identity(workspace) != expected_source_hash:
-            raise ValueError("strategy_score.source_revision_changed")
-        proof = _market_source_proof(market) if capture else None
-    else:
-        # The capture verified this identity around its proof of the store's bytes: the same
-        # bytes carry its store-held values now. The Panel's files are the Task's to check
-        # before it publishes; the capture's world serves while world has not moved since.
-        if (
-            prepared.workspace != workspace.resolve()
-            or prepared.source_hash != expected_source_hash
-            or prepared.observed_at != observed_at
-            or formation > prepared.through
-        ):
-            raise ValueError("strategy_score.prepared_input_binding_invalid")
-        proof = _market_source_proof(market)
-        if proof != prepared.source_proof:
-            raise ValueError("strategy_score.source_revision_changed")
-    feature = FeatureStateRepository(market.database, market_data=market)
-    world = (
-        prepared.world
-        if prepared is not None
-        and formation == prepared.through
-        and prepared.world.served == _world_snapshot(market)
-        else _formation_world(market, feature, formation=formation, observed_at=observed_at)
-    )
-    sector, clocks, axis, sessions, schedule, listings, exclusions, sector_history, _ = world
     shape = (len(sessions), len(listings))
     positions = {value: index for index, value in enumerate(sessions)}
     ohlcv: dict[str, FloatArray] = {
@@ -1015,7 +927,8 @@ def _read_workspace_component_inputs(
             feature,
             binding,
             history,
-            world=world,
+            sessions=sessions,
+            listings=listings,
             points=points,
             observed_at=observed_at,
             kept=kept,
@@ -1126,7 +1039,13 @@ def _read_workspace_component_inputs(
                 True
             )
         nominal = reference_eligible.sum(axis=1, dtype=np.int64)
-        for exclusion in exclusions:
+        for exclusion in PanelStateRepository(
+            market.database, market_data=market
+        ).panel_source_exclusions(
+            market_profile_id=manifest.profile.market_profile_id,
+            sessions=sessions,
+            listing_ids=listings,
+        ):
             rows = [
                 i
                 for i, day in enumerate(sessions)
@@ -1245,7 +1164,8 @@ def _read_workspace_component_inputs(
                             extension[name],
                             rebuilt,
                         )
-    # The Sector each session reads, the store's history over these names.
+    # The Sector each session reads, the store's history over these names (V346).
+    sector_history = feature.sector_history(manifest, listing_ids=listings)
     if sector_history is None or set(listings) - set(sector_history):
         raise ValueError("strategy_score.sector_coverage_incomplete")
     mapping = sector_subset(sector_history, listings)
@@ -1269,7 +1189,6 @@ def _read_workspace_component_inputs(
             formula_values=_immutable_arrays(formula_values),
             raw_simple=_immutable_arrays({"returns": raw_simple})["returns"],
             actions=tuple(actions),
-            world=world,
             stable_session_count=len(points),
             reused_history_hash=(
                 history[0].head_hash if restored is not None and history and not restated else None
@@ -1277,8 +1196,10 @@ def _read_workspace_component_inputs(
             restated_listing_ids=tuple(rebuilt),
             **proof_parts,
         )
-        # The same bytes as at the identity check above carry the same identity and world.
-        if _market_source_proof(market) != proof:
+        if (
+            workspace_score_source_identity(workspace) != expected_source_hash
+            or _market_source_proof(market) != proof
+        ):
             raise ValueError("strategy_score.source_revision_changed")
         return None, None, held_history
     raw_log = np.log1p(raw_simple)
@@ -1353,7 +1274,7 @@ def _read_workspace_component_inputs(
             )
         ),
     )
-    if prepared is None and workspace_score_source_identity(workspace) != expected_source_hash:
+    if workspace_score_source_identity(workspace) != expected_source_hash:
         raise ValueError("strategy_score.source_revision_changed")
     source = FrozenPriceVolumeInputs(
         formation_sessions=sessions,
@@ -1386,7 +1307,7 @@ def _read_workspace_component_inputs(
             holding_end_sessions=tuple(p.holding_end_session for p in points),
             raw_log_returns=raw_log[:size],
             simple_returns=raw_simple[:size],
-            target_method_id=TRAINING_TARGET_METHOD_ID,
+            target_method_id="EXACT_FROZEN_G0_H1_WHOLE_UNIVERSE_TARGET",
             reference_eligible=(
                 reference_eligible[:size] if reference_eligible is not None else None
             ),

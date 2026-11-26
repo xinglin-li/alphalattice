@@ -33,8 +33,7 @@ from alphalattice.protocols.research_authoring.selection import (
     dump_declaration,
     load_safe_yaml_document,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
+from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace
 
 _FIXTURE = (
@@ -69,9 +68,7 @@ def test_yaml_compiles_to_an_immutable_program_with_exact_sessions(
     # The raw date range became ordered exact sessions read off the Panel's own
     # semantic index, so every one of them is a session the Panel materialized.
     assert program.resolved_sessions == tuple(sorted(set(program.resolved_sessions)))
-    assert all(
-        date(2026, 1, 29) <= value <= date(2026, 2, 27) for value in program.resolved_sessions
-    )
+    assert all(date(2024, 2, 1) <= value <= date(2024, 3, 1) for value in program.resolved_sessions)
     assert program.resolved_sessions
     assert binding.actor_kind is ActorKind.HUMAN
 
@@ -236,9 +233,9 @@ def test_a_seed_no_risk_method_consumes_cannot_create_a_second_identity(
         (
             {
                 "sessions": {
-                    "start": "2026-02-02",
-                    "end": "2026-02-27",
-                    "as_of": {"session": "2026-03-13", "phase": "OFFICIAL_CLOSE"},
+                    "start": "2024-02-05",
+                    "end": "2024-03-01",
+                    "as_of": {"session": "2024-03-15", "phase": "OFFICIAL_CLOSE"},
                 }
             },
             True,
@@ -457,7 +454,7 @@ def test_an_exported_declaration_reads_back_as_it_was_written() -> None:
 
     document = {
         "feature": {"reason": "1e-10", "floor": 1e-10, "note": "风险说明"},
-        "kept": ["2026-03-13", 3],
+        "kept": ["2024-03-15", 3],
     }
     assert load_safe_yaml_document(dump_declaration(document)) == document
     exported = yaml.safe_dump(document, sort_keys=False)

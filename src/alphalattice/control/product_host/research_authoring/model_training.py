@@ -9,9 +9,6 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceModelTrainingInput,
 )
@@ -41,6 +38,9 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
     ModelLifecycle,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.kernel.shared_kernel.spans import span
 
 # This is the repaired fixed sparse-source axis, not today's number of formulas.
 # Existing owners supply the IDs; the pin prevents a later catalogue addition

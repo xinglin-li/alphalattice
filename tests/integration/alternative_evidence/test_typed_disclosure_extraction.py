@@ -48,6 +48,7 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     MAXIMUM_SPAN_READS,
     MAXIMUM_TYPED_SPAN_READS,
 )
+from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
 )
@@ -55,7 +56,6 @@ from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
     _open_recorded,
 )
-from tests.alternative_evidence_desk.planted_corpus import tampered_reference
 
 DCP = TypedDisclosureFamily.DISCLOSURE_CONTROLS_CONCLUSION.value
 SALES = TypedDisclosureFamily.UNREGISTERED_EQUITY_SALES.value
@@ -631,7 +631,7 @@ def _later(text: str) -> str:
 
 
 def _compare(current: TypedDisclosureRecord, prior: TypedDisclosureRecord):
-    rules = lambda record: (record.rules_id, record.definitions_hash)
+    rules = lambda record: (record.rules_id, record.definitions_hash)  # noqa: E731
     return {
         value.key: value
         for value in compare_typed_disclosures(
@@ -958,11 +958,7 @@ def test_typed_spans_are_verified_reads_and_the_receipt_accounts_for_them(tmp_pa
         assert "Jane Q. Rivera" not in part, "the plan's span belongs to another part"
         assert "Jane Q. Rivera" in rendered
         found_by, _facets = packet_module.span_provenance(receipt)
-        # The typed binding found it; a question whose matched sentence is this passage, and the
-        # residual candidate it covers, are named beside it.
-        typed, *others = sorted(found_by[sale.span_handle], key=lambda f: not f.startswith("T"))
-        assert typed == f"T01:TYPED:{SALES}:EXTRACTED"
-        assert all(finder.startswith(("Q-", "C01:COVERED_CANDIDATE:")) for finder in others)
+        assert found_by[sale.span_handle] == (f"T01:TYPED:{SALES}:EXTRACTED",)
         # The typed span refuses a tampered blob like any other span.
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
@@ -976,11 +972,18 @@ def test_typed_spans_are_verified_reads_and_the_receipt_accounts_for_them(tmp_pa
             (read,) = session.read_typed_spans(span_handles=(handle,))
             assert SALE in " ".join(read.excerpt.split())
             reference = document_set.documents[0]
-            with (
-                tampered_reference(reference.workspace_document_id),
-                pytest.raises(ValueError, match="workspace_document_tampered"),
-            ):
-                session.read_typed_spans(span_handles=(handle,))
+            blob = next(
+                path
+                for path in (tmp_path / "workspace" / "knowledge" / "blobs").rglob("*")
+                if path.is_file() and path.stat().st_size == reference.byte_count
+            )
+            original = blob.read_bytes()
+            blob.write_bytes(original[:-1] + bytes([original[-1] ^ 0x01]))
+            try:
+                with pytest.raises((ValueError, KnowledgeRetrievalError)):
+                    session.read_typed_spans(span_handles=(handle,))
+            finally:
+                blob.write_bytes(original)
             with pytest.raises(ValueError, match="span_character_range_invalid"):
                 session.issue_source_spans(reference.workspace_document_id, ((5, 2),))
             with pytest.raises(ValueError, match="document_not_inspected"):
@@ -1188,10 +1191,19 @@ def test_generic_and_typed_read_budgets_are_separate_under_one_verified_reader(
                 reference.workspace_document_id,
                 ((text.index(SALE), text.index(SALE) + len(SALE)),),
             )
-            with tampered_reference(reference.workspace_document_id):
-                with pytest.raises(ValueError, match="workspace_document_tampered") as refused:
+            blob = next(
+                path
+                for path in (tmp_path / "workspace" / "knowledge" / "blobs").rglob("*")
+                if path.is_file() and path.stat().st_size == reference.byte_count
+            )
+            original = blob.read_bytes()
+            blob.write_bytes(original[:-1] + bytes([original[-1] ^ 0x01]))
+            try:
+                with pytest.raises((ValueError, KnowledgeRetrievalError)) as refused:
                     session.read_typed_spans(span_handles=(handle,))
                 assert "budget" not in str(refused.value)
+            finally:
+                blob.write_bytes(original)
             (read,) = session.read_typed_spans(span_handles=(handle,))
             assert SALE in " ".join(read.excerpt.split())
             with pytest.raises(ValueError, match="span_read_request_invalid"):

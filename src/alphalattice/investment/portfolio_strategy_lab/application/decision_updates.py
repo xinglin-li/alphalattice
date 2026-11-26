@@ -10,11 +10,6 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_model_digest,
-    seal_scoped_model,
-)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     FloatArray,
     PortfolioCostPolicy,
@@ -51,6 +46,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
 from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_authority import (
     FrozenHistoricalBookRecipe,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class _Sealed(BaseModel):  # type: ignore[misc]
@@ -59,13 +55,14 @@ class _Sealed(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        values.pop("content_hash", None)  # a record re-sealed from an earlier one's fields
-        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
+        payload = cls.model_construct(**values).model_dump(mode="json", exclude={"content_hash"})
+        return cls(**payload, content_hash=canonical_hash(payload))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def identity(self) -> Self:
-        digest = scoped_model_digest(self, "content_hash", digest=canonical_hash)
-        if self.content_hash != digest:
+        if self.content_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"content_hash"})
+        ):
             raise ValueError("portfolio_update.identity_invalid")
         return self
 

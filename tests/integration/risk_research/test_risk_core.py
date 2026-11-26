@@ -10,7 +10,6 @@ import pyarrow.parquet as pq
 import pytest
 from threadpoolctl import threadpool_info, threadpool_limits
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
@@ -21,10 +20,8 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     UniverseManifest,
 )
 from alphalattice.investment.risk_research.contracts import (
-    CausalRiskReturnChunk,
     CausalRiskReturnSurface,
     RiskHistoricalDiagnostics,
-    RiskReturnOmissions,
     RiskUniverseEpoch,
     default_covariance_recipe,
     seal_contract,
@@ -49,6 +46,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnSurfaceError,
     derive_risk_return_rows,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 
@@ -143,84 +141,6 @@ def test_dividend_aware_log_return_and_missing_session_fail_closed() -> None:
             actions=(),
             required_sessions=(first, second),
         )
-
-    sessions = tuple(first + timedelta(days=index) for index in range(4))
-    complete = tuple(_bar(day, 100.0 + index) for index, day in enumerate(sessions))
-    baseline = derive_risk_return_rows(
-        manifest=_manifest(),
-        listing_id="listing-a",
-        symbol="AAA",
-        bars=complete,
-        actions=(),
-        required_sessions=sessions,
-    )
-    for bars, traded, expected in (
-        (complete, sessions, baseline),
-        ((complete[0], complete[2], complete[3]), (sessions[0], *sessions[2:]), baseline[2:]),
-        ((complete[0], complete[2], complete[3]), sessions, None),
-    ):
-        if expected is None:
-            with pytest.raises(RiskReturnSurfaceError, match="return_source_session_missing"):
-                derive_risk_return_rows(
-                    manifest=_manifest(),
-                    listing_id="listing-a",
-                    symbol="AAA",
-                    bars=bars,
-                    actions=(),
-                    required_sessions=sessions,
-                    traded_sessions=traded,
-                )
-        else:
-            actual = derive_risk_return_rows(
-                manifest=_manifest(),
-                listing_id="listing-a",
-                symbol="AAA",
-                bars=bars,
-                actions=(),
-                required_sessions=sessions,
-                traded_sessions=traded,
-            )
-            assert actual == expected
-
-    epoch = seal_contract(
-        RiskUniverseEpoch,
-        "epoch_hash",
-        market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
-        ordered_listing_ids=("listing-a",),
-    )
-    chunk = CausalRiskReturnChunk(
-        year=2026,
-        row_count=315,
-        first_formation_session=second,
-        last_formation_session=first + timedelta(days=315),
-        content_hash="c" * 64,
-        metadata_hash="d" * 64,
-        uri="fixture",
-    )
-    values = dict(
-        epoch=epoch,
-        first_formation_session=second,
-        last_formation_session=first + timedelta(days=315),
-        formation_count=315,
-        source_watermark_hash="e" * 64,
-        chunks=(chunk,),
-        limitations=("fixture",),
-    )
-    full = seal_contract(CausalRiskReturnSurface, "surface_hash", **values)
-    assert "omissions" not in full.model_dump(mode="json")
-    gap = RiskReturnOmissions(listing_id="listing-a", count=1, pairs=((first, second),))
-    sparse = seal_contract(
-        CausalRiskReturnSurface,
-        "surface_hash",
-        **(
-            values | {"chunks": (chunk.model_copy(update={"row_count": 314}),), "omissions": (gap,)}
-        ),
-    )
-    assert sparse.omissions == (gap,)
-    with pytest.raises(ValueError, match="return_surface_row_count_invalid"):
-        seal_contract(CausalRiskReturnSurface, "surface_hash", **(values | {"omissions": (gap,)}))
 
 
 def _returns(seed: int = 7, assets: int = 8) -> np.ndarray:
@@ -536,48 +456,6 @@ def test_return_chunk_rejects_value_tamper_with_preserved_footer(
         assert set(certifications.values()) == {1}
         with pytest.raises(AssertionError, match="COUNT STOP"):
             reader.artifacts.resolve_chunk(chunk)
-    other = derive_risk_return_rows(
-        manifest=_manifest(),
-        listing_id="listing-b",
-        symbol="BBB",
-        bars=(_bar(first, 90.0), _bar(second, 91.0)),
-        actions=(),
-        required_sessions=(first, second),
-    )
-    sparse_chunk = store.publish_chunk(pa.Table.from_pylist((*rows, *other)))
-    sparse_epoch = seal_contract(
-        RiskUniverseEpoch,
-        "epoch_hash",
-        market_profile_id="test-us",
-        universe_manifest_revision="a" * 64,
-        panel_snapshot_hash="b" * 64,
-        ordered_listing_ids=("listing-a", "listing-b"),
-    )
-    sparse = surface.model_copy(
-        update={
-            "epoch": sparse_epoch,
-            "chunks": (sparse_chunk,),
-            "surface_hash": "e" * 64,
-            "omissions": (
-                RiskReturnOmissions(listing_id="listing-b", count=1, pairs=((second, third),)),
-            ),
-        }
-    )
-    reader = CausalRiskReturnReader(tmp_path)
-    first_window = reader.read_window(sparse, (second,))
-    last_window = reader.read_window(sparse, (third,))
-    assert first_window.ordered_listing_ids == ("listing-a", "listing-b")
-    assert first_window.excluded_listing_ids == () and first_window.returns.shape == (1, 2)
-    assert last_window.ordered_listing_ids == ("listing-a",)
-    assert last_window.excluded_listing_ids == ("listing-b",) and last_window.returns.shape == (
-        1,
-        1,
-    )
-    with pytest.raises(RiskReturnSurfaceError, match="return_read_incomplete"):
-        reader.read_sessions(sparse, (third,))
-    undeclared = sparse.model_copy(update={"omissions": None, "surface_hash": "f" * 64})
-    with pytest.raises(RiskReturnSurfaceError, match="return_read_incomplete"):
-        CausalRiskReturnReader(tmp_path).read_window(undeclared, (third,))
     table = pq.read_table(target).combine_chunks()
     column = table.schema.get_field_index("open_total_return_log")
     tampered = table.set_column(

@@ -1,5 +1,5 @@
 # Author a formula factor
-Last checked: 2026-11-23 against 0.2.9
+Last checked: 2026-10-22 against 0.2.3
 
 Ask for a declared expression on a qualified research input, with explicit preprocessing. The kernel parses and computes it; a plan, build, trial and review show what it means and supports. Activation on **Features** is a separate decision under the [research-agent guide](../../AGENTS.md#what-only-a-person-decides). This page describes the numerical contract.
 

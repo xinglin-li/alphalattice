@@ -28,11 +28,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import (
     ADMISSIBLE_EWMA_DECAY,
     DEFAULT_EWMA_DECAY,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class ParameterDomainError(ValueError):

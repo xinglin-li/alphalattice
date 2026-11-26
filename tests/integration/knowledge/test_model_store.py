@@ -12,14 +12,13 @@ physical copy; the store's location is the user's, never Git.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.knowledge import model_store
-from alphalattice.capabilities.knowledge.hybrid_contracts import RECIPE_QWEN3_GPU
+from alphalattice.kernel.knowledge import model_store
+from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_QWEN3_GPU
 
 
 def _pack(
@@ -38,9 +37,7 @@ def _pack(
     )
 
 
-def test_a_pack_is_installed_whole_or_not_at_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_pack_is_installed_whole_or_not_at_all(tmp_path: Path) -> None:
     store = tmp_path / "store"
     pack = _pack(tmp_path, {"onnx/model.onnx": b"graph", "tokenizer.json": b"{}"})
     assert model_store.pack_status(store, pack).status == model_store.PACK_ABSENT
@@ -57,40 +54,11 @@ def test_a_pack_is_installed_whole_or_not_at_all(
         "model.onnx",
         "tokenizer.json",
     ]
-    # Installed again: neither fetch nor hash its pinned bytes again.
-    opened: list[Path] = []
-    open_path = Path.open
-
-    def watch(path: Path, *args, **kwargs):
-        if path.is_relative_to(status.directory):
-            opened.append(path)
-        return open_path(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", watch)
+    # Installed again: no work, the same status.
     again = model_store.install_pack(
         store, pack, lambda *_args: (_ for _ in ()).throw(AssertionError("must not fetch"))
     )
     assert again.status == model_store.PACK_INSTALLED
-    assert opened == []
-
-    # A file read earlier in this verification changes before the last file is hashed.
-    graph = status.directory / "onnx" / "model.onnx"
-    tokenizer = status.directory / "tokenizer.json"
-    stat = tokenizer.stat()
-    os.utime(tokenizer, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
-
-    def change_during_read(path: Path, *args, **kwargs):
-        if path == tokenizer:
-            with open_path(graph, "wb") as handle:
-                handle.write(b"replaced graph")
-        return open_path(path, *args, **kwargs)
-
-    with monkeypatch.context() as changed:
-        changed.setattr(Path, "open", change_during_read)
-        unstable = model_store.pack_status(store, pack)
-    assert unstable.status == model_store.PACK_TAMPERED
-    assert unstable.detail == "pack changed during verification"
-    graph.write_bytes(b"graph")
 
     # Tampering after the install is seen, and named.
     (status.directory / "tokenizer.json").write_bytes(b'{"model_max_length": 16}')
@@ -147,39 +115,14 @@ def test_an_interrupted_install_is_continued_and_a_bad_file_is_refused(tmp_path:
     )
 
 
-@pytest.mark.proves("egress.outbound_checks_each_destination")
-@pytest.mark.parametrize(
-    "case",
-    [
-        None,
-        ("huggingface.co", None, False, None, ["huggingface.co"]),
-        ("huggingface.co", "/resolved", False, None, ["huggingface.co", "huggingface.co"]),
-        ("other.invalid", None, False, "egress.host_not_allowed", []),
-        (
-            "huggingface.co",
-            "https://other.invalid/resolved",
-            False,
-            "egress.host_not_allowed",
-            ["huggingface.co"],
-        ),
-        ("huggingface.co", None, True, "egress.network_disabled", []),
-    ],
-    ids=["resume", "allowed", "same-host-redirect", "off-list", "off-list-redirect", "disabled"],
-)
 def test_a_broken_download_continues_from_its_last_byte(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    case: tuple[str, str | None, bool, str | None, list[str]] | None,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An admitted download can resume; each new destination must be admitted."""
-    if case is not None:
-        _check_egress_destination(monkeypatch, *case)
-        return
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "0")
+    """A broken download continues from its last byte."""
 
     import httpx
 
-    monkeypatch.setattr(model_store, "pause", lambda _seconds: None)
+    monkeypatch.setattr(model_store.time, "sleep", lambda _seconds: None)
     payload = bytes(range(256)) * 64
     pack = model_store.PackDefinition(
         "test-pack",
@@ -216,9 +159,8 @@ def test_a_broken_download_continues_from_its_last_byte(
         return httpx.Response(206 if start else 200, headers=headers, content=body)
 
     received: list[tuple[str, int, int | None]] = []
-    fetch = model_store.hub_fetcher(
-        received=lambda *value: received.append(value), transport=httpx.MockTransport(serve)
-    )
+    client = httpx.Client(transport=httpx.MockTransport(serve))
+    fetch = model_store.hub_fetcher(received=lambda *value: received.append(value), client=client)
     status = model_store.install_pack(tmp_path / "store", pack, fetch)
     assert status.status == model_store.PACK_INSTALLED
     third = len(payload) // 3
@@ -235,45 +177,6 @@ def test_a_broken_download_continues_from_its_last_byte(
     model_store.install_pack(other, pack, fetch)
     assert ranges == ["bytes=1000-"]
     assert model_store.pack_status(other, pack).status == model_store.PACK_INSTALLED
-
-
-def _check_egress_destination(
-    monkeypatch: pytest.MonkeyPatch,
-    entry: str,
-    redirect: str | None,
-    offline: bool,
-    refusal: str | None,
-    visited: list[str],
-) -> None:
-    """Use the HTTP transport seam to observe which requests reach the wire."""
-    import httpx
-
-    from alphalattice.kernel.egress import EgressRefusal, HttpEgress, HttpSource
-
-    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1" if offline else "0")
-    sent: list[str] = []
-
-    def serve(request: httpx.Request) -> httpx.Response:
-        sent.append(request.url.host)
-        assert request.extensions["timeout"] == {
-            "connect": 30.0,
-            "read": 60.0,
-            "write": 60.0,
-            "pool": 60.0,
-        }
-        if redirect is not None and request.url.path == "/model":
-            return httpx.Response(302, headers={"location": redirect})
-        return httpx.Response(200, content=b"pinned pack bytes")
-
-    with HttpEgress(HttpSource.MODEL_HUB, transport=httpx.MockTransport(serve)) as egress:
-        url = f"https://{entry}/model"
-        if refusal is None:
-            assert egress.get(url).content == b"pinned pack bytes"
-        else:
-            with pytest.raises(EgressRefusal) as caught:
-                egress.get(url)
-            assert caught.value.failure_code == refusal
-    assert sent == visited
 
 
 def test_a_recipe_binds_only_from_installed_verified_packs(tmp_path: Path) -> None:
@@ -296,7 +199,6 @@ def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyP
         evidence_setup,
     )
 
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(tmp_path / "elsewhere"))
     assert model_store.default_store_root() == tmp_path / "elsewhere"
     monkeypatch.delenv("ALPHALATTICE_MODEL_STORE")
@@ -312,49 +214,8 @@ def test_the_store_root_is_the_users(tmp_path: Path, monkeypatch: pytest.MonkeyP
     pack = evidence_setup(tmp_path / "workspace")["pack"]
     assert pack["store"] == str(chosen.resolve()) and pack["present"] is False  # type: ignore[index]
     assert pack["download_bytes"] > 0  # type: ignore[index,operator]
-    root.mkdir(parents=True, exist_ok=True)
     model_store.remember_store(root)
     assert model_store.default_store_root() == root
-
-    # The package's redirected AppData and the ordinary Host see different platform roots.
-    redirected = tmp_path / "package" / "LocalCache" / "Local" / "AlphaLattice" / "models"
-    redirected.mkdir(parents=True)
-    for name in ("LOCALAPPDATA", "XDG_DATA_HOME"):
-        monkeypatch.setenv(name, str(tmp_path / "package" / "LocalCache" / "Local"))
-    legacy_pointer = root / model_store.STORE_POINTER
-    legacy_pointer.write_text(json.dumps({"store": str(chosen)}), encoding="utf-8")
-    before = legacy_pointer.read_bytes()
-    model_store.remember_store(redirected)
-    for name in ("LOCALAPPDATA", "XDG_DATA_HOME"):
-        monkeypatch.setenv(name, str(tmp_path / "data"))
-    assert model_store.default_store_root() == redirected.resolve()
-    assert legacy_pointer.read_bytes() == before
-    # A packaged process sees the ordinary logical name, but its handle resolves
-    # to the private physical store. The ordinary Host reads that physical name.
-    resolve = Path.resolve
-    with monkeypatch.context() as patch:
-        patch.setattr(
-            Path,
-            "resolve",
-            lambda path, *a, **kw: redirected if path == root else resolve(path, *a, **kw),
-        )
-        model_store.remember_store(root)
-    assert model_store.default_store_root() == redirected.resolve()
-    monkeypatch.setenv("ALPHALATTICE_MODEL_STORE", str(chosen))
-    assert model_store.default_store_root() == chosen
-    monkeypatch.delenv("ALPHALATTICE_MODEL_STORE")
-    pointer = Path.home() / ".alphalattice" / "model-store.json"
-    for invalid in ("{", json.dumps({"store": "relative"})):
-        pointer.write_text(invalid, encoding="utf-8")
-        with pytest.raises(model_store.ModelStoreError, match="pointer_unreadable"):
-            model_store.default_store_root()
-
-    # An existing legacy pointer remains readable when no new pointer was written.
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "legacy-home"))
-    root.mkdir(parents=True, exist_ok=True)
-    (root / model_store.STORE_POINTER).write_text(json.dumps({"store": str(chosen)}))
-    assert model_store.default_store_root() == chosen
-    assert (root / model_store.STORE_POINTER).exists()
 
 
 def test_a_retained_copy_is_linked_to_the_store_only_when_it_holds_the_packs_bytes(

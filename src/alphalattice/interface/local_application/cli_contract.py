@@ -1,4 +1,4 @@
-"""The CLI's answer, the same shape for every command.
+"""The CLI's answer, the same shape for every command (binding plan, C1 rule 1).
 
 Every command prints one envelope: the operation, an `outcome` of five, the owner's status,
 the owner's body under `data`, its failure code, its words and its next requests, and how
@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -28,15 +29,9 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.project_layout import (
-    REFUSAL_WORDS_RESOURCE,
-    resolve_playpen_root,
-    runtime_json,
-)
-from alphalattice.interface.local_application import cli_invocation
-from alphalattice.interface.local_application.cli_invocation import command_prefix
-from alphalattice.interface.local_application.cli_refused import refused as refused
+from alphalattice.interface.local_application.labels import titles_in
 from alphalattice.interface.local_application.message_catalog import catalog_words
+from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.request_offers import (
     _powershell,
 )
@@ -49,27 +44,14 @@ from alphalattice.interface.local_application.request_offers import (
 from alphalattice.interface.local_application.request_offers import (
     shell as shell,
 )
-from alphalattice.interface.local_application.thin_cli import (
-    AGENT_SESSION_VARIABLES as AGENT_SESSION_VARIABLES,
+from alphalattice.kernel.shared_kernel.project_layout import (
+    REFUSAL_WORDS_RESOURCE,
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
 )
-from alphalattice.interface.local_application.thin_cli import (
-    CLIENT_HEADER as CLIENT_HEADER,
-)
-from alphalattice.interface.local_application.thin_cli import (
-    INSTANCE_HEADER as INSTANCE_HEADER,
-)
-from alphalattice.interface.local_application.thin_cli import (
-    MAXIMUM_REQUEST_BODY_BYTES as MAXIMUM_REQUEST_BODY_BYTES,
-)
-from alphalattice.interface.local_application.thin_cli import (
-    WORKSPACE_HEADER as WORKSPACE_HEADER,
-)
-from alphalattice.interface.local_application.thin_cli import agent_session_values
-from alphalattice.kernel.door import (
-    SCHEMA_VERSION as SCHEMA_VERSION,
-)
-from alphalattice.kernel.door import Outcome as Outcome
-from alphalattice.kernel.door import cli_answer
+
+SCHEMA_VERSION: Final = 1
 
 
 def _schema_branches(
@@ -199,10 +181,11 @@ def deprecation_notices(
     }
 
 
+CLIENT_HEADER: Final = "X-Alphalattice-Client"
+WORKSPACE_HEADER: Final = "X-Alphalattice-Workspace"
+INSTANCE_HEADER: Final = "X-Alphalattice-Instance"
 """The client's wire to the Host: the connection's token, the workspace's key and the Host
 instance, one header each, checked by the Host's boundary (`web.py`)."""
-
-SECTOR_DEVELOPMENT_PUBLISH_PATH: Final = "/api/client/sector-development/publish"
 
 AGENT_VENDOR_HEADER: Final = "X-Alphalattice-Agent-Vendor"
 AGENT_SESSION_HEADER: Final = "X-Alphalattice-Agent-Session"
@@ -210,10 +193,15 @@ GOAL_HEADER: Final = "X-Alphalattice-Goal"
 """The agent session a request comes from and the goal it names: provenance the client
 declares, never authority and never identity (LAWS ID6, OP13); a session bound to a workspace
 (`session bind`) also takes it as its default, which grants nothing a named `--workspace` would
-not. The Host records them beside what the request did, so a result outlives its session
+not (V568). The Host records them beside what the request did, so a result outlives its session
 and a goal holds what was done for it."""
 
-TRACE_VARIABLES: Final = {"TRACEPARENT": "traceparent", "BAGGAGE": "baggage"}  # W3C, as text
+AGENT_SESSION_VARIABLES: Final = (
+    ("claude-code", "CLAUDE_CODE_SESSION_ID"),
+    ("codex", "CODEX_THREAD_ID"),
+)
+"""Where each vendor names its session in the command environment (read on 2026-09-28; not a
+documented promise, so a missing one only leaves a request without an agent session)."""
 
 AGENT_HOST_WAITS: Final = {
     "claude-code": "on Claude Code, run this command with the Bash tool's run_in_background and "
@@ -232,7 +220,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
     """The one agent session a command runs in, as its host names it in the environment.
 
     Every reader of the session reads it here, so the session a request names and the one its
-    launches count to are the same. Both vendors' variables at once is an agent started
+    launches count to are the same (V583). Both vendors' variables at once is an agent started
     inside another, whose session cannot be told apart, so it names none.
 
     Args:
@@ -241,7 +229,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
     Returns:
         The vendor and the session's id; None for no session, two, or an id not a plain token.
     """
-    found = [(vendor, value.strip()) for vendor, value in agent_session_values(environ).items()]
+    found = [(vendor, environ.get(name, "").strip()) for vendor, name in AGENT_SESSION_VARIABLES]
     sessions = [(vendor, value) for vendor, value in found if value]
     if len(sessions) == 1 and _SESSION_ID.match(sessions[0][1]):
         return sessions[0]
@@ -249,7 +237,7 @@ def agent_session(environ: Mapping[str, str]) -> tuple[str, str] | None:
 
 
 def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None) -> dict[str, str]:
-    """The headers naming the agent session a command runs in, the goal it names and its trace.
+    """The headers naming the agent session a command runs in, and the goal it names.
 
     The session is `agent_session`'s; with none named, `--goal` still attributes the request.
     """
@@ -259,9 +247,6 @@ def agent_provenance_headers(environ: Mapping[str, str], goal: str | None = None
         headers = {AGENT_VENDOR_HEADER: session[0], AGENT_SESSION_HEADER: session[1]}
     if goal is not None:
         headers[GOAL_HEADER] = goal
-    for variable, header in TRACE_VARIABLES.items():
-        if (value := environ.get(variable, "")).isascii() and value.isprintable() and value:
-            headers[header] = value
     return headers
 
 
@@ -270,7 +255,7 @@ class RequestProvenance:
     """Who sent one request, as its client declared it: an agent session and a named goal.
 
     `delegation` is the Host's, never a client's: the person's delegation the request acts under
-    (a first-use goal's), which an owner recording who decided names. `relayed` is the
+    (a first-use goal's, V452), which an owner recording who decided names. `relayed` is the
     Host's too: the request relays the person's yes, checked against its decision.
     """
 
@@ -347,29 +332,29 @@ around the command; codes, statuses and next actions stay English, for Agents.""
 
 BOUND_WORKSPACE: ContextVar[Path | None] = ContextVar("alphalattice_bound_workspace", default=None)
 """The workspace this command's agent session is bound to (`session bind`), resolved; None when
-it is bound to none. Set by `cli.main`; a printed command for this workspace leaves
+it is bound to none (V568). Set by `cli.main`; a printed command for this workspace leaves
 `--workspace` out (`entry`), since the session's next command finds it the same way."""
 
 WORKSPACE_FROM: ContextVar[Literal["OPTION", "BINDING", "BUNDLE"]] = ContextVar(
     "alphalattice_workspace_from", default="OPTION"
 )
-"""How this command's workspace was chosen, which every answer's `context` names: named
+"""How this command's workspace was chosen, which every answer's `context` names (V568): named
 by `--workspace`, or the session's binding."""
 
 SESSION_LAUNCHES: ContextVar[int | None] = ContextVar("alphalattice_session_launches", default=None)
-"""How many CLI launches this agent session has made, this one included: set by
+"""How many CLI launches this agent session has made, this one included (V364): set by
 `cli.main` from `count_launch`, carried by every envelope as `session_launches`."""
 
 _LAUNCH_LINE: Final = b"1\n"
 
 
 def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
-    """Count this launch for the agent session the environment names.
+    """Count this launch for the agent session the environment names (V364).
 
     Help and schema launches count as any other, so an agent reads one total against its
     budget. The count lives in the system's temporary directory, one file per session, never
     in a workspace, which the Host alone writes. The session is `agent_session`'s, so an agent
-    started inside another, whose session cannot be told apart, counts to neither.
+    started inside another, whose session cannot be told apart, counts to neither (V583).
 
     Args:
         environment: The process environment; this process's when None.
@@ -377,11 +362,11 @@ def count_launch(environment: Mapping[str, str] | None = None) -> int | None:
     Returns:
         The session's launches so far, this one included; None without an agent session.
     """
-    named = agent_session(cli_invocation.environment() if environment is None else environment)
+    named = agent_session(os.environ if environment is None else environment)
     if named is None:
         return None
 
-    folder = cli_invocation.temporary() / "alphalattice-cli-launches"
+    folder = Path(tempfile.gettempdir()) / "alphalattice-cli-launches"
     try:
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{named[0]}--{named[1].replace(':', '_')}.count"
@@ -404,6 +389,7 @@ _ZH_ENTRY: Final = re.compile(rf"^\s*({_ZH_STRING})\s*:\s*({_ZH_STRING}),?\s*$",
 
 BUNDLE_WORKSPACE: Final = "workspace.json"
 
+MAXIMUM_REQUEST_BODY_BYTES: Final[int] = 128 * 1024
 """The largest request body this service will read, named rather than implied.
 
 Most writes this product takes are one small JSON document -- a spec, a result
@@ -415,6 +401,7 @@ and a bound that is written down and checked *before* the read is the
 difference between refusing an oversized request and allocating for it.
 """
 
+Outcome = Literal["OK", "INVALID_INPUT", "REFUSED", "PENDING", "NO_HOST"]
 EXIT_CODES: Final[dict[Outcome, int]] = {
     "OK": 0,
     "INVALID_INPUT": 1,
@@ -440,13 +427,13 @@ WAIT_EXITS: Final[Mapping[str, str]] = {
 }
 """The pending states every waiter ends on, each with the event it names: a decision or a
 recovery waits on a request, and a deferred Task on its retry time and then on its plan sent
-again, which its read names (`--wait` sat on a deferral the Task never leaves by itself)."""
+again, which its read names (V507: `--wait` sat on a deferral the Task never leaves by itself)."""
 
 
 TASK_STATE_FIELDS: Final = ("lifecycle", "task_lifecycle", "status")
 """Where an answer names its Task's state: ``lifecycle``, ``task_lifecycle`` where its own
 ``status`` names something else (a data update, a review), or, as readbacks write it,
-``status`` (OP18)."""
+``status`` (OP18, V455)."""
 
 
 def task_state(body: dict[str, Any]) -> str | None:
@@ -465,7 +452,28 @@ def task_state(body: dict[str, Any]) -> str | None:
     return None
 
 
-# Each refusal code's words and way on, now from the shared resource cache (OP4).
+def refused(body: dict[str, Any]) -> bool:
+    """Check whether an owner's answer carries a refusal.
+
+    Args:
+        body: The full owner answer.
+
+    Returns:
+        Whether a failure code, refusal, or refused disposition is present. A `refused`
+        field is a refusal only as a code: the controls answer lists the controls a book
+        refuses under it, and that catalog is an answer (V333).
+    """
+    code = body.get("refused")
+    return bool(
+        body.get("failure_code")
+        or (isinstance(code, str) and code)
+        or any(
+            str(body.get(field, "")).startswith("REFUSED") for field in ("status", "disposition")
+        )
+    )
+
+
+# Each refusal code's words and way on, now from the shared resource cache (OP4, V449).
 NETWORK_ACCESS_REFUSALS: Final = frozenset(
     {
         "research_update.input_source_access_not_admitted",
@@ -480,7 +488,7 @@ NETWORK_ACCESS_REFUSALS: Final = frozenset(
 def refusal_words(
     code: str, *, workspace: Path | None = None, now: datetime | None = None, for_stop: bool = False
 ) -> dict[str, Any]:
-    """A refusal code's words and next action, where the table words it (OP4).
+    """A refusal code's words and next action, where the table words it (OP4, V449).
 
     Args:
         code: The refusal's code; what follows its first colon fills the words' `{subject}`.
@@ -538,10 +546,6 @@ def refusal_words(
                 next_action=decision["next_action"],
             )
         elif workspace is not None:
-            from alphalattice.interface.local_application.questions import (  # lazy: consent
-                person_question,
-            )
-
             words["person_questions"] = [person_question("network.workspace_access")]
         if workspace is not None or access.decided_by != "DEFAULT":
             words["network_access"] = decision
@@ -611,7 +615,7 @@ def disclosed(
 def worded_refusal(
     body: dict[str, Any], *, workspace: Path | None = None, now: datetime | None = None
 ) -> dict[str, Any]:
-    """A refusal as it leaves the Host, with words and a way on (OP4).
+    """A refusal as it leaves the Host, with words and a way on (OP4, V449).
 
     Its owner's words and way on, and, where the owner gave none, its code's own.
 
@@ -766,7 +770,7 @@ def outcome_of(body: dict[str, Any]) -> Outcome:
 
     A Task's state counts wherever the answer writes it, ``lifecycle`` or ``status``, over the
     whole lifecycle: work that waits, runs or awaits a decision is pending, and a blocked or
-    cancelled Task, or a feature trial stopped on a failed step, is refused. A
+    cancelled Task, or a feature trial stopped on a failed step, is refused (V144, V138). A
     recovery view is the read of a stop, admitted: the stopped Task is its data.
 
     Args:
@@ -831,23 +835,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         for code in (
             "local_client.report_sentence_not_admitted",
             "local_client.report_route_not_admitted",
-            # a relayed person question, checked before sending (questions.relayed_question)
-            "person_confirmation.question_unknown",
-            "person_confirmation.question_mismatch",
         )
-    ),
-    *(  # each detail is its registered message, worded in the answer's language
-        (code, ClientRefusal("INVALID_INPUT", "READ_THE_OFFERED_QUESTION", code))
-        for code in (
-            "person_confirmation.question_missing",
-            "person_confirmation.question_words_differ",
-        )
-    ),
-    (
-        "person_confirmation.",
-        ClientRefusal(
-            "INVALID_INPUT", "READ_THE_OFFERED_QUESTION", "person_confirmation.relay_refused"
-        ),
     ),
     # First match wins: an exact code before the prefix that also covers it.
     (
@@ -896,17 +884,13 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
     ),
     (
         "activity.observation_id_invalid",
-        ClientRefusal(
-            "INVALID_INPUT",
-            "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID",
-            "activity.observation_id_invalid",
-        ),
+        ClientRefusal("INVALID_INPUT", **refusal_words("activity.observation_id_invalid")),
     ),
     (
         "activity.query_selection_conflict",
         ClientRefusal("INVALID_INPUT", **refusal_words("activity.query_selection_conflict")),
     ),
-    # `backup restore` is the client's own, with no Host: its refusals too.
+    # `backup restore` is the client's own, with no Host (V328): its refusals too.
     (
         "local_client.restore_unavailable",
         ClientRefusal(
@@ -1132,7 +1116,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "REFUSED",
             _REOPEN,
-            "local_client.connection_path_escapes_workspace",
+            "The connection record is not a plain file inside this workspace, so it is not used.",
         ),
     ),
     (
@@ -1140,7 +1124,9 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "NO_HOST",
             "STOP_THE_HOST_THAT_WROTE_IT",
-            "local_client.connection_owner_mismatch",
+            "This workspace's connection record names another workspace's Host, so this Host "
+            "does not replace it: stop that Host, or, when none runs, remove "
+            "`runtime/local-research-connection.json` and start again.",
         ),
     ),
     (
@@ -1199,7 +1185,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ),
     ),
     (
-        # Before the broad prefix below, which matched it first.
+        # Before the broad prefix below, which matched it first (V442).
         "local_client.next_request_needs_choice:",
         ClientRefusal(
             "INVALID_INPUT",
@@ -1393,7 +1379,7 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
             "The command line does not parse; `--help` after the verb shows its arguments.",
         ),
     ),
-    # A workspace left out is the session's binding's, or refused in words.
+    # A workspace left out is the session's binding's, or refused in words (V568).
     (
         "local_client.workspace_unbound",
         ClientRefusal(
@@ -1563,7 +1549,8 @@ _CLIENT_REFUSALS: Final[tuple[tuple[str, ClientRefusal], ...]] = (
         ClientRefusal(
             "INVALID_INPUT",
             "SET_MAX_WAIT_ABOVE_0_SECONDS_OR_OMIT_IT",
-            "cli.max_wait_invalid",
+            "--max-wait is the waiter's only timer, in seconds above 0, for a command run under "
+            "a cap; omit it to wait until the work ends or needs a decision.",
         ),
     ),
     (
@@ -1744,10 +1731,6 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "PORTFOLIO_READBACK",
         "REPORT",
         "RESEARCH_HISTORY",
-        "EXPERIENCE_READ",
-        "EXPERIENCE_BRIEF",
-        "EXPERIENCE_CLASS",
-        "EXPERIENCE_RECALL",
         "RESEARCH_INPUTS",
         "RESEARCH_INPUT_READBACK",
         "MODEL_TRAINING_INPUT_READBACK",
@@ -1767,7 +1750,6 @@ READ_OPERATIONS: frozenset[str] = frozenset(
         "NETWORK_ACCESS",
         "EVIDENCE_CONSENT",
         "USAGE_READING",
-        "ANALYST_READS",
         "PENDING_DECISIONS",
         "WORKSPACE_PREPARE_READBACK",
         "ACTIVITY_REFUSALS",
@@ -1906,6 +1888,9 @@ def client_failure(
     return refusal, known
 
 
+_NO_HOST_ENVELOPE = (None, "NO_HOST", "local_client.service_not_running")
+
+
 def envelope(
     *,
     operation: str | None,
@@ -1943,32 +1928,47 @@ def envelope(
         and owner.get("answer_status", owner.get("status")) in {"ACCEPTED", "DONE"}
     ):
         outcome = "OK"  # Submission succeeded; outcome_of still follows the review Task.
+    refusal = owner.get("refused")
     titles: dict[str, str] = {}
     if body is not None:
-        from alphalattice.interface.local_application.labels import (  # lazy: installed names
-            titles_in,
-        )
-
         # What it installs, named by the label table beside the ids the answer keeps.
         titles = titles_in(body, chinese=ANSWER_LANGUAGE.get() == "zh")
-    return cli_answer(
-        operation=operation,
-        outcome=outcome,
-        body=body,
-        elapsed_seconds=elapsed_seconds,
-        display=display,
-        status=status,
-        failure_code=failure_code,
-        detail=detail,
-        request=request,
-        titles=titles,
-        launches=SESSION_LAUNCHES.get(),
-        owner_refusal=refusal_code(owner),
-        present=worded,
-        project_error=error_projection,
-        notices=deprecation_notices,
-        extra=extra,
-    )
+    return {
+        "status": status or owner.get("status", owner.get("disposition")),
+        "next_action": owner.get("next_action"),
+        "task_id": owner.get("task_id") or owner.get("publication_task_id"),
+        "schema_version": SCHEMA_VERSION,
+        "operation": (
+            "request" if (body, outcome, failure_code) == _NO_HOST_ENVELOPE else operation
+        ),
+        "outcome": outcome,
+        "data": body if display is None else display,
+        **({"titles": titles} if titles else {}),
+        "failure_code": failure_code
+        or owner.get("failure_code")
+        or (refusal if isinstance(refusal, str) else None),
+        "detail": worded(detail or owner.get("detail")),
+        **error_projection(owner | {"failure_code": failure_code or refusal_code(owner)}),
+        **(
+            {"closure_detail": worded(owner["closure_message_id"])}
+            if owner.get("closure_message_id")
+            else {}
+        ),
+        "next_requests": owner.get("next_requests"),
+        "timing": {"elapsed_seconds": round(elapsed_seconds, 3)},
+        # This agent session's CLI launches, help and schema included (V364).
+        **(
+            {"session_launches": launches}
+            if (launches := SESSION_LAUNCHES.get()) is not None
+            else {}
+        ),
+        **extra,
+        **deprecation_notices(
+            operation,
+            owner | {"failure_code": failure_code or owner.get("failure_code")},
+            request or {},
+        ),
+    }
 
 
 def answer_json(
@@ -2020,15 +2020,16 @@ def worded(detail: str | None) -> str | None:
 
 
 def _chinese(detail: str) -> str:
-    """Read a sentence or subject part through the same Chinese keys."""
+    """Read a sentence or subject part through the same Chinese keys (V608)."""
     table = _zh()
     if detail in table:
         return table[detail]
-    # A filled sentence reads through its template, as the page does.
+    # A filled sentence reads through its template's key, `{subject}` and all, as the page
+    # reads it (U76): the door's table words ten sentences around a code's subject.
     for template, words in _zh_templates():
         found = template.fullmatch(detail)
         if found is not None:
-            # Each slot in its turn, as the page fills them (a second slot read English).
+            # Each slot in its turn, as the page fills them (V566: a second slot read English).
             for part in found.groups():
                 subject = "\uff1b".join(_chinese(need) for need in part.split("; "))
                 words = words.replace("{subject}", subject, 1)
@@ -2038,12 +2039,11 @@ def _chinese(detail: str) -> str:
 
 @functools.cache
 def _zh_templates() -> tuple[tuple[re.Pattern[str], str], ...]:
-    """Registered and legacy subject templates, one group per slot."""
+    """The Chinese table's `{subject}` sentences, each as the pattern of its filled English,
+    every slot a group of its own."""
     return tuple(
         (re.compile(re.escape(key).replace(re.escape("{subject}"), "(.+?)")), value)
-        for key, value in (
-            dict(_zh()) | {k: v["zh-CN"] for k, v in catalog_words().items()}
-        ).items()
+        for key, value in _zh().items()
         if "{subject}" in key
     )
 
@@ -2162,12 +2162,12 @@ def flag(field: str) -> str:
 
 
 def choices(request: dict[str, object]) -> list[str]:
-    """The required fields a next request leaves to its reader.
+    """The required fields a next request leaves to its reader (V136).
 
     An owner offering a request that still needs a choice writes the field as None (an
     Alpha result's ``portfolio-draft`` needs its ``candidate_id``); an absent one is left too,
     and so is a field an object's model requires that the owner's part of it leaves out (a
-    curation's ``experiment_curation.choices``).
+    curation's ``experiment_curation.choices``, V373).
 
     Args:
         request: The next request the owner offered.
@@ -2180,13 +2180,13 @@ def choices(request: dict[str, object]) -> list[str]:
     contract = table["fields"].get(operation, {})
     left = [name for name in contract.get("required", []) if request.get(name) is None]
     # One of an either-or pair is required (a plan's declaration, as YAML or as a document):
-    # a request giving none leaves it, named as the owner wrote it, else the first.
+    # a request giving none leaves it, named as the owner wrote it, else the first (V433).
     groups = table.get("alternatives", {}).get(operation, [])
     if groups and not any(all(request.get(name) is not None for name in g) for g in groups):
         offered = [name for group in groups for name in group if name in request]
         left += offered[:1] or list(groups[0][:1])
     # An object the owner fills in part leaves the rest of its model's required fields
-    # (a curation's `experiment_curation` carries its receipt, not the author's choices).
+    # (V373: a curation's `experiment_curation` carries its receipt, not the author's choices).
     for name, inner in table.get("inner_required", {}).items():
         value = request.get(name)
         if isinstance(value, dict):
@@ -2208,12 +2208,12 @@ _KINDS: Final = (
 
 
 def named_read(request: Mapping[str, Any], body: dict[str, Any]) -> dict[str, Any]:
-    """The CLI's copy of a read's answer, naming what it read (OP15).
+    """The CLI's copy of a read's answer, naming what it read (OP15, V449, V454).
 
     The request it sent, every field the operation takes that it gave as a value (a target, a
-    reference, a revision, a session, a page), or its operation alone when it gave none,
+    reference, a revision, a session, a page), or its operation alone when it gave none (V571),
     is kept under ``read_request``, so `--from` reads the same read again from the answer
-    alone, its whole selection included, before any next request the answer offers.
+    alone, its whole selection included, before any next request the answer offers (V460).
     The Host's answer stays its owner's, byte for byte: an export's record, a measured delivery
     and a self-hash are sealed by their owners, and a read answers alike at every entry.
 
@@ -2235,7 +2235,7 @@ def named_read(request: Mapping[str, Any], body: dict[str, Any]) -> dict[str, An
         if name in allowed and (shown := _scalar(value)) is not None
     }
     # A read that gave no field is kept too, as its operation alone: its defaults are its
-    # selection, so `--from` reads its first page again, never the next one it offers.
+    # selection, so `--from` reads its first page again, never the next one it offers (V571).
     return {**body, "read_request": {"operation": operation, **given}}
 
 
@@ -2256,7 +2256,7 @@ def _scalar(value: object) -> object:
 
 
 def exit_problem(body: dict[str, Any]) -> str | None:
-    """What an answer that completes or reuses work lacks of its exit (OP18).
+    """What an answer that completes or reuses work lacks of its exit (OP18, V449).
 
     A reuse, an admission or a resubmission names what holds its work: its Task, or the result
     or record it is, by an id or a hash at its top (`publication_task_id`, `observation_id`,
@@ -2288,7 +2288,7 @@ def exit_problem(body: dict[str, Any]) -> str | None:
 
 
 def request_problem(request: Mapping[str, object]) -> str | None:
-    """What keeps an offered request from being one the Host accepts as it stands.
+    """What keeps an offered request from being one the Host accepts as it stands (V449).
 
     An offered request names an operation the Host answers and only fields that operation takes,
     each of a kind the grammar declares; a field left to its reader is None or absent
@@ -2332,12 +2332,12 @@ def request_problem(request: Mapping[str, object]) -> str | None:
 def entry(
     workspace: str | Path, options: tuple[str, ...] = (), *, full: bool = False
 ) -> tuple[str, ...]:
-    """The client's own root command for one workspace, as a printed command starts.
+    """The client's own root command for one workspace, as a printed command starts (V123).
 
     The command uses the installed tool's prefix. It names the workspace, except the one the
     agent session is bound to (`BOUND_WORKSPACE`), which the session's next command finds from
-    its binding; ``options`` are the caller's other global options, which its next
-    command keeps.
+    its binding (V568); ``options`` are the caller's other global options, which its next
+    command keeps (V406).
 
     Args:
         workspace: The workspace the command acts on.
@@ -2364,9 +2364,9 @@ def command(
     """A next request as the command that sends it; None for an operation the CLI lacks.
 
     A request that leaves a choice (`choices`) is a template: each such field is written
-    ``--candidate <candidate_id>``, unquoted, so no shell runs it as it stands; a
+    ``--candidate <candidate_id>``, unquoted, so no shell runs it as it stands (V136); a
     choice inside an object writes the object's flag so, with what the owner filled and the
-    fields to give.
+    fields to give (V373).
 
     Args:
         request: The next request the owner offered.
@@ -2384,13 +2384,13 @@ def command(
         return None
     left = choices(request)
     # A choice inside an object is given inside that object, so its flag takes the object
-    # whole, the part the owner filled shown and the fields to give named.
+    # whole, the part the owner filled shown and the fields to give named (V373).
     inside = {name.split(".", 1)[0] for name in left if "." in name}
     shown = table["positional"].get(operation)
     parts = [*prefix, *names[operation].split(" ")]
     last: list[str] = []
     if isinstance(request.get(shown), str) and shown not in left:
-        # A positional the parser would read as an option comes last, after `--`.
+        # A positional the parser would read as an option comes last, after `--` (V449).
         given = _given(str(request[shown]))
         if given.startswith("-") and not left:
             last = ["--", given]
@@ -2400,10 +2400,10 @@ def command(
         if key in {"operation", shown} or value is None or key in inside:
             continue
         if key in table["primary"] and isinstance(value, str):
-            # A declaration's text is continued from its answer (`--from`), not printed.
+            # A declaration's text is continued from its answer (`--from`), not printed (V401).
             return None
         given = _given(value) if isinstance(value, str) else _json(value)
-        # A value the parser would read as an option is joined to its flag.
+        # A value the parser would read as an option is joined to its flag (V449).
         parts += [f"{flag(key)}={given}"] if given.startswith("-") else [flag(key), given]
     parts += last
     tail = "".join(
@@ -2450,7 +2450,7 @@ def _json(value: object) -> str:
 
 def _given(value: str) -> str:
     """A text value as the CLI reads it back: `@path` reads a file, so a leading `@` is
-    doubled, the CLI's own spelling of a literal one."""
+    doubled, the CLI's own spelling of a literal one (V149, V449)."""
     return "@" + value if value.startswith("@") else value
 
 
@@ -2500,7 +2500,7 @@ def wait_event(
 
 def follow_returns() -> str:
     """When a follow returns and how this host waits for it, never by polling."""
-    session = agent_session(cli_invocation.environment())
+    session = agent_session(os.environ)
     way = AGENT_HOST_WAITS.get(session[0]) if session else None
     way = way or "let your shell wait or run this in the background"
     return f"{_FOLLOW_RETURNS}{way}, and do not poll it"

@@ -28,7 +28,6 @@ from alphalattice.foundation.factor_research.experiments.verification import (
 )
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.interface.local_application import trial_history
 from alphalattice.investment.risk_research.experiments.compiler import RiskExperimentCompiler
 from alphalattice.protocols.research_authoring.contracts import (
     DeskEvidenceVerifier,
@@ -169,7 +168,6 @@ def build_research_program_workflow(
         # baseline is caller input and cannot answer for this.
         source_workspace=workspace,
         verifiers=installed_desk_verifiers(verifier_kinds),
-        trials=trial_history,
     )
 
 

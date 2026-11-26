@@ -6,7 +6,7 @@ import os
 import stat
 from pathlib import Path, PurePosixPath
 
-from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceSecurityError
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceSecurityError
 
 _WINDOWS_DEVICES = {
     "CON",

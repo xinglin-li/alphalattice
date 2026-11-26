@@ -18,11 +18,11 @@ from typing import Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.capabilities.domain_contracts.sector_treatment import (
+from alphalattice.foundation.market_data_ops.sources.membership import INITIAL_COHORT_BACKFILL
+from alphalattice.kernel.shared_kernel.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SECTOR_HISTORY_FORWARD,
 )
-from alphalattice.foundation.market_data_ops.sources.membership import INITIAL_COHORT_BACKFILL
 
 _SECTOR: Final[Mapping[str, str]] = {
     SECTOR_HISTORY_BACKFILLED: (

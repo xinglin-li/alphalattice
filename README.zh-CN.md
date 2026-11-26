@@ -17,17 +17,20 @@
 
 研究计算遵循每项结果声明的信息截止时间。市场名单使用当前上市公司，报告会说明由此带来的幸存者偏差，以及历史行业和价格记录的局限。验证运行会检查前视偏差。委员会可以不认可某项结果。AlphaLattice 在本地运行，并且开源。
 
-## 0.2.9：现已提供
+## 0.2.4：现已提供
 
-**AlphaLattice 0.2.9 启动更快、任务运行更稳，能回收闲置存储，也让研究结果更容易核查。**
+- 读取结果时显示有上限的摘要，并指向完整答案；`--output` 会完整保存该答案。
+- 完成目标时从已填好的请求开始：已记录的事实和引用已经绑定，代理只需补充自己的判断。
+- 本地 Host 可以在会话之间保持运行。匹配的会话会复用它；没有待完成的工作且空闲达到设定时长后，它会自行停止。在 Claude Code 桌面版中，代理可以在应用的终端面板中启动它。
+- 无效的研究计划会给出具名的恢复步骤；被取消的成分更新会保留恢复其改动所需的信息。
 
-- **更快。** 受支持的命令复用常驻 Host。每日更新中的打分、审阅准备和中文证据搜索耗时更短。
-- **更稳。** 交互任务优先，取消任务可中断正在执行的工作。Windows 上市场数据库已打开时仍可运行每日更新，从备份恢复的工作区也能重新启动。
-- **节省磁盘空间。** 按类别查看存储用量，确认后再清理。Host 会清理能够确认归属的已结束任务临时文件，以及过期备份。
-- **结果更容易核查。** 每日更新会报告五项市场数据检查。文件发生变化后会重新校验，Host 空闲时也会复核。
-- **供集成开发者参考。** 操作统一通过已注册的接口，缓存和外部请求均设有上限，七个包的导入路径已变更。
+[0.2.4 发行说明（英文）](docs/public-source/release-notes.md#024)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
 
-[0.2.9 发行说明（英文）](docs/public-source/release-notes.md#029)逐项说明这些改动。各项测量及其适用范围保留在对应版本的说明中。
+使用 Claude Code 或 Codex 作为主导代理。要查看一次运行的用量，可以在工作台中依次打开**团队**、**会话**，再查看该会话的**参与者**：其中会显示每位成员使用的模型和 token 数量，并标明缺口。
+
+把本仓库的链接和一句研究意图交给代理：
+
+> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
 
 <a id="two-ways-to-use-alphalattice"></a>
 
@@ -35,7 +38,7 @@
 
 1. **首次使用：在新文件夹中开始。** 把上面的研究意图，或 `Positions for <date>, reviewed.`，发给 Claude Code 或 Codex 代理。代理准备数据和策略，生成指定日期的研究仓位，再完成审阅、委员会讨论和报告。
 
-   代理会问一次：是否允许 AlphaLattice 为每日更新持续开启这个工作区的网络，用于获取市场数据和默认预算内的 SEC 文件（每家发行主体 3 份、总计 600 份、总体积 3 GB）。首次使用无需等待你的回答即可继续。同意后，许可持续有效，直到你要求停止；联网时会作出披露，自动更新也不例外。活动记录可用时会记录联网情况，观测缺口也会注明。
+   **这里会暂停，等待你的回答。** 代理会问一次：是否允许 AlphaLattice 为每日更新持续开启这个工作区的网络，用于获取市场数据和默认预算内的 SEC 文件（每家发行主体 3 份、总计 600 份、总体积 3 GB）。**工作会等到你回答同意或不同意后再继续。** 同意后，许可持续有效，直到你要求停止；每次联网都会披露并记入活动记录，自动更新也不例外。
 
    在首次使用的报告阶段，代理还会问：每日更新是否需要召集投资委员会。你可以当时或以后在对话中决定，也可以用同样的方式更改，例如说 "Stop convening the committee on daily updates." 在你同意之前，后续更新会给出组合经理对已审阅仓位的看法，并提供召集委员会的选项。**首次使用不会等待这个问题的答案。**
 
@@ -51,9 +54,9 @@
 
 *示例运行（example run）使用合成数据：已保存的风险研究显示其输入区间与诊断结果。*
 
-![英文工作台中示例研究工作区的历史视图。](docs/assets/readme/activity-1280.png)
+![英文工作台中一次示例运行的活动时间线。](docs/assets/readme/activity-1280.png)
 
-*示例运行（example run）使用合成数据：历史视图列出已记录的任务与更新。*
+*示例运行（example run）使用合成数据：活动记录保留了结果背后的工作过程。*
 
 <details>
 <summary>在较窄窗口中查看同一次示例运行</summary>
@@ -65,18 +68,6 @@
 </details>
 
 <a id="before-you-start"></a>
-
-## 安装并启动
-
-[0.2.9](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)
-发布后，在选定的目录中执行这条 PowerShell 命令。
-
-```powershell
-if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
-```
-
-[安装并启动](docs/public-source/install.md)提供 macOS 和 Linux 命令及 Claude Code 插件的用法。
-你也可以把本仓库链接和研究意图交给智能体。
 
 ## 开始之前
 
@@ -95,9 +86,9 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 ## 升级
 
 从 0.2.0 升级到后续 0.2.x 补丁，请按[升级指南（英文）](docs/public-source/upgrading.md)操作。
-先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等它释放工作区。
+先备份代理项目中的 `.alphalattice/user/`，记下研究工作区的绝对路径，再用 `alphalattice host stop` 停止该工作区的 Host，等运行中的任务结束。
 源代码安装先更新代码，再同步锁定依赖、运行 doctor，并按其回答修复设置或重新配置代理项目；wheel 安装使用新包自带的运行依赖和约束。
-升级后仍在原代理项目和工作区中继续每日更新，保留此前封存的目标和报告。
+升级后仍在原代理项目和工作区中继续每日更新。第一次更新可能需要一次重建；此前封存的目标和报告仍可验证。
 如果命令拒绝且按提示仍无法解决，先用 `alphalattice problem report --output "<out>/report.json"` 生成报告，检查后再提交 GitHub issue。代理发送前会先征得你的同意。
 
 <a id="why-alphalattice"></a>
@@ -181,31 +172,34 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 | [代理](docs/public-source/agents.md) | 目标、会话与专家工作。 |
 | [扩展](docs/public-source/extending.md) | 开发并检查因子和模型。 |
 | [数据与维护](docs/public-source/data-and-care.md) | 更新、检查、备份与恢复工作区。 |
-| [隐私](docs/public-source/privacy.md) | 用量记录的内容、如何关闭读取，以及如何配置可选的追踪导出。 |
+| [隐私](docs/public-source/privacy.md) | 用量记录的内容，以及如何关闭读取。 |
 | [下载与数据条款](docs/public-source/third-party-and-data.md) | 模型和数据来源的条款。 |
 
 [指南索引](docs/public-source/README.md)链接了其他参考页面。
 
-通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。每个数据根只运行一个 Host；第二个会按名称被拒绝，[存储（英文）](docs/public-source/data-and-care.md#storage)说明接下来怎么做。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
+通过[备份并恢复](docs/public-source/data-and-care.md)到新目录，保留已保存的记录及其完整性检查。[隐私说明](docs/public-source/privacy.md)介绍用量记录及其开关。
 
 <a id="this-release-and-where-it-is-going"></a>
 
 ## 本次发布与后续方向
 
-**当前版本为 0.2.9。** 程序核心里的每件事都只有一个负责方：时钟、配置、网络访问、哈希和数据库连接。每个数据根目录由一个常驻 Host 为精简的命令行服务，资源在四核预算内按租约分配，已经做过的检查在输入未变时直接信任，每次 Daily 都检查数据健康。[发行说明](docs/public-source/release-notes.md#029)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
+**当前版本为 0.2.4。** 它带来有上限的读取摘要和完整保存的答案、从已记录事实开始的目标完成、在会话之间保持运行并在空闲时自行停止的本地 Host，以及无效计划的具名恢复。[发行说明](docs/public-source/release-notes.md#024)说明已交付的行为；早期说明保留各自的实测工作负载和仍存在的限制。
 
 每个次版本提前规划范围；发行说明列出已运行的检查、已测工作负载和仍未证明的限制，期间的补丁让当前版本更顺畅。各版本借鉴已在其他地方得到验证的方法，并按 AlphaLattice 自身的规则调整：按日期限定的输入、封存的结果，以及你的决定权。
 
 后续 0.2.x 补丁按顺序如下。每个补丁只有一个主题，并按既定预算公布实测的时间、磁盘和内存：
 
-- **0.2.10：每日更新适配本机，并且可以直接试用。** 一条命令完成安装，并提供 Claude Code 插件。目标是：首次使用和每日更新控制在 8 GB 内存以内；从空目录开始，十分钟内看到第一个标注为试用的结果。
-- **0.2.11：贴近实际的回放。** 通过真实的数据客户端及其缓存，回放真实世界的事件（公司行动、延迟发布、数据源中断）。
-- **0.2.12：插件平台。** 产品的各个部分通过同一个接口登记表注册，支持配置档和插件信任；各模型族成为第一批插件。
-- **0.2.13：可以按日期查询的历史。** 查询过去某一天当时已知、尝试过和决定过的内容，不含之后才得知的信息。
-- **0.2.14：产品迁入插件，代理协议成为 API。** 产品的各个部分逐个迁入插件平台；完成代理协议，以对现有调用方保持兼容的 API 形式提供。
-- **0.2.15：少等程序。** 代理思考的同时，程序预先准备可能的下一步。
-- **0.2.16：评测飞轮。** 用同一个运行器和固定的关卡，依据产品自身的记录检验每个补丁。
-- **0.2.17：为每日监督打基础。** 补齐 0.3 每日监督所需的部分，包括保存前向仓位记录的存储。
+- **0.2.5：可测量的基准。** 不用模型回放一次首次使用和一次每日更新，以分钟为单位报告每个阶段的用时和程序的内存峰值；之后的提速和内存改动都以它为基准来测量。
+- **0.2.6：内存控制在预算内。** 让首次使用和每日更新都控制在 8 GB 以内。
+- **0.2.7：贴近实际的回放。** 通过真实的数据客户端及其缓存，回放真实世界的事件（公司行动、延迟发布、数据源中断）。
+- **0.2.8：数据检查。** 每天检查数据健康，在程序和 Workbench 中都能看到。
+- **0.2.9：不存两份。** 存储数据模型；升级时复用未变化的数据。
+- **0.2.10：缓存和检查只做一次。** 只计算一次哈希，在信任边界进行验证，只重算变化的部分，借鉴 Git 索引与 Bazel 动作缓存。
+- **0.2.11：少等程序。** 代理思考的同时，程序预先准备可能的下一步。
+- **0.2.12：可以按日期查询的历史。** 查询过去某一天当时已知、尝试过和决定过的内容，不含之后才得知的信息。
+- **0.2.13：评测飞轮。** 用同一个运行器和固定的关卡，依据产品自身的记录检验每个补丁。
+- **0.2.14：十分钟内看到第一个结果。** 在小样本上做一次简短试用，并明确标注为试用。
+- **0.2.15：为每日监督打基础。** 保存前向仓位记录的存储。
 
 后续次版本：
 
@@ -241,7 +235,7 @@ if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 
 
 ## 关于
 
-Last checked: 2026-11-23 against 0.2.9
+Last checked: 2026-11-04 against 0.2.4
 
 [设计原则](docs/public-source/design-principles.md)解释了代理、软件和用户如何分工。
 

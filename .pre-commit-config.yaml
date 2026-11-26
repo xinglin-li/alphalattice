@@ -1,57 +1,12 @@
 repos:
   - repo: local
     hooks:
-      - id: ruff-check
-        name: ruff check
-        entry: python -m ruff check --config pyproject.toml
-        language: system
-        types: [file]
-        require_serial: true
-        stages: [manual]
-      - id: ruff-format
-        name: ruff format
-        entry: python -m ruff format --check --config pyproject.toml
-        language: system
-        types: [file]
-        require_serial: true
-        stages: [manual]
-      - id: strict-mypy
-        name: strict mypy
-        entry: python scripts/check_playpen.py --strict-mypy-only
-        language: system
-        always_run: true
-        pass_filenames: false
-        stages: [manual]
-      - id: check-added-large-files
-        name: check added large files
-        entry: python -m pre_commit_hooks.check_added_large_files
-        language: system
-        stages: [manual]
-      - id: check-merge-conflict
-        name: check merge conflicts
-        entry: python -m pre_commit_hooks.check_merge_conflict
-        language: system
-        args: [--assume-in-merge]
-        stages: [manual]
-      - id: gitleaks
-        name: scan staged changes for secrets and private keys
-        entry: python scripts/run_playpen_precommit.py --secrets
-        language: system
-        always_run: true
-        require_serial: true
-      - id: deptry
-        name: declared dependencies
-        entry: python -m deptry src --known-first-party=alphalattice --known-first-party=devtools --known-first-party=scripts --known-first-party=tests
-        language: system
-        # Always run: pre-commit omits deleted paths from its file filter, but a
-        # deleted import can make a declaration unused.
-        always_run: true
-        pass_filenames: false
-      # The hook runs every guard check within its 30-second budget, strict mypy once
-      # its cache is warm, and records each pass; the commit stage runs each step the
-      # hook did not pass on the same tree and inputs (scripts/check_playpen.py).
+      # Per-commit: lint and strict-type exactly what changed. The whole-repo
+      # structural guards and impact-selected suites moved to the full gate,
+      # `python scripts/check_playpen.py --staged`, which runs at the user's word
+      # (LAWS TE7); a card is handed back on this gate and its smallest tests.
       - id: playpen-fast-guard
         name: playpen fast guard (changed files)
-        entry: python scripts/check_playpen.py --staged --fast --hook
+        entry: python scripts/check_playpen.py --staged --fast
         language: system
         pass_filenames: false

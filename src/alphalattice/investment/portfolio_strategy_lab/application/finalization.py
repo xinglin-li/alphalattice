@@ -33,8 +33,6 @@ from typing import Literal, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     ordered_listing_axis_hash,
     ordered_session_axis_hash,
@@ -43,6 +41,8 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioExecutionLedger,
     SealedPortfolioBoundaryState,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
 
 PROTECTED_FIXTURE_DISPOSITION: Literal["ISOLATED_SYNTHETIC_NON_RESERVED_FIXTURE"] = (
     "ISOLATED_SYNTHETIC_NON_RESERVED_FIXTURE"

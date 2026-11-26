@@ -33,7 +33,6 @@ from alphalattice.foundation.feature_engine.panels.closure_contracts import (
     SectorRevisionEntry,
     SectorRevisionMap,
 )
-from alphalattice.foundation.feature_engine.panels.closure_files import FolderFiles
 from alphalattice.foundation.feature_engine.panels.feature_closure_contracts import (
     SectorRevisionMapActivationReceipt,
 )
@@ -776,17 +775,17 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
 ) -> None:
     """Control: Changed pointer outlives transient sharing violation and refuses lasting one."""
 
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.kernel.shared_kernel import persistence
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
     catalog, _store, artifact_store, ledger, _coordinator = _fixture(tmp_path)
     root = ledger.root_for_head(ledger.require_head(catalog.binding.catalog_hash))
     recipe = ledger.recipe_for_root(root)
     receipt = partial(_sector_activation_receipt, recipe)
-    monkeypatch.setattr(persistence, "pause", lambda _seconds: None)
+    monkeypatch.setattr(persistence.time, "sleep", lambda _seconds: None)
 
     ledger.publish_sector_activation(receipt(recipe.sector_map_hash))
-    pointer = artifact_store.root / ledger._pointer_name("sector-maps", recipe.sector_revision)
+    pointer = ledger._pointer_path("sector-maps", recipe.sector_revision)
     before = pointer.read_bytes()
     staged_glob = f".{pointer.name}.*.tmp"
 
@@ -842,26 +841,18 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
         real_replace(source, destination)
 
     monkeypatch.setattr(persistence.os, "replace", counting_replace)
-    # The pointer reads back naming another map, through the store's own files.
-    pointer_name = ledger._pointer_name("sector-maps", recipe.sector_revision)
-    real_read = FolderFiles.read
-
-    def forged(files: FolderFiles, name: str) -> bytes | None:
-        data = real_read(files, name)
-        return (
-            b'{"sector_map_hash": "' + b"0" * 64 + b'"}' if name == pointer_name and data else data
-        )
-
-    monkeypatch.setattr(FolderFiles, "read", forged)
+    monkeypatch.setattr(
+        type(ledger), "_read_pointer", staticmethod(lambda _path: {"sector_map_hash": "0" * 64})
+    )
     with pytest.raises(ValueError, match="readback"):
         ledger.publish_sector_activation(receipt(_hash("third-map")))
     assert refusals["pointer_calls"] == 1
     monkeypatch.undo()
-    monkeypatch.setattr(persistence, "pause", lambda _seconds: None)
+    monkeypatch.setattr(persistence.time, "sleep", lambda _seconds: None)
 
     # The next legitimate attempt converges: the receipt and marker the store
     # already holds are not rewritten, only the pointer moves.
-    receipts_dir = artifact_store.root / "sector-activation-receipts"
+    receipts_dir = artifact_store._path("sector-activation-receipts", _hash("x"), ".json").parent
     receipt_files = sorted(p.stat().st_mtime_ns for p in receipts_dir.glob("*.json"))
     ledger.publish_sector_activation(receipt(_hash("third-map")))
     assert json.loads(pointer.read_text(encoding="utf-8")) == {
@@ -876,12 +867,12 @@ def test_changed_pointer_outlives_a_transient_sharing_violation_and_refuses_a_la
 def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
     tmp_path, monkeypatch, kind
 ):
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.kernel.shared_kernel import persistence
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
     store = PanelClosureArtifactStore(ArtifactResolver(root=tmp_path))
     content_hash = _hash("publication")
-    target = store.root / store._name("test", content_hash, "." + kind)
+    target = store._path("test", content_hash, "." + kind)
 
     def publish():
         if kind == "json":
@@ -896,7 +887,7 @@ def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
             raise PermissionError("fixture sharing violation")
 
         fault.setattr(persistence.os, "replace", blocked)
-        fault.setattr(persistence, "pause", lambda _: None)
+        fault.setattr(persistence.time, "sleep", lambda _: None)
         with pytest.raises(WorkspaceConflictError):
             publish()
     assert not target.exists()
@@ -909,8 +900,8 @@ def test_closure_artifact_replace_failure_cleans_staging_and_retry_reuses_bytes(
 
 
 def test_shared_replace_preserves_the_default_catalog_bound(tmp_path, monkeypatch):
-    from alphalattice.capabilities.domain_contracts import persistence
-    from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+    from alphalattice.kernel.shared_kernel import persistence
+    from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
     waits = []
 
@@ -918,7 +909,7 @@ def test_shared_replace_preserves_the_default_catalog_bound(tmp_path, monkeypatc
         raise PermissionError("fixture")
 
     monkeypatch.setattr(persistence.os, "replace", blocked)
-    monkeypatch.setattr(persistence, "pause", waits.append)
+    monkeypatch.setattr(persistence.time, "sleep", waits.append)
     with pytest.raises(WorkspaceConflictError) as failure:
         persistence.replace_with_retry(tmp_path / "staged", tmp_path / "catalog")
     assert waits == [0.01, 0.025, 0.05, 0.1]

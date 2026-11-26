@@ -1,4 +1,4 @@
-"""Operation observations and the deadline over a keyed answer turn."""
+"""A keyed answer's one deadline over the existing per-answer turns."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ from contextvars import ContextVar
 from time import monotonic
 from typing import Any
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.interface.local_application.activity import OperationSpan, refusal_code
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 # The client waits 120 seconds; leave 30 seconds for the response and other work.
 SUBMISSION_WAIT_SECONDS = 90.0
@@ -41,27 +40,3 @@ def bounded_answer_turn(
         yield
     finally:
         turn.release()
-
-
-CURRENT_OPERATION: ContextVar[OperationSpan | None] = ContextVar(
-    "host_current_operation", default=None
-)
-
-
-def finish_observation(
-    self: Any,
-    observer: Any,
-    span: Any,
-    request: Any,
-    body: Any,
-    caller: Any,
-    scope: Any,
-) -> Any:
-    """File the return and durable refusal count before leaving this operation's context."""
-    if observer is not None and span is not None:
-        self._observe(lambda: observer.returned(span, body))
-    refusal = refusal_code(body)
-    if observer is not None and refusal is not None:
-        self._observe(lambda: observer.refused(request.operation, refusal, caller=caller))
-    CURRENT_OPERATION.reset(scope)
-    return body

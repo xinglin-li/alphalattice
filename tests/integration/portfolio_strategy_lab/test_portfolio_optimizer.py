@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
-import osqp
 import pytest
 
 import alphalattice.investment.portfolio_strategy_lab.optimizer.service as optimizer_module
@@ -45,7 +44,7 @@ def _admission(*, risk: float, turnover: float, cost: float = 0.001) -> AlphaUti
 def test_the_solver_binding_holds_no_thread_variable_of_the_shell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """the same solve gives the same bytes at any BLAS thread count, and a
+    """Binding plan B1c: the same solve gives the same bytes at any BLAS thread count, and a
     thread variable read into the Program's binding made it a different identity per shell."""
 
     before = optimizer_module.solver_numerical_environment()
@@ -56,7 +55,7 @@ def test_the_solver_binding_holds_no_thread_variable_of_the_shell(
 
     # Nor the installed solver's version (LAWS.md ID6): the binding declares the version its
     # settings were validated with, and the run records the installed one beside it.
-    monkeypatch.setattr(osqp, "__version__", "0.0.0")
+    monkeypatch.setattr(optimizer_module.osqp, "__version__", "0.0.0")
     assert optimizer_module.solver_numerical_environment() == before
 
 
@@ -140,14 +139,14 @@ def test_rank_buffered_carry_and_complete_turnover_cap_match_oracle(
         "maximum_one_way_turnover": 0.2,
     }
     calls: list[object] = []
-    original_warm_start = osqp.OSQP.warm_start
+    original_warm_start = optimizer_module.osqp.OSQP.warm_start
 
     def record_warm_start(instance: object, *args: object, **kwargs: object) -> object:
         calls.append(instance)
         return original_warm_start(instance, *args, **kwargs)
 
     with monkeypatch.context() as context:
-        context.setattr(osqp.OSQP, "warm_start", record_warm_start)
+        context.setattr(optimizer_module.osqp.OSQP, "warm_start", record_warm_start)
         direct = PortfolioOptimizer().solve_score_risk_cost(**arguments)
     assert calls == []
     oracle = solve_with_cvxpy_oracle(**arguments)
@@ -512,14 +511,14 @@ def test_direct_osqp_builds_the_structure_once_and_the_solver_per_solve(
     """Direct OSQP builds the structure once and the solver per solve."""
 
     setup_calls = 0
-    original_setup = osqp.OSQP.setup
+    original_setup = optimizer_module.osqp.OSQP.setup
 
     def counted_setup(self: object, *args: object, **kwargs: object) -> object:
         nonlocal setup_calls
         setup_calls += 1
         return original_setup(self, *args, **kwargs)
 
-    monkeypatch.setattr(osqp.OSQP, "setup", counted_setup)
+    monkeypatch.setattr(optimizer_module.osqp.OSQP, "setup", counted_setup)
     size = 18
     optimizer = PortfolioOptimizer()
     covariance = _covariance(size)

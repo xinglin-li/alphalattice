@@ -12,7 +12,6 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel im
     build_dynamic_panel_lightgbm_recipe,
 )
 from alphalattice.capabilities.alpha_modeling.contracts import AlphaEstimatorContent
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
@@ -36,6 +35,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
     INSTALLED_HETEROGENEOUS_BOOK_RECIPE,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 

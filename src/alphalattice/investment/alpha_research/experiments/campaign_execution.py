@@ -15,7 +15,7 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .campaign import (
     AlphaConditionalMethodPlan,

@@ -98,7 +98,7 @@ def _prediction_p_value(statistic: _Statistic) -> float:
     scale = spread * math.sqrt(1.0 + 1.0 / count)
     t_statistic = (statistic.observed - center) / scale
     degrees = count - 1
-    from scipy import stats  # lazy: heavy; first check
+    from scipy import stats  # type: ignore[import-untyped]  # lazy: heavy; first check
 
     if statistic.direction == "two_sided":
         return float(2.0 * stats.t.sf(abs(t_statistic), degrees))

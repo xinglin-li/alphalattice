@@ -3,42 +3,21 @@
 from __future__ import annotations
 
 import json
-import time
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from pathlib import Path
-from threading import Timer
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.data_decision_rule import ADJUSTED_PRECISION
-from alphalattice.control.product_host.composition import (
-    committee,
-    committee_materials,
-    review_operations,
-)
-from alphalattice.control.product_host.composition import goals as composition
+from alphalattice.control.product_host.composition import committee, committee_materials
 from alphalattice.control.product_host.composition import portfolio_result_context as context
-from alphalattice.control.product_host.composition.decision_advancement import SCHEMA
-from alphalattice.control.product_host.composition.evidence_review_bundles import (
-    EvidenceReviewBundles,
-)
-from alphalattice.control.product_host.composition.evidence_review_delivery import (
-    EvidenceReviewDelivery,
-)
 from alphalattice.control.product_host.composition.goals import GoalApplication
-from alphalattice.control.product_host.composition.portfolio_research_operations import (
-    PortfolioResearchOperations,
-)
 from alphalattice.control.product_host.composition.portfolio_result_context import date_risk
 from alphalattice.control.product_host.composition.research_delivery import (
     export_update_delivery,
@@ -49,10 +28,7 @@ from alphalattice.control.product_host.composition.research_workspace import (
 )
 from alphalattice.control.product_host.composition.workspace_activity import WorkspaceActivity
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.control.workspace_runtime.verified_readbacks import VerifiedReadbacks
-from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.interface.local_application.activity import (
     ExternalActivityEventDocument,
     ExternalActivityReadQuery,
@@ -77,9 +53,10 @@ from alphalattice.investment.portfolio_strategy_lab.application.decision_updates
     portfolio_update_positions,
 )
 from alphalattice.investment.risk_research.surfaces.returns import RiskReturnSurfaceError
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from devtools.evaluation.committee import fact_findings, thread_findings
-from tests.portfolio_strategy_lab.node_runner import run_node
+from tests.portfolio_strategy_lab.local_web_support import run_node
 from tests.portfolio_strategy_lab.synthetic_numerical import (
     HASH,
     build_numerical,
@@ -130,34 +107,9 @@ def readback() -> dict[str, Any]:
 EVIDENCE = {"state": "EVIDENCE_AUTHORITY_NOT_ADMITTED", "evidence_as_of": None}
 
 
-def _registered(listings: tuple[str, ...]) -> None:
-    """The fixture's listings registered in world, as a market admission registers them: the
-    catalog keeps Risk only over listings it holds."""
-    import pyarrow as pa
-
-    from alphalattice.foundation.data_layer.chain import canonical
-    from alphalattice.foundation.data_layer.store import stage
-    from alphalattice.foundation.market_data_ops.storage.world import world_listing
-
-    log, port = data_history.held(), data_history.store()
-    key = {"family": "provider", "name": "committee-fixture", "version": 1}
-    text = canonical(key | {"text": "The Committee fixture's listings."}).decode()
-    log.record("definition.registered", ("definition", "provider/committee"), key, text=text)
-    provider = log.require_lineage("provider", "committee-fixture")
-    rows = {
-        "listing_id": [world_listing(item) for item in listings],
-        "market_id": [port.market_id("XNYS", provider)] * len(listings),
-    }
-    with stage(data_history.data_root(), "listing", provider, pa.table(rows)) as staged:
-        port.commit(staged)
-
-
 @pytest.fixture
-def risk_source(
-    readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[Any]:
-    """The book's installed Risk surface over real sessions and the market data's later returns,
-    dated in a Host's history as the Committee dates it: its factor surfaces live in the catalog."""
+def risk_source(readback: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """The book's installed Risk surface over real sessions and the market data's later returns."""
     positions = portfolio_update_positions(
         PortfolioUpdatePublication.model_validate(readback["publication"])
     )
@@ -190,7 +142,7 @@ def risk_source(
         epoch=SimpleNamespace(ordered_listing_ids=listings, universe_manifest_revision="u"),
     )
 
-    def carried(_universe: Any, listing: Any, sessions: Any, _sources: Any) -> Any:
+    def carried(_market: Any, _universe: Any, listing: Any, sessions: Any, _connection: Any) -> Any:
         if listing.listing_id not in state.bars:
             raise RiskReturnSurfaceError("risk_research.return_bars_missing")
         column = listings.index(listing.listing_id)
@@ -205,8 +157,7 @@ def risk_source(
     market = SimpleNamespace(
         load_universe_manifest_revision=lambda _revision: "universe",
         listing_scope=lambda _u, listing_ids: [SimpleNamespace(listing_id=v) for v in listing_ids],
-        raw_bars_by_listing=lambda ids, **_bounds: dict.fromkeys(ids, ()),
-        actions_by_listing=lambda ids: dict.fromkeys(ids, ()),
+        _connect=lambda read_only: SimpleNamespace(close=lambda: None),
     )
     reader = SimpleNamespace(
         available_sessions=lambda _surface: tuple(state.sessions),
@@ -234,18 +185,13 @@ def risk_source(
     state.producer = context.RiskSurfaceProducer()
     monkeypatch.setattr(context, "RiskSurfaceProducer", lambda: state.producer)
     state.risk = lambda body=readback, held=positions: date_risk(tmp_path, manifest, body, held)
-    data_history.open_history("committee", "committee", tmp_path)
-    try:
-        _registered(listings)
-        yield state
-    finally:
-        data_history.close_history()
+    return state
 
 
 def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, monkeypatch, request):
     """A wider or differently ordered book never borrows another book's cached label axis."""
-    from alphalattice.capabilities.quant.sector_history import SectorHistory
     from alphalattice.control.product_host.research_authoring import execution
+    from alphalattice.kernel.quant.sector_history import SectorHistory
 
     context.configure_projection_memos(capacity=1)
     request.addfinalizer(context.configure_projection_memos)
@@ -274,38 +220,12 @@ def test_each_saved_books_listing_axis_keeps_its_own_sector_labels(tmp_path, mon
         "panel_sector_labels",
         lambda _store, _manifest, _panel, listings: (history.subset(listings), None),
     )
-    unavailable: set[Path] = set()
-
-    def verify_bundle(workspace, *_args):
-        if workspace in unavailable:
-            raise OSError("bundle unavailable")
-
-    monkeypatch.setattr(context, "read_factor_bundle", verify_bundle, raising=False)
     for axis in (["one"], ["one", "two"], ["two", "one"], ["one"]):
         body["portfolio_source"]["ordered_listing_ids"] = axis
         labels = context.book_sectors(tmp_path, body)["by_listing"]
         assert labels == {key: history.current[key] for key in axis}
         assert list(labels) == axis
         assert len(context._SECTOR_CACHE) == 1
-
-    # A warm result cannot hide a missing or corrupt bundle, here or in another workspace.
-    unavailable.update((tmp_path / "other", tmp_path))
-    for workspace in unavailable:
-        assert context.book_sectors(workspace, body)["status"] == "UNAVAILABLE"
-
-    # A collision in the index is not a collision in the full canonical key.
-    unavailable.clear()
-    monkeypatch.setattr(context, "change_xxh3_128_hex", lambda _data: "0" * 32)
-    for axis in (["one"], ["two"]):
-        body["portfolio_source"]["ordered_listing_ids"] = axis
-        assert context.book_sectors(tmp_path, body)["by_listing"] == {
-            key: history.current[key] for key in axis
-        }
-    body["position"]["session"] = 1
-    assert context.book_sectors(tmp_path, body)["status"] == "BOOK_EXECUTION"
-    body["position"]["session"] = "1"
-    with pytest.raises(ValueError, match="Invalid isoformat"):
-        context.book_sectors(tmp_path, body)
 
 
 @pytest.mark.parametrize("last_eligible", (False, True), ids=("all-excluded", "one-scored"))
@@ -389,19 +309,6 @@ def test_a_dates_risk_stands_at_its_formation_or_dated_at_the_surfaces_next_sess
             held[row["listing_id"]]["alias"],
             held[row["listing_id"]]["name"],
         )
-    # Listing names are presentation inputs even when the publication hash is unchanged.
-    renamed = {**readback, "listing_labels": dict(readback["listing_labels"])}
-    listing = inside["top_contributors"][0]["listing_id"]
-    renamed["listing_labels"][listing] = "Renamed listing"
-    changed = s.risk(renamed)
-    assert next(
-        row["name"] for row in changed["top_contributors"] if row["listing_id"] == listing
-    ) == ("Renamed listing")
-    assert s.risk() == inside
-    request.getfixturevalue("monkeypatch").setattr(
-        context, "change_xxh3_128_hex", lambda _data: "0" * 32
-    )
-    assert s.risk(renamed) == changed and s.risk() == inside
     s.sessions = s.days[: s.k - 2]
     carried = s.risk()
     assert {**carried, "source_hash": None} == {**inside, "source_hash": None}
@@ -463,15 +370,15 @@ def _floor(tmp_path: Path, readback: dict[str, Any]) -> tuple[GoalStore, list[da
         "kind": "RESEARCH",
         "criteria": [{"criterion_id": "positions", "text": "The positions stand, argued."}],
     }
-    with patch.object(composition, "uuid7", lambda: str(UUID(int=7))):  # the Host's id, read as 7
-        app.operate(
-            Request(
-                operation="GOAL_OPEN",
-                goal_declaration=declaration,
-                change_reason="The person's sentence",
-            ),
-            "EXTERNAL_AUTOMATION",
-        )
+    app.operate(
+        Request(
+            operation="GOAL_OPEN",
+            goal_id=UUID(int=7),
+            goal_declaration=declaration,
+            change_reason="The person's sentence",
+        ),
+        "EXTERNAL_AUTOMATION",
+    )
     opened = [
         committee.open_floor(
             app.store, UUID(int=7), readback, EVIDENCE, session=("claude-code", "s-1"), now=NOW
@@ -760,50 +667,6 @@ def test_the_stances_stay_blind_until_all_four_are_in(
     assert revealed["stage"] == "DEBATE" and revealed["for_you"] == ["M1", "M3", "M4"]
     assert _read(store, now, None, 0)["for_you"] == []
     assert "(N" in revealed["messages"][0]["text"]  # the Host renders H1 with its name
-
-
-@pytest.mark.proves("product_host.a_floor_wait_answers_on_its_row_or_next_moment")
-@pytest.mark.parametrize("news", ["row", "moment", "crossed"])
-def test_a_members_wait_answers_on_its_floors_row_or_next_moment(
-    tmp_path: Path, readback: dict[str, Any], news: str
-) -> None:
-    """requirement: a floor read with wait_seconds answers on the next row filed under its goal
-    (the last stance) or at the floor's next moment on the clock (the stance window's close,
-    read at once when it passed after the projection), never at its bound."""
-    store, now = _floor(tmp_path, readback)
-    floor = committee.floor_of(store, TASK)
-    assert floor is not None
-    window = datetime.fromisoformat(floor.opened["stances_close_at"])
-    began = time.monotonic()
-    start = {"row": NOW, "moment": window - timedelta(seconds=0.3)}.get(news, window)
-    projections: list[datetime] = []
-
-    def clock() -> datetime:
-        if news == "crossed" and not projections:  # the first projection, a moment before
-            return window - timedelta(milliseconds=1)
-        return start + timedelta(seconds=time.monotonic() - began)
-
-    member = {"committee_role": "ALPHA", "committee_key": floor.key("ALPHA")}
-    request = Request(operation="COMMITTEE_READ", update_task_id=UUID(TASK), **member)
-
-    def read(at: datetime) -> dict[str, object]:
-        projections.append(at)
-        return committee.operate(
-            store, request, at, provenance=None, dated=lambda: None, file_floor=lambda: None
-        )
-
-    for role in ("PM", "ALPHA", "RISK") if news == "row" else ("PM",):
-        _say(store, now, role, "STANCE")
-    assert not committee.addressed(read(window - timedelta(seconds=1)))
-    projections.clear()
-    timer = Timer(0.2, _say, (store, now, "CRO", "STANCE")) if news == "row" else None
-    if timer:
-        timer.start()
-    body = committee.read_addressed(store, TASK, read, 10.0, clock)
-    if timer:
-        timer.join(5)
-    assert committee.addressed(body) and body["stage"] == "DEBATE", body.get("stage")
-    assert body["for_you"] and time.monotonic() - began < 5
 
 
 def test_the_committee_windows_name_the_hosts_local_moments(tmp_path, readback, host_local_clock):
@@ -1294,43 +1157,6 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     store.attribute(first.goal_id, {"operation": "RESEARCH_UPDATE_RUN", "task_id": TASK})
     asked = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert committee.DAILY_ASK in asked["ask_now"]
-    assert asked.get("person_questions", [{}])[0].get("code") == "committee.daily"
-    assert "--question-code committee.daily" in asked["ask_now"][-1]
-    from alphalattice.interface.local_application.goals import relayed_decision
-    from alphalattice.interface.local_application.portfolio_research import (
-        PersonConfirmation,
-        decision_hash,
-    )
-
-    choice = {"operation": "COMMITTEE_DAILY_SET", "committee_daily_enabled": True}
-    confirmation = PersonConfirmation(
-        question=committee.DAILY_ASK,
-        words="Yes.",
-        question_code="committee.daily",
-        decision_hash=decision_hash(choice),
-    )
-    assert relayed_decision(choice, confirmation) == confirmation.decision_hash
-    # A lead once relayed its own paraphrase, and the relay could not be graded:
-    # a retyped question is refused by name, coded or not; the code carries the words
-    paraphrase = "Should each daily update also convene the committee and its report?"
-    with pytest.raises(ValueError, match=r"person_confirmation\.question_words_differ"):
-        relayed_decision(choice, confirmation.model_copy(update={"question": paraphrase}))
-    with pytest.raises(
-        ValueError, match=r"person_confirmation\.question_code_required:committee\.daily"
-    ):
-        relayed_decision(
-            choice, confirmation.model_copy(update={"question": paraphrase, "question_code": None})
-        )
-    with pytest.raises(
-        ValueError, match=r"person_confirmation\.question_code_required:committee\.daily"
-    ):
-        relayed_decision(choice, confirmation.model_copy(update={"question_code": None}))
-    from alphalattice.interface.local_application.questions import relayed_question
-
-    assert relayed_question("COMMITTEE_DAILY_SET", "committee.daily", None) == (
-        committee.DAILY_ASK,
-        "committee.daily",
-    )
     # regression (fresh-folder acceptance): a lead held the goal open for this answer; the
     # question waits for the person, and the goal's completion goes on beside it.
     assert asked["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL", asked
@@ -1359,48 +1185,21 @@ def test_the_daily_committee_is_the_persons_and_the_first_use_asks_it_once(
     app = GoalApplication(
         store, lambda: now[0], lambda *_: {}, lambda _: now[0], {}.get, workspace=tmp_path
     )
-    opened = Request(operation="GOAL_OPEN", goal_declaration=declared, change_reason="Said")
-    goal_id = app.operate(opened, "EXTERNAL_AUTOMATION")["goal_id"]
+    opened = Request(
+        operation="GOAL_OPEN", goal_id=UUID(int=8), goal_declaration=declared, change_reason="Said"
+    )
+    app.operate(opened, "EXTERNAL_AUTOMATION")
     answered = setting("HUMAN")
     assert answered["committee_daily"] == "ON"
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"
     assert answered["next_requests"]["goal"] == {
         "operation": "GOAL_SHOW",
-        "goal_id": str(goal_id),
+        "goal_id": str(UUID(int=8)),
     }
     record = json.loads((tmp_path / committee.DAILY_PATH).read_text("utf-8"))
     assert record["relayed_by"] == "claude-code:s-1"
     answered = committee.daily_asked(tmp_path, goals, TASK, {"status": "EXPORTED"})
     assert answered["next_action"] == "COMPLETE_THE_FIRST_USE_GOAL"  # asked, so the road ends
-    # The review's Analyst reads are the same kind of standing answer: more than one bundle
-    # asks the coded question until a relayed answer covers that many.
-    from alphalattice.control.product_host.composition import evidence_review_bundles as reads
-    from alphalattice.interface.local_application.questions import person_question
-
-    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 1)  # one: nothing to choose
-    asked = reads.analyst_reads_answer(tmp_path, 14)
-    question = person_question("review.analyst_reads")
-    assert (asked["analyst_reads"], asked["next_requests"]) == ("UNANSWERED", {})  # no default
-    assert asked["person_questions"] == [question] and question["words"] in asked["ask_now"]
-    assert set(question["choices"]) == {"SUBAGENTS", "IN_SESSION"}
-    assert "--bundles 14 " in asked["ask_now"][-1]
-    assert asked["ask_now"][-1].endswith("--question-code review.analyst_reads")
-    choice = {"operation": "ANALYST_READS_SET", "analyst_reads_mode": "IN_SESSION"}
-    choice["analyst_reads_bundles"] = 14
-    code, decided = "review.analyst_reads", decision_hash(choice)
-    coded = confirmation.model_copy(
-        update={"question": question["words"], "question_code": code, "decision_hash": decided}
-    )
-    assert relayed_decision(choice, coded) == coded.decision_hash
-    with pytest.raises(ValueError, match=r"question_code_required:review\.analyst_reads"):
-        relayed_decision(choice, coded.model_copy(update={"question_code": None}))
-    kept = reads.set_analyst_reads(tmp_path, mode="IN_SESSION", bundles=14, relayed_by="c:s-1")
-    assert (kept["analyst_reads"], kept["answered_for"]) == ("IN_SESSION", 14)
-    assert "ask_now" not in reads.analyst_reads_answer(tmp_path, 14)  # kept within its count
-    again = reads.analyst_reads_answer(tmp_path, 15)  # a larger cost never rides on an old answer
-    assert again["analyst_reads"] == "IN_SESSION" and "--bundles 15 " in again["ask_now"][-1]
-    (tmp_path / reads.ANALYST_READS_PATH).write_text('{"mode": "SUBAGENTS"}', "utf-8")
-    assert reads.analyst_reads_answer(tmp_path, 2)["analyst_reads"] == "UNANSWERED"  # not its own
 
 
 def test_a_silent_member_reads_not_addressed_when_the_time_boxes_end(
@@ -1590,7 +1389,7 @@ def test_a_members_request_counts_toward_its_floors_open_goal_and_never_override
 
 
 def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
-    tmp_path: Path, readback: dict[str, Any], recording_history: str
+    tmp_path: Path, readback: dict[str, Any]
 ) -> None:
     """Floor rows retain member, session and reply-recipient identities for Team."""
     store, now = _floor(tmp_path, readback)
@@ -1625,7 +1424,7 @@ def test_a_floor_message_is_a_goal_conversation_row_for_its_member(
     assert floor is not None
     observer = WorkspaceActivity(
         workspace=tmp_path,
-        workspace_id=recording_history,
+        workspace_id="committee-fixture",
         gate=WorkspaceMutationGate(),
         instance="committee-fixture",
         clock=lambda: now[0],
@@ -1706,119 +1505,6 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     assert any(
         "no name" in line for line in committee.role_lines("RISK", readback, {}, emptied, NOW) or []
     )
-
-    first, later = UUID(TASK), UUID(int=12)
-    publication = PortfolioUpdatePublication.model_validate(readback["publication"])
-    later_publication = PortfolioUpdatePublication.create(
-        **(dict(publication) | {"plan_hash": "c" * 64})
-    )
-    later_book = {
-        **readback,
-        "task_id": str(later),
-        "publication": later_publication.model_dump(mode="json"),
-        "review_selector": {
-            **readback["review_selector"],
-            "update_task_id": str(later),
-            "update_publication_hash": later_publication.content_hash,
-        },
-    }
-    later_store, _ = _floor(tmp_path / "advanced", later_book)
-    books = {first: readback, later: later_book}
-    verified = []
-
-    def verify(task_id, *, publication_hash=None):
-        verified.append((task_id, publication_hash))
-        return books[task_id]
-
-    app = SimpleNamespace(
-        readbacks=VerifiedReadbacks(),
-        review=object(),
-        research_updates=SimpleNamespace(readback=verify),
-        updates=object(),
-        dispatcher=SimpleNamespace(clock=lambda: NOW),
-        goals=SimpleNamespace(store=store),
-        _date_risk=lambda *_: {},
-        _file_floor=lambda *_: None,
-        workspace_session=SimpleNamespace(
-            task_control_registry=SimpleNamespace(
-                task=lambda task_id: SimpleNamespace(
-                    task_kind=ADVANCEMENT_TASK_KIND,
-                    lifecycle=TaskLifecycle.SUCCEEDED,
-                    record_hash=canonical_hash(str(task_id)),
-                    input=SimpleNamespace(input_schema_id=SCHEMA, payload={"plan": {}}),
-                ),
-                work_items=lambda _: (),
-                daily_health=lambda _: None,
-            ),
-        ),
-    )
-    host = PortfolioResearchOperations
-    app._dated = partial(host._dated, app)
-    app._advancement_readback = partial(host._advancement_readback, app)
-    app._research_update_way = partial(host._research_update_way, app)
-    app._read_review_update = partial(host._read_review_update, app)
-
-    def read(request):
-        if request.operation == "RESEARCH_UPDATE_READBACK":
-            answer = host._research_update_readback(app, request.task_id)
-            assert answer["daily_health"]["task_id"] == str(request.task_id)
-            assert "daily_health" not in books[request.task_id]
-            return host._positions(app, answer)
-        assert request.operation == "EVIDENCE_CRO"
-        return review_operations.execute(app, request, **caller)
-
-    def current_standing(_, selector, *, read_update):
-        exact = selector.update_publication_hash
-        origin = read_update(selector.update_task_id, exact)
-        assert origin["publication"]["content_hash"] == exact, label
-        standing_reads.append((selector.update_task_id, status))
-        return status
-
-    def current_generation(selector, *_args, **_kwargs):
-        assert selector.update_task_id == task_id, label
-        generation_reads.append(generation)
-        return generations[generation]
-
-    app.execute = read
-    app.evidence_cro = current_generation
-    caller = {"caller": "HUMAN", "read_files": None, "agent_run": None, "accepted_bundle": None}
-    rebuilt = {**EVIDENCE, "explanation": "Read the rebuilt generation's Evidence gaps."}
-    generations = {"original": EVIDENCE, "rebuilt": rebuilt}
-    generation_reads, standing_reads = [], []
-    readings = {}
-    with (
-        patch.object(EvidenceReviewDelivery, "review_standing", current_standing),
-        patch.object(
-            EvidenceReviewBundles,
-            "prepare_agent_bundle",
-            lambda _, **given: {"view": given["view"]},
-        ),
-    ):
-        for index, (label, task_id, role, generation, status, read_count) in enumerate(
-            (
-                ("same sealed book ALPHA", first, "ALPHA", "original", {}, 1),
-                ("same sealed book RISK", first, "RISK", "original", {}, 1),
-                ("advanced book", later, "ALPHA", "original", {}, 2),
-                ("review re-ask", later, "CRO", "original", standing, 2),
-                ("new generation", later, "CRO", "rebuilt", standing, 2),
-            ),
-            1,
-        ):
-            app.goals.store = store if task_id == first else later_store
-            request = Request(
-                operation="AGENT_BUNDLE_PREPARE",
-                task_id=task_id,
-                agent_role=role,
-                bundle_directory=str(directory),
-            )
-            actual = review_operations.execute(app, request, **caller)
-            assert len(verified) == read_count, label
-            assert len(standing_reads) == len(generation_reads) == index, label
-            assert standing_reads[-1] == (task_id, status) and generation_reads[-1] == generation
-            assert "review_standing" not in books[task_id], label
-            readings[label] = actual["view"]
-    assert any(at in line for line in readings["review re-ask"] or ())
-    assert readings["new generation"] != readings["review re-ask"]
 
 
 def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback: dict) -> None:

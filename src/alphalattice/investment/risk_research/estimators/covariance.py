@@ -13,18 +13,18 @@ import numpy as np
 from numpy.typing import NDArray
 from threadpoolctl import threadpool_info  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.domain_contracts.environment import (
-    numerical_thread_limit,
-    numerical_thread_pools,
-    recorded_environment,
-)
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import (
     CovarianceDiagnostics,
     CovarianceRecipe,
     default_covariance_recipe,
     seal_contract,
 )
+from alphalattice.kernel.shared_kernel.environment import (
+    numerical_thread_limit,
+    numerical_thread_pools,
+    recorded_environment,
+)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from . import matrix_identity
 from .capability import RANDOMNESS_NONE

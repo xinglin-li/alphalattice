@@ -12,13 +12,12 @@ from typing import ClassVar, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
     PanelSourceExclusion,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 Hash = str
 
@@ -89,7 +88,8 @@ class SectorRevisionMap(_Contract):
         listing_ids = tuple(item.listing_id for item in self.entries)
         if not listing_ids or listing_ids != tuple(sorted(set(listing_ids))):
             raise ValueError("sector revision entries must be sorted and unique")
-        if self.map_hash != scoped_model_digest(self, "map_hash", digest=canonical_hash):
+        identity = self.model_dump(mode="json", exclude={"map_hash"})
+        if self.map_hash != canonical_hash(identity):
             raise ValueError("sector revision map hash is invalid")
         return self
 

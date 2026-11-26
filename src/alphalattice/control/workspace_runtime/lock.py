@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 from collections.abc import Callable
+from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 from threading import Lock
@@ -12,11 +13,10 @@ from types import TracebackType
 from typing import BinaryIO, Final, Literal, cast
 from uuid import uuid4
 
-from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
-from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
-from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
+from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
 
-_PROCESS_STARTED_AT = utc_now()
+_PROCESS_STARTED_AT = datetime.now(UTC)
 _LOCK_INITIALIZATION_GUARD = Lock()
 LOCK_SUFFIX: Final = ".lock"
 """Transient ownership files; backups retain their durable records and omit these files."""

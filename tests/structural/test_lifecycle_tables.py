@@ -1,15 +1,15 @@
-"""Every set of Task lifecycle states in src is registered with its reason (S2).
+"""Every set of Task lifecycle states in src is registered with its reason (V524, S2).
 
 A consumer that sorts Task states decides each state on purpose. The sorts are: in flight, a
 waiter's exit, finished, owed, resumable. A state the Task never leaves by itself, put on the
-wrong side, kept a confirm in flight, a waiter past a deferral and a clock running
-through a wait. The scan finds every set of two or more states in src, named or written
+wrong side, kept a confirm in flight (V506), a waiter past a deferral (V507) and a clock running
+through a wait (V520). The scan finds every set of two or more states in src, named or written
 inline in a comparison. Each is pinned here by its module, scope and members, with the reason
 for what it holds and what it leaves out. A new or changed set fails until it is registered.
 
 Who can reach a state is pinned too:
 - only the preparation and data update owners defer a Task, and the research update through
-  the data update's stages;
+  the data update's stages (V601);
 - no Task Control transition sets REVIEW_PENDING, which the client's tables keep for answers'
   `status`;
 - every kind that can defer reads its deferral in STATUS.
@@ -17,17 +17,30 @@ Who can reach a state is pinned too:
 
 from __future__ import annotations
 
+import ast
 import inspect
 from pathlib import Path
 
-from devtools.pipeline.facets import lifecycle_sets
-
 ROOT = Path(__file__).resolve().parents[2] / "src" / "alphalattice"
+STATES = frozenset(
+    {
+        "QUEUED",
+        "RUNNING",
+        "DEFERRED",
+        "REVIEW_PENDING",
+        "CANCEL_REQUESTED",
+        "CANCELLED",
+        "SUCCEEDED",
+        "BLOCKED",
+        "RECOVERY_REQUIRED",
+    }
+)
+
 RESUMABLE = "resumable: a queued or interrupted Task is (re)driven; every other state is not"
 FINISHED = "finished: its readback answers for it; every other state is not done"
 ENDED = "ended: nothing more happens to it; a waiting state may still move"
 EXECUTING = "executing now; a waiting or ended Task does no work"
-STOPPED = "stopped and owed a way on; a deferral has its own branch"
+STOPPED = "stopped and owed a way on; a deferral has its own branch (V507)"
 
 REGISTER: dict[tuple[str, str, str], str] = {
     (
@@ -70,7 +83,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DecisionAdvancementApplication._in_flight",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a pending advancement of the strategy answers its own plan whatever target is asked, a "
-    "deferred one too, whose run resumes it once due; a cancelling one is not pending",
+    "deferred one too, whose run resumes it once due (V601, V604); a cancelling one is not pending",
     (
         "control/product_host/composition/decision_advancement.py",
         "DecisionAdvancementApplication._stopped.stops",
@@ -82,7 +95,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "DecisionAdvancementApplication.in_flight",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "every state the Task leaves by itself answers the admitted Task; a deferral is not in "
-    "flight: its rerun resumes it once due and is refused before then",
+    "flight: its rerun resumes it once due and is refused before then (V601)",
     (
         "control/product_host/composition/evidence_review_application.py",
         "EvidenceReviewApplication._active_refresh_task.active",
@@ -114,7 +127,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "control/product_host/composition/resource_estimates.py",
         "_HOLDING_MEMORY",
         "CANCEL_REQUESTED,RUNNING",
-    ): "Tasks still executing hold the memory a refused heavy run waits for",
+    ): "Tasks still executing hold the memory a refused heavy run waits for (PERF-1)",
     (
         "control/product_host/composition/goal_check.py",
         "MOVING",
@@ -145,10 +158,10 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "PortfolioResearchOperations._tasks_wait",
         "DEFERRED,QUEUED,RUNNING",
     ): "a busy queue puts the verification sweep and the held-state backup off, a deferral "
-    "holding the running place too, which they would only queue behind",
+    "holding the running place too, which they would only queue behind (V604)",
     (
-        "control/product_host/composition/task_operations.py",
-        "_recover",
+        "control/product_host/composition/portfolio_research_operations.py",
+        "PortfolioResearchOperations._recover",
         "QUEUED,RECOVERY_REQUIRED",
     ): RESUMABLE,
     (
@@ -244,7 +257,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",
         "BLOCKED,DEFERRED",
-    ): "the retry path: refused before the retry time, resumed after it",
+    ): "the retry path: refused before the retry time, resumed after it (V375, V506)",
     (
         "control/product_host/data_preparation/application.py",
         "WorkspacePreparationApplication.confirm",
@@ -306,7 +319,7 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "ResearchStrategyPreparation.readback",
         "BLOCKED,CANCELLED",
     ): "an ended unsuccessful preparation offers its verified durable declaration for a "
-    "new preview; a succeeded one is read back and an interrupted one is recoverable",
+    "new preview (V615); a succeeded one is read back and an interrupted one is recoverable",
     (
         "control/product_host/maintenance/data_update.py",
         "bind_existing_data_workspace",
@@ -328,7 +341,12 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "WorkspaceDataUpdateApplication._waiting",
         "DEFERRED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "a data update that has not ended answers its own plan, a deferred one too, whose run "
-    "resumes it once due; a cancelling one is not waiting",
+    "resumes it once due; a cancelling one is not waiting (V604)",
+    (
+        "control/product_host/storage/evidence_references.py",
+        "_IN_FLIGHT",
+        "CANCEL_REQUESTED,DEFERRED,QUEUED,RECOVERY_REQUIRED,REVIEW_PENDING,RUNNING",
+    ): "every unended state keeps the evidence it references",
     (
         "control/product_host/storage/input_references.py",
         "ResearchInputStorage._references",
@@ -372,25 +390,16 @@ REGISTER: dict[tuple[str, str, str], str] = {
     ("control/task_control/runner.py", "TaskControlRunner._step", "CANCEL_REQUESTED,RUNNING"): (
         "the runner steps on while executing"
     ),
-    ("control/task_control/upgrade.py", "_heartbeat_step", "CANCEL_REQUESTED,RUNNING"): (
-        "a running or cancelling worker may still write the old lease; refuse its live import"
-    ),
     (
         "control/task_control/timing.py",
         "_ENDED",
         "BLOCKED,CANCELLED,DEFERRED,RECOVERY_REQUIRED,REVIEW_PENDING,SUCCEEDED",
-    ): "the clock stops: ended, or waiting on someone or on time",
+    ): "the clock stops: ended, or waiting on someone or on time (V520)",
     (
         "foundation/feature_engine/producers/reference_data.py",
         "SectorRefreshStager._load",
         "BLOCKED,DEFERRED,RUNNING",
     ): "the sector staging file's own statuses, not a Task's",
-    (
-        "foundation/data_layer/project.py",
-        "_wait_resolved",
-        "BLOCKED,CANCEL_REQUESTED,RECOVERY_REQUIRED,REVIEW_PENDING",
-    ): "an ordinary wait resolution retains review, cancellation and explicit recovery; "
-    "another waiting Task resumes when its last ordinary wait resolves",
     (
         "interface/local_application/cli_contract.py",
         "_PENDING_STATES",
@@ -425,39 +434,82 @@ REGISTER: dict[tuple[str, str, str], str] = {
         "BLOCKED,CANCELLED",
     ): "found stopped or cancelled when admitted: its command has nothing to run, so it is "
     "never read as running while that command waits its turn; a succeeded one still is, its "
-    "command publishing",
+    "command publishing (V600)",
     (
         "interface/local_application/dispatcher.py",
         "LocalBackgroundDispatcher._waits_its_turn",
         "QUEUED,RECOVERY_REQUIRED",
     ): "a command that returned before its Task's turn came is kept and driven again once the "
-    "running place is free; a Task in any other state has nothing left for it",
+    "running place is free; a Task in any other state has nothing left for it (V604)",
     (
         "control/product_host/composition/research_update_automation.py",
         "_MOVING",
         "CANCEL_REQUESTED,QUEUED,RECOVERY_REQUIRED,RUNNING",
     ): "an update the automation attends still on its way: read again at the next idle; a "
-    "deferral waits on its retry time instead",
+    "deferral waits on its retry time instead (V604)",
     (
         "control/product_host/composition/research_update_automation.py",
         "_STOPPED",
         "BLOCKED,CANCELLED",
-    ): "an attended update that stopped: its words name the way on, and no plan follows at once ",
+    ): "an attended update that stopped: its words name the way on, and no plan follows at once "
+    "(V604)",
 }
 
 
+def _members(node: ast.AST) -> frozenset[str]:
+    found: set[str] = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
+            if sub.value.id == "TaskLifecycle" and sub.attr in STATES:
+                found.add(sub.attr)
+        elif isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value in STATES:
+            found.add(sub.value)
+    return frozenset(found)
+
+
+def _literal(node: ast.AST) -> bool:
+    return isinstance(node, (ast.Set, ast.Tuple, ast.List)) or (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"frozenset", "set"}
+    )
+
+
 def _sets() -> set[tuple[str, str, str]]:
-    """Each set of two or more lifecycle states in src: its module, scope and members, by the
-    facet the commit stage selects this census by (devtools.pipeline.facets)."""
-    return {
-        (path.relative_to(ROOT).as_posix(), where, members)
-        for path in sorted(ROOT.rglob("*.py"))
-        for where, members in lifecycle_sets(path.read_text(encoding="utf-8"))
-    }
+    """Each set of two or more lifecycle states in src: its module, scope and members."""
+    found: set[tuple[str, str, str]] = set()
+    for path in sorted(ROOT.rglob("*.py")):
+        module = path.relative_to(ROOT).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        def visit(node: ast.AST, scope: str, module: str = module) -> None:
+            for child in ast.iter_child_nodes(node):
+                inner = scope
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    inner = f"{scope}.{child.name}" if scope else child.name
+                if isinstance(child, (ast.Assign, ast.AnnAssign)) and child.value is not None:
+                    held = _members(child.value)
+                    if _literal(child.value) and len(held) >= 2:
+                        targets = child.targets if isinstance(child, ast.Assign) else [child.target]
+                        name = ",".join(ast.unparse(target) for target in targets)
+                        where = f"{scope}.{name}" if scope else name
+                        found.add((module, where, ",".join(sorted(held))))
+                        continue
+                if isinstance(child, ast.Compare) and any(
+                    isinstance(op, (ast.In, ast.NotIn)) for op in child.ops
+                ):
+                    for compared in child.comparators:
+                        held = _members(compared)
+                        if _literal(compared) and len(held) >= 2:
+                            found.add((module, scope or "<module>", ",".join(sorted(held))))
+                visit(child, inner)
+
+        visit(tree, "")
+    return found
 
 
 def test_every_lifecycle_set_is_registered_with_its_reason() -> None:
-    """requirement (S2): each set of Task states in src is registered with what it holds
+    """requirement (V524, S2): each set of Task states in src is registered with what it holds
     and leaves out, so a new or changed one is classified on purpose before it lands."""
 
     found = _sets()
@@ -481,7 +533,7 @@ def test_only_the_data_owners_defer_and_no_transition_sets_review_pending() -> N
         if "StageDisposition.DEFERRED" in path.read_text(encoding="utf-8")
     )
     assert deferring == [
-        "control/product_host/composition/decision_advancement.py",  # its data stage's
+        "control/product_host/composition/decision_advancement.py",  # its data stage's (V601)
         "control/product_host/data_preparation/application.py",
         "control/product_host/maintenance/data_update.py",
         "control/task_control/runner.py",  # maps the disposition to the Task's lifecycle

@@ -11,16 +11,6 @@ from typing import Protocol
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitPlan,
-    ResearchSplitSpec,
-    SplitWindow,
-    ValidationTimeline,
-)
-from alphalattice.capabilities.validation.enums import RebalanceFrequency, SplitMode
-from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ExecutionOutcomeMethodSeal,
 )
@@ -31,6 +21,16 @@ from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelRea
 from alphalattice.investment.alpha_research.inputs.development_foundation import (
     AlphaFoundationAuthority,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitPlan,
+    ResearchSplitSpec,
+    SplitWindow,
+    ValidationTimeline,
+)
+from alphalattice.kernel.validation.enums import RebalanceFrequency, SplitMode
+from alphalattice.kernel.validation.splitting import build_research_split
 
 from ..experiments.contracts import AlphaFoldCommitment, seal_contract
 from ..targets.authority import AlphaTargetMethod, InstalledLaneTargetMethod

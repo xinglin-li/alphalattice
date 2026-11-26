@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
+import subprocess
 from pathlib import Path
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PLAYPEN_ROOT / "src"))
-from alphalattice.capabilities.domain_contracts import spawn  # noqa: E402
 
 
 def _git(*args: str) -> str:
-    return spawn.run(
+    return subprocess.run(
         ("git", "-C", str(PLAYPEN_ROOT), *args),
         check=True,
         capture_output=True,

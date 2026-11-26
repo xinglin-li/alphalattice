@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     PointInTimeMark,
@@ -56,6 +55,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
+from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 FORMULAS = (
     "close / lag(close, 20) - 1",

@@ -27,10 +27,10 @@ Risk and Portfolio arms vary around it.
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 import numpy as np
 import numpy.typing as npt
-
-from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -130,7 +130,7 @@ def score_values_identity(values: FloatArray) -> str:
     convention that happens to agree today.
     """
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
-    digest = identity_sha256()
+    digest = sha256()
     digest.update(str(contiguous.shape).encode("utf-8"))
     digest.update(b"float64")
     digest.update(contiguous.tobytes(order="C"))

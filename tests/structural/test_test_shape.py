@@ -1,561 +1,15 @@
 """The fast guard holds tests/README.md's writing rules on what a change adds."""
 
 import json
-import subprocess
-import sys
-from pathlib import Path, PurePosixPath
 
 import pytest
 
 import check_test_shape as shape
-from alphalattice.capabilities.domain_contracts import spawn
 from check_playpen import shrink_only_growth
 from check_test_shape import problems
-from devtools.testing import os_marks
 from devtools.testing.requirements import file_holders
 
 PATH = "tests/owner/test_example.py"
-_REAL_RUN = spawn.run
-
-
-def _antipattern_cases(monkeypatch) -> None:
-    """The real Ruff rules ignore inline escapes and identify each file and rule."""
-    source = (
-        "import logging\n"
-        "def example(value):\n"
-        "    logging.warning(f'{value}')  # noqa: G004, LOG015\n"
-        "    value = unknown  # type: ignore\n"
-        "    try:\n        value()\n    except Exception:\n        pass\n"
-        + "    if value:\n        value = 1\n" * 13
-        + "    value = 1\n" * 52
-    )
-    waits = "\n".join(
-        [
-            "import requests, time",
-            "from datetime import datetime",
-            "def waits():",
-            "    datetime.now()",
-            "    requests.get('https://example.test')",
-            "    for x in []:",
-            "        try:",
-            "            x()",
-            "        except Exception:",
-            "            continue",
-            "async def late():",
-            "    time.sleep" + "(1)",
-            "",
-        ]
-    )
-    mocked = "def test_mocks(monkeypatch):\n" + "    monkeypatch.setattr(a, b, c)\n" * 5
-    found = shape.ruff_antipatterns({"src/example.py": source, "src/waits.py": waits, PATH: mocked})
-    for rule in ("G004", "LOG015", "PGH003"):
-        assert found[f"src/example.py::{rule}"] > 0
-    for rule in ("C901", "PLR0912", "PLR0915"):
-        assert found[f"src/example.py::{rule}::example"] > 0
-    for rule in ("DTZ005", "S112", "S113", "ASYNC251"):
-        assert found[f"src/waits.py::{rule}"]
-    assert found[f"{PATH}::test-too-many-mocks::test_mocks"] == 5
-    workflow = "\n".join(
-        [
-            "name: test",
-            "on: push",
-            "jobs:",
-            "  a:",
-            "    runs-on: ubuntu-latest",
-            "    steps:",
-            "      - runz: x",
-            "",
-        ]
-    )
-    shell = "#!/bin/sh\necho $value\n# shellcheck disable=SC2086\n"
-    auxiliary = shape.auxiliary_antipatterns(
-        {".github/workflows/example.yml": workflow, "test.sh": shell}
-    )
-    assert any(key.startswith(".github/workflows/example.yml::actionlint-") for key in auxiliary)
-    assert auxiliary["test.sh::shellcheck-inline-disable"] == 1
-    assert any(key.startswith("test.sh::shellcheck-SC") for key in auxiliary)
-    data = shape.test_data_antipatterns(["tests/a/data.csv", "tests/a/test_example.py"])
-    assert data == {"tests/a/data.csv::test-data-file": 1}
-    assert shape.antipattern_growth({}, data)
-    assert shape.antipattern_growth(found, found) == []
-    assert shape.antipattern_growth({}, found)
-    loops = {
-        "src/endless.py": "while True:\n    tick()\n",
-        "src/break.py": "while True:\n    if done():\n        break\n",
-        "src/nested.py": "while True:\n    def nested():\n        return 1\n    nested()\n",
-        "src/inner-for.py": "while True:\n    for item in items:\n        break\n",
-        "src/inner-while.py": "while True:\n    while condition:\n        break\n",
-        "src/loop-else.py": (
-            "while True:\n    for item in items:\n        pass\n    else:\n        break\n"
-        ),
-        "scripts/deadline.py": (
-            "while True:\n    if time.monotonic() >= deadline:\n        raise TimeoutError()\n"
-        ),
-    }
-    assert set(shape.unbounded_loops(loops)) == {
-        "src/endless.py",
-        "src/nested.py",
-        "src/inner-for.py",
-        "src/inner-while.py",
-    }
-    old = {"src/old.py::PGH003": 1}
-    new = {"src/new.py::PGH003": 1}
-    assert not shape.antipattern_growth(
-        shape.relocated_antipatterns(old, {"src/new.py": "src/old.py"}), new
-    )
-    assert shape.antipattern_growth(shape.relocated_antipatterns(old, {}), new)
-    for name in ("ruff_antipatterns", "test_data_antipatterns", "auxiliary_antipatterns"):
-        monkeypatch.setattr(shape, name, lambda _: {})
-    baseline = json.dumps({"counts": {"src/a.py::PGH003": 1}})
-    snapshots = {
-        ":" + shape.ANTIPATTERN_BASELINE: baseline,
-        "HEAD:" + shape.ANTIPATTERN_BASELINE: baseline,
-    }
-    assert not shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
-    with pytest.raises(ValueError, match="anti-pattern baseline missing from parent"):
-        shape._antipattern_problems([], [], snapshots, ("MERGE_HEAD",), ":", moves={})
-    snapshots[":src/endless.py"] = loops["src/endless.py"]
-    snapshots["HEAD:src/endless.py"] = "pass\n"
-    assert any(
-        "unbounded-loop" in issue
-        for issue in shape._antipattern_problems(
-            [], ["src/endless.py"], snapshots, ("HEAD",), ":", moves={}
-        )
-    )
-    snapshots["HEAD:src/endless.py"] = loops["src/endless.py"]
-    assert not shape._antipattern_problems(
-        [], ["src/endless.py"], snapshots, ("HEAD",), ":", moves={}
-    )
-    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {"src/a.py::PGH003": 2}})
-    assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
-    seeded = {
-        "src/a.py::PGH003": 1,
-        "tests/conftest.py::new-rule": 1,
-    }  # a card branched before a rule landed
-    snapshots |= {
-        "HEAD:" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": seeded}),
-        "MERGE_HEAD:" + shape.ANTIPATTERN_BASELINE: baseline,
-        ":" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": seeded}),
-    }
-    assert not shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
-    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps(
-        {"counts": {**seeded, "tests/conftest.py::new-rule": 2}}
-    )
-    assert shape._antipattern_problems([], [], snapshots, ("HEAD", "MERGE_HEAD"), ":", moves={})
-    seed = {"src/a.py::PGH003": 1, "tests/a/test_b.py::new-rule": 4}  # a new rule's first counts
-    held = {"src/a.py::PGH003": 1}
-    assert shape.seeded_rules(held, seed, [shape.TEST_ANTIPATTERN_RULES]) == {"new-rule"}
-    assert not shape.seeded_rules(held, seed, ["tests/a/test_b.py"])
-
-
-def _split_antipattern_cases(monkeypatch, tmp_path) -> None:
-    for name in ("ruff_antipatterns", "test_data_antipatterns", "auxiliary_antipatterns"):
-        monkeypatch.setattr(shape, name, lambda _: {})
-    private = (
-        "config/" + Path(shape.ANTIPATTERN_BASELINE).name.removesuffix(".json") + "-private.json"
-    )
-    key = "probe/private.py::PGH003"
-    snapshots = {
-        ":" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": {}}),
-        ":" + private: json.dumps({"counts": {key: 2}}),
-        "HEAD:" + shape.ANTIPATTERN_BASELINE: json.dumps({"counts": {key: 2}}),
-        ":probe/private.py": "x = 1\n",
-    }
-    monkeypatch.setattr(shape, "ruff_antipatterns", lambda _: {key: 2})
-    assert not shape._antipattern_problems(
-        [], ["probe/private.py"], snapshots, ("HEAD",), ":", moves={}
-    )
-    snapshots[":" + private] = json.dumps({"counts": {key: 3}})
-    assert shape._antipattern_problems(
-        [], ["probe/private.py"], snapshots, ("HEAD",), ":", moves={}
-    )
-    snapshots[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {key: 1}})
-    assert shape.antipattern_sides(snapshots, ":") == {key: 4}
-    public_file = tmp_path / shape.ANTIPATTERN_BASELINE
-    public_file.parent.mkdir(parents=True)
-    public_file.write_text(json.dumps({"counts": {"src/a.py::PGH003": 1}}))
-    assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1}
-    (tmp_path / private).write_text(json.dumps({"counts": {key: 2}}))
-    assert shape.load_antipattern_baseline(tmp_path) == {"src/a.py::PGH003": 1, key: 2}
-
-
-LONG = "def test_long():\n" + "    x = 1\n" * 50 + "    assert x\n"
-STEPS = "def main():\n" + "    if a:\n        b()\n" * 12 + "    c()\n" * 59
-MOCKED = (
-    "def test_mocks(monkeypatch):\n" + "    monkeypatch.setattr(a, b, c)\n" * 5 + "    assert a\n"
-)
-UNBOUNDED = (  # a child with no timeout: one unbounded-child finding in test_a
-    "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], input='',"
-    " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-)
-UNBOUNDED_KEY = PATH + "::test-child-unbounded::test_a"
-GIT_CASES = (  # a parametrized test that starts Git for each of its two cases
-    "import pytest, subprocess\n"
-    "@pytest.mark.parametrize('ref', ['a', 'b'])\ndef test_a(ref):\n"
-    "    assert subprocess.run(['git', ref], timeout=9, input='',"
-    " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-)
-GIT_KEY = PATH + "::test-parametrized-process::test_a"
-HELPER = "tests/owner/case_tables.py"  # a tests/ helper holding a table the test imports
-HELPER_CASES = "REFS = ['a', 'b', 'c']\n"
-IMPORTED_CASES = GIT_CASES.replace(
-    "import pytest, subprocess\n",
-    "import pytest, subprocess\nfrom tests.owner.case_tables import REFS\n",
-).replace("['a', 'b']", "REFS")
-SIZE_CASES = {  # changed file, parent text (None: new), its text; the refused rule, the signal
-    "a-51-statement-test-is-accepted": (PATH, None, LONG, None, "PLR0915 51 in test_long"),
-    "an-83-statement-script-is-accepted": ("scripts/step.py", None, STEPS, None, "C901 13 in main"),
-    "five-mocks-are-a-signal": (PATH, None, MOCKED, None, "test-too-many-mocks 5 in test_mocks"),
-    "a-giant-the-change-left-alone-says-nothing": (PATH, LONG, LONG + "X = 1\n", None, None),
-    "a-blanket-type-ignore-is-still-refused": (
-        "src/a.py",
-        None,
-        "x = y  # type: ignore\n",
-        "src/a.py::PGH003",
-        None,
-    ),
-    "a-test-child-that-opens-a-window-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], timeout=9, input='')"
-        "\n",
-        PATH + "::test-child-visible-window",
-        None,
-    ),
-    "a-test-child-with-no-window-is-accepted": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    assert subprocess.run(['git'], timeout=9, input='',"
-        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
-        None,
-        None,
-    ),
-    "a-test-child-with-no-timeout-is-refused": (PATH, None, UNBOUNDED, UNBOUNDED_KEY, None),
-    "an-allowed-unbounded-child-is-accepted": (PATH, None, UNBOUNDED, None, None),
-    "an-allowed-unbounded-child-grown-is-refused": (
-        PATH,
-        None,
-        UNBOUNDED + "    assert subprocess.run(['git'], input='',"
-        " creationflags=subprocess.CREATE_NO_WINDOW)\n",
-        UNBOUNDED_KEY,
-        None,
-    ),
-    "a-parametrized-git-case-is-refused": (PATH, None, GIT_CASES, GIT_KEY, None),
-    "a-parametrized-in-memory-case-is-accepted": (
-        PATH,
-        None,
-        "import pytest\n"
-        "@pytest.mark.parametrize('ref', ['a', 'b'])\ndef test_a(ref):\n"
-        "    assert ref in 'ab'\n",
-        None,
-        None,
-    ),
-    "an-allowed-parametrized-git-case-is-accepted": (PATH, None, GIT_CASES, None, None),
-    "an-allowed-parametrized-git-table-grown-is-refused": (
-        PATH,
-        None,
-        GIT_CASES.replace("['a', 'b']", "['a', 'b', 'c']"),
-        GIT_KEY,
-        None,
-    ),
-    "an-imported-parametrized-table-counts-its-cases": (PATH, None, IMPORTED_CASES, GIT_KEY, None),
-    "a-waited-popen-is-accepted": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'],"
-        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-        "    assert child.wait(timeout=9) == 0\n",
-        None,
-        None,
-    ),
-    "a-piped-child-waited-without-reading-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
-        "stdout=subprocess.PIPE,"
-        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-        "    child.wait(timeout=9)\n",
-        UNBOUNDED_KEY,
-        None,
-    ),
-    "a-piped-child-read-with-a-bound-is-accepted": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
-        "stdout=subprocess.PIPE,"
-        " stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-        "    child.communicate(timeout=9)\n",
-        None,
-        None,
-    ),
-    "an-unfed-input-pipe-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
-        "stdin=subprocess.PIPE,"
-        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-        "    child.communicate(timeout=9)\n",
-        UNBOUNDED_KEY,
-        None,
-    ),
-    "a-fed-input-pipe-is-accepted": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    child = subprocess.Popen(['git'], "
-        "stdin=subprocess.PIPE,"
-        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n"
-        "    child.communicate(input=b'x', timeout=9)\n",
-        None,
-        None,
-    ),
-    "a-bare-python-child-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n"
-        "    subprocess.run(['python', '-c', 'pass'], timeout=5, stdin=subprocess.DEVNULL)\n",
-        PATH + "::test-child-bare-python::test_a",
-        None,
-    ),
-    "the-current-python-child-is-accepted": (
-        PATH,
-        None,
-        "import subprocess, sys\ndef test_a():\n"
-        "    subprocess.run([sys.executable, '-c', 'pass'], timeout=5, stdin=subprocess.DEVNULL)\n",
-        None,
-        None,
-    ),
-    "implicit-child-text-encoding-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n"
-        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, text=True)\n",
-        PATH + "::test-child-text-encoding::test_a",
-        None,
-    ),
-    "utf8-child-text-encoding-is-accepted": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n"
-        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, "
-        "text=True, encoding='utf-8')\n",
-        None,
-        None,
-    ),
-    "non-utf8-child-text-encoding-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n"
-        "    subprocess.run(['git'], timeout=5, stdin=subprocess.DEVNULL, encoding='cp1252')\n",
-        PATH + "::test-child-text-encoding::test_a",
-        None,
-    ),
-    "an-unclassed-model-turn-is-refused": (
-        PATH,
-        None,
-        "import subprocess\ndef test_a():\n    assert subprocess.run(['claude', '-p', 'hi'],"
-        " timeout=9, input='', creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
-        PATH + "::test-paid-agent::test_a",
-        None,
-    ),
-    "a-classed-model-turn-is-accepted": (
-        PATH,
-        None,
-        "import subprocess, pytest\n"
-        "@pytest.mark.paid_agent\ndef test_a():\n"
-        "    assert subprocess.run(['claude', '-p', 'hi'], timeout=9, input='',"
-        " creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))\n",
-        None,
-        None,
-    ),
-    "an-asserted-model-argv-is-no-turn": (
-        PATH,
-        None,
-        "def test_a():\n    assert ['claude', '-p'] == ['claude', '-p']\n",
-        None,
-        None,
-    ),
-}
-ALLOWED = {  # the cases held in the allowance: file::rule::function and its count
-    "an-allowed-unbounded-child-is-accepted": (UNBOUNDED_KEY, 1),
-    "an-allowed-unbounded-child-grown-is-refused": (UNBOUNDED_KEY, 1),
-    "an-allowed-parametrized-git-case-is-accepted": (GIT_KEY, 2),
-    "an-allowed-parametrized-git-table-grown-is-refused": (GIT_KEY, 2),
-    "an-imported-parametrized-table-counts-its-cases": (GIT_KEY, 2),
-}
-
-
-@pytest.mark.proves("testing.size_counts_are_review_signals")
-@pytest.mark.parametrize(
-    ("path", "old", "new", "refused", "signal"), SIZE_CASES.values(), ids=list(SIZE_CASES)
-)
-def test_a_size_count_is_a_signal_and_a_harm_still_refuses(
-    capsys, request, path, old, new, refused, signal
-) -> None:
-    """A size or form count over its bound never refuses a commit, and is named as a signal only
-    in a function the change wrote; a blanket type ignore is still refused (the 11-14 verdict).
-    A test's unbounded child or unclassed model turn is refused past its allowance, by function."""
-    if request.node.callspec.id in {
-        "a-piped-child-waited-without-reading-is-refused",
-        "a-piped-child-read-with-a-bound-is-accepted",
-        "an-unfed-input-pipe-is-refused",
-        "a-fed-input-pipe-is-accepted",
-        "a-bare-python-child-is-refused",
-        "the-current-python-child-is-accepted",
-        "implicit-child-text-encoding-is-refused",
-        "utf8-child-text-encoding-is-accepted",
-        "non-utf8-child-text-encoding-is-refused",
-    }:
-        findings = shape.child_antipatterns({path: new})
-        assert findings == ({refused: 1} if refused else {})
-        return
-    held = ALLOWED.get(request.node.callspec.id)
-    empty = json.dumps({"counts": dict([held]) if held else {}})
-    texts = {":" + path: new, ":" + shape.ANTIPATTERN_BASELINE: empty, ":" + HELPER: HELPER_CASES}
-    texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = empty
-    rules = Path(shape.__file__).parents[1] / shape.TEST_ANTIPATTERN_RULES  # ast-grep, run for real
-    texts[":" + shape.TEST_ANTIPATTERN_RULES] = rules.read_text(encoding="utf-8")
-    if old is not None:
-        texts["HEAD:" + path] = old
-    found = shape._antipattern_problems([path], [path], texts, ("HEAD",), ":", moves={})
-    assert [line.split(": ")[0] for line in found] == ([refused] if refused else [])
-    said = capsys.readouterr().out
-    assert (signal in said) if signal else "test_shape.signal" not in said
-
-
-@pytest.mark.proves("testing.size_counts_are_review_signals")
-def test_a_changed_case_table_is_judged_in_each_test_that_imports_it() -> None:
-    """A test the change left alone is measured again when a tests/ helper it takes a parametrize
-    table from changes, so its allowance by case falls with the table and refuses its growth."""
-    listed = []
-
-    def grep(*args):  # git grep -l names the helper's importers (and a conftest, never a reader)
-        listed.append(args)
-        return subprocess.CompletedProcess(args, 0, f"HEAD:{PATH}\nHEAD:tests/owner/conftest.py\n")
-
-    def read(specs):
-        return {s: IMPORTED_CASES for s in specs if PATH in s}
-
-    texts = {"HEAD:" + HELPER: HELPER_CASES}
-    assert shape._table_readers([HELPER], texts, "HEAD:", grep=grep, read=read) == [PATH]
-    assert texts["HEAD:" + PATH] == IMPORTED_CASES and "-ecase_tables" in listed[0]
-    allowance = json.dumps({"counts": {GIT_KEY: 2}})
-    for table, refused in ((HELPER_CASES, [GIT_KEY]), ("REFS = ['a']\n", [])):
-        texts = {"HEAD:" + HELPER: table, "HEAD:" + PATH: IMPORTED_CASES}
-        texts |= {f"{side}:{shape.ANTIPATTERN_BASELINE}": allowance for side in ("HEAD", "base")}
-        found = shape._antipattern_problems(
-            [HELPER], [HELPER], texts, ("base",), "HEAD:", moves={}, readers=[PATH]
-        )
-        assert [line.split(": ")[0] for line in found] == refused
-
-
-@pytest.mark.large
-@pytest.mark.proves("testing.antipattern_rules_hold_the_product_tree")
-def test_nightly_antipattern_rules_hold_the_product_tree() -> None:
-    """The slow rules and their own examples run over the whole tracked source each night."""
-    listing = shape._git("ls-files", "-z", "--", "*.py")
-    assert listing.returncode == 0
-    paths = [path for path in listing.stdout.split("\0") if path and not path.startswith("tests/")]
-    specs = [":" + path for path in paths]
-    specs += [
-        ":" + name
-        for name in (shape.ANTIPATTERN_BASELINE, shape.ANTIPATTERN_SEMGREP, shape.ANTIPATTERN_CASES)
-    ]
-    blobs = shape._blobs([*specs, ":" + shape.ANTIPATTERN_PRIVATE])
-    assert all(spec in blobs for spec in specs)
-    rules = blobs[":" + shape.ANTIPATTERN_SEMGREP]
-    shape._semgrep_selftest(rules, blobs[":" + shape.ANTIPATTERN_CASES])
-    found = shape.semgrep_antipatterns({path: blobs[":" + path] for path in paths}, rules)
-    assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
-    tests = [path for path in listing.stdout.split("\0") if path.startswith("tests/")]
-    named = (*tests, shape.TEST_ANTIPATTERN_RULES, shape.TEST_ANTIPATTERN_CASES)
-    blobs |= shape._blobs([":" + path for path in named])
-    test_rules = blobs[":" + shape.TEST_ANTIPATTERN_RULES]
-    shape._astgrep_selftest(test_rules, blobs[":" + shape.TEST_ANTIPATTERN_CASES])
-    found = shape.astgrep_antipatterns({path: blobs[":" + path] for path in tests}, test_rules)
-    assert not shape.antipattern_growth(shape.antipattern_sides(blobs, ":"), found)
-
-
-OS_CASES = {  # each way a test reaches Windows: True when it is refused for naming no OS
-    "WinDLL": ("def test_a():\n    ctypes.WinDLL('kernel32')\n", True),
-    "marked": (
-        '@pytest.mark.skipif(sys.platform != "win32", reason="w")\n'
-        'def test_a():\n    ctypes.WinDLL("k")\n',
-        False,
-    ),
-    "alias": (
-        'WINDOWS = pytest.mark.skipif(os.name != "nt", reason="w")\n'
-        "@WINDOWS\ndef test_a():\n    winreg.HKEY_CURRENT_USER\n",
-        False,
-    ),
-    "module": (
-        'pytestmark = pytest.mark.skipif(os.name != "nt", reason="w")\n'
-        "def test_a():\n    msvcrt.getch()\n",
-        False,
-    ),
-    "fork": ('def test_a():\n    if os.name == "nt":\n        ctypes.windll.kernel32\n', False),
-    "and-fork": (
-        'def test_a(x):\n    if x and sys.platform == "win32":\n        ctypes.windll.kernel32\n',
-        False,
-    ),
-    "returns": (
-        'def test_a():\n    if os.name != "nt":\n        return\n    ctypes.WinDLL("k")\n',
-        False,
-    ),
-    "winerror": (
-        "def test_a(tmp_path):\n    with pytest.raises(OSError) as caught:\n"
-        "        open(tmp_path)\n    assert caught.value.winerror == 5\n",
-        True,
-    ),
-    "winerror-set": (
-        "def test_a():\n    error = OSError()\n    error.winerror = 5\n"
-        "    assert error.winerror == 5\n",
-        False,
-    ),
-    "powershell": (
-        'def test_a():\n    subprocess.run(["powershell", "-Command", "x"], check=True)\n',
-        True,
-    ),
-    "data": (
-        'def test_a():\n    assert count({"command": ["pwsh", "-Command", "x"]}) == 1\n',
-        False,
-    ),
-}
-
-
-@pytest.mark.proves("testing.an_os_only_test_names_its_os")
-@pytest.mark.parametrize("case", sorted(OS_CASES), ids=sorted(OS_CASES))
-def test_a_test_that_reaches_an_os_only_api_names_its_os(case: str) -> None:
-    """The product runs on macOS, Ubuntu and Windows: a test a change writes that reaches a
-    Windows-only API is refused unless it names its OS, with the repair."""
-    source, refused = OS_CASES[case]
-    found = os_marks.refusals("tests/owner/test_x.py", source, "")
-    assert bool(found) is refused
-    assert all("os-unmarked" in line and "skipif" in line for line in found)
-    assert (
-        os_marks.refusals("tests/owner/test_x.py", source, source) == []
-    )  # a kept test is not judged
-
-
-SHORT, LONG = "user/temp", "run/" + "r" * 100  # a user's temp, and a stage's run-allocated one
-SCANNER_TEMPS = {  # TEMP, LOCALAPPDATA, on Windows, the folder semgrep is given (None: TEMP)
-    "a-short-windows-temp-is-kept": (SHORT, "user/local", True, None),
-    "a-stage-run-temp-is-shortened": (LONG, "user/local", True, "user/local/Temp"),
-    "no-user-temp-keeps-the-default": (LONG, "", True, None),
-    "elsewhere-the-default-holds": (LONG, "", False, None),
-}
-
-
-@pytest.mark.proves("testing.the_semgrep_scan_gets_a_short_temp_on_windows")
-@pytest.mark.parametrize(
-    ("temp", "local", "windows", "given"), SCANNER_TEMPS.values(), ids=SCANNER_TEMPS.keys()
-)
-def test_the_semgrep_scan_gets_a_short_temp_on_windows(
-    temp: str, local: str, windows: bool, given: str | None
-) -> None:
-    """semgrep-core fails once its TEMP passes about 80 characters on Windows, as a stage's run
-    TEMP does: there the scan goes under the user's own temp folder; elsewhere nothing changes."""
-    found = shape.scanner_temp(temp, {"LOCALAPPDATA": local}, windows=windows)
-    assert (Path(found) if found else None) == (Path(given) if given else None)
 
 
 def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
@@ -603,25 +57,12 @@ def test_a_declared_finding_set_only_loses_keys_and_keeps_its_owners() -> None:
 
 def _git_backend(texts, paths, state=None):
     def run(command, **kwargs):
-        if Path(command[0]).stem.lower() == "ast-grep":
-            return _REAL_RUN(command, **kwargs)
         action = command[1]
         output = "base" if action == "rev-list" else "1\t0\tsrc/example.py\n"
         if "-z" in command:
             output = (state or {}).get("raw", "") if "--raw" in command else "\0".join(paths) + "\0"
-        if action in {"ls-files", "ls-tree"}:  # the tracked tree: each test folder a package
-            folders = {str(PurePosixPath(path).parent) for path in paths}
-            folders |= {str(up) for path in folders for up in PurePosixPath(path).parents}
-            inits = [f"{folder}/__init__.py" for folder in folders if folder.startswith("tests")]
-            output = "\0".join([*paths, *inits]) + "\0"
         if action == "cat-file":
-            rows = [
-                texts.get(
-                    spec,
-                    '{"counts":{}}' if spec.endswith(":" + shape.ANTIPATTERN_BASELINE) else None,
-                )
-                for spec in kwargs["input"].decode().splitlines()
-            ]
+            rows = [texts.get(spec) for spec in kwargs["input"].decode().splitlines()]
             output = b"".join(
                 f"{'0' * 40} blob {len(row.encode())}\n".encode() + row.encode() + b"\n"
                 if row is not None
@@ -634,35 +75,10 @@ def _git_backend(texts, paths, state=None):
     return run
 
 
-def _mock_ruff(monkeypatch):
-    monkeypatch.setattr(shape, "ruff_test_findings", lambda snapshots: dict.fromkeys(snapshots, ()))
-    monkeypatch.setattr(shape, "ruff_antipatterns", lambda snapshots: {})
-    monkeypatch.setattr(shape, "test_data_antipatterns", lambda paths: {})
-
-
-def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
-    monkeypatch, tmp_path
-) -> None:
+def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps() -> None:
     """Each rule fires on added content; kept lines, shrinking files and tests/structural pass."""
-    _antipattern_cases(monkeypatch)
-    _split_antipattern_cases(monkeypatch, tmp_path)
-    for path in ("scripts/example.py", "tests/structural/test_example.py"):
-        for flag in ("DETACHED_" + "PROCESS", "CREATE_NEW_" + "CONSOLE"):
-            for source in (
-                f"import subprocess\nx = subprocess.{flag}\n",
-                f"import subprocess\nx = getattr(subprocess, {flag!r}, 0)\n",
-                f"from subprocess import {flag} as flag\n",
-            ):
-                assert problems(path, None, source), (path, source)
-        assert not problems(
-            path, None, "import subprocess\nx = getattr(subprocess, 'CREATE_NO_WINDOW', 0)\n"
-        )
-    assert not problems(
-        "src/example.py", None, "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
-    )
     big = "x = 1\n" * 20_000
-    assert not problems(PATH, big, big + "\u754c")  # a grown test file is a size signal only
-    assert not problems(PATH, big + "\u754c", big)
+    assert problems(PATH, big, big + "\u754c") and not problems(PATH, big + "\u754c", big)
     source = "import inspect\ninspect.getsource(owner)\n"
     assert problems(PATH, "", source) and not problems(PATH, source, source)
     assert not problems("tests/structural/test_example.py", "", source)
@@ -685,105 +101,16 @@ def test_the_shape_check_refuses_what_a_change_adds_and_spares_what_it_keeps(
     assert not problems(PATH, None, marked) and not problems(PATH, None, "import pytest\n" + held)
     debt = "class A:\n    " + missing.replace("\n", "\n    ")
     assert problems(PATH, debt, debt.replace("class A", "class B"))
-    # an added or changed test names each case pytest would name by its position (rule 5); a
-    # case of literal values names itself, as in the harness's lint
-    site = "@pytest.mark.parametrize({}, {})\ndef test_a(flag):\n    'One.'\n"
-    for names, cases, refused in (
-        ("'flag'", "['on', 'off']", False),  # a literal str is its own id
-        ("'flag'", "[1, -2, 0.5, b'x', True, None]", False),
-        ("'flag'", "[object(), 'off']", True),  # an object is named flag0
-        ("'flag'", "[[1], {'a': 1}]", True),  # so are a list and a dict
-        ("'flag'", "CASES", True),  # a computed list cannot be read
-        ("'a, b'", "[('x', 1), ('y', None)]", False),  # several literal values
-        ("('a', 'b')", "[('x', [1])]", True),
-        ("'flag'", "[object(), None], ids=['on', 'off']", False),
-        ("'flag'", "[object(), None], ids=['on', None]", True),  # None asks for the value id
-        ("'flag'", "[pytest.param(object(), id='on'), pytest.param(1)]", False),
-        ("'flag'", "[pytest.param(object(), id=None)]", True),
-    ):
-        assert bool(problems(PATH, None, site.format(names, cases))) is refused, cases
-    unnamed = site.format("'flag'", "[object(), 'off']")
-    assert problems(PATH, None, unnamed) == [
-        f"{PATH}::test_a: line 1 parametrize('flag') has a case pytest names by its position; "
-        "give each such case pytest.param(..., id=...), or ids= (rule 5)"
-    ]
-    assert not problems(PATH, unnamed, unnamed)  # a kept test keeps its standing
-    assert problems(PATH, unnamed, unnamed.replace("One.", "Two."))  # a changed one is judged
-    raises = 'def test_a():\n    """One."""\n    with pytest.raises(ValueError):\n        f()\n'
-    old = "import pytest\n" + raises
-    twice = "@pytest.mark.parametrize('a', [1, 1], ids=['x', 'y'])\n" + raises
-    snapshots = {
-        "old": old,
-        "new": old + raises.replace("test_a", "test_b") + twice.replace("test_a", "test_c"),
-        "moved": old.replace("import pytest\n", "import pytest\n\n\n"),
-    }
-    found = shape.ruff_test_findings(snapshots)
-    assert found["old"] == (("PT011", 4),)
-    assert problems(PATH, old, snapshots["new"], (found["old"], found["new"])) == [
-        f"{PATH}::test_b: Ruff PT011 findings grow 0 -> 1; "
-        "give pytest.raises a match= for the expected message",
-        f"{PATH}::test_c: Ruff PT011 findings grow 0 -> 1; "
-        "give pytest.raises a match= for the expected message",
-        f"{PATH}::test_c: Ruff PT014 findings grow 0 -> 1; drop the duplicate parametrize case",
-    ]
-    assert not problems(PATH, old, snapshots["moved"], (found["old"], found["moved"]))
-    # a test module's folder, and each folder up to tests/, is a package: else it imports by its
-    # bare name and a same-named test file elsewhere collides with it
-    tracked = ("tests/__init__.py", "tests/unit/__init__.py", "tests/unit/a/__init__.py")
-    for changed, refused in (
-        ("tests/unit/a/test_x.py", []),
-        ("tests/unit/b/test_x.py", ["tests/unit/b"]),
-        ("tests/unit/b/c/test_x.py", ["tests/unit/b", "tests/unit/b/c"]),
-        ("tests/unit/b/data.json", []),
-        ("tests/unit/b/support.py", []),
-        ("tests/unit/b/conftest.py", ["tests/unit/b"]),
-        ("src/b/test_x.py", []),
-    ):
-        named = [row.split(":", 1)[0] for row in shape.unpackaged_test_dirs([changed], tracked)]
-        assert named == refused, changed
-    assert (
-        "add tests/unit/b/__init__.py"
-        in shape.unpackaged_test_dirs(["tests/unit/b/test_x.py"], tracked)[0]
-    )
-    # a child process starts on a source module, never a test module a fresh interpreter may
-    # import from another checkout's tests package
-    for source, refused in (
-        ('run_in_child(f"{__name__}:stop", {})\n', True),
-        ('run_in_child("tests.unit.case:stop", {})\n', True),
-        (
-            'code = "from tests.support import x"\nsubprocess.run([sys.executable, "-c", code])\n',
-            True,
-        ),
-        ('subprocess.run([sys.executable, "-m", "tests.tool"], timeout=9)\n', True),
-        (  # a name another function reassigns still resolves to its own function's script
-            'def f():\n    code = "import tests.x"\n    subprocess.run(["py", "-c", code])\n'
-            'def g():\n    code = "pass"\n',
-            True,
-        ),
-        (
-            'def f():\n    code = "pass"\n    subprocess.run(["py", "-c", code])\n'
-            'def g():\n    code = "import tests.x"\n',
-            False,
-        ),
-        ('run_in_child("devtools.testing.child_targets:exit_at_start", {})\n', False),
-        ('subprocess.run([sys.executable, "-m", "pytest", "-p", "tests.conftest"])\n', False),
-        ('probe.write_text("from tests.support import x")\n', False),  # a file, not a child
-    ):
-        found = [row for row in problems(PATH, None, source) if "test module (tests.*)" in row]
-        assert bool(found) is refused, source
-        assert not [row for row in problems(PATH, source, source) if "test module" in row]
 
 
 @pytest.mark.proves("testing.only_a_requirement_marker_may_join_an_oversized_test_file")
-def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else(capsys) -> None:
-    """A whole proves line is free; a comment on it, or any other line, still counts as growth,
-    named as a review signal and never refused (a size cap is met by splitting files)."""
+def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else() -> None:
+    """A whole proves line is free; a comment on it, or any other line, still counts as growth."""
     path = "tests/example/test_big.py"
     big = "# " + "x" * shape.CAP_BYTES + "\ndef test_a():\n    pass\n"
 
     def refused(new: str) -> bool:
-        assert not problems(path, big, new)
-        return "KB (a review signal, never refused)" in capsys.readouterr().out
+        return any("a test file stays under 100 KB" in line for line in problems(path, big, new))
 
     assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\ndef test_a'))
     assert not refused(big.replace("def test_a", '@pytest.mark.proves("a.b")\r\ndef test_a'))
@@ -805,26 +132,32 @@ def test_an_oversized_test_file_takes_a_marker_line_and_nothing_else(capsys) -> 
     )
 
 
-@pytest.mark.proves("testing.size_counts_are_review_signals")
-def test_a_grown_source_is_a_size_signal_and_a_long_function_is_left_to_ruff(capsys) -> None:
-    """A size cap is met by splitting, which leaves the code no better: a grown source names a
-    review signal and is never refused, and a long or branching function is Ruff's C901 and
-    PLR0915 signal, never this check's refusal."""
+def test_source_caps_hold_growth_by_qualified_function_and_spare_existing_debt() -> None:
+    """Each size and function metric refuses its own growth, including nested definitions."""
     path = "src/example.py"
     big = "x" * shape.CAP_BYTES
-    wide = big + "\u754c"
-    assert not problems("src/example.txt", big, wide)
-    assert "test_shape.signal: src/example.txt" in capsys.readouterr().out
-    assert not problems("src/example.txt", wide, big)
-    assert "test_shape.signal" not in capsys.readouterr().out
-    long = "def run():\n" + "    pass\n" * 130
-    branches = "def branch():\n" + "    if ready:\n        pass\n" * 25
-    assert not problems(path, None, long) and not problems(path, "def branch(): pass\n", branches)
+    assert not problems("src/example.txt", None, big)
+    assert problems("src/example.txt", big, big + "\u754c")
+    assert not problems("src/example.txt", big + "\u754c", big)
+
+    def method(name, lines):
+        return f"class {name}:\n    def run(self):\n" + "        pass\n" * (lines - 1)
+
+    old = method("A", 120) + method("B", 125)
+    new = method("A", 121) + method("B", 124)
+    found = problems(path, old, new)
+    assert len(found) == 1 and "A.run" in found[0]
+
+    def branch(count):
+        return "def branch():\n" + "    if ready:\n        pass\n" * count
+
+    assert problems(path, branch(20), branch(21))
+    assert not problems(path, branch(21), branch(20))
+    nested = "    def inner():\n" + "        if ready:\n            pass\n" * 21
+    assert not problems(path, branch(19) + nested, branch(20) + nested)
     for generated in shape.GENERATED | shape.WORD_CATALOGS:
-        assert not problems(generated, big, wide)
-    assert "test_shape.signal" not in capsys.readouterr().out
-    assert not problems(shape.ASSETS + "workbench-source/js/app/new.js", big, wide)
-    assert "test_shape.signal" in capsys.readouterr().out
+        assert not problems(generated, big, big + "\u754c")
+    assert problems(shape.ASSETS + "workbench-source/js/app/new.js", big, big + "\u754c")
 
 
 def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrations() -> None:
@@ -843,10 +176,6 @@ def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrati
         + "    for row in rows:\n        cursor.execute('INSERT INTO records VALUES (?)', row)\n"
     )
     assert problems(path, None, write)
-    # a factory newly typed in the change reveals an existing write loop; it adds none
-    untyped = write.replace("def store() -> DB:", "def store():")
-    assert not problems(path, untyped, write)
-    assert problems(path, untyped, write + "        cursor.execute('DELETE FROM records')\n")
     for clean in (
         write.replace("INSERT INTO records VALUES (?)", "SELECT ?"),
         writer + "    cursor.executemany('INSERT INTO records VALUES (?)', rows)\n",
@@ -867,18 +196,8 @@ def test_performance_lints_resolve_aliases_and_spare_queries_batches_and_migrati
         assert not problems(path, None, f"connection.execute({sql!r})\n")
 
 
-def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
-    monkeypatch, tmp_path
-) -> None:
+def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs() -> None:
     """Added eight-line code copies are refused while debt, comments and literal changes pass."""
-    stale = tmp_path / "stale" / "scripts/test-shape-tools"
-    (stale / "node_modules/jscpd").mkdir(parents=True)
-    source_package = shape.ROOT / "scripts/test-shape-tools"
-    for name in ("package.json", "package-lock.json"):
-        (stale / name).write_bytes((source_package / name).read_bytes())
-    (stale / "node_modules/jscpd/run-jscpd.js").write_text("stale tool")
-    with pytest.raises(ValueError, match=r"jscpd\."):
-        shape.jscpd_runner(tmp_path / "stale", tmp_path / "owner/.venv/Scripts/python.exe")
     body = "".join(f"    value{index} = {index}\n" for index in range(8))
     original, copy = "src/original.py", "src/copy.py"
     source, duplicate = "def original():\n" + body, "def copy():\n" + body
@@ -896,108 +215,25 @@ def test_exact_copy_guard_names_original_and_counts_only_added_executable_runs(
     assert not shape.clone_problems(
         workbench, None, js.replace("two  words", "two words"), {"src/original.js": js}
     )
-    same_file = source + "def copy():\n" + body
-    assert shape.clone_problems(original, source, same_file, {original: same_file})
-    assert shape.clone_problems(workbench, None, body, {original: source})
-    real_run, commands = spawn.run, []
-
-    def run(command, **kwargs):
-        commands.append(command)
-        return real_run(command, **kwargs)
-
-    monkeypatch.setattr(spawn, "run", run)
-    result = shape.clone_problems_batch(
-        [(copy, None, duplicate), (copy, duplicate, duplicate)], corpus
-    )
-    assert result[0] and not result[1]
-    assert sum("--min-lines" in command for command in commands) == 1
-    runner = getattr(shape, "jscpd_runner", None)
-    assert callable(runner), "a fresh gate checkout must bind the matching locked tool"
-    staged = tmp_path / "staged"
-    package = staged / "scripts/test-shape-tools"
-    package.mkdir(parents=True)
-    for name in ("package.json", "package-lock.json"):
-        (package / name).write_bytes((source_package / name).read_bytes())
-    executable = Path(sys.executable)
-    installed = source_package / "node_modules/jscpd/run-jscpd.js"
-    assert runner(staged, executable) == installed
-    with monkeypatch.context() as environment:
-        environment.setenv("NODE_OPTIONS", "--require=missing-inherited-module")
-        environment.setenv("NODE_PATH", str(tmp_path / "untrusted"))
-        assert runner(staged, executable) == installed
-    with monkeypatch.context() as environment:
-        environment.delenv("npm_config_cache", raising=False)
-        environment.setenv("NPM_CONFIG_CACHE", str(tmp_path / "empty-cache"))
-        with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
-            runner(staged, executable)
-    (package / "package-lock.json").write_text("{}", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"jscpd\.lock_unreadable"):
-        runner(staged, executable)
-    (package / "package-lock.json").write_bytes((source_package / "package-lock.json").read_bytes())
-    with pytest.raises(ValueError, match=r"jscpd\.unavailable"):
-        runner(staged, tmp_path / "other-python")
-    import shutil
-
-    shutil.copytree(source_package / "node_modules", package / "node_modules")
-    assert runner(staged, executable) == package / "node_modules/jscpd/run-jscpd.js"
-    with monkeypatch.context() as inaccessible:
-
-        def denied_walk(_path, *, followlinks=False, onerror=None):
-            if onerror is not None:
-                onerror(PermissionError("fixture unreadable"))
-            return iter(())
-
-        inaccessible.setattr(shape.os, "walk", denied_walk)
-        with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable.*fixture unreadable"):
-            runner(staged, executable)
-    locked = json.loads((package / "package-lock.json").read_bytes())
-    locked["packages"]["node_modules/jscpd"]["integrity"] = "sha512-" + "A" * 86 + "=="
-    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
-        runner(
-            staged,
-            executable,
-            ((package / "package.json").read_bytes(), json.dumps(locked).encode()),
-        )
-    binary = next((package / "node_modules").glob("jscpd-*/bin/jscpd*"))
-    original_binary = binary.read_bytes()
-    binary.write_bytes(b"tampered native executable")
-    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
-        runner(staged, executable)
-    binary.write_bytes(original_binary)
-    (package / "node_modules/jscpd/platform-map.js").write_text("tampered", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"jscpd\.integrity_unavailable"):
-        runner(staged, executable)
-    monkeypatch.setattr(shape.shutil, "which", lambda _command: None)
-    with pytest.raises(ValueError, match="jscpd unavailable"):
-        shape.clone_problems(copy, None, duplicate, corpus)
 
 
 def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkeypatch) -> None:
     """Only staged content is checked, and inherited parent violations do not block a merge."""
-    _mock_ruff(monkeypatch)
     path = "src/example.py"
     bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
     state = {"merge": False}
     texts = {":" + path: bad, "HEAD:" + path: "", "MERGE_HEAD:" + path: ""}
-    monkeypatch.setattr(spawn, "run", _git_backend(texts, [path], state))
+    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [path], state))
     assert shape.main([]) == 1
-    for guarded in ("scripts/example.py", "tests/structural/example.py"):
-        bad_flag = "import subprocess\nx = subprocess." + "DETACHED_" + "PROCESS\n"
-        blobs = {":" + guarded: bad_flag, "HEAD:" + guarded: ""}
-        monkeypatch.setattr(spawn, "run", _git_backend(blobs, [guarded]))
-        assert shape.main([]) == 1
-        blobs[":" + guarded] = "import subprocess\nx = subprocess.CREATE_NO_WINDOW\n"
-        assert shape.main([]) == 0
-    monkeypatch.setattr(spawn, "run", _git_backend(texts, [path], state))
     state["merge"] = True
     texts["HEAD:" + path] = bad
     assert shape.main([]) == 0
     asset = "src/image.png"
     texts = {":" + asset: "\0" * shape.CAP_BYTES, "HEAD:" + asset: ""}
-    monkeypatch.setattr(spawn, "run", _git_backend(texts, [asset]))
+    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [asset]))
     assert shape.main([]) == 0
     texts[":" + asset] += "\0"
-    assert shape.main([]) == 0  # a grown asset is a size signal, never refused
+    assert shape.main([]) == 1
     old, new, legacy = (
         "tests/area/test_kept.py",
         "tests/unit/test_kept.py",
@@ -1008,7 +244,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     texts = {":" + new: legacy, "HEAD:" + old: legacy}  # a byte-identical move keeps its old debt
     for blob, code in (("a", 0), ("b", 1)):  # an edited move is new: its missing docstring refuses
         state = {"raw": raw.replace(f"{'a' * 40} A", f"{blob * 40} A")}
-        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new], state))
+        monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [new], state))
         assert shape.main([]) == code
 
     table = "config/registries/test-layout.json"
@@ -1025,18 +261,11 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": row_old}}}
         )
         texts[":" + new] = legacy + added
-        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new, table], {"raw": edited}))
+        monkeypatch.setattr(
+            shape.subprocess, "run", _git_backend(texts, [new, table], {"raw": edited})
+        )
         assert shape.main([]) == code
     texts[":" + new] = legacy
-    texts[":" + table] = json.dumps(
-        {"schema": "alphalattice.test-layout.v1", "files": {new: {"old": old}}}
-    )
-    for allowed, code in ((1, 0), (2, 1)):  # the row carries its anti-pattern allowance, no more
-        texts["HEAD:" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {old + "::X": 1}})
-        texts[":" + shape.ANTIPATTERN_BASELINE] = json.dumps({"counts": {new + "::X": allowed}})
-        monkeypatch.setattr(spawn, "run", _git_backend(texts, [new, table], {"raw": edited}))
-        assert shape.main([]) == code
-    del texts["HEAD:" + shape.ANTIPATTERN_BASELINE], texts[":" + shape.ANTIPATTERN_BASELINE]
 
     data, sizes = "tests/integration/testing/panel.csv", "config/registries/test-sizes.json"
     policy = json.loads((shape.ROOT / sizes).read_text("utf-8"))
@@ -1048,7 +277,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             return shape.subprocess.CompletedProcess(command, 0, trees[command[5]] + "\0")
         return _git_backend(texts, [data, "tests/unit/testing/notes.md"], moves)(command, **kwargs)
 
-    monkeypatch.setattr(spawn, "run", holding)
+    monkeypatch.setattr(shape.subprocess, "run", holding)
     assert shape.main([]) == 1  # a new data file names no reason
     trees["HEAD"] = data
     assert shape.main([]) == 0  # the tree is the baseline
@@ -1095,7 +324,7 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
             return shape.subprocess.CompletedProcess(command, 0, source + "\0")
         return _git_backend(texts, paths, placement_state)(command, **kwargs)
 
-    monkeypatch.setattr(spawn, "run", staged)
+    monkeypatch.setattr(shape.subprocess, "run", staged)
     assert shape.main([]) == 1  # the added file must use the declared source's mapped path
     suffix = "tests/unit/testing/layout_test.py"
     paths[:] = [suffix]
@@ -1123,31 +352,6 @@ def test_staged_guard_reads_index_blobs_and_intersects_both_merge_parents(monkey
     assert shape.main([]) == 1  # missing staged ownership must not be treated as empty
 
 
-@pytest.mark.proves("testing.the_stage_judges_the_committed_change_as_the_hook_judges_the_index")
-def test_the_stage_judges_the_committed_head_against_its_merge_base(monkeypatch) -> None:
-    """With a base, the committed head is judged against its merge base, never the index."""
-    _mock_ruff(monkeypatch)
-    path = "src/example.py"
-    bad = "import threadpoolctl as pools\npools.threadpool_limits(1)\n"
-    texts = {"HEAD:" + path: bad, ":" + path: "", "fork:" + path: ""}
-    backend, asked = _git_backend(texts, [path]), []
-
-    def run(command, **kwargs):
-        asked.append(command[1:])
-        if command[1] == "merge-base":
-            known = command[2] == "develop"
-            return shape.subprocess.CompletedProcess(command, int(not known), "fork\n" * known)
-        return backend(command, **kwargs)
-
-    monkeypatch.setattr(spawn, "run", run)
-    assert shape.main(["--base", "develop"]) == 1  # the committed break, though the index is clean
-    assert ["merge-base", "develop", "HEAD"] in asked
-    assert shape.main([]) == 0  # the hook judges the clean index
-    texts["fork:" + path] = bad
-    assert shape.main(["--base", "develop"]) == 0  # inherited from the base: not this change's
-    assert shape.main(["--base", "gone"]) == 1  # an unreadable base refuses, never passes
-
-
 def test_weekly_report_lists_static_candidates_and_respects_config_string_readers(
     monkeypatch,
 ) -> None:
@@ -1159,7 +363,7 @@ def test_weekly_report_lists_static_candidates_and_respects_config_string_reader
         "HEAD:tests/test_reader.py": "from example import used\nassert used() == 1\n",
         "HEAD:config/example.json": '{"callable": "configured"}\n',
     }
-    monkeypatch.setattr(spawn, "run", _git_backend(texts, [spec[5:] for spec in texts]))
+    monkeypatch.setattr(shape.subprocess, "run", _git_backend(texts, [spec[5:] for spec in texts]))
     report = shape.weekly_report()
     assert [row["name"] for row in report["candidates"]] == ["unused"]
     assert report["growth"] == [{"path": "src/example.py", "added": 1, "removed": 0, "net": 1}]

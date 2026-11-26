@@ -11,7 +11,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -45,6 +44,7 @@ from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
 from alphalattice.investment.alpha_research.publication.artifacts import AlphaCurrentArtifactStore
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _digest(path: Path) -> str:

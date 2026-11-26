@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     RawDailyBar,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _bar_observation_identity(bar: RawDailyBar) -> str:

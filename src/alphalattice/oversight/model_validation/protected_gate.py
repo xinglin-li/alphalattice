@@ -27,22 +27,18 @@ after a receipt has been sealed.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
     CommittedKind,
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
-from alphalattice.foundation.data_layer import history
-from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     CLAIM_LIMIT_NO_RESELECTION,
     CLAIM_LIMIT_SINGLE_EVALUATION,
@@ -58,7 +54,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
     ProtectedPackageInspection,
     ProtectedPackageInspector,
 )
-from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class ProtectedValidationGateError(ValueError):
@@ -121,20 +117,6 @@ class ProtectedValidationStore:
         # recomputed: the index entry has to carry it or it is lost.
         self.committed = CommittedIndex(self.root, self.content)
 
-    def _workspace(self) -> str:
-        artifacts = self.root.parent
-        folder = (
-            artifacts.parent.parent
-            if artifacts.name == "artifacts" and artifacts.parent.name == "runtime"
-            else artifacts
-        )
-        try:
-            return cast(str, history.validation_workspace(folder))
-        except DataError as error:
-            if error.failure.code != "data_layer.validation_workspace_unknown":
-                raise
-            return cast(str, history.workspace_on_log(folder, folder.name))
-
     def publish_permit(self, value: ProtectedEvaluationPermit) -> str:
         """Commit a permit under its candidate identity."""
         return self.committed.commit(_PERMITS, value.candidate_hash, value)
@@ -151,193 +133,32 @@ class ProtectedValidationStore:
         return permit
 
     def publish_claim(self, value: PermitClaimRecord) -> str:
-        """Spend the permit: on the Host's log while it records, else in the committed index."""
-        if not history.recording():  # outside the Host, the committed index
-            return str(self.committed.commit(_CLAIMS, value.permit_hash, value))
-        history.record_validation_claim(value.model_dump(mode="json"), workspace=self._workspace())
-        return str(value.claim_hash)
+        """Commit a permit-spending claim under the permit identity."""
+        return self.committed.commit(_CLAIMS, value.permit_hash, value)
 
     def find_claim(self, permit_hash: str) -> PermitClaimRecord | None:
-        """Find a permit's claim and verify its binding to the permit."""
-        self.content.require_hash(permit_hash)
-        if history.recording():
-            recorded = history.validation_claim(permit_hash, workspace=self._workspace())
-            claim = None if recorded is None else PermitClaimRecord.model_validate(recorded)
-        else:  # outside the Host, the committed index
-            claim = self.committed.open(_CLAIMS, permit_hash)
+        """Find a permit's claim and verify its index binding."""
+        claim = self.committed.open(_CLAIMS, permit_hash)
         if claim is not None and claim.permit_hash != permit_hash:
             raise ProtectedValidationGateError("protected_validation.claim_index_tampered")
         return claim
 
     def publish_receipt(self, value: PortfolioValidationReceipt) -> str:
-        """Seal the receipt under the permit it answers, before any claim: on the Host's catalog
-        while it records, else in the committed index.
+        """Seal the receipt under the permit it answers, before any claim.
 
-        Sealed first so the claim can never point at a receipt that is not
+        Committed first so the claim can never point at a receipt that is not
         there. A crash between the two leaves a receipt nobody has claimed --
         recoverable, and the closure simply completes.
         """
-        if not history.recording():  # outside the Host, the committed index
-            return str(self.committed.commit(_RECEIPTS, value.permit_hash, value))
-        history.write_validation_receipts(
-            [value.model_dump(mode="python")], workspace=self._workspace()
-        )
-        return str(value.receipt_hash)
-
-    def _catalog_receipt(
-        self,
-        field: Literal["permit_hash", "receipt_hash"],
-        key: str,
-        *,
-        workspace: str | None = None,
-    ) -> PortfolioValidationReceipt | None:
-        rows = history.read_validation_receipts(
-            field, key, workspace=workspace or self._workspace()
-        )
-        if rows is None or rows.num_rows == 0:
-            return None
-        if rows.num_rows > 1:
-            raise ProtectedValidationGateError("protected_validation.receipt_index_tampered")
-        row = rows.slice(0, 1).to_pylist()[0]  # one receipt for one gate decision
-        stamp = row.pop("sealed_at")
-        offset = row.pop("sealed_offset_microseconds")
-        row.pop("artifact_id")
-        row["sealed_at"] = stamp.astimezone(timezone(timedelta(microseconds=offset)))
-        receipt = cast(PortfolioValidationReceipt, PortfolioValidationReceipt.model_validate(row))
-        if (receipt.permit_hash if field == "permit_hash" else receipt.receipt_hash) != key:
-            raise ProtectedValidationGateError("protected_validation.receipt_index_tampered")
-        return receipt
+        return self.committed.commit(_RECEIPTS, value.permit_hash, value)
 
     def find_receipt_for_permit(self, permit_hash: str) -> PortfolioValidationReceipt | None:
         """Find the receipt sealed for a permit before its claim was recorded."""
-        self.content.require_hash(permit_hash)
-        if not history.recording():  # outside the Host, the committed index
-            return self.committed.open(_RECEIPTS, permit_hash)
-        return self._catalog_receipt("permit_hash", permit_hash)
+        return self.committed.open(_RECEIPTS, permit_hash)
 
     def load_receipt(self, receipt_hash: str) -> PortfolioValidationReceipt:
         """Load a sealed receipt and verify its content identity."""
-        self.content.require_hash(receipt_hash)
-        if not history.recording():  # outside the Host, the committed index
-            return self.committed.load(_RECEIPTS, receipt_hash)
-        value = self._catalog_receipt("receipt_hash", receipt_hash)
-        if value is None:
-            raise ContentAddressedStoreError(f"content_store.artifact_missing:{receipt_hash}")
-        return value
-
-
-def validation_upgrade_family(workspace_id: Callable[[Path], str | None]) -> Family:
-    """Move legacy receipts as one catalog batch and claims to the log; retain the old reader."""
-
-    def legacy(
-        workspace: Path,
-    ) -> tuple[ProtectedValidationStore, list[PortfolioValidationReceipt], list[PermitClaimRecord]]:
-        store = ProtectedValidationStore(workspace / "runtime" / "artifacts")
-        results = []
-        for kind in (_RECEIPTS, _CLAIMS):
-            folder = store.root / "index" / kind.index
-            try:
-                paths = sorted(path for path in folder.iterdir() if path.suffix == ".json")
-            except FileNotFoundError:
-                paths = []
-            values = []
-            for path in paths:
-                if not path.resolve().is_relative_to(workspace.resolve()):
-                    raise ProtectedValidationGateError("protected_validation.upgrade_path_invalid")
-                value = store.committed.open(kind, path.stem)
-                if value is None:
-                    raise ProtectedValidationGateError(
-                        "protected_validation.upgrade_record_missing"
-                    )
-                values.append(value)
-            results.append(values)
-        return (
-            store,
-            cast(list[PortfolioValidationReceipt], results[0]),
-            cast(list[PermitClaimRecord], results[1]),
-        )
-
-    def step(runner: UpgradeRunner) -> None:
-        receipts: dict[str, PortfolioValidationReceipt] = {}
-        owners: dict[str, list[str]] = {}
-        claims = []
-        for workspace in runner.workspaces:
-            owner = history.workspace_on_log(
-                workspace, workspace.name, workspace_id(workspace), runner.root
-            )
-            _, values, spent = legacy(workspace)
-            by_hash = {value.receipt_hash: value for value in values}
-            for value in values:
-                old = receipts.setdefault(value.receipt_hash, value)
-                if old != value:
-                    raise ProtectedValidationGateError(
-                        "protected_validation.receipt_identity_invalid"
-                    )
-                owners.setdefault(value.receipt_hash, []).append(owner)
-            for claim in spent:
-                matched = by_hash.get(claim.receipt_hash)
-                if (
-                    matched is None
-                    or matched.permit_hash != claim.permit_hash
-                    or matched.package_hash != claim.package_hash
-                ):
-                    raise ProtectedValidationGateError(
-                        "protected_validation.claim_receipt_mismatch"
-                    )
-                claims.append((owner, claim))
-        mapping = history.write_validation_receipts(
-            [value.model_dump(mode="python") for value in receipts.values()],
-            upgrade_owner=(runner.log, runner.root),
-            owners=owners,
-        )
-        for digest, artifact in mapping.items():
-            if runner.map_id("protected-validation", digest, artifact) != artifact:
-                raise ProtectedValidationGateError("protected_validation.upgrade_identity_invalid")
-        history.record_validation_claims(
-            [(owner, claim.model_dump(mode="json")) for owner, claim in claims]
-        )
-
-    def verify_workspace(workspace: Path) -> bool:
-        _, receipts, claims = legacy(workspace)
-        if not receipts and not claims:
-            return True
-        try:
-            owner = history.validation_workspace(workspace)
-        except DataError as error:
-            if error.failure.code == "data_layer.validation_workspace_unknown":
-                return False
-            raise
-        if receipts:
-            old = [value.model_dump(mode="python") for value in receipts]
-            keys = {value.receipt_hash: value.receipt_hash for value in receipts}
-            expected = (
-                history.validation_receipt_table(old, keys)
-                .drop(["artifact_id"])
-                .sort_by("receipt_hash")
-            )
-            actual = history.read_validation_receipts("receipt_hash", list(keys), workspace=owner)
-            if actual is None or not actual.drop(["artifact_id"]).sort_by("receipt_hash").cast(
-                expected.schema
-            ).equals(expected):
-                return False
-        recorded = history.validation_claims(
-            [claim.permit_hash for claim in claims], workspace=owner
-        )
-        return all(
-            claim.permit_hash in recorded
-            and PermitClaimRecord.model_validate(recorded[claim.permit_hash]) == claim
-            for claim in claims
-        )
-
-    def verify(runner: UpgradeRunner) -> bool:
-        return all(verify_workspace(workspace) for workspace in runner.workspaces)
-
-    return Family(
-        "protected-validation",
-        step,
-        verify,
-        lambda workspace: not verify_workspace(workspace),
-    )
+        return self.committed.load(_RECEIPTS, receipt_hash)
 
 
 class ProtectedValidationGate:
@@ -353,7 +174,7 @@ class ProtectedValidationGate:
         store: ProtectedValidationStore,
         registry: FrozenCandidateRegistry,
         inspector: ProtectedPackageInspector,
-        clock: Callable[[], datetime] = utc_now,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         """Bind the store, frozen registry, package inspector and clock."""
         self.store = store

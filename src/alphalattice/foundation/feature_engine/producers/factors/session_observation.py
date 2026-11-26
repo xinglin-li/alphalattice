@@ -11,15 +11,13 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import NO_ECONOMIC_SKIP
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 SESSION_OBSERVATION_METHOD_FAMILY: Final = "SESSION_OBSERVATION"
 _INTERNAL_METHOD_REFERENCE: Final = "urn:alphalattice:research:session-observation-formulas"
@@ -300,8 +298,6 @@ def append_session_observation_values(
     Raises:
         ValueError: The ordinary registry refuses the source or recipe.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     owned = next(
         (value for value in session_observation_factor_specs() if value == specification), None
     )
@@ -354,8 +350,6 @@ def _ordered(source: pd.DataFrame) -> pd.DataFrame:
 
 
 def _restore(source: pd.DataFrame, ordered: pd.DataFrame, values: pd.Series) -> pd.Series:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     frame = ordered.assign(_value=pd.to_numeric(values, errors="coerce").to_numpy(dtype=float))
     return pd.Series(
         frame.sort_values("_source_position", kind="mergesort")["_value"].to_numpy(float),
@@ -364,8 +358,6 @@ def _restore(source: pd.DataFrame, ordered: pd.DataFrame, values: pd.Series) -> 
 
 
 def _prices(ordered: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     def numeric(name: str) -> pd.Series:
         if name not in ordered:
             return pd.Series(np.nan, index=ordered.index, dtype=float)
@@ -436,8 +428,6 @@ def return_run_length_21(source: pd.DataFrame, _specification: FactorSpec) -> pd
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = _ordered(source)
     close = pd.to_numeric(ordered["close_split_adjusted"], errors="coerce").astype(float)
     returns = np.log(close / close.groupby(ordered["listing_id"], sort=False).shift(1))
@@ -474,8 +464,6 @@ def at_own_high_share_63(source: pd.DataFrame, _specification: FactorSpec) -> pd
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = _ordered(source)
     groups = ordered["listing_id"]
     close = pd.to_numeric(ordered["close_split_adjusted"], errors="coerce").astype(float)
@@ -510,8 +498,6 @@ def sessions_since_252_high(source: pd.DataFrame, _specification: FactorSpec) ->
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = _ordered(source)
     close = pd.to_numeric(ordered["close_split_adjusted"], errors="coerce").astype(float)
     result = np.full(len(ordered), np.nan, dtype=np.float64)

@@ -60,7 +60,6 @@ import numpy as np  # noqa: E402
 
 import broad_ensemble_research_closure as closure  # noqa: E402
 from alphalattice.capabilities.alpha_modeling.contracts import AlphaEstimatorContent  # noqa: E402
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.investment.alpha_research.inputs.panel_feature_materialization import (  # noqa: E402
     materialize_panel_feature_projection,
     preflight_panel_feature_plan,
@@ -102,6 +101,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_exe
 from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (  # noqa: E402
     INSTALLED_HETEROGENEOUS_BOOK_RECIPE,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 VINTAGES = ("2025-10", "2026-01", "2026-04", "2026-07")
 SEEDS = (1729, 2718, 31415)

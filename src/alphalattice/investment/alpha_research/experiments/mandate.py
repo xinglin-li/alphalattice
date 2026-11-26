@@ -17,12 +17,12 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.inputs.training import AlphaTrainingInputAuthorityError
 from alphalattice.investment.alpha_research.targets.execution_outcome import (
     AlphaTargetLane,
     AlphaTargetPolicy,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class _Contract(BaseModel):  # type: ignore[misc]

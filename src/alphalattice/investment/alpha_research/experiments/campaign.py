@@ -51,8 +51,8 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scaling.catalog import CrossSectionalScaleCatalog
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from alphalattice.protocols.research_authoring.selection import (
     load_safe_yaml_document,

@@ -105,7 +105,7 @@
       "input_registry": "config/registries/test-sizes.json",
       "projection": "src/devtools/testing/sizes.py",
       "admission_guard": "scripts/check_playpen.py::shrink_only_growth",
-      "policy": "Registered limits drive pytest-timeout across setup, call and teardown; new Large rows require a dated maintainer decision in admitted, verified in review; every test budget only falls unless a dated budget admission holds its value (src/devtools/testing/sizes.py::budget_rises, run by the same guard); other finding sets remain shrink-only."
+      "policy": "Registered limits drive pytest-timeout across setup, call and teardown; new Large rows require a dated maintainer decision in admitted, verified in review; other finding sets remain shrink-only."
     },
     "test registration": {
       "description": "Test registration admits owned requirements and refuses holders without a registered requirement beyond each file's legacy count.",

@@ -27,14 +27,6 @@ LIMIT_SHARE = 4
 disk that holds the write with its recovery headroom."""
 SHARE_WORDS = {4: "a quarter", 10: "a tenth"}
 """The shares' words, so the readback names the shares the cap uses."""
-FREE_FLOOR_BYTES = 1 << 30
-"""Free disk a data root keeps for its log, the repair and cleanup: below it the Host refuses new
-admissions and staging, and those three still run."""
-
-
-def free_floor_shortfall(path: Path, floor: int = FREE_FLOOR_BYTES) -> int:
-    """How many bytes the disk holding `path` is below `floor`; 0 when it holds the floor."""
-    return max(0, floor - shutil.disk_usage(path).free)
 
 
 class StorageCapacity(BaseModel):  # type: ignore[misc]

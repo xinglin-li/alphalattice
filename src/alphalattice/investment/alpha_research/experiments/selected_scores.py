@@ -21,20 +21,18 @@ cross-sectional dispersion forecast, which are separate owners.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any, Literal, Self
 
 import numpy as np
 import numpy.typing as npt
-import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.foundation.data_layer import history
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -160,13 +158,14 @@ def predicted_z_values_hash(values: FloatArray) -> str:
     """Byte identity of the predicted-Z matrix, NaNs included."""
 
     contiguous = np.ascontiguousarray(values, dtype=np.float64)
-    return identity_sha256(contiguous.tobytes()).hexdigest()
+    return hashlib.sha256(contiguous.tobytes()).hexdigest()
 
 
 def _resolve_selected_folds(
     *,
     dossier: object,
     decision: object,
+    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> tuple[
     dict[str, Any],
@@ -228,25 +227,10 @@ def _resolve_selected_folds(
             or int(trial["horizon_sessions"]) != horizon_sessions
         ):
             raise AlphaSelectedScoreError("alpha_research.selected_scores_trial_not_this_fold")
-        content_hash = str(trial["prediction_artifact_hash"])
-        try:
-            table = pq.read_table(
-                pa.BufferReader(
-                    history.read_alpha_part(
-                        content_hash, "development/campaign/prediction-surfaces"
-                    )
-                )
-            )
-        except FileNotFoundError as error:
-            raise AlphaSelectedScoreError(
-                "alpha_research.selected_scores_prediction_missing"
-            ) from error
-        except AlphaLatticeError as error:
-            if error.failure.code == "data_layer.part_missing":
-                raise AlphaSelectedScoreError(
-                    "alpha_research.selected_scores_prediction_missing"
-                ) from error
-            raise AlphaSelectedScoreError(str(error)) from error
+        path = prediction_surface_root / f"{trial['prediction_artifact_hash']}.parquet"
+        if not path.is_file():
+            raise AlphaSelectedScoreError("alpha_research.selected_scores_prediction_missing")
+        table = pq.read_table(path)
         if set(table.schema.names) != {"row_id", "prediction"}:
             raise AlphaSelectedScoreError(
                 "alpha_research.selected_scores_prediction_schema_invalid"
@@ -287,6 +271,7 @@ def project_alpha_selected_scores(
     *,
     dossier: object,
     decision: object,
+    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> tuple[AlphaSelectedScoreProjection, FloatArray]:
     """Assemble the fold-selected predictions of one Stage 3 decision.
@@ -301,6 +286,7 @@ def project_alpha_selected_scores(
     dossier_payload, decision_payload, admitted, horizon, folds, per_fold = _resolve_selected_folds(
         dossier=dossier,
         decision=decision,
+        prediction_surface_root=prediction_surface_root,
         horizon_sessions=horizon_sessions,
     )
     sessions = tuple(
@@ -342,6 +328,7 @@ def project_alpha_selected_rows(
     *,
     dossier: object,
     decision: object,
+    prediction_surface_root: Path,
     horizon_sessions: int,
 ) -> AlphaSelectedRowAxis:
     """Rebuild the exact ordered row axis Stage 3's calibration consumed.
@@ -358,6 +345,7 @@ def project_alpha_selected_rows(
         _resolve_selected_folds(
             dossier=dossier,
             decision=decision,
+            prediction_surface_root=prediction_surface_root,
             horizon_sessions=horizon_sessions,
         )
     )

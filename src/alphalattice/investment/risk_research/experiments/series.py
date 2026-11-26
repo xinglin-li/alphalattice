@@ -6,7 +6,6 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
     DEVELOPMENT_DIAGNOSTICS_CATEGORY,
     DEVELOPMENT_SURFACE_CATEGORY,
@@ -18,6 +17,7 @@ from alphalattice.investment.risk_research.experiments.window import (
     RiskDevelopmentInputBinding,
 )
 from alphalattice.investment.risk_research.surfaces.artifacts import RiskArtifactStore
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import ResolvedResearchAuthority
 
 SERIES_CATEGORY = "development/covariance-series"

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.scikit-learn.lasso",
+  "revision": "1.0.0",
+  "title": "scikit-learn Lasso adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "scikit-learn", "version": "1.9.0"},
+  "companion_distributions": [],
+  "callable": "sklearn.linear_model.Lasso",
+  "arguments": [
+    {"schema_version": "1", "name": "alpha", "value_kind": "number", "required": true, "minimum": 0.0},
+    {"schema_version": "1", "name": "fit_intercept", "value_kind": "boolean", "has_default": true, "default": true},
+    {"schema_version": "1", "name": "max_iter", "value_kind": "integer", "has_default": true, "default": 1000, "minimum": 1.0},
+    {"schema_version": "1", "name": "selection", "value_kind": "string", "has_default": true, "default": "cyclic", "allowed_values": ["cyclic"]},
+    {"schema_version": "1", "name": "tol", "value_kind": "number", "has_default": true, "default": 0.0001, "minimum": 0.0},
+    {"schema_version": "1", "name": "warm_start", "value_kind": "boolean", "has_default": true, "default": false}
+  ],
+  "interactions": ["Alpha is computed from the current fold training matrix before the package call."],
+  "assumptions": ["Input was transformed by the committed training-only scaler."],
+  "warnings": ["Convergence warnings must be preserved in the fit ledger."],
+  "failure_modes": ["Unsupported constructor argument or unavailable locked scikit-learn distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Lasso.html"
+}

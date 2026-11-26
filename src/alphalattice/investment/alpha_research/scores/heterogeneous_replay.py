@@ -20,6 +20,7 @@ other than the one the closure was sealed under.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -47,7 +48,6 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
 from alphalattice.capabilities.alpha_modeling.runtime.service import (
     AlphaModelRuntimeService,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scores.heterogeneous_product import (
     COMPONENT_IDS,
     INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY,
@@ -76,7 +76,7 @@ from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
     live_vintages,
 )
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -95,7 +95,7 @@ class HeterogeneousReplayError(ValueError):
 def _sha256(path: Path) -> str:
     if not path.is_file():
         raise HeterogeneousReplayError("alpha_research.heterogeneous_evidence_absent")
-    digest = integrity_sha256()
+    digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)

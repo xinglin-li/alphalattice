@@ -15,7 +15,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     BoundAlphaTrainingInput,
     alpha_model_array_content_hash,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..targets.execution_outcome import AlphaTargetPolicy
 

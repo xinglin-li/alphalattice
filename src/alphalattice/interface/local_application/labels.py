@@ -59,20 +59,20 @@ class LabelTable(BaseModel):  # type: ignore[misc]
 
 
 @cache
-def _installed() -> tuple[LabelTable, dict[str, Label]]:
-    """The installed label table and its labels by id, read and indexed once."""
-    table: LabelTable = LabelTable.model_validate_json(_TABLE.read_text(encoding="utf-8"))
-    return table, {value.id: value for value in table.labels}
-
-
 def label_table() -> LabelTable:
     """The installed label table, read once."""
-    return _installed()[0]
+    table: LabelTable = LabelTable.model_validate_json(_TABLE.read_text(encoding="utf-8"))
+    return table
+
+
+@cache
+def _by_id() -> dict[str, Label]:
+    return {value.id: value for value in label_table().labels}
 
 
 def label(code: str) -> Label | None:
     """The label of one installed id, or none when the table names no such id."""
-    return _installed()[1].get(code)
+    return _by_id().get(code)
 
 
 def title(code: str, *, chinese: bool = False) -> str:
@@ -95,7 +95,7 @@ def titles_in(answer: object, *, chinese: bool = False) -> dict[str, str]:
     Returns:
         Each named id's title; empty when the answer names none.
     """
-    known = _installed()[1]
+    known = _by_id()
     found: dict[str, str] = {}
     pending = [answer]
     while pending:

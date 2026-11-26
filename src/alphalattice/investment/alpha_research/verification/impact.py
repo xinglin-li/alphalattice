@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type AlphaVerificationDomain = Literal[
     "FOUNDATION_INPUT",
@@ -183,7 +183,7 @@ def alpha_verification_domain(path: str) -> AlphaVerificationDomain:
             "src/alphalattice/investment/alpha_research/inputs/folds.py",
             "src/alphalattice/investment/alpha_research/inputs/surfaces.py",
             "src/alphalattice/foundation/feature_engine/panels/reader.py",
-            "workspace/src/alphalattice/capabilities/validation/splitting.py",
+            "workspace/src/alphalattice/kernel/validation/splitting.py",
         }
         or value.startswith(
             (
@@ -238,7 +238,7 @@ def alpha_verification_domain(path: str) -> AlphaVerificationDomain:
     if value in {
         "src/alphalattice/investment/alpha_research/evaluation/metrics.py",
         "src/alphalattice/investment/alpha_research/evaluation/viability.py",
-    } or value.startswith("workspace/src/alphalattice/capabilities/validation/"):
+    } or value.startswith("workspace/src/alphalattice/kernel/validation/"):
         return "METRICS"
     if value in {
         "src/alphalattice/investment/alpha_research/evaluation/stability.py",

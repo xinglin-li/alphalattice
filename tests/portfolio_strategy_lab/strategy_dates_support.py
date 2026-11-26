@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
@@ -55,6 +54,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 from tests.portfolio_strategy_lab.synthetic_numerical import build_numerical
 

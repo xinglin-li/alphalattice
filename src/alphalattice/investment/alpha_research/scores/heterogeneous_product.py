@@ -15,6 +15,7 @@ renormalisation.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from datetime import date
 from typing import ClassVar, Final, Literal, Self, cast
@@ -23,18 +24,14 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.capabilities.domain_contracts.recipe_identity import (
-    recipe_identity,
-    recipe_seal_holds,
-)
 from alphalattice.investment.alpha_research.scores.product_recipe import (
     INSTALLED_ALPHA_PRODUCT_RECIPE,
     PRODUCT_ESTIMATOR_POINT,
     AlphaEstimatorParameterPoint,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
 
 HETEROGENEOUS_STRATEGY_ID: Final = "FOUR_COMPONENT_BOOK"
 _RECIPE_SEAL: Final = frozenset({"recipe_hash"})
@@ -661,7 +658,7 @@ manifest hash instead, and the sealed closure manifest binds both.
 
 def array_value_hash(values: npt.ArrayLike) -> str:
     """The identity of one float lane: sha256 over its little-endian float64 bytes."""
-    return identity_sha256(np.ascontiguousarray(values, dtype="<f8").tobytes()).hexdigest()
+    return hashlib.sha256(np.ascontiguousarray(values, dtype="<f8").tobytes()).hexdigest()
 
 
 class HeterogeneousChildModelIdentity(_Contract):

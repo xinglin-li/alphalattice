@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, Literal, Protocol, Self
 
 import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type AlphaModelFitProtocol = Literal["DIRECT_FIT", "NESTED_EARLY_STOPPING_REFIT"]
@@ -29,7 +28,7 @@ def alpha_model_array_content_hash(value: npt.NDArray[np.generic]) -> str:
         SHA-256 identity over dtype spelling, shape representation and contiguous values.
     """
     contiguous = np.ascontiguousarray(value)
-    digest = integrity_sha256()
+    digest = sha256()
     digest.update(contiguous.dtype.str.encode("ascii"))
     digest.update(repr(contiguous.shape).encode("ascii"))
     digest.update(memoryview(contiguous).cast("B"))
@@ -588,7 +587,9 @@ class AlphaEstimatorContent(_Contract):
         """
         if self.ordered_feature_ids != tuple(
             dict.fromkeys(self.ordered_feature_ids)
-        ) or self.content_hash != scoped_model_digest(self, "content_hash", digest=canonical_hash):
+        ) or self.content_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"content_hash"})
+        ):
             raise ValueError("ALPHA_ESTIMATOR_CONTENT_IDENTITY_INVALID")
         return self
 

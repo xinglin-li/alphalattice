@@ -7,8 +7,6 @@ executor, and the Host publishes what the child's files make.
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -44,7 +42,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
 from alphalattice.control.research_program.authoring.document import load_authoring_document
 from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
 from alphalattice.control.task_control.child import ChildInterrupted, ChildRefused, run_in_child
-from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.factor_research.experiments.development_evidence import (
     FactorDevelopmentCurationReader,
     FactorDevelopmentReceipt,
@@ -57,11 +54,6 @@ from alphalattice.foundation.factor_research.research_loop.decisions import (
 )
 from alphalattice.foundation.feature_engine.panels.development_input import (
     ResolvedDevelopmentFeatureInput,
-)
-from alphalattice.investment.alpha_research.experiments.development_artifacts import (
-    AlphaDevelopmentArtifactStore,
-    StagedAlphaDevelopment,
-    stage_alpha_development,
 )
 from alphalattice.investment.alpha_research.experiments.development_execution import (
     AlphaDevelopmentCancelled,
@@ -166,17 +158,8 @@ class ChildAlphaExecutor:
         """
         if recorder is not None:
             raise AuthoringError("research_authoring.child_execution_records_no_calls")
-        output_workspace = output_workspace.resolve()
-        staging = _alpha_staging(output_workspace, program.program_hash)
-        checkpoint = staging / "completed-fold.json"
-        if checkpoint.is_symlink():
-            raise AuthoringError("alpha_research.child_staging_linked")
-        if checkpoint.is_file():
-            _AlphaChildCheckpoint.read(checkpoint).publish(output_workspace, staging)
-        _clear_alpha_staging(staging)
-        history.flush()
         try:
-            answer: _AlphaChildAnswer = run_in_child(
+            result = run_in_child(
                 f"{__name__}:execute_alpha_in_child",
                 {
                     "recipe": self.recipe,
@@ -185,7 +168,6 @@ class ChildAlphaExecutor:
                     "authority": authority,
                     "output_workspace": output_workspace,
                     "fit_threads": lightgbm_fit_threads(),
-                    "staging": staging,
                 },
                 cancelled=self.cancelled,
             )
@@ -193,123 +175,7 @@ class ChildAlphaExecutor:
             if failure.type_name == AlphaDevelopmentCancelled.__name__:
                 raise AlphaDevelopmentCancelled() from None
             raise
-        history.keep_collected_alpha_parts(answer.parts)
-        AlphaDevelopmentArtifactStore.publish_staged_development(answer.output)
-        _clear_alpha_staging(staging)
-        staging.rmdir()
-        if answer.result is None:
-            raise AlphaDevelopmentCancelled("alpha_research.cancelled_at_fold_boundary")
-        return answer.result
-
-
-@dataclass(frozen=True)
-class _AlphaChildAnswer:
-    # Large bodies stay in this call's private folder rather than going through the pickle pipe.
-    result: DeskExecutionResult | None
-    parts: history.AlphaParts
-    output: StagedAlphaDevelopment
-
-
-def _alpha_staging(workspace: Path, program_hash: str) -> Path:
-    """The program's private staging directory survives a stopped Host."""
-    if re.fullmatch(r"[0-9a-f]{64}", program_hash) is None:
-        raise AuthoringError("research_authoring.program_identity_invalid")
-    staging = workspace / ".alpha-child" / program_hash
-    if staging.resolve() != staging:
-        raise AuthoringError("alpha_research.child_staging_linked")
-    staging.mkdir(parents=True, exist_ok=True)
-    return staging
-
-
-def _clear_alpha_staging(staging: Path) -> None:
-    # Withdraw the recovery record before removing the files it names.
-    (staging / "completed-fold.json").unlink(missing_ok=True)
-    for path in staging.iterdir():
-        if path.name == "completed-fold.tmp" or re.fullmatch(
-            r"alpha-(part|document|breakdown)-[0-9]+|\.alpha-document-[0-9]+\.[0-9]+\.tmp",
-            path.name,
-        ):
-            path.unlink()
-
-
-@dataclass(frozen=True)
-class _AlphaChildCheckpoint:
-    """Only complete candidate folds are made available to a recovering Host."""
-
-    parts: list[tuple[str, str, str]]
-    documents: list[str]
-    chunks: list[tuple[str, str, str]]
-
-    @staticmethod
-    def _triples(rows: object) -> list[tuple[str, str, str]]:
-        if not isinstance(rows, list):
-            raise AuthoringError("alpha_research.child_staging_invalid")
-        triples: list[tuple[str, str, str]] = []
-        for row in rows:
-            if not isinstance(row, list) or len(row) != 3:
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            a, b, c = row
-            if not isinstance(a, str) or not isinstance(b, str) or not isinstance(c, str):
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            triples.append((a, b, c))
-        return triples
-
-    @classmethod
-    def read(cls, path: Path) -> _AlphaChildCheckpoint:
-        """Read the complete fold manifest, rejecting unreadable or untyped records."""
-        try:
-            value: object = json.loads(path.read_bytes())
-        except (OSError, UnicodeError, ValueError) as error:
-            raise AuthoringError("alpha_research.child_staging_invalid") from error
-        if not isinstance(value, dict) or set(value) != {"parts", "documents", "chunks"}:
-            raise AuthoringError("alpha_research.child_staging_invalid")
-        document_rows = value["documents"]
-        if not isinstance(document_rows, list):
-            raise AuthoringError("alpha_research.child_staging_invalid")
-        documents: list[str] = []
-        for document in document_rows:
-            if not isinstance(document, str):
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            documents.append(document)
-        return cls(cls._triples(value["parts"]), documents, cls._triples(value["chunks"]))
-
-    def publish(self, workspace: Path, staging: Path) -> None:
-        parts: history.AlphaParts = {}
-        output = StagedAlphaDevelopment(staging)
-        for index, (content, layout, digest) in enumerate(self.parts):
-            source = staging / f"alpha-part-{index}"
-            if source.resolve() != source:
-                raise AuthoringError("alpha_research.child_staging_linked")
-            if (content, layout) in parts or not all(
-                re.fullmatch(r"[0-9a-f]{64}", value) for value in (content, digest)
-            ):
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            parts[content, layout] = digest, source
-        store = workspace / "alpha-development" / "alpha-research"
-        for index, relative in enumerate(self.documents):
-            target = (workspace / relative).resolve()
-            source = staging / f"alpha-document-{index}"
-            if (
-                not target.is_relative_to(store)
-                or target in output.documents
-                or target.suffix != ".json"
-                or source.resolve() != source
-            ):
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            output.documents[target] = source
-        for index, (digest, seal, checksum) in enumerate(self.chunks):
-            source = staging / f"alpha-breakdown-{index}"
-            if (
-                source.resolve() != source
-                or digest in output.chunks
-                or not all(
-                    re.fullmatch(r"[0-9a-f]{64}", value) for value in (digest, seal, checksum)
-                )
-            ):
-                raise AuthoringError("alpha_research.child_staging_invalid")
-            output.chunks[digest] = seal, checksum, source
-        history.keep_collected_alpha_parts(parts)
-        AlphaDevelopmentArtifactStore.publish_staged_development(output)
+        return cast(DeskExecutionResult, result)
 
 
 def execute_alpha_in_child(
@@ -320,9 +186,8 @@ def execute_alpha_in_child(
     authority: ResolvedResearchAuthority,
     output_workspace: Path,
     fit_threads: int,
-    staging: Path,
     cancelled: Callable[[], bool],
-) -> _AlphaChildAnswer:
+) -> DeskExecutionResult:
     """The child's side: prepare the handoff again and run its executor on the sealed Program.
 
     Args:
@@ -332,55 +197,24 @@ def execute_alpha_in_child(
         authority: The authority it resolved.
         output_workspace: The study's output workspace.
         fit_threads: The LightGBM thread count the Host admitted for this run.
-        staging: A private call folder shared with the Host for the parts and documents.
         cancelled: Reads true once the Host relayed the Task's cancellation.
 
     Returns:
-        The executor's result and staged evidence, including completed work at cancellation.
+        The executor's result.
     """
-
-    def checkpoint() -> None:
-        completed = _AlphaChildCheckpoint(
-            parts=[(content, layout, digest) for (content, layout), (digest, _) in parts.items()],
-            documents=[
-                target.relative_to(output_workspace).as_posix() for target in output.documents
-            ],
-            chunks=[
-                (digest, seal, checksum) for digest, (seal, checksum, _) in output.chunks.items()
-            ],
-        )
-        path = staging / "completed-fold.json"
-        pending = path.with_suffix(".tmp")
-        pending.write_text(
-            json.dumps(
-                {
-                    "parts": completed.parts,
-                    "documents": completed.documents,
-                    "chunks": completed.chunks,
-                }
-            ),
-            encoding="utf-8",
-        )
-        pending.replace(path)
-
-    with (
-        history.collect_alpha_parts(staging) as parts,
-        stage_alpha_development(staging, checkpoint) as output,
-        lightgbm_threads(fit_threads),
-    ):
-        try:
-            executor = recipe.prepare().executor
-            executor.set_cancellation_check(cancelled)
-            result = executor.execute(
+    executor = recipe.prepare().executor
+    executor.set_cancellation_check(cancelled)
+    with lightgbm_threads(fit_threads):
+        return cast(
+            DeskExecutionResult,
+            executor.execute(
                 program=program,
                 document=document,
                 authority=authority,
                 output_workspace=output_workspace,
                 recorder=None,
-            )
-        except AlphaDevelopmentCancelled:
-            return _AlphaChildAnswer(None, parts, output)
-    return _AlphaChildAnswer(result, parts, output)
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -560,8 +394,8 @@ def prepare_factor_handoff(
                 expected={f"experiment.{key}": value},
             )
         authored[key] = value
-    # The Factor study's universe, or a declared exploration sample of it: an Alpha
-    # study may run on fewer names than its Factor evidence, never others.
+    # The Factor study's universe, or a declared exploration sample of it (binding plan,
+    # B17): an Alpha study may run on fewer names than its Factor evidence, never others.
     factor_universe = original_document["experiment"]["universe_handle"]
     universe = experiment.get("universe_handle", factor_universe)
     if universe_profile(str(universe)) != factor_universe:
@@ -632,7 +466,7 @@ MODEL_CHOICE_WORDS: Final = (
     "research strategy's required Alpha study is planned from strategy controls and needs no "
     "model choice."
 )
-"""Whose decision a handoff's open fields are."""
+"""Whose decision a handoff's open fields are (FLOW-3)."""
 
 
 def preview_factor_handoff(
@@ -709,7 +543,7 @@ def preview_factor_handoff(
         ],
         "task": None,
         "numerical_call_count": 0,
-        # Whose decision the open fields are, in the answer itself.
+        # Whose decision the open fields are, in the answer itself (FLOW-3).
         "choice_owner": "AGENT_DISCLOSES",
     }
     if prepared.missing_fields:

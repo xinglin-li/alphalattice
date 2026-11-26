@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.task_control.contracts import TaskLifecycle, WorkItemLifecycle
 from alphalattice.control.task_control.timing import task_timing
-from tests.portfolio_strategy_lab.node_runner import run_node
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from tests.portfolio_strategy_lab.local_web_support import run_node
 
 
 @pytest.mark.parametrize("case", ["collection-owner-spans", "selected-task-status"])

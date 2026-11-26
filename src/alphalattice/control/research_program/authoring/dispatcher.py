@@ -49,7 +49,6 @@ class SealedSubmission:
 
     `document` travels with the seal so a later step cannot execute a different
     document than the one whose identity was sealed.
-    Hypothesis and Task ids describe this run, outside the sealed content's identity.
     """
 
     document: Mapping[str, Any]
@@ -57,8 +56,6 @@ class SealedSubmission:
     authority: ResolvedResearchAuthority
     program: SealedResearchProgram
     binding: ActorSubmissionBinding
-    hypothesis_id: str | None = None
-    task_id: str | None = None
 
 
 class ResearchExperimentDispatcher:

@@ -17,10 +17,7 @@ import pytest
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
-from alphalattice.interface.local_application.client import LocalResearchClient
-from tests.portfolio_strategy_lab.host_requests import _json, _request
-from tests.portfolio_strategy_lab.local_web_support import _cli
-from tests.portfolio_strategy_lab.node_runner import run_node
+from tests.portfolio_strategy_lab.local_web_support import _cli, _json, _request, run_node
 
 MODULES = (
     Path(__file__).resolve().parents[3]
@@ -89,12 +86,10 @@ class _Producer:
         return self._document("NATIVE_COORDINATION_MESSAGE", text, subject)
 
     def publish(self, live: LocalPortfolioWebSession, document: dict[str, Any]) -> dict[str, Any]:
-        if self.sequence == 1:  # one real CLI journey; the other cases use its client boundary
-            path = self.tmp / "event-1.json"
-            path.write_text(json.dumps(document), encoding="utf-8")
-            _code, body = _cli(live, "event", "declare", "--file", f"{path}")
-            return body["data"]
-        return LocalResearchClient(live.workspace).publish_event(document)
+        path = self.tmp / f"event-{self.sequence}.json"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        _code, body = _cli(live, "event", "declare", "--file", f"{path}")
+        return body["data"]
 
 
 def _words(markup: str) -> str:

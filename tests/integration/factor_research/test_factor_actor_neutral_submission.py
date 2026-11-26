@@ -23,12 +23,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.foundation.factor_research.evaluation.oos_evidence import (
     FactorEvidenceClassification,
 )
@@ -348,7 +348,7 @@ def test_factor_submission_boundary_has_no_agent_runtime_import_closure() -> Non
             "print(json.dumps(loaded))",
         )
     )
-    probe = spawn.run(
+    probe = subprocess.run(
         [
             sys.executable,
             "-c",

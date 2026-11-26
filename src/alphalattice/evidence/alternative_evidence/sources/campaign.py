@@ -27,17 +27,16 @@ own absence.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
-from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.workspace_runtime.lock import WorkspaceLock
-from alphalattice.kernel.clock import utc_now
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
 
 CAMPAIGN_LEDGER_ROOT = "sec-campaigns"
 """The directory under the artifact root that holds one ledger per campaign."""
@@ -166,7 +165,7 @@ class SecCampaignLedger:
                     "maximum_total_response_bytes": declaration.maximum_total_response_bytes,
                     "maximum_body_resources": declaration.maximum_body_resources,
                     "maximum_document_bytes": declaration.maximum_document_bytes,
-                    "admitted_at": (admitted_at or utc_now()).isoformat(),
+                    "admitted_at": (admitted_at or datetime.now(UTC)).isoformat(),
                 }
             )
             return ledger
@@ -323,7 +322,7 @@ class SecCampaignLedger:
                 "url": url,
                 "resource": resource,
                 "reserved_bytes": maximum_bytes,
-                "at": utc_now().isoformat(),
+                "at": datetime.now(UTC).isoformat(),
             }
         )
         return sequence
@@ -338,7 +337,7 @@ class SecCampaignLedger:
                 "sequence": sequence,
                 "actual_bytes": actual_bytes,
                 "outcome": outcome,
-                "at": utc_now().isoformat(),
+                "at": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -365,7 +364,7 @@ class SecCampaignLedger:
 
 def _line_hash(previous: str, content: dict[str, object]) -> str:
     body = json.dumps({k: v for k, v in content.items() if k != "line_hash"}, sort_keys=True)
-    return integrity_sha256((previous + body).encode("utf-8")).hexdigest()
+    return hashlib.sha256((previous + body).encode("utf-8")).hexdigest()
 
 
 __all__ = [

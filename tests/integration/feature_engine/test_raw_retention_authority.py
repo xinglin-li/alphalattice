@@ -149,7 +149,7 @@ def test_raw_retention_choice_continues_only_for_the_same_case_on_a_derived_mani
         proofs = raw_retention_decision_proofs(panel, market, historical_authority=authority)
         assert len(proofs) == 6
         if actor == "rule":
-            head = goals.first_use()  # the goal the rule helper opened, under its Host id
+            head = goals.store.head(UUID(int=7))
             entries = goals.store.attributed(head.goal_id)
             for fault in ("missing", "foreign", "late", "rule_hash"):
                 with monkeypatch.context() as invalid:

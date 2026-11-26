@@ -13,7 +13,6 @@ from decimal import Decimal
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     OwnerCoverage,
     PortfolioApplicationError,
@@ -38,6 +37,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.tranche_book import
     TOP_K_RANGE,
     TRANCHES_RANGE,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 HASH = "a" * 64
 CATALOG = INSTALLED_PUBLIC_CONTROL_CATALOG

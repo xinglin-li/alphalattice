@@ -25,7 +25,6 @@ artifact, finds nothing, and computes it again.
 
 from __future__ import annotations
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -53,6 +52,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.finalization imp
 from alphalattice.investment.portfolio_strategy_lab.publication.finalization_ledger import (
     PortfolioFinalizationStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 
 FINALIZATION_TASK_KIND = "portfolio_public_protected_finalization"
 FINALIZATION_INPUT_SCHEMA = "portfolio-public-protected-finalization-candidate"

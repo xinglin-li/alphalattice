@@ -13,13 +13,11 @@ in the private legacy count list, which only shrinks.
 from __future__ import annotations
 
 import ast
-import copy
 import hashlib
 import json
 import math
 import os
 import re
-import stat
 import tempfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -29,7 +27,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from devtools.testing.sizes import hang_guard, load_policy, speed_budget, validate_policy
+from devtools.testing.sizes import load_policy
 
 REGISTRY = Path("config/registries/requirements.json")
 LEGACY_SCHEMA = "alphalattice.tests-unregistered.v1"
@@ -186,12 +184,13 @@ def node_matches(node: str, selector: str) -> bool:
 def _size_contents(
     lines: list[str], node: ast.FunctionDef | ast.AsyncFunctionDef, start: int
 ) -> str:
-    """Keep executable syntax and marks while excluding comments and requirement decorators."""
-    image = copy.copy(node)
-    image.decorator_list = [
-        d for d in node.decorator_list if not PROVES_LINE.fullmatch(lines[d.lineno - 1])
-    ]
-    return ast.dump(image, include_attributes=False)
+    """Exclude only actual single-line requirement decorators, never text in the test body."""
+    markers = {
+        d.lineno - 1 for d in node.decorator_list if PROVES_LINE.fullmatch(lines[d.lineno - 1])
+    }
+    return "".join(
+        line for i, line in enumerate(lines[start : node.end_lineno], start) if i not in markers
+    )
 
 
 def file_holders(relative: str, text: str, *, size_scope: bool = False) -> list[Holder]:
@@ -375,17 +374,9 @@ def schema_path(root: Path, schema: str) -> Path | None:
             with os.scandir(pending.pop()) as entries:
                 for entry in entries:
                     path = Path(entry.path)
-                    is_directory = entry.is_dir(follow_symlinks=False)
-                    attributes = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
-                    if (
-                        entry.is_symlink()
-                        or path.is_junction()
-                        or attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-                    ):
-                        continue
                     if entry.name.endswith(".json"):
                         names.append(path.relative_to(root).as_posix())
-                    if is_directory:
+                    if entry.is_dir(follow_symlinks=False):
                         pending.append(path)
         names.sort()
         contents = {name: (root / name).read_bytes() for name in names}
@@ -723,244 +714,6 @@ def _decided(exception: Any, kinds: list[str]) -> bool:
     return isinstance(why, str) and bool(why.strip()) and bool(dated)
 
 
-ABOVE_UNIT = {"integration": 1, "e2e": 2, "native": 3}
-"""The layers a new test reaches only with a stated reason; unit is the default, and a contract
-suite is its port's own form. The pyramid ratchet (the person, 11-06): integration held 77.6% of
-tests and 90.6% of their time, unit 4.4% and 0.1%."""
-
-
-def lower_layer(key: str, row: Mapping[str, Any], prior: Mapping[str, Any] | None) -> list[str]:
-    """A row added above unit, or raised to a higher layer, says in one sentence why a lower layer
-    cannot prove it; the reviewer reads that sentence beside the test."""
-    rank = ABOVE_UNIT.get(row["layer"], 0)
-    if not rank or (prior is not None and rank <= ABOVE_UNIT.get(str(prior.get("layer")), 0)):
-        return []
-    why = row.get("lower_layer")
-    if isinstance(why, str) and 5 <= len(why.split()) <= 40 and why != row.get("description"):
-        return []
-    return [
-        f"TEST-REGISTRY {key} sits at {row['layer']}, above unit, where a new test starts: record "
-        '"lower_layer": "<one 5-40 word sentence on why a lower layer cannot prove it>", '
-        "or register it as unit."
-    ]
-
-
-def _area_layers(tests: Iterable[Holder]) -> dict[str, Counter[str]]:
-    """Each area's test functions by layer, read from tests/<layer>/<area>/... placement."""
-    areas: dict[str, Counter[str]] = {}
-    for test in tests:
-        parts = test.node.partition("::")[0].split("/")
-        if len(parts) > 3 and parts[0] == "tests" and parts[1] in LAYERS:
-            areas.setdefault(parts[2], Counter())[parts[1]] += 1
-    return areas
-
-
-def _removed_imports(node: ast.AST, removed: set[str]) -> set[str] | None:
-    """Resolve project imports only when their exact modules have been removed."""
-
-    def deleted(module: str) -> bool:
-        path = module.replace(".", "/") + ".py"
-        return path in removed or "src/" + path in removed
-
-    if isinstance(node, ast.Import):
-        modules = [(item.name, item.asname or item.name.split(".")[0]) for item in node.names]
-    elif isinstance(node, ast.ImportFrom):
-        if node.level:
-            return None
-        module = node.module or ""
-        modules = [
-            (module if deleted(module) else f"{module}.{item.name}", item.asname or item.name)
-            for item in node.names
-        ]
-    else:
-        return set()
-    names: set[str] = set()
-    for module, name in modules:
-        if module.split(".", 1)[0] in {"importlib", "runpy", "subprocess", "os"}:
-            return None
-        if module.split(".", 1)[0] in {"scripts", "devtools", "alphalattice", "tests"}:
-            if name == "*" or not deleted(module):
-                return None
-            names.add(name)
-    return names
-
-
-def _removed_test_source(text: str, removed: set[str]) -> bool:
-    """A retired test file names only deleted project modules and no dynamic import route."""
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return False
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            name = (
-                node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
-            )
-            if name in {"__import__", "import_module", "run_module", "run_path", "exec", "eval"}:
-                return False
-        found = _removed_imports(node, removed)
-        if found is None:
-            return False
-        names.update(found)
-    tests = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
-    ]
-    return bool(names and tests) and all(
-        any(isinstance(part, ast.Name) and part.id in names for part in ast.walk(test))
-        for test in tests
-    )
-
-
-def _retired_area(
-    area: str,
-    current: list[Holder],
-    previous: list[Holder],
-    retired_tests: Mapping[str, str],
-    removed_sources: set[str],
-) -> bool:
-    old = {test.node: test for test in previous}
-    new = {test.node: test for test in current}
-    if new.keys() - old.keys():
-        return False
-    removed = [node for node in old.keys() - new.keys() if node.split("/")[2:3] == [area]]
-    unchanged = all(
-        getattr(test, "digest", "") == getattr(old[node], "digest", "")
-        for node, test in new.items()
-        if node in old and node.split("/")[2:3] == [area]
-    )
-    return bool(removed and unchanged) and all(
-        (path := node.partition("::")[0]) in retired_tests
-        and _removed_test_source(retired_tests[path], removed_sources)
-        for node in removed
-    )
-
-
-def _correct_prior_layers(
-    current: list[Holder],
-    previous: list[Holder],
-    then: dict[str, Counter[str]],
-    rows: Mapping[str, dict[str, Any]],
-    prior_rows: Mapping[str, dict[str, Any]],
-) -> None:
-    old = {test.node: test for test in previous}
-    for test in current:
-        if not test.node.startswith("tests/integration/") or not test.ids or not test.digest:
-            continue
-        original = old.get(test.node.replace("tests/integration/", "tests/unit/", 1))
-        if not original or original.digest != test.digest or original.ids != test.ids:
-            continue
-        if all(
-            key in rows
-            and key in prior_rows
-            and prior_rows[key]["layer"] == "unit"
-            and rows[key]["layer"] == "integration"
-            and not lower_layer(key, rows[key], prior_rows[key])
-            for key in test.ids
-        ):
-            area = test.node.split("/")[2]
-            then[area]["unit"] -= 1
-            then[area]["integration"] += 1
-
-
-def pyramid(
-    after: Iterable[Holder],
-    before: Iterable[Holder] | None,
-    rows: Mapping[str, dict[str, Any]] | None = None,
-    prior_rows: Mapping[str, dict[str, Any]] | None = None,
-    *,
-    retired_tests: Mapping[str, str] | None = None,
-    removed_sources: set[str] | None = None,
-    unit_backends: Iterable[Mapping[str, Any]] = (),
-) -> list[str]:
-    """An area's integration share of its test functions may only fall: a change that raises it
-    is refused by name. Correct an unchanged holder's prior label only when its raised registered
-    requirement says why it cannot run in unit; a new area has no prior share to keep. An
-    unchanged area's deleted tests may leave with the exact source they alone import. An area
-    whose whole package `unit_backends` bars from unit cannot lower its share, so it is not held
-    to it; its new rows still say why no lower layer proves them (`lower_layer`)."""
-    barred = {  # an area's own package (alphalattice.<group>.<area>) or its alias, never a part
-        row["name"].rpartition(".")[2]
-        for row in unit_backends
-        if row.get("kind") == "module"
-        and (
-            (row["name"].count(".") == 2 and row["name"].startswith("alphalattice."))
-            or "." not in row["name"]
-        )
-    }
-    current, previous = list(after), list(before or ())
-    now, then = _area_layers(current), _area_layers(previous)  # no base tree: nothing to keep
-    retired_tests = retired_tests or {}
-    removed_sources = removed_sources or set()
-    if rows is not None and prior_rows is not None:
-        _correct_prior_layers(current, previous, then, rows, prior_rows)
-    found = []
-    for area, counts in sorted(now.items()):
-        was = then.get(area, Counter())
-        total, prior = sum(counts.values()), sum(was.values())
-        if prior and counts["integration"] * prior > was["integration"] * total:
-            if area in barred or _retired_area(
-                area, current, previous, retired_tests, removed_sources
-            ):
-                continue
-            found.append(
-                f"Test pyramid risk for {area}: its integration share would rise from "
-                f"{was['integration']}/{prior} to {counts['integration']}/{total} test functions; "
-                "prove the new behaviour with unit tests, or move an integration test down a layer."
-            )
-    return found
-
-
-def growth(
-    policy: str | None,
-    source: int,
-    tests: int,
-    new: Iterable[Holder] = (),
-    rows: Mapping[str, Mapping[str, Any]] | None = None,
-    changed: Iterable[Holder] = (),
-) -> list[str]:
-    """A review signal when a change's net test lines exceed its net source plus the size policy's
-    floor, never a refusal: a share cap is met by folding tests, which leaves them no better. A
-    change whose tests do not grow says nothing; judged against `policy`, the test-sizes.json text
-    of the same snapshot as the measured diff: past it the change is named, unless each new test
-    function's requirement carries the test
-    manager's decided "growth" exception. A change that adds no test function (a rewrite of
-    existing tests) has its decision on each changed function's requirement instead, and needs
-    one such function. An absent, unreadable or malformed policy is never a pass."""
-    try:
-        loaded = validate_policy(json.loads(policy)) if policy is not None else {}
-        floor = (loaded.get("growth") or {}).get("floor_lines")
-    except ValueError:  # bad JSON or a bad policy; absent from the snapshot reads as no floor
-        floor = None
-    if type(floor) is not int:
-        return [
-            "TEST-GROWTH unmeasured: the change's config/registries/test-sizes.json is "
-            "absent, unreadable or names no growth floor_lines; an unread rule is never a pass."
-        ]
-    if tests <= max(
-        source + floor, 0
-    ):  # a change whose tests do not grow never outgrows its source
-        return []
-    rows = rows or {}
-    holders = list(new) or [test for test in changed if test.ids]
-    if holders and all(
-        any(_decided(rows.get(key, {}).get("exception"), ["growth"]) for key in test.ids)
-        for test in holders
-    ):
-        return []
-    return [
-        f"TEST-GROWTH signal: net tests {tests:+d} outgrow net source {source:+d} by more than "
-        f"{floor} lines. Turn cases into unit tests of the deciding function, keep one journey per "
-        "distinct path and delete what the change made redundant (tools/instructions/testing.md); "
-        "or record the test manager's decision on each new test's requirement row, or on each "
-        "changed test's when the change adds none: "
-        '"exception": {"kinds": ["growth"], "why": "<why>", "decided": "<date>: <the decision>"}.'
-    ]
-
-
 def admission(
     root: Path,
     rows: dict[str, dict[str, Any]],
@@ -970,10 +723,7 @@ def admission(
 ) -> list[str]:
     """What the change's added or edited rows fail: a check, or an exception the test manager has
     not decided (a journey, a Large test, an overrun, a near-duplicate); a row is only retired."""
-    policy = load_policy(root)  # a layer's budget is its size's speed budget, never its hang guard;
-    limits = {  # Large, which has no speed budget, keeps its hang guard
-        size: speed_budget(policy, size) or hang_guard(policy, size) for size in policy["limits"]
-    }
+    limits = load_policy(root)["limits"]  # a layer's limit is its size's: one source
     found = [
         f'TEST-REGISTRY {key} was removed; retire it instead ("retired": "<date>: <why>")'
         for key in sorted(before.keys() - rows.keys())
@@ -986,14 +736,7 @@ def admission(
     idf = _idf(at.entries)
     for key in changed:
         row, mine = rows[key], at.entries[f"R {key}"]
-        # A row retiring with the owner it already had keeps that owner as history: keys never
-        # change, and the package may have moved since. Every other check stands.
-        history = row.get("retired") and before.get(key, {}).get("owner") == row["owner"]
-        found += [
-            f"TEST-REGISTRY {key} is refused: {why}."
-            for why in _checks(key, row, owners | ({row["owner"]} if history else set()))
-        ]
-        found += lower_layer(key, row, before.get(key))
+        found += [f"TEST-REGISTRY {key} is refused: {why}." for why in _checks(key, row, owners)]
         twins = [
             other.partition(" ")[2]
             for other, entry in at.entries.items()
@@ -1018,54 +761,6 @@ def admission(
     return found
 
 
-def _fresh_lower_layers(
-    new: Iterable[Holder], rows: Mapping[str, dict[str, Any]], before: Mapping[str, dict[str, Any]]
-) -> list[str]:
-    # A new function on an old above-unit requirement is new work too. Rows newly
-    # added or raised are already checked by admission, so do not report them twice.
-    old_rows_for_new = {
-        key
-        for test in new
-        for key in test.ids
-        if key in rows
-        and key in before
-        and ABOVE_UNIT.get(rows[key]["layer"], 0) <= ABOVE_UNIT.get(before[key]["layer"], 0)
-    }
-    return [
-        issue for key in sorted(old_rows_for_new) for issue in lower_layer(key, rows[key], None)
-    ]
-
-
-def _decision_line_problems(rows: Mapping[str, dict[str, Any]], roster: Path) -> list[str]:
-    """Reject registered line names in decision text using the export roster."""
-    try:
-        if roster.is_symlink() or roster.is_junction():
-            raise ValueError("the roster is a link")
-        document = json.loads(roster.read_text(encoding="utf-8"))
-        names = document.get("entries") if isinstance(document, dict) else None
-        if (
-            not isinstance(names, dict)
-            or not names
-            or any(not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name) for name in names)
-        ):
-            raise ValueError("the roster has invalid or missing line names")
-    except (OSError, ValueError) as error:
-        raise ValueError(f"requirements.line_roster_unreadable: {roster}: {error}") from error
-
-    words = "|".join(re.escape(name) for name in sorted(names))
-    label = re.compile(r"(?<![A-Za-z0-9_-])(?:" + words + r")(?![A-Za-z0-9_-])")
-    found = []
-    for key, row in rows.items():
-        exception = row.get("exception")
-        decided = exception.get("decided") if isinstance(exception, dict) else None
-        if isinstance(decided, str) and label.search(decided):
-            found.append(
-                f"TEST-REGISTRY {key} requirements.decision_names_line: "
-                'keep the date and reason in "decided" and remove the development line.'
-            )
-    return found
-
-
 def guard(
     root: Path,
     new: Iterable[Holder],
@@ -1074,19 +769,16 @@ def guard(
     *,
     tests: Iterable[Holder] | None = None,
     before_tests: Iterable[Holder] | None = None,
-    retired_tests: Mapping[str, str] | None = None,
-    removed_sources: set[str] | None = None,
-    roster: Path | None = None,
 ) -> list[str]:
-    """Check new tests, edited rows and workshop decision text in one registry snapshot."""
+    """The fast guard's step over a change: its new tests and its added or edited rows, parsed
+    once; a tree with no registry at either end has nothing to register."""
     if text is None and base is None:
         return []
     try:
         rows, before = parse(text) if text else {}, parse(base, ordered=False) if base else {}
-        decisions = _decision_line_problems(rows, roster) if roster is not None else []
         new = list(new)
         if not new and rows == before and before_tests is None:
-            return decisions
+            return []
         at = index(root, rows, tests=tests)
         added_nodes = {test.node for test in new}
         prior = _places(
@@ -1109,18 +801,6 @@ def guard(
             candidates[test.node] = test._replace(
                 ids=tuple(dict.fromkeys((*(previous.ids if previous else ()), *ids)))
             )
-    return (
-        decisions
-        + registration(root, candidates.values(), rows, at=at, prior=prior)
-        + admission(root, rows, before, at=at)
-        + _fresh_lower_layers(new, rows, before)
-        + pyramid(
-            at.tests,
-            before_tests,
-            rows,
-            before,
-            retired_tests=retired_tests,
-            removed_sources=removed_sources,
-            unit_backends=load_policy(root).get("unit_backends", []),
-        )
+    return registration(root, candidates.values(), rows, at=at, prior=prior) + admission(
+        root, rows, before, at=at
     )

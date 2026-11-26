@@ -18,17 +18,13 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import portalocker
 import pytest
 
-from alphalattice.control.task_control.upgrade import carry_tasks
-from alphalattice.foundation.data_layer.backup import backup_data_root, restore_data_root
-from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs, own_root
-from alphalattice.foundation.data_layer.root import DATA_ROOT_ENV
 from devtools.evaluation.golden_workspaces import (
     GoldenInputs,
     GoldenPayloadCorrupt,
@@ -41,7 +37,6 @@ from devtools.evaluation.golden_workspaces import (
     seal_payload,
     verified_payload,
 )
-from tests import pytest_environment as environment
 from tests.pytest_environment import RUNNING_TEST, golden_runtime
 
 
@@ -59,13 +54,8 @@ def _files(root: Path) -> dict[str, str]:
 def _closed_seed(workspace: Path) -> Iterator[None]:
     """The golden owner seals only after its Host and writer have stopped."""
     from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-    from alphalattice.interface.local_application.client import (
-        LocalResearchClientError,
-        LocalResearchConnection,
-    )
 
-    with suppress(LocalResearchClientError):  # a Host still serving it holds the record
-        LocalResearchConnection.read(workspace)
+    if (workspace / "runtime/local-research-connection.json").exists():
         raise RuntimeError("session workspace still names a Host")
     lease = WorkspaceWriterLease.acquire(workspace)
     try:
@@ -285,28 +275,10 @@ def session_workspace(
             target.mkdir()
             running = dict(RUNNING_TEST)
             RUNNING_TEST.update(id=None, private=False)  # a builder writes what it copies
-            # A seed is a machine of its own: every copy of one source is one workspace on a log,
-            # so a seed built on a shared root would carry its sibling seeds' Tasks too. Its root
-            # sits with the test machines', a plain path a log attaches by URI.
-            assert environment.DATA_ROOT is not None
-            machine = environment.DATA_ROOT / f"seed-{target.name}"
-            carried = None
             try:
-                with own_root(machine):
-                    metadata = build(target / "workspace")
-                    # A Panel closure its builders wrote outside a Host moves onto the log first,
-                    environment.closure_on_log(target / "workspace")
-                    # so the seed, outliving the data root it was built on, carries it; its Tasks,
-                    carry_tasks(target / "workspace", target / "workspace")
-                    carry_arrays(target / "workspace", target / "workspace")
-                    carry_research_inputs(target / "workspace", target / "workspace")
-                # and its machine, whose catalog alone holds the outcome bodies it names.
-                if (machine / "machine/log.sqlite").is_file():
-                    carried = backup_data_root(machine, target / "machine").relative_to(target)
+                metadata = build(target / "workspace")
             finally:
                 RUNNING_TEST.update(running)
-                retire_children()
-                shutil.rmtree(machine, ignore_errors=True)
             if not isinstance(metadata, dict) or not (target / "workspace").is_dir():
                 raise RuntimeError(
                     f"session workspace builder produced no workspace or metadata: {name}"
@@ -321,7 +293,6 @@ def session_workspace(
                 "inputs": input_hash,
                 "metadata": metadata,
                 "persistent": persistent is not None,
-                "machine": None if carried is None else carried.as_posix(),
                 "files": (
                     verified_payload(target / "workspace")
                     if persistent is not None
@@ -403,50 +374,6 @@ def _shared_data(path: Path) -> bool:
     return path.parent.parts[-3:] in BYTE_ADDRESSED
 
 
-def retire_children() -> None:
-    """End this process's kept Task workers before the data root they hold goes: a spawned worker
-    keeps the root this process held when it started, for its idle wait after its last call, so a
-    later call there opens a root a seed build or a test has removed."""
-    from alphalattice.control.task_control import child
-
-    for worker, pool in list(child._WORKERS.items()):
-        child._retire_worker(worker, pool)
-
-
-def carry_market(workspace: Path, root: Path) -> None:
-    """Write the market rows `workspace` published on `root` back into its own file, so a copy
-    outliving that root reads them, and its next publish selects them on its own root
-    (`world.carry_workspace`)."""
-    from alphalattice.foundation.market_data_ops.storage import world  # lazy: a seed's only
-
-    database = workspace / "market-data.duckdb"
-    if database.is_file():
-        world.carry_workspace(root, database)
-
-
-def restore_seed(source: Path) -> None:
-    """Start the held data root, still fresh, on the machine a seed was built on: a copy's
-    outcome bodies live in that machine's catalog alone."""
-    record = json.loads((Path(source).parent / "complete.json").read_text(encoding="utf-8"))
-    if record.get("machine") is not None:
-        restore_data_root(Path(source).parent / record["machine"], Path(os.environ[DATA_ROOT_ENV]))
-
-
-@contextmanager
-def on_seed_machine(source: Path) -> Iterator[Path]:
-    """A fresh root restored from the machine `source` was built on, held for a Host that
-    outlives one test (a module's): the per-test restore comes after a module's Host opens."""
-    assert environment.DATA_ROOT is not None
-    machine = environment.DATA_ROOT / f"module-{uuid.uuid4().hex[:12]}"
-    try:
-        with own_root(machine):
-            restore_seed(source)
-            yield machine
-    finally:
-        retire_children()
-        shutil.rmtree(machine, ignore_errors=True)
-
-
 def copy_workspace(
     source: Path, target: Path, *, link_parquet: bool = False, link_data: bool | None = None
 ) -> Path:
@@ -503,9 +430,6 @@ def copy_workspace(
         return dst
 
     shutil.copytree(source, target, copy_function=copy_file)
-    carry_tasks(Path(source), target)  # the copy opens with its source's Tasks
-    carry_arrays(Path(source), target)  # and its lanes
-    carry_research_inputs(Path(source), target)
     return target
 
 

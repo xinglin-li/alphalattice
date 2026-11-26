@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping
@@ -12,16 +13,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.content_store import verified_source_value
-from alphalattice.control.workspace_runtime.verified_facts import (
-    file_sha256,
-    record_sealed_file,
-    verified_bytes,
-)
-from alphalattice.foundation.data_layer import history
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .compile import _SCHEMA_ID, _schema
 from .contracts import (
@@ -57,56 +51,6 @@ DEVELOPMENT_ONLY_MANIFEST_CATEGORY = "development-only-manifests"
 DEVELOPMENT_ONLY_MARKER_CATEGORY = "development-only-markers"
 
 LOCAL_QA_PREPARATION_CATEGORY = "local-qa-preparation"
-
-
-def chunk_identity(ordered: pa.Table) -> str:
-    """A chunk's identity: the canonical JSON of (listing, formation, row hash) per row, its rows
-    ordered by formation session and listing. A formation session is encoded as ``str(value)`` by
-    the canonical encoder, so the columns are read once each and the session is given as that
-    string: the same bytes, without a dict per row."""
-    identity: str = canonical_hash(
-        {
-            "schema": _SCHEMA_ID,
-            "rows": tuple(
-                zip(
-                    ordered.column("listing_id").to_pylist(),
-                    (str(value) for value in ordered.column("formation_session").to_pylist()),
-                    ordered.column("row_hash").to_pylist(),
-                    strict=True,
-                )
-            ),
-        }
-    )
-    return identity
-
-
-def rows_intact(rows: list[dict[str, object]]) -> bool:
-    """Whether each row's hash is the canonical hash of its other values, as the compiler hashes
-    it (compile.derive_causal_execution_row)."""
-    return all(
-        row["row_hash"]
-        == canonical_hash({key: value for key, value in row.items() if key != "row_hash"})
-        for row in rows
-    )
-
-
-def carried_chunk_check(
-    _workspace: Path, content_hash: str, profile: object, table: pa.Table
-) -> None:
-    """Refuse a carried outcome chunk that carries a profile, as none is written for one, or whose
-    rows are not the ones `content_hash` names: each row's hash over its values, and the chunk's
-    over its rows' (listing, formation, row hash)."""
-    ordered = (
-        table.cast(_schema())
-        .combine_chunks()
-        .sort_by([("formation_session", "ascending"), ("listing_id", "ascending")])
-    )
-    if (
-        profile is not None
-        or not rows_intact(ordered.to_pylist())
-        or chunk_identity(ordered) != content_hash
-    ):
-        raise ValueError("causal_outcomes.chunk_identity_invalid")
 
 
 def _local_qa_validity_buffer(array: pa.Array) -> pa.Buffer | None:
@@ -250,12 +194,15 @@ class _ExecutionOutcomeArtifactStore:
         for part in head.parts:
             path = self._local_qa_path("parts", part.file_hash, "parquet")
             try:
-                content, digest = verified_bytes(path)
+                content = path.read_bytes()
             except FileNotFoundError as exc:
                 raise ValueError("causal_outcomes.qa_preparation_missing") from exc
             except OSError as exc:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid") from exc
-            if len(content) != part.byte_count or digest != part.file_hash:
+            if (
+                len(content) != part.byte_count
+                or hashlib.sha256(content).hexdigest() != part.file_hash
+            ):
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
             try:
                 table = _canonical_local_qa_table(pq.read_table(pa.BufferReader(content)))
@@ -263,7 +210,7 @@ class _ExecutionOutcomeArtifactStore:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid") from exc
             if table.num_rows != part.row_count:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
-            if integrity_sha256(_local_qa_ipc(table)).hexdigest() != part.ipc_hash:
+            if hashlib.sha256(_local_qa_ipc(table)).hexdigest() != part.ipc_hash:
                 raise ValueError("causal_outcomes.qa_preparation_ipc_mismatch")
             tables.append((table, part.point_count))
         table = _canonical_local_qa_table(
@@ -278,7 +225,7 @@ class _ExecutionOutcomeArtifactStore:
         content = _local_qa_ipc(table)
         if (
             table.num_rows != head.listing_count * head.matured_point_count
-            or integrity_sha256(content).hexdigest() != head.ipc_hash
+            or hashlib.sha256(content).hexdigest() != head.ipc_hash
         ):
             raise ValueError("causal_outcomes.qa_preparation_ipc_mismatch")
         return content
@@ -294,8 +241,8 @@ class _ExecutionOutcomeArtifactStore:
             self._local_qa_path("heads", head.content_hash, "json"),
         ]
         commitments = [
-            integrity_sha256(_local_qa_json(marker)).hexdigest(),
-            integrity_sha256(_local_qa_json(head)).hexdigest(),
+            hashlib.sha256(_local_qa_json(marker)).hexdigest(),
+            hashlib.sha256(_local_qa_json(head)).hexdigest(),
         ]
         for part in head.parts:
             paths.append(self._local_qa_path("parts", part.file_hash, "parquet"))
@@ -309,7 +256,8 @@ class _ExecutionOutcomeArtifactStore:
                     # _read_local_qa_table verifies these exact bytes once.
                     continue
                 try:
-                    actual = file_sha256(path)
+                    with path.open("rb") as stream:
+                        actual = hashlib.file_digest(stream, "sha256").hexdigest()
                 except FileNotFoundError as exc:
                     raise ValueError("causal_outcomes.qa_preparation_missing") from exc
                 if actual != expected:
@@ -324,9 +272,7 @@ class _ExecutionOutcomeArtifactStore:
         )
         return head, pa.ipc.open_stream(pa.py_buffer(content)).read_all()
 
-    def _write_local_qa(
-        self, path: Path, content: bytes, *, replace: bool = False, digest: str | None = None
-    ) -> None:
+    def _write_local_qa(self, path: Path, content: bytes, *, replace: bool = False) -> None:
         if path.exists():
             existing = path.read_bytes()
             if existing == content:
@@ -337,7 +283,6 @@ class _ExecutionOutcomeArtifactStore:
             raise ValueError("causal_outcomes.qa_preparation_capacity_required")
         self._preparation_capacity(len(content))
         self._atomic_write(path, content)
-        record_sealed_file(path, digest or integrity_sha256(content).hexdigest())
 
     def publish_local_qa_preparation(
         self,
@@ -350,7 +295,7 @@ class _ExecutionOutcomeArtifactStore:
         """Write only a base or new rows, their immutable head, and the marker last."""
         if self._preparation_capacity is None:
             raise ValueError("causal_outcomes.qa_preparation_capacity_required")
-        ipc_hash = integrity_sha256(_local_qa_ipc(table)).hexdigest()
+        ipc_hash = hashlib.sha256(_local_qa_ipc(table)).hexdigest()
         if (
             previous is not None
             and ipc_hash == previous.ipc_hash
@@ -364,19 +309,17 @@ class _ExecutionOutcomeArtifactStore:
             sink = pa.BufferOutputStream()
             pq.write_table(selected, sink, compression="zstd")
             content = sink.getvalue().to_pybytes()
-            file_hash = integrity_sha256(content).hexdigest()
+            file_hash = hashlib.sha256(content).hexdigest()
             part = LocalQAOutcomePreparationPart.create(
                 role="BASE" if previous is None else "INCREMENT",
                 listing_count=values["listing_count"],
                 point_count=selected.num_rows // cast(int, values["listing_count"]),
                 row_count=selected.num_rows,
-                ipc_hash=integrity_sha256(_local_qa_ipc(selected)).hexdigest(),
+                ipc_hash=hashlib.sha256(_local_qa_ipc(selected)).hexdigest(),
                 file_hash=file_hash,
                 byte_count=len(content),
             )
-            self._write_local_qa(
-                self._local_qa_path("parts", file_hash, "parquet"), content, digest=file_hash
-            )
+            self._write_local_qa(self._local_qa_path("parts", file_hash, "parquet"), content)
         head = LocalQAOutcomePreparationHead.create(
             **dict(values),
             previous_head_hash=None if previous is None else previous.content_hash,
@@ -433,7 +376,7 @@ class _ExecutionOutcomeArtifactStore:
         return ArtifactDescriptor(
             kind=f"causal-execution-{category}",
             content_hash=value,
-            metadata_hash=integrity_sha256(content).hexdigest(),
+            metadata_hash=hashlib.sha256(content).hexdigest(),
             uri=self._uri(category, value),
         )
 
@@ -451,15 +394,45 @@ class _ExecutionOutcomeArtifactStore:
         ordered = table.combine_chunks().sort_by(
             [("formation_session", "ascending"), ("listing_id", "ascending")]
         )
-        content_hash = chunk_identity(ordered)
-        history.write_execution_outcome(content_hash, ordered)
+        # The identity is the canonical JSON of (listing, formation, row hash)
+        # per row; a formation session is encoded as ``str(value)`` by the
+        # canonical encoder, so the columns are read once each and the
+        # session is given as that string -- the same bytes, without a dict
+        # per row.
+        content_hash = canonical_hash(
+            {
+                "schema": _SCHEMA_ID,
+                "rows": tuple(
+                    zip(
+                        ordered.column("listing_id").to_pylist(),
+                        (str(value) for value in ordered.column("formation_session").to_pylist()),
+                        ordered.column("row_hash").to_pylist(),
+                        strict=True,
+                    )
+                ),
+            }
+        )
+        path = self._parquet_path(split, content_hash)
+        path.parent.mkdir(parents=True, exist_ok=True)
         metadata = {
-            "alphalattice.snapshot_kind": "CausalExecutionOutcomeChunk",
-            "alphalattice.chunk_hash": content_hash,
-            "alphalattice.split": split,
+            b"alphalattice.snapshot_kind": b"CausalExecutionOutcomeChunk",
+            b"alphalattice.chunk_hash": content_hash.encode(),
+            b"alphalattice.split": split.encode(),
         }
-        metadata_hash = integrity_sha256(
-            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+        if not path.exists():
+            staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            pq.write_table(ordered.replace_schema_metadata(metadata), staged, compression="zstd")
+            os.replace(staged, path)
+        parquet = pq.ParquetFile(path)
+        actual_metadata = parquet.schema_arrow.metadata or {}
+        if actual_metadata.get(b"alphalattice.chunk_hash") != content_hash.encode():
+            raise ValueError("causal execution chunk metadata is invalid")
+        metadata_hash = hashlib.sha256(
+            json.dumps(
+                {key.decode(): value.decode() for key, value in sorted(actual_metadata.items())},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
         ).hexdigest()
         dates = ordered.column("formation_session").to_pylist()
         year = dates[0].year
@@ -480,16 +453,6 @@ class _ExecutionOutcomeArtifactStore:
         if metadata.get(b"alphalattice.chunk_hash") != chunk.content_hash.encode():
             raise ValueError("causal execution chunk readback is invalid")
         return path
-
-    def read_chunk(
-        self, chunk: CausalExecutionOutcomeChunk, *, columns: list[str] | None = None
-    ) -> pa.Table:
-        """Read a chunk's body from the data root's catalog."""
-        table = history.read_execution_outcome(chunk.content_hash, columns)
-        if table.num_rows != chunk.row_count:
-            raise ValueError("causal execution outcome catalog row count is invalid")
-        schema = _schema() if columns is None else pa.schema([_schema().field(c) for c in columns])
-        return table.cast(schema)
 
     def manifests(self) -> tuple[CausalExecutionOutcomeManifest, ...]:
         root = self.root / "manifests"
@@ -596,7 +559,7 @@ def local_qa_preparation_retention_inventory(
     roots = set(explicit)
     protected: dict[Path, str] = {}
     if marker is not None:
-        protected[store._local_qa_marker_path()] = integrity_sha256(
+        protected[store._local_qa_marker_path()] = hashlib.sha256(
             _local_qa_json(marker)
         ).hexdigest()
         roots.add(marker.current_head_hash)
@@ -604,7 +567,7 @@ def local_qa_preparation_retention_inventory(
             roots.add(marker.previous_head_hash)
     for root in sorted(roots):
         head = store._read_local_qa_head(root)
-        protected[store._local_qa_path("heads", head.content_hash, "json")] = integrity_sha256(
+        protected[store._local_qa_path("heads", head.content_hash, "json")] = hashlib.sha256(
             _local_qa_json(head)
         ).hexdigest()
         for part in head.parts:
@@ -618,13 +581,15 @@ def local_qa_preparation_retention_inventory(
     for path in sorted(files):
         if not path.resolve().is_relative_to(scope.resolve()):
             raise ValueError("causal_outcomes.qa_preparation_reference_invalid")
+        content = path.read_bytes()
+        file_hash = hashlib.sha256(content).hexdigest()
         item = LocalQAOutcomePreparationFile(
             relative_path=path.relative_to(artifact_root.resolve()).as_posix(),
-            byte_count=path.stat().st_size,
-            file_hash=file_sha256(path),
+            byte_count=len(content),
+            file_hash=file_hash,
         )
         if path in protected:
-            if item.file_hash != protected[path]:
+            if file_hash != protected[path]:
                 raise ValueError("causal_outcomes.qa_preparation_part_invalid")
             rooted.append(item)
         else:

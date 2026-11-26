@@ -16,6 +16,13 @@ from alphalattice.foundation.feature_engine.contracts import (
     FeatureInvalidation,
     PanelCrossSectionRange,
 )
+from alphalattice.foundation.feature_engine.panels.closure import PanelClosurePublisher
+from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
+    PanelClosureArtifactStore,
+)
+from alphalattice.foundation.feature_engine.panels.closure_source import (
+    PanelClosureSourceRepository,
+)
 from alphalattice.foundation.feature_engine.panels.rematerialization import (
     ArtifactOnlyPanelRematerializer,
 )
@@ -29,13 +36,11 @@ from alphalattice.foundation.market_data_ops.sources.membership import (
     MembershipEvent,
     UniverseBootstrapRecord,
 )
-from tests._support.development_universe import DENSE_LISTINGS, LISTINGS
 from tests.feature_engine.panel_workspace import (
     NOW,
     SESSIONS,
     build_and_publish,
-    capture_panel_closure,
-    development_panel_inputs,
+    fixture_manifest,
     new_session_invalidations,
     panel_workspace,
 )
@@ -82,44 +87,50 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
 ) -> None:
     """Members join and leave from their effective session and the rest is reused."""
 
-    newcomer = next(item for item in LISTINGS if item.symbol == "DVI")
-    full, provider = development_panel_inputs((*DENSE_LISTINGS, newcomer))
-    initial = build_quality_filtered_research_manifest(
-        full, eligible_listing_ids=tuple(item.listing_id for item in full.listings[:-1])
+    full = fixture_manifest()
+    fourteen = build_quality_filtered_research_manifest(
+        full, eligible_listing_ids=tuple(item.listing_id for item in full.listings[:14])
     )
-    with_entrant = build_quality_filtered_research_manifest(
+    fifteen = build_quality_filtered_research_manifest(
         full, eligible_listing_ids=tuple(item.listing_id for item in full.listings)
     )
-    entrant = full.listings[-1].listing_id
+    entrant = full.listings[14].listing_id
     leaver = full.listings[0].listing_id
     # The helper's dense business-day axis ends on Presidents' Day; member
     # decisions use actual exchange sessions, unlike that numerical fixture.
     t0, t1, t2 = SESSIONS[-4], SESSIONS[-3], SESSIONS[-2]
-    workspace = panel_workspace(tmp_path / "journey", full, end=t2, spy="a" * 64, provider=provider)
-    workspace.market_data.bootstrap(initial)
-    workspace.market_data.bootstrap(with_entrant)
+    workspace = panel_workspace(tmp_path / "journey", full, end=t2, spy="a" * 64)
+    # Two sectors of eight and seven: every membership below keeps both at or
+    # above the five-member floor, so the Panel stays admissible throughout.
+    workspace.provider.sectors = {
+        item.symbol: "Sector-0" if index < 8 else "Sector-1"
+        for index, item in enumerate(full.listings)
+    }
+    workspace.provider.sectors["SPY"] = "Reference"
+    workspace.market_data.bootstrap(fourteen)
+    workspace.market_data.bootstrap(fifteen)
     resolver = workspace.resolver
 
     # Day one: the cohort, then the bootstrap boundary the coordinator records
     # at the first qualified publication.
-    workspace.service.manifest = initial
+    workspace.service.manifest = fourteen
     _one, day_one = build_and_publish(
-        workspace, initial, spy="a" * 64, as_of=t0, observed_at=NOW, refresh_sector=True
+        workspace, fourteen, spy="a" * 64, as_of=t0, observed_at=NOW, refresh_sector=True
     )
     membership_one = day_one["safe_summary"]["membership"]
     assert membership_one["bootstrap_record_hash"] is None
     assert [item["basis"] for item in membership_one["basis_ranges"]] == [INITIAL_COHORT_BACKFILL]
-    assert day_one["active_listing_count"] == 11
+    assert day_one["active_listing_count"] == 14
     workspace.market_data.record_universe_bootstrap(
         UniverseBootstrapRecord(
             market_profile_id=PROFILE,
             t0_session=t0,
             history_start=SESSIONS[0],
-            cohort_listing_ids=tuple(item.listing_id for item in initial.listings),
+            cohort_listing_ids=tuple(item.listing_id for item in fourteen.listings),
             cohort_hash="",
-            manifest_revision=initial.revision_sha256,
-            candidate_manifest_hash=initial.membership_fingerprint or "1" * 64,
-            qualification_policy_hash=initial.qualification_policy_hash or "2" * 64,
+            manifest_revision=fourteen.revision_sha256,
+            candidate_manifest_hash=fourteen.membership_fingerprint or "1" * 64,
+            qualification_policy_hash=fourteen.qualification_policy_hash or "2" * 64,
             feature_input_policy_hash="3" * 64,
             source_observed_at=NOW,
             admitted_at=NOW,
@@ -128,11 +139,11 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
         )
     )
 
-    # Day two: the approved entry takes effect.
+    # Day two: the fifteenth name enters at T1.
     workspace.market_data.append_membership_events(
-        (_event(1, entrant, "ENTRY", t1, with_entrant.revision_sha256),)
+        (_event(1, entrant, "ENTRY", t1, fifteen.revision_sha256),)
     )
-    workspace.service.manifest = with_entrant
+    workspace.service.manifest = fifteen
     pending = workspace.service._panel_membership(
         calendar=tuple(session for session in SESSIONS if session <= t0),
         axis_listing_ids=tuple(item.listing_id for item in full.listings),
@@ -140,12 +151,12 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     assert entrant not in pending.listing_ids  # Prepared history is not yet a Panel member.
     _two, day_two = build_and_publish(
         workspace,
-        with_entrant,
+        fifteen,
         spy="a" * 64,
         as_of=t1,
         observed_at=NOW + timedelta(days=1),
         invalidations=(
-            *new_session_invalidations(with_entrant, t1),
+            *new_session_invalidations(fifteen, t1),
             FeatureInvalidation("manifest_addition", listing_id=entrant, earliest_session=t1),
         ),
         refresh_sector=True,
@@ -156,16 +167,16 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
         "composed_partition_count": 1,
     }
     assert day_two["chunks"][:-1] == day_one["chunks"][:-1]
-    assert day_two["active_listing_count"] == 12
+    assert day_two["active_listing_count"] == 15
     membership_two = day_two["safe_summary"]["membership"]
     assert membership_two["bootstrap_t0_session"] == t0.isoformat()
     assert [item["basis"] for item in membership_two["basis_ranges"]] == [
         INITIAL_COHORT_BACKFILL,
         FORWARD_AS_OBSERVED,
     ]
-    assert [item["member_count"] for item in membership_two["epochs"]] == [11, 12]
+    assert [item["member_count"] for item in membership_two["epochs"]] == [14, 15]
     assert membership_two["epochs"][1]["first_session"] == t1.isoformat()
-    assert membership_two["as_of_member_count"] == 12
+    assert membership_two["as_of_member_count"] == 15
     assert _rows_by_session(resolver, day_two, entrant) == {t1.isoformat()}
     # The entrant's base Formula values cover its history, not only T1.
     base_rows = workspace.feature_state.feature_rows(
@@ -189,51 +200,51 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
         end=t1,
     )
     sizes = {str(item["session_date"]): int(item["universe_size"]) for item in availability}
-    assert sizes == {t0.isoformat(): 11, t1.isoformat(): 12}
+    assert sizes == {t0.isoformat(): 14, t1.isoformat(): 15}
 
     # Day three: the first name leaves at T2 and keeps every earlier row.
-    after_exit = build_quality_filtered_research_manifest(
-        with_entrant,
+    fourteen_again = build_quality_filtered_research_manifest(
+        fifteen,
         eligible_listing_ids=tuple(
-            item.listing_id for item in with_entrant.listings if item.listing_id != leaver
+            item.listing_id for item in fifteen.listings if item.listing_id != leaver
         ),
     )
-    workspace.market_data.bootstrap(after_exit)
+    workspace.market_data.bootstrap(fourteen_again)
     workspace.market_data.append_membership_events(
-        (_event(2, leaver, "EXIT", t2, after_exit.revision_sha256),)
+        (_event(2, leaver, "EXIT", t2, fourteen_again.revision_sha256),)
     )
-    workspace.service.manifest = after_exit
+    workspace.service.manifest = fourteen_again
     _three, day_three = build_and_publish(
         workspace,
-        after_exit,
+        fourteen_again,
         spy="a" * 64,
         as_of=t2,
         observed_at=NOW + timedelta(days=2),
         invalidations=(
-            *new_session_invalidations(after_exit, t2),
+            *new_session_invalidations(fourteen_again, t2),
             FeatureInvalidation("manifest_removal", listing_id=leaver, earliest_session=t2),
         ),
         refresh_sector=False,
     )
     assert day_three["chunks"][:-1] == day_two["chunks"][:-1]
-    assert day_three["active_listing_count"] == 12  # the axis still holds the leaver
-    assert day_three["safe_summary"]["membership"]["as_of_member_count"] == 11
+    assert day_three["active_listing_count"] == 15  # the axis still holds the leaver
+    assert day_three["safe_summary"]["membership"]["as_of_member_count"] == 14
     assert [item["member_count"] for item in day_three["safe_summary"]["membership"]["epochs"]] == [
-        11,
-        12,
-        11,
+        14,
+        15,
+        14,
     ]
     leaver_sessions = _rows_by_session(resolver, day_three, leaver)
     assert t2.isoformat() not in leaver_sessions
     assert {t0.isoformat(), t1.isoformat()} <= leaver_sessions
 
-    # Governance only: the same membership under a new revision reuse everything.
+    # Governance only: the same fourteen under a new revision reuse everything.
     regoverned = build_quality_filtered_research_manifest(
-        after_exit,
-        eligible_listing_ids=tuple(item.listing_id for item in after_exit.listings),
+        fourteen_again,
+        eligible_listing_ids=tuple(item.listing_id for item in fourteen_again.listings),
         qualification_obligations=(qualification_obligation("review", "6" * 64),),
     )
-    assert regoverned.revision_sha256 != after_exit.revision_sha256
+    assert regoverned.revision_sha256 != fourteen_again.revision_sha256
     workspace.market_data.bootstrap(regoverned)
     workspace.service.manifest = regoverned
     _four, day_four = build_and_publish(
@@ -256,16 +267,22 @@ def test_members_join_and_leave_from_their_effective_session_and_the_rest_is_reu
     assert workspace.market_data.membership_events(PROFILE)[-1].sequence == 2
 
     # Recovery: the ragged snapshot freezes and rematerializes byte-exact.
-    closure, store = capture_panel_closure(workspace.market_data.path, resolver)
+    closure = PanelClosurePublisher(
+        resolver=resolver,
+        source=PanelClosureSourceRepository(
+            database_path=workspace.market_data.path, resolver=resolver
+        ),
+        store=PanelClosureArtifactStore(resolver),
+    ).publish()
     assert not closure.blocked_snapshots
     recipe = closure.recipes[str(day_three["snapshot_hash"])]
     assert recipe.row_identity_basis == "SESSION_CROSS_SECTION"
     assert recipe.membership is not None
     assert [len(epoch.absent_listing_ids) for epoch in recipe.membership.epochs] == [1, 0, 1]
     assert recipe.expected_row_count() == day_three["safe_summary"]["row_count"]
-    result = ArtifactOnlyPanelRematerializer(resolver=resolver, store=store).rematerialize(
-        recipe.recipe_hash
-    )
+    result = ArtifactOnlyPanelRematerializer(
+        resolver=resolver, store=PanelClosureArtifactStore(resolver)
+    ).rematerialize(recipe.recipe_hash)
     assert result.logical_parity and result.physical_parity
     assert [item.chunk_hash for item in result.chunks] == [
         chunk["chunk_hash"] for chunk in day_three["chunks"]

@@ -8,12 +8,11 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.storage.readiness import WorkspaceReadinessRecord
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboarding,
     CurrentUniverseOnboardingOutcome,
-    history_floor,
+    ten_calendar_year_anniversary,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -33,6 +32,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _CANDIDATE_DATA_RECHECK_DELAY = timedelta(days=1)
 _FAILED_CANDIDATE_STATES = frozenset({"RAW_FAILED", "QUALITY_INELIGIBLE", "AUDIT_FAILED"})
@@ -136,7 +136,7 @@ class CandidateDataRequalification:
             requested,
             max(
                 self.research_history_start(record),
-                history_floor(target_session, bootstrap.standard),
+                ten_calendar_year_anniversary(target_session),
             ),
         )
         self._context(scope, target_session=target_session)
@@ -203,7 +203,7 @@ class CandidateDataRequalification:
     ) -> CurrentUniverseOnboarding:
         record, bootstrap, _parent = self._context(scope, target_session=target_session)
         if scope.history_start != max(
-            self.research_history_start(record), history_floor(target_session, bootstrap.standard)
+            self.research_history_start(record), ten_calendar_year_anniversary(target_session)
         ):
             raise ValueError("workspace_maintenance.candidate_data_recheck_history_invalid")
         cached = self._runner

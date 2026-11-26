@@ -16,7 +16,6 @@ from datetime import date
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_contracts import (
     SectorRevisionEntry,
     SectorRevisionMap,
@@ -35,6 +34,7 @@ from alphalattice.investment.risk_research.surfaces.producer import (
     RiskDecompositionInputs,
     RiskSurfaceProducer,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 NAMES = 40
 FACTORS = 5

@@ -58,7 +58,6 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sklearn.covariance import LedoitWolf
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import (
     ADMISSIBLE_EWMA_DECAY,
     DEFAULT_EWMA_DECAY,
@@ -66,6 +65,7 @@ from alphalattice.investment.risk_research.contracts import (
     CovarianceRecipe,
     seal_contract,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from . import covariance, matrix_identity
 from .capability import RANDOMNESS_NONE

@@ -12,7 +12,7 @@
 # product needs all of them; a narrower environment is a deliberate choice.
 [project]
 name = "alphalattice"
-version = "0.2.9"
+version = "0.2.5"
 description = "A local quantitative research workstation for Claude Code and Codex."
 authors = [{ name = "Xinglin Li", email = "xinglin789@outlook.com" }]
 readme = "README.md"
@@ -20,35 +20,21 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # The 0.2.8 data layer: content identity, the event log's spans and the index's vectors.
-    "blake3>=1.0.11,<2",
-    "opentelemetry-api>=1.45.2,<2",
-    "opentelemetry-sdk>=1.45.2,<2",
-    "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
-    # The Host's OTLP receiver uses these already-locked protocol packages directly.
-    "opentelemetry-proto>=1.45.2,<2",
-    "protobuf>=7.35.1,<8",
-    "opentelemetry-instrumentation-system-metrics>=0.66b2,<1",
-    "opentelemetry-processor-baggage>=0.66b2,<1",  # stamps our baggage ids on spans and records
     # Already locked; process telemetry is runtime, not only a test dependency.
     "psutil>=7,<8",
     "pydantic>=2.12,<3",
-    # Imported directly; Pydantic supplies the compatible core and metadata versions.
-    "pydantic-core",
-    "annotated-types>=0.6.0",
     "python-dotenv>=1.1,<2",
     "pyyaml>=6.0,<7",
     # `protocols.actor_execution.projections` imports it at module load and is
     # reached by deterministic Factor and Evidence contracts.
     "tiktoken>=0.13,<1",
-    "xxhash>=4,<5",
 ]
 
 [project.scripts]
 alphalattice = "alphalattice.control.product_host.composition.entry:main"
 
 [build-system]
-requires = ["setuptools==83.0.0", "psutil==7.2.2"]
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -63,20 +49,16 @@ build_py = "scripts.release.wheel_build.BuildPy"
 scripts = "scripts"
 
 [tool.setuptools.package-data]
-alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg", "**/*.sql", "protocols/actor_execution/cl100k_base.tiktoken.gz"]
+alphalattice = ["**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.md", "**/*.txt", "**/*.html", "**/*.css", "**/*.js", "**/*.woff2", "**/*.svg", "protocols/actor_execution/cl100k_base.tiktoken.gz"]
 
 [project.optional-dependencies]
 # Data Operations, Feature, Panel, and workspace storage.
 data = [
-    # Extension wheels are matched to this engine and loaded from installed packages offline.
-    "duckdb==2.0.0",
-    "duckdb-extension-ducklake==2.0.0",
-    "duckdb-extension-sqlite-scanner==2.0.0",
+    "duckdb>=1.5,<2",
     "exchange-calendars>=4.13,<5",
     "numpy>=2.5,<3",
     "pandas>=3.0,<4",
-    "pyarrow>=26,<27",
-    "pytz>=2026.2,<2027",  # DuckDB uses pytz when fetching TIMESTAMPTZ as Python values.
+    "pyarrow>=25,<26",
     "tzdata>=2026.3,<2027",
 ]
 # Explicitly admitted live market acquisition; network stays off by default.
@@ -87,9 +69,6 @@ data-live = [
 # Explicitly admitted live evidence acquisition; network stays off by default.
 live-evidence = [
     "httpx>=0.28,<1",
-    "lxml>=6.1.1",  # online_sources parses HTML directly, as well as via trafilatura
-    # Hold through 2026-12-12: 2.3.1 changes canonical evidence bytes and escapes table notices;
-    # lift after v6 byte compatibility is proved or an identity successor is approved.
     "trafilatura==2.1.0",
 ]
 # Alpha, Risk, Sector, Portfolio, and Validation numerics.
@@ -99,13 +78,13 @@ quant = [
     "joblib>=1.5,<2",
     "lightgbm>=4.7,<4.8",
     "numpy>=2.5,<3",
-    "optuna>=5,<6",
+    "optuna>=4.9,<5",
     "osqp>=1.1,<2",
     "pandas>=3.0,<4",
-    "pyarrow>=26,<27",
+    "pyarrow>=25,<26",
     "scikit-learn>=1.9,<2",
     "scipy>=1.18,<2",
-    "statsmodels>=0.15,<0.16",
+    "statsmodels>=0.14.6,<0.15",
     "threadpoolctl>=3.6,<4",
 ]
 # Pinned local semantic retrieval; the FastEmbed reranker closure stays in
@@ -115,44 +94,29 @@ semantic = [
     "onnxruntime==1.27.0",
     "sentencepiece==0.2.1",
     "sqlite-vec==0.1.9",
-    "tokenizers==0.23.2",
 ]
 
 [dependency-groups]
 dev = [
-    "ast-grep-cli==0.51.1",
     "deptry>=0.25,<1",
     "hypothesis>=6.140,<7",
     "import-linter>=2.15,<3",
-    # The release gates' shared environment (devtools.evaluation) runs on Inspect AI's structure.
-    "inspect-ai==0.3.288",
-    # inspect-ai 0.3.288 imports acp.helpers, which agent-client-protocol 1.0.0 removed, and its own
-    # requirement has no upper bound: hold below 1 until an Inspect AI release supports 1.x.
-    "agent-client-protocol>=0.12,<1",
     # Preserve the product environment while the docs tools use mdformat's <4 range.
     "markdown-it-py==4.2.0",
     "mypy>=1.18,<2",
-    "packaging",  # devtools.architecture reads installed package versions directly
     "pandas-stubs>=3.0,<4",
-    "pip-licenses>=5,<6",
     "portalocker>=3.2,<4",
     "pre-commit>=4.3,<5",
-    "pre-commit-hooks>=5,<7",
     "py-spy>=0.4,<1",
     "pyinstrument>=5.1,<6",
     "pytest>=8.4,<10",
     "pytest-cov>=6,<8",
-    "pytest-socket>=0.7,<1",
     "pytest-split>=0.10,<1",
     "pytest-timeout>=2.4,<3",
     "pytest-xdist==3.8.0",
     "ruff>=0.14,<1",
     "vulture>=2.16,<3",
-    "semgrep==1.185.0",
-    "shellcheck-py==0.11.0.1",
-    "actionlint-py==1.7.12.25",
 ]
-
 # Each package below registers a pytest plugin that loads itself into every pytest run in an
 # environment it is installed in, so each stays out of the default dev group and in a group of
 # its own; a run that uses one asks for it with --group.
@@ -160,83 +124,38 @@ dev = [
 order = [
     "pytest-randomly>=5,<6",
 ]
-# The kernel's performance holder: pytest-benchmark, which measures only in a serial run.
-performance = [
-    "pytest-benchmark==5.3.1",
+# Coverage-based test selection.
+testmon = [
+    "pytest-testmon>=2.2,<3",
 ]
-# The public supply-chain job: known vulnerabilities in the lock, and the release's CycloneDX SBOM.
-supply-chain = [
-    "cyclonedx-bom==7.6.0",
-    "pip-audit==2.10.1",
+# Per-test CPU instruction counts on CodSpeed, for the public test-cost job.
+codspeed = [
+    "pytest-codspeed==5.0.3",
 ]
 docs = [
     "mkdocs-llmstxt>=0.5.0",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=2.0.9",
 ]
-mutation = [
-    "mutmut>=3,<4",
-]
-
-[tool.deptry.per_rule_ignores]
-# Retrieval has its own pinned, isolated environment; torch is an optional device probe.
-DEP001 = ["tokenizers", "fastembed", "torch"]
-# Wheels loaded by DuckDB, the calendar, timezone database, CVXPY's solver, and
-# the semantic runtimes are consumed dynamically. Keep dotenv and Optuna in the
-# existing install profile for compatibility (Optuna is also a documented research tool).
-DEP002 = ["python-dotenv", "duckdb-extension-ducklake", "duckdb-extension-sqlite-scanner", "exchange-calendars", "tzdata", "pytz", "clarabel", "optuna", "onnxruntime", "sentencepiece", "sqlite-vec", "tokenizers"]
-# These imports are in src/devtools, which is not included in the product wheel;
-# they are correctly declared in the development dependency group.
-DEP004 = ["inspect_ai", "pytest", "xdist", "pytest_socket", "_pytest", "packaging"]
 
 [tool.uv]
 package = true
 default-groups = ["dev"]
 conflicts = [[{ group = "docs" }, { group = "dev" }]]
-# semgrep 1.185.0 pins packages with known vulnerabilities, and nothing else here needs them. Each
-# override lifts one pin to its lowest fixed release; drop it once a semgrep release pins a fixed version itself.
-# The opentelemetry family moves together: its other members follow these through their own exact pins.
-override-dependencies = [
-    "hf-xet; python_version < '0'",  # the product's pack fetcher uses direct HTTPS
-    "mcp>=1.30.0,<2",  # CVE-2026-59951, CVE-2026-116684, CVE-2026-116685, CVE-2026-116686
-    "opentelemetry-api>=1.45.2,<2",  # CVE-2026-114603, CVE-2026-126360
-    "opentelemetry-sdk>=1.45.2,<2",  # moves with opentelemetry-api, which it pins exactly
-    "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",  # moves with opentelemetry-sdk, which it pins
-    "opentelemetry-instrumentation-requests>=0.66b2,<1",  # the 1.45.2 train's instrumentation
-    "opentelemetry-instrumentation-threading>=0.66b2,<1",  # the 1.45.2 train's instrumentation
-    "wcmatch==11.2",  # CVE-2026-132276
-]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
 src = ["src", "scripts", "tests", "benchmark", "probe", "case-study"]
-extend-exclude = ["/experiments", "tmp", "workspaces"]
+extend-exclude = ["experiments", "tmp", "workspaces"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-# S113, ASYNC and DTZ005: blocking calls with no timeout and naive wall clocks (the wait rules
-# in scripts/check_counts.py hold the rest); none existed when they came in.
-# D100 to D107 and D419 (a public definition of the library with no docstring, or an empty one,
-# leaves its page in the published API reference blank) are not selected here: run on a whole file
-# they refuse a touched file's untouched debt. scripts/check_test_shape.py refuses them on the
-# definitions a change adds or edits, by the per-file-ignores below, and the code health report
-# counts the rest. The docstring form rules stay out: complying with them moves blank lines and
-# quotes and leaves the code no better.
-extend-select = ["T20", "TID251", "S113", "ASYNC", "DTZ005"]
-# E731: a lambda bound to a local name is the same callable as a def; complying turns one line into
-# two and leaves the code no better.
-ignore = ["E731"]
+extend-select = ["T20", "TID251"]
 
 [tool.ruff.lint.per-file-ignores]
 # Agent answers are product output; maintainers' tools own their diagnostics.
-"!src/alphalattice/**" = ["T20", "TID251", "D10", "D419"]
-# The command layer: these modules write the terminal answer, so a print there is its output, not
-# a stray one; T20 refuses print in the rest of the library.
-"src/alphalattice/interface/local_application/{cli,client,read_views,retrieval_environment}.py" = ["T20"]
-"src/alphalattice/control/product_host/composition/{entry,web_launcher,retrieval_pack_setup,saved_object_readback}.py" = ["T20"]
-# A module inside a private package is not public API, though Ruff counts only its own name.
-"src/alphalattice/**/_*/**" = ["D10"]
+"!src/alphalattice/**" = ["T20", "TID251"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "sys.stdout" = { msg = "Write through the output owner" }
@@ -263,8 +182,6 @@ follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = [
-    "psutil",
-    "psutil.*",
     "duckdb",
     "duckdb.*",
     "pyarrow",
@@ -273,29 +190,8 @@ module = [
     "sklearn.*",
     "statsmodels",
     "statsmodels.*",
-    "scipy",
-    "scipy.*",
-    "osqp",
-    "osqp.*",
-    "joblib",
-    "joblib.*",
 ]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-    "alphalattice.kernel.execution",
-    "alphalattice.kernel.execution.*",
-    "alphalattice.kernel.identity",
-    "alphalattice.kernel.identity.*",
-    "alphalattice.capabilities.domain_contracts.spawn",
-]
-follow_imports = "normal"
-
-[[tool.mypy.overrides]]
-# Read BaseModel's types through the module that defines it.
-module = "pydantic.main"
-follow_imports = "silent"
 
 [tool.pytest.ini_options]
 tmp_path_retention_policy = "failed"
@@ -314,7 +210,5 @@ markers = [
     "proves: the registered requirement ids (config/registries/requirements.json) this test proves; find before writing one: python scripts/tests_registry.py find",
     "untyped_failure: the test makes an operation fail without a product code on purpose; the answer check lets it pass (V449)",
     "per_file: a structural scan scoped to the changed files; it reads source only through scanned()",
-    "paid_agent: a test that starts a model turn and spends money; only a run with ALPHALATTICE_PAID_AGENT_RUN=1 selects it",
     "real_evidence: reads a dogfood evidence root declared in the private evidence-root registry; deselected by the routed gate and run explicitly by scripts/check_playpen.py --evidence",
-    "performance: a kernel performance row under a budget; only a serial run with ALPHALATTICE_PERFORMANCE_RUN=1 and the performance group selects it",
 ]

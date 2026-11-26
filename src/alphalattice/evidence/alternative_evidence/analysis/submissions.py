@@ -16,10 +16,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.domain.serialization import canonical_json_bytes
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
-from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
+from alphalattice.kernel.shared_kernel.domain.serialization import canonical_json_bytes
+from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     ActorSubmissionBinding,
@@ -109,9 +108,7 @@ def _host_policy(
         "kind": "AlternativeEvidenceHostPolicyBinding",
         "owner_id": owner_id,
         "policy_version": ALTERNATIVE_POLICY_VERSION,
-        "contract_schema_hash": seal_payload_digest(
-            "contract_schema_hash", contract_schemas, digest=canonical_hash
-        ),
+        "contract_schema_hash": str(canonical_hash(contract_schemas)),
         "validation_source_hash": source_rule_closure_hash(
             root=playpen_root.resolve(),
             tracked_paths=tracked_paths,

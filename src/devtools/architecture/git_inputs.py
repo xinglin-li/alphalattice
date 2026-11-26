@@ -8,7 +8,6 @@ from collections.abc import Iterable, Mapping
 from functools import cached_property
 from pathlib import Path
 
-from alphalattice.capabilities.domain_contracts import spawn
 from devtools.testing.layout import rule_patterns  # the mover's own rule projection
 from devtools.testing.requirements import LAYOUT_SCHEMA, schema_file
 
@@ -24,13 +23,13 @@ def read_blobs(
     specs = list(dict.fromkeys(specs))
     if not specs:
         return {}
-    result = spawn.run(
+    result = subprocess.run(
         ["git", "cat-file", "--batch"],
         input=("\n".join(specs) + "\n").encode(),
         cwd=root or Path(__file__).resolve().parents[3],
         capture_output=True,
         check=True,
-        timeout=timeout if timeout is not None else spawn.DEFAULT_TIMEOUT,
+        timeout=timeout,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     stream, found = io.BytesIO(result.stdout), {}
@@ -59,7 +58,7 @@ def staged_changes(
     """One raw diff supplies both changed paths and exact move blobs."""
     if base is not None and tree is None:
         raise ValueError("a base revision needs a target tree")
-    rows = spawn.run(
+    rows = subprocess.run(
         [
             "git",
             "diff",
@@ -74,7 +73,7 @@ def staged_changes(
         text=True,
         encoding="utf-8",
         check=True,
-        timeout=timeout if timeout is not None else spawn.DEFAULT_TIMEOUT,
+        timeout=timeout,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     ).stdout.split("\0")
     return [(meta.split(), path) for meta, path in zip(rows[::2], rows[1::2], strict=False)]
@@ -132,7 +131,7 @@ class CostIdentity:
             for sha in (source, target)
         ):
             raise ValueError("cost identity needs a Git root and two exact commit SHAs")
-        ancestry = spawn.run(
+        ancestry = subprocess.run(
             ["git", "merge-base", "--is-ancestor", source, target],
             cwd=root,
             capture_output=True,
@@ -163,7 +162,7 @@ class CostIdentity:
 
     @staticmethod
     def _files(root: Path, revision: str) -> dict[str, tuple[str, str]]:
-        raw = spawn.run(
+        raw = subprocess.run(
             ["git", "ls-tree", "-r", "-z", "--full-tree", revision, "--", "tests/"],
             cwd=root,
             capture_output=True,
@@ -217,7 +216,7 @@ class CensusInputs:
     def __init__(self, root: Path, baseline: str | None, fixed: set[str], seed: set[str]) -> None:
         self.root, self.baseline, self.fixed = root, baseline, fixed
         self.stage = (
-            spawn.check_output(
+            subprocess.check_output(
                 ["git", "write-tree"],
                 cwd=root,
                 text=True,
@@ -227,7 +226,7 @@ class CensusInputs:
         )
         self.paths = {path for _, path in self.changes} if baseline is not None else set()
         listing = (
-            spawn.check_output(
+            subprocess.check_output(
                 ["git", "ls-tree", "-r", "-z", "--name-only", self.stage[:-1]],
                 cwd=root,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -276,7 +275,7 @@ class CensusInputs:
 
     @cached_property
     def parents(self) -> list[str]:
-        return spawn.check_output(
+        return subprocess.check_output(
             ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
             cwd=self.root,
             text=True,

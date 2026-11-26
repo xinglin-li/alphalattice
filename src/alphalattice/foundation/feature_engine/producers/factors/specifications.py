@@ -5,13 +5,12 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import Any, Literal, Self
 
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import desktop_core_feature_bundle
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FeatureObservationClock,
@@ -19,6 +18,8 @@ from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     installed_source_availability_catalog,
     observation_clock_for,
 )
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .catalog import default_extension_kernel_registry, extension_factor_specs
 from .core_bundle import numerical_spec_hash
@@ -32,9 +33,6 @@ from .formula import (
 from .formula_language import FormulaError
 from .open_intraday import MEAN_ADJUSTED_RETURN_ID
 from .registry import FeatureKernelRegistry
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 ROBUST_SECTOR_NEUTRAL_Z_ROLE = "ROBUST_SECTOR_NEUTRAL_Z"
 TIME_SERIES_ABSOLUTE_STATE_ROBUST_ROLE = "TIME_SERIES_ABSOLUTE_STATE_ROBUST"
@@ -864,8 +862,6 @@ def golden_example_frame(
 
     Give each listing a stable suffix under the requested identifier prefix.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     rows = example.row_count
     frames: list[pd.DataFrame] = []
     for position in range(example.listing_count):

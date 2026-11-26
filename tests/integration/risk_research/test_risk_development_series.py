@@ -11,11 +11,9 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
 from alphalattice.investment.risk_research.contracts import (
     CausalRiskReturnSurface,
-    RiskReturnOmissions,
     RiskUniverseEpoch,
     seal_contract,
 )
@@ -39,6 +37,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExecutionEvidence,
@@ -312,7 +311,7 @@ def test_risk_series_computes_each_scope_once_and_verifies_every_child(tmp_path,
     verify(evidence)
 
 
-def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
+def _synthetic_run(root, days, authority, values):
     """One development run over a synthetic full-axis surface; its matrix hashes and evaluations."""
 
     ids = authority.ordered_listing_ids
@@ -320,8 +319,6 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
     rows = []
     for i, day in enumerate(days):
         for j, listing in enumerate(ids):
-            if (day, listing) in missing:
-                continue
             row = dict(
                 formation_session=day,
                 return_start_session=day - timedelta(days=1),
@@ -352,27 +349,6 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
         source_watermark_hash="d" * 64,
         chunks=(chunk,),
         limitations=("SYNTHETIC_QA",),
-        **(
-            {
-                "omissions": tuple(
-                    RiskReturnOmissions(
-                        listing_id=listing,
-                        count=len(pairs),
-                        pairs=pairs,
-                    )
-                    for listing in ids
-                    if (
-                        pairs := tuple(
-                            (day - timedelta(days=1), day)
-                            for day, name in missing
-                            if name == listing
-                        )
-                    )
-                )
-            }
-            if missing
-            else {}
-        ),
     )
     envelope = ResearchExperimentEnvelope.create(
         kind="risk.covariance-development",
@@ -444,8 +420,6 @@ def _synthetic_run(root, days, authority, values, *, missing=(), captured=None):
         desk_input_binding_hash=result.desk_input_binding_hash,
     )
     projected = RiskEvidenceVerifier().projection(evidence=evidence, output_workspace=output)
-    if captured is not None:
-        captured.update(projected)
     matrix_hashes = tuple(
         h for chunk in projected["risk_surface"]["chunks"] for h in chunk["matrix_hashes"]
     )
@@ -491,23 +465,6 @@ def test_the_realized_next_session_never_enters_the_formations_covariance(tmp_pa
         != evaluations[1]["equal_weight_realized_squared_return"]
     )
     assert own_evaluations[1]["matrix_hash"] == evaluations[1]["matrix_hash"]
-
-    # A missing T+1 return cannot select T's estimator axis; on later windows it does.
-    captured = {}
-    sparse_matrices, sparse = _synthetic_run(
-        tmp_path / "gap", days, authority, values, missing=((days[315], "B"),), captured=captured
-    )
-    assert sparse_matrices[0] == matrices[0]
-    axes = captured["risk_surface"]["formation_axes"]
-    assert [axis["ordered_listing_ids"] for axis in axes] == [
-        ["A", "B", "C"],
-        ["A", "C"],
-        ["A", "C"],
-    ]
-    assert [axis["excluded_listing_ids"] for axis in axes] == [[], ["B"], ["B"]]
-    assert sparse[0]["realized_excluded_listing_ids"] == ["B"]
-    assert sparse[1]["comparison_dropped_previous"] == ["B"]
-    assert sparse[1]["comparison_dropped_current"] == []
 
 
 def test_risk_report_links_disclose_subset_scopes_without_changing_legacy_shape():

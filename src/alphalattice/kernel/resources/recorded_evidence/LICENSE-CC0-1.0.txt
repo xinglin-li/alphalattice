@@ -1,0 +1,9 @@
+AlphaLattice Recorded Evidence Fixture Dedication
+
+To the extent possible under law, the author dedicates only the synthetic
+fixture files beneath this recorded_evidence directory to the public domain
+under CC0 1.0 Universal. This dedication does not apply to any other file in
+the AlphaLattice repository.
+
+CC0 1.0 Universal legal code:
+https://creativecommons.org/publicdomain/zero/1.0/legalcode

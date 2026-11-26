@@ -21,16 +21,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from alphalattice.capabilities.domain_contracts.environment import recorded_environment
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.product_host.composition.feature_trials import FeatureTrial, FeatureTrials
 from alphalattice.control.product_host.composition.result_standing import packet_standing
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    input_absent,
-    read_factor_bundle,
-)
+from alphalattice.control.product_host.research_authoring.factor_inputs import read_factor_bundle
 from alphalattice.control.product_host.research_authoring.feature_activations import (
     FeatureActivation,
     FeatureExtensionRegistry,
@@ -68,6 +62,9 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.catalog impo
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
+from alphalattice.kernel.shared_kernel.environment import recorded_environment
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _LISTING_PAGE = 50
 """Formula factors one page of `FEATURE_EXTENSIONS` lists: the Local Web's table page."""
@@ -184,19 +181,19 @@ class FeatureExtensions:
         definitions = self.trials.feature_builds.definitions()
         plans: list[ResearchFeaturePlan] = []
         refused_plans: list[dict[str, Any]] = []
-        for filename in definitions.store.files.names(CATEGORY):
+        for path in sorted((definitions.store.root / CATEGORY).glob("*.json")):
             # A filename that is not a content identity was ignored by `find_models`; keep that
             # boundary while isolating each actual record read from its neighbours.
-            plan_hash, _, suffix = filename.rpartition(".")
-            if suffix != "json" or len(plan_hash) != 64:
+            if len(path.stem) != 64:
                 continue
+            plan_hash = path.stem
             try:
                 name = definitions.store.load_model(
-                    category=CATEGORY, content_hash=plan_hash, model=_PlanName
+                    category=CATEGORY, content_hash=path.stem, model=_PlanName
                 )
-                if name.plan_hash != plan_hash:
+                if name.plan_hash != path.stem:
                     raise ValueError("feature_research.plan_reference_mismatch")
-                plan = definitions.read(plan_hash)
+                plan = definitions.read(path.stem)
             except (OSError, ValueError) as error:
                 code = (
                     "feature_extension.plan_unreadable"
@@ -431,9 +428,7 @@ class FeatureExtensions:
     def _contract(self, spec: FactorSpec, recipe: str | None, binding: str) -> dict[str, Any]:
         try:
             sessions = len(read_factor_bundle(self.workspace, binding, verify=False).sessions)
-        except (FileNotFoundError, RuntimeError) as error:
-            if not input_absent(error):
-                raise
+        except FileNotFoundError:
             sessions = spec.minimum_observations
         try:
             specification = build_research_formula_specification(

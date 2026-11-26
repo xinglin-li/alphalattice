@@ -15,6 +15,7 @@ import math
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from typing import Any
 
 import numpy as np
@@ -24,7 +25,6 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.identity import integrity_sha256
 
 PRICES = ("open", "high", "low", "close")
 """The bar fields a rebase scales by its price factor; volume takes its volume factor."""
@@ -66,7 +66,7 @@ class RawBarRebase:
         """
         declared = {name: getattr(self, name) for name in _RECEIPT}
         payload = json.dumps(declared, sort_keys=True, separators=(",", ":"), default=str)
-        return integrity_sha256(payload.encode("utf-8")).hexdigest()
+        return sha256(payload.encode("utf-8")).hexdigest()
 
     def price(self, value: float) -> float:
         """A stored price after it."""

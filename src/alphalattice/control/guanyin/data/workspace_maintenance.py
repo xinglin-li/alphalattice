@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from alphalattice.capabilities.domain_contracts.project_layout import (
-    REFUSAL_WORDS_RESOURCE,
-    runtime_json,
-)
+from alphalattice.kernel.shared_kernel.project_layout import REFUSAL_WORDS_RESOURCE, runtime_json
 
 _DETAILS: dict[str, str] = {
     "workspace_maintenance.data_engineer_diagnosis_deferred": (

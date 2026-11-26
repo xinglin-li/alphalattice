@@ -13,7 +13,7 @@ from typing import Any, Final
 
 import numpy as np
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.bundles import moment_text as when
 
 AGENDA_LIMIT: Final = 12

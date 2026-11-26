@@ -126,7 +126,7 @@ def test_the_divergence_preflight_holds_nothing_a_writer_waits_with(
         lambda: preflight.evaluate_universe_spy_divergence_preflight(
             workspace=workspace, formation_sessions=sessions
         ),
-        (FeatureStateRepository, "feature_source_inputs_by_listing"),
+        (FeatureStateRepository, "projected_feature_frame"),
     )
     assert diagnostic.session_count == len(sessions)
 

@@ -11,8 +11,7 @@ from typing import Any, Final, cast
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import (
     NESTED_FIT_RUNTIME_CAPABILITY,
@@ -46,12 +45,7 @@ REGULARIZED_LIGHTGBM_SEARCH_DOMAIN_SCHEMA_ID = (
     "alpha-model.lightgbm-chronological-regularized.search-domain"
 )
 
-_DATASETS_HELD: Final = 8
-"""A fold's distinct binned Datasets: its sixty plans share about six (seed and leaf minimum)."""
-_BOOSTERS_HELD: Final = 64
-"""A scoring loop's distinct models: a lifecycle study predicts with a few dozen."""
-
-_DATASET_CACHE: ContextVar[BoundedMemo[str, Any] | None] = ContextVar(
+_DATASET_CACHE: ContextVar[dict[str, Any] | None] = ContextVar(
     "chronological_lightgbm_dataset_cache", default=None
 )
 """Fold-local, process-local binned-Dataset reuse; absent unless a scope opens it.
@@ -62,7 +56,7 @@ Dataset fresh, which is exactly what it did before this existed.
 """
 
 
-_BOOSTER_CACHE: ContextVar[BoundedMemo[str, Any] | None] = ContextVar(
+_BOOSTER_CACHE: ContextVar[dict[str, Any] | None] = ContextVar(
     "chronological_lightgbm_booster_cache", default=None
 )
 """Boosters by their exact model text, for one scoring loop; absent unless a scope opens it."""
@@ -76,10 +70,9 @@ def chronological_lightgbm_booster_cache() -> Iterator[None]:
     lifecycle study predicts with the same few dozen models at every formation. Boosters are
     kept by their exact model text, so only identical text answers, and prediction leaves a
     Booster unchanged. The scope is the loop and nothing survives it: one study's Boosters
-    take about 0.75 MiB each, and at most _BOOSTERS_HELD are held: a further model evicts the
-    least recently used, which is parsed again from the same text when next asked for.
+    take about 0.75 MiB each.
     """
-    token = _BOOSTER_CACHE.set(BoundedMemo(capacity=_BOOSTERS_HELD))
+    token = _BOOSTER_CACHE.set({})
     try:
         yield
     finally:
@@ -101,14 +94,12 @@ def chronological_lightgbm_dataset_cache() -> Iterator[None]:
     LightGBM spends most of a fit binning its input, and the plans of one fold
     that share a seed and a leaf minimum bin byte-identical data. Holding those
     Datasets for the fold turns sixty constructions into six; releasing them at
-    the fold boundary keeps the memory bounded to one fold's surfaces, and at most
-    _DATASETS_HELD are held: a further Dataset evicts the least recently used, built again from
-    the same inputs when next asked for.
+    the fold boundary keeps the memory bounded to one fold's surfaces.
 
     Deliberately not a service, a manager or a persistent store: the scope is a
     fold, the lifetime is a ``with`` block, and nothing survives it.
     """
-    token = _DATASET_CACHE.set(BoundedMemo(capacity=_DATASETS_HELD))
+    token = _DATASET_CACHE.set({})
     try:
         yield
     finally:
@@ -557,9 +548,8 @@ class ChronologicalLightGBMAdapter:
             )
         )
         cache = _DATASET_CACHE.get()
-        held = None if cache is None else cache.get(key)
-        if held is not None:
-            return held, key
+        if cache is not None and key in cache:
+            return cache[key], key
         dataset = lightgbm.Dataset(
             features,
             label=targets,

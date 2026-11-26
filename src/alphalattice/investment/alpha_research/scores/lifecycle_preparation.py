@@ -1,16 +1,15 @@
-"""One component's model lifecycle admission from its frozen training source (O3).
+"""One component's model lifecycle admission from its frozen training source (O3, V325).
 
 Moved from the Host's model training preparation: which training vintages a component's
 lifecycle needs, which of them its source supports, and the admission that binds them are
-Alpha's; the Host reads the workspace's inputs and records the admissions it returns. It
-moved with MODEL_KERNEL's rotation after dead code was removed, so the domain moved once.
+Alpha's; the Host reads the workspace's inputs and records the admissions it returns. It moved
+with MODEL_KERNEL's rotation for the dead code V365 and V366 took out, so the domain moved once.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
@@ -32,6 +31,7 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     ModelLifecycle,
     resolve_alpha_refit_plan,
 )
+from alphalattice.kernel.shared_kernel.spans import span
 
 
 def prepare_component_lifecycle(

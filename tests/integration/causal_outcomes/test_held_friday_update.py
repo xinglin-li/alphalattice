@@ -32,8 +32,7 @@ from tests.portfolio_strategy_lab.held_friday_provider import (
     prepare_friday_parent,
     prepare_friday_sector,
 )
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.pytest_environment import upgraded
+from tests.portfolio_strategy_lab.local_web_support import _json
 from tests.workspace_maintenance.local_data_provider import (
     recording_provider,
 )
@@ -161,7 +160,6 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
     live = None
     try:
         _copy(root, workspace)
-        upgraded(workspace)  # the lanes its first start moves
         (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
         package = "RETURN_G6_MU_ONLY"
         # Finish all due retained candidate retries through their real owner too.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -13,16 +12,16 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from functools import partial
+from hashlib import sha256
 from pathlib import Path
 from threading import Timer
 from typing import Any, Final, Literal, NamedTuple, Self
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-from alphalattice.capabilities.domain_contracts.waits import CEILING as WAIT_CEILING
-from alphalattice.capabilities.domain_contracts.waits import pause, spaced
-from alphalattice.interface.local_application import cli_invocation
+import yaml  # type: ignore[import-untyped]
+
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_HEADER,
     AGENT_VENDOR_HEADER,
@@ -32,7 +31,6 @@ from alphalattice.interface.local_application.cli_contract import (
     EXIT_CODES,
     INSTANCE_HEADER,
     MAXIMUM_REQUEST_BODY_BYTES,
-    SECTOR_DEVELOPMENT_PUBLISH_PATH,
     WAIT_EXITS,
     WORKSPACE_FROM,
     WORKSPACE_HEADER,
@@ -41,6 +39,7 @@ from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     answer_json,
     choices,
+    client_failure,
     client_refusal,
     command,
     command_table,
@@ -66,44 +65,44 @@ from alphalattice.interface.local_application.cli_contract import (
 from alphalattice.interface.local_application.cli_contract import (
     with_read_commands as _with_read_commands,
 )
-from alphalattice.interface.local_application.cli_invocation import cli_print as print
 from alphalattice.interface.local_application.failure_codes import (
     LocalResearchClientError as LocalResearchClientError,
 )
-from alphalattice.interface.local_application.host_lookup import failure_with_hosts
+from alphalattice.interface.local_application.goals import (
+    NEW_RESEARCH_SCOPE,
+    delegated_network,
+    first_use_asks,
+    target_sessions,
+)
 from alphalattice.interface.local_application.review_evidence import (
     read_resumed,
     review_prepared,
     select_preparation,
 )
-from alphalattice.interface.local_application.thin_cli import (
-    DEFAULT_HTTP_WAIT_SECONDS as DEFAULT_HTTP_WAIT_SECONDS,
+from alphalattice.protocols.research_authoring.selection import (
+    dump_declaration,
+    load_safe_yaml_document,
 )
-from alphalattice.interface.local_application.thin_cli import (
-    ENDPOINT_FOLDER as ENDPOINT_FOLDER,
-)
-from alphalattice.interface.local_application.thin_cli import (
-    OPERATIONS_PATH,
-    agent_session_values,
-    answers,
-    connection_path,
-    connection_port,
-    endpoint_path,
-    start_host,
-)
-from alphalattice.interface.local_application.thin_cli import (
-    workspace_connection_key as workspace_connection_key,
-)
-from alphalattice.interface.local_application.wire import _json_value as _json_value
-from alphalattice.interface.local_application.wire import request_body as request_body
-from alphalattice.kernel.identity import integrity_sha256
 
+CONNECTION_NAME = "local-research-connection.json"
 REFERENCE_LEDGER_NAME = "reference-ledger.txt"
 """Issued hashes and ids beside the connection."""
 WHOLE_REFERENCE = re.compile(
     r"\b(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
 )
 """SHA-256 or UUID."""
+DEFAULT_HTTP_WAIT_SECONDS = 120.0
+"""Transport waiting, not a Task budget; verified historical PLAN/readback may exceed 30 s."""
+
+
+def request_body(document: dict[str, Any]) -> bytes:
+    """Use UTF-8 JSON: escapes could make admitted Unicode fields exceed the body limit."""
+    return json.dumps(document, default=_json_value, ensure_ascii=False).encode("utf-8")
+
+
+def workspace_connection_key(workspace: Path) -> str:
+    """Bind local transport to the requested location, not a supplied descriptor id."""
+    return sha256(os.fsencode(os.path.normcase(str(workspace.resolve())))).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,9 +126,29 @@ class LocalResearchConnection:
         Raises:
             ValueError: If the descriptor is malformed or points outside loopback.
         """
-        connection_port(
-            self.schema_id, self.workspace, self.workspace_id, self.url, self.instance, self.token
-        )
+        values = (self.schema_id, self.workspace, self.workspace_id, self.url, self.instance)
+        if (
+            not all(isinstance(value, str) for value in (*values, self.token))
+            or self.schema_id != "local-research-connection"
+            or not self.workspace_id
+            or not 16 <= len(self.instance) <= 128
+            or not 32 <= len(self.token) <= 128
+        ):
+            raise ValueError("local_client.connection_unreadable")
+        target = urlsplit(self.url)
+        if (
+            not Path(self.workspace).is_absolute()
+            or target.scheme != "http"
+            or target.hostname != "127.0.0.1"
+            or not target.port
+            or target.username is not None
+            or target.password is not None
+            or target.path not in ("", "/")
+            or target.query
+            or target.fragment
+            or self.url.rstrip("/") != f"http://127.0.0.1:{target.port}"
+        ):
+            raise ValueError("local_client.connection_not_local")
 
     def to_json(self) -> str:
         """Serialize the connection descriptor for its controlled local file.
@@ -150,33 +169,30 @@ class LocalResearchConnection:
         )
 
     @staticmethod
-    def path(workspace: Path, *, root: Path | None = None) -> Path:
-        """Locate the endpoint record of `workspace`'s Host, beside its data root's lock.
+    def path(workspace: Path) -> Path:
+        """Locate the connection descriptor within the workspace runtime.
 
         Args:
-            workspace: The workspace whose Host's record is read.
-            root: The Host's data root when it is not this process's (a Host served apart).
+            workspace: The served workspace root.
 
         Returns:
-            The record's path in the data root's machine folder.
+            The contained connection-file path.
 
         Raises:
-            LocalResearchClientError: If the path is a symlink or leaves that folder.
+            LocalResearchClientError: If the path is a symlink or escapes the root.
         """
-        try:
-            return connection_path(workspace) if root is None else endpoint_path(root, workspace)
-        except ValueError as error:
-            raise LocalResearchClientError(
-                "local_client.connection_path_escapes_workspace"
-            ) from error
+        root = workspace.resolve()
+        path = root / "runtime" / CONNECTION_NAME
+        if path.is_symlink() or not path.resolve().is_relative_to(root):
+            raise LocalResearchClientError("local_client.connection_path_escapes_workspace")
+        return path
 
     @classmethod
-    def read(cls, workspace: Path, *, root: Path | None = None) -> Self:
+    def read(cls, workspace: Path) -> Self:
         """Read a bounded descriptor for this exact workspace.
 
         Args:
             workspace: The workspace expected by the client.
-            root: The Host's data root when it is not this process's (a Host served apart).
 
         Returns:
             A validated connection to its running Host.
@@ -184,7 +200,7 @@ class LocalResearchConnection:
         Raises:
             LocalResearchClientError: If the Host or descriptor is unavailable or unsafe.
         """
-        path = cls.path(workspace, root=root)
+        path = cls.path(workspace)
         try:
             if path.stat().st_size > 4096:
                 raise ValueError("oversized connection")
@@ -201,19 +217,10 @@ class LocalResearchConnection:
         return value
 
 
-def attached(workspace: Path, **options: Any) -> LocalResearchClient:
-    """A client of `workspace`'s Host for a Host-backed command, starting its data root's Host
-    once when none answers for it (`thin_cli.start_host`): a bound session's commands, and every
-    command the thin path leaves to this client. No record, or a record no Host answers at (a
-    crashed one's), starts it; the root's lock decides whether the start is this workspace's."""
-    try:
-        return LocalResearchClient(workspace, answering=True, **options)
-    except LocalResearchClientError as error:
-        if str(error) != "local_client.service_not_running":
-            raise
-    if not start_host(Path(workspace).resolve()):
-        raise LocalResearchClientError("local_client.service_not_running")
-    return LocalResearchClient(workspace, **options)
+def _json_value(value: object) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    raise LocalResearchClientError("local_client.document_not_json_compatible")
 
 
 class LocalResearchClient:
@@ -225,19 +232,13 @@ class LocalResearchClient:
         *,
         timeout: float = DEFAULT_HTTP_WAIT_SECONDS,
         goal: str | None = None,
-        answering: bool = False,
     ):
-        """Bind a client to one served workspace, its HTTP wait limit and a named goal.
-
-        `answering` refuses `service_not_running` at once when no Host answers at the record,
-        which a crashed Host leaves behind, so a caller can start one before its request."""
+        """Bind a client to one served workspace, its HTTP wait limit and a named goal."""
         self.workspace = workspace.resolve()
         self.connection = LocalResearchConnection.read(workspace)
         self.timeout = timeout
-        if answering and not answers(self.connection.url, timeout):
-            raise LocalResearchClientError("local_client.service_not_running")
         named = {"goal_id": goal}
-        whole_references(named, self.workspace)  # `--goal` as the compact view shows it
+        whole_references(named, self.workspace)  # `--goal` as the compact view shows it (V393)
         self.goal = named["goal_id"]
 
     def request(
@@ -265,11 +266,7 @@ class LocalResearchClient:
 
             if (path := codex_command()[0]) is not None:
                 document = {**document, "wake_codex_path": path}
-        return self._exchange(OPERATIONS_PATH, document, timeout=timeout)
-
-    def publish_sector_development(self, document: dict[str, Any]) -> dict[str, Any]:
-        """Ask the served workspace to publish a Sector development experiment."""
-        return self._exchange(SECTOR_DEVELOPMENT_PUBLISH_PATH, document)[0]
+        return self._exchange("/api/client/operations", document, timeout=timeout)
 
     def activity(
         self,
@@ -333,7 +330,7 @@ class LocalResearchClient:
         if observation_id is not None:
             if (
                 not isinstance(observation_id, str)
-                or re.fullmatch(r"[\da-f-]{36}", observation_id) is None
+                or re.fullmatch(r"[0-9a-f]{64}", observation_id) is None
             ):
                 raise LocalResearchClientError("activity.observation_id_invalid")
             if before is not None or native_session_id is not None:
@@ -381,7 +378,7 @@ class LocalResearchClient:
             WORKSPACE_HEADER: workspace_connection_key(self.workspace),
             INSTANCE_HEADER: connection.instance,
             # The agent session this command runs in and the goal it names (OP13).
-            **agent_provenance_headers(cli_invocation.environment(), self.goal),
+            **agent_provenance_headers(os.environ, self.goal),
         }
         # The recorded loopback port itself: no configured proxy is consulted, and a redirect
         # is an answer, never followed.
@@ -403,7 +400,7 @@ class LocalResearchClient:
                 )
                 progress = Timer(
                     5.0,
-                    lambda: print(
+                    lambda: print(  # noqa: T201  # CLI stderr
                         json.dumps(
                             {
                                 "operation": operation,
@@ -637,7 +634,7 @@ _STDIN_BYTES = 4 * 1024 * 1024 + 1
 """The most of standard input a command reads: one byte past the largest document it takes."""
 _STDIN_READ: list[tuple[object, bytes]] = []
 """Standard input as read, by its stream: a command that reads its `-` document twice (to
-choose its operation, then to continue from it) reads the same bytes."""
+choose its operation, then to continue from it) reads the same bytes (V401)."""
 
 
 def lead_readings(
@@ -706,7 +703,7 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
                 payload = source.read(limit + 1)
         if len(payload) > limit:
             failure = LocalResearchClientError("local_client.document_too_large")
-            # Its size and the bound, so the next document can fit.
+            # Its size and the bound, so the next document can fit (V372).
             failure.document_size = {
                 "bytes": None if path == Path("-") else path.stat().st_size,
                 "limit_bytes": limit,
@@ -717,7 +714,7 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
     except LocalResearchClientError:
         raise
     except FileNotFoundError as error:
-        # A path with no file is not a document of the wrong shape: name the path.
+        # A path with no file is not a document of the wrong shape: name the path (V390).
         failure = LocalResearchClientError("local_client.document_missing")
         failure.document_location = {"file": str(path), "expected": "an existing file"}
         raise failure from error
@@ -729,10 +726,6 @@ def _text(path: Path, *, limit: int = MAXIMUM_REQUEST_BODY_BYTES) -> str:
 
 def _yaml_value(path: Path, expected: str, *, text: str | None = None) -> Any:
     """A file read by the one declaration loader, its syntax errors located."""
-    from alphalattice.protocols.research_authoring.selection import (  # lazy: read declarations
-        load_safe_yaml_document,
-        yaml,
-    )
 
     try:
         return load_safe_yaml_document(_text(path) if text is None else text)
@@ -756,7 +749,7 @@ def _document(path: Path) -> dict[str, Any]:
     # Read once: standard input cannot be read a second time.
     text = _text(path)
     if not text.strip():
-        # Nothing was written into it: an empty file is not a document of another shape.
+        # Nothing was written into it (V222): an empty file is not a document of another shape.
         failure = LocalResearchClientError("local_client.document_empty")
         failure.document_location = {"file": path.name, "expected": "a safe YAML mapping"}
         raise failure
@@ -767,7 +760,7 @@ def _document(path: Path) -> dict[str, Any]:
 
 
 def _listed(path: Path) -> list[Any]:
-    """A list field's file, a YAML or JSON list."""
+    """A list field's file, a YAML or JSON list (V132)."""
 
     document = _yaml_value(path, "a safe YAML list")
     if not isinstance(document, list):
@@ -777,10 +770,6 @@ def _listed(path: Path) -> list[Any]:
 
 def _response_document(path: Path) -> dict[str, Any]:
     """Read saved JSON/YAML; continuation parts must be whole, with refusal offers retained."""
-    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML responses
-        load_safe_yaml_document,
-        yaml,
-    )
 
     text = _text(path, limit=4 * 1024 * 1024)
     try:
@@ -817,7 +806,7 @@ def _cut(value: Any) -> bool:
 
 
 def _whole(value: Any, part: str) -> Any:
-    """A part a continuation reads, refused when a compact display cut it."""
+    """A part a continuation reads, refused when a compact display cut it (V133)."""
     if _cut(value):
         raise LocalResearchClientError(
             "local_client.compact_reference_requires_full_response:" + part
@@ -835,14 +824,14 @@ BOOK_SELECTORS: Final = frozenset(
         "experiment_receipt_hash",
     }
 )
-"""The fields that name a book for its Evidence and review."""
+"""The fields that name a book for its Evidence and review (V473)."""
 
 _BOOK_CONTEXT: Final = frozenset({"position_basis", "portfolio_session"})
 """What travels with a book's selector: its position basis and its session."""
 
 
 def _offered_book(offered: dict[str, dict[str, Any]], allowed: frozenset[str]) -> dict[str, Any]:
-    """Use the answer's bound book.
+    """Use the answer's bound book (V473).
     Offers bind Evidence/review; other operations inherit it, never the default.
     Refuse two books.
     """
@@ -865,11 +854,11 @@ LOCATORS: Final[dict[str, tuple[str, ...]]] = {
     "evidence_unit_id": ("evidence_unit_id", "prepared_unit_id"),
 }
 """Where an answer names the instance a request field selects when not under the field's own
-name: a published or prepared Task, a plan, a factor, a prepared unit."""
+name: a published or prepared Task, a plan, a factor, a prepared unit (V449)."""
 
 
 def _located(answer: dict[str, Any], *keys: str) -> str:
-    """Answer locators precede named_read's.
+    """Answer locators precede named_read's (V454).
     The Host revalidates authority.
     """
     kept = answer.get("read_request")
@@ -936,7 +925,7 @@ def _write_bundle(
     except OSError as error:
         raise LocalResearchClientError("local_client.bundle_write_refused") from error
     answer = directory / "answer.json"
-    # Preserve entry/goal and shell quoting (_entry_of).
+    # Preserve entry/goal and shell quoting (_entry_of; V406, V449, V439).
     width = prefix.index("--workspace") if "--workspace" in prefix else len(prefix)
     arguments = [
         *prefix[width:],
@@ -978,7 +967,7 @@ def _request_fields(
     template: dict[str, Any], supplied: dict[str, Any], path: str = ""
 ) -> dict[str, Any]:
     """Fill choices without replacing bound references.
-    The owner's None or absent field is open.
+    The owner's None or absent field is open (V136).
     """
     result = dict(template)
     for key, value in supplied.items():
@@ -997,7 +986,7 @@ def _request_fields(
 
 def _one_reference(key: str, bound: object, given: object) -> bool:
     """Whether two spellings name one reference: a whole value and the beginning the compact
-    view shows of it, in a field the contract types as a hash or an id."""
+    view shows of it, in a field the contract types as a hash or an id (V399)."""
     if key not in command_table()["references"] or not (
         isinstance(bound, str) and isinstance(given, str)
     ):
@@ -1031,7 +1020,7 @@ def _document_value(field: str, given: str) -> object:
 
 
 def document_field(documents: list[str], given: str) -> tuple[str, object]:
-    """Return a registered field and its declaration.
+    """Return a registered field and its declaration (V432).
 
     `documents` follows registry order; `given` is a path, stdin or inline JSON.
     Paths fill the first field; inline JSON fills the first matching kind.
@@ -1069,7 +1058,7 @@ def _next_request(args: argparse.Namespace) -> dict[str, Any]:
     if action not in offered and action is not None:
         matches = [name for name in offered if name.startswith(action + ":")]
         if not matches and ":" in action:
-            # `recovery:<task>` names one item whether its id is whole or shown short.
+            # `recovery:<task>` names one item whether its id is whole or shown short (V399).
             head, _, item = action.partition(":")
             matches = [
                 name
@@ -1106,7 +1095,7 @@ def _next_request(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _chosen(request: dict[str, Any]) -> dict[str, Any]:
-    """The request, once every choice its owner left is given."""
+    """The request, once every choice its owner left is given (V136)."""
     left = choices(request)
     if left:
         raise LocalResearchClientError("local_client.next_request_needs_choice:" + ",".join(left))
@@ -1154,23 +1143,23 @@ def continued(
     Draft plan_request keeps bound references.
     Explicit declarations replace the draft's.
     Otherwise plan the draft's own document.
-    Controls preserve their input.
+    Controls preserve their input (V355).
     Their template supplies a missing declaration.
-    Next requests retain bound references.
+    Next requests retain bound references (V148).
     A preview's replan is such a request.
     Explicit declarations replace its offered spec.
     Other fields use their own names or LOCATORS.
     Task and Goal are the answer's target.
     Missing targets are refused.
     Flags naming other targets are refused.
-    Other references may be overridden by flags.
+    Other references may be overridden by flags (V449).
     Thus saved reads keep their selection.
     Missing references, open choices and truncated parts refuse.
     """
     offered = offered_requests(bundle, operation)
     kept = bundle.get("read_request")
     # A saved read reads again as itself, its whole selection, before any next request the
-    # answer offers for the same operation (a revision read again as the latest);
+    # answer offers for the same operation (V460: a revision read again as the latest);
     # `--action` chooses a next request by name.
     again = isinstance(kept, dict) and kept.get("operation") == operation
     matches = [
@@ -1186,7 +1175,7 @@ def continued(
             draft_status and isinstance(template, dict) and template.get("operation") == operation
         )
         if not drafted and not matches and _controls(bundle):
-            # A controls answer plans its declaration on its own input.
+            # A controls answer plans its declaration on its own input (V355).
             # Its input and binding both: the input the controls named is not asked again.
             controlled = _request_fields(
                 {
@@ -1238,21 +1227,21 @@ def continued(
         return _chosen(_request_fields(_whole(matches[0], operation), given))
     document: dict[str, Any] = {"operation": operation}
     if "task_id" in allowed:
-        # A saved answer's Task read follows the Task the answer started, as `--wait` does;
-        # any other operation reads the answer's own Task.
+        # A saved answer's Task read follows the Task the answer started, as `--wait` does
+        # (V137, V446); any other operation reads the answer's own Task.
         started = ("follow_task_id",) if operation == "STATUS" else ()
         try:
             document["task_id"] = _located(bundle, *started, *LOCATORS["task_id"])
         except LocalResearchClientError:
             # A receipt that started no Task names its subject's in the requests it offers:
-            # the one Task they all name; none or two leave the refusal as it was.
+            # the one Task they all name (V479); none or two leave the refusal as it was.
             named = {
                 request["task_id"]
                 for request in offered.values()
                 if isinstance(request, dict) and isinstance(request.get("task_id"), str)
             }
             # A read again as itself names no Task when its saved request named none and its
-            # operation needs none: a readback saved before its first Task reads again.
+            # operation needs none: a readback saved before its first Task reads again (V575).
             taskless = again and "task_id" not in command_table()["fields"][operation]["required"]
             if len(named) == 1:
                 document["task_id"] = named.pop()
@@ -1260,22 +1249,22 @@ def continued(
                 raise
     if "goal_id" in allowed and operation != "GOAL_OPEN":
         # The goal the file names, never the session's own by default: a file naming none is
-        # refused (an opened goal's id is its own, never a file's).
+        # refused (V449; an opened goal's id is its own, never a file's).
         document["goal_id"] = _located(bundle, *LOCATORS["goal_id"])
-    # The target never yields to a flag naming another (as `_request_fields` refuses it
+    # The target never yields to a flag naming another (V449, as `_request_fields` refuses it
     # for an offered request); every other reference the answer names fills what the flags
-    # leave, so a read reads again from its own answer.
+    # leave, so a read reads again from its own answer (V449).
     request = _request_fields(document, given)
     if again:
         assert isinstance(kept, dict)
         # The same read again: its whole selection, as the CLI's copy kept it, fills what the
-        # flags leave, a day or a page included; a write's text is the caller's to give
+        # flags leave, a day or a page included (V454); a write's text is the caller's to give
         # again, never a saved answer's (OP15).
         for name, value in kept.items():
             if name in allowed and name not in {"operation", "task_id", "goal_id"}:
                 request.setdefault(name, value)
     if allowed & BOOK_SELECTORS and not BOOK_SELECTORS & set(request):
-        # The book this answer's own requests select, bound as they bind it.
+        # The book this answer's own requests select, bound as they bind it (V473).
         for name, value in _offered_book(offered, allowed).items():
             request.setdefault(name, value)
     references = {name for name in allowed if reference_field(name)} | set(LOCATORS)
@@ -1296,7 +1285,7 @@ def continued(
             "local_client.response_reference_missing:" + ",".join(missing)
         )
     # A new read from a saved answer must select that answer's subject. An unrelated
-    # answer cannot silently reopen the workspace's default input/package.
+    # answer cannot silently reopen the workspace's default input/package (V515).
     # A saved read of an unfiltered list keeps that explicit selection in read_request.
     selectors = (allowed & references) - ({"goal_id"} if operation == "GOAL_OPEN" else set())
     if selectors and not again and not any(request.get(name) for name in selectors):
@@ -1330,12 +1319,8 @@ def _save_output(
     if format == "json":
         payload = body["json"].encode("utf-8") if isinstance(body.get("json"), str) else raw
     elif format == "yaml":
-        from alphalattice.protocols.research_authoring.selection import (  # lazy: write YAML
-            dump_declaration,
-        )
-
         # The answer JSON saves: an export's inner answer where it carries one as text, so
-        # `--from` reads the same Task and next requests from either file.
+        # `--from` reads the same Task and next requests from either file (V447).
         whole = (
             json.loads(body["json"])
             if isinstance(body.get("json"), str)
@@ -1350,16 +1335,50 @@ def _save_output(
     _write_new(path, payload, replace=replace)
 
 
+def allowed_value_notes(schema: Mapping[str, Any], *, limit: int = 40) -> list[str]:
+    """List each enumerated field of a declaration's schema with its allowed values.
+
+    AX's agents looked them up with `answer show` and `schema show` after saving a
+    declaration (AGENT-TIME R2); the saved file now heads with them.
+
+    Args:
+        schema: The declaration's JSON schema, its `$defs` included.
+        limit: The most fields listed.
+
+    Returns:
+        One ``path: a | b`` line per enumerated field; a list's items are ``path[]``.
+    """
+    definitions = schema.get("$defs") or {}
+    notes: list[str] = []
+
+    def resolve(node: Any) -> Any:
+        while isinstance(node, Mapping) and isinstance(node.get("$ref"), str):
+            node = definitions.get(node["$ref"].rsplit("/", 1)[-1], {})
+        return node
+
+    def walk(node: Any, path: str, depth: int) -> None:
+        node = resolve(node)
+        if not isinstance(node, Mapping) or depth > 6 or len(notes) >= limit:
+            return
+        if isinstance(node.get("enum"), list):
+            notes.append(f"{path}: " + " | ".join(str(value) for value in node["enum"]))
+            return
+        for option in node.get("anyOf") or node.get("oneOf") or ():
+            walk(option, path, depth + 1)
+        if isinstance(node.get("items"), Mapping):
+            walk(node["items"], f"{path}[]", depth + 1)
+        for name, child in (node.get("properties") or {}).items():
+            walk(child, f"{path}.{name}" if path else str(name), depth + 1)
+
+    walk(schema, "", 0)
+    return list(dict.fromkeys(notes))
+
+
 def _save_declaration(path: Path, body: dict[str, Any]) -> None:
-    """The answer's editable declaration, for an author to edit: its ``yaml`` part, or
-    its ``template`` in the declaration loader's dialect, as `feature controls` answers.
+    """The answer's editable declaration, for an author to edit (V130): its ``yaml`` part, or
+    its ``template`` in the declaration loader's dialect, as `feature controls` answers (V362).
     When the answer carries the declaration's schema, its allowed values head the file as
     comments, which the loader ignores."""
-    from alphalattice.protocols.research_authoring.selection import (  # lazy: write declarations
-        allowed_value_notes,
-        dump_declaration,
-    )
-
     value = body.get("yaml")
     if not isinstance(value, str) and isinstance(body.get("template"), dict):
         value = dump_declaration(json.loads(json.dumps(body["template"], default=_json_value)))
@@ -1399,11 +1418,11 @@ _SHOWN_SHORT_REFERENCE = re.compile(
 
 
 def reference_field(name: str | None) -> bool:
-    """Whether a field names a subject a continuation carries from a saved answer.
+    """Whether a field names a subject a continuation carries from a saved answer (V523, V515).
 
     Schema-typed references and named locators, prefixed history entries and string ids, an
     authored selector such as a research input among them. Which of them the compact display
-    shortens and the client reads back is `_issued_reference`'s.
+    shortens and the client reads back is `_issued_reference`'s (V561).
     """
     return name is not None and (
         name.endswith(_REFERENCE_KEYS) or name in command_table()["references"]
@@ -1413,27 +1432,27 @@ def reference_field(name: str | None) -> bool:
 def _issued_reference(name: str) -> bool:
     """Whether a request field holds only Host-issued values (a hash, a typed UUID or entry
     id): only there a short value reads back as the one whole value it begins. An authored id
-    is sent as written."""
+    is sent as written (V393, V544, V561)."""
     return name.endswith(("_hash", "_hashes")) or name in command_table()["references"]
 
 
 def _shortened(name: str | None) -> bool:
     """Whether the compact display shortens a field's whole hashes and ids: an issued reference,
     or an answer's own id the contract does not take (sent back through the typed field it
-    selects). An untyped request field holds an authored value, shown as written."""
+    selects). An untyped request field holds an authored value, shown as written (V561)."""
     if name is None or not reference_field(name):
         return False
     return _issued_reference(name) or name not in command_table()["types"]
 
 
 def short_references(value: Any, key: str | None = None) -> Any:
-    """The compact display with each typed reference shown by its first twelve characters.
+    """The compact display with each typed reference shown by its first twelve characters (V393).
 
     The client reads such a beginning back as the whole value (`whole_references`), so what is
     shown may be sent. Only a field that holds a reference is shortened, its list's items
     included: a path, a link, a command the Host wrote and every other text stay whole, since a
-    directory named after a Task (`cro-<id>-r1`) must still open and its command still run.
-    `--view full` and `--output` keep every value.
+    directory named after a Task (`cro-<id>-r1`) must still open and its command still run
+    (V478). `--view full` and `--output` keep every value.
 
     Args:
         value: The display, or a part of it.
@@ -1458,10 +1477,11 @@ def whole_references(document: dict[str, Any], workspace: Path) -> None:
 
     A string of exactly the shape the compact display gives a hash or an id, standing in a
     field the request contract types as one (the table's `references`, at any depth, a list's
-    items included), is read as the one value the Host has answered with that begins so.
-    Such a field holds only issued values, so one that begins several values or none is refused.
-    A field the contract does not type as a reference, an authored id among them, is sent byte
-    for byte whatever the ledger holds, as is every other string, authored text included.
+    items included), is read as the one value the Host has answered with that begins so
+    (V393). Such a field holds only issued values, so one that begins several values or none
+    is refused. A field the contract does not type as a reference, an authored id among them,
+    is sent byte for byte whatever the ledger holds (V544, V561), as is every other string,
+    authored text included (V399).
 
     Args:
         document: The request; its short references are replaced.
@@ -1525,10 +1545,10 @@ def _same(value: Any) -> Any:
 def _context(
     workspace: Path, goal: str | None, body: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """The context every answer names, as agent CLIs name their session: the workspace
-    and how it was chosen (`WORKSPACE_FROM`), the goal the request counted toward and
+    """The context every answer names, as agent CLIs name their session (V401): the workspace
+    and how it was chosen (`WORKSPACE_FROM`, V568), the goal the request counted toward and
     the agent session it came from."""
-    headers = agent_provenance_headers(cli_invocation.environment())
+    headers = agent_provenance_headers(os.environ)
     session = headers.get(AGENT_SESSION_HEADER)
     counted = (body or {}).get("attributed_goal_id")
     return {
@@ -1562,12 +1582,12 @@ def _size(value: Any) -> int:
 COMPACT_NEXT_BYTES = COMPACT_ANSWER_BYTES // 4
 """What a compact answer's next requests print at most, their requests, commands and templates
 together: the owner's first, in its order, while they fit; `next_left` counts the rest, which
-`--list-next` lists a page at a time."""
+`--list-next` lists a page at a time (V411)."""
 _NEXT_KEYS = ("next_requests", "next_commands", "next_templates")
 
 
 def _hold_next(answer: dict[str, Any], budget: int, *, strict: bool = False) -> None:
-    """Keep request/command/template whole; strict budgets may omit an oversized first."""
+    """Keep request/command/template whole; strict budgets may omit an oversized first (V411)."""
     views = [value if isinstance(value, dict) else {} for value in map(answer.get, _NEXT_KEYS)]
     if _size(views) <= budget:
         return
@@ -1588,7 +1608,7 @@ def _hold_next(answer: dict[str, Any], budget: int, *, strict: bool = False) -> 
 def _listing_page(
     listing: dict[str, Any], start: int, budget: int | None
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """`--list-next`'s listing from its ``start``th entry, commands then templates.
+    """`--list-next`'s listing from its ``start``th entry, commands then templates (V411).
 
     Within ``budget`` bytes, at least one entry, or whole when ``budget`` is None; beside it the
     count left and the option that lists them, when some are.
@@ -1600,7 +1620,7 @@ def _listing_page(
     ]
     page: dict[str, Any] = {"next_commands": None, "next_templates": None}
     # The count left and the option that lists them print beside the page, within the same
-    # bytes: held back at their longest so commands remain whole.
+    # bytes: held back at their longest (TS1, after V478 kept commands whole).
     longest = {"count": len(entries), "list": f"--list-next --next-from {len(entries)}"}
     size = _size(page) + _size(longest)
     shown = 0
@@ -1697,14 +1717,13 @@ _IMPORTANT: Final = frozenset(
         "execution_preview",
         "progress",
         "stage_timing",
-        "storage",
         "stage_updated_at",
         "activity_timing",
         "work_progress",
         "execution_intent",
         "execution_numerical_call_count",
         "declaration_changes",
-        # What the next step reads from saved answers: a book's
+        # What the next step read from saved answers in AX's runs (AGENT-TIME R2): a book's
         # activation, its dates, a curation's choices, an Evidence preview's sources and
         # scope. A strategy's dates keep one owner and are drawn with it.
         "activation",
@@ -1751,7 +1770,7 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
             omitted = {
                 "_omitted": "text",
                 "utf8_bytes": len(encoded),
-                "text_sha256": integrity_sha256(encoded).hexdigest(),
+                "text_sha256": sha256(encoded).hexdigest(),
             }
             if (path == "json" or path.endswith(".json")) and depth < 5 and available:
                 with suppress(ValueError):
@@ -1825,8 +1844,8 @@ def _compact(body: Any, budget: int, section: str, omissions: list[str]) -> dict
 
     # What a result can claim and what its flow needs next, which an agent reads first, are
     # bounded by their owners (five studies of each result at most), so they show whole and
-    # spend only their own size. So do the page links an agent gives the person,
-    # which callers read back from saved answers.
+    # spend only their own size (V368, V367). So do the page links an agent gives the person,
+    # which AX's agents read back from saved answers nine times (AGENT-TIME R2).
     kept = (
         {
             key: body[key]
@@ -1862,7 +1881,7 @@ _PAGE = re.compile(r"(\d*):(\d*)")
 def _step(value: Any, parts: list[str], at: int) -> tuple[Any, int] | None:
     """What part ``at`` of a section path names in ``value``, and how many parts it took: a
     mapping's key (one holding dots, `manifest.json`, takes several), a list's index, or a page
-    of a list (`3:`, `3:40`); None where ``value`` holds no such part."""
+    of a list (`3:`, `3:40`, V402); None where ``value`` holds no such part."""
     name = parts[at]
     if isinstance(value, dict):
         for end in range(at + 1, len(parts) + 1):
@@ -1886,12 +1905,12 @@ def _step(value: Any, parts: list[str], at: int) -> tuple[Any, int] | None:
 
 
 def answer_part(body: dict[str, Any], path: str) -> dict[str, Any]:
-    """One part of an answer by its dotted path, a list's item by its index.
+    """One part of an answer by its dotted path, a list's item by its index (V112).
 
     ``result.evidence_report.items.0`` is the first Factor's evidence and ``items.3:`` its
-    items from the fourth on, a page the compact view names; `schema show` outlines a
+    items from the fourth on, a page the compact view names (V402); `schema show` outlines a
     readback's parts (``schema show``'s `answer_parts`). A part whose unit the answer names in its
-    ``metric_units`` carries it.
+    ``metric_units`` carries it (V343).
     """
     value: Any = body
     parts, at = path.split("."), 0
@@ -1925,11 +1944,6 @@ def saved_answer(
     Raises:
         LocalResearchClientError: Invalid file, representation or path.
     """
-    from alphalattice.protocols.research_authoring.selection import (  # lazy: read YAML answers
-        load_safe_yaml_document,
-        yaml,
-    )
-
     text = _text(path, limit=4 * 1024 * 1024)
     if text.lstrip().startswith("<"):
         raise LocalResearchClientError("local_client.saved_answer_format_unavailable:html")
@@ -2004,7 +2018,7 @@ def saved_answer(
 
 def _section_parts(body: dict[str, Any], path: str) -> list[str]:
     """The parts an answer holds where a ``--section`` path stopped, each a path the next call
-    can ask for: the owner's outcome stands beside them."""
+    can ask for (V319): the owner's outcome stands beside them (V129)."""
     value: Any = body
     parts, at = path.split("."), 0
     while at < len(parts):
@@ -2032,12 +2046,12 @@ def _next_commands(
     left: bool = False,
     options: tuple[str, ...] = (),
 ) -> dict[str, Any] | None:
-    """Each next request the owner offers, as the checkout's command that sends it.
+    """Each next request the owner offers, as the checkout's command that sends it (V123).
 
     Every answer carries its top level's; ``--list-next`` (``listed``) lists the listed items'
-    as well, where a pending decision carries its own, so the answer stays its size.
+    as well, where a pending decision carries its own (V135), so the answer stays its size.
     A request that leaves a choice is never a runnable command: ``left`` gives those instead,
-    each a template with the fields to choose.
+    each a template with the fields to choose (V136).
     """
     offered = offered_requests(body) if listed else body.get("next_requests")
     if not isinstance(offered, dict) or not offered:
@@ -2066,53 +2080,40 @@ RECONNECT: frozenset[str] = frozenset(
 waits on, since the Task it waits for runs on under Task Control (WK)."""
 
 
-def _deadline(max_wait: float | None) -> float:
-    """A waiter's deadline; one that is reached ends MAX_WAIT_REACHED, its work continuing."""
-    return time.monotonic() + _max_wait(max_wait)
-
-
-def _max_wait(given: float | None) -> float:
-    """--max-wait, above 0 and at most the hour every wait has, or that hour when omitted."""
-    if given is not None and not (math.isfinite(given) and 0 < given <= WAIT_CEILING):
-        raise LocalResearchClientError("local_client.max_wait_invalid")
-    return WAIT_CEILING if given is None else given
-
-
-def _sleep_before_read(delay: float, deadline: float) -> bool:
+def _sleep_before_read(delay: float, deadline: float | None) -> bool:
     """Sleep only to the cap; a completed sleep always has a read after it."""
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
+    remaining = None if deadline is None else deadline - time.monotonic()
+    if remaining is not None and remaining <= 0:
         return False
-    pause(min(delay, remaining))
+    time.sleep(delay if remaining is None else min(delay, remaining))
     return True
 
 
 def _read_through_restarts(
-    client: LocalResearchClient, document: dict[str, Any], deadline: float
+    client: LocalResearchClient, document: dict[str, Any], deadline: float | None
 ) -> tuple[LocalResearchClient, dict[str, Any] | None]:
     """One read, waiting out a Host that stopped or restarted, including a last read at the cap.
 
-    Each request waits no longer than the time left, beyond a long poll's own wait.
+    Each request waits no longer than the time left, beyond a long poll's own wait (V400).
     """
-
-    def read() -> dict[str, Any] | None:
-        """The Host's answer, or None while it stops or restarts."""
-        remaining = deadline - time.monotonic()
-        request = {k: v for k, v in document.items() if k != "wait_seconds"}
-        if "wait_seconds" in document and remaining > 0:  # the last read at the cap waits not
-            request["wait_seconds"] = min(document["wait_seconds"], remaining)
+    delay = 1.0
+    while True:
+        remaining = None if deadline is None else deadline - time.monotonic()
+        request = document
+        if remaining is not None and "wait_seconds" in document:
+            request = {**document, "wait_seconds": min(document["wait_seconds"], max(0, remaining))}
         try:
-            body = client.request(request, timeout=max(0, remaining) + _POLL_MARGIN)
+            body = client.request(
+                request, timeout=None if remaining is None else max(0, remaining) + _POLL_MARGIN
+            )
         except LocalResearchClientError as error:
             if str(error) not in RECONNECT:
                 raise
-            return None
-        if str(body.get("refused") or body.get("failure_code") or "") in RECONNECT:
-            return None
-        return body
-
-    delay = 1.0
-    while (body := read()) is None and _sleep_before_read(delay, deadline):
+        else:
+            if str(body.get("refused") or body.get("failure_code") or "") not in RECONNECT:
+                return client, body
+        if not _sleep_before_read(delay, deadline):
+            return client, None
         delay = min(delay * 2, 30.0)
         with suppress(LocalResearchClientError):
             client = LocalResearchClient(
@@ -2120,19 +2121,16 @@ def _read_through_restarts(
                 timeout=getattr(client, "timeout", DEFAULT_HTTP_WAIT_SECONDS),
                 goal=getattr(client, "goal", None),
             )
-    return client, body
 
 
 _POLL_MARGIN = 5.0
-HOST_WAIT = 20.0
-"""Seconds a goal's or a floor's read may wait at the Host for its news: the long poll's most."""
 """Seconds a request may run past a waiter's deadline: a long poll asks the Host for no more
-than the time left, and its answer needs a moment to arrive."""
+than the time left, and its answer needs a moment to arrive (V400)."""
 
 
 def _kept_options(client: LocalResearchClient, view: str = "compact") -> tuple[str, ...]:
     """The context every command this call prints keeps: its view, its language and the goal it
-    named, so the agent copies a command and never retypes them."""
+    named, so the agent copies a command and never retypes them (V406, V428, V449)."""
     language = ANSWER_LANGUAGE.get()
     goal = getattr(client, "goal", None)
     return (
@@ -2179,7 +2177,7 @@ def _follow_receipt(
                     saved[:] = [output]
             recovery = {**read, "format": format, "output": str(_next_output(output))}
     finally:
-        print(
+        print(  # noqa: T201  # CLI stderr
             json.dumps(
                 {
                     "task_id": read.get("task_id"),
@@ -2204,9 +2202,10 @@ def _follow(
     receipt: _FollowReceipt = _follow_receipt,
 ) -> dict[str, Any]:
     """Follow work across Host restarts, ending at an action, stage boundary or deadline."""
-    _max_wait(max_wait)
+    if max_wait is not None and not max_wait > 0:
+        raise LocalResearchClientError("local_client.max_wait_invalid")
     trial = body.get("feature_trial_id") if body.get("status") == "FEATURE_TRIAL" else None
-    # A promotion follows its new Alpha Task, not the answer's subject.
+    # A promotion follows its new Alpha Task, not the answer's subject (V137).
     task = body.get("follow_task_id") or body.get("publication_task_id") or body.get("task_id")
     if outcome_of(body) != "PENDING" or task_state(body) in WAIT_EXITS or not (trial or task):
         return body
@@ -2216,7 +2215,7 @@ def _follow(
         else {"operation": "STATUS", "task_id": task}
     )
 
-    # Keep --from's selection only for the same Task/trial, never a promoted child.
+    # Keep --from's selection only for the same Task/trial, never a promoted child (V554).
     selected = body.get("read_request")
     kept_read = (
         {"read_request": selected}
@@ -2250,26 +2249,22 @@ def _follow(
             **extra,
         }
 
-    if deadline is None:
-        deadline = _deadline(max_wait)
+    if deadline is None and max_wait is not None:
+        deadline = time.monotonic() + max_wait
     held = int(body.get("verified_stage_count") or 0)
-    # Say once: this call is the wait, never poll.
+    # Say once: this call is the wait, never poll (AGENT-TIME R1; AX polled 104 times).
     receipt(client, body, document)
-    delay, last, current, began, moved = 0.25, None, body, 0.0, False
+    delay, last, current = 0.25, None, body
     # An incident open when the follow began is not news; a new one wakes it (GY2, WK).
     known = (body.get("incident") or {}).get("key")
-
-    def follow_once() -> dict[str, Any] | None:
-        """One read and its verdict: the follow's last answer, or None while it goes on."""
-        nonlocal client, current, last, began, moved
+    while True:
         # A Task's status waits on the Host for the Task to move on (N8); a trial is polled.
-        remaining = deadline - time.monotonic()
+        remaining = None if deadline is None else deadline - time.monotonic()
         request = (
             document
-            if trial or remaining < 0.1
-            else {**document, "wait_seconds": round(min(20.0, remaining), 3)}
+            if trial or (remaining is not None and remaining < 0.1)
+            else {**document, "wait_seconds": round(min(20.0, remaining or 20.0), 3)}
         )
-        began = time.monotonic()
         client, read = _read_through_restarts(client, request, deadline)
         if read is None:
             return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
@@ -2287,9 +2282,15 @@ def _follow(
             )
         )
         stage = current.get("current_stage")
-        moved, last = _said(document, state, stage, last), (state, stage)
+        if (state, stage) != last:
+            print(  # noqa: T201  # CLI stderr
+                json.dumps({"follow": document, "state": state, "current_stage": stage}),
+                file=sys.stderr,  # noqa: TID251
+                flush=True,
+            )
+            last = (state, stage)
         # A review to decide, a Task to recover or a deferral waits on a request, not on this
-        # waiter.
+        # waiter (V507).
         if (exit_event := WAIT_EXITS.get(task_state(current) or "")) is not None:
             return final(current, exit_event)
         incident = current.get("incident") or {}
@@ -2299,33 +2300,16 @@ def _follow(
             return final(current, "ENDED" if outcome_of(current) == "OK" else "STOPPED")
         if each_stage and int(current.get("verified_stage_count") or 0) > held:
             return final(current, "STAGE_VERIFIED")
-        return None
-
-    while (ended := follow_once()) is None and deadline - time.monotonic() > 0:
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
         if trial:
             _sleep_before_read(delay, deadline)
             delay = min(delay * 2, 1.0)
-        elif not moved:  # a Host that answers at once, not after its wait, is not read again
-            spaced(began, deadline)
-    if ended is not None:
-        return ended
-    return final(current, "MAX_WAIT_REACHED", wait_status="MAX_WAIT_TASK_CONTINUES")
-
-
-def _said(document: dict[str, Any], state: object, stage: object, last: object) -> bool:
-    """Say on stderr that a followed Task moved; whether it did."""
-    if (state, stage) == last:
-        return False
-    print(
-        json.dumps({"follow": document, "state": state, "current_stage": stage}),
-        file=sys.stderr,  # noqa: TID251
-        flush=True,
-    )
-    return True
 
 
 def _wakes(message: dict[str, Any], me: str | None, mine: set[str]) -> bool:
-    """Whether a goal's message wakes this waiter: one addressed to it, a reply to one it
+    """Whether a goal's message wakes this waiter (V503): one addressed to it, a reply to one it
     sent, or one addressed to no one; never its own, nor one between two other agents. A waiter
     whose session is unknown wakes on every new message, as before."""
     if me is None:
@@ -2378,25 +2362,31 @@ def _wait_for_goal(
 ) -> dict[str, Any]:
     """Wait for a goal's next Task to end or need a decision, its next message for this waiter
     (the session running the command; an accepted answer wakes its lead, never a message
-    between two others; a request's own row wakes no one, its Task does), or its close."""
-    me = agent_provenance_headers(cli_invocation.environment()).get(AGENT_SESSION_HEADER)
+    between two others, V503; a request's own row wakes no one, its Task does), or its close."""
+    me = agent_provenance_headers(os.environ).get(AGENT_SESSION_HEADER)
     document = {"operation": "GOAL_NARRATIVE", "goal_id": goal_id}
     read = {"operation": "GOAL_SHOW", "goal_id": goal_id}
-    deadline = _deadline(max_wait)
+    deadline = None if max_wait is None else time.monotonic() + max_wait
     client, current = _read_through_restarts(client, document, deadline)
     prefix = _entry_of(client)
     if current is None or current.get("status") == "REFUSED":
         # A cap reached before the goal's first read leaves it as it was: pending, as every
-        # other cap.
+        # other cap (V563).
         return current or {
             "wait_status": "MAX_WAIT_TASK_CONTINUES",
             "wait_event": wait_event("MAX_WAIT_REACHED", read, prefix=prefix, goal_id=goal_id),
         }
     # Each Task's state as last seen: a Task that recovered and stopped again is news, as
-    # its first stop was (a set of first states slept through the second).
+    # its first stop was (V535: a set of first states slept through the second).
     seen = {t["task_id"]: t["state"] for t in current["record"]["tasks"]}
     heard = {m["observation_id"] for m in current["record"]["conversation"] if _filed(m)}
-    while current.get("state") == "OPEN":
+    delay = 2.0
+    while True:
+        if current.get("state") != "OPEN":
+            return {
+                **current,
+                "wait_event": wait_event("GOAL_CLOSED", read, prefix=prefix, goal_id=goal_id),
+            }
         conversation = current["record"]["conversation"]
         mine = {str(m.get("message_id")) for m in conversation if me and m.get("agent_id") == me}
         for message in conversation:
@@ -2420,7 +2410,7 @@ def _wait_for_goal(
                 }
         for task in current["record"]["tasks"]:
             # Each Task's state as the Task waiter reads it: a decision or a deferral waits on a
-            # request, and one that ended or stopped (BLOCKED among them) ends the
+            # request (V507), and one that ended or stopped (BLOCKED among them, V440) ends the
             # wait.
             state = task["state"]
             outcome = outcome_of({"lifecycle": state})
@@ -2438,27 +2428,21 @@ def _wait_for_goal(
                     ),
                 }
         seen.update({t["task_id"]: t["state"] for t in current["record"]["tasks"]})
-        if deadline - time.monotonic() <= 0:
+        if not _sleep_before_read(delay, deadline):
             return {
                 **current,
                 "wait_status": "MAX_WAIT_TASK_CONTINUES",
                 "wait_event": wait_event("MAX_WAIT_REACHED", read, prefix=prefix, goal_id=goal_id),
             }
-        # The Host answers once the goal moves on from the mark last read (a message, a Task's
-        # state, a revision), or at its long poll's end.
-        moved = {**document, "wait_seconds": HOST_WAIT, "goal_seen": current["narrative_mark"]}
-        client, again = _read_through_restarts(client, moved, deadline)
+        delay = min(delay * 1.5, 15.0)
+        client, again = _read_through_restarts(client, document, deadline)
         if again is not None:
             current = again
-    return {
-        **current,
-        "wait_event": wait_event("GOAL_CLOSED", read, prefix=prefix, goal_id=goal_id),
-    }
 
 
 def _codex_thread() -> str:
     """The Codex thread the Host is to wake, named by the host's own session."""
-    thread = agent_session_values(cli_invocation.environment())["codex"].strip()
+    thread = os.environ.get("CODEX_THREAD_ID", "").strip()
     if not thread:
         raise LocalResearchClientError("local_client.codex_queue_unavailable")
     return thread
@@ -2469,11 +2453,11 @@ _UNIT_NAME = re.compile(r"[^A-Za-z0-9_-]+")
 
 @dataclass
 class _Chain:
-    """One verb's requests and Task waits under one deadline, until its first stop."""
+    """One verb's requests and Task waits under one deadline (AGENT-TIME), until its first stop."""
 
     client: LocalResearchClient
     name: str
-    deadline: float
+    deadline: float | None
     steps: list[dict[str, Any]] = field(default_factory=list)
     person_questions: list[dict[str, Any]] = field(default_factory=list)
     wake: tuple[str, str] | None = None
@@ -2484,7 +2468,7 @@ class _Chain:
     def send(self, step: str, document: dict[str, Any]) -> dict[str, Any]:
         if document.get("task_id"):
             self.receipt(self.client, None, {"operation": "STATUS", "task_id": document["task_id"]})
-        print(
+        print(  # noqa: T201  # CLI stderr
             json.dumps(
                 {
                     "flow": self.name,
@@ -2523,8 +2507,9 @@ class _Chain:
                 },
             )
             return self.stop(step, registered)
-        # The chain's own deadline bounds the follow; no --max-wait is re-derived from it.
-        ended = _follow(self.client, body, None, deadline=self.deadline, receipt=self.receipt)
+        deadline = self.deadline
+        remaining = None if deadline is None else max(0.1, deadline - time.monotonic())
+        ended = _follow(self.client, body, remaining, deadline=deadline, receipt=self.receipt)
         self.steps.append({"step": step + "_task", "sent": "STATUS", "outcome": outcome_of(ended)})
         self.followed_answer = ended
         return None if outcome_of(ended) == "OK" else self.stop(step, ended)
@@ -2587,7 +2572,7 @@ class _Chain:
 
 
 def _chain(client: LocalResearchClient, args: argparse.Namespace, name: str) -> _Chain:
-    deadline = _deadline(args.max_wait)
+    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
     wake = None
     if getattr(args, "notify", None) == "codex-queue":
         from alphalattice.interface.local_application.native_bridge import (
@@ -2699,22 +2684,12 @@ def _review_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict
         return ended
     if pending and chain.followed_answer is not None:
         prepared = chain.followed_answer
-    current = prepared
-    if not resuming and pending:
-        current = chain.send("evidence_prepared", prepare)
-        pending = outcome_of(current) == "PENDING"
-        if (ended := chain.followed("evidence_prepared", current)) is not None:
-            return ended
-        if pending:
-            prepared = chain.followed_answer or prepared
-    resuming = resuming or pending
     if resuming:
-        # Read the followed Task's packets. Preparing again can admit a new run
-        # when the Task succeeded with some units still failed.
         prepared, current, stopped = read_resumed(chain, prepared, prepare, preview_request, False)
         if stopped is not None:
             return stopped
-        preview = current
+    else:
+        current = chain.send("evidence_prepared", prepare) if pending else prepared
     return review_prepared(
         chain,
         root=root,
@@ -2945,12 +2920,6 @@ _NOT_RECORDED: Final = (
 
 def _first_use_steps(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, Any]:
     """Run first use."""
-    from alphalattice.interface.local_application.goals import (  # lazy: first-use orchestration
-        delegated_network,
-        first_use_asks,
-        target_sessions,
-    )
-
     chain = _chain(client, args, "first_use")
     try:
         named = target_sessions(date.fromisoformat(str(args.target_date)))
@@ -3012,8 +2981,6 @@ def _prepared(
 ) -> tuple[dict[str, Any], str | None]:
     """The first use's goal and data: the ALREADY_PREPARED plan or the first stop, beside the
     sentence's note when it was not recorded."""
-    from alphalattice.interface.local_application.goals import NEW_RESEARCH_SCOPE  # lazy: first use
-
     criterion = (
         f"The positions for {named['entry_session']}, with their review, stand for the person."
     )
@@ -3215,7 +3182,8 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
     each_stage = bool(getattr(args, "each_stage", False))
     if each_stage and args.task_id is None:
         raise LocalResearchClientError("local_client.each_stage_needs_task")
-    _max_wait(args.max_wait)
+    if args.max_wait is not None and not args.max_wait > 0:
+        raise LocalResearchClientError("local_client.max_wait_invalid")
     receipt = getattr(args, "_follow_receipt", _follow_receipt)
     if args.task_id is not None:
         receipt(client, None, {"operation": "STATUS", "task_id": str(args.task_id)})
@@ -3238,12 +3206,13 @@ def _wait(client: LocalResearchClient, args: argparse.Namespace) -> dict[str, An
         body = _wait_for_goal(client, str(args.goal_id), args.max_wait)
     else:
         document = {"operation": "STATUS", "task_id": str(args.task_id)}
-        # The cap counts from the waiter's start, its first read included.
-        deadline = _deadline(args.max_wait)
+        # The cap counts from the waiter's start, its first read included (V400).
+        started = time.monotonic()
+        deadline = None if args.max_wait is None else started + args.max_wait
         client, status = _read_through_restarts(client, document, deadline)
         if status is None:
             # The cap came before a first read: an end like any other, its wake queued below
-            # .
+            # (V496).
             body = {
                 "wait_status": "MAX_WAIT_TASK_CONTINUES",
                 "wait_event": wait_event(
@@ -3288,25 +3257,22 @@ def _committee_wait(client: LocalResearchClient, args: argparse.Namespace) -> di
         "committee_role": args.committee_role,
         "committee_key": args.committee_key,
         "committee_seen": int(args.committee_seen or 0),
-        # The Host answers once the floor addresses this member, or at its long poll's end.
-        "wait_seconds": HOST_WAIT,
     }
-    deadline = _deadline(args.max_wait)
-
-    def answered(read: dict[str, Any] | None) -> bool:
-        return read is not None and bool(
-            outcome_of(read) != "OK"
-            or read.get("for_you")
-            or read.get("settled")
-            or read.get("stage") == "CLOSED"
-        )
-
-    client, read = _read_through_restarts(client, document, deadline)
-    body = read or {}
-    while read is not None and not answered(read) and deadline - time.monotonic() > 0:
+    deadline = None if args.max_wait is None else time.monotonic() + float(args.max_wait)
+    delay, body = 1.0, dict[str, Any]()
+    while True:
         client, read = _read_through_restarts(client, document, deadline)
         body = body if read is None else read
-    return body if answered(read) else {**body, "wait_status": "MAX_WAIT_REACHED"}
+        if read is not None and (
+            outcome_of(body) != "OK"
+            or body.get("for_you")
+            or body.get("settled")
+            or body.get("stage") == "CLOSED"
+        ):
+            return body
+        if read is None or not _sleep_before_read(delay, deadline):
+            return {**body, "wait_status": "MAX_WAIT_REACHED"}
+        delay = min(delay * 1.5, 10.0)
 
 
 class _Verb(NamedTuple):
@@ -3355,68 +3321,6 @@ AGENT_VERBS: Final[dict[str, _Verb]] = {
 come from here alone."""
 
 
-def reclaim_storage(
-    client: LocalResearchClient, confirmation: tuple[str, str, str] | None
-) -> dict[str, Any]:
-    """Present the Host's exact plan and relay consent only for that offered request."""
-    from alphalattice.interface.local_application.portfolio_research import (  # lazy: consent
-        decision_hash,
-    )
-
-    def confirm(plan_hash: str, question: str, words: str) -> dict[str, Any]:
-        offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
-        return client.request(
-            {
-                **offer,
-                "person_confirmation": {
-                    "question": question,
-                    "words": words,
-                    "decision_hash": decision_hash(offer),
-                },
-            }
-        )
-
-    if confirmation is not None:
-        # The person already saw this retained plan. Confirming it lets the Host
-        # recheck eligibility without replacing the approved plan with a new one.
-        return confirm(*confirmation)
-    plan = client.request({"operation": "STORAGE_PLAN"})
-    plan_hash = plan.get("plan_hash")
-    if plan.get("status") != "CONFIRMATION_REQUIRED" or not isinstance(plan_hash, str):
-        return plan
-    if not plan.get("targets") and not plan.get("relinks"):
-        return {"status": "COMPLETED", "plan_hash": plan_hash, "deleted_paths": 0}
-    offer = {"operation": "STORAGE_CONFIRM", "storage_plan_hash": plan_hash}
-    question = plan.get("ask_now")
-    if offered_requests(plan).get("confirm") != offer or not isinstance(question, str):
-        return plan
-    if not cli_invocation.interactive():
-        return plan
-    stderr = cli_invocation.stream(error=True)
-    print(
-        answer_json(
-            {
-                field: plan[field]
-                for field in (
-                    "plan_hash",
-                    "targets",
-                    "relinks",
-                    "reclaimable_bytes",
-                    "retained_bytes",
-                )
-                if field in plan
-            },
-            default=_json_value,
-        ),
-        file=stderr,
-    )
-    print(f"{question} [y/N] ", end="", file=stderr, flush=True)
-    words = sys.stdin.readline().rstrip("\r\n")
-    if words.strip().casefold() not in {"y", "yes", "是", "同意"}:
-        return {"status": "DECLINED", "plan_hash": plan_hash, "deleted_paths": 0}
-    return confirm(plan_hash, question, words)
-
-
 def run(
     args: argparse.Namespace,
     *,
@@ -3438,8 +3342,8 @@ def run(
     display_view = args.view or "compact"
     listed = bool(getattr(args, "list_next", False))
     next_from = int(getattr(args, "next_from", 0) or 0)
-    selected: dict[str, Any] = {}  # the --section part, once read from the answer
-    saved_declaration: list[Path] = []  # the --save-declaration file, once written
+    selected: dict[str, Any] = {}  # the --section part, once read from the answer (V112)
+    saved_declaration: list[Path] = []  # the --save-declaration file, once written (V130)
 
     def answered(client: LocalResearchClient, outcome: Outcome, **extra: Any) -> int:
         """Print the owner's answer in its envelope, ``extra`` beside it; return its exit code."""
@@ -3505,7 +3409,7 @@ def run(
                 cut = compact_display(selected["value"], budget=room, section=selected["section"])
                 answer.update({**cut, "data": {**selected, "value": cut["data"]}})
         _profile_hint(answer, body)
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 (short_references if compact else _same)(answer),
                 default=_json_value,
@@ -3522,7 +3426,7 @@ def run(
             raise LocalResearchClientError("local_client.document_multiple_stdin_sources")
         output = getattr(args, "output", None)
         replaced_output = output_replacement(output, line=getattr(args, "command_line", ()))
-        client = attached(
+        client = LocalResearchClient(
             args.workspace, timeout=args.request_timeout, goal=getattr(args, "goal", None)
         )
         args._follow_receipt = partial(
@@ -3536,23 +3440,11 @@ def run(
             document = document_override()
         if args.command == "activity-wait":
             body = _wait(client, args)
-        elif args.command == "storage-reclaim":
-            body = reclaim_storage(client, args.storage_reclaim_confirmation)
         elif args.command in AGENT_VERBS:
             body = AGENT_VERBS[args.command].steps(client, args)
         else:
             if document_override is None:
                 document = _next_request(args)
-            storage_read = document.get("operation") == "STATUS" and (
-                document.get("status_section") == "storage"
-                or (getattr(args, "section", None) or "").partition(".")[0] == "storage"
-            )
-            if storage_read:
-                document = dict(document)
-                if args.wait:
-                    document.pop("status_section", None)
-                else:
-                    document["status_section"] = "storage"
             if (
                 document.get("operation") == "REPORT"
                 and document.get("portfolio_session")
@@ -3586,11 +3478,6 @@ def run(
                     receipt=partial(args._follow_receipt, raw=raw_body),
                 )
                 raw_body = None  # The answer is the final read, not the transport bytes.
-                if storage_read:
-                    document = {**document, "status_section": "storage"}
-                    storage_answer, _ = client.exchange(document)
-                    if "storage" in storage_answer:
-                        body = {**body, "storage": storage_answer["storage"]}
             if (
                 document.get("operation") == "AGENT_BUNDLE_PREPARE"
                 and directory is not None
@@ -3618,10 +3505,10 @@ def run(
     except LocalResearchClientError as error:
         code = str(error)
         failed = (code, document, error.__cause__, args.request_timeout, body is not None)
-        refusal, transport = failure_with_hosts(*failed, Path(args.workspace), LocalResearchClient)
+        refusal, transport = client_failure(*failed, workspace=Path(args.workspace))
         if body is not None:
-            # A local failure preserves the owner's outcome and admitted Task's receipt
-            # , so the agent inspects it without resending admitted work.
+            # A local failure preserves the owner's outcome (V129) and admitted Task's receipt
+            # (V139), so the agent inspects it without resending admitted work.
             wanted = getattr(args, "output", None)
             if wanted is not None and saved_output[0] is None and not wanted.exists():
                 with suppress(LocalResearchClientError):
@@ -3647,7 +3534,7 @@ def run(
                     ),
                 },
             )
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=document.get("operation") or args.command,
@@ -3677,7 +3564,7 @@ def run(
         # Pydantic errors may contain the document; never echo it.
         code = "local_client.request_invalid"
         refusal = client_refusal(code)
-        print(
+        print(  # noqa: T201  # serializer
             answer_json(
                 envelope(
                     operation=None,

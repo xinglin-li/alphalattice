@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
+from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 from .series_math import grouped_pair_rolling_apply, log_return, ordered_frame
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 RESIDUAL_REVERSAL_METHOD_FAMILY: Final = "RESIDUAL_REVERSAL"
 RESIDUAL_REVERSAL_VOL_SCALED_5_ID: Final = (
@@ -78,8 +76,6 @@ def residual_reversal_vol_scaled_5(source: pd.DataFrame, specification: FactorSp
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = ordered_frame(source)
     groups = ordered["listing_id"]
     stock = log_return(ordered["provider_adjusted_close"], groups)

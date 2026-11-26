@@ -344,15 +344,11 @@ def test_a_kept_history_is_refused_for_more_columns_or_another_implementation(da
     assert same != workspace_observation_history_selection(binding, implementation="b" * 64)
 
 
-@pytest.mark.parametrize("selection", ("installed", "predecessor", "unrecorded"))
-def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(
-    monkeypatch, selection
-):
+def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_renew(monkeypatch):
     """regression (the person's D2, 2026-10-15): a kept history held only that day's columns, so
     the renewal day rebuilt ten years cold; every capture now keeps the training columns."""
     from contextlib import nullcontext
 
-    from alphalattice.capabilities.domain_contracts import identity_successors
     from alphalattice.control.product_host.composition import strategy_scoring as scoring
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AdmittedRenewingInference as Renewing,
@@ -369,39 +365,19 @@ def test_a_renewing_component_keeps_its_training_columns_on_a_day_it_does_not_re
         raise ValueError("causal execution split is invalid")  # the owner's own early return
 
     monkeypatch.setattr(scoring, "prepare_workspace_component_inputs", capture)
-    previous, unrelated = "a" * 64, "c" * 64
-    installed = scoring._implementation_hash()
-    move = identity_successors.IdentityMove(
-        scoring.IMPLEMENTATION_ROLE, previous, installed, "Read reuse", "Equal captured values"
-    )
-    monkeypatch.setattr(identity_successors, "effective_moves", lambda root: (move,))
-    binding = SimpleNamespace(
-        strategy_package_id="p",
-        component_id="c",
-        source_kind="WORKSPACE_DATA_FEATURE",
-        strategy_package_hash="3" * 64,
-    )
-    implementation = {"installed": installed, "predecessor": previous, "unrecorded": unrelated}[
-        selection
-    ]
-    held = (
-        SimpleNamespace(
-            selection_hash=scoring.workspace_observation_history_selection(
-                binding, implementation=implementation
-            )
-        ),
-        {},
-    )
     owner = SimpleNamespace(
         _authority=lambda _: inference,
-        store=SimpleNamespace(load_workspace_observation_history=lambda _: held),
+        store=SimpleNamespace(load_workspace_observation_history=lambda _: None),
         session=SimpleNamespace(reads=nullcontext, workspace=None),
         clock=lambda: OBSERVED_AT,
     )
+    binding = SimpleNamespace(
+        strategy_package_id="p", component_id="c", source_kind="WORKSPACE_DATA_FEATURE"
+    )
+    binding.strategy_package_hash = "3" * 64
     prepare = scoring.StrategyScoringApplication.prepare_inputs
     assert prepare(owner, binding, through=LAST, expected_source_hash="4" * 64) is None
     assert captured["training_factor_ids"] == ("amihud_21",)
-    assert captured["history"] is (None if selection == "unrecorded" else held)
 
 
 def test_a_reference_adjusted_series_restated_keeps_the_kept_history_warm(daily_workspace):
@@ -425,7 +401,7 @@ def test_a_head_without_listing_proofs_keeps_its_seal_and_reuses_whole(daily_wor
     """A head written without the optional proof parts is sealed as before (its JSON without
     them), verifies on load and reuses whole when its prefix proof holds. A head from before the
     proof's v3 kind never holds it, so the first update after upgrading is cold once."""
-    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
     prepared = _capture(daily_workspace, FIRST, WIDE[:1])
@@ -463,14 +439,12 @@ def _legacy(store, snapshot):
 def test_three_consecutive_days_write_only_their_last_frozen_block(
     daily_workspace, monkeypatch, upgraded
 ):
-    from alphalattice.foundation.data_layer import history
-
     store = AlphaCurrentArtifactStore(daily_workspace / "artifacts")
-    folder = history.data_root() / "blobs"
+    folder = store.root / "current/frozen-observation-arrays"
     days = (date(2026, 7, 29), date(2026, 7, 30), date(2026, 7, 31))
     written = []
     for day in days:
-        before = set(folder.iterdir()) if folder.exists() else set()
+        before = set(folder.glob("*.bin")) if folder.exists() else set()
         source = build_workspace_score_inputs(
             daily_workspace,
             formation=day,
@@ -488,7 +462,7 @@ def test_three_consecutive_days_write_only_their_last_frozen_block(
             snapshot = _legacy(store, snapshot)
             assert snapshot.array_blocks is None and "array_blocks" not in snapshot.model_dump()
             store.verify_frozen_observations(snapshot.snapshot_hash)
-        written.append(set(folder.iterdir()) - before)
+        written.append(set(folder.glob("*.bin")) - before)
         loaded = store.load_frozen_observations(snapshot.snapshot_hash)
         for name in ("open", "close", "volume", "market_context_values", "sector_trend_values"):
             assert getattr(loaded, name).tobytes() == getattr(source, name).tobytes()

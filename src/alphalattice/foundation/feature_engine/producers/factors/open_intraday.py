@@ -32,17 +32,15 @@ somewhere else.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 OPEN_INTRADAY_METHOD_FAMILY: Final = "OPEN_INTRADAY"
 """This family's key in ``producers.arithmetic_identity``.
@@ -320,8 +318,6 @@ def gap_absorption_factor_spec() -> FactorSpec:
 
 
 def _open_intraday_components(source: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = source.assign(_source_position=np.arange(len(source), dtype=int)).sort_values(
         ["listing_id", "session_date"], kind="mergesort"
     )
@@ -349,8 +345,6 @@ def _rolling_pair(
     specification: FactorSpec,
     evaluator: object,
 ) -> pd.Series:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered, gap, intraday = _open_intraday_components(source)
     values: np.ndarray = np.full(len(ordered), np.nan, dtype=float)
     for _listing, positions in ordered.groupby("listing_id", sort=False).indices.items():
@@ -467,8 +461,6 @@ def gap_absorption(source: pd.DataFrame, specification: FactorSpec) -> pd.Series
 
 def mean_adjusted_return(source: pd.DataFrame, specification: FactorSpec) -> pd.Series:
     """The undecomposed full-session mean log return, on the adjusted basis."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = source.assign(_source_position=np.arange(len(source), dtype=int)).sort_values(
         ["listing_id", "session_date"]
     )
@@ -509,8 +501,6 @@ def overnight_return(source: pd.DataFrame, specification: FactorSpec) -> pd.Seri
     the quotient is required finite as well -- the last because two finite,
     positive legs can still overflow.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     ordered = source.assign(_source_position=np.arange(len(source), dtype=int)).sort_values(
         ["listing_id", "session_date"]
     )

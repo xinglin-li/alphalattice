@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,6 @@ import numpy as np
 import numpy.typing as npt
 
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalOutcomeDevelopmentRows,
 )
@@ -114,7 +113,8 @@ from alphalattice.investment.alpha_research.targets.development import (
     AlphaDevelopmentTargetFoldRecord,
     AlphaDevelopmentTargetMaterializationBinding,
 )
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -137,7 +137,7 @@ def _array_identity(values: npt.NDArray[Any]) -> tuple[str, tuple[int, ...], str
     return (
         str(contiguous.dtype),
         tuple(int(value) for value in contiguous.shape),
-        identity_sha256(contiguous.tobytes()).hexdigest(),
+        sha256(contiguous.tobytes()).hexdigest(),
     )
 
 
@@ -672,7 +672,6 @@ class AlphaExperimentExecutor:
         output_workspace: Path,
         recorder: NumericalCallRecorder | None = None,
     ) -> DeskExecutionResult:
-        """Run the admitted Alpha batch and seal its evidence receipt."""
         prepared = self.prepare_execution(program=program, document=document, authority=authority)
         fold_plan, method = prepared.fold_plan, prepared.method
         recipe_binding, model_recipe = prepared.recipe_binding, prepared.model_recipe
@@ -696,17 +695,16 @@ class AlphaExperimentExecutor:
             collector = _MaterializationCollector(
                 array_workspace, declared=fold_plan.base_feature_ids
             )
-            with store.admit_development_chunks():
-                result = execute_alpha_model_batch(
-                    program=development_program,
-                    batch=batch,
-                    fold_plan=fold_plan,
-                    store=store,
-                    array_workspace=collector,
-                    model_catalog=self._model_catalog,
-                    model_mandate=prepared.admitted_mandate,
-                    operational_progress=self._operational_progress,
-                )
+            result = execute_alpha_model_batch(
+                program=development_program,
+                batch=batch,
+                fold_plan=fold_plan,
+                store=store,
+                array_workspace=collector,
+                model_catalog=self._model_catalog,
+                model_mandate=prepared.admitted_mandate,
+                operational_progress=self._operational_progress,
+            )
             materialization = collector.seal(
                 recipe_binding=recipe_binding, fold_count=fold_plan.fold_count
             )

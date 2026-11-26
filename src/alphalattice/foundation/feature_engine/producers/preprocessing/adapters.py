@@ -15,7 +15,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
+
+import pandas as pd
 
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
@@ -33,9 +35,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     PanelCrossSectionKernel,
     PanelMaterialization,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 ROBUST_SECTOR_NEUTRAL_Z_IMPLEMENTATION = (
     "feature_engine.producers.preprocessing.robust_cross_section.PanelCrossSectionKernel"

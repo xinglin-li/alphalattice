@@ -21,7 +21,6 @@ from datetime import date
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     PortfolioLedgerCoverage,
     ordered_listing_axis_hash,
@@ -44,6 +43,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
 from alphalattice.investment.portfolio_strategy_lab.reporting.units import (
     project_report_unit_rows,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 DECLARED_PATH_LIMITATIONS: tuple[str, ...] = (
     "DEVELOPMENT_REPLAY; no Alpha fit ran.",

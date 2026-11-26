@@ -11,10 +11,10 @@ from typing import cast
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.capabilities.knowledge.catalog import SystemResourceCatalog
-from alphalattice.capabilities.knowledge.contracts import PackageArgSpecRef
-from alphalattice.capabilities.knowledge.enums import ResourceKind, ResourceNamespace
-from alphalattice.capabilities.validation.return_model_statistics import (
+from alphalattice.kernel.knowledge.catalog import SystemResourceCatalog
+from alphalattice.kernel.knowledge.contracts import PackageArgSpecRef
+from alphalattice.kernel.knowledge.enums import ResourceKind, ResourceNamespace
+from alphalattice.kernel.validation.return_model_statistics import (
     diebold_mariano_hac,
     holm_adjust,
 )

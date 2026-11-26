@@ -1,13 +1,13 @@
 """Alpha development chunk identities, consumed by artifact publication and readback."""
 
+from hashlib import sha256
 from threading import Lock
 
 import pyarrow as pa
 
-from alphalattice.capabilities.domain_contracts.arrow_identity import canonical_hash_with_rows
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.arrow_identity import canonical_hash_with_rows
+from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _chunk_content_hash(table: pa.Table, identity: dict[str, object]) -> str:
@@ -45,7 +45,7 @@ _VERIFIED_CHUNK_LOCK = Lock()
 def _verified_content_hash(raw: bytes, table: pa.Table, identity: dict[str, object]) -> str:
     """The chunk's content hash, derived in full the first time this process reads its bytes."""
 
-    key = (integrity_sha256(raw).hexdigest(), str(canonical_hash(identity)))
+    key = (sha256(raw).hexdigest(), str(canonical_hash(identity)))
     with _VERIFIED_CHUNK_LOCK:
         derived = _VERIFIED_CHUNKS.get(key)
     if derived is None:

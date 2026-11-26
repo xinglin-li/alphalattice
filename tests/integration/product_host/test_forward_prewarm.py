@@ -246,9 +246,6 @@ def test_failed_verification_leaves_foreground_readable_and_worker_wakeable(monk
 def test_service_authority_admits_only_retained_forward_reads(live, monkeypatch):
     """Exercise the real operation authority before synthetic retained read ports."""
     operations = live.operations
-    assert operations._activations is None and operations._experiments is None
-    assert operations.activations is not None
-    assert operations._experiments is None
     before = tuple(live.session.task_control_registry.tasks())
     calls = []
 

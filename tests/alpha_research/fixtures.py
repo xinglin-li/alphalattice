@@ -8,15 +8,6 @@ from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 
-from alphalattice.capabilities.domain_contracts.domain.enums import DataValidityClass
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitSpec,
-    ValidationTimeline,
-)
-from alphalattice.capabilities.validation.enums import RebalanceFrequency, SplitMode
-from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.foundation.research_foundation.contracts import (
     ResearchDeskExecutionOutcomeRef,
     ResearchFoundationBinding,
@@ -40,6 +31,15 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
+from alphalattice.kernel.shared_kernel.domain.enums import DataValidityClass
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitSpec,
+    ValidationTimeline,
+)
+from alphalattice.kernel.validation.enums import RebalanceFrequency, SplitMode
+from alphalattice.kernel.validation.splitting import build_research_split
 from tests.alpha_research.candidate_inventories import load_initial_candidate_inventory
 from tests.alpha_research.registered_catalog import (
     load_registered_alpha_catalog,

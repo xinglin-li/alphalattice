@@ -2,24 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, cast
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_payload_digest,
-    seal_payload_digest,
-)
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
@@ -35,10 +32,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_schema_hash,
 )
 from alphalattice.foundation.feature_engine.storage.contracts import PanelContentIdentity
-from alphalattice.kernel.identity import identity_sha256
-
-if TYPE_CHECKING:
-    import pandas as pd
+from alphalattice.kernel.quant.sector_history import SectorHistory
 
 # The columns a finalization and the content identity read from a written
 # partition; every other column is a factor value no step here decodes.
@@ -285,9 +279,7 @@ class PanelArtifactCompositionOwner:
         claimed_hash = str(payload.get("composition_hash", ""))
         identity = dict(payload)
         identity.pop("composition_hash", None)
-        if claimed_hash != scoped_payload_digest(
-            identity, "composition_hash", claimed_hash, digest=canonical_hash
-        ):
+        if claimed_hash != canonical_hash(identity):
             raise ValueError("Panel composition staging identity is invalid")
         binding_payload = cast(dict[str, object], payload["binding"])
         binding = PanelCompositionBinding(
@@ -367,10 +359,7 @@ class PanelArtifactCompositionOwner:
 
     def _publish(self, composition: PreparedPanelComposition) -> None:
         identity = _composition_identity(composition)
-        expected = composition.composition_hash
-        if scoped_payload_digest(identity, "composition_hash", expected, digest=canonical_hash) != (
-            expected
-        ):
+        if canonical_hash(identity) != composition.composition_hash:
             raise ValueError("Panel composition hash does not match its payload")
         payload = {**identity, "composition_hash": composition.composition_hash}
         target = self._composition_path(
@@ -524,8 +513,6 @@ class PanelCompositionSession:
         materialization_receipt_hash: str,
     ) -> None:
         """Stage ordered factor rows for annual chunk composition."""
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         factors = tuple(sorted(set(str(value) for value in factor_ids)))
         if not factors or not set(factors).issubset(self.binding.factor_ids):
             raise ValueError("Panel composition patch has unknown factor IDs")
@@ -625,8 +612,7 @@ class PanelCompositionSession:
         self._identity_tables.clear()
         origins = self._partition_origins(prepared, availability)
         composition = PreparedPanelComposition(
-            composition_hash=seal_payload_digest(
-                "composition_hash",
+            composition_hash=canonical_hash(
                 _composition_identity_parts(
                     binding=self.binding,
                     content=content,
@@ -635,8 +621,7 @@ class PanelCompositionSession:
                     partition_origins=origins,
                     membership=self.membership,
                     listing_ids=self._listing_ids,
-                ),
-                digest=canonical_hash,
+                )
             ),
             binding=self.binding,
             content=content,
@@ -1055,8 +1040,6 @@ class PanelCompositionSession:
         base: PreparedPanelChunk | None,
         fragments: Sequence[_PatchFragment],
     ) -> pa.Table:
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         columns = [
             "session_date",
             "listing_id",
@@ -1148,7 +1131,7 @@ def panel_content_identity(
     availability: Sequence[Mapping[str, object]],
 ) -> PanelContentIdentity:
     """Hash ordered Panel chunks and availability into content identity."""
-    digest = identity_sha256()
+    digest = hashlib.sha256()
     digest.update(
         json.dumps(
             {

@@ -13,16 +13,11 @@ import math
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import numpy as np
+import pandas as pd
 
-from alphalattice.capabilities.quant.factor_formulas import (
-    ANNUALIZATION,
-    REASON_INSUFFICIENT_HISTORY,
-    REASON_MARKET_ALIGNMENT,
-    REASON_ZERO_DENOMINATOR,
-)
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     MARKET_DEPENDENT_FACTOR_IDS,
     FeatureCatalog,
@@ -34,11 +29,12 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
-
-if TYPE_CHECKING:
-    import pandas as pd
-
-REASON_MISSING_OBSERVATION: Final = "missing_observation"
+from alphalattice.kernel.quant.factor_formulas import (
+    ANNUALIZATION,
+    REASON_INSUFFICIENT_HISTORY,
+    REASON_MARKET_ALIGNMENT,
+    REASON_ZERO_DENOMINATOR,
+)
 
 _REQUIRED_COLUMNS: Final = (
     "session_date",
@@ -70,8 +66,6 @@ class MaterializedFeatureBlock:
 
 def _rolling_linear_slope(values: pd.Series, window: int) -> pd.Series:
     """OLS slope for a normalized, fixed 0..1 session index, fully vectorized."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     x = np.linspace(0.0, 1.0, window, dtype=np.float64)
     centered_x = x - x.mean()
     denominator = float(np.dot(centered_x, centered_x))
@@ -87,8 +81,6 @@ def _rolling_linear_slope(values: pd.Series, window: int) -> pd.Series:
 
 
 def _rolling_trend_r2(values: pd.Series, window: int) -> pd.Series:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     x = np.linspace(0.0, 1.0, window, dtype=np.float64)
     centered_x = x - x.mean()
     denominator = float(np.dot(centered_x, centered_x))
@@ -142,8 +134,6 @@ def _rolling_stat(
     state.  Direct window evaluation makes bounded correction rebuilds exactly
     partition-independent while retaining the same finite-window formulas.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     windows, first_output = _window_matrix(values, window, skip)
     result = np.full(len(values), np.nan, dtype=np.float64)
     if not len(windows):
@@ -204,8 +194,6 @@ def _rolling_observed_mean(
     first value is the history's start, not a session without one, so the first value lands
     where the Formula's clock declares.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     windows, first_output = _window_matrix(values, window, 0)
     result = np.full(len(values), np.nan, dtype=np.float64)
     if len(windows):
@@ -221,8 +209,6 @@ def _rolling_observed_mean(
 
 
 def _rolling_autocorrelation(returns: pd.Series, window: int, skip: int = 0) -> pd.Series:
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     source_windows, first_output = _window_matrix(returns, window + 1, skip)
     result = np.full(len(returns), np.nan, dtype=np.float64)
     if not len(source_windows):
@@ -247,8 +233,6 @@ def _paired_metrics(
     asset_returns: pd.Series, market_returns: pd.Series, window: int
 ) -> dict[str, pd.Series]:
     """Compute costly systematic-window statistics in vectorized numpy blocks."""
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     asset = asset_returns.to_numpy(dtype=np.float64)
     market = market_returns.to_numpy(dtype=np.float64)
     length = len(asset)
@@ -358,8 +342,6 @@ def _residual_momentum(
     true subset of the estimation window instead of the in-sample residual set
     whose sum is identically zero.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     if formation_window >= estimation_window:
         raise ValueError("residual formation window must be smaller than estimation window")
     asset_windows, first_output = _window_matrix(asset_returns, estimation_window, skip)
@@ -405,8 +387,6 @@ def _feature_series(
     ``close(T)``, entry at ``open(T+1)`` -- and a Formula paying for it again made
     two lags where the strategy asked for one.
     """
-    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
     close = frame["provider_adjusted_close"].astype(float)
     split_close = frame["close_split_adjusted"].astype(float)
     high = frame["high_split_adjusted"].astype(float)
@@ -751,8 +731,6 @@ class BaseFeatureMaterializer:
                 an extension is unregistered, or its result violates the registry's
                 row-count contract.
         """
-        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
-
         missing = set(_REQUIRED_COLUMNS) - set(projected_bars.columns)
         if missing:
             raise ValueError(f"projected bars are missing required columns: {sorted(missing)}")
@@ -855,9 +833,6 @@ class BaseFeatureMaterializer:
                 },
             }
         )
-        # Every observed bar has a raw close. Calendar alignment leaves it empty on gaps.
-        source_gaps = np.flatnonzero(frame["close_raw"].isna().to_numpy())
-        clocks = self.catalog.clocks_by_factor if source_gaps.size else {}
         missing_at: list[np.ndarray] = []
         missing_factor: list[np.ndarray] = []
         missing_reason: list[np.ndarray] = []
@@ -877,16 +852,6 @@ class BaseFeatureMaterializer:
                     REASON_INSUFFICIENT_HISTORY,
                     REASON_ZERO_DENOMINATOR,
                 ).astype(object)
-                if factor in clocks:
-                    interval = clocks[factor].source_interval
-                    first = interval.earliest_consumed_bound_offset_sessions
-                    last = interval.latest_consumed_offset_sessions
-                    if first is not None and last is not None:
-                        before = np.searchsorted(source_gaps, at - first)
-                        through = np.searchsorted(source_gaps, at - last, side="right")
-                        reasons[(reasons == REASON_ZERO_DENOMINATOR) & (before < through)] = (
-                            REASON_MISSING_OBSERVATION
-                        )
             missing_at.append(at)
             missing_factor.append(np.full(len(at), factor, dtype=object))
             missing_reason.append(reasons)

@@ -6,19 +6,15 @@ import os
 import subprocess
 import sys
 import textwrap
-from contextlib import suppress
 from pathlib import Path
 from unittest.mock import MagicMock
-from xml.etree import ElementTree as ET
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
 from tests.structural.pytest_support import child_environment, descriptor_provenance
 from tests.structural.size_fixture_support import (
     _CASES,
     ADMISSION_CASES,
-    ADMISSION_IDS,
     DECLARED_CASES,
     HELD,
     HOLDER_CASES,
@@ -26,192 +22,6 @@ from tests.structural.size_fixture_support import (
     LAYER_IDS,
     _registry_tree,
 )
-
-# The plain layer cases: one file each, one child configuration, each judged by its own JUnit node.
-PLAIN_LAYER_EXPECTED = {
-    "native-file": "dependency numpy.",
-    "native-local": "dependency numpy.",
-    "native-memmap": "dependency numpy.",
-    "numpy-save": "file outside temporary root",
-}
-# The cases needing their own session: a checkout, plugin, lane, timing probe or in-process check.
-OWN_SESSION = (
-    "fd-provenance",
-    "load-",
-    "network-caught",
-    "observe",
-    "own-",
-    "primary-",
-    "root-",
-    "shape",
-)
-OWN_SESSION += ("size-live-", "slow")
-
-
-def _sample(case, header, body):
-    """A layer case's test file: its header, the fixtures its case asks for, its body."""
-    fixtures = {
-        "own-subtests": "tmp_path, subtests",
-        "size-live-factory": "tmp_path_factory",
-        "size-live-factory-base": "tmp_path_factory",
-        "size-live-factory-mixed": "tmp_path, tmp_path_factory",
-        "size-live-factory-under": "tmp_path, tmp_path_factory",
-        "size-live-factory-teardown": "tail",
-    }.get(case, "tmp_path")
-    body = textwrap.indent(textwrap.dedent(body).strip(), "    ")
-    return f"{header}def test_sample({fixtures}):\n{body}\n"
-
-
-def _layer_child(root, cwd, target, extra=(), timeout=20, **given):
-    """One nested pytest of the layer cases: the collection plugin and the repository's pytest
-    configuration, no conftest, the outer run's lane, stage, selection and events cleared."""
-    environment = {
-        "ALPHALATTICE_TEST_LANE": "",
-        "ALPHALATTICE_PIPELINE_REQUIRED_TESTS": "[]",
-        "ALPHALATTICE_PIPELINE_STAGE": "",
-        "ALPHALATTICE_PIPELINE_EVENTS": "",
-    } | given
-    return spawn.run(
-        [
-            *(sys.executable, "-B", "-m", "pytest", "-p", "devtools.testing.collection"),
-            *("-p", "pytest_timeout", *extra, "--junitxml", str(cwd / "child.xml")),
-            *("-c", str(root / "pyproject.toml"), "--rootdir", str(cwd), "--confcutdir", str(cwd)),
-            *("--noconftest", "--basetemp", str(cwd / "child-temp"), "-o", "addopts=", "-q"),
-            str(target),
-        ],
-        cwd=cwd,
-        env=child_environment(
-            PYTHONPATH=os.pathsep.join([str(cwd), str(root / "src")]),
-            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
-            PYTEST_PLUGINS="",
-            **environment,
-        ),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=timeout,
-        creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
-        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-
-
-@pytest.fixture(scope="session")
-def plain_layer_run(tmp_path_factory):
-    """Run every plain layer case as one file of one nested pytest session.
-
-    The cases differ only in their file, never in configuration, environment or child plugins,
-    so one child session serves them all. Each case reads its own JUnit node (a collection
-    error keeps its file's name) and asserts what its own run used to assert.
-    """
-    root = Path(__file__).resolve().parents[2]
-    shared = tmp_path_factory.mktemp("plain-layer")
-    for case in LAYER_CASES:
-        name, layer, header, body, _refused = getattr(case, "values", case)
-        if name.startswith(OWN_SESSION):
-            continue
-        target = shared / "tests" / layer / ("test_" + name.replace("-", "_") + ".py")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if name == "integration-import-hostname":
-            (shared / "hostname_import.py").write_text(
-                "import socket\nsocket.getaddrinfo('example.invalid', 80)\n", "utf-8"
-            )
-        target.write_text(_sample(name, header, body), encoding="utf-8")
-    result = _layer_child(
-        root, shared, shared / "tests", ["--continue-on-collection-errors"], timeout=120
-    )
-    nodes: dict[str, list] = {}
-    for element in ET.parse(shared / "child.xml").iter("testcase"):
-        name = element.get("name", "")
-        if name.endswith(".py"):  # a collection error is named by its file
-            key = Path(name).stem
-        else:
-            key = element.get("classname", "").rsplit(".", 1)[-1]
-        nodes.setdefault(key, []).append(element)
-    return {"nodes": nodes, "output": result.stdout + result.stderr}
-
-
-def import_clock_threads(tmp_path: Path, monkeypatch) -> None:
-    """A library's first import is left out of a unit test's own phases only when the measured
-    phase's thread pays it: a helper thread's first import is not credited."""
-    import importlib
-    import threading
-
-    from devtools.testing.contracts import LayerContract
-
-    def first_import() -> None:  # an installed module, imported anew
-        monkeypatch.delitem(sys.modules, "colorsys", raising=False)
-        importlib.import_module("colorsys")
-
-    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
-    with guard.active():
-        helper = threading.Thread(target=first_import)
-        helper.start()
-        helper.join()
-        assert guard.library_import_seconds == 0
-        first_import()
-        assert guard.library_import_seconds > 0
-
-
-def native_loads(tmp_path: Path, monkeypatch, case: str, refused: bool) -> None:
-    """A unit test's native loads: the identity owner's file stamp and what a library's import
-    loads or imports are admitted; a product module's import load and a load outside any import
-    are refused."""
-    import ctypes
-    import importlib.machinery
-    import importlib.util
-    import sysconfig
-
-    import devtools
-    from alphalattice.kernel.identity import handle_stamp
-    from devtools.testing.contracts import LayerContract
-
-    source = tmp_path / "loads_natively.py"
-    source.write_text(
-        "import ctypes, os\nctypes.WinDLL('kernel32') if os.name == 'nt' else ctypes.CDLL(None)\n"
-        "import refused_backend\n"  # a dependency the unit layer refuses to the test itself
-    )
-    (tmp_path / "refused_backend.py").write_text("")
-    monkeypatch.syspath_prepend(str(tmp_path))
-    monkeypatch.delitem(sys.modules, "refused_backend", raising=False)
-
-    class ReadFromTemporary(importlib.machinery.SourceFileLoader):
-        """The temporary module, compiled as a file at another place: installed, or under src/."""
-
-        def get_data(self, path: str) -> bytes:
-            return source.read_bytes()
-
-        def path_stats(self, path: str) -> dict:
-            raise OSError(path)
-
-    def imported(location: Path) -> None:
-        loader = ReadFromTemporary("loads_natively", str(location))
-        spec = importlib.util.spec_from_file_location("loads_natively", location, loader=loader)
-        assert spec is not None
-        loader.exec_module(importlib.util.module_from_spec(spec))
-
-    stamped = tmp_path / "stamped"
-    stamped.write_bytes(b"one")
-    guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "refused_backend"},))
-    with stamped.open("rb") as handle, guard.active():
-        load = {
-            "load-file-stamp": lambda: handle_stamp(handle),
-            "load-library-import": lambda: imported(
-                Path(sysconfig.get_paths()["purelib"]) / source.name
-            ),
-            "load-product-import": lambda: imported(
-                Path(devtools.__file__).resolve().parents[1] / "alphalattice" / source.name
-            ),
-            "load-outside-an-import": lambda: (
-                ctypes.WinDLL("kernel32") if os.name == "nt" else ctypes.CDLL(None)
-            ),
-        }[case]
-        if refused:
-            with pytest.raises(
-                AssertionError, match=r"testing\.layer_contract: unit ctypes\.dlopen"
-            ):
-                load()
-        else:
-            load()
 
 
 @pytest.mark.proves("testing.layer_contract")
@@ -221,56 +31,10 @@ def native_loads(tmp_path: Path, monkeypatch, case: str, refused: bool) -> None:
     ids=LAYER_IDS,
 )
 def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
-    tmp_path, monkeypatch, plain_layer_run, case, layer, header, body, refused
+    tmp_path, monkeypatch, case, layer, header, body, refused
 ):
-    if case == "network-caught":
-        import socket
-
-        from devtools.testing.contracts import LayerContract
-
-        guard = LayerContract("unit", tmp_path, ({"kind": "module", "name": "sqlite3"},))
-        original = socket.socket, socket.getaddrinfo, socket.gethostbyname
-        with guard.active():
-            for call, args in (
-                (socket.socket, ()),
-                (socket.getaddrinfo, ("localhost", 80)),
-                (socket.gethostbyname, ("localhost",)),
-            ):
-                with pytest.raises(AssertionError, match=r"testing\.layer_contract"):
-                    call(*args)
-        assert (socket.socket, socket.getaddrinfo, socket.gethostbyname) == original
-        return
     if case == "fd-provenance":
         descriptor_provenance(tmp_path)
-        return
-    if case == "load-import-clock-threads":
-        import_clock_threads(tmp_path, monkeypatch)
-        return
-    if case.startswith("load-"):
-        native_loads(tmp_path, monkeypatch, case, refused)
-        return
-    if not case.startswith(OWN_SESSION):
-        nodes = plain_layer_run["nodes"].get("test_" + case.replace("-", "_"), [])
-        assert len(nodes) == 1, plain_layer_run["output"]
-        failures = [child for child in nodes[0] if child.tag in {"failure", "error"}]
-        text = "\n".join((child.get("message") or "") + (child.text or "") for child in failures)
-        assert bool(failures) == refused, text
-        if refused:
-            assert PLAIN_LAYER_EXPECTED.get(case, "testing.layer_contract") in text, text
-        if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
-            assert len(failures) == 1, text
-        if case == "first-library-import":  # its first import is left out of its own phases
-            names = ("setup_seconds", "call_seconds", "teardown_seconds", "library_import_seconds")
-            held = {
-                row.get("name"): float(row.get("value"))
-                for row in nodes[0].iter("property")
-                if row.get("name") in (*names, "unit_own_seconds")
-            }
-            phases = sum(held[when + "_seconds"] for when in ("setup", "call", "teardown"))
-            assert 0 < held["library_import_seconds"] <= phases, held
-            assert held["unit_own_seconds"] == pytest.approx(
-                phases - held["library_import_seconds"], abs=1e-3
-            ), held
         return
     if case in {"temporary", "root-pure"}:
         monkeypatch.setenv(
@@ -282,38 +46,6 @@ def test_explicit_layers_refuse_resources_and_keep_their_execution_bound(
 
         checkout, environment = pytest_checkout(tmp_path, root)
         marker = Path(environment["TEMP"]) / "given" / "framework-entered"
-        if case in {"root-session-golden", "root-session-golden-error"}:
-            (checkout / "tests/integration/test_golden_probe.py").write_text(
-                "from devtools.evaluation.golden_workspaces import hold_generation\n"
-                "def test_hold(golden_cache):\n"
-                "    generation = golden_cache / 'generation'\n"
-                "    generation.mkdir()\n"
-                + (
-                    "    def fail(): raise AssertionError('release-test')\n"
-                    if case.endswith("-error")
-                    else "    def fail(): pass\n"
-                )
-                + "    assert hold_generation(generation, fail)\n",
-                encoding="utf-8",
-            )
-        if case in {"root-session-seed", "root-session-seed-error"}:
-            (checkout / "tests/integration/test_golden_probe.py").write_text(
-                "import sys, types\n"
-                "from pathlib import Path\n"
-                "def test_seed():\n"
-                "    module = types.ModuleType('fixture_seed')\n"
-                "    def changed():\n"
-                "        Path(__file__).read_text()\n"
-                + (
-                    "        return ['changed seed']\n"
-                    if case.endswith("-error")
-                    else "        return []\n"
-                )
-                + "    module.seeds_changed = changed\n"
-                "    sys.modules['tests.researcher_methodology_surface."
-                "session_workspace'] = module\n",
-                encoding="utf-8",
-            )
         if case == "root-lookalike":
             target = checkout / "tests/unit/test_collection_probe.py"
             target.write_text(
@@ -354,21 +86,15 @@ def _memory_checks_read_no_host():
             )
             lines[offset:offset] = fault
             target.write_text("".join(lines), encoding="utf-8")
-        result = spawn.run(
+        result = subprocess.run(
             [
                 sys.executable,
                 "-B",
                 "-m",
                 "pytest",
                 "-q",
-                *(["-p", "xdist.plugin", "-n", "1"] if case.endswith("-error") else []),
                 "--basetemp",
                 str(marker.parent),
-                *(
-                    [str(checkout / "tests" / "integration" / "test_golden_probe.py")]
-                    if case.startswith(("root-session-golden", "root-session-seed"))
-                    else []
-                ),
                 str(checkout / "tests" / "unit" / "test_collection_probe.py"),
             ],
             cwd=checkout,
@@ -383,14 +109,7 @@ def _memory_checks_read_no_host():
         output = result.stdout + result.stderr
         assert result.returncode == (1 if refused else 0), output
         if refused:
-            expected = (
-                "session fixture cleanup failed: AssertionError: release-test"
-                if case == "root-session-golden-error"
-                else "session fixture cleanup failed: AssertionError"
-                if case == "root-session-seed-error"
-                else "testing.layer_contract"
-            )
-            assert expected in output
+            assert "testing.layer_contract" in output
         if case == "root-runtime":
             assert marker.is_file() and "unit dependency duckdb" in output
         else:
@@ -428,7 +147,27 @@ def _memory_checks_read_no_host():
         return
     target = tmp_path / "tests" / layer / "test_sample.py"
     target.parent.mkdir(parents=True)
-    target.write_text(_sample(case, header, body), encoding="utf-8")
+    if case == "integration-import-hostname":
+        (tmp_path / "hostname_import.py").write_text(
+            "import socket\nsocket.getaddrinfo('example.invalid', 80)\n", "utf-8"
+        )
+    target.write_text(
+        header
+        + (
+            "def test_sample(tmp_path, subtests):\n"
+            if case == "own-subtests"
+            else "def test_sample(tmp_path_factory):\n"
+            if case in {"size-live-factory", "size-live-factory-base"}
+            else "def test_sample(tmp_path, tmp_path_factory):\n"
+            if case in {"size-live-factory-mixed", "size-live-factory-under"}
+            else "def test_sample(tail):\n"
+            if case == "size-live-factory-teardown"
+            else "def test_sample(tmp_path):\n"
+        )
+        + textwrap.indent(textwrap.dedent(body).strip(), "    ")
+        + "\n",
+        encoding="utf-8",
+    )
     phase_args = (
         ["-p", "devtools.pipeline.receipt", "-p", "xdist.plugin", "-n", "2"]
         if case.startswith("observe")
@@ -466,11 +205,6 @@ def _memory_checks_read_no_host():
                 )
                 + f" p['mandatory'].append({node!r})\n"
                 + " return p\ncollection.load_policy = sized\n"
-                + (
-                    f"collection._size_families = lambda config: ({node!r},)\n"
-                    if case == "size-live-large-missing"
-                    else ""
-                )
             )
         (tmp_path / "size-stage-selection.json").write_text(
             json.dumps({"base": "a" * 40, "head": "b" * 40, "families": families}),
@@ -479,7 +213,6 @@ def _memory_checks_read_no_host():
         (tmp_path / "size_fixture.py").write_text(extra, encoding="utf-8")
         phase_args = (
             ["-p", "size_fixture", "-p", "devtools.pipeline.receipt"]
-            + ["--log-file", str(tmp_path / "events.log")]
             + (["-s"] if case.startswith("size-live-large-") else [])
             + (
                 ["-p", "xdist.plugin", "-n", "2", "--max-worker-restart=0"]
@@ -498,12 +231,6 @@ def _memory_checks_read_no_host():
                 encoding="utf-8",
             )
             phase_args += ["-p", "size_phase"]
-            (tmp_path / "pytest_receipts.py").write_text(  # the harness plugin's shared places
-                "from types import SimpleNamespace\nheavy_slot = SimpleNamespace(HOLDERS='h', "
-                "_read=lambda path, default: [{'line': 'probe', 'path': path}])\n",
-                encoding="utf-8",
-            )
-            phase_args += ["-p", "pytest_receipts"]
     if case == "observe-sidecar-unavailable":
         for worker in ("main", "gw0", "gw1"):
             (tmp_path / f"node-observations-{worker}.jsonl").mkdir()
@@ -516,11 +243,9 @@ def _memory_checks_read_no_host():
         )
         phase_args[:0] = ["-p", "disabled_audit"]
     if case.startswith("own-"):
-        call_seconds = {
-            "own-bad": "float('nan')",
-            "own-over": "0.7",
-            "own-boundary": "0.6",
-        }.get(case, "0.4")
+        call_seconds = {"own-bad": "float('nan')", "own-over": "0.7", "own-boundary": "0.6"}.get(
+            case, "0.4"
+        )
         (tmp_path / "phase_probe.py").write_text(
             "import pytest\n"
             "@pytest.hookimpl(wrapper=True, tryfirst=True)\n"
@@ -531,33 +256,65 @@ def _memory_checks_read_no_host():
             encoding="utf-8",
         )
         phase_args = ["-p", "phase_probe", "--log-file", str(tmp_path / "events.log")]
-    result = _layer_child(
-        root,
-        tmp_path,
-        target,
-        phase_args,
-        ALPHALATTICE_TEST_LANE="merge"
-        if case in {"size-live-large-merge", "size-live-large-missing"}
-        else "nightly"
-        if case == "size-live-large-nightly"
-        else "",
-        ALPHALATTICE_PIPELINE_REQUIRED_TESTS=json.dumps(
-            [f"tests/{layer}/test_sample.py::test_sample"]
-        )
-        if case == "size-live-large-merge"
-        else "[]",
-        ALPHALATTICE_PIPELINE_STAGE="nightly"
-        if case == "size-live-large-nightly"
-        else "post-merge"
-        if case == "size-live-large-missing"
-        else "commit"
-        if case.startswith("size-live-")
-        else "",
-        ALPHALATTICE_PIPELINE_EVENTS=(
-            str(tmp_path / "test-events.jsonl")
-            if case.startswith("observe") or case.startswith("size-live-")
-            else ""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-m",
+            "pytest",
+            "-p",
+            "devtools.testing.collection",
+            "-p",
+            "pytest_timeout",
+            *phase_args,
+            "--junitxml",
+            str(tmp_path / "child.xml"),
+            "-c",
+            str(root / "pyproject.toml"),
+            "--rootdir",
+            str(tmp_path),
+            "--confcutdir",
+            str(tmp_path),
+            "--noconftest",
+            "--basetemp",
+            str(tmp_path / "child-temp"),
+            "-o",
+            "addopts=",
+            "-q",
+            str(target),
+        ],
+        cwd=tmp_path,
+        env=child_environment(
+            PYTHONPATH=os.pathsep.join([str(tmp_path), str(root / "src")]),
+            ALPHALATTICE_TEST_LANE="merge"
+            if case in {"size-live-large-merge", "size-live-large-missing"}
+            else "nightly"
+            if case == "size-live-large-nightly"
+            else "",
+            ALPHALATTICE_PIPELINE_REQUIRED_TESTS=json.dumps(
+                [f"tests/{layer}/test_sample.py::test_sample"]
+            )
+            if case == "size-live-large-merge"
+            else "[]",
+            ALPHALATTICE_PIPELINE_STAGE="nightly"
+            if case == "size-live-large-nightly"
+            else "commit"
+            if case.startswith("size-live-")
+            else "",
+            ALPHALATTICE_PIPELINE_EVENTS=(
+                str(tmp_path / "test-events.jsonl")
+                if case.startswith("observe") or case.startswith("size-live-")
+                else ""
+            ),
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            PYTEST_PLUGINS="",
         ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+        creationflags=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     output = result.stdout + result.stderr
     if case == "size-live-large-missing":
@@ -627,7 +384,7 @@ def _memory_checks_read_no_host():
         assert not (tmp_path / "unexpected-test-run").exists()
         return
     if case == "size-live-large-merge":
-        assert result.returncode == 5 and "1 deselected" in output, output
+        assert result.returncode == 5 and "test_size.nightly_only" in output, output
         assert "NIGHTLY_EXECUTED" not in output
         return
     if case == "size-live-large-nightly":
@@ -648,6 +405,8 @@ def _memory_checks_read_no_host():
             }
             else "test_size.admission_unmeasured"
             if case == "size-live-skip"
+            else "Timeout"
+            if case == "slow"
             else "testing.layer_contract"
         )
         assert result.returncode == 1 and expected in output, output
@@ -733,80 +492,27 @@ def _memory_checks_read_no_host():
             assert rows[0]["database"] is True
         if case == "observe-network":
             assert rows[0]["network"] is True
-    if case in {"own-over", "size-live-time-over", "size-live-over"}:  # over on seconds only
-        logged = (tmp_path / "events.log").read_text("utf-8")
-        assert ('"event": "TIMEOUT"' in logged) == (case != "size-live-over"), logged
-        if case == "size-live-time-over":
-            assert '"heavy_place_holders": [{"line": "probe", "path": "h"}]' in logged, logged
+    if case in {"database", "fixture-setup", "fixture-teardown", "numpy-save"}:
+        from xml.etree import ElementTree as ET
 
-
-GUARD_TIME = {
-    "timeout": (6000, None),
-    "guard-runs": (10, 7),
-}  # the guard scale and the test's sleep
-"""`None` is a hang: the child blocks on an event that never sets, so only the guard ends it."""
+        cases = list(ET.parse(tmp_path / "child.xml").iter("testcase"))
+        assert len(cases) == 1
+        assert sum(len(c.findall("error")) + len(c.findall("failure")) for c in cases) == 1
+    if case == "own-over":
+        assert '"event": "TIMEOUT"' in (tmp_path / "events.log").read_text("utf-8")
+    if case == "numpy-save":
+        assert "file outside temporary root" in output
+    if case in {"native-file", "native-local", "native-memmap"}:
+        assert "dependency numpy." in output
 
 
 @pytest.mark.parametrize(
     "declared",
-    [
-        *DECLARED_CASES,
-        pytest.param(("required-file",), id="required-file"),
-        pytest.param(("commit-tier",), id="commit-tier"),
-    ],
-    ids=lambda declared: "-".join(declared) or "undeclared",
+    DECLARED_CASES,
 )
 @pytest.mark.proves("testing.layer_contract")
 def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypatch, declared):
     """Owned size declarations enforce their bounds and provenance, refusing invalid catalogs."""
-    if declared == ("required-file",):
-        from types import SimpleNamespace
-
-        from devtools.testing import collection
-
-        nodes = [f"tests/test_wide.py::test_case_{i}" for i in range(1400)]
-        path = tmp_path / "required.json"
-        data = json.dumps(nodes)
-        assert len(data) > 32767
-        path.write_text(data, encoding="utf-8")
-        monkeypatch.delenv("ALPHALATTICE_PIPELINE_EVENTS", raising=False)
-        monkeypatch.delenv("WK_SUITE_PLUGIN", raising=False)
-        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "@" + str(path))
-        config = SimpleNamespace(option=SimpleNamespace(deselect=["tests/test_wide.py"]), stash={})
-        with suppress(pytest.UsageError):
-            collection.pytest_configure(config)
-        assert config.stash.get(collection.REQUIRED) == (tuple(nodes), ("tests/test_wide.py",))
-        assert config.option.deselect == []
-        path.unlink()
-        with pytest.raises(pytest.UsageError, match="required_selection_unavailable") as missing:
-            collection.pytest_configure(config)
-        assert str(path) in str(missing.value)
-        path.write_bytes(b"\xff")
-        with pytest.raises(pytest.UsageError, match="required_selection_unavailable"):
-            collection.pytest_configure(config)
-        path.write_text("{", encoding="utf-8")
-        with pytest.raises(pytest.UsageError, match="required_selection_invalid"):
-            collection.pytest_configure(config)
-        monkeypatch.setenv("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(nodes[:1]))
-        collection.pytest_configure(config)
-        assert config.stash[collection.REQUIRED][0] == tuple(nodes[:1])
-        return
-    if declared == ("commit-tier",):
-        from devtools.testing import collection
-
-        _stage_admits = getattr(collection, "_stage_admits", None)
-        assert callable(_stage_admits), "commit needs a selection boundary for slow tests"
-        for layer, size, expected in (
-            ("unit", "small", True),
-            ("integration", "medium", True),
-            ("integration", "large", False),
-            ("e2e", "medium", False),
-            ("native", "medium", False),
-        ):
-            assert _stage_admits("commit", size, layer) is expected
-        assert _stage_admits("nightly", "large", "e2e")
-        assert _stage_admits("post-merge", "large", "integration")
-        return
     if not declared:
         monkeypatch.setenv(
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
@@ -913,32 +619,6 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
                 "def test_param(x): pass\n"
             )
             new = old.replace("[1, 2]", "[1, 2, 3]") + "def test_new(): pass\n"
-            commented = old.replace("def test_same(): pass", "def test_same(): pass  # explanation")
-            assert (
-                requirements.edited_families(
-                    requirements.file_holders("tests/test_a.py", old, size_scope=True),
-                    requirements.file_holders("tests/test_a.py", commented, size_scope=True),
-                )
-                == []
-            )
-            assert requirements.edited_families(
-                requirements.file_holders("tests/test_a.py", old, size_scope=True),
-                requirements.file_holders(
-                    "tests/test_a.py",
-                    old.replace("def test_same(): pass", "def test_same(): assert True"),
-                    size_scope=True,
-                ),
-            ) == ["tests/test_a.py::test_same"]
-            literal = (
-                "def test_literal():\n    value = \"@pytest.mark.proves('old')\"\n"
-                "    assert value\n"
-            )
-            assert requirements.edited_families(
-                requirements.file_holders("tests/test_a.py", literal, size_scope=True),
-                requirements.file_holders(
-                    "tests/test_a.py", literal.replace("old", "new"), size_scope=True
-                ),
-            ) == ["tests/test_a.py::test_literal"]
             before = requirements.file_holders("tests/test_a.py", old, size_scope=True)
             after = requirements.file_holders("tests/test_a.py", new, size_scope=True)
             assert edited(before, after) == [
@@ -967,12 +647,11 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             (repo / "tests").mkdir(parents=True)
 
             def git(*words):
-                return spawn.run(
+                return subprocess.run(
                     ["git", "-C", str(repo), *words],
                     check=True,
                     capture_output=True,
                     text=True,
-                    encoding="utf-8",
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 ).stdout.strip()
 
@@ -1394,21 +1073,11 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         contract = "tests/portfolio_strategy_lab/test_cli_contract.py"
         policy["mandatory"] = list(dict.fromkeys([*policy["mandatory"], contract + "*"]))
         policy["post_merge_only"] = [contract]
-    if case in faults:  # a malformed catalog is refused by the same validator collection loads with
-        from devtools.testing.sizes import validate_policy
-
+    if case in faults:
         record, key, value, refusal = faults[case]
         record[key] = value
-        with pytest.raises(ValueError, match=rf"test_size\.{refusal}"):
-            validate_policy(policy)
-        return
-    if case in GUARD_TIME:  # the live medium guard and budget in scaled time: 600 s hung, 70 s run
-        live = json.loads((root / "config/registries/test-sizes.json").read_bytes())
-        policy["limits"], policy["admission_limits"] = live["limits"], live["admission_limits"]
-        policy["limits"]["medium"] /= GUARD_TIME[case][0]
-        policy["admission_limits"]["medium"]["seconds"] /= GUARD_TIME[case][0]
-    if lane:  # a mandatory Large file runs in the merge lane; only named files are mandatory
-        policy["mandatory"].append("tests/structural/test_mandatory.py*")
+    if case == "timeout":
+        policy["limits"]["medium"] = 0.05
     policy_file.write_text(json.dumps(policy), encoding="utf-8")
     target = tmp_path / "test_example.py"
     target.write_text(
@@ -1420,13 +1089,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         )
         + ("@pytest.mark.timeout(0.05)\n" if case == "strict" else "")
         + 'def test_example():\n    """Exercise the resolved execution limit."""\n'
-        + (
-            "    import threading; threading.Event().wait()\n"
-            if case in GUARD_TIME and GUARD_TIME[case][1] is None
-            else f"    import time; time.sleep({GUARD_TIME[case][1]})\n"
-            if case in GUARD_TIME
-            else "    pass\n"
-        ),
+        + ("    import time; time.sleep(0.2)\n" if case == "timeout" else "    pass\n"),
         encoding="utf-8",
     )
     registered = declared == ("registered",)
@@ -1458,10 +1121,6 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         "     markers=sorted({m.name for m in i.iter_markers()\n"
         "       if m.name in {'small','medium','large'}})))\n"
         "  print('SIZE_ITEMS='+json.dumps(rows))\n"
-        # the guard pytest-timeout arms, recorded before its timer can end the process
-        " def pytest_timeout_set_timer(self,item,settings):\n"
-        f"  Path({str(tmp_path / 'timer.json')!r}).write_text(json.dumps(\n"
-        "    dict(nodeid=item.nodeid,seconds=settings.timeout)),encoding='utf-8')\n"
         "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
     )
     if case == "sibling-race":
@@ -1499,17 +1158,16 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         ]
     command += ["-c", str(root / "pyproject.toml")]
     command += ["--basetemp", str(tmp_path / "child-temp")]
-    command += ["-vv"] if case in GUARD_TIME else ["--collect-only", "-q"]
+    command += ["-vv"] if case == "timeout" else ["--collect-only", "-q"]
     command += ["--no-cov", str(target)]
     if lane:
         command += ["--keep-duplicates", str(target), str(mandatory)]
-    result = spawn.run(
+    result = subprocess.run(
         command,
         cwd=root,
         env=child_environment(
             PYTHONPATH=str(root / "src"),
-            # the registered node is nightly_only (the person, 11-19): collected in its own lane
-            ALPHALATTICE_TEST_LANE=lane or ("nightly" if registered else ""),
+            ALPHALATTICE_TEST_LANE=lane,
             ALPHALATTICE_PIPELINE_STAGE=post_stage,
         ),
         capture_output=True,
@@ -1520,22 +1178,11 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     )
     if case == "sibling-race":
         assert not sibling.exists() and sibling.with_name(sibling.name + "-moved").is_dir()
-    if post_stage == "commit":
-        assert result.returncode == 5 and "SIZE_ITEMS=[]" in result.stdout
-        return
-    if case == "timeout":  # past the live 300 s guard: killed as hung, by name
-        # the hung test ends only by its guard (spawn's bound refuses otherwise); its record,
-        # never the banner the killed child may not have flushed, names the node and its limit
-        timer = json.loads((tmp_path / "timer.json").read_text(encoding="utf-8"))
-        assert timer == {
-            "nodeid": "test_example.py::test_example",
-            "seconds": pytest.approx(policy["limits"]["medium"]),  # the live guard, scaled
-        }, result.stdout + result.stderr
-        assert result.returncode != 0 and "test_example PASSED" not in result.stdout
-    elif case == "guard-runs":  # 70 s, over the 30 s budget and under the 300 s guard: it ends
-        row = json.loads(result.stdout.split("SIZE_ITEMS=")[1].splitlines()[0])[0]
-        assert (row["timeout_marker"], row["speed_budget_seconds"]) == (30, 3), result.stdout
-        assert result.returncode == 0 and "test_example PASSED" in result.stdout, result.stdout
+    if case in faults:
+        assert result.returncode != 0 and "test_size." + refusal in result.stderr
+    elif case == "timeout":
+        assert result.returncode != 0 and "Timeout" in result.stdout + result.stderr
+        assert "test_example" in result.stdout + result.stderr
     elif len(set(declared)) > 1:
         assert result.returncode != 0 and "test_size.conflicting" in result.stderr
     else:
@@ -1552,7 +1199,9 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             assert rows[0]["timeout_marker"] == 0.05
             return
         if post_stage:
-            expected = ["large", "large", "medium", "small"]
+            expected = (
+                ["large"] if post_stage == "commit" else ["large", "large", "medium", "small"]
+            )
             assert sorted(r["test_size"] for r in rows) == expected
             return
         if lane:
@@ -1677,19 +1326,13 @@ def test_a_declared_reach_scopes_the_merge_and_fast_lanes(tmp_path, monkeypatch,
     )
     nodes = [SimpleNamespace(nodeid=n) for n in (other, "tests/structural/test_fenced.py::t")]
     _record_moved(config, "merge", nodes, policy, changed)
-    pytest_collection_finish(SimpleNamespace(config=config, items=[]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": []}
-    _record_moved(config, "merge", nodes, policy, changed)
-    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
-    recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
-    assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
     _record_moved(config, "merge", nodes, policy, changed, floor=True)
     pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[0]]))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "commit stage", "moved": [other], "ran": [other]}
-    _record_moved(config, "merge", nodes, policy, None)
-    pytest_collection_finish(SimpleNamespace(config=config, items=[nodes[1]]))
+    _record_moved(config, "merge", nodes, policy, None, omitted=(nodes[0],))
     recorded = json.loads((tmp_path / "structural-moved.json").read_text(encoding="utf-8"))
     assert recorded == {"tier": "post-merge", "moved": [other], "ran": []}
     assert included(closure, "large", "nightly", policy, None) and not scoped(scan, policy, None)
@@ -1887,7 +1530,10 @@ def test_find_returns_requirements_with_holders_then_unregistered_tests(tmp_path
     "testing.unregistered_test_refused_with_its_find",
     "testing.row_admitted_or_refused_by_its_check",
 )
-@pytest.mark.parametrize(("case", "edit", "refused"), ADMISSION_CASES, ids=ADMISSION_IDS)
+@pytest.mark.parametrize(
+    ("case", "edit", "refused"),
+    ADMISSION_CASES,
+)
 def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
     tmp_path, case, edit, refused, monkeypatch
 ):
@@ -2062,20 +1708,13 @@ def test_a_new_test_or_row_is_admitted_or_refused_by_the_check_it_fails(
             r.legacy(tmp_path)
         return
     base, entries = json.dumps(registry), registry["entries"]
-    row = entries[HELD] | {
-        "description": "A restarted Host reuses its last free port.",
-        "lower_layer": "Only a served Host on a real loopback port shows the reuse.",
-    }
+    row = entries[HELD] | {"description": "A restarted Host reuses its last free port."}
     decided = {"exception": {"kinds": ["journey"], "why": "w", "decided": "2026-10-24: w"}}
-    prior = json.loads(base)["entries"]
-    if case == "retired-history":  # an existing row whose owner's package has since moved away
-        case = "nowhere.port_reuse"
-        prior[case] = row | {"owner": "nowhere"}
     if edit is None:
         del entries[case]
     else:
         entries[case] = row | edit | (decided if edit.get("exception") == "decided" else {})
-    found = r.admission(tmp_path, entries, prior)
+    found = r.admission(tmp_path, entries, json.loads(base)["entries"])
     assert (refused in " ".join(found)) if refused else found == []
 
 
@@ -2264,73 +1903,21 @@ class TestFocused:
         assert added[0].ids == (key,)
 
 
-@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
-def test_a_fast_whole_tree_guard_runs_at_commit_when_the_tree_it_reads_changed() -> None:
-    """A deferred guard follows what it reads: source selects it, and a slow one still waits."""
-    from devtools.testing import sizes
+@pytest.mark.proves("testing.codspeed_marks_every_selected_test")
+def test_codspeed_measures_every_selected_test_and_a_plain_run_marks_none(
+    monkeypatch, pytestconfig
+):
+    """CodSpeed deselects unmarked tests, so the cost job marks each; a plain run marks none."""
+    from types import SimpleNamespace
 
-    guard = "tests/structural/test_a_guard.py"
-    fast, slow = f"{guard}::test_fast", f"{guard}::test_slow"
-    rule = {"reason": "why", "reads": ["src/*"], "slow": [f"{slow}*"]}
-    policy = {**sizes.load_policy(Path(__file__).resolve().parents[2]), "whole_tree_guards": rule}
-    source = frozenset({"src/alphalattice/capabilities/data/calendar.py"})
-    assert sizes.moved(fast, policy) and sizes.included(fast, "medium", "merge", policy, source)
-    assert not sizes.included(fast, "medium", "merge", policy, frozenset({"tests/README.md"}))
-    assert not sizes.included(slow, "medium", "merge", policy, source)
-    assert not sizes.included(
-        fast, "medium", "merge", {**policy, "whole_tree_guards": {}}, source
-    )  # the escape
-    with pytest.raises(ValueError, match=r"test_size\.whole_tree_guards_invalid"):
-        sizes.validate_policy({**policy, "whole_tree_guards": {**rule, "reads": []}})
+    from devtools.testing import collection
 
-
-@pytest.mark.proves("testing.fast_whole_tree_guard_runs_when_its_tree_changed")
-def test_the_published_policy_keeps_the_whole_tree_rule_without_its_private_nodes() -> None:
-    """Every public session loads this policy: its projection passes the rule, no private node."""
-    from scripts.release.public_manifest import project_public
-
-    from devtools.testing import sizes
-
-    path = "config/registries/test-sizes.json"
-    policy = json.loads((Path(__file__).resolve().parents[2] / path).read_text(encoding="utf-8"))
-    policy["whole_tree_guards"]["slow"] = ["tests/kept.py::test_a*", "tests/held.py::test_b*"]
-    # 11-16: a public guard keeps its reader when the reader also reads a private tree (the public
-    # Verify went red when the export dropped the whole row and kept the guard).
-    within = ["src/*.py", "tests/held*.py"]  # the second reads only the private file
-    reads = {"facet": "mentions", "within": within, "words": ["f"]}
-    policy["selection_readers"] = {"tests/kept.py::test_a": reads, "tests/held.py::test_b": reads}
-    published, _ = project_public(
-        path,
-        json.dumps(policy).encode(),
-        {"tests/held.py"},
-        {path, "tests/kept.py", "tests/held.py"},
-    )
-    sizes.validate_policy(json.loads(published))
-    assert json.loads(published)["whole_tree_guards"]["slow"] == ["tests/kept.py::test_a*"]
-    assert json.loads(published)["selection_readers"] == {
-        "tests/kept.py::test_a": {**reads, "within": ["src/*.py"]}
-    }
-    assert b"tests/held.py" not in published
-    from check_test_shape import antipattern_baseline
-
-    path = "config/registries/antipattern-baseline.json"
-    entries = {"tests/kept.py::C901::f": 11, "tests/held.py::C901::f": 12}
-    published, dropped = project_public(
-        path,
-        json.dumps({"counts": entries}).encode(),
-        {"tests/held.py"},
-        {path, "tests/kept.py", "tests/held.py"},
-    )
-    assert dropped and antipattern_baseline(published.decode()) == {"tests/kept.py::C901::f": 11}
-    from scripts.release.public_manifest import classify, declared_private
-
-    root = Path(__file__).resolve().parents[2]
-    counts = antipattern_baseline((root / path).read_text(encoding="utf-8"))
-    sources = {key.split("::", 1)[0] for key in counts}
-    blobs = {name: (root / name).read_bytes() for name in sources if (root / name).is_file()}
-    declared = declared_private(blobs)
-    assert not [
-        name
-        for name in sources
-        if classify(name, set(), set(), set(), declared=declared)[0] == "PRIVATE"
-    ]
+    marks: list = []
+    config = SimpleNamespace(getoption=lambda name, default=None: default)
+    item = SimpleNamespace(config=config, add_marker=marks.append)
+    monkeypatch.delenv("CODSPEED_ENV", raising=False)
+    collection.pytest_itemcollected(item)
+    monkeypatch.setenv("CODSPEED_ENV", "1")  # the CodSpeed action's runner sets it
+    pytestconfig.addinivalue_line("markers", "benchmark: registered by pytest-codspeed when on")
+    collection.pytest_itemcollected(item)
+    assert [mark.name for mark in marks] == ["benchmark"]

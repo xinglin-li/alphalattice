@@ -674,11 +674,10 @@ def test_feature_prefix_batch_uses_the_supplied_snapshot_without_write_authority
 @pytest.mark.parametrize(
     "counts,cutoffs_text",
     (
-        pytest.param((999_999, 1_000_000, 1_000_001), "{}", id="around-the-boundary"),
-        pytest.param(
+        ((999_999, 1_000_000, 1_000_001), "{}"),
+        (
             (1_000_001, 1_000_007, 1_000_017),
             '{"scope":"' + "示例-" * 64 + '","nullable":null}',
-            id="past-it-with-wide-text",
         ),
     ),
 )
@@ -695,7 +694,7 @@ def test_feature_prefix_batch_matches_original_v1_across_the_arrow_chunk_boundar
     with database.connect(read_only=False) as connection:
         connection.execute(
             f"""
-            CREATE TABLE feature_daily_runtime AS
+            CREATE VIEW feature_daily_runtime AS
             SELECT 'L' || lpad(CAST(i AS VARCHAR), 7, '0') AS listing_id,
                    DATE '{start.isoformat()}'
                        + CASE WHEN i < {small} THEN 0 WHEN i < {middle} THEN 1 ELSE 2 END

@@ -7,12 +7,12 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.retention_residue import (
     PanelRetentionResidueOwner,
 )
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 NOW = datetime(2026, 8, 7, 15, 0, tzinfo=UTC)
 

@@ -7,9 +7,10 @@ with deterministic AlphaLattice-owned code.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from functools import cache
@@ -19,8 +20,6 @@ from threading import Lock
 from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
-from alphalattice.capabilities.domain_contracts.spans import spanned
-from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
@@ -29,8 +28,7 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     SplitAdjustedPriceIntegrityError,
     validate_split_adjusted_history,
 )
-from alphalattice.kernel.egress import EgressRefusal, HttpSource, require_network, yahoo_session
-from alphalattice.kernel.identity import identity_sha256
+from alphalattice.kernel.shared_kernel.spans import spanned
 
 YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "actions": True,
@@ -38,7 +36,7 @@ YFINANCE_PRICE_POLICY: Mapping[str, object] = {
     "repair": True,
     "split_integrity": "action-aligned-open-ratio-and-unexplained-fivefold-discontinuity",
 }
-YFINANCE_PRICE_POLICY_HASH = identity_sha256(
+YFINANCE_PRICE_POLICY_HASH = hashlib.sha256(
     json.dumps(YFINANCE_PRICE_POLICY, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
 
@@ -58,25 +56,6 @@ class ProviderFetchError(RuntimeError):
         super().__init__(detail)
         self.code = code
         self.retryable = retryable
-
-    def backed_off(
-        self, attempt: int, attempts: int, sleep: Callable[[float], object] = pause
-    ) -> ProviderFetchError:
-        """This failure of attempt `attempt` of `attempts`, after the wait its retry owes: a rate
-        limit waits `RATE_LIMIT_BACKOFF_SECONDS`, doubling up to `RATE_LIMIT_BACKOFF_CAP_SECONDS`,
-        so a retry never asks a provider that refused for load again at once. Any other failure,
-        and a last attempt, waits for nothing."""
-        if self.code == "data.rate_limited" and attempt < attempts:
-            sleep(
-                min(RATE_LIMIT_BACKOFF_CAP_SECONDS, RATE_LIMIT_BACKOFF_SECONDS * 2 ** (attempt - 1))
-            )
-        return self
-
-
-RATE_LIMIT_BACKOFF_SECONDS = 2.0
-"""The first wait after a rate-limited attempt; each later one doubles it."""
-RATE_LIMIT_BACKOFF_CAP_SECONDS = 30.0
-"""The longest wait between two attempts; a longer refusal is the caller's deferral's to wait."""
 
 
 class MarketDataProvider(Protocol):
@@ -169,8 +148,6 @@ def _plain_number(value: object) -> float | None:
 
 def _error(exc: Exception) -> ProviderFetchError:
     detail = str(exc).strip()
-    if isinstance(exc, EgressRefusal):
-        return ProviderFetchError(exc.failure_code, detail, retryable=False)
     normalized = detail.casefold()
     if isinstance(exc, TimeoutError) or "timeout" in normalized:
         return ProviderFetchError(
@@ -208,13 +185,12 @@ class YFinanceMarketDataProvider:
     cache_root: Path
     name: str = "yfinance"
     _runtime_module: Any = field(default=None, init=False, repr=False)
-    _session: Any = field(default=None, init=False, repr=False)
     _initialization_lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
-    def _ticker(self, yf: Any, symbol: str) -> Any:
+    @staticmethod
+    def _ticker(yf: Any, symbol: str) -> Any:
         """Coalesce native GETs only within this acquisition; never reuse older bodies."""
-        require_network(HttpSource.YAHOO_FINANCE)
-        ticker = yf.Ticker(symbol, session=self._session)
+        ticker = yf.Ticker(symbol)
         get = yf.data.lru_cache_freezeargs(cache(ticker._data.get))
         ticker._data = SimpleNamespace(get=get, cache_get=get)
         return ticker
@@ -261,7 +237,6 @@ class YFinanceMarketDataProvider:
                     getattr(yf.cache, getter_name)().initialise()
             except Exception as exc:
                 raise _error(exc) from exc
-            self._session = yahoo_session(yf._http.new_session)
             self._runtime_module = yf
             return yf
 
@@ -582,7 +557,7 @@ class YFinanceMarketDataProvider:
         """Read Yahoo's current sector label without calling it GICS or PIT truth."""
         yf = self._module()
         try:
-            payload = yf.Ticker(provider_symbol, session=self._session).get_info()
+            payload = yf.Ticker(provider_symbol).get_info()
         except Exception as exc:
             raise _error(exc) from exc
         if not isinstance(payload, Mapping):
@@ -609,7 +584,7 @@ class YFinanceMarketDataProvider:
             provider_symbol=provider_symbol,
             sector_name=normalized["sector"],
             sector_key=normalized["sectorKey"],
-            payload_hash=identity_sha256(
+            payload_hash=hashlib.sha256(
                 json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest(),
         )

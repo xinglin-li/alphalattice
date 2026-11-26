@@ -40,9 +40,8 @@ from alphalattice.control.product_host.storage.plan_previews import (
     PreviewRegistry,
 )
 from alphalattice.interface.local_application.cli import main
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, on_seed_machine
+from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
+from tests.researcher_methodology_surface.session_workspace import copy_workspace
 
 
 class _Clock:
@@ -76,20 +75,19 @@ def clock() -> _Clock:
 
 
 @pytest.fixture(scope="module")
-def host(research_root: tuple[Path, str, str], clock: _Clock, input_seed: Path):  # type: ignore[no-untyped-def]
+def host(research_root: tuple[Path, str, str], clock: _Clock):  # type: ignore[no-untyped-def]
     root, _input_id, _binding = research_root
-    with on_seed_machine(input_seed):
-        session = LocalPortfolioWebSession(
-            workspace=root,
-            workspace_manifest=read_research_workspace_manifest(root),
-            resolver=_Resolver(_resolved()),
-            clock=clock,
-        )
-        session.start()
-        try:
-            yield session
-        finally:
-            session.stop()
+    session = LocalPortfolioWebSession(
+        workspace=root,
+        workspace_manifest=read_research_workspace_manifest(root),
+        resolver=_Resolver(_resolved()),
+        clock=clock,
+    )
+    session.start()
+    try:
+        yield session
+    finally:
+        session.stop()
 
 
 def _cli(host: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
@@ -155,17 +153,15 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     experiments = host.operations.experiments  # type: ignore[union-attr]
     manifest_before = read_research_workspace_manifest(host.workspace).manifest_hash
     tasks_before = len(host.session.task_control_registry.tasks())  # type: ignore[union-attr]
-    items_before = len(_json(host, "/api/activity")["items"])
+    head_before = _json(host, "/api/activity")["head"]
 
     # Two actors' previews side by side: the second PLAN no longer displaces the first.
     plan_a = _plan(host, _declaration(host, tmp_path / "a.yaml", 20260816))["data"]
     plan_b = _plan(host, _declaration(host, tmp_path / "b.yaml", 20260817))["data"]
     hash_a, hash_b = plan_a["plan_hash"], plan_b["plan_hash"]
-    after_plans = _json(host, "/api/activity")  # its head is the log's ordinal, not an item count
-    assert len(after_plans["items"]) == items_before + 4  # two PLAN pairs
     assert hash_a != hash_b
     assert plan_a["preview"] == {"retention": "ON_DISK_UNTIL_EXPIRY", "expires_after_minutes": 60}
-    # Sealed by its hash: a restart or an eviction finds it, a changed file does not.
+    # Sealed by its hash (V105): a restart or an eviction finds it, a changed file does not.
     sealed_root = host.workspace / "runtime" / PREVIEWS_DIRECTORY
     restarted = PreviewRegistry(
         model=ExperimentPlan, clock=lambda: datetime.now(UTC), root=sealed_root
@@ -210,11 +206,8 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     # Reading previews admits nothing, records no activity and moves no pointer.
     assert len(host.session.task_control_registry.tasks()) == tasks_before  # type: ignore[union-attr]
     assert read_research_workspace_manifest(host.workspace).manifest_hash == manifest_before
-    read = _json(host, "/api/activity")
-    assert (read["head"], read["items"]) == (
-        after_plans["head"],
-        after_plans["items"],
-    )  # reads add nothing
+    head_after_reads = _json(host, "/api/activity")["head"]
+    assert head_after_reads == head_before + 4  # two PLAN pairs; the preview reads added nothing
 
     # An unknown hash is MISSING and never resolved to the latest preview.
     missing = _preview(host, "f" * 64)
@@ -280,7 +273,7 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     assert admitted["existing_task"]["task_id"] == task_id  # ...and its Task is named beside it
     assert admitted["existing_task"]["lifecycle"] == "SUCCEEDED"
 
-    # A restart finds the sealed preview beside its durable Task; nothing resolves to
+    # A restart finds the sealed preview beside its durable Task (V105); nothing resolves to
     # the latest.
     count = len(host.session.task_control_registry.tasks())  # type: ignore[union-attr]
     host.stop()
@@ -310,7 +303,6 @@ def test_competing_previews_expiry_and_restart_keep_every_plan_addressable(
     assert read_research_workspace_manifest(host.workspace).manifest_hash == manifest_before
 
 
-@pytest.mark.parametrize("input_seed", ["development"], indirect=True)
 def test_shared_plan_is_navigable_and_visible_as_activity_without_execution(
     host: LocalPortfolioWebSession, tmp_path: Path
 ) -> None:

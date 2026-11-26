@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.market_data_ops.returns.semantic_revisions import (
     AdjustedReturnSemanticDelta,
@@ -35,6 +34,7 @@ from alphalattice.foundation.research_foundation.runtime.delta_service import (
     PRE_RESEARCH_DELTA_POLICY_HASHES,
     PreResearchDeltaService,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 
@@ -961,19 +961,11 @@ def test_one_days_deltas_chain_alike_in_any_ledger_order() -> None:
 
 
 @pytest.mark.parametrize(
-    "verified,member,tail,lookback,recorded_append",
-    [
-        (0, 0, 0, 0, False),
-        (1, 1, 0, 0, False),
-        (1, 0, 0, 0, False),
-        (1, 1, 1, 0, False),
-        (0, 1, 1, 0, False),
-        (1, 1, 0, 1, False),
-        pytest.param(0, 1, 1, 0, True, id="recorded-append-after-halt"),
-    ],
+    "verified,member,tail,lookback",
+    [(0, 0, 0, 0), (1, 1, 0, 0), (1, 0, 0, 0), (1, 1, 1, 0), (0, 1, 1, 0), (1, 1, 0, 1)],
 )
 def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
-    verified: int, member: int, tail: int, lookback: int, recorded_append: bool
+    verified: int, member: int, tail: int, lookback: int
 ) -> None:
     """A set change is admitted only where a session outside the listing's history explains it."""
     from functools import partial
@@ -983,7 +975,6 @@ def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
     )
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
     from alphalattice.foundation.market_data_ops.storage.duckdb import (
-        FeatureSourceDelta,
         ProviderAdjustedSeriesRevision,
     )
     from tests.workspace_maintenance.acquisition_manifest import NOW as AT
@@ -991,9 +982,7 @@ def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
 
     manifest, end, held = acquisition_manifest(), date(2026, 8, 3), date(2026, 7, 15)
     # A late dividend revises a held session; a tail or a never-member lookback day explains it.
-    sessions = (
-        (end,) if recorded_append else (*(date(2026, 7, 10),) * lookback, held, *(end,) * tail)
-    )
+    sessions = (*(date(2026, 7, 10),) * lookback, held, *(end,) * tail)
     revision = ProviderAdjustedSeriesRevision(
         receipt_hash="1" * 64,
         listing_id="listing-aapl",
@@ -1009,14 +998,10 @@ def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
         uniform_rescale=False,
         source_receipt_hash="2" * 64,
         observed_at=AT,
-        disclosed={"tail_append": True} if recorded_append else {},
     )
-    # A prior maintenance pass wrote the Feature tail before publishing its Panel.
-    pending_append = bool(tail and not recorded_append)
-    appends = (FeatureSourceDelta("listing-aapl", (end,), "3" * 64),) if pending_append else ()
     store = SimpleNamespace(
         load_universe_manifest_revision=lambda _revision: manifest,
-        feature_source_appends=lambda *_, **__: appends,
+        feature_source_appends=lambda *_, **__: (),
         raw_bar_semantic_deltas_since=lambda *_, **__: (),
         provider_adjusted_semantic_deltas_since=lambda *_, **__: (revision,),
         verified_feature_source_session_sets=lambda *_, **__: (
@@ -1044,14 +1029,10 @@ def test_unconsumed_feature_source_change_set_rejects_unknown_session_change(
         },
         through=end,
     )
-    try:
+    if verified and (tail or lookback or not member):
         changes = reconcile()
-    except ValueError as refused:
-        result = refused.args
+        assert changes.listing_changes[0].adjusted_return_change_sessions == sessions
     else:
-        (change,) = changes.listing_changes
-        result = change.new_sessions, change.adjusted_return_change_sessions
-    if recorded_append or (verified and (tail or lookback or not member)):
-        assert result == ((end,) if pending_append else (), sessions)
-    else:
-        assert result == ("provider session-set change unexplained", "listing-aapl")
+        with pytest.raises(ValueError, match="session-set change unexplained") as refused:
+            reconcile()
+        assert refused.value.args[1] == "listing-aapl"  # the cause names the listing

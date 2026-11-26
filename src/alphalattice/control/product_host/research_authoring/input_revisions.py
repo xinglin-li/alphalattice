@@ -12,12 +12,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.data.errors import DataError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
@@ -29,8 +23,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.maintenance.data_update import read_workspace_inputs
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
-    factor_input_paths,
-    input_absent,
     read_factor_bundle,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
@@ -43,6 +35,11 @@ from alphalattice.foundation.causal_outcomes.execution.methods import (
 from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.sealing import seal_model
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 CAPTURE_TASK_KIND = "research_input_capture"
 
@@ -384,7 +381,10 @@ class ResearchInputRevisions:
         )
         ordered = []
         previous, binding = None, anchor.binding_hash
-        while children := [v for v in rows if v.previous_publication_hash == previous]:
+        while True:
+            children = [v for v in rows if v.previous_publication_hash == previous]
+            if not children:
+                break
             if len(children) != 1 or children[0] in ordered:
                 raise ValueError("research_input.publication_ambiguous")
             child = children[0]
@@ -497,7 +497,7 @@ class ResearchInputRevisions:
         groups = []
         refusals: list[dict[str, object]] = []
         anchors = read_research_workspace_manifest(self.workspace).experiment_inputs or ()
-        # One Task Control connection for every revision's lifecycle.
+        # One Task Control connection for every revision's lifecycle (binding plan, N8).
         with self.session.task_control_registry.retain(read_only=True):
             publications, refusals = self._discover_publications()
             publication_refusals = list(refusals)
@@ -608,13 +608,12 @@ class ResearchInputRevisions:
                 if revision
                 else "REGISTERED"
             )
-        except (OSError, ValueError, KeyError, DataError) as error:
-            gone = input_absent(error)
+        except (OSError, ValueError, KeyError) as error:
             return {
                 **head,
                 "available": False,
                 "unreadable": "research_input.manifest_missing"
-                if gone
+                if isinstance(error, FileNotFoundError)
                 else "research_input.bundle_unreadable",
                 "detail": (
                     "This version's prepared input cannot be read in this workspace (its "
@@ -623,7 +622,7 @@ class ResearchInputRevisions:
                 ),
                 "next_requests": {"storage": {"operation": "STORAGE_READBACK"}},
             }
-        source = factor_input_paths(self.workspace, binding)[0]
+        source = self.workspace / "research-inputs" / binding / "source"
         return {
             **head,
             "start": str(bundle.sessions[0]),

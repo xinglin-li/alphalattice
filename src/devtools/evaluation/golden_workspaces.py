@@ -198,19 +198,6 @@ def controller_reclaimable(root: Path, *, runtime: GoldenRuntime) -> bool:
 
 
 _RUN: ContextVar[GoldenRun | None] = ContextVar("golden_run", default=None)
-_ACQUIRED: list[dict[str, Any]] = []
-
-
-def note_acquisition(row: dict[str, Any]) -> None:
-    """Record what one acquisition cost, for the test that made it (`take_acquisitions`)."""
-    _ACQUIRED.append(row)
-
-
-def take_acquisitions() -> list[dict[str, Any]]:
-    """This process's acquisitions since the last read: the test plugin reads them per test."""
-    rows = _ACQUIRED[:]
-    _ACQUIRED.clear()
-    return rows
 
 
 @contextmanager
@@ -328,26 +315,11 @@ def payload_path(path: Path) -> Path:
 
 
 def seal_payload(
-    workspace: Path,
-    *,
-    closed: Callable[[Path], AbstractContextManager[None]],
-    parent: Path | None = None,
+    workspace: Path, *, closed: Callable[[Path], AbstractContextManager[None]]
 ) -> None:
-    """Seal only a closed, regular-file payload; immutable bytes never include outward links.
-
-    A derived golden's `parent` is the sealed payload it was built from: the files it links from
-    there are that payload's own sealed files, so they must already be read-only and are left as
-    they are (a derived build copied its parent's 3.6 GB whole, mac1 11-07). Every other file keeps
-    the rule, so tests linking from the parent meanwhile change nothing here."""
+    """Seal only a closed, regular-file payload; immutable bytes never include outward links."""
     workspace = payload_path(workspace)
     try:
-        inherited: set[tuple[int, int]] = set()
-        if parent is not None:
-            for folder, _, names in os.walk(payload_path(parent)):
-                for name in names:
-                    info = os.lstat(os.path.join(folder, name))
-                    if stat.S_ISREG(info.st_mode):
-                        inherited.add((info.st_dev, info.st_ino))
         with closed(workspace):
             contents = _manifest(workspace, (".",), filtered=False)
             files = [
@@ -355,11 +327,6 @@ def seal_payload(
                 for name in contents
                 if not name.endswith("/")
             ]
-            if any(
-                info.st_mode & 0o222 for _, info in files if (info.st_dev, info.st_ino) in inherited
-            ):
-                raise RuntimeError("payload links a writable file of its parent")
-            files = [(p, info) for p, info in files if (info.st_dev, info.st_ino) not in inherited]
             counts = Counter((info.st_dev, info.st_ino) for _, info in files)
             if any(info.st_nlink > counts[info.st_dev, info.st_ino] for _, info in files):
                 raise RuntimeError("payload has a hard link outside its root")
@@ -449,8 +416,8 @@ def _kernel32() -> Any:
     return kernel
 
 
-# Windows: each session seed file read in place whose access list already refuses writers.
-_SEALED: set[str] = set()
+# Windows: each session seed file read in place, held open so that no writer can open it.
+_HELD: dict[str, int] = {}
 
 
 def refuse_writers(path: str) -> None:
@@ -459,54 +426,21 @@ def refuse_writers(path: str) -> None:
 
     POSIX: its write bits go off; unlinking a name needs only its directory. Windows keeps
     one read-only attribute per file, shared by every link, so a link could not be deleted
-    without making the source writable; a held handle would refuse renaming any folder that
-    holds one of its links. Its access list denies everyone writing data instead: one entry
-    shared by every link, leaving reads, new links, folder renames and deletion free.
+    without making the source writable: one handle that shares reading and deletion, never
+    writing, is held instead, and a writer's open fails with a sharing violation.
     """
     if os.name != "nt":
         os.chmod(path, stat.S_IMODE(os.stat(path).st_mode) & ~0o222)
         return
-    if path in _SEALED:
+    if path in _HELD:
         return
-    import ctypes.wintypes as wintypes  # lazy: the Windows path alone uses wintypes
 
-    class Trustee(ctypes.Structure):
-        _fields_ = [
-            ("multiple", ctypes.c_void_p),
-            ("operation", ctypes.c_int),
-            ("form", ctypes.c_int),
-            ("kind", ctypes.c_int),
-            ("sid", ctypes.c_void_p),
-        ]
-
-    class ExplicitAccess(ctypes.Structure):
-        _fields_ = [
-            ("permissions", wintypes.DWORD),
-            ("mode", ctypes.c_int),
-            ("inheritance", wintypes.DWORD),
-            ("trustee", Trustee),
-        ]
-
-    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
-    everyone, size = (ctypes.c_byte * 68)(), wintypes.DWORD(68)  # SECURITY_MAX_SID_SIZE
-    if not advapi.CreateWellKnownSid(1, None, everyone, ctypes.byref(size)):  # WinWorldSid
-        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.seal_refused: {path}")
-    old, descriptor, new = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
-    name = str(Path(path).absolute())
-    # SE_FILE_OBJECT, DACL_SECURITY_INFORMATION; DENY_ACCESS of FILE_WRITE_DATA | FILE_APPEND_DATA
-    deny = ExplicitAccess(0x2 | 0x4, 3, 0, Trustee(None, 0, 0, 5, ctypes.addressof(everyone)))
-    error = advapi.GetNamedSecurityInfoW(
-        name, 1, 4, None, None, ctypes.byref(old), None, ctypes.byref(descriptor)
-    )
-    try:
-        error = error or advapi.SetEntriesInAclW(1, ctypes.byref(deny), old, ctypes.byref(new))
-        error = error or advapi.SetNamedSecurityInfoW(name, 1, 4, None, None, new, None)
-    finally:
-        ctypes.windll.kernel32.LocalFree(new)
-        ctypes.windll.kernel32.LocalFree(descriptor)
-    if error:
-        raise ctypes.WinError(error, f"test_datasets.seal_refused: {path}")
-    _SEALED.add(path)
+    kernel = _kernel32()
+    # GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING
+    handle = kernel.CreateFileW(str(Path(path).absolute()), 0x80000000, 0x1 | 0x4, None, 3, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error(), f"test_datasets.hold_refused: {path}")
+    _HELD[path] = handle  # closed with the process; the source outlives every reader of it
 
 
 def remove_tree(path: Path, root: Path) -> list[str]:
@@ -515,7 +449,7 @@ def remove_tree(path: Path, root: Path) -> list[str]:
     A link (symlink or junction) is removed itself, never followed; a sealed read-only file, or a
     hard link to one, is deleted without touching the attribute every link of it shares. On Windows
     pytest's own cleanup (rmtree, ignoring errors) cannot delete such a file, so each passed
-    journey's whole scratch stayed to the run's end (11.5 GB unique in four runs).
+    journey's whole scratch stayed to the run's end (11-03: 11.5 GB unique in four on pc1).
     Returns each entry it could not remove with its error, for the caller to name; never raises.
     """
     try:
@@ -662,19 +596,11 @@ def in_invocation(path: Path, *, shared: Path | None = None) -> bool:
 
 def read_in_place(relative: str, size: int) -> bool:
     """The payload classes no test writes (measured on the explorer goldens, 11-03): research
-    inputs, and content-addressed files of 1 MB or more. Carried Evidence originals stay private
-    because the receiving Host consumes them when it opens the copy."""
-    if relative.startswith("runtime/evidence-knowledge/.system/carried-source-objects/"):
-        return False
+    inputs, and content-addressed files of 1 MB or more; everything else stays a private copy."""
     stem = relative.rsplit("/", 1)[-1].split(".", 1)[0]
     return relative.startswith("research-inputs/") or (
         size >= 1 << 20 and re.fullmatch(r"[0-9a-f]{64}", stem) is not None
     )
-
-
-def volume(path: Path) -> int:
-    """The volume a path lives on; a hard link joins two names only on one."""
-    return path.stat().st_dev
 
 
 def copy_payload(
@@ -692,11 +618,10 @@ def copy_payload(
     Windows the read-only attribute, shared by every link, refusing every writer even after
     the acquiring process exits. The cost, on Windows only: a plain unlink cannot remove the
     link, so pytest's tmp cleanup leaves it (it ignores errors) and the run's remover, which
-    removes read-only names, takes it with the run. Without `link`, nothing is linked, and a
-    target on another volume than the golden (a hard link cannot cross one) takes copies.
+    removes read-only names, takes it with the run. Without `link`, nothing is linked.
     """
     workspace, target = payload_path(workspace), payload_path(target)
-    created = False
+    staged = target.with_name(target.name + ".copying")
     try:
         if target.exists():
             raise RuntimeError("payload destination already exists")
@@ -710,21 +635,17 @@ def copy_payload(
         except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError) as error:
             raise GoldenPayloadCorrupt("golden payload manifest is missing or malformed") from error
         # A derived variant's own folder, under a parent that exists, never through a link.
-        target.parent.mkdir(exist_ok=True)
-        if target.parent.is_symlink() or target.parent.is_junction():
+        staged.parent.mkdir(exist_ok=True)
+        if staged.parent.is_symlink() or staged.parent.is_junction():
             raise RuntimeError("payload destination is reached through a link")
-        # The target is private to this acquisition until return; a derived golden
-        # remains under its build lock without a completion marker until sealed.
-        target.mkdir()
-        created = True
-        link = link and volume(target) == volume(workspace)
+        staged.mkdir()
 
         def copy_one(path: Path) -> str:
             info = path.stat()
             if info.st_mode & 0o222:
                 raise GoldenPayloadCorrupt("payload is not read-only")
             relative = path.relative_to(workspace).as_posix()
-            destination = target / relative
+            destination = staged / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
             if link and read_in_place(relative, info.st_size):
@@ -745,17 +666,15 @@ def copy_payload(
                 raise GoldenPayloadCorrupt("payload disagrees with its manifest")
         for name in actual:
             if name.endswith("/"):
-                (target / name).mkdir(parents=True, exist_ok=True)
-    except (GoldenPayloadCorrupt, OSError, ValueError, RuntimeError) as error:
-        # The destination was created by this call; never remove an existing one.
-        left = remove_tree(target, target.parent) if created else []
-        detail = f"; incomplete destination retained: {left}" if left else ""
-        if isinstance(error, GoldenPayloadCorrupt):
-            raise GoldenPayloadCorrupt(
-                f"golden payload restore refused: {workspace}: {error}{detail}"
-            ) from error
+                (staged / name).mkdir(parents=True, exist_ok=True)
+        staged.rename(target)
+    except GoldenPayloadCorrupt as error:
+        raise GoldenPayloadCorrupt(
+            f"golden payload restore refused: {workspace}: {error}"
+        ) from error
+    except (OSError, ValueError, RuntimeError) as error:
         raise RuntimeError(
-            f"golden payload restore refused; use a fresh run: {workspace}{detail}"
+            f"golden payload restore refused; use a fresh run: {workspace}"
         ) from error
 
 

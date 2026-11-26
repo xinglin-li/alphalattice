@@ -25,7 +25,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
@@ -42,6 +41,7 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 CLOCK_VERIFIED_LAYER = "CLOCK_AUTHORITY_RELATIONS_VERIFIED"
 """Exactly what a ``VERIFIED`` disposition covers, named rather than implied.

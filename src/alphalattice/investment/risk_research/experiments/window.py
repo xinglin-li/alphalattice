@@ -32,15 +32,12 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
 from alphalattice.investment.risk_research.experiments.formation_selection import (
     DEVELOPMENT_FORMATION_CAPACITY,
 )
-from alphalattice.investment.risk_research.surfaces.returns import (
-    CausalRiskReturnReader,
-    RiskReturnWindow,
-)
+from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResolvedResearchAuthority,
@@ -348,26 +345,6 @@ class BoundedCausalReturnReader:
         if not set(formation_sessions).issubset(self._bounded):
             raise AuthoringError("research_authoring.bounded_window_read_escaped")
         return self._reader.read_sessions(surface, formation_sessions)
-
-    def read_window(
-        self, surface: CausalRiskReturnSurface, formation_sessions: tuple[date, ...]
-    ) -> RiskReturnWindow:
-        """Read one complete listing subset within the bound window."""
-        if surface.surface_hash != self._binding.return_surface_hash:
-            raise AuthoringError("research_authoring.bounded_window_surface_mismatch")
-        if not set(formation_sessions).issubset(self._bounded):
-            raise AuthoringError("research_authoring.bounded_window_read_escaped")
-        return self._reader.read_window(surface, formation_sessions)
-
-    def prepare_windows(
-        self, surface: CausalRiskReturnSurface, formation_sessions: tuple[date, ...]
-    ) -> None:
-        """Prepare source windows without permitting a read beyond the binding."""
-        if surface.surface_hash != self._binding.return_surface_hash:
-            raise AuthoringError("research_authoring.bounded_window_surface_mismatch")
-        if not set(formation_sessions).issubset(self._bounded):
-            raise AuthoringError("research_authoring.bounded_window_read_escaped")
-        self._reader.prepare_windows(surface, formation_sessions)
 
 
 __all__ = [

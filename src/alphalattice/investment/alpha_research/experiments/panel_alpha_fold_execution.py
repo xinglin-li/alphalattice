@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
 from typing import Any, Literal
 
-from alphalattice.capabilities.domain_contracts.environment import numerical_thread_limit
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
     PanelResearchMethodologyRequest,
 )
@@ -29,7 +28,8 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
     InstalledPanelViewId,
     PanelFeatureSourceArrays,
 )
-from alphalattice.kernel.config import Change, declare
+from alphalattice.kernel.quant.sector_history import SectorHistory
+from alphalattice.kernel.shared_kernel.environment import numerical_thread_limit
 
 
 class PanelAlphaFoldExecutionError(ValueError):
@@ -73,7 +73,7 @@ class PanelFeatureSourcePayload:
             ordered_factor_ids=source.ordered_factor_ids,
             absolute_state_factor_ids=source.absolute_state_factor_ids,
             ordered_sector_ids=source.ordered_sector_ids,
-            # A history crosses as itself; a plain map as a picklable dict.
+            # A history crosses as itself (V346); a plain map as a picklable dict.
             sector_by_listing_id=(
                 source.sector_by_listing_id
                 if isinstance(source.sector_by_listing_id, SectorHistory)
@@ -90,7 +90,6 @@ class PanelFeatureSourcePayload:
         )
 
     def restore(self) -> PanelFeatureSourceArrays:
-        """Restore the source with read-only arrays regardless of worker transport."""
         # Small arrays may cross the process boundary by pickle rather than
         # read-only memmap. Restore the input contract in either transport.
         for values in (
@@ -164,15 +163,15 @@ def split_panel_inner_sessions(
 def _pin_worker_process() -> None:
     """Pin the environment of a process that runs folds and nothing else."""
 
-    thread_variables = (
+    for name in (
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         "BLIS_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
-    )
-    values = dict.fromkeys(thread_variables, "1") | {"ALPHALATTICE_NETWORK_DISABLED": "1"}
-    declare(Change("panel-alpha-fold-worker", values), native=True)
+    ):
+        os.environ[name] = "1"
+    os.environ["ALPHALATTICE_NETWORK_DISABLED"] = "1"
 
 
 def execute_panel_alpha_fold_worker(

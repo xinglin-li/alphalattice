@@ -8,7 +8,7 @@ import re
 from functools import cache
 from pathlib import Path
 
-_MODEL_ROOTS = {"pydantic.BaseModel", "pydantic.RootModel", "pydantic.main.BaseModel"}
+_MODEL_ROOTS = {"pydantic.BaseModel", "pydantic.RootModel"}
 _SUBCLASS = re.compile(
     rb"^[ \t]*class[ \t]+[^\s(:]+[ \t]*\((?![ \t]*\))", re.MULTILINE
 )  # a model has a base

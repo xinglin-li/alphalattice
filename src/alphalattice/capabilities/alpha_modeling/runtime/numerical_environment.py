@@ -8,12 +8,12 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.environment import (
+from alphalattice.kernel.shared_kernel.environment import (
     numerical_thread_limit,
     numerical_thread_pools,
     package_versions,
 )
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from ..contracts import NESTED_FIT_RUNTIME_CAPABILITY, AlphaModelNumericalBinding
 

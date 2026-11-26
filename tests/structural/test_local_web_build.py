@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from scripts import build_local_web_ui
 
-from alphalattice.capabilities.domain_contracts import spawn
 from tests.structural.pytest_support import child_environment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -168,7 +168,7 @@ def test_session_controller_builds_once_before_all_workers(
             "ALPHALATTICE_PIPELINE_REQUIRED_TESTS", json.dumps(["tests/outer.py::test_outer"])
         )
     checkout, environment = _test_checkout(tmp_path, state=state)
-    run = spawn.run(
+    run = subprocess.run(
         [
             sys.executable,
             "-m",
@@ -202,7 +202,7 @@ def test_session_controller_builds_once_before_all_workers(
 def test_session_propagates_the_build_owners_error(tmp_path: Path, failure: str) -> None:
     """The owner error fails the session before any reader, never a skip or passing fallback."""
     checkout, environment = _test_checkout(tmp_path, state="missing", failing=failure)
-    run = spawn.run(
+    run = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--basetemp", str(tmp_path / "pytest")],
         cwd=checkout,
         env=environment,

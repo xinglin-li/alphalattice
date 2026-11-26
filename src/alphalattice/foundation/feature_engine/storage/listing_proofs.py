@@ -8,6 +8,7 @@ values moved.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from contextlib import nullcontext
 from datetime import date
@@ -16,8 +17,7 @@ from typing import TYPE_CHECKING
 import duckdb
 import numpy as np
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.kernel.identity import integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 if TYPE_CHECKING:
     from alphalattice.foundation.feature_engine.storage.repositories import (
@@ -93,7 +93,7 @@ def feature_source_listing_proofs(
     stops: list[int] = np.asarray(np.searchsorted(ids, keys, side="right"), np.int64).tolist()
 
     def digest(first: int, last: int) -> str:
-        rows_hash = integrity_sha256(days[first:last].astype(np.int64).tobytes())
+        rows_hash = hashlib.sha256(days[first:last].astype(np.int64).tobytes())
         for column in values:
             rows_hash.update(column[first:last].tobytes())
         return rows_hash.hexdigest()

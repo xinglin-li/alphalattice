@@ -1,9 +1,7 @@
 """Shared harness of the Local Web and public Portfolio application suites.
 
-The installed test package, the host-side resolver stand-ins and the workspace
-manifest builder that eight suites drove through two test modules. Its HTTP and Node
-helpers live in host_requests and node_runner, so a fixture change here selects only
-the tests that use a fixture.
+The installed test package, the host-side resolver stand-ins, the HTTP helper and
+the workspace manifest builder that eight suites drove through two test modules.
 Test support beside its owner: not a framework, and nothing here is product
 authority.
 """
@@ -12,8 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
+import subprocess
 import sys
+import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -23,9 +24,8 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pytest
 
-from alphalattice.capabilities.domain_contracts import spawn
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -37,11 +37,14 @@ from alphalattice.control.product_host.composition.portfolio_application import 
 )
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
-    named_workspace_id,
 )
 from alphalattice.control.product_host.composition.web_launcher import main
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
+)
+from alphalattice.interface.local_application.web import (
+    SESSION_COOKIE,
+    SESSION_HEADER,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     OwnerCoverage,
@@ -82,10 +85,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from tests._support.process_starts import observe_starts
-from tests.portfolio_strategy_lab.cli_support import cli_environment
-from tests.portfolio_strategy_lab.host_requests import _json
-from tests.portfolio_strategy_lab.node_runner import run_node
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/run_alphalattice.py"
 
@@ -156,7 +156,7 @@ class InstalledAgent:
 
 
 def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str, Any]]:
-    result = spawn.run(
+    result = subprocess.run(
         [
             sys.executable,
             str(SCRIPT),
@@ -168,9 +168,7 @@ def _cli(live: LocalPortfolioWebSession, *arguments: str) -> tuple[int, dict[str
         ],
         capture_output=True,
         text=True,
-        encoding="utf-8",
         timeout=60,
-        env=cli_environment(),
     )
     assert live.web.application.external_token not in result.stdout  # type: ignore[union-attr]
     return result.returncode, json.loads(result.stdout)
@@ -638,26 +636,19 @@ def _harness(tmp_path: Path) -> Iterator[_Harness]:
     workspace = tmp_path / "workspace"
     workspace.mkdir(exist_ok=True)
     resolver = _Resolver(_resolved())
-    from alphalattice.foundation.data_layer import history
-
-    workspace_id = named_workspace_id(workspace) or "synthetic"
-    history.open_history(workspace_id, "portfolio", workspace)
-    try:
-        with WorkspaceApplicationSession.acquire(workspace) as session:
-            yield _Harness(
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        yield _Harness(
+            workspace=workspace,
+            session=session,
+            application=PortfolioResearchApplication(
+                workspace_id="synthetic",
                 workspace=workspace,
+                manifest_binding=lambda: _HASH,
                 session=session,
-                application=PortfolioResearchApplication(
-                    workspace_id=workspace_id,
-                    workspace=workspace,
-                    manifest_binding=lambda: _HASH,
-                    session=session,
-                    resolver=resolver,
-                ),
                 resolver=resolver,
-            )
-    finally:
-        history.release_history()
+            ),
+            resolver=resolver,
+        )
 
 
 def _run(harness: _Harness, spec: PortfolioResearchSpec) -> PortfolioResearchResult:
@@ -673,23 +664,97 @@ def _manifest(workspace_id: str) -> ResearchWorkspaceManifest:
     )
 
 
-def admit_market_fixture(workspace: Path, workspace_id: str) -> None:
-    """Give a freshly seeded workspace its market admission before testing the ordinary Host."""
-    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
-    from alphalattice.foundation.data_layer import history
-    from alphalattice.foundation.market_data_ops.storage import world
-    from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+class _ReadRedirects(urllib.request.HTTPRedirectHandler):
+    """The launch URL's 303 is read, not followed: its cookie is the evidence."""
 
-    lease = WorkspaceWriterLease.acquire(workspace)
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_ReadRedirects)
+
+
+def _request(
+    session: LocalPortfolioWebSession,
+    path: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    host: str | None = None,
+    origin: str | None = None,
+    omit_origin: bool = False,
+    content_type: str = "application/json",
+    token: str | None = "valid",
+    cookie: str | None = "valid",
+    timeout: float = 30.0,
+) -> tuple[int, dict[str, str], bytes]:
+    """One raw HTTP round trip, with every header this service checks exposed."""
+
+    application = session.web.application  # type: ignore[union-attr]
+    base = session.url.rstrip("/")
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(f"{base}{path}", data=body, method=method)
+    request.add_header("Host", host or f"127.0.0.1:{session.web.bound_port}")  # type: ignore[union-attr]
+    if origin is not None:
+        request.add_header("Origin", origin)
+    elif method == "POST" and not omit_origin:
+        request.add_header("Origin", f"http://127.0.0.1:{session.web.bound_port}")  # type: ignore[union-attr]
+    if body is not None:
+        request.add_header("Content-Type", content_type)
+    resolved_token = application.session_token if token == "valid" else token
+    resolved_cookie = application.session_token if cookie == "valid" else cookie
+    if resolved_token is not None:
+        request.add_header(SESSION_HEADER, resolved_token)
+    if resolved_cookie is not None:
+        request.add_header("Cookie", f"{SESSION_COOKIE}={resolved_cookie}")
     try:
-        history.open_history(workspace_id, workspace.name, workspace)
-        try:
-            repository = MarketDataRepository(workspace, universe_reader="workspace")
-            world.admit(repository.path, workspace_id)
-        finally:
-            history.close_history()
-    finally:
-        lease.close()
+        with _OPENER.open(request, timeout=timeout) as response:
+            return response.status, dict(response.headers), response.read()
+    except urllib.error.HTTPError as error:
+        return error.code, dict(error.headers), error.read()
+
+
+def _json(session: LocalPortfolioWebSession, path: str, **kwargs: Any) -> dict[str, Any]:
+    status, _headers, body = _request(session, path, **kwargs)
+    assert status == 200, (status, body[:400])
+    return json.loads(body)
+
+
+def run_node(
+    arguments: list[str] | None,
+    *,
+    missing: str = "Node.js development runtime required",
+    required: bool = False,
+    pinned_browser: bool = False,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[Any] | None:
+    """Run one Node invocation with its caller's availability policy and process options."""
+    node = shutil.which("node")
+    if node is None:
+        if required:
+            raise AssertionError(missing)
+        pytest.skip(missing)
+    if arguments is None:
+        return None
+    supplied = kwargs.get("env")
+    environment = dict(os.environ) if pinned_browser or supplied is None else {}
+    if supplied is not None:
+        environment.update(supplied)
+    environment["TZ"] = "UTC"
+    if pinned_browser:
+        root = Path(kwargs.get("cwd") or Path(__file__).resolve().parents[2])
+        environment.update(
+            NODE_PATH=str(root / "third_party/playwright/node_modules"),
+            PLAYWRIGHT_BROWSERS_PATH=str(root / "third_party/playwright/.browsers"),
+        )
+    browser = environment.get("PLAYWRIGHT_BROWSERS_PATH")
+    if isinstance(browser, str):
+        directory = Path(browser)
+        # Leave relative paths and default modes for Playwright to interpret.
+        if directory.is_absolute():
+            environment["PLAYWRIGHT_BROWSERS_PATH"] = str(directory.resolve())
+    kwargs["env"] = environment
+    return subprocess.run([node, *arguments], **kwargs)
 
 
 def _run_badge_browser(
@@ -801,5 +866,48 @@ def serve_conflict(workspace, monkeypatch):
         raise PermissionError("local_web.detached_breakaway_denied")
 
     with monkeypatch.context() as build:
-        observe_starts(build, denied)
+        build.setattr(subprocess, "Popen", denied)
         return main(["--workspace", str(workspace), "--no-browser", "--detach"])
+
+
+_CATALOG_READER = r"""
+const fs=require('fs'),vm=require('vm');
+const library = require(process.argv[2]);
+const root=process.argv[1], {said,messages}=JSON.parse(fs.readFileSync(0,'utf8'));
+const c={window:{},document:{documentElement:{}},console};library.context(c);
+vm.runInContext(messages,c);
+vm.runInContext(fs.readFileSync(root+'/data/zh.js','utf8'),c);
+vm.runInContext(fs.readFileSync(root+'/app/i18n.js','utf8')+';globalThis.I18N=I18N;',c);
+c.I18N.set('zh');
+console.log(JSON.stringify({read:said.map((s)=>c.I18N.t(s)),missing:c.I18N.untranslated()}));
+"""
+
+
+def read_in_chinese(said: list[str], *, missing: str, required: bool) -> dict[str, list[str]]:
+    """The sentences as the Workbench's catalog reads them in Chinese, and any left English.
+
+    The sentences go on stdin: the door's table outgrew a Windows command line (WinError 206).
+    """
+    root = Path(__file__).resolve().parents[2] / (
+        "src/alphalattice/interface/local_application/assets/workbench-source/js"
+    )
+    from scripts import build_local_web_ui
+
+    answer = run_node(
+        [
+            "-e",
+            _CATALOG_READER,
+            str(root),
+            str(Path(__file__).with_name("workbench_library.cjs")),
+        ],
+        missing=missing,
+        required=required,
+        input=json.dumps(
+            {"said": said, "messages": getattr(build_local_web_ui, "messages_js", lambda: "")()}
+        ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(answer.stdout)

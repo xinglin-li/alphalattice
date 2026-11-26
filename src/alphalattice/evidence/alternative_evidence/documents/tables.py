@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from alphalattice.evidence.live_evidence.online_sources import (
+from alphalattice.kernel.live_evidence.online_sources import (
     CANONICAL_EXTRACTION_RULES_ID,
     NOT_CARRIED_PLACEHOLDER,
     Row,

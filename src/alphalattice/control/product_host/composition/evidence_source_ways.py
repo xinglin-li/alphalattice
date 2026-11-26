@@ -16,15 +16,13 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from alphalattice.capabilities.domain_contracts.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-)
-from alphalattice.capabilities.knowledge import model_store
 from alphalattice.control.workspace_runtime.network_access import network_access, persons_stop
 from alphalattice.evidence.alternative_evidence.sources.admission import DEFAULT_SOURCE_CONSENT
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell
 from alphalattice.interface.local_application.retrieval_environment import fill_command
+from alphalattice.kernel.knowledge import model_store
+from alphalattice.kernel.knowledge.hybrid_contracts import RECIPE_MINILM_CPU
+from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -78,10 +76,6 @@ SETUP_OPTIONS: dict[str, str] = {
     "model_name": (
         "an optional managed analyst and reviewer model, named with its --deepseek-base-url, or "
         "neither for native analysis"
-    ),
-    "model_store": (
-        "the application model store the Host searches with (ALPHALATTICE_MODEL_STORE, else the "
-        "application-data folder), or no --model-store at all"
     ),
     "research_input_hash": (
         "that input's exact sealed binding, also named by `study show <id>`, never inferred from "
@@ -163,24 +157,23 @@ def evidence_setup(
                 "before": "The running Host installs it as a Task; nothing is stopped.",
             }
         }
-    # The retrieval store's packs: what every review searches with and the setup seals.
-    name, store = model_store.RETRIEVAL_STORE, model_store.default_store_root()
-    packs = model_store.RETRIEVAL_STORE_PACKS
+    store, packs = model_store.default_store_root(), model_store.RECIPE_PACKS[RECIPE_MINILM_CPU]
     pack: dict[str, object] = {
-        "recipe": name,
+        "recipe": RECIPE_MINILM_CPU,
         # Where the packs are read from, whether they are there and what a download takes;
         # the setup verifies them by hash.
         "store": str(store),
         "present": all(model_store.pack_directory(store, value).is_dir() for value in packs),
         "download_bytes": sum(value.approximate_bytes for value in packs),
         "check": f"{retrieval} scripts/install_retrieval_pack.py --status --view summary",
-        "install": f"{retrieval} scripts/install_retrieval_pack.py --install {name} --network",
+        "install": f"{retrieval} scripts/install_retrieval_pack.py --install "
+        f"{RECIPE_MINILM_CPU} --network",
     }
     if installed:
         from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
 
         pack["check"] = join(pack_command("--status", "--view", "summary"), shell())
-        pack["install"] = join(pack_command("--install", name, "--network"), shell())
+        pack["install"] = join(pack_command("--install", RECIPE_MINILM_CPU, "--network"), shell())
     if installed or not (resolve_playpen_root(Path(__file__)) / retrieval).is_file():
         pack["environment"] = join(fill_command(), shell())  # the one command, on either leg
     scope = " ".join(

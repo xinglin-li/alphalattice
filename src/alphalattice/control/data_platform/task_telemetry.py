@@ -1,14 +1,13 @@
-"""Task-bound telemetry spans read from the log, separate from durable stage evidence.
+"""Task-bound telemetry sidecars kept beside a Task's durable records by its owner.
 
 Two owners run long Tasks whose Feature and market-data steps report work progress
 through the workspace projection (`WorkspaceProgressPublisher`): first-use preparation
 and the daily data update. Both keep the latest report beside the Task, bound to the
 Task, its execution and the stage that produced it, and read it back for that Task only
 -- nothing is inferred from the workspace-wide file, which is the latest report of
-whatever ran last. This module owns the typed readback, log delivery and this process's
-delivery accounting and last valid observation. Old telemetry files are compared with their
-spans before being set aside. The replace_json utility still serves durable stage evidence;
-neither its writer nor its read path moves with the optional observations. It is
+whatever ran last. This module is that one responsibility: the sidecar path, the
+bounded replace, the per-delivery accounting this process observed, the last valid
+observation kept when the file is later unreadable, and the typed readback. It is
 telemetry, never authority: a lost write is a staler age, never a wrong stage or a
 completion; the durable stage and evidence records keep their own fail-closed writes.
 """
@@ -17,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,20 +23,15 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.persistence import (
-    DURABLE_REPLACE_DELAYS,
-    replace_with_retry,
-)
 from alphalattice.control.observation_runtime.telemetry.progress import (
     WorkProgressProjection,
     WorkProgressUpdate,
     WorkspaceProgressPublisher,
 )
 from alphalattice.control.task_control.contracts import TaskExecution, TaskLifecycle, TaskRecord
-from alphalattice.control.task_control.timing import read_task_telemetry, record_task_telemetry
-from alphalattice.control.task_control.upgrade import import_telemetry
+from alphalattice.kernel.shared_kernel.domain.errors import AlphaLatticeError
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.persistence import DURABLE_REPLACE_DELAYS, replace_with_retry
 
 TELEMETRY_REPLACE_DELAYS: tuple[float, ...] = (0.01, 0.02)
 """Best-effort telemetry sidecars (the Task-bound work progress and listing activity): a
@@ -64,7 +57,7 @@ EXECUTING = frozenset({TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED})
 
 
 class TaskTelemetry:
-    """The observations of one owner's Tasks, keyed by their legacy source names on the log.
+    """The sidecars of one owner's Tasks under `<workspace>/<root>/<task_id>/<name>.json`.
 
     `stages` are the owner's Task Control stage ids: a sidecar naming another stage is
     unreadable, never bound. `clock` is the product clock every age is measured by.
@@ -78,7 +71,7 @@ class TaskTelemetry:
         stages: tuple[str, ...],
         clock: Callable[[], datetime],
     ) -> None:
-        """Bind optional telemetry without reading another Task's observations.
+        """Bind optional task telemetry to its workspace, stage axis and product clock.
 
         Args:
             workspace: Workspace root owning the local records.
@@ -104,27 +97,6 @@ class TaskTelemetry:
             The task-scoped JSON sidecar path.
         """
         return self.workspace / self.root / str(task_id) / f"{name}.json"
-
-    @staticmethod
-    def record_json(path: Path, data: dict[str, Any]) -> None:
-        """Record optional telemetry as a span; stage evidence still uses replace_json."""
-        try:
-            import_telemetry((path,))
-            record_task_telemetry(path, data)
-        except sqlite3.Error as error:
-            raise OSError("task_control.telemetry_log_unavailable") from error
-
-    @staticmethod
-    def read_json(path: Path, task_id: UUID) -> object:
-        """Read the selected raw document; its consumer checks the Task-bound contract."""
-        if path.is_file():
-            data: object = json.loads(path.read_text(encoding="utf-8"))
-            return data
-        try:
-            rows = read_task_telemetry(path, task_id, latest=True)
-        except sqlite3.Error as error:
-            raise OSError("task_control.telemetry_log_unavailable") from error
-        return rows[-1] if rows else None
 
     @staticmethod
     def replace_json(
@@ -258,14 +230,14 @@ class TaskTelemetry:
             projection: WorkProgressProjection | None = None
             try:
                 projection = publisher.publish(update)
-            except (OSError, ValueError, RuntimeError, AlphaLatticeError) as error:
+            except (OSError, ValueError, RuntimeError) as error:
                 self.delivery_failed(delivery, "WORKSPACE_PROJECTION", error)
                 return None
             data = {**binding, "projection": projection.model_dump(mode="json")}
             data["content_hash"] = canonical_hash(data)
             try:
-                self.record_json(path, data)
-            except (OSError, ValueError, RuntimeError, AlphaLatticeError) as error:
+                self.replace_json(path, data, delays=TELEMETRY_REPLACE_DELAYS)
+            except (OSError, ValueError, RuntimeError) as error:
                 self.delivery_failed(delivery, "TASK_SIDECAR", error)
             else:
                 delivery["delivered"] += 1
@@ -302,11 +274,15 @@ class TaskTelemetry:
 
         path = self.path(task.task_id, "work-progress")
         try:
-            data = self.read_json(path, task.task_id)
+            present = path.exists()
+        except OSError as error:
+            return unreadable(type(error).__name__)
+        if not present:
+            return {"availability": "NONE", **report} if report else None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
             return unreadable(type(error).__name__)
-        if data is None:
-            return {"availability": "NONE", **report} if report else None
         if (
             not isinstance(data, dict)
             or not isinstance(data.get("projection"), dict)

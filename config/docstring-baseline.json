@@ -1,0 +1,6 @@
+{
+  "counts": {},
+  "origin": "Initial develop backlog counted on 2026-09-26; public modules and definitions only; lower only",
+  "rule": "Ruff D rules; Google convention; ignore-var-parameters=true; public API; tests exempt",
+  "schema": "alphalattice.docstring-baseline.v1"
+}

@@ -7,6 +7,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from alphalattice.control.product_host.composition.local_web_session import (  # noqa: E402, F401
+    LocalPortfolioWebSession,
+)
 from alphalattice.control.product_host.composition.web_launcher import (  # noqa: E402, F401
     _wait_for_stop_on_stdin,
     main,
@@ -14,8 +17,3 @@ from alphalattice.control.product_host.composition.web_launcher import (  # noqa
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-if __name__ != "__mp_main__":
-    from alphalattice.control.product_host.composition.local_web_session import (
-        LocalPortfolioWebSession as LocalPortfolioWebSession,
-    )

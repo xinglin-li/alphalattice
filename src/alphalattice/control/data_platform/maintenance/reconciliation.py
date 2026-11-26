@@ -14,12 +14,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     MaintenancePhase,
     MaintenanceStatus,
     WorkspaceMaintenanceCycle,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class MaintenanceReconciliationError(ValueError):

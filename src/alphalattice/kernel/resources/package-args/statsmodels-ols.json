@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "resource_kind": "package_arg_spec",
+  "namespace": "system",
+  "stable_id": "package.statsmodels.ols",
+  "revision": "1.0.0",
+  "title": "statsmodels OLS adjustable arguments",
+  "primary_distribution": {"schema_version": "1", "distribution": "statsmodels", "version": "0.14.6"},
+  "companion_distributions": [],
+  "callable": "statsmodels.regression.linear_model.OLS",
+  "arguments": [
+    {"schema_version": "1", "name": "hasconst", "value_kind": "boolean", "has_default": true, "default": false},
+    {"schema_version": "1", "name": "missing", "value_kind": "string", "has_default": true, "default": "none", "allowed_values": ["none", "raise"]}
+  ],
+  "interactions": ["The owner supplies the intercept column and complete-case matrix."],
+  "assumptions": ["The design matrix is finite and uses the frozen OLS-3 feature set."],
+  "warnings": ["A successful fit does not establish out-of-sample eligibility."],
+  "failure_modes": ["Unsupported constructor argument or unavailable locked statsmodels distribution."],
+  "owner_policy_ref": "openspec:return-model-candidates-and-evaluation",
+  "official_source_url": "https://www.statsmodels.org/stable/generated/statsmodels.regression.linear_model.OLS.html"
+}

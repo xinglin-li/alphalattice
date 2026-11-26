@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
 
 import pytest
 
@@ -20,14 +19,13 @@ from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved,
 
 @pytest.fixture
 def live(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[LocalPortfolioWebSession]:
-    """One booted product: session, application, dispatcher and loopback socket. Its workspace
-    is its own, by its id too: a Host a wider fixture serves shares this process's machine."""
+    """One booted product: session, application, dispatcher and loopback socket."""
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     session = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_manifest(f"qa-local-web-{uuid4().hex[:12]}"),
+        workspace_manifest=_manifest("qa-local-web"),
         resolver=_Resolver(_resolved()),
         **({"clock": request.param} if hasattr(request, "param") else {}),
     )
@@ -64,13 +62,13 @@ def fake_host(monkeypatch: pytest.MonkeyPatch) -> Any:
     return state
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPortfolioWebSession]:
-    """Keep the synthetic Host open only while its test owns the data root."""
+    """Share one synthetic Host for envelope, refusal and timeout reads that admit no Task."""
     workspace = tmp_path_factory.mktemp("cli-read")
     host = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_manifest(f"qa-cli-read-{uuid4().hex[:12]}"),
+        workspace_manifest=_manifest("qa-cli-read"),
         resolver=_Resolver(_resolved()),
     )
     host.start()
@@ -81,23 +79,21 @@ def read_only_live(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPo
         host.stop()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def completed_host(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LocalPortfolioWebSession]:
-    """Keep one completed default Portfolio run in this test's own Host."""
+    """Share one synthetic Host with one completed default Portfolio run."""
     from tests.portfolio_strategy_lab.local_web_support import _run_to_completion
 
     workspace = tmp_path_factory.mktemp("local-web-completed")
     host = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_manifest(f"qa-local-web-{uuid4().hex[:12]}"),
+        workspace_manifest=_manifest("qa-local-web"),
         resolver=_Resolver(_resolved()),
     )
     host.start()
     try:
         _run_to_completion(host)
-        assert host.session is not None
-        tasks = host.session.task_control_registry.tasks()
-        assert len(tasks) == 1, [(t.task_kind, t.lifecycle, str(t.task_id)) for t in tasks]
+        assert host.session is not None and len(host.session.task_control_registry.tasks()) == 1
         yield host
     finally:
         host.stop()

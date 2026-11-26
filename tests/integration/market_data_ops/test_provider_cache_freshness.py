@@ -43,10 +43,6 @@ def test_a_daily_catchup_sees_a_dividend_restatement_behind_a_cached_chunk(
     """A catch-up daily sees a restated dividend in a previously fetched history chunk.
     Real yfinance parsing and DuckDB audits can exceed ten seconds.
     """
-    monkeypatch.setattr(
-        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
-        lambda _source: None,
-    )
     source = recording_provider(
         now=datetime(2026, 8, 4, 23, tzinfo=UTC), symbols=("AAPL",), start=START
     )

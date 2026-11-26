@@ -36,17 +36,13 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import (
-    scoped_model_digest,
-    seal_scoped_model,
-)
-from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.investment.alpha_research.scores.product_replay import (
     AlphaProductRecipeView,
     calendar_model_vintages,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 AlphaLifecycleDisposition = Literal[
     "SCORE_ONLY",
@@ -104,14 +100,16 @@ class _LifecycleContract(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
-        return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
-
-    def _identity_digest(self) -> str:
-        return scoped_model_digest(self, "content_hash", digest=canonical_hash)
+        payload = cls.model_construct(**values, content_hash="0" * 64).model_dump(
+            mode="json", exclude={"content_hash"}
+        )
+        return cls(**payload, content_hash=canonical_hash(payload))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def verify_identity(self) -> Self:
-        if self.content_hash != self._identity_digest():
+        if self.content_hash != canonical_hash(
+            self.model_dump(mode="json", exclude={"content_hash"})
+        ):
             raise AlphaLifecycleError("alpha_research.model_lifecycle_identity_invalid")
         return self
 

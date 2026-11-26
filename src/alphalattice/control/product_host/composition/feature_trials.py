@@ -1,4 +1,4 @@
-"""Try a feature in one step.
+"""Try a feature in one step (binding plan, B18).
 
 One request names a planned research feature and a finished study to try it against (an
 Alpha study handed off from a Factor study, or the Portfolio study built on one). The Host
@@ -23,7 +23,9 @@ import copy
 import json
 import os
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -32,19 +34,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.plain_refusals import explain
 from alphalattice.control.product_host.composition.research_experiments import (
     ENVELOPE_SCHEMA_ID,
     TASK_KIND,
     ResearchExperimentApplication,
-)
-from alphalattice.control.product_host.composition.research_read_scopes import (
-    _TRIAL_READS,
-    TRIALS_DIRECTORY,
-)
-from alphalattice.control.product_host.composition.research_read_scopes import (
-    trial_reads_once as trial_reads_once,
 )
 from alphalattice.control.product_host.composition.result_standing import trial_standing
 from alphalattice.control.product_host.data_preparation.feature_research import (
@@ -52,6 +46,7 @@ from alphalattice.control.product_host.data_preparation.feature_research import 
 )
 from alphalattice.control.product_host.research_authoring.timing import binding_temporal_scope
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
 from alphalattice.foundation.factor_research.experiments.authoring import FACTOR_EXPERIMENT_KIND
 from alphalattice.foundation.feature_engine.catalog.research import research_feature_execution_spec
 from alphalattice.interface.local_application.cli_contract import ACTION_STATES
@@ -61,7 +56,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     FactorCurationRequest,
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+TRIALS_DIRECTORY = "feature-trials"
 Step = Literal["FEATURE_BUILD", "FACTOR_STUDY", "CURATION", "ALPHA_STUDY", "PORTFOLIO_STUDY"]
 _TASK_STEPS: tuple[Step, ...] = ("FEATURE_BUILD", "FACTOR_STUDY", "ALPHA_STUDY", "PORTFOLIO_STUDY")
 _ALPHA_METRICS = ("mean_rank_ic", "pooled_oos_r2", "mean_gross_decile_spread", "fold_coverage_mean")
@@ -190,14 +187,13 @@ class FeatureTrials:
             dispatcher: Local background task dispatcher.
             clock: Explicit observed-time source.
         """
-        self.root = workspace / TRIALS_DIRECTORY
+        self.root = workspace / "runtime" / TRIALS_DIRECTORY
         self.workspace = workspace
         self.experiments = experiments
         self.feature_builds = feature_builds
         self.dispatcher = dispatcher
         self.clock = clock
         self._lock = Lock()
-        self._io_lock = Lock()  # record I/O never waits for Task work under _lock
 
     # ------------------------------------------------------------------ records
 
@@ -206,12 +202,10 @@ class FeatureTrials:
 
     def _read(self, trial_id: str) -> FeatureTrial:
         path = self._path(trial_id)
-        with self._io_lock:
-            if not path.is_file():
-                raise FeatureTrialError("feature_trial.not_found")
-            raw = path.read_bytes()
+        if not path.is_file():
+            raise FeatureTrialError("feature_trial.not_found")
         try:
-            return cast(FeatureTrial, FeatureTrial.model_validate_json(raw))
+            return cast(FeatureTrial, FeatureTrial.model_validate_json(path.read_bytes()))
         except ValueError as error:
             # A record changed or cut short in place is named, never read as a trial.
             raise FeatureTrialError("feature_trial.record_damaged") from error
@@ -226,8 +220,7 @@ class FeatureTrials:
         except FeatureTrialError as error:
             if str(error) != "feature_trial.record_damaged":
                 raise
-        with self._io_lock:
-            os.replace(path, path.with_name(f"{path.name}.damaged-{self.clock():%Y%m%dT%H%M%S%f}"))
+        os.replace(path, path.with_name(f"{path.name}.damaged-{self.clock():%Y%m%dT%H%M%S%f}"))
         return None
 
     def _save(self, trial: FeatureTrial) -> None:
@@ -235,8 +228,7 @@ class FeatureTrials:
         path = self._path(trial.trial_id)
         staged = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.partial")
         staged.write_text(trial.model_dump_json(indent=1), encoding="utf-8")
-        with self._io_lock:
-            os.replace(staged, path)
+        replace_shared_file(staged, path)  # concurrent reads of the trial hold it
 
     def records(self) -> tuple[FeatureTrial, ...]:
         """Every trial on the ledger that reads, oldest name first."""
@@ -249,7 +241,7 @@ class FeatureTrials:
         found, damaged = [], []
         for path in sorted(self.root.glob("*.json")):
             try:
-                found.append(self._read(path.stem))
+                found.append(FeatureTrial.model_validate_json(path.read_bytes()))
             except (OSError, ValueError):
                 damaged.append(path.stem)
         return tuple(found), tuple(damaged)
@@ -356,9 +348,8 @@ class FeatureTrials:
         request and its later reads answer from it.
         """
         reads = _TRIAL_READS.get()
-        held = reads.get(trial_id) if reads is not None else None
-        if held is not None:
-            return copy.deepcopy(held)
+        if reads is not None and trial_id in reads:
+            return copy.deepcopy(reads[trial_id])
         body = self._readback(trial_id)
         if reads is not None and body["state"] == "COMPLETED":
             reads[trial_id] = copy.deepcopy(body)
@@ -846,6 +837,30 @@ class FeatureTrials:
                 caller=trial.caller,
             )
         return body
+
+
+_TRIAL_READS: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
+    "feature_trial_reads", default=None
+)
+
+
+@contextmanager
+def trial_reads_once() -> Iterator[None]:
+    """One request reads each completed trial once.
+
+    A goal's submission and its read resolve the trial a reference names and the review packet
+    another names, and the packet reads the same trial again, its comparison included. Inside
+    this scope a completed trial answers from its first read in the request. An operation run
+    inside another joins the scope already open; the reads are released with it.
+    """
+    if _TRIAL_READS.get() is not None:
+        yield
+        return
+    token = _TRIAL_READS.set({})
+    try:
+        yield
+    finally:
+        _TRIAL_READS.reset(token)
 
 
 __all__ = [

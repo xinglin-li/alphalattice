@@ -30,7 +30,6 @@ from typing import Any, cast
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.contracts import FeatureBuildStage
@@ -53,6 +52,7 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     MarketProfile,
     UniverseManifest,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 NOW = datetime(2026, 8, 19, 13, tzinfo=UTC)
 PROFILE_ID = "panel-handoff-fixture"

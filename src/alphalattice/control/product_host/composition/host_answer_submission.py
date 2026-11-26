@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import partial
 from time import monotonic
 from typing import Any, cast
@@ -13,14 +14,12 @@ from pydantic import ValidationError
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.answer_turns import (
     ANSWER_FILING,
-    CURRENT_OPERATION,
     SUBMISSION_DEADLINE,
     SUBMISSION_WAIT_SECONDS,
     AnswerTurnBusy,
     bounded_answer_turn,
 )
 from alphalattice.control.product_host.composition.committee_answer import (
-    answer_replay,
     legacy_acceptance,
     unfinished_answer,
 )
@@ -43,9 +42,10 @@ from alphalattice.control.product_host.composition.plain_refusals import (
     stale_packet_refusal,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import GateBusy, current_deadline
+from alphalattice.interface.local_application.activity import OperationSpan, refusal_code
 from alphalattice.interface.local_application.cli_contract import worded
 from alphalattice.interface.local_application.portfolio_research import (
-    validate_request_document,
+    PortfolioResearchRequestDocument,
 )
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     PortfolioEvidenceReviewError,
@@ -57,10 +57,23 @@ from alphalattice.protocols.actor_execution.answers import (
 )
 from alphalattice.protocols.actor_execution.bundles import answer_read
 
+CURRENT_OPERATION: ContextVar[OperationSpan | None] = ContextVar(
+    "host_current_operation", default=None
+)
 
-def answer_deadline() -> float:
-    """Bound every gate wait of a keyed answer, including its first bind."""
-    return monotonic() + float(SUBMISSION_WAIT_SECONDS)
+
+def answer_deadline(request: Any) -> float | None:
+    """A keyed answer's one deadline, from where it enters the Host; None for other requests.
+
+    Args:
+        request: The operation request.
+
+    Returns:
+        The monotonic deadline every gate wait of a keyed answer meets, its first bind included.
+    """
+    if request.operation != "AGENT_ANSWER_SUBMIT" or request.committee_key is None:
+        return None
+    return monotonic() + SUBMISSION_WAIT_SECONDS
 
 
 def _name_holder(holder: dict[str, object] | None) -> None:
@@ -100,7 +113,7 @@ def submit_agent_answer(self: Any, request: Any, caller: Any) -> dict[str, objec
             if isinstance(thread := committee.admit(store, who, request.committee_key), dict):
                 return thread
             if request.committee_key is not None and isinstance(thread, committee.Floor):
-                replay = answer_replay(thread, who)
+                replay = committee.answer_replay(thread, who)
                 if replay is not None:
                     reference, response = replay
                     record = self.review.artifacts.load(
@@ -244,7 +257,7 @@ def _perform_answer(
             generic_body, bundle, accepted_receipt=accepted_receipt
         )
     else:
-        bound = validate_request_document(
+        bound = PortfolioResearchRequestDocument.model_validate(
             {**bundle.submission, ANSWER_FIELDS[bundle.role]: answer}
         ).to_operation_request()
         try:
@@ -445,3 +458,22 @@ def submit_evidence_analysis(
             analysis_body, accepted_bundle, accepted_receipt=accepted_receipt
         ),
     )
+
+
+def finish_observation(
+    self: Any,
+    observer: Any,
+    span: Any,
+    request: Any,
+    body: Any,
+    caller: Any,
+    scope: Any,
+) -> Any:
+    """File the return and durable refusal count before leaving this operation's context."""
+    if observer is not None and span is not None:
+        self._observe(lambda: observer.returned(span, body))
+    refusal = refusal_code(body)
+    if observer is not None and refusal is not None:
+        self._observe(lambda: observer.refused(request.operation, refusal, caller=caller))
+    CURRENT_OPERATION.reset(scope)
+    return body

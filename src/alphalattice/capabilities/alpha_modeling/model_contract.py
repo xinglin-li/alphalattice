@@ -23,6 +23,7 @@ The environment a fit ran in is recorded beside it (the fit provenance), never c
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.metadata
 import importlib.util
 import re
@@ -35,9 +36,8 @@ from typing import Any, cast
 
 import numpy as np
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.kernel.identity import change_sha256, integrity_sha256
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 
 from .contracts import (
     AlphaModelAdapter,
@@ -366,8 +366,8 @@ def contract_key(model_id: str, *, root: Path | None = None) -> str:
             "declaration": declaration.model_dump(mode="json", by_alias=True),
             "numerical_binding_hash": adapter.describe_numerical_binding().numerical_binding_hash,
             "domain": domain.model_dump(mode="json"),
-            "module_source_sha256": change_sha256(source).hexdigest(),
-            "lock_sha256": integrity_sha256((checkout / "uv.lock").read_bytes()).hexdigest(),
+            "module_source_sha256": hashlib.sha256(source).hexdigest(),
+            "lock_sha256": hashlib.sha256((checkout / "uv.lock").read_bytes()).hexdigest(),
         }
     )
     return key

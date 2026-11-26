@@ -47,17 +47,6 @@ const verified=(hash)=>({...narrative(hash),status:'GOAL_SHOW',
   evidence_verification:'COMPLETE',gaps:[{stage:'RISK',failure_code:'goal.stage_not_evidenced'}],
   references:[{reference,state:'VERIFIED_READBACK',summary:{status:'EXPERIMENT_PUBLISHED'}}]});
 const text=(value)=>Array.isArray(value)?value.join(''):String(value??'');
-// a goal's time as GOAL_PROFILE's `trace` gives it: two calls of one session, the agent's gap between them
-// split by its native records, the second call mostly untraced with a live step
-const M=1e6,goalTrace={window:{started_us:0,ended_us:10*M},calls:[
-  {span_id:'c1',name:'goal open',conversation:'s-1',unattributed:false,started_us:0,ended_us:2*M,
-    steps:[{name:'GOAL_OPEN',depth:1,started_us:0.1*M,ended_us:1.9*M}]},
-  {span_id:'c2',name:'run',conversation:'s-1',unattributed:false,started_us:7*M,ended_us:10*M,untraced_seconds:2.6,
-    untraced_flagged:true,steps:[{name:'RUN',depth:1,started_us:7.1*M,ended_us:7.5*M},{name:'m:f',depth:2,started_us:7.2*M,ended_us:null}]}],
-  agent:[{started_us:2*M,ended_us:7*M,seconds:5,inferred:false}],
-  breakdown:{agent_seconds:5,agent_split:'NATIVE_EVENTS',model_seconds:2.3,tool_seconds:0.7,person_seconds:0.9,
-    unattributed_seconds:1.1,call_seconds:5,untraced_seconds:2.8,untraced_share:0.56,untraced_bound:0.2,untraced_flagged_calls:1,
-    stages:[{type:'host.request',name:'GOAL_OPEN',seconds:1.8,steps:1}]}};
 const c={URLSearchParams,app:{page:'goal'},render(){},closeDialog(){},openDialog(){},
   navigate(){},objectEntry(){},hashParams:()=>new URLSearchParams(route),replaceHash(){},
   routeUrl:(page,extra={})=>'#'+new URLSearchParams({page,...extra}),
@@ -116,7 +105,6 @@ const c={URLSearchParams,app:{page:'goal'},render(){},closeDialog(){},openDialog
     reads.push(url);
     const hash=new URL('http://local'+url).searchParams.get('goal_hash');
     if(url.startsWith('/api/goals/narrative?'))return narrative(hash);
-    if(url.startsWith('/api/goals/profile?'))return {status:'GOAL_PROFILE',trace:goalTrace};
     if(url.startsWith('/api/goals/show?'))return new Promise((resolve,reject)=>{
       verifications.push({hash,resolve:()=>resolve(verified(hash)),
         reject:()=>reject(Error('local_client.connection_lost_task_may_still_run'))});});
@@ -166,15 +154,6 @@ const folder=async(page)=>{c.app.page=page;route.set('page',page);};
     'the timeline: '+String(c.live.page()).slice(0,2000));
   assert.ok(shows('Sessions and usage','gpt-6','10 in · 5 out · 2 cache read · 1 cache written',
       'differs from its card: effort'),'the sessions\u2019 models and tokens');
-  // the goal's time is read on request, never on opening: then its calls in time order, the agent's gap between
-  // them as its records split it, the steps under each call, the untraced call marked and the breakdown
-  assert.ok(shows('goal.time.title','goal.time.unread','data-action="goal-time"')&&!reads.some(u=>u.startsWith('/api/goals/profile')));
-  await c.live.readTime();
-  assert.equal(reads.pop(),'/api/goals/profile?goal_id=g'); // the read the rows below count from is the narrative's
-  const time=String(c.live.page()),rows=time.slice(time.indexOf('class="waterfall"')),order=['goal open','GOAL_OPEN','goal.time.agent','>run<','RUN','m:f'].map(x=>rows.indexOf(x));
-  assert.ok(order.every((at,i)=>at>=0&&(i===0||at>order[i-1])),'the waterfall in time order: '+order);
-  assert.ok(shows('goal.time.split','goal.time.live','goal.time.untraced','2.80 s · 56%','goal.time.flagged','1.80 s','margin-left:70.00%;width:30.00%'),
-    'the breakdown and the bars: '+time.slice(time.indexOf('goal.time.title'),time.indexOf('goal.time.title')+1500));
   // Conversation keeps the owner's open and closed assignment records.
   await folder('goal-conversation');
   // A reply alone does not close an assignment; the page names its retained closure state.

@@ -1,17 +1,16 @@
-"""The scrub: every saved study's sealed evidence proved again in full, and the verify-all request.
+"""Every saved study verified again in full: the sweep and the verify-all request.
 
-A sealed file is proved where it enters (the stage that wrote it), where it leaves (an export)
-and here, never on an ordinary read (LAWS.md EV2): a read takes sealed bytes at their name and
-answers from the study's last full verification. The scrub re-hashes every saved study's sealed
-evidence in the Host's worker process, so the Host's reads do not wait on it.
+A study read may answer from its last full verification while its files keep their path, size,
+modification time and file identity (decision 5). A change that keeps all four is caught by the
+next export, publication or admission, and by this sweep, which verifies every saved study's
+sealed evidence in full in the Host's worker process, so the Host's reads do not wait on it.
 
 It is a Task, the workspace's lowest priority: admitted when the Host goes idle after an
-upgrade or a week, bounded to one study between checks for waiting work, it stops as soon as
-another Task waits and the next scrub takes up the rest; a person or an agent asks for a whole
-one at once (`EXPERIMENT_VERIFY_ALL`). A study whose evidence does not verify is a finding: it
-is named in the scrub's report with its refusal, the upgrade overview lists it, and the Host
-refuses it, so its reads prove it in full and refuse by name until a full check passes again;
-an export of it refuses on its own full proof.
+upgrade or a week, it stops as soon as another Task waits and the next sweep takes up the rest;
+a person or an agent asks for a whole one at once (`EXPERIMENT_VERIFY_ALL`). A study whose
+evidence does not verify is named in the sweep's report with its refusal, its kept
+verifications are dropped so its next read verifies it in full and refuses by name, and the
+upgrade overview lists it.
 """
 
 from __future__ import annotations
@@ -21,19 +20,18 @@ import os
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.task_kinds import (
-    RESEARCH_EXPERIMENT_TASK_KIND as STUDY_TASK_KIND,
+from alphalattice.control.product_host.composition.research_experiments import (
+    TASK_KIND as STUDY_TASK_KIND,
 )
-from alphalattice.control.product_host.composition.task_kinds import (
-    STUDY_VERIFICATION_TASK_KIND,
+from alphalattice.control.product_host.composition.research_experiments import (
     VERIFICATION_LEDGER_DIRECTORY,
+    ResearchExperimentApplication,
 )
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -50,12 +48,9 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-if TYPE_CHECKING:
-    from .research_experiments import ResearchExperimentApplication
-
-
-SWEEP_TASK_KIND = STUDY_VERIFICATION_TASK_KIND
+SWEEP_TASK_KIND = "study_verification_sweep"
 SWEEP_STAGE = "verify_saved_studies"
 SWEEP_INTERVAL = timedelta(days=7)
 """How long after a whole sweep the next one is due, unless an upgrade makes it due sooner."""
@@ -111,7 +106,7 @@ class StudyVerificationSweep:
         self,
         *,
         session: WorkspaceApplicationSession,
-        experiments: Callable[[], ResearchExperimentApplication],
+        experiments: ResearchExperimentApplication,
         installed: Callable[[], str],
         clock: Callable[[], datetime],
     ) -> None:
@@ -213,11 +208,11 @@ class StudyVerificationSweep:
                 remaining = len(studies) - index
                 break
             try:
-                self.experiments().verify_saved_study(study)
+                self.experiments.verify_saved_study(study)
             except (ValueError, KeyError) as error:
                 code = public_failure(error, "study_verification_sweep.study_unverified")
                 failed.append({"task_id": str(study.task_id), "failure_code": code})
-                self.experiments().refuse_verification(study.task_id, code)
+                self.experiments.forget_verification(study.task_id)
                 continue
             verified.append(str(study.task_id))
         report = {

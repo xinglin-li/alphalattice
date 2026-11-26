@@ -8,16 +8,14 @@ from hashlib import sha256
 from types import SimpleNamespace
 
 import numpy as np
-import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.publication.artifacts import (
     AlphaCurrentArtifactReadbackError,
     AlphaCurrentArtifactStore,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _sessions(count):
@@ -49,18 +47,6 @@ def _publish(
 
 def _files(store):
     return {path: path.read_bytes() for path in store.root.rglob("*") if path.is_file()}
-
-
-def _part_layout(head, part):
-    shape = (part.stop - part.start, len(head.ordered_listing_ids))
-    identity = canonical_hash(
-        {"column_names": head.column_names, "shape": shape, "dtype": "float64"}
-    )
-    return f"current/workspace-observation-history/parts/{identity}"
-
-
-def _part_path(head, part):
-    return history.alpha_part_body_path(part.content_hash, _part_layout(head, part))
 
 
 def test_cold_history_roundtrips_exact_float_bits_as_independently_immutable_columns(tmp_path):
@@ -132,42 +118,20 @@ def test_a_restatement_from_a_recent_session_rewrites_only_its_parts(tmp_path):
     ]
     restated = _columns(200)
     restated["formula::value"][180, 1] += 1.0
-    before = set((history.data_root() / "blobs").iterdir())
+    before = set(_files(store))
     fresh = _publish(store, restated, stable=190)
     assert fresh.parts[:-3] == first.parts[:-3] and fresh.parts[-2:] == first.parts[-2:]
-    written = set((history.data_root() / "blobs").iterdir()) - before
-    assert written == {_part_path(fresh, fresh.parts[-3])}
+    written = {path.name for path in set(_files(store)) - before if path.suffix == ".parquet"}
+    assert written == {f"{fresh.parts[-3].content_hash}.parquet"}
     loaded = store.load_workspace_observation_history(canonical_hash("slot"))[1]
     assert loaded["formula::value"].tobytes() == restated["formula::value"].tobytes()
 
 
 def test_semantic_rotations_keep_one_bounded_slot_and_govern_old_head_roots(tmp_path):
-    from alphalattice.foundation.data_layer import history
-
     store = AlphaCurrentArtifactStore(tmp_path)
     first = _publish(store, _columns(2), stable=1, selection="model-one")
     renamed = {"renamed": _columns(2)["open"], "formula::value": _columns(2)["formula::value"]}
     second = _publish(store, renamed, stable=1, selection="model-two", reuse=first)
-    assert first.parts[0].content_hash == second.parts[0].content_hash
-    prefix = "current/workspace-observation-history/parts/"
-    first_layout = prefix + canonical_hash(
-        {
-            "column_names": first.column_names,
-            "shape": (1, len(first.ordered_listing_ids)),
-            "dtype": "float64",
-        }
-    )
-    second_layout = prefix + canonical_hash(
-        {
-            "column_names": second.column_names,
-            "shape": (1, len(second.ordered_listing_ids)),
-            "dtype": "float64",
-        }
-    )
-    first_body = history.alpha_part_body_digest(first.parts[0].content_hash, first_layout)
-    second_body = history.alpha_part_body_digest(second.parts[0].content_hash, second_layout)
-    assert first_layout != second_layout and first_body != second_body
-    assert first_body is not None and second_body is not None
     third = _publish(store, _columns(3), stable=2, selection="model-three", reuse=second)
     other = _publish(store, _columns(2), stable=1, scope="other-slot")
     assert store.load_workspace_observation_history(canonical_hash("slot"))[0] == third
@@ -215,26 +179,10 @@ def test_older_request_does_not_demote_latest_slot(tmp_path):
 
 
 def test_capacity_covers_parts_json_and_marker_staging_and_interrupt_keeps_current(tmp_path):
-    from alphalattice.foundation.data_layer import history
-
     store = AlphaCurrentArtifactStore(tmp_path)
     admissions = []
     first = _publish(store, _columns(2), stable=1, capacity=admissions.append)
-    part_sizes = []
-    for part in first.parts:
-        category = "current/workspace-observation-history/parts/" + canonical_hash(
-            {
-                "column_names": first.column_names,
-                "shape": (part.stop - part.start, len(first.ordered_listing_ids)),
-                "dtype": "float64",
-            }
-        )
-        digest = history.alpha_part_body_digest(part.content_hash, category)
-        assert digest is not None
-        part_sizes.append(history.array_body_path(digest).stat().st_size)
-    assert sorted(admissions) == sorted(
-        [*(len(payload) for payload in _files(store).values()), *part_sizes]
-    )
+    assert sorted(admissions) == sorted(len(payload) for payload in _files(store).values())
     assert len(admissions) == 4  # Two Parquet segments, sealed head, then marker.
     before = _files(store)
     admissions.clear()
@@ -270,7 +218,7 @@ def test_named_history_missing_or_corrupt_artifacts_refuse_without_read_repair(t
         path = next(f.path for f in facts if f.path.stem == second.head_hash)
         path.unlink()
     elif target == "part":
-        path = _part_path(second, second.parts[0])
+        path = next(f.path for f in facts if f.path.suffix == ".parquet")
         path.write_bytes(b"corrupt")
     else:
         path = next(f.path for f in facts if f.path.stem == first.head_hash)
@@ -282,31 +230,20 @@ def test_named_history_missing_or_corrupt_artifacts_refuse_without_read_repair(t
 
 
 @pytest.mark.parametrize("change", ("names", "shape"))
-def test_part_schema_is_verified_even_when_packed_value_digest_matches(
-    tmp_path, change, monkeypatch
-):
+def test_part_schema_is_verified_even_when_packed_value_digest_matches(tmp_path, change):
     store = AlphaCurrentArtifactStore(tmp_path)
-    head = _publish(store, _columns(2), stable=2)
-    part = head.parts[0]
-    layout = _part_layout(head, part)
-    read = history.read_alpha_part
-    table = pq.read_table(pa.BufferReader(read(part.content_hash, layout)))
+    _publish(store, _columns(2), stable=2)
+    path = next(
+        f.path
+        for f in store.workspace_observation_history_retention().roots
+        if f.path.suffix == ".parquet"
+    )
+    table = pq.read_table(path)
     if change == "names":
         table = table.rename_columns(["wrong", "open"])
     else:
         table = table.replace_schema_metadata({"shape": json.dumps([1, 4])})
-    output = pa.BufferOutputStream()
-    pq.write_table(table, output, use_dictionary=False)
-    changed = output.getvalue().to_pybytes()
-    monkeypatch.setattr(
-        history,
-        "read_alpha_part",
-        lambda content, category: (
-            changed
-            if (content, category) == (part.content_hash, layout)
-            else read(content, category)
-        ),
-    )
+    pq.write_table(table, path, use_dictionary=False)
     with pytest.raises(AlphaCurrentArtifactReadbackError, match="history_invalid"):
         store.load_workspace_observation_history(canonical_hash("slot"))
 
@@ -374,7 +311,7 @@ def test_a_split_keeps_every_part_and_lists_its_rebase_for_the_reader(tmp_path):
     short = {name: values[:150] for name, values in fresh.items()}  # a capture short of the head
     head = store.load_workspace_observation_history(slot)
     assert rebase_keep(head, ("A", "B"), short, (split,), (1e-6, 1e-12))[0][0].rows == ((0, 150),)
-    before = set((history.data_root() / "blobs").iterdir())
+    before = set(_files(store))
     second = store.publish_workspace_observation_history(
         scope_hash=slot, selection_hash=canonical_hash("selection"),
         dependency_prefix_hash=canonical_hash("after"), formation_sessions=_sessions(201),
@@ -382,7 +319,7 @@ def test_a_split_keeps_every_part_and_lists_its_rebase_for_the_reader(tmp_path):
         capacity=lambda _bytes: None, rebases=rebases, kept_rows=kept,
     )  # fmt: skip
     assert second.parts[:-2] == first.parts[:-2] and second.rebases == rebases
-    written = set((history.data_root() / "blobs").iterdir()) - before
-    assert written == {_part_path(second, second.parts[-1])}  # the open part alone
+    written = {path for path in set(_files(store)) - before if path.suffix == ".parquet"}
+    assert len(written) == 1  # the open part alone
     _head, stored = store.load_workspace_observation_history(slot)
     assert stored["formula::value"][:200].tobytes() == old["formula::value"].tobytes()

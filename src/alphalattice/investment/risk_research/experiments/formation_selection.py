@@ -20,7 +20,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 LEGACY_TRAILING_FIXED_FORMATIONS = "LEGACY_TRAILING_FIXED_FORMATIONS"
 """The trailing fixed count the development path has always defaulted to.

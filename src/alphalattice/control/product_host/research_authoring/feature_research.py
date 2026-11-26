@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-from alphalattice.capabilities.data.errors import DataError
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
     read_factor_bundle,
@@ -74,13 +73,8 @@ class ResearchFeatureDefinitions:
     ) -> tuple[FeatureCatalog, FeatureCatalogRevision, dict[str, Any]]:
         # Definition planning reads sealed metadata, not every numerical file.
         # A build must independently admit and verify its actual inputs.
-        try:
-            bundle = read_factor_bundle(self.workspace, input_binding_hash, verify=False)
-            _source, artifacts = factor_input_paths(self.workspace, input_binding_hash)
-        except DataError as error:
-            if error.failure.code != "data_layer.input_missing":
-                raise
-            raise FileNotFoundError(input_binding_hash) from error
+        bundle = read_factor_bundle(self.workspace, input_binding_hash, verify=False)
+        _source, artifacts = factor_input_paths(self.workspace, input_binding_hash)
         resolver = ArtifactResolver(artifacts)
         panel = resolver.load_feature_panel_manifest(
             resolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)

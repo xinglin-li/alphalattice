@@ -10,12 +10,12 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     ALPHA_SCORE_AGGREGATION_METHOD_ID,
     AlphaScoreAggregationError,
     aggregate_trailing_mean,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = npt.NDArray[np.float64]
 type IntArray = npt.NDArray[np.int64]

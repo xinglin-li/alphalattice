@@ -19,9 +19,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+from alphalattice.kernel.quant.factor_contracts import FactorSpec
 
 REGISTRY = Path("runtime") / "extensions" / "features.json"
 CATALOG_REVISIONS = Path("runtime") / "extensions" / "feature-catalogs"

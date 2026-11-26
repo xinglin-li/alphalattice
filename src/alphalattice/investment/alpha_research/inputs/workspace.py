@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
@@ -10,6 +9,7 @@ from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
 from alphalattice.foundation.feature_engine.panels.feature_closure_ledger import (
     sector_history_as_of,
 )
+from alphalattice.kernel.quant.sector_history import SectorHistory
 
 
 def load_sector_history(*, resolver: ArtifactResolver, sector_revision: str) -> SectorHistory:

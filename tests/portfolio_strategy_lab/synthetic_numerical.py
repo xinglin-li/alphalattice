@@ -14,7 +14,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.segments import (
     run_portfolio_walk_forward_segment,
 )
@@ -47,6 +46,7 @@ from alphalattice.investment.portfolio_strategy_lab.policies.post_observed_autho
     FrozenHistoricalBookRecipe,
     FrozenHistoricalComponentRecipe,
 )
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 
 HASH = canonical_hash("synthetic QA authority; not strategy evidence")

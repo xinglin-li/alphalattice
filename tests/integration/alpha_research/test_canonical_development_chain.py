@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
@@ -45,9 +44,7 @@ from alphalattice.investment.alpha_research.targets.canonical import (
     CanonicalAlphaTargetRecipeBinding,
     seal_canonical_alpha_target_evidence,
 )
-from tests._support.researcher_methodology_session_fixtures import (
-    outcome_catalog_root as outcome_catalog_root,
-)
+from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.researcher_methodology_surface.real_workspace import (
     RealRiskWorkspace,
     _sector_revision,
@@ -67,7 +64,7 @@ def _service(workspace: RealRiskWorkspace) -> CanonicalAlphaDevelopmentService:
 
 
 @pytest.fixture(scope="module")
-def canonical_publication(real_risk_workspace: RealRiskWorkspace, outcome_catalog_root: Path):  # type: ignore[no-untyped-def]
+def canonical_publication(real_risk_workspace: RealRiskWorkspace):  # type: ignore[no-untyped-def]
     """One real canonical publication over the shared workspace."""
 
     snapshot_hash, _manifest_ref = publish_causal_outcomes(real_risk_workspace)
@@ -179,7 +176,6 @@ def test_forged_but_self_consistent_target_authority_is_refused(
 
 def test_host_refuses_a_legacy_snapshot_and_an_immature_axis(
     real_risk_workspace: RealRiskWorkspace,
-    outcome_catalog_root: Path,
 ) -> None:
     """Two same-shaped requests that must fail before any numerics."""
 

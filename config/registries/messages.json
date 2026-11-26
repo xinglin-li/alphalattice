@@ -2,380 +2,6 @@
   "schema": "alphalattice.message-catalog",
   "version": 1,
   "entries": {
-    "door.operation_unknown": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Choose a registered operation from operation list.", "zh-CN": "请从操作列表中选择已注册的操作。"}},
-    "door.operation_duplicate": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Two families registered the same operation. Repair the Host installation.", "zh-CN": "两个模块组注册了同一操作。请修复 Host 安装。"}},
-    "door.operation_unregistered": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host is missing a registered operation. Repair the Host installation.", "zh-CN": "Host 缺少已注册的操作。请修复 Host 安装。"}},
-    "door.operation_unrecognized": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host registered an operation outside the installed vocabulary. Repair the Host installation.", "zh-CN": "Host 注册了已安装操作列表之外的操作。请修复 Host 安装。"}},
-    "door.family_import_failed": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The operation's family could not load. Check the named family and repair the Host installation.", "zh-CN": "无法加载该操作所属的模块组。请检查指定的模块组并修复 Host 安装。"}},
-    "door.person_unavailable": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "This request needs a person's decision. Ask them before continuing.", "zh-CN": "此请求需要由用户决定。请先征询用户，再继续。"}},
-    "door.person_required": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "Only the person can answer this decision.", "zh-CN": "只有用户本人可以回答这个问题。"}},
-    "door.paid_run_approval_required": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The person must approve this paid run before it can start.", "zh-CN": "这次付费运行须经用户本人批准后才能开始。"}},
-    "door.decision_not_pending": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "This decision is no longer pending. Read the current decision before answering.", "zh-CN": "此决定已不再待处理。请先查看当前决定，再作答。"}},
-    "door.decisions_unavailable": {"owner": "alphalattice.kernel.door", "kind": "MESSAGE", "arguments": [], "words": {"en": "The workspace's decision file could not be opened or written. Check the workspace before retrying.", "zh-CN": "无法打开或写入工作区的决定文件。请检查工作区后重试。"}},
-    "data.health.title": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Daily data health", "zh-CN": "日更数据健康"}},
-    "data.health.passed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Passed", "zh-CN": "通过"}},
-    "data.health.source_freshness": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Source freshness", "zh-CN": "来源新鲜度"}},
-    "data.health.not_null": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Non-null bar keys", "zh-CN": "日线主键非空"}},
-    "data.health.unique": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Unique bar keys", "zh-CN": "日线主键唯一"}},
-    "data.health.accepted_values": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Accepted action kinds", "zh-CN": "公司行动类型有效"}},
-    "data.health.relationships": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Bar listing relationships", "zh-CN": "日线对应上市标的"}},
-    "data.health.check_id": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Check ID", "zh-CN": "检查编号"}},
-    "data.health.failure_count": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Failure count", "zh-CN": "失败数"}},
-    "storage.backup_bytes": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Size on disk", "zh-CN": "占用磁盘"}},
-    "storage.evidence_kept": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "What the evidence data layer keeps, physical bytes each object once; the index and vector files earlier builds left are counted, never released.", "zh-CN": "证据数据层保有的内容，按物理字节计，每个对象只计一次；早先构建留下的索引和向量文件只计入，从不释放。"}
-    },
-    "storage.input_pin_retired": {
-      "owner": "alphalattice.control.product_host", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "A research input version is kept on this machine while any study names it, so it takes no pin. Read what storage holds (`alphalattice storage show`).", "zh-CN": "只要仍有研究引用某个研究输入版本，它就保留在本机上，因此无需钉住。请查看存储保有的内容（`alphalattice storage show`）。"}
-    },
-    "activity.observation_id_invalid": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The selected observation must be named by the exact observation id the activity page returns. Read the activity page and use that id as it is.", "zh-CN": "所选观察必须使用活动页返回的准确观察标识来指定。请读取活动页，并原样使用该标识。"}
-    },
-    "local_client.connection_path_escapes_workspace": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The Host's endpoint record is not a plain file in the data root's machine/host-endpoints folder, so it is not used.", "zh-CN": "Host 的端点记录不是数据根目录 machine/host-endpoints 文件夹中的普通文件，因此不予使用。"}
-    },
-    "local_client.connection_owner_mismatch": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "This workspace's endpoint record names another workspace's Host: stop that Host, then start this workspace's Host, which replaces the record.", "zh-CN": "此工作区的端点记录指向另一个工作区的 Host：请先停止那个 Host，再启动此工作区的 Host，新 Host 会替换该记录。"}
-    },
-    "activity.storage_unavailable": {
-      "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "This Host's history is not recording, so it records no events and answers no activity; the Host that alphalattice serve starts records its history or refuses to start.", "zh-CN": "这个 Host 的历史没有在记录，因此不记录事件，也不回答活动；alphalattice serve 启动的 Host 会记录它的历史，否则拒绝启动。"}
-    },
-    "experience.label.trials": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial experience", "zh-CN": "试验经验"}},
-    "experience.label.class": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Trial class", "zh-CN": "试验类别"}},
-    "experience.label.recall": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Experience recall", "zh-CN": "经验召回"}},
-    "experience.label.brief": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Experience brief", "zh-CN": "经验简报"}},
-    "experience.label.review": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Review note", "zh-CN": "复盘笔记"}},
-    "experience.label.hypothesis": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Hypothesis", "zh-CN": "假设"}},
-    "data_layer.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's history is unavailable, so this Portfolio result cannot be published. Restore the Host history and try again.", "zh-CN": "Host 的历史记录不可用，因此无法发布此 Portfolio 结果。请恢复 Host 的历史记录后重试。"}},
-    "alternative_evidence.workspace_document_tampered": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The named evidence document does not verify against the body it was published with. Inspect storage and `alphalattice backup list`; restore a verified copy into a new directory before reviewing it there.", "zh-CN": "所指证据文档与其发布时的正文无法核验一致。请检查存储和 `alphalattice backup list`；把已验证的副本恢复到新目录，再在那里审查它。"}},
-    "experience.trial_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That trial is not in the Host's history.", "zh-CN": "Host 的历史中没有该试验。"}},
-    "experience.class_width_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A class's width is recipe, method_version or method.", "zh-CN": "类别的宽度只能是 recipe、method_version 或 method。"}},
-    "experience.known_at_invalid": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A known time is an ISO-8601 time with its offset.", "zh-CN": "已知时间是带时区偏移的 ISO-8601 时间。"}},
-    "experience.goal_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That goal is not in the Host's history as known then.", "zh-CN": "按当时已知的情况，Host 的历史中没有该目标。"}},
-    "experience.brief_budget_invalid": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A brief's budget is 100 to 32,000 tokens.", "zh-CN": "简报的预算为 100 到 32,000 个 token。"}},
-    "experience.history_unavailable": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The Host's research history is unavailable, so its trial experience could not be read.", "zh-CN": "Host 的研究历史不可用，因此无法读取试验经验。"}},
-    "experience.recall_models_missing": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The retrieval models are not installed, so experiences cannot be recalled. Install the retrieval-store packs with scripts/install_retrieval_pack.py --install retrieval-store --network.", "zh-CN": "检索模型未安装，因此无法召回经验。请运行 scripts/install_retrieval_pack.py --install retrieval-store --network 安装 retrieval-store 模型包。"}},
-    "experience.recall_query_invalid": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A recall query is 1 to 512 characters and its limit 1 to 20.", "zh-CN": "召回的查询为 1 到 512 个字符，数量上限为 1 到 20。"}},
-    "experience.note_incomplete": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A note says its hypothesis, method and conclusion, each a sentence, and each lesson is a sentence.", "zh-CN": "笔记要写明它的假设、做法和结论，每项一句话，每条教训也是一句话。"}},
-    "experience.layer_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A note reviews a trial, a Task or a goal.", "zh-CN": "笔记复盘的是一个试验、一个任务或一个目标。"}},
-    "experience.verdict_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A verdict is success, failure or inconclusive.", "zh-CN": "结论只能是 success、failure 或 inconclusive。"}},
-    "experience.unit_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That trial or Task is not in the Host's history.", "zh-CN": "Host 的历史中没有该试验或任务。"}},
-    "experience.trials_malformed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A review task's note names its trials as a list of trial ids.", "zh-CN": "复盘任务的笔记以试验标识列表写明它复盘的试验。"}},
-    "data_layer.review_before_its_end": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That trial or Task has not ended; a review comes once it has ended.", "zh-CN": "该试验或任务尚未结束；复盘要在它结束之后。"}},
-    "data_layer.review_unknown_goal": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That goal is not one of this workspace's in the Host's history.", "zh-CN": "该目标不是 Host 历史中本工作区的目标。"}},
-    "data_layer.review_trials_need_a_review_task": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Only a Task of kind review names the trials it reviewed; a single trial is reviewed on its own.", "zh-CN": "只有类型为复盘的任务才能写明它复盘的试验；单个试验请单独复盘。"}},
-    "data_layer.review_trial_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A reviewed trial must be in the Host's history and have ended.", "zh-CN": "被复盘的试验必须在 Host 的历史中并且已经结束。"}},
-    "data_layer.review_workspace_disagrees": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "A review names a trial or Task of this workspace only.", "zh-CN": "复盘只能写明本工作区的试验或任务。"}},
-    "experience.hypothesis_unknown": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis is not in the Host's history. State it on the goal first.", "zh-CN": "Host 的历史中没有该假设。请先在目标中陈述它。"}},
-    "experience.hypothesis_workspace": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to another workspace. State one on this workspace's goal.", "zh-CN": "该假设属于另一个工作区。请在当前工作区的目标中陈述假设。"}},
-    "experience.hypothesis_goal": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "That hypothesis belongs to a different goal from this request.", "zh-CN": "该假设所属的目标与本次请求不同。"}},
-    "experience.hypothesis_existing_run": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "zh-CN": "该研究已有与其他假设关联的运行；复用不能更改其历史。"}},
-    "upgrade.refused": {
-      "owner": "alphalattice.foundation.data_layer",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.",
-        "zh-CN": "升级已停止，服务尚未启动。首次启动前请创建数据根目录和各工作区的当前备份；恢复升级时请使用已记录的备份代次，并修复提示的数据族。"
-      }
-    },
-    "upgrade.in_progress": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The Host is upgrading this machine's data to 0.2.8 and serves only the upgrade until it completes. Read the plan and its progress with alphalattice upgrade show (or on /api/upgrade), and acknowledge it with alphalattice upgrade acknowledge if it waits for you.",
-        "zh-CN": "主机正在将本机数据升级到 0.2.8，升级完成前只提供升级相关的服务。请用 alphalattice upgrade show（或在 /api/upgrade）查看升级计划和进度；如计划在等待确认，请用 alphalattice upgrade acknowledge 确认。"
-      }
-    },
-    "upgrade.acknowledged": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This upgrade plan is already acknowledged and running. Read its progress on /api/upgrade.",
-        "zh-CN": "该升级计划已确认并正在执行。请在 /api/upgrade 查看进度。"
-      }
-    },
-    "upgrade.plan_changed": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The upgrade plan named is not the one shown now. Read /api/upgrade again and acknowledge the plan it shows.",
-        "zh-CN": "所确认的升级计划与当前显示的不一致。请重新读取 /api/upgrade，并确认它显示的计划。"
-      }
-    },
-    "upgrade.backup_space": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Writing this upgrade's backups would leave less free space than the floor, so nothing was written. Free space where the plan names, then start the Host again.",
-        "zh-CN": "写入本次升级的备份会使剩余空间低于下限，因此未写入任何内容。请在计划指明的位置腾出空间，然后重新启动主机。"
-      }
-    },
-    "upgrade.first_start.lede": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "This version moves each workspace's old data to its new store once. Nothing moves until you acknowledge this plan; the Host then writes each backup named here and runs it.", "zh-CN": "此版本会将每个工作区的旧数据一次性迁移到新存储。在你确认此计划之前不会迁移任何内容；确认后，主机会写入此处列出的每份备份，然后执行迁移。"}},
-    "upgrade.first_start.workspaces": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Workspaces", "zh-CN": "工作区"}},
-    "upgrade.first_start.families": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Families", "zh-CN": "数据族"}},
-    "upgrade.first_start.machine_backup": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The data root", "zh-CN": "数据根目录"}},
-    "upgrade.first_start.backup_kept": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["generation"], "words": {"en": "An existing verified backup is kept · {generation}", "zh-CN": "保留一份已验证的现有备份 · {generation}"}},
-    "upgrade.first_start.backup_written": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["repository", "size", "free"], "words": {"en": "About {size}, leaving {free} free · written to {repository}", "zh-CN": "约 {size}，写入后剩余 {free} · 写入到 {repository}"}},
-    "upgrade.first_start.family.execution_outcomes": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Execution outcomes", "zh-CN": "执行结果"}},
-    "upgrade.first_start.not_moving": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "The upgrade does not move", "zh-CN": "升级没有进行"}},
-    "upgrade.first_start.running": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Upgrading", "zh-CN": "正在升级"}},
-    "upgrade.first_start.completed": {"owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [], "words": {"en": "Upgraded", "zh-CN": "已升级"}},
-    "research_update.features_binding_invalid": {
-      "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The update's feature result does not match its recorded score plan or update plan, so the update cannot continue. Read the update and its Task, resolve the binding mismatch, then cancel the Task and plan the update again.", "zh-CN": "更新的特征结果与所记录的评分计划或更新计划不匹配，因此无法继续更新。请查看更新及其任务，解决绑定不匹配的问题，然后取消任务并重新规划更新。"}
-    },
-    "research_update.stage_missing": {
-      "owner": "alphalattice.control.product_host.composition", "kind": "MESSAGE", "arguments": ["subject"],
-      "words": {"en": "The update has not reached the {subject} stage. Wait for its Task, then read again.", "zh-CN": "更新尚未到达 {subject} 阶段。请等待该任务完成后再读取。"}
-    },
-    "retrieval.legacy_canary_rebuild": {
-      "owner": "alphalattice.capabilities.knowledge", "kind": "MESSAGE", "arguments": ["subject"],
-      "words": {"en": "the {subject} session's canary differs from the sealed canary at {subject} intra-op threads, the CPU budget's share: this machine's runtime moves a retrieval number; rebuild the index with the current int8 recipe", "zh-CN": "{subject} 会话在 CPU 预算分配的 {subject} 个运算线程下，其金丝雀结果与封存值不同：此机器的运行环境改变了检索数值；请使用当前的 int8 配方重建索引。"}
-    },
-    "data_layer.extension_unavailable": {
-      "owner": "alphalattice.foundation.data_layer",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.",
-        "zh-CN": "已安装的数据扩展无法加载。请运行 uv sync --locked --extra data，恢复与数据库引擎版本匹配的数据依赖。"
-      }
-    },
-    "workspace_database.runtime_extension_refused": {
-      "owner": "alphalattice.control.workspace_runtime",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.",
-        "zh-CN": "工作区连接使用已安装的数据依赖，不支持在运行时安装或加载扩展。"
-      }
-    },
-    "shared.wait.stopped": {
-      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The wait was stopped before its bound, as its owner asked; nothing it waited for was changed. Send the request again when it is wanted.", "zh-CN": "等待在到达上限前按其所有者的要求停止；所等待的内容没有任何改变。需要时请再次发送该请求。"}
-    },
-    "shared.wait.timeout": {
-      "owner": "alphalattice.capabilities.domain_contracts", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The wait reached its bound before what it waited for; that work may still finish. Read its status, then wait again.", "zh-CN": "等待在所等待的内容出现前到达了上限；该工作仍可能完成。请读取它的状态，然后再次等待。"}
-    },
-    "cli.max_wait_invalid": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "--max-wait is the waiter's only timer, in seconds above 0 and at most an hour (3600); omitted, it is the hour. A wait that reaches its cap ends and its work continues.", "zh-CN": "--max-wait 是等待者唯一的计时器，以秒计，大于 0 且至多一小时（3600 秒）；省略时即为一小时。到达上限的等待会结束，其工作继续进行。"}
-    },
-    "cli.output_pipe_closed": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "AlphaLattice: output pipe closed before the answer finished. The work may still have run; read its status or save the full answer with --output.", "zh-CN": "AlphaLattice???????????????????????????????????? --output ???????"}
-    },
-    "cli.serving_workspaces_incomplete": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["subject"],
-      "words": {"en": "The project's workspaces could not all be checked ({subject}); use doctor for details.", "zh-CN": "??????????????{subject}????? doctor ?????"}
-    },
-    "doctor.serving_workspaces.enables": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "Find authenticated Hosts in this project", "zh-CN": "查找此项目中已验证的 Host"}
-    },
-    "doctor.serving_workspaces.how": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "Use the named workspace when it is the one you intend; unverified Hosts are not listed.", "zh-CN": "如果列出的工作区正是你要使用的，请使用它；未经验证的 Host 不会列出。"}
-    },
-    "cli.serving_workspaces": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": ["subject"],
-      "words": {"en": "Authenticated Hosts in this project's workspaces: {subject}.", "zh-CN": "此项目工作区中已验证的 Host：{subject}。"}
-    },
-    "committee.daily": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "PERSON_QUESTION",
-      "reason": {"en": "The person decides whether future daily updates include the committee.", "zh-CN": "是否在未来每日更新中召开委员会由本人决定。"},
-      "scope": {"en": "This workspace's future daily committee setting.", "zh-CN": "本工作区未来每日更新的委员会设置。"},
-      "way_on": {"en": "Relay the person's words with committee daily.", "zh-CN": "通过 committee daily 逐字转达本人的答复。"},
-      "operations": ["COMMITTEE_DAILY_SET"],
-      "ask_operations": ["EXPERIMENT_DELIVERY_EXPORT"],
-      "words": {
-        "en": "Should each daily update also convene the investment committee, about ten more minutes? Without it, the PM gives its view on the reviewed positions.",
-        "zh-CN": "每次每日更新是否也召开投资委员会（约多花十分钟）？如果不召开，PM 会给出对已审核持仓的意见。"
-      }
-    },
-    "analyst_reads.label.setting": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "Analyst reads setting", "zh-CN": "分析师阅读设置"}
-    },
-    "analyst_reads.label.set": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "Set the Analyst reads", "zh-CN": "设置分析师阅读方式"}
-    },
-    "evidence_review.analyst_reads_human_only": {
-      "owner": "alphalattice.interface.local_application", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "How a review's Analyst bundles are read is the person's decision: ask them the review's question and relay their answer with --person-said and --question-code review.analyst_reads. Nothing was changed.", "zh-CN": "审核中分析师材料如何阅读由本人决定：请向本人提出该审核的问题，并用 --person-said 和 --question-code review.analyst_reads 转达其答复。没有做任何更改。"}
-    },
-    "review.analyst_reads": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "PERSON_QUESTION",
-      "reason": {"en": "Parallel Analyst reads spend the person's usage at once; how they run is theirs to decide.", "zh-CN": "并行的分析师阅读会同时消耗本人的用量；如何运行由本人决定。"},
-      "scope": {"en": "This workspace's reviews that hand out no more Analyst bundles than the answered count.", "zh-CN": "本工作区中分发的分析师材料不多于所答复数量的审核。"},
-      "way_on": {"en": "Relay the person's words with analyst-reads set.", "zh-CN": "通过 analyst-reads set 逐字转达本人的答复。"},
-      "operations": ["ANALYST_READS_SET"],
-      "ask_operations": ["ANALYST_READS"],
-      "choices": {
-        "SUBAGENTS": {"en": "Subagents: start one Analyst subagent per bundle, in parallel.", "zh-CN": "子代理：每份材料启动一个分析师子代理，并行阅读。"},
-        "IN_SESSION": {"en": "In this session: the lead reads each bundle itself, one after another.", "zh-CN": "本会话：由主会话逐份亲自阅读每份材料。"}
-      },
-      "words": {
-        "en": "This review hands out several Evidence Analyst bundles. Should each be read by its own subagent, in parallel, sooner and with more usage at once, or should I read them one after another in this session? Your answer stands for later reviews with no more bundles than this one.",
-        "zh-CN": "本次审核分发了多份证据分析师材料。是让每份由各自的子代理并行阅读（更快，但同时消耗更多用量），还是由我在本会话中逐份阅读？你的答复将适用于之后材料数量不多于本次的审核。"
-      }
-    },
-    "goal.delivery.default_slot": {
-      "owner": "alphalattice.control.product_host.composition",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "For ACHIEVED, fill a declared slot with verified references; if none was declared, use result.",
-        "zh-CN": "标记为 ACHIEVED 时，请在已声明的交付项中填写已验证的引用；若未声明交付项，请使用 result。"
-      }
-    },
-    "goal.time.title": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Time", "zh-CN": "时间"}
-    },
-    "goal.time.why": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Where this goal's time went, read from its traces: each command its agents ran, the Host's steps under it, and the agent's own time between one session's commands.", "zh-CN": "这个目标的时间花在哪里，从它的追踪读取：智能体运行的每条命令、其下 Host 的各步骤，以及同一会话两条命令之间智能体自己的时间。"}
-    },
-    "goal.time.read": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Read its time", "zh-CN": "读取时间"}
-    },
-    "goal.time.unread": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Its time is read from the Host's history on request.", "zh-CN": "按需从 Host 的历史读取它的时间。"}
-    },
-    "goal.time.none": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "No command of this goal is recorded yet.", "zh-CN": "这个目标还没有记录任何命令。"}
-    },
-    "goal.time.live": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "running", "zh-CN": "进行中"}
-    },
-    "goal.time.agent": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Agent", "zh-CN": "智能体"}
-    },
-    "goal.time.inferred": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "inferred from the command times", "zh-CN": "由命令时间推断"}
-    },
-    "goal.time.unattributed": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "no session named", "zh-CN": "未指明会话"}
-    },
-    "goal.time.untraced": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["s"],
-      "words": {"en": "{s} outside its steps", "zh-CN": "{s} 在其步骤之外"}
-    },
-    "goal.time.split": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["model", "tools", "person", "rest"],
-      "words": {"en": "model {model} · tools {tools} · waiting on you {person} · unattributed {rest}", "zh-CN": "模型 {model} · 工具 {tools} · 等待你 {person} · 未归属 {rest}"}
-    },
-    "goal.time.calls": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Commands", "zh-CN": "命令"}
-    },
-    "goal.time.untraced_total": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Outside the Host's steps", "zh-CN": "Host 步骤之外"}
-    },
-    "goal.time.flagged": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["n", "bound"],
-      "words": {"en": "{n} commands over {bound}% untraced", "zh-CN": "{n} 条命令未追踪超过 {bound}%"}
-    },
-    "goal.time.steps": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["n"],
-      "words": {"en": "{n} steps", "zh-CN": "{n} 个步骤"}
-    },
-    "activity.call": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["command"],
-      "words": {"en": "via `{command}`", "zh-CN": "经由 `{command}`"}
-    },
-    "activity.call_running": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["command"],
-      "words": {"en": "via `{command}`, still running", "zh-CN": "经由 `{command}`，仍在运行"}
-    },
-    "doctor.windows_long_paths.enables": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Use long workspace paths on Windows", "zh-CN": "在 Windows 上使用较长的工作区路径"}
-    },
-    "doctor.windows_long_paths.recovery": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Ask an administrator to set LongPathsEnabled to 1 and restart the Host, or use a shorter workspace path.",
-        "zh-CN": "请管理员将 LongPathsEnabled 设为 1 并重启 Host，或使用较短的工作区路径。"
-      }
-    },
-    "doctor.model_store_scope.enables": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {"en": "Keep the agent and Host on the same model store", "zh-CN": "让代理和 Host 使用同一个模型库"}
-    },
-    "doctor.model_store_scope.recovery": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "A packaged shell can redirect its model store away from the Host. Use the same ordinary shell as the Host, or set ALPHALATTICE_MODEL_STORE for both to a shared directory outside redirected storage.",
-        "zh-CN": "打包应用的 shell 可能将模型库重定向到 Host 无法看到的位置。请使用与 Host 相同的普通 shell，或为两者将 ALPHALATTICE_MODEL_STORE 设为重定向存储之外的同一个目录。"
-      }
-    },
     "evidence.unit_stopped": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",
@@ -446,24 +72,6 @@
       "words": {
         "en": "Refused: review stalled; answer not filed",
         "zh-CN": "已拒绝：审阅受阻，答复未记录"
-      }
-    },
-    "workbench.study_sealed_since_check": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "sealed since the full check",
-        "zh-CN": "自完整检查以来保持封存"
-      }
-    },
-    "factor_research.review_decision_policy_not_installed_detail": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The Factor study's curation was decided under a review decision policy this installation no longer holds; the study still reads as history. Read the study, curate it again under the installed policy, then plan from its handoff.",
-        "zh-CN": "该因子研究的筛选决定是在本安装已不再持有的评审决定策略下做出的；该研究仍可作为历史读取。请重新读取研究，在已安装的策略下重新做筛选决定，然后从它的交接规划。"
       }
     },
     "alpha_research.development_artifact_identity_invalid_detail": {
@@ -538,10 +146,6 @@
         "zh-CN": "请为必需的耗时检查提供完整的相对测试节点选择器。"
       }
     },
-    "data.full_history_audit.confirm": {
-      "owner": "alphalattice.control.data_platform", "kind": "MESSAGE", "arguments": [],
-      "words": {"en": "The newest fetch disagrees with history this workspace holds for some listings (a restated price or a back-adjusted action), which only a full-history audit of those listings settles; nothing older was fetched. You confirm that audit as the agent, without asking the person: plan this update again, whose plan proposes the audit for those listings alone, confirm it with `data-update confirm <plan-hash>`, then resume the update.", "zh-CN": "最新获取的数据与本工作区对部分标的已持有的历史不一致（价格被重述或公司行动被追溯调整），只有对这些标的进行全历史审计才能解决；未获取更早的数据。该审计由你作为智能体确认，无需询问本人：再次规划此更新，其计划只为这些标的提议该审计；用 `data-update confirm <plan-hash>` 确认后，继续该更新。"}
-    },
     "feature.input.case_store_unavailable": {
       "owner": "alphalattice.foundation.feature_engine",
       "kind": "MESSAGE",
@@ -558,15 +162,6 @@
       "words": {
         "en": "The feature document is invalid. Read the offered controls or inputs, correct the invalid fields and plan again; keep your research choices.",
         "zh-CN": "特征文档无效。读取提供的控制项或输入，修正无效字段后重新规划；保留你的研究选择。"
-      }
-    },
-    "model_training.component_selection_invalid": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The requested component is not installed for model training. Read the research strategy controls and use the training request for your intended component.",
-        "zh-CN": "请求的组件未安装，无法用于模型训练。请查看研究策略控制项，并使用与所需组件对应的训练请求。"
       }
     },
     "strategy.plan.declaration_invalid": {
@@ -609,15 +204,6 @@
         "zh-CN": "除非此工作区的证据已经设置好，否则对该日期持仓的复核会在首次使用的委托下按默认额度获取近期的 SEC 文件，并按设置所述的大小下载检索模型；智能体还会在此次同意范围内安装已锁定的检索依赖包，无需再次询问。现在用一句话告知用户。随后按以下原话询问用户一次，无需等待回答即可继续执行。用户同意后，将问题之后的每条命令各运行一次，用用户原话逐字替换 `<their words>`；委托本身不回答这个问题："
       }
     },
-    "first_use.evidence_setup_notice": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "When Evidence is not set up, reviewing positions may acquire recent SEC filings within the default budget and download the retrieval model needed by its setup.",
-        "zh-CN": "?????????????????????????? SEC ????????????????"
-      }
-    },
     "native_setup.complete_prerequisites": {
       "owner": "alphalattice.interface.local_application",
       "kind": "MESSAGE",
@@ -625,15 +211,6 @@
       "words": {
         "en": "Complete the listed setup steps in order, then run the offered serve command yourself in this shell. If it is refused, follow its terminal route.",
         "zh-CN": "请按顺序完成列出的缺失设置步骤，然后自己在当前终端运行提供的启动命令；只有遭到拒绝时才按其终端方案操作。"
-      }
-    },
-    "native_setup.retrieval_runtime": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Run the locked retrieval setup online as the agent's act, disclosing it in one line. An empty cache needs no second person question or renewed first-use network consent. Only software outside the lock needs the person's permission. Then use install_retrieval_pack --install retrieval-store. Keep packs outside the workspace; network acquisition still needs its permission.",
-        "zh-CN": "由智能体联网运行已锁定的检索环境设置，并用一句话告知用户。缓存为空时，无需再次询问用户，也无需重新取得首次使用的联网同意。锁定清单之外的软件仍须经用户许可。然后运行 `install_retrieval_pack --install retrieval-store`。将模型包保存在工作区之外；联网获取仍需相应许可。"
       }
     },
     "native_setup.workbench_build": {
@@ -652,33 +229,6 @@
       "words": {
         "en": "Read the files in `read` by path and tell the person `disclosure` in one line. Before each specialist, check the tool's role list and follow `disclosure`.",
         "zh-CN": "按路径读取 `read` 中的文件，并向本人用一句话说明 `disclosure`。启动每位专家前，检查工具的角色列表并遵循 `disclosure`。"
-      }
-    },
-    "native_bridge.codex_project_untrusted": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["root", "command"],
-      "words": {
-        "en": "Codex does not trust this project ({root}), so it loads neither the project's configuration nor AlphaLattice's specialists. Ask the person to trust it once, in one line: `{command}`; then run first use again.",
-        "zh-CN": "Codex 尚未信任此项目（{root}），因此不会加载项目配置，也不会加载 AlphaLattice 的专家。请用一句话请用户信任它一次：`{command}`；然后重新运行首次使用。"
-      }
-    },
-    "native_bridge.codex_project_marked_untrusted": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["root", "config"],
-      "words": {
-        "en": "Codex marks this project ({root}) untrusted in {config}, so it loads neither the project's configuration nor AlphaLattice's specialists. That setting is the person's: ask them whether to set the project's trust_level to trusted; then run first use again.",
-        "zh-CN": "Codex 在 {config} 中将此项目（{root}）标为不受信任，因此不会加载项目配置，也不会加载 AlphaLattice 的专家。该设置属于用户：请询问用户是否将该项目的 trust_level 改为 trusted；然后重新运行首次使用。"
-      }
-    },
-    "native_bridge.codex_config_unreadable": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": ["config"],
-      "words": {
-        "en": "Codex's configuration {config} cannot be read, so whether Codex trusts this project is unknown. First use continues; if Codex then loads no AlphaLattice specialist, tell the person that file needs repair; it is theirs.",
-        "zh-CN": "无法读取 Codex 配置 {config}，因此不知道 Codex 是否信任此项目。首次使用会继续；如果 Codex 随后没有加载任何 AlphaLattice 专家，请告诉用户该文件需要修复；该文件属于用户。"
       }
     },
     "native_setup.specialist_route": {
@@ -738,34 +288,18 @@
         "zh-CN": "本工作区的网络控制；不授予来源同意，也不解除离线限制。"
       },
       "way_on": {
-        "en": "Ask the person this question as written. On a yes, send `network set --enabled true` with --person-said, --asked and --question-code network.workspace_access; on a no, leave the network off. `network show` reads what decides it.",
-        "zh-CN": "按原文向本人提出此问题。若回答是，发送 `network set --enabled true`，并携带 --person-said、--asked 和 --question-code network.workspace_access；若回答否，保持网络关闭。`network show` 可查看决定网络状态的依据。"
+        "en": "Read network show and relay the person's words with network set.",
+        "zh-CN": "读取 network show，并通过 network set 逐字转达本人的答复。"
       },
       "operations": [
         "NETWORK_ACCESS_SET"
       ],
       "ask_operations": [
-        "DATA_UPDATE_PLAN",
-        "DATA_UPDATE_RUN",
-        "NETWORK_ACCESS_SET",
-        "RESEARCH_UPDATE_PLAN",
-        "RESEARCH_UPDATE_RUN",
-        "WORKSPACE_PREPARE_CONFIRM",
-        "WORKSPACE_PREPARE_PLAN"
+        "NETWORK_ACCESS_SET"
       ],
-      "choices": {
-        "YES": {
-          "en": "Yes: turn the workspace's network on until I turn it off.",
-          "zh-CN": "是：开启此工作区的网络，直到我将其关闭。"
-        },
-        "NO": {
-          "en": "No: keep the network off; the work that needs it waits.",
-          "zh-CN": "否：保持网络关闭；需要网络的工作会等待。"
-        }
-      },
       "words": {
-        "en": "May AlphaLattice turn on this workspace's network to fetch the market data and filings this work needs, until you turn it off? Yes turns it on; no keeps it off, and the work that needs it waits.",
-        "zh-CN": "AlphaLattice 可以开启此工作区的网络，以获取这项工作所需的市场数据和文件，直到你将其关闭吗？回答是则开启；回答否则保持关闭，需要网络的工作会等待。"
+        "en": "Network access is the person's decision outside a first use: ask the person in one line and, on a clear yes, send this again with --person-said and --asked; `network show` reads what decides it.",
+        "zh-CN": "首次使用之外的网络访问由本人决定：用一句话询问本人，得到明确同意后，携带 --person-said 和 --asked 再次发送同一请求；`network show` 可查看决定网络状态的依据。"
       }
     },
     "read.summary": {
@@ -906,42 +440,6 @@
         "zh-CN": "此主机正在停止，未接纳本次请求。主机停止后，请重新启动此工作区的主机，再重试被拒绝的请求。"
       }
     },
-    "person_confirmation.question_missing": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This question is asked in your own words, so the relay needs the line you asked the person. Give it with --asked beside --question-code.",
-        "zh-CN": "此问题由你用自己的话提问，因此转达时需要附上你向本人提出的那句话。请用 --asked 与 --question-code 一同给出。"
-      }
-    },
-    "person_confirmation.question_words_differ": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The question you relayed differs from its registered words. Relay the registered question exactly as written, in English or Chinese, or give only --question-code.",
-        "zh-CN": "你转达的问题与其登记的措辞不同。请按原文（英文或中文）一字不差地转达登记的问题，或只给出 --question-code。"
-      }
-    },
-    "person_confirmation.question_code_required": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This operation's question is a registered one, so a retyped question cannot be relayed. Give the code named after the colon with --question-code, and the person's words.",
-        "zh-CN": "此操作的问题是已登记的问题，因此不能转达重新输入的问题。请用 --question-code 给出冒号后所列的代码，并附上本人的原话。"
-      }
-    },
-    "person_confirmation.relay_refused": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The relayed question was refused before any request was sent. Read the offered question, then relay its code with the person's words.",
-        "zh-CN": "转达的问题在发送任何请求之前即被拒绝。请读取所提供的问题，然后将其代码与本人的原话一同转达。"
-      }
-    },
     "host.idle": {
       "owner": "alphalattice.control.product_host",
       "kind": "MESSAGE",
@@ -951,17 +449,6 @@
       "words": {
         "en": "A detached Host stays while a held update, Task, request or enabled automation needs it; otherwise it stops after {seconds} idle seconds (0 disables idle shutdown).",
         "zh-CN": "分离运行的主机在待执行的更新、任务、请求或已启用的自动更新仍需要它时会继续运行；否则，空闲 {seconds} 秒后会自动停止（0 表示禁用空闲自动停止）。"
-      }
-    },
-    "host.memory_observed": {
-      "owner": "alphalattice.control.product_host",
-      "kind": "MESSAGE",
-      "arguments": [
-        "reason"
-      ],
-      "words": {
-        "en": "Memory budget observed, not enforced: {reason}",
-        "zh-CN": "内存预算仅观察、未强制执行：{reason}"
       }
     },
     "host.start.not_a_workspace": {
@@ -1152,69 +639,6 @@
       "words": {
         "en": "The result cache options are invalid. Supply a mode of off, record, shadow or on and a positive byte cap.",
         "zh-CN": "结果缓存选项无效。请提供 off、record、shadow 或 on 模式，以及正整数字节上限。"
-      }
-    },
-    "host.stop.detail": {
-      "owner": "alphalattice.control.product_host.composition",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This Host is stopping its Tasks at safe points and will keep their completed work for resumption. It joins the workers before releasing the workspace. Read Task status while it finishes; serve it again to resume.",
-        "zh-CN": "此 Host 正在安全位置停止任务，并保留已完成的工作以便继续。释放工作区前会等待工作线程结束；停止期间可查看任务状态，再次启动 Host 后可继续。"
-      }
-    },
-    "host.stop.operation": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "Stops this workspace's Host at safe points and retains Tasks for resumption.",
-        "zh-CN": "在安全位置停止此工作区的 Host，并保留任务以便继续。"
-      }
-    },
-    "host.stop.group": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "This workspace's Host: stop at safe points and retain Tasks for resumption.",
-        "zh-CN": "此工作区的 Host：在安全位置停止，并保留任务以便继续。"
-      }
-    },
-    "host.stop.status_meaning": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "`HOST_STOPPING`: the Host is stopping work at safe points and retaining it for resumption.",
-        "zh-CN": "`HOST_STOPPING`：Host 正在安全位置停止工作，并保留工作以便继续。"
-      }
-    },
-    "host.stop.detail_meaning": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "What the stop waits for and what it leaves: work reaches safe points and can resume.",
-        "zh-CN": "停止等待工作达到安全位置，并保留工作以便继续。"
-      }
-    },
-    "host.stop.finishing_meaning": {
-      "owner": "alphalattice.interface.local_application",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The Tasks still executing when the Host answered, by id; their live status remains readable while they finish.",
-        "zh-CN": "Host 回复时仍在执行的任务 ID；结束前仍可查看它们的实时状态。"
-      }
-    },
-    "host.stop.recovery_detail": {
-      "owner": "alphalattice.control.product_host.composition",
-      "kind": "MESSAGE",
-      "arguments": [],
-      "words": {
-        "en": "The Host stopped this Task at a safe point. Verified work is kept; serve the Host again to resume the same Task.",
-        "zh-CN": "Host 已在安全位置停止此任务。已验证的工作会保留；再次启动 Host 即可继续同一任务。"
       }
     }
   }
