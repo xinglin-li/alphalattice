@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import date, datetime
 from enum import StrEnum
@@ -10,6 +9,8 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from alphalattice.kernel.identity import identity_sha256
 
 _DATA_OPERATIONS_REQUEST_NAMESPACE = UUID("1c881a8f-9961-423b-9982-bf7ad17ac37d")
 
@@ -21,7 +22,7 @@ def canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 class RemediationAction(StrEnum):

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from hashlib import sha256
 from math import exp, log
 from typing import cast
 
@@ -15,16 +14,18 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from alphalattice.kernel.quant.cross_section import (
-    median_mad_winsor,
-)
-from alphalattice.kernel.quant.sector_history import sector_positions, sector_treatment_of
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
     SECTOR_HISTORY_BACKFILLED,
     SectorHistoryTreatment,
 )
-from alphalattice.kernel.shared_kernel.spans import active_ledger
+from alphalattice.capabilities.domain_contracts.spans import active_ledger
+from alphalattice.capabilities.quant.cross_section import (
+    median_mad_winsor,
+)
+from alphalattice.capabilities.quant.sector_history import sector_positions, sector_treatment_of
+from alphalattice.kernel.identity import identity_sha256
 
 from .contracts import (
     SectorContextManifest,
@@ -306,16 +307,18 @@ def compile_sector_context_surface(
                     stable_reduction=True,
                 )
         source_surface_hash = str(
-            canonical_hash(
+            seal_payload_digest(
+                "source_surface_hash",
                 {
                     "source": source_surface_hash,
                     "sessions": event_sessions,
                     "listings": listings,
-                    "reference_mask": sha256(
+                    "reference_mask": identity_sha256(
                         np.ascontiguousarray(reference_eligible).tobytes()
                     ).hexdigest(),
                     "reference_reduction": "COMPACT_SESSION_ROWS",
-                }
+                },
+                digest=canonical_hash,
             )
         )
 
@@ -368,7 +371,12 @@ def compile_sector_context_surface(
     table = _table(values, output_sessions, sectors)
     payload = _payload(table)
     rows = table.to_pylist()
-    table_hash = str(canonical_hash({"schema": str(table.schema), "rows": rows}))
+    # The stage's second read of the same inputs answers the table it hashed.
+    table_hash = str(
+        seal_payload_digest(
+            "table_hash", {"schema": str(table.schema), "rows": rows}, digest=canonical_hash
+        )
+    )
     if ledger := active_ledger():
         for detail, count in (
             ("sector_axes", len(event_values) + len(listing_values)),
@@ -386,7 +394,7 @@ def compile_sector_context_surface(
         sector_ids=sectors,
         available_row_count=int(np.isfinite(values).all(axis=2).sum()),
         table_content_hash=table_hash,
-        payload_sha256=sha256(payload).hexdigest(),
+        payload_sha256=identity_sha256(payload).hexdigest(),
     )
     return SectorContextSurface(manifest=manifest, values=values), table, payload
 

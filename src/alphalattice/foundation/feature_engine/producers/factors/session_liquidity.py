@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
+from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import NO_ECONOMIC_SKIP
-from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 SESSION_LIQUIDITY_METHOD_FAMILY: Final = "SESSION_LIQUIDITY"
 SESSION_DOLLAR_VOLUME_ID: Final = "factor.desktop.experimental.session_dollar_volume.v1"
@@ -33,6 +35,8 @@ def raw_session_dollar_volume(
 
 def session_dollar_volume(source: pd.DataFrame, _specification: FactorSpec) -> pd.Series:
     """Stock-level raw dollar volume at the observation session."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     raw_close = pd.to_numeric(source["close_raw"], errors="coerce").to_numpy(dtype=np.float64)
     raw_volume = pd.to_numeric(source["volume_raw"], errors="coerce").to_numpy(dtype=np.float64)
     return pd.Series(raw_session_dollar_volume(raw_close, raw_volume), index=source.index)

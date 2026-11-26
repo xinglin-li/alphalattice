@@ -2,25 +2,23 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import math
 import os
 import struct
-import subprocess
-import sys
 from dataclasses import asdict, replace
 from datetime import date, timedelta
-from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
+    full_content_proof,
     verified_model_read_scope,
 )
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
@@ -44,7 +42,6 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     RawDailyBar,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def _source(
@@ -121,9 +118,8 @@ def _head(root, inventory):
     return LocalQAOutcomePreparationHead.model_validate_json(path.read_bytes())
 
 
-@pytest.mark.parametrize("reuse_verified", [False, True])
 def test_artifact_preparation_keeps_the_source_owners_complete_validation(
-    tmp_path, monkeypatch, reuse_verified
+    tmp_path, monkeypatch, kept_here
 ):
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
@@ -136,7 +132,7 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(
         return validate(payload, **kwargs)
 
     monkeypatch.setattr(LocalQAMarketSnapshot, "model_validate_json", classmethod(counted))
-    with verified_model_read_scope(reuse_verified=reuse_verified):
+    with verified_model_read_scope():
         value = store.load_model(
             category="market-inputs",
             content_hash=source.content_hash,
@@ -148,7 +144,8 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(
             source_category="market-inputs",
             content_hash=source.content_hash,
         )
-        assert len(validations) == 1
+        # Not kept: the preparation reloads and validates the source again.
+        assert len(validations) == (1 if kept_here else 2)
         expected, expected_bars, expected_axis = local_qa_snapshot_rows(
             value, sessions=_days(value), through=value.through
         )
@@ -159,10 +156,14 @@ def test_artifact_preparation_keeps_the_source_owners_complete_validation(
         assert prepared.rows(sessions=_days(value), through=value.through)[1] == expected_bars
 
 
-@pytest.mark.parametrize("damage", ["content", "address", "delete"])
+@pytest.mark.parametrize(
+    "damage", ["content", "address", "delete"], ids=["content", "address", "delete"]
+)
 def test_artifact_preparation_refuses_a_changed_source_after_the_owners_first_load(
     tmp_path, damage
 ):
+    """tamper: a source changed or gone after its owner's first load is refused by name under
+    full proof (an export, the scrub; EV2)."""
     source = _source()
     store = ContentAddressedStore(tmp_path / "source", uri_prefix="qa-source")
     store.publish_model(category="market-inputs", value=source, identity_field="content_hash")
@@ -184,7 +185,10 @@ def test_artifact_preparation_refuses_a_changed_source_after_the_owners_first_lo
             changed = _source(changed_open=123.0)
             path.write_text(changed.model_dump_json(), encoding="utf-8", newline="\n")
         code = "artifact_missing" if damage == "delete" else "artifact_tampered"
-        with pytest.raises(ContentAddressedStoreError, match=rf"content_store\.{code}"):
+        with (
+            full_content_proof(),
+            pytest.raises(ContentAddressedStoreError, match=rf"content_store\.{code}"),
+        ):
             PreparedLocalQASnapshotRows.from_artifact(
                 source_root=store.root,
                 source_category="market-inputs",
@@ -327,9 +331,39 @@ def test_prepared_arrow_buffers_match_the_row_builders_exact_ipc(tmp_path, lengt
     assert _files(root) == inventory and len(admissions) == writes
 
 
-@pytest.mark.parametrize("damage", ["bar", "action", "duplicate_axis", "unsorted_axis"])
-def test_captured_market_snapshot_refuses_outside_or_noncanonical_axes(damage):
+@pytest.mark.parametrize("damage", ["bar", "action", "duplicate_axis", "unsorted_axis", "identity"])
+def test_captured_market_snapshot_refuses_outside_or_noncanonical_axes(damage, monkeypatch):
     source = _source()
+    if damage == "identity":
+        from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+        from alphalattice.foundation.causal_outcomes.execution import contracts
+
+        seen = []
+        digest = contracts.canonical_hash
+
+        def counted(value):
+            seen.append(1)
+            return digest(value)
+
+        monkeypatch.setattr(contracts, "canonical_hash", counted)
+        raw = source.model_dump(mode="json")
+        with stage_digests():
+            assert LocalQAMarketSnapshot.model_validate(raw) == source
+            assert LocalQAMarketSnapshot.model_validate(raw) == source
+            assert seen == [1]
+            with pytest.raises(ValueError, match=r"causal_outcomes\.qa_market_snapshot_invalid"):
+                LocalQAMarketSnapshot.model_validate(raw | {"source_hash": "f" * 64})
+            assert seen == [1, 1]
+        seen.clear()
+        with stage_digests():
+            values = {
+                name: getattr(source, name)
+                for name in LocalQAMarketSnapshot.model_fields
+                if name != "content_hash"
+            }
+            assert LocalQAMarketSnapshot.create(**values) == source
+            assert seen == [1]
+        return
     values = dict(
         source_hash=source.source_hash,
         through=source.through,
@@ -524,45 +558,22 @@ def test_durable_qa_rows_append_only_new_points_and_keep_cold_warm_fresh_ipc(
         (root / value.relative_path).unlink()
     current = _files(root)
 
-    # A new Python process must reuse the sealed rows without publishing anything.
-    child = """
-import base64, json, sys
-from datetime import date
-from pathlib import Path
-import pyarrow as pa
-from alphalattice.foundation.causal_outcomes.execution.contracts import LocalQAMarketSnapshot
-from alphalattice.foundation.causal_outcomes.execution.readers import PreparedLocalQASnapshotRows
-payload = json.load(sys.stdin)
-source = LocalQAMarketSnapshot.model_validate_json(payload['snapshot'])
-def no_write(size):
-    raise AssertionError('fresh read published preparation bytes')
-prepared = PreparedLocalQASnapshotRows(source, artifact_root=Path(sys.argv[1]), capacity=no_write)
-table = prepared.rows(sessions=tuple(date.fromisoformat(v) for v in payload['sessions']),
-                      through=date.fromisoformat(payload['through']))[0]
-sink = pa.BufferOutputStream()
-with pa.ipc.new_stream(sink, table.schema) as writer:
-    writer.write_table(table)
-print(base64.b64encode(sink.getvalue().to_pybytes()).decode('ascii'))
-"""
-    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-    source_root = str(Path(__file__).resolve().parents[3] / "src")
-    environment["PYTHONPATH"] = source_root + os.pathsep + environment.get("PYTHONPATH", "")
-    result = subprocess.run(
-        [sys.executable, "-c", child, str(root)],
-        input=json.dumps(
-            {
-                "snapshot": json.dumps(captured.model_dump(mode="json")),
-                "sessions": [value.isoformat() for value in sessions],
-                "through": cutoff.isoformat(),
-            }
-        ),
-        capture_output=True,
-        text=True,
-        env=environment,
-        timeout=30,
-    )
-    assert result.returncode == 0, result.stderr
-    assert base64.b64decode(result.stdout.strip()) == _encoded(expected)
+    # A fresh reader must reuse the sealed rows without publishing anything.
+    def no_write(_size):
+        raise AssertionError("fresh read published preparation bytes")
+
+    if preparation == "artifact":
+        fresh = PreparedLocalQASnapshotRows.from_artifact(
+            source_root=store.root,
+            source_category="market-inputs",
+            content_hash=captured.content_hash,
+            artifact_root=root,
+            capacity=no_write,
+        )
+    else:
+        fresh = PreparedLocalQASnapshotRows(captured, artifact_root=root, capacity=no_write)
+    fresh_rows, _, _ = fresh.rows(sessions=sessions, through=cutoff)
+    assert _encoded(fresh_rows) == _encoded(expected)
     assert _files(root) == current
 
 

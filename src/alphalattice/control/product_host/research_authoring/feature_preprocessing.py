@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.research_authoring.execution import _sector_by_listing_id
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
@@ -53,7 +54,6 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.catalog impo
 )
 from alphalattice.foundation.market_data_ops.sources.membership import membership_identity
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @dataclass(frozen=True)

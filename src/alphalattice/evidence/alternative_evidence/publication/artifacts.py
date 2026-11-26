@@ -351,6 +351,9 @@ _CATEGORIES = {
     "source-document-deferrals",
     "retrieval-generations",
     "retrieval-access-receipts",
+    # A selection a retrieval change answered with other passages: both receipts and each
+    # question's change, recorded beside the earlier receipt and never as its successor.
+    "retrieval-supersessions",
     "resolved-span-sets",
     "analyst-briefs",
     "analyst-brief-receipts",

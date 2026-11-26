@@ -215,7 +215,7 @@ run('workbench_routes', async () => {
     await traverse(1);assert.equal(D.subject().task_id,'book-b');assert.equal(D.subject().session,dates[0]);assert.equal(D.performanceMode(),'forward');
     await traverse(1);assert.equal(D.subject().task_id,'book-c');assert.equal(c.records.pushes.length,2);
   });
-  // P3b: discover installed books and authored studies through the real Data
+  // discover installed books and authored studies through the real Data
   // collection, with failures and unrelated records as negative controls. No per-book
   // read is needed to list them; pressing a row reads its exact owner Task/date once.
   for(const lang of ['en','zh']) for(const page of ['portfolio','compare']) await check('Portfolio eligible collection '+page+'/'+lang,async()=>{
@@ -247,7 +247,7 @@ run('workbench_routes', async () => {
     }
   });
   // Real Goal readback and LiveViews dispatch on every Goal folder, both route identity forms.
-  // P3a: the last canonical Task mutation reads in the person's zone.
+  // the last canonical Task mutation reads in the person's zone.
   // Missing and legacy clocks stay blank; a request/Goal clock cannot fill them.
   const previousTimezone=process.env.TZ;
   try {

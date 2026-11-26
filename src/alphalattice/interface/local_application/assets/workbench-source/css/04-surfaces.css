@@ -40,7 +40,7 @@ figure[data-stack-caption] { row-gap: var(--stack-box); }
 .panel-head .caption {
   margin-top: var(--space-1);
 }
-/* N3: the label and its (i) on one line; the (i) brings its own space (N6) */
+/* the label and its (i) on one line; the (i) brings its own space (N6) */
 .panel-label {
   display: flex;
   align-items: center;
@@ -260,7 +260,7 @@ body[data-page=advanced] {
   overflow: visible;
   text-overflow: clip;
 }
-/* A line cut by the sheet (Q2: scripts cut words at 12, 16, 24, 40, 80, 120 and 240 characters):
+/* A line cut by the sheet (scripts cut words at 12, 16, 24, 40, 80, 120 and 240 characters):
    a reference or a line of words at its measure with an ellipsis, whole on hover; an owner's
    excerpt clamped to its lines. */
 .line-cut {
@@ -309,7 +309,7 @@ code.literal { font-family: var(--font-mono); overflow-wrap: anywhere; }
   padding: 0 0 var(--space-4); /* a control line on the section, not a faced bar */
   background: transparent;
 }
-/* a table's search is the product's one search field at the head's end, a short one -- sized as a
+/* A table's search is the product's one search field at the head's end, a short one -- sized as a
    whole, never its bare input (the user, 2026-09-24: the input ran the head's width over the
    label's (i); the field rule's :is() outweighed the input's own cap) */
 .table-toolbar > .search-field {
@@ -490,7 +490,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
 .kv-columns > .kv:last-child { border-bottom: 1px solid var(--line); }
 .side-props > .kv { align-items: center; min-height: var(--row-dense); padding: 0; border-bottom-color: var(--edge-hair); }
 .side-props > .kv > :is(dt, dd) { margin: 0; min-width: 0; font-size: var(--style-callout-size); line-height: var(--style-callout-leading); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
-/* a value that is a way (a source by its name) is cut by the line like any value, never wrapped (N6) */
+/* A value that is a way (a source by its name) is cut by the line like any value, never wrapped (N6) */
 .side-props > .kv > dd > .text-btn { display: inline; padding-inline: 0; white-space: nowrap; }
 /* The ways out (E1): one row each, the word and its arrow. */
 .activity-more { margin-top: var(--space-2); }
@@ -670,7 +670,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
   width: var(--rule-width);
   background: var(--text);
 }
-/* B1: a share that names its mark above the bar and its parts under it (the book's coverage figure):
+/* a share that names its mark above the bar and its parts under it (the book's coverage figure):
    each name at its segment's width, the bar's gap between them; a name wraps inside its part. */
 .meter-mark-row { position: relative; display: block; height: var(--style-footnote-leading); margin-bottom: var(--space-1); }
 .meter-mark-label { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: var(--style-footnote-size); line-height: var(--style-footnote-leading); letter-spacing: var(--style-footnote-tracking); color: var(--muted); }
@@ -683,7 +683,7 @@ button.status-row:focus-visible { outline-offset: var(--focus-ring-inset); }
 .prep-area[data-moving=true] .meter-bar.indeterminate > span { width: 100%; opacity: var(--opacity-subtle); }
 /* A composition: the slices of one whole on the one bar, one hue stepped fainter by their order
    (`--slice`, the slice's index), then a legend of the same slices in columns. */
-/* a figure, not a progress: its bar and its legend span it (the user, 2026-09-24: 这个东西并不是进度条,
+/* A figure, not a progress: its bar and its legend span it (the user, 2026-09-24: 这个东西并不是进度条,
    不应该限制长度); a composition of one part draws no bar -- its legend line is the whole */
 .meter-composition { margin: var(--space-3) 0 var(--space-2); max-width: none; }
 .meter-bar.composition > i,
@@ -1044,29 +1044,29 @@ body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { pa
 :is(.c-num, .c-const) { color: var(--code-constant); }
 .c-cmt { color: var(--muted); }
 .data-table { width: 100%; min-width: var(--table-min); border-collapse: separate; border-spacing: 0; white-space: nowrap; font: var(--style-body-size)/var(--style-body-leading) var(--font-ui); font-variant-numeric: tabular-nums; background: transparent; }
-/* a table takes the ground it stands on, the lane or a box (the user, 2026-09-23: a table painted the
+/* A table takes the ground it stands on, the lane or a box (the user, 2026-09-23: a table painted the
    lane's colour stood in a white box as a grey block ringed with white) */
 .data-table th { padding: var(--space-2) var(--space-3); text-align: left; vertical-align: bottom; font: var(--weight-label) var(--style-callout-size)/var(--style-callout-leading) var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--muted); background: transparent; border-bottom: 1px solid var(--ds-edge); }
 .data-table th > small { display: block; font-weight: var(--weight-body); color: var(--muted); }
 .data-table th > .table-sort { display: inline-flex; min-height: 0; padding: 0; line-height: inherit; vertical-align: baseline; }
-/* a sortable head sits on the same line as the others */
+/* A sortable head sits on the same line as the others */
 .data-table thead tr { height: var(--row-head); }
 .data-table tbody tr { height: var(--row-regular); }
 /* 40: the row of a list (the reader's law), the dense row for `compact` */
 .data-table td { padding: var(--space-2) var(--space-3); vertical-align: middle; color: var(--text); font-weight: var(--weight-body); background: transparent; box-shadow: inset 0 -1px 0 var(--edge-row); }
-/* a divider fainter than the words */
+/* A divider fainter than the words */
 .data-table tr:last-child td { box-shadow: none; }
 .data-table td:first-child, .data-table .main-cell { font-weight: var(--weight-label); }
 .data-table :is(th, td):is(.col-num, .num) { text-align: right; white-space: nowrap; }
 /* The substance column takes the slack; short word columns before figures keep their natural measure so no seam doubles. */
 .data-table:not(.grid) :is(th, td):is(.col-num, .num) { width: 1%; min-width: var(--col-wide); }
-.data-table:not(.grid) :is(th, td):is(.col-num, .num).col-tight { min-width: var(--col-tight); } /* round H1: a short figure (a percentage, bps, a count) */
+.data-table:not(.grid) :is(th, td):is(.col-num, .num).col-tight { min-width: var(--col-tight); } /* layout: a short figure (a percentage, bps, a count) */
 .data-table:not(.grid) :is(th, td).col-tight:not(.col-absorb) { width: 1%; } /* a tight column keeps to its content, a word column as much as a figure: the slack is the absorbing column's (the Reading's Cited by took 371 px of it, its topics 172, and left the passage 137) */
 .data-table:not(.grid) :is(th, td):is(.col-text, .col-id, .col-date, .col-status, .col-link):not(.col-absorb, .col-index, .col-identity, .col-tight, .col-link:last-child) { min-width: var(--col-text); }
 .data-table:not(.grid) :is(th, td).col-absorb { width: 100%; min-width: var(--col-absorb); white-space: normal; }
 .data-table:not(.grid) :is(th, td):is(.col-index) { width: var(--col-index); min-width: var(--col-index); color: var(--muted); }
 .data-table :is(th, td).col-link:last-child { width: var(--col-index); text-align: right; white-space: nowrap; }
-/* the row's action; a leading link column is the identity */
+/* The row's action; a leading link column is the identity */
 .data-table.grid :is(th, td):is(.col-num, .num) { min-width: var(--col-num); }
 .data-table.grid :is(th, td):is(.col-date, .col-id, .col-text, .col-status) { min-width: var(--col-wide); }
 .data-table.grid :is(th, td).col-tight { min-width: var(--col-tight); } /* a short column keeps its tight floor in a grid too (W: the Alpha folds at 1673 x 1186 @ 125 %) */
@@ -1088,11 +1088,11 @@ body[data-page] #main [data-box="table"] .data-table :is(th, td):last-child { pa
 .data-table td > :is(.main-cell, .sub-cell, .text-cell) { white-space: normal; }
 body[data-page][data-reading] .data-table td:not(.col-absorb) :is([data-control], [data-ui-role="status"]) { white-space: nowrap; overflow-wrap: normal; }
 .data-table td.col-id > .main-cell, .data-table td:first-child > .main-cell { white-space: nowrap; }
-/* an identity is one line; a name may wrap in a text column */
+/* An identity is one line; a name may wrap in a text column */
 body[data-page][data-reading] .data-table td [data-control] { min-height: var(--table-control-height); padding-block: var(--control-pad-xs); }
-/* a control in a row is the row's height */
+/* A control in a row is the row's height */
 body[data-page] .data-table td > .cell-opener { padding-inline: 0; font-weight: var(--weight-label); color: var(--text); } /* over the quiet control's inset: the opener's words stand on the column's line (Fold 1 stood 9 px in from its head) */
-/* the identity that opens: the row's words, an arrow after them */
+/* The identity that opens: the row's words, an arrow after them */
 .data-table.compact { font-size: var(--style-callout-size); line-height: var(--style-callout-leading); }
 .data-table.compact tbody tr { height: var(--row-dense); }
 .data-table tbody tr:hover td { background: var(--ds-control-hover); }
@@ -1101,7 +1101,7 @@ body[data-page] .data-table td > .cell-opener { padding-inline: 0; font-weight: 
 .data-table tbody tr[aria-current="true"] td { background: var(--fill-selected); }
 .data-table.grid :is(th, td) + :is(th, td) { border-left: 1px solid var(--edge-hair); }
 .data-table.grid :is(th, td) { padding-inline: var(--space-2); }
-/* a numeric grid is dense */
+/* A numeric grid is dense */
 .data-table tfoot td { padding: var(--space-3); border-top: 1px solid var(--edge-hair); background: var(--surface-well); color: var(--text); font-weight: var(--weight-label); }
 .table-scroll { overflow: auto; width: 100%; scrollbar-width: thin; overscroll-behavior-inline: contain; max-width: 100%; min-width: 0; scrollbar-gutter: stable; scrollbar-color: var(--scroll-thumb) transparent; box-shadow: none; background: transparent; }
 .table-scroll * { scrollbar-color: var(--scroll-thumb) transparent; }
@@ -1177,7 +1177,7 @@ body[data-page] .performance-surface .stat-strip {
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-4);
 }
-/* a box's label and its state are one line each (a prop never wraps): where both do not fit -- a
+/* A box's label and its state are one line each (a prop never wraps): where both do not fit -- a
    side box -- the state goes under the label, never a label or a date broken in two (N6) */
 .panel-head > .panel-label { min-width: 0; max-width: 100%; }
 .panel-head > .panel-label > h2, .panel-head > :is(.state, [data-ui-role="status"]) > * { white-space: nowrap; }

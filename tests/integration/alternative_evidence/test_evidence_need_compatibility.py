@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.evidence.alternative_evidence.analysis import packet as packet_module
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceRetrievalAccessReceipt,
@@ -28,7 +29,6 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 )
 from alphalattice.evidence.alternative_evidence.analysis.matters import EvidenceNeed
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _document_with_text as _document,
 )
@@ -70,6 +70,21 @@ def test_a_historical_candidate_record_reads_unchanged_and_is_never_completed_or
         references = [n for n in record.needs if n.kind == "REFERENCE"]
         assert references and all(n.target_state is not None for n in references)
         assert record.historical_reference_needs == 0
+        # A provided need cannot claim an undelivered matter span.
+        from alphalattice.evidence.alternative_evidence.runtime.failure_diagnostics import (
+            failure_detail,
+        )
+
+        dangling = references[0].model_dump() | {
+            "status": "PROVIDED",
+            "span_handle": "SPAN-M01-R9999",
+            "target_state": "DELIVERED",
+        }
+        with pytest.raises(ValueError) as caught:
+            LitigationMatterRecord.model_validate(record.model_dump() | {"needs": [dangling]})
+        detail = failure_detail(caught.value, "select_evidence_spans", lambda: document_set)
+        assert "invariant=matter_span_delivered" in detail
+        assert dangling["document_handle"] in detail and dangling["span_handle"] in detail
         # The historical form: the same bytes the old writer emitted, the same
         # identity, the references' completeness unspecified, nothing backfilled.
         historical_payload = historical_serialization(record)

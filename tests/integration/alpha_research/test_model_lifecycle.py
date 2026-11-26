@@ -15,6 +15,8 @@ from types import MappingProxyType, SimpleNamespace
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
     prepare_frozen_price_volume_features,
@@ -28,6 +30,7 @@ from alphalattice.investment.alpha_research.scores.model_renewal import (
     AlphaModelLifecycleAdmission,
     AlphaRefitBudget,
     admit_component_inference,
+    admit_component_inferences,
     fit_alpha_refit_child,
     prepare_alpha_refit,
     publish_training_observations,
@@ -40,14 +43,12 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     resolve_alpha_refit_plan,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import live_vintages
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests._support.lease_age import age_lease_file
 
 COMPONENT = INSTALLED_HETEROGENEOUS_ALPHA_STRATEGY.component("G6_R0_FAST_REBOUND")
 
 
 @pytest.mark.parametrize("interval", (1, 3, 12))
-def test_declared_periods_resolve_training_without_changing_the_executor(interval):
+def test_declared_periods_resolve_training_without_changing_the_executor(interval, monkeypatch):
     frozen = AlphaModelLifecycleRecipe.from_component(COMPONENT)
     values = frozen.model_dump(exclude={"content_hash"})
     values.update(month_interval=interval, training_window_sessions=20)
@@ -70,6 +71,32 @@ def test_declared_periods_resolve_training_without_changing_the_executor(interva
     assert rule.content_hash != frozen.content_hash
     with pytest.raises(ValueError, match="identity_invalid"):
         AlphaModelLifecycleRecipe.model_validate({**rule.model_dump(), "purge_sessions": 0})
+    _assert_staged_refit_plan_identity(plan, monkeypatch)
+
+
+def _assert_staged_refit_plan_identity(plan, monkeypatch):
+    """An immutable plan can be handed to multiple readers; a changed plan is proved again."""
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.investment.alpha_research.scores import product_lifecycle
+
+    seen = []
+
+    def count(payload):
+        if "source_binding_hash" in payload:
+            seen.append(payload["source_binding_hash"])
+        return canonical_hash(payload)
+
+    monkeypatch.setattr(product_lifecycle, "canonical_hash", count)
+    with stage_digests():
+        sealed = type(plan).create(**plan.model_dump(exclude={"content_hash"}))
+        assert sealed == plan
+        assert plan.verify_identity() is plan
+        reread = type(plan).model_validate_json(plan.model_dump_json())
+        assert reread == plan and reread is not plan
+        modified = plan.model_copy(update={"source_binding_hash": "b" * 64})
+        with pytest.raises(ValueError, match="model_lifecycle_identity_invalid"):
+            modified.verify_identity()
+    assert seen == ["a" * 64, "b" * 64]
 
 
 def _source(day_count=250):
@@ -159,8 +186,19 @@ def retained_lifecycle_admission(tmp_path):
 def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     retained_lifecycle_admission, monkeypatch
 ):
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+    from alphalattice.investment.alpha_research.scores import product_lifecycle
 
     store, root, authority, observations = retained_lifecycle_admission
+    prepared_digests = Counter()
+
+    def counted_digest(payload):
+        digest = canonical_hash(payload)
+        if isinstance(payload, dict) and "market_scale" in payload and "row_axis_hash" in payload:
+            prepared_digests[digest] += 1
+        return digest
+
+    monkeypatch.setattr(product_lifecycle, "canonical_hash", counted_digest)
     snapshot = store.load_frozen_observation_snapshot(observations[0].observation_hash)
     hashes = {
         *snapshot.array_files,
@@ -172,14 +210,33 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     reads, checks, trace = Counter(), Counter(), []
     active = peak = 0
     open_file, load = Path.open, np.load
+    array_paths = {
+        **{
+            store._packed_source_path("frozen-observation-arrays", value).resolve(): (
+                "frozen-observation-arrays",
+                value,
+            )
+            for value in snapshot.array_files
+        },
+        **{
+            store._packed_source_path("lifecycle-arrays", value).resolve(): (
+                "lifecycle-arrays",
+                value,
+            )
+            for value in hashes - set(snapshot.array_files)
+        },
+    }
 
     def counted_open(path, mode="r", *args, **kwargs):
         resolved = Path(path).resolve()
-        if "r" in mode and resolved.is_relative_to(store.root.resolve()):
+        if "r" in mode and (
+            resolved in array_paths or resolved.is_relative_to(store.root.resolve())
+        ):
             with lock:
-                trace.append((resolved.parent.name, get_ident()))
-                if resolved.parent.name in {"lifecycle-arrays", "frozen-observation-arrays"}:
-                    reads[resolved.stem] += 1
+                kind, identity = array_paths.get(resolved, (resolved.parent.name, resolved.stem))
+                trace.append((kind, get_ident()))
+                if resolved in array_paths:
+                    reads[identity] += 1
         return open_file(path, mode, *args, **kwargs)
 
     @contextmanager
@@ -206,7 +263,25 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
 
     monkeypatch.setattr(Path, "open", counted_open)
     monkeypatch.setattr(np, "load", counted_load)
-    admitted = admit_component_inference(root, store=store, expected_hash=authority.content_hash)
+    # Full proof, as at an install or an activation: every retained array is read and checked.
+    sibling = root.with_name("sibling-authority")
+    sibling.mkdir()
+    (sibling / "model-lifecycle-admission.json").write_bytes(
+        (root / "model-lifecycle-admission.json").read_bytes()
+    )
+    with stage_digests(), full_content_proof():
+        admitted, second = admit_component_inferences(
+            ((root, authority.content_hash), (sibling, authority.content_hash)), store=store
+        )
+        assert isinstance(admitted.authority, AlphaModelLifecycleAdmission)
+        assert second.authority == admitted.authority
+        assert second is not admitted
+        prepared = authority.prepared[0]
+        changed = prepared.model_dump() | {"row_count": prepared.row_count + 1}
+        with pytest.raises(ValueError, match=r"alpha_research\.model_lifecycle_identity_invalid"):
+            type(prepared).model_validate(changed)
+    expected = Counter({item.content_hash: 1 for item in authority.prepared})
+    assert Counter({digest: prepared_digests[digest] for digest in expected}) == expected
     assert admitted.authority == authority
     assert admitted.fit_calls == 0
     assert reads == checks == Counter({identity: 1 for identity in hashes})
@@ -225,7 +300,9 @@ def test_admission_verifies_unique_arrays_in_parallel_after_serial_bindings(
     }
 
 
-@pytest.mark.parametrize("damaged_source", ("frozen", "labels", "prepared"))
+@pytest.mark.parametrize(
+    "damaged_source", ("frozen", "labels", "prepared"), ids=["frozen", "labels", "prepared"]
+)
 def test_admission_refuses_array_tamper_before_reading_initial_children(
     retained_lifecycle_admission, monkeypatch, damaged_source
 ):
@@ -269,20 +346,35 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
         "prepared": authority.prepared[-1].array_file_hash,
     }[damaged_source]
     category = "frozen-observation-arrays" if damaged_source == "frozen" else "lifecycle-arrays"
-    path = store.root / "current" / category / f"{identity}.bin"
+    from alphalattice.foundation.data_layer import arrays, history
+
+    path = store._packed_source_path(category, identity)
     before = path.stat()
-    payload = bytearray(path.read_bytes())
+    payload = bytearray(history.read_alpha_part(identity, "current/" + category))
     payload[len(payload) // 2] ^= 1
-    path.write_bytes(payload)
+    path.write_bytes(arrays._packed_body(bytes(payload)))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     reads, checks, completed = [], Counter(), Counter()
     rendezvous, lock = Barrier(2), Lock()
     active = 0
     open_file, load = Path.open, np.load
+    array_paths = {
+        **{
+            store._packed_source_path(
+                "frozen-observation-arrays", value
+            ).resolve(): "frozen-observation-arrays"
+            for value in snapshot.array_files
+        },
+        **{
+            store._packed_source_path("lifecycle-arrays", value).resolve(): "lifecycle-arrays"
+            for value in hashes - set(snapshot.array_files)
+        },
+    }
 
     def counted_open(path, mode="r", *args, **kwargs):
         if "r" in mode:
-            reads.append(Path(path).parent.name)
+            resolved = Path(path).resolve()
+            reads.append(array_paths.get(resolved, resolved.parent.name))
         return open_file(path, mode, *args, **kwargs)
 
     @contextmanager
@@ -314,7 +406,10 @@ def test_admission_refuses_array_tamper_before_reading_initial_children(
             reads.clear()
             checks.clear()
             completed.clear()
-            with pytest.raises(ValueError, match="frozen_input_content_invalid"):
+            with (
+                full_content_proof(),
+                pytest.raises(ValueError, match="frozen_input_content_invalid"),
+            ):
                 admit_component_inference(root, store=store, expected_hash=authority.content_hash)
             assert checks == completed == Counter({value: 1 for value in hashes - {identity}})
             assert active == 0
@@ -332,7 +427,10 @@ def test_admission_decodes_every_npz_member_without_pickle(
     np.savez(stream, features=np.zeros((1, 1)), untrusted=np.array([{}], dtype=object))
     payload = stream.getvalue()
     identity = sha256(payload).hexdigest()
-    (store.root / "current/lifecycle-arrays" / f"{identity}.bin").write_bytes(payload)
+    assert (
+        store._publish_packed_bytes(category="current/lifecycle-arrays", payload=payload)
+        == identity
+    )
     prepared = type(authority.prepared[-1]).create(
         **{
             **{
@@ -493,9 +591,9 @@ def test_maturity_and_budget_refuse_before_fit(tmp_path: Path, monkeypatch, temp
         prepare_alpha_refit(store, plan=late_plan, observations=late, component=COMPONENT)
 
 
-@pytest.mark.parametrize("temporal", (False, True))
+@pytest.mark.parametrize("temporal", (False, True), ids=["fixed", "temporal"])
 def test_monthly_yaml_runs_and_replays_through_the_existing_workflow(
-    tmp_path, monkeypatch, temporal
+    tmp_path, monkeypatch, temporal, kept_here
 ):
     """Control: Monthly yaml runs and replays through existing workflow."""
     from alphalattice.control.research_program.authoring.dispatcher import (
@@ -617,9 +715,6 @@ alpha:
     # One fit plus one score; this child's fit stores no training-error prediction.
     assert evidence.numerical_call_count == 2
     assert written  # The counter observed the producer before checking replay.
-    for item in (tmp_path / "output").rglob("*"):
-        if item.is_file():
-            age_lease_file(item)
     written.clear()
     replay, _ = workflow.replay(document, **actor)
     assert not written, (
@@ -642,29 +737,29 @@ alpha:
     output_store = AlphaCurrentArtifactStore(tmp_path / "output/alpha-lifecycle")
     identity = output_store._hash_from_uri(evidence.artifact_uris[0], "current/" + CATEGORY)
     receipt = output_store._load(CATEGORY, identity, "content_hash", AlphaLifecycleResearchReceipt)
-    path = output_store._path("current/lifecycle-arrays", receipt.projection_files[0], "bin")
+    path = output_store._packed_source_path("lifecycle-arrays", receipt.projection_files[0])
     assert opened[path] >= 1  # the run and its replay read the array in full
     original = path.read_bytes()
-    # Complete readbacks retain the OS proof on Windows; other platforms read again.
+    # A complete readback keeps its value in the process (EV2): the array is not read again.
+    # Not kept: each readback reads the array once more.
     from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
         verify_lifecycle_research,
     )
 
     seeded = opened[path]
-    for _ in range(2):
-        before_read = opened[path]
+    for readback in range(1, 3):
         assert (
             verify_lifecycle_research(
                 program=sealed, evidence=evidence, output_workspace=tmp_path / "output"
             )
             == "CURRENT"
         )
-        assert opened[path] == (seeded if os.name == "nt" else before_read + 1)
+        assert opened[path] == (seeded if kept_here else seeded + readback)
 
     before = path.stat()
     path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-    with pytest.raises(ValueError, match="frozen_input_content_invalid"):
+    with full_content_proof(), pytest.raises(ValueError, match="frozen_input_content_invalid"):
         workflow.replay(document, **actor)
     path.write_bytes(original)
     written.clear()
@@ -750,10 +845,10 @@ def test_formula_snapshot_roundtrip_is_bound_without_changing_legacy_shape(tmp_p
         replace(reopened, formula_values={"mom_252_21": source.close + 1}).require_unchanged_prefix(
             reopened
         )
-    path = store._path("current/frozen-observation-arrays", new.array_files[-1], "bin")
+    path = store._packed_source_path("frozen-observation-arrays", new.array_files[-1])
     payload = path.read_bytes()
     path.write_bytes(payload[:-1] + bytes([payload[-1] ^ 1]))
-    with pytest.raises(ValueError, match="frozen_input_content_invalid"):
+    with full_content_proof(), pytest.raises(ValueError, match="frozen_input_content_invalid"):
         store.load_frozen_observations(new.snapshot_hash)
 
 
@@ -802,7 +897,7 @@ def test_component_target_maturity_does_not_consume_unobserved_exits(method, hor
         )
 
 
-def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_path):
+def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_path, monkeypatch):
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AlphaModelLifecycleAdmission,
         renew_lifecycle_admission,
@@ -874,6 +969,7 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
     assert next_quarter.budget_binding == base.budget_binding
     assert next_quarter.maximum_fit_attempts == 0
     verify_lifecycle_successor(store, ancestor=base, successor=next_quarter)
+    _verify_captured_successors(store, tmp_path, snapshot, base, updated, next_quarter, monkeypatch)
     bad = type(updated).create(
         **{**updated.model_dump(exclude={"content_hash"}), "maximum_fit_attempts": 1}
     )
@@ -906,6 +1002,47 @@ def test_source_successor_keeps_old_period_and_cannot_reset_fit_permission(tmp_p
     )
     assert revised.budget_binding == base.budget_binding
     verify_lifecycle_successor(store, ancestor=base, successor=revised)
+
+
+def _verify_captured_successors(
+    store, workspace, snapshot, base, updated, next_quarter, monkeypatch
+):
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceScoreInput,
+    )
+    from alphalattice.control.product_host.composition.strategy_scoring import (
+        StrategyScoringApplication,
+    )
+    from alphalattice.kernel.identity import FileDigestTrust
+
+    owner = object.__new__(StrategyScoringApplication)
+    owner.session = SimpleNamespace(workspace=workspace)
+    owner.store = store
+    installed = store._path("current/lifecycle-admissions", base.content_hash, "json")
+    binding = ResearchWorkspaceScoreInput(
+        strategy_package_id="synthetic",
+        strategy_package_hash="d" * 64,
+        authority_relative_path=installed.relative_to(workspace).as_posix(),
+        authority_hash=base.content_hash,
+        source_kind="RECORDED_INPUT_SNAPSHOT",
+        observation_snapshot_hash=snapshot.snapshot_hash,
+    )
+    original = FileDigestTrust.identity
+    block = store._packed_source_path("frozen-observation-arrays", snapshot.array_files[0])
+    seen = []
+
+    def observe(path):
+        if path == block:
+            seen.append(path)
+        return original(path)
+
+    with monkeypatch.context() as fixture:
+        fixture.setattr(FileDigestTrust, "identity", staticmethod(observe))
+        captured = owner._captured_authorities(
+            ((binding, updated.content_hash), (binding, next_quarter.content_hash))
+        )
+    assert tuple(value.authority for value in captured) == (updated, next_quarter)
+    assert seen == [block]
 
 
 @pytest.mark.parametrize("temporal", (False, True))
@@ -963,12 +1100,12 @@ def test_score_dispatch_uses_captured_formation_membership(tmp_path, monkeypatch
 
 def test_context_history_uses_each_dates_reference_not_the_latest_roster(monkeypatch):
 
+    from alphalattice.capabilities.domain_contracts.spans import collect, readout
     from alphalattice.investment.alpha_research.inputs.panel_feature_views import (
         assemble_panel_context_arrays,
     )
     from alphalattice.investment.sector_research.inputs import surface
     from alphalattice.investment.sector_research.inputs.surface import compile_sector_context_arrays
-    from alphalattice.kernel.shared_kernel.spans import collect, readout
 
     days = tuple(date(2024, 1, 1) + timedelta(days=i) for i in range(300))
     ends = tuple(day + timedelta(days=1) for day in days)

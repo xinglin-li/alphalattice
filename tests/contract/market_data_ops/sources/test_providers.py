@@ -8,11 +8,13 @@ provider adds one row to its port's registry and inherits the whole suite.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -25,6 +27,7 @@ from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
 )
+from alphalattice.foundation.market_data_ops.sources.local_file import LocalFileMarketDataProvider
 from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     validate_split_adjusted_history,
 )
@@ -34,6 +37,7 @@ from alphalattice.foundation.market_data_ops.sources.providers import (
     SectorObservation,
     YFinanceMarketDataProvider,
 )
+from tests._support.market_research_laws import assert_provider_research_laws
 from tests.feature_engine.panel_workspace import FixtureProvider
 from tests.researcher_methodology_surface.real_workspace import SeededWalkProvider
 from tests.workspace_maintenance.bounded_provider_support import RecordingBoundedProvider
@@ -64,6 +68,7 @@ class Scenario:
     listing_id: str
     start: date
     end: date
+    reopen: Callable[[], Any] | None = None
 
 
 def _replayed_yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -77,6 +82,11 @@ def _replayed_yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(YfData, "get", replay.get)
     YfData().cache_get.cache_clear()
+    monkeypatch.setattr(
+        "alphalattice.foundation.market_data_ops.sources.providers.require_network",
+        lambda _source: None,
+        raising=False,
+    )
 
 
 def _yahoo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
@@ -91,6 +101,136 @@ def _bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scen
         tmp_path / "yahoo-cache", earliest_allowed=REPLAY_START, target=REPLAY_THROUGH
     )
     return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
+
+
+@pytest.mark.proves("egress.market_session_checks_native_requests")
+@pytest.mark.parametrize(
+    ("offline_operation", "proxied", "destination", "refusal", "sent"),
+    [
+        (
+            None,
+            False,
+            "query2.finance.yahoo.com",
+            None,
+            ["query1.finance.yahoo.com", "query2.finance.yahoo.com"],
+        ),
+        (
+            None,
+            True,
+            "query2.finance.yahoo.com",
+            None,
+            ["query1.finance.yahoo.com"],
+        ),
+        (None, False, "other.invalid", "egress.host_not_allowed", ["query1.finance.yahoo.com"]),
+        ("daily", False, "query2.finance.yahoo.com", "egress.network_disabled", []),
+        ("hydration", False, "query2.finance.yahoo.com", "egress.network_disabled", []),
+    ],
+    ids=[
+        "allowed-redirect",
+        "proxy-disabled",
+        "refused-redirect",
+        "disabled",
+        "disabled-hydration",
+    ],
+)
+def test_the_native_market_session_enforces_egress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    offline_operation: str | None,
+    proxied: bool,
+    destination: str,
+    refusal: str | None,
+    sent: list[str],
+) -> None:
+    """Exercise the SDK's native request options without opening a connection."""
+    from urllib.parse import urlsplit
+
+    from curl_cffi import Curl, CurlOpt
+    from yfinance import Ticker, _http
+    from yfinance.config import YfConfig
+
+    from alphalattice.kernel.egress import EgressRefusal
+
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1" if offline_operation else "0")
+    monkeypatch.setitem(
+        YfConfig.network.data, "proxy", "http://configured-proxy.invalid:8080" if proxied else None
+    )
+    if proxied:
+        monkeypatch.setenv("HTTPS_PROXY", "http://inherited-proxy.invalid:8080")
+    cache_root = tmp_path / "yahoo-cache"
+    reset_yfinance_cache(cache_root)
+    urls = []
+
+    def send(_session, method, url, *, timeout, allow_redirects, proxies=None):
+        del proxies
+        urls.append(url)
+        assert method == "GET" and timeout == 8 and allow_redirects is False
+        headers = {"location": f"https://{destination}/data"} if len(urls) == 1 else {}
+        return SimpleNamespace(
+            url=url, headers=headers, status_code=302 if headers else 200, close=lambda: None
+        )
+
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("This case reached the native network or SDK history")
+
+    class ConnectionReady(Exception):
+        """The real libcurl handle is configured and about to connect."""
+
+    if proxied:
+        options = {}
+        setopt = Curl.setopt
+
+        def remember(curl, option, value):
+            options[option] = value
+            return setopt(curl, option, value)
+
+        def stop_at_connect(_curl):
+            urls.append(options[CurlOpt.URL].decode())
+            assert options.get(CurlOpt.PROXY) == ""
+            assert options[CurlOpt.TIMEOUT_MS] == 8000
+            assert options[CurlOpt.FOLLOWLOCATION] == 0
+            raise ConnectionReady("direct connection configured")
+
+        monkeypatch.setattr(Curl, "setopt", remember)
+        monkeypatch.setattr(Curl, "perform", stop_at_connect)
+    else:
+        monkeypatch.setattr(Curl, "perform", unexpected)
+        monkeypatch.setattr(_http.requests.Session, "request", send)
+
+    provider = YFinanceMarketDataProvider(cache_root)
+    try:
+        if offline_operation:
+            monkeypatch.setattr(Ticker, "history", unexpected)
+            window = {"start": REPLAY_START, "end": REPLAY_START}
+            fetch = (
+                partial(provider.fetch_daily, ("AAPL",), **window)
+                if offline_operation == "daily"
+                else partial(
+                    provider.fetch_hydration,
+                    listing_id="listing-aapl",
+                    provider_symbol="AAPL",
+                    **window,
+                )
+            )
+            with pytest.raises(ProviderFetchError, match=r"egress\.network_disabled") as caught:
+                fetch()
+            assert caught.value.code == refusal
+        else:
+            session = provider._ticker(provider._module(), "AAPL").session
+            url = "https://query1.finance.yahoo.com/data"
+            if proxied:
+                with pytest.raises(ConnectionReady, match="direct connection configured"):
+                    session.get(url, timeout=8)
+            elif refusal is None:
+                assert session.get(url, timeout=8).status_code == 200
+            else:
+                with pytest.raises(EgressRefusal) as caught:
+                    session.get(url, timeout=8)
+                assert caught.value.failure_code == refusal
+    finally:
+        if provider._session is not None:
+            provider._session.close()
+    assert [urlsplit(url).hostname for url in urls] == sent
 
 
 def _seeded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
@@ -113,13 +253,49 @@ def _fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scen
     return FixtureProvider(("AAA", "BBB")), window
 
 
+def _local_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
+    del monkeypatch
+    folder = tmp_path / "market-bars"
+    folder.mkdir(exist_ok=True)
+    bars = [
+        {
+            "session_date": session.isoformat(),
+            "open": 10,
+            "high": 12,
+            "low": 9,
+            "close": 11,
+            "volume": 1000,
+            "split_ratio": 0,
+            "cash_dividend": 0.25 if session == date(2026, 1, 15) else 0,
+            "capital_gain": 0,
+            "adjusted_close": 10.75,
+        }
+        for session in SESSIONS
+    ]
+    path = folder / "AAA.json"
+    capture = json.dumps(
+        {"schema": "alphalattice.market-bars.v1", "provider": "yfinance", "bars": bars}
+    ).encode("utf-8")
+    path.write_bytes(capture)
+
+    def reopen():
+        assert path.read_bytes() == capture, "reading the file provider changed its input"
+        return LocalFileMarketDataProvider(folder.resolve(), name="yfinance")
+
+    return reopen(), Scenario(
+        ("AAA",), "listing-aaa", date(2026, 1, 12), date(2026, 2, 6), reopen=reopen
+    )
+
+
 def _yahoo_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Scenario]:
     """The adapter's normalisation of Yahoo's info object, its runtime module stood in for."""
     del monkeypatch
     provider = YFinanceMarketDataProvider(tmp_path / "yahoo-cache")
     info = {"AAPL": {"sector": " Technology ", "sectorKey": "technology"}}
     provider._runtime_module = SimpleNamespace(
-        Ticker=lambda symbol: SimpleNamespace(get_info=lambda: dict(info.get(symbol, {})))
+        Ticker=lambda symbol, *, session: SimpleNamespace(
+            get_info=lambda: dict(info.get(symbol, {}))
+        )
     )
     return provider, Scenario(("AAPL",), "listing-aapl", date(2026, 1, 5), date(2026, 1, 30))
 
@@ -127,6 +303,7 @@ def _yahoo_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, S
 Factory = Callable[[Path, pytest.MonkeyPatch], tuple[Any, Scenario]]
 DAILY: dict[str, Factory] = {
     "yfinance": _yahoo,
+    "local-file": _local_file,
     "bounded-yfinance": _bounded,
     "seeded-walk": _seeded,
     "recording": _recording,
@@ -210,6 +387,24 @@ def test_every_daily_provider_answers_in_the_ports_shape(tmp_path, monkeypatch, 
     for read in (provider.fetch_action_history, provider.fetch_adjusted_close_history):
         with pytest.raises(ValueError, match="start is after end"):
             read(listing_id=window.listing_id, provider_symbol=first, **backwards)
+
+
+@pytest.mark.proves("market_data_ops.daily_provider_research_laws")
+@pytest.mark.parametrize("implementation", DAILY, ids=tuple(DAILY))
+def test_every_daily_provider_supplies_replayable_point_in_time_bars(
+    tmp_path, monkeypatch, implementation
+):
+    """A provider includes its cutoff session and reopens the same evidence."""
+    provider, window = DAILY[implementation](tmp_path, monkeypatch)
+    symbol = window.symbols[0]
+    whole = provider.fetch_daily((symbol,), start=window.start, end=window.end)[symbol]
+    bar = next(row for row in whole[:-1] if row["close"] is not None)
+    cutoff = date.fromisoformat(str(bar["session_date"]))
+    request = dict(start=window.start, end=cutoff)
+    held = provider.fetch_daily((symbol,), **request)[symbol]
+    reopened = window.reopen() if window.reopen else DAILY[implementation](tmp_path, monkeypatch)[0]
+    replay = reopened.fetch_daily((symbol,), **request)[symbol]
+    assert_provider_research_laws(whole, cutoff, held, replay)
 
 
 @pytest.mark.proves("market_data_ops.hydration_provider_conformance")

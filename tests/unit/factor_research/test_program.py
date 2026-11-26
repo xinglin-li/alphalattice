@@ -8,7 +8,7 @@ import pyarrow as pa
 import pytest
 
 from tests.factor_research_pipeline_correctness.case_program import (
-    _execute_case_program,
+    _case_program_inputs,
     _FeatureReader,
     _OutcomeReader,
 )
@@ -30,16 +30,18 @@ def test_program_uses_dated_members_not_all_covered_outcomes_for_sample_coverage
         execute_factor_research_program,
     )
 
-    case = _execute_case_program()
+    case = _case_program_inputs()
     boundary = case.sessions[8]
     early_members = set(case.listings[:100])
-    rows = [
-        {**row, "unused_volume_feature": None}
-        for row in case.feature_reader._table.to_pylist()
-        if row["session_date"] >= boundary or row["listing_id"] in early_members
-    ]
+    dated_members = pa.Table.from_pylist(
+        [
+            {**row, "unused_volume_feature": None}
+            for row in case.feature_reader._table.to_pylist()
+            if row["session_date"] >= boundary or row["listing_id"] in early_members
+        ]
+    )
     manifest = {
-        "snapshot_hash": case.result.program.feature_panel_snapshot_hash,
+        "snapshot_hash": case.program.feature_panel_snapshot_hash,
         "safe_summary": {
             "factor_catalog_summary": {name: {} for name in case.factor_ids},
             "membership": {
@@ -60,17 +62,17 @@ def test_program_uses_dated_members_not_all_covered_outcomes_for_sample_coverage
     }
     outcome = _OutcomeReader(case.outcome_reader._manifest, case.outcome_reader._table)
     result = execute_factor_research_program(
-        program=case.result.program,
+        program=case.program,
         panel_manifest=manifest,
-        feature_reader=_FeatureReader(case.sessions, pa.Table.from_pylist(rows)),
+        feature_reader=_FeatureReader(case.sessions, dated_members),
         outcome_reader=outcome,
     )
     assert result.feature_row_count < result.target_row_count
     assert all(item.validation_pair_coverage_mean == 1.0 for item in result.evidence_report.items)
     with pytest.raises(FactorResearchProgramBoundaryError, match="program_member_rows_missing"):
         execute_factor_research_program(
-            program=case.result.program,
+            program=case.program,
             panel_manifest=manifest,
-            feature_reader=_FeatureReader(case.sessions, pa.Table.from_pylist(rows[1:])),
+            feature_reader=_FeatureReader(case.sessions, dated_members.slice(1)),
             outcome_reader=outcome,
         )

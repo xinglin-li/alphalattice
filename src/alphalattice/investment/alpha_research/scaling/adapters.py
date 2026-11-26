@@ -15,7 +15,7 @@ from typing import Protocol
 
 import numpy as np
 
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.domain_contracts.source_identity import (
     switched_source_identity,
 )
 

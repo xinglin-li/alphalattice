@@ -239,9 +239,19 @@ const Settings = (() => {
   let upgrade = {value: null, refused: '', read: false, sending: false};
   async function readUpgrade(again = false) {
     if (upgrade.read && !again) return; upgrade.read = true;
+    const was = upgrade.value?.first_start;
     try { upgrade = {...upgrade, value: await Data.readShared('/api/upgrade'), refused: ''}; }
     catch (e) { upgrade = {...upgrade, refused: String(e?.message || e)}; }
-    finally { repaint(); }
+    finally { repaint(); followFirstStart(was); }
+  }
+  /* While the first start runs, its progress is read again each FIRST_START_FOLLOW; once the answer has no
+   * first start, the Host composed in full on the same socket and session, and the Workbench loads it. */
+  const FIRST_START_FOLLOW = 2000; // ms
+  function followFirstStart(was) {
+    const first = upgrade.value?.first_start;
+    if (was && !first && !upgrade.refused) return void location.replace(location.pathname + location.search);
+    if (upgrade.follow) clearTimeout(upgrade.follow);
+    if (first?.state === 'RUNNING' && typeof setTimeout === 'function') upgrade.follow = setTimeout(() => void readUpgrade(true), FIRST_START_FOLLOW);
   }
   async function acknowledge() {
     const hash = upgrade.value?.next_requests?.acknowledge?.upgrade_set_hash;
@@ -252,7 +262,7 @@ const Settings = (() => {
       notify('Upgrade acknowledged'); // notify says its English source through t()
       void Data.refreshDecisions().then(repaint); // Home's decision leaves with the Host's next answer
     } catch (e) { upgrade = {...upgrade, refused: String(e?.message || e)}; }
-    finally { upgrade.sending = false; repaint(); }
+    finally { upgrade.sending = false; repaint(); followFirstStart(null); }
   }
   const UPGRADE_MARKS = {CHANGED: ['historical', 'Changed'], INTEGRITY_FAILED: ['failed', 'Did not verify'], UNREADABLE: ['failed', 'Does not read'], CHANGED_SINCE_ADMISSION: ['blocked', 'Cannot resume'], RESUMABLE: ['ready', 'Resumes']};
   const upgradeMark = (state) => UPGRADE_MARKS[state] ? badge(UPGRADE_MARKS[state][0], t(UPGRADE_MARKS[state][1])) : badge('metadata', codeWords(state));
@@ -263,13 +273,30 @@ const Settings = (() => {
   }
   const REVIEW_WHY = {CHANGED: 'Sealed under an earlier Evidence binding or review policy; it reads back as recorded, and its book can be reviewed again.', UNREADABLE: 'Its analyses do not verify under any Evidence binding this build reads, so it does not read back here.'};
   const upgradeGroup = (title, rows) => rows.length ? html`${groupHead(title, rows.length)}<div class="card-list lines slotted">${rows}</div>` : '';
+  /* The first 0.2.8 start's plan, read before it is acknowledged: each old workspace, each declared family
+   * with its progress, and each backup the Host keeps (an existing verified generation) or writes (its
+   * repository, about how much, and the space left after). Its refusal says why nothing moves. */
+  const FAMILY_MARKS = {done: ['verified', 'Done'], failed: ['failed', 'Stopped'], waiting: ['metadata', 'Waiting']};
+  const FAMILY_WORDS = {'execution-outcomes': 'upgrade.first_start.family.execution_outcomes'}; // a family this release declares; another says its name
+  const folder = (path) => String(path || '').split(/[/\\]/).filter(Boolean).pop() || String(path || ''); // the row names the folder; its why holds the whole path
+  function firstStartBody(f) {
+    const done = new Set(f.families_done || []);
+    const family = (name) => { const [tone, word] = FAMILY_MARKS[done.has(name) ? 'done' : f.family_failed === name ? 'failed' : 'waiting']; return objectRow({lead: tile('task', 'neutral'), name: FAMILY_WORDS[name] ? t(FAMILY_WORDS[name]) : name, why: ''}, {key: 'family:' + name, props: [badge(tone, t(word))]}); };
+    const backup = (b) => objectRow({lead: tile('file', 'neutral'), name: b.kind === 'machine' ? t('upgrade.first_start.machine_backup') : folder(b.workspace), why: b.generation ? t('upgrade.first_start.backup_kept', {generation: b.generation}) : t('upgrade.first_start.backup_written', {repository: b.repository, size: bytesWords(b.bytes), free: bytesWords(b.free_after)})}, {key: 'backup:' + (b.workspace || 'machine')});
+    const workspaces = (f.workspaces || []).map((w) => objectRow({lead: tile('file', 'neutral'), name: folder(w), why: w}, {key: 'workspace:' + w}));
+    const stopped = f.refusal ? noteLine(t('upgrade.first_start.not_moving'), f.refusal, 'warning') : '';
+    return html`${stopped}${upgradeGroup(t('upgrade.first_start.workspaces'), workspaces)}${upgradeGroup(t('upgrade.first_start.families'), (f.families || []).map(family))}${upgradeGroup(t('Backups'), (f.backups || []).map(backup))}`;
+  }
+  const FIRST_START_STATES = {RUNNING: ['running', 'upgrade.first_start.running'], FAILED: ['failed', 'Stopped'], COMPLETED: ['verified', 'upgrade.first_start.completed']};
   function upgradePage() {
     if (!upgrade.read && typeof queueMicrotask === 'function') queueMicrotask(() => void readUpgrade());
-    const v = upgrade.value, lede = t('Each saved study, published review and waiting Task as it stands under the installed code. Reading this runs nothing.');
+    const v = upgrade.value, first = v?.first_start;
+    const lede = first ? t('upgrade.first_start.lede') : t('Each saved study, published review and waiting Task as it stands under the installed code. Reading this runs nothing.');
     const refused = upgrade.refused ? notRead(t('Upgrade overview needs attention'), upgrade.refused, '', btn(t('Read again'), 'upgrade-read', '', 'button compact')) : '';
     if (!v) return html`${objectHead(t('Upgrade'), html`<p class="lede">${lede}</p>`)}${refused || skeleton('rows')}`;
     const ack = v.acknowledged, current = ack && ack.set_hash === v.installed?.set_hash;
-    const state = current ? stateLine('verified', {word: html`${t('Acknowledged')} ${when(ack.acknowledged_at)}`}) : v.show ? stateLine('review_pending', {word: t('Not acknowledged')}) : '';
+    const moving = first && FIRST_START_STATES[first.state];
+    const state = moving ? stateLine(moving[0], {word: t(moving[1])}) : current ? stateLine('verified', {word: html`${t('Acknowledged')} ${when(ack.acknowledged_at)}`}) : v.show ? stateLine('review_pending', {word: t('Not acknowledged')}) : '';
     const primary = v.show && v.next_requests?.acknowledge ? btn(t(upgrade.sending ? 'Acknowledging' : 'Acknowledge'), 'upgrade-acknowledge', '', 'button primary') : '';
     const studies = (v.studies || []).filter((x) => x.state !== 'CURRENT').map((x) => objectRow({lead: tile('lab', 'warning'), name: LiveViews.nameOf({task_id: x.task_id, task_kind: 'research_experiment'}).name, why: studyWhy(x), to: {action: 'task-result', value: x.task_id}}, {key: 'study:' + x.task_id, props: [upgradeMark(x.state)]}));
     const reviews = (v.reviews || []).filter((x) => x.state !== 'CURRENT').map((x) => objectRow({lead: tile('review', 'warning'), name: html`${t('Review')}${x.published_at ? html` · ${when(x.published_at)}` : ''}`, why: t(REVIEW_WHY[x.state] || ''), to: LiveViews.reviewWay(x.review_publication_hash, null)}, {key: 'review:' + x.review_publication_hash, props: [upgradeMark(x.state)]}));
@@ -278,6 +305,7 @@ const Settings = (() => {
     const taskRefusals = (v.refusals || []).map(r=>refusal(r,'warning',{catalog:true,more:html`<p>${t('Task')} ${hashCell(r.task_id)}</p>`,next:prerequisiteWays(r.next_requests)}));
     const none = !studies.length && !reviews.length && !tasks.length;
     const body = none ? taskRefusals.length ? '' : emptyState(t('Every saved study, review and waiting Task stands as it did.'), '', 'page-empty') : html`${upgradeGroup(t('Studies'), studies)}${upgradeGroup(t('Reviews'), reviews)}${upgradeGroup(t('Waiting Tasks'), tasks)}`;
+    if (first) return html`${objectHead(t('Upgrade'), html`<p class="lede">${lede}</p>`, primary, state)}${refused}<section class="home-groups" aria-label="${t('Upgrade')}">${firstStartBody(first)}</section>`;
     return html`${objectHead(t('Upgrade'), html`<p class="lede">${lede}</p>`, primary, state)}${refused}${unread}${taskRefusals}<section class="home-groups" aria-label="${t('Upgrade')}">${body}</section>${codeRef(t('Installed identities (JSON)'), v.installed || {})}`;
   }
   function page() {

@@ -62,9 +62,35 @@ def _admitted_kinds(owner: type) -> set[str]:
     return kinds
 
 
+def _composed_owner_hints() -> dict[str, object]:
+    """Resolve the owning module's declared types, including its typing-only imports."""
+    module = inspect.getmodule(PortfolioResearchOperations)
+    assert module is not None
+    namespace = vars(module).copy()
+    names = {
+        node.id
+        for annotation in PortfolioResearchOperations.__annotations__.values()
+        for node in ast.walk(ast.parse(annotation, mode="eval"))
+        if isinstance(node, ast.Name)
+    }
+    for block in ast.parse(inspect.getsource(module)).body:
+        if not isinstance(block, ast.If) or ast.unparse(block.test) != "TYPE_CHECKING":
+            continue
+        for declaration in block.body:
+            assert isinstance(declaration, ast.ImportFrom) and declaration.module is not None
+            for alias in declaration.names:
+                name = alias.asname or alias.name
+                if name in names:
+                    imported = importlib.import_module(
+                        "." * declaration.level + declaration.module, module.__package__
+                    )
+                    namespace[name] = getattr(imported, alias.name)
+    return get_type_hints(PortfolioResearchOperations, globalns=namespace)
+
+
 def test_every_composed_task_input_kind_reaches_recovery(plan_admission_check) -> None:
     operations = object.__new__(PortfolioResearchOperations)
-    hints = get_type_hints(PortfolioResearchOperations)
+    hints = _composed_owner_hints()
     declarations = {}
     admissions = set()
     for item in fields(PortfolioResearchOperations):

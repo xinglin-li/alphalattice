@@ -8,7 +8,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),asse
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_daily');
 // the shared percentage and reading helpers as components.js defines them (by their markers)
-const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
+const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes:');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 const percentRule=(root)=>library.readingSource(root);
 const root=process.argv[2],reads=[],posts=[],tasks=[],drafts=[],renders=[],patches=[],prefs={},factBodies=new Map();
 const UPDATE='475fbace-48a9-48d5-9613-7192c8b87c64', EARLIER='23ab76b8-3671-4d6c-b752-6a480a876930', CAPTURE='4be453ef-0deb-45be-92ae-9f2503554587';
@@ -40,8 +40,8 @@ const bodies={
   '/api/workspace/data-issues/preview':{status:'CONFIRMATION_REQUIRED',confirmation:'HUMAN',case_token:'701f330072b97351',option:{option_id:'recoverable_quarantine',disposition:'auto',policy_args:{action:'quarantine_listing',recheck_after_at:'2026-08-04T23:00:45Z'}},next_action:'DATA_ISSUE_CONFIRM',effect_applied:false,
     next_requests:{confirm:{operation:'DATA_ISSUE_CONFIRM',data_issue_case_token:'701f330072b97351',data_issue_evidence_hash:'1587504c',data_issue_option_id:'recoverable_quarantine',data_issue_option_hash:'h2'}}},
   '/api/workspace/data-issues/confirm':{status:'CONFIRMED_PENDING_REVALIDATION',receipt_hash:'326dfabe18',case_token:'701f330072b97351',next_action:'RESUME_APPROVED_WORK',continuations:[]},
-  '/api/workspace/storage':{status:'AVAILABLE',inputs:[{binding_hash:OLD,panel_snapshot_hash:'36b5d3db',roots:['CURRENT_ACTIVE','PREVIOUS_ROLLBACK'],logical_bytes:388626012,available:true},{binding_hash:NEW,panel_snapshot_hash:'cc93b42d',roots:['CURRENT_RESEARCH_VERSION'],logical_bytes:424073272,available:true}],managed_bytes:1318904021,logical_bytes:2272589016,by_root:{ARTIFACTS:{physical_bytes:343704636,logical_bytes:486467068,files:337},IMMUTABLE_INPUTS:{physical_bytes:686529110,logical_bytes:1497451673,files:101},PROVIDER_CACHE:{physical_bytes:0,logical_bytes:0,files:0},RESEARCH_EXPERIMENTS:{physical_bytes:0,logical_bytes:0,files:0},STAGING:{physical_bytes:37443,logical_bytes:37443,files:1},WORKING_DATABASE:{physical_bytes:288632832,logical_bytes:288632832,files:1}},free_disk_bytes:5518340751360,capacity_status:'WITHIN_BUDGET',display:{managed:'1.23 GiB (1,318,904,021 bytes)',free:'5,139.36 GiB (5,518,340,751,360 bytes)',logical:'2.12 GiB (2,272,589,016 bytes)',cap:'10.00 GiB (10,737,418,240 bytes)'},budget:{managed_cap_bytes:10737418240},references_hash:'h',pending_cleanup:[]},
-  '/api/workspace/storage/plan':{status:'CONFIRMATION_REQUIRED',plan_hash:'77f93a79b4e3bd10',targets:{},bindings:[],retained_bytes:1318904021,reclaimable_bytes:0,limitations:['CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY','REPLAY_REQUIRES_RETAINED_INPUTS']},
+  '/api/workspace/storage':{status:'AVAILABLE',managed_bytes:1318904021,logical_bytes:2272589016,by_root:{ARTIFACTS:{physical_bytes:343704636,logical_bytes:486467068,files:337},IMMUTABLE_INPUTS:{physical_bytes:686529110,logical_bytes:1497451673,files:101},PROVIDER_CACHE:{physical_bytes:0,logical_bytes:0,files:0},RESEARCH_EXPERIMENTS:{physical_bytes:0,logical_bytes:0,files:0},STAGING:{physical_bytes:37443,logical_bytes:37443,files:1},WORKING_DATABASE:{physical_bytes:288632832,logical_bytes:288632832,files:1}},free_disk_bytes:5518340751360,capacity_status:'WITHIN_BUDGET',display:{managed:'1.23 GiB (1,318,904,021 bytes)',free:'5,139.36 GiB (5,518,340,751,360 bytes)',logical:'2.12 GiB (2,272,589,016 bytes)',cap:'10.00 GiB (10,737,418,240 bytes)'},budget:{managed_cap_bytes:10737418240},references_hash:'h',pending_cleanup:[]},
+  '/api/workspace/storage/plan':{status:'CONFIRMATION_REQUIRED',plan_hash:'77f93a79b4e3bd10',targets:{},retained_bytes:1318904021,reclaimable_bytes:0,limitations:['CLASSIFIED_INPUT_AND_PANEL_OUTCOME_SNAPSHOTS_ONLY','REPLAY_REQUIRES_RETAINED_INPUTS']},
   '/api/workspace/storage/confirm':{status:'COMPLETED',deleted_paths:1,plan_hash:'77f93a79b4e3bd10'},'/api/workspace/storage/pin':{status:'PINNED',binding_hash:OLD},
 };
 const views={};
@@ -73,7 +73,7 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   // ---- the data page before any update: four cutoffs kept apart, the way in, nothing posted ----
   c.Data.setInputs(bodies['/api/research-inputs']);
   await w.refresh('data');let markup=w.page();
-  // N6: the Data overview -- the owners' figures, each opening its page (the as-of the update's, the listings the membership's)
+  // the Data overview -- the owners' figures, each opening its page (the as-of the update's, the listings the membership's)
   assert.ok(markup.includes('FIG(As of:2026-07-31') && markup.includes('FIG(Listings:120>facts-open)') && !markup.includes('FIG(Input versions') && !markup.includes('>issues)') && !markup.includes('>storage)'),'the strip says the data\'s own facts; the versions and the storage are the other tabs (N5): '+markup.slice(0,400));
   assert.ok(markup.includes('EMPTY(No update recorded yet)BTN(Preview update:workspace-preview:update:)'),'the returning user sees the one explicit way in, in the empty list\'s place');
   assert.equal(posts.length,0,'reading the data page posts nothing');assert.equal(c.app.data,'2026-07-31');
@@ -111,8 +111,18 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   views[UPDATE]=view(UPDATE,'RUNNING','maintain_data_feature');projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'RUNNING',verified_stage_count:1}];await w.refresh('data');
   // ---- completed: what changed and what was reused, in the owner's receipt; exact reuse afterwards ----
   bodies.byTask[UPDATE]={...bodies.byTask[UPDATE],status:'PUBLISHED',task_lifecycle:'SUCCEEDED',inputs:inputs('2026-08-03','2026-08-03'),receipt,partition_reuse:{composed_partition_count:1,reused_partition_count:10,source:'RECEIPT_PANEL',panel_hash:'cc93b42d'},cycle:cycle('completed','completed',{change_set:changeSet}),maintenance:maintenance(120),work_progress:{availability:'NOT_CURRENT',stage:'maintain_data_feature',stage_id:'panel_year_finalize',status:'SUCCEEDED',completed_units:11,total_units:11,unit_name:'years',age_seconds:40}};
+  bodies.byTask[UPDATE].daily_health={task_id:UPDATE,target_session:'2026-08-03',checks:[
+    {id:'source_freshness',status:'PASS',count:0},
+    {id:'not_null',status:'FAIL',count:2},
+    {id:'unique',status:'PASS',count:0},
+    {id:'accepted_values',status:'UNAVAILABLE',count:null},
+    {id:'relationships',status:'PASS',count:0}
+  ]};
   views[UPDATE]=view(UPDATE,'SUCCEEDED',null);projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'SUCCEEDED',verified_stage_count:3}];
   w.observe();await settle();markup=w.page();
+  assert.ok(markup.includes('ROW(data.health.source_freshness|<code>source_freshness</code>|data.health.passed|0)'));
+  assert.ok(markup.includes('ROW(data.health.not_null|<code>not_null</code>|Failed|2)'));
+  assert.ok(markup.includes('ROW(data.health.accepted_values|<code>accepted_values</code>|Unavailable|—)'));
   assert.ok(markup.includes('2026-07-31 → 2026-08-03') && markup.includes('<p class="data-update-counts">') && !markup.includes('Listings in the last update') && markup.includes('FIG(As of:2026-08-03') && !markup.includes('data-scene="update"'),'the completed update is its row -- the change it made -- with the runner counts under it, no separate figure; its work is folded (N6, laws 72, 98; the user, 2026-09-24)');
   assert.equal(c.app.data,'2026-08-03','the shell\'s data cutoff follows the readback');
   const caught=reads.length;w.observe();await settle();assert.equal(reads.length,caught,'once the readback carries the receipt nothing more is read');
@@ -122,7 +132,7 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   assert.ok(w.page().includes('Nothing to update: the workspace already holds 2026-08-03') && w.page().includes('no Task was started and nothing was downloaded'),'exact reuse is said as reuse, never as a rebuild');
   assert.equal(c.location.hash,'#page=data&update='+UPDATE,'the route keeps the Task it showed');
   // ---- the shared area across scenes: the update's rows, fold and held reading survive a preparation scene and come back whole ----
-  views[UPDATE]=view(UPDATE,'RUNNING','publish_update_receipt');projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'RUNNING',verified_stage_count:2}];await w.refresh('data'); // N6: a settled update's work is folded; the area is read while it runs (its last stage, so inspecting maintenance holds it)
+  views[UPDATE]=view(UPDATE,'RUNNING','publish_update_receipt');projections=[{task_id:UPDATE,task_kind:'workspace_data_update',lifecycle:'RUNNING',verified_stage_count:2}];await w.refresh('data'); // a settled update's work is folded; the area is read while it runs (its last stage, so inspecting maintenance holds it)
   w.inspect('maintain_data_feature');w.follow();markup=w.page();
   assert.ok(w.area().rows===120 && w.area().follow===false && markup.includes('data-listing-key="l119"'),'the update shows its retained rows with the reading held');
   const PREP='b2d7c0a1-1111-4222-8333-944444444444';
@@ -186,7 +196,7 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   const cont=posts.length;bodies['/api/data-update/run']={status:'ADMITTED',task_id:EARLIER,lifecycle:'RECOVERY_REQUIRED',failure_code:null};
   await w.preview('continue-update');assert.ok(modal.title==='Continue this data update' && modal.content.includes('Why it stopped=A data decision is needed'));await w.commit();
   assert.deepEqual(posts.slice(cont),[['/api/data-update/run',{update_plan_hash:'8fba411d'}]]);assert.equal(c.location.hash,'#page=data&update='+EARLIER);
-  // U63 (V375): an update the provider deferred says why in the owner's words, when it resumes, and Resume is the owner's
+  // an update the provider deferred says why in the owner's words, when it resumes, and Resume is the owner's
   // own request, held until its time
   const held=' The published research inputs are unchanged, and every study keeps reading them.';
   const said='The market data provider limited the requests or did not answer, which is the provider\'s state, not the workspace\'s. Every listing already fetched is kept and the work resumes from them: send the same plan again once `retry_after_at` has passed.';
@@ -213,7 +223,7 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   // F2 (law 136): the lobby -- one row an issue under its lifecycle's group: the listing and its kind, the move as a figure, its session; no card, no tabs
   assert.ok(markup.includes('data-lobby="issues"') && markup.includes('<span>Your decision is asked</span><b class="num">1</b>') && markup.includes('ROW(QD000 · Unexplained move|<span class="num">+99.54%</span>|2026-08-03)') && !markup.includes('STAT(') && !markup.includes('TABS('),'the lobby lists the case as one row: '+markup);
   c.location.hash='#page=issues&issue=701f330072b97351';markup=w.page(); // the row opens the issue's own page
-  // N6: the case read as an issue -- the move as figures, the owner's checks in words, the permitted responses in words, the owner's own actions apart
+  // the case read as an issue -- the move as figures, the owner's checks in words, the permitted responses in words, the owner's own actions apart
   assert.ok(markup.includes('H1:QD000 · Unexplained move|') && markup.includes('BADGE(review_pending:Your decision is asked)') && markup.includes('FACT(Move session=2026-08-03)') && markup.includes('ID(701f330072b97351)') && !markup.includes('Properties') && markup.includes('STAT(Close on 2026-07-31:146.17:)') && markup.includes('STAT(Close on 2026-08-03:291.67:)') && markup.includes('STAT(Move:+99.54%:)') && markup.includes('no corporate action explains it') && markup.includes('listing identity verified') && !markup.replace(/<template>[\s\S]*?<\/template>/g,'').includes('UNEXPLAINED_RAW_MOVE'),'the case is said in the owner\'s evidence: the move as figures, no code on the face');
   assert.ok(markup.includes('Quarantine the listing until it requalifies') && markup.includes('recheck after') && !markup.includes('value="bounded_full_history_retry"') && markup.includes('The data owner\'s own actions') && markup.includes('Retry the primary source with a bounded full history') && markup.includes('BTN(Preview decision:workspace-issue:701f330072b97351:Choose a permitted response)'),'only the confirmable responses are choices; the owner\'s own actions are listed apart');
   assert.ok(!markup.includes('BTN(Continue this Task'),'no continuation is offered before the case is decided (N6)');
@@ -283,44 +293,14 @@ const settle=(ms=20)=>new Promise(r=>setTimeout(r,ms));
   assert.ok(rootRow('Working database')>=0 && rootRow('Working database')<rootRow('Immutable input versions') && rootRow('Immutable input versions')<rootRow('Feature and outcome artifacts'),'the roots in the order the owner lists them');
   const working=markup.slice(rootRow('Working database'),rootRow('Immutable input versions'));
   assert.ok(working.includes('the DuckDB store the update owner maintains in place; not research input') && working.includes('275 <span class="num-unit">MiB</span>') && !working.includes('text-cell'),'a root says what it holds in its (i), then its bytes: '+working.slice(0,400));
-  assert.ok(markup.includes('ROW(2016-08-01 — 2026-07-31|<p>Kept because</p><p>configured default · previous version (rollback)</p>|371 <span class="num-unit">MiB</span>|BTN(Retain input:workspace-pin:'+OLD+':)') && markup.includes('<p>Kept because</p><p>latest published version</p>|404 <span class="num-unit">MiB</span>'),'every retained version, named by its sessions as Research inputs names it, says why it is kept (present is the usual state, not a fact to repeat)');
-  // V634: the owner's complete root set, on both readbacks and in both languages.
-  const storageBefore=bodies['/api/workspace/storage'], originalWords=c.t, words=library.words(root);
-  const retentionRoots=library.codes().retention_roots || [...new Set([...fs.readFileSync(path.join(root,'../../../../../../control/product_host/storage/input_references.py'),'utf8').matchAll(/roots\[[^\n]+\]\.add\("([^"\n]+)"\)/g)].map(m=>m[1]))];
-  assert.ok(retentionRoots.length,'the owner supplied retention roots');
-  const reasonText={};
-  for(const lang of ['en','zh']) {
-    words.I18N.set(lang); c.t=words.t;
-    for(const reason of retentionRoots) {
-      bodies['/api/workspace/storage']={...storageBefore,inputs:[{...storageBefore.inputs[0],roots:[reason]}]};
-      c.app.page='storage';c.location.hash='#page=storage';await w.refresh('storage');
-      const store=w.page(), row=store.slice(store.indexOf('ROW(2016-08-01'),store.indexOf('BTN(',store.indexOf('ROW(2016-08-01')));
-      const retainedReason=(factBodies.get(words.t('Kept because')) || '').replace(/<[^>]+>/g,'');
-      assert.ok(retainedReason && !retainedReason.includes(reason),lang+' retention Facts name the root without leaking its code: '+reason);
-      assert.ok(!row.includes(reason),lang+' retention sentence leaked '+reason);
-      assert.ok(store.includes(reason),'exact inventory retains '+reason);
-      c.app.page='inputs';c.location.hash='#page=inputs&version='+OLD;await w.refresh('inputs');
-      const version=w.page();
-      assert.ok(!version.includes(reason),lang+' input version leaked '+reason);
-      if(lang==='en') reasonText[reason]=retainedReason;
-      else {
-        assert.notEqual(retainedReason,reasonText[reason],'the retained reason has an actual Chinese reading: '+reason);
-        assert.ok(!words.I18N.untranslated().includes(reasonText[reason]),'missing retention phrase '+reasonText[reason]);
-      }
-      if(reason==='MODEL_TRAINING_SOURCE') assert.ok(store.includes(lang==='zh'?'为模型训练保留':'retained for model training'));
-    }
-  }
-  c.t=originalWords;c.app.page='storage';c.location.hash='#page=storage';bodies['/api/workspace/storage']=storageBefore;await w.refresh('storage');
   const clean=posts.length;await w.preview('cleanup');assert.equal(posts.length,clean+1);assert.ok(w.page().includes('No eligible files to clean. Nothing was removed.') && w.page().includes('Reclaimable=0 <span class="num-unit">B</span>') && w.page().includes('Retained=1.23 <span class="num-unit">GiB</span>'),'a cleanup with nothing eligible removes nothing and says so');
-  bodies['/api/workspace/storage/plan']={...bodies['/api/workspace/storage/plan'],targets:{'research-inputs/aaa/source/data.parquet':'d1','research-inputs/parquet/d1.parquet':'d1'},bindings:['aaa'],reclaimable_bytes:1024*1024*7};
-  await w.preview('cleanup');assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Files selected for cleanup=2') && modal.content.includes('Reclaimable=7.00 <span class="num-unit">MiB</span>') && modal.content.includes('research-inputs/aaa/source/data.parquet'),'the exact targets are named before any confirmation');
+  bodies['/api/workspace/storage/plan']={...bodies['/api/workspace/storage/plan'],targets:{'artifacts/feature-panel/chunks/aaa.parquet':'d1','artifacts/feature-panel/chunks/bbb.parquet':'d2'},reclaimable_bytes:1024*1024*7};
+  await w.preview('cleanup');assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Files selected for cleanup=2') && modal.content.includes('Reclaimable=7.00 <span class="num-unit">MiB</span>') && modal.content.includes('artifacts/feature-panel/chunks/aaa.parquet'),'the exact targets are named before any confirmation');
   const wipe=posts.length;await w.commit();assert.deepEqual(posts.slice(wipe),[['/api/workspace/storage/confirm',{storage_plan_hash:'77f93a79b4e3bd10'}]]);
   assert.ok(w.page().includes('Cleanup completed: 1 file path released. Every retained version and the working database are as they were.'),'the cleanup says what it released, in the owner\'s count');
-  await w.preview('pin',OLD);assert.ok(modal.title==='Confirm input retention change' && modal.content.includes('Pin this version'));const pin=posts.length;await w.commit();assert.deepEqual(posts.slice(pin),[['/api/workspace/storage/pin',{input_binding_hash:OLD,input_pinned:true}]]);
-  assert.ok(w.page().includes('Version 65451da2923a is retained until you unpin it.'),'a pin is said as retention until lifted');
-  // U44 (V208): a plan whose only change links the retained model copy to the machine's store is confirmable,
+  // a plan whose only change links the retained model copy to the machine's store is confirmable,
   // names the copy and its bytes before the confirmation, and the confirmation says it was linked
-  bodies['/api/workspace/storage/plan']={status:'CONFIRMATION_REQUIRED',plan_hash:'relinkplan',targets:{},bindings:[],retained_bytes:1024,reclaimable_bytes:4096,relinks:{'evidence-cro-authority/semantic-model':4096},limitations:['A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES']};
+  bodies['/api/workspace/storage/plan']={status:'CONFIRMATION_REQUIRED',plan_hash:'relinkplan',targets:{},retained_bytes:1024,reclaimable_bytes:4096,relinks:{'evidence-cro-authority/semantic-model':4096},limitations:['A_RETAINED_RETRIEVAL_MODEL_COPY_LINKS_TO_THE_MODEL_STORE_IT_MATCHES']};
   await w.preview('cleanup');
   assert.ok(modal.title==='Confirm displayed cleanup' && modal.content.includes('Linked to the model store') && modal.content.includes('evidence-cro-authority/semantic-model') && !w.page().includes('No eligible files to clean'),'a relink alone is a plan to confirm: '+modal.content.slice(0,400));
   assert.ok(modal.content.includes('becomes links to the machine\'s model store it matches'),'the plan\'s limitation is said in words (U40, U44)');

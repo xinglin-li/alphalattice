@@ -232,16 +232,12 @@ def coverage_authority(
     from alphalattice.evidence.alternative_evidence.runtime.service import (
         AlternativeEvidenceDocumentIntelligenceRuntime,
     )
-    from tests.alternative_evidence_desk.planted_corpus import _index_factory, _retriever_factory
 
     listings = tuple(value.listing_id for value in report.window_end_book.positions)
     if runtime is None:
         runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
             artifact_root=workspace / "runtime" / "artifacts",
             workspace_root=workspace / "runtime" / "evidence-knowledge",
-            model_root=workspace / "runtime" / "models",
-            index_factory=_index_factory,
-            retriever_factory=_retriever_factory,
         )
     listing_authority = coverage_listing_authority(
         listings, entities=entities, omit=omit, shared=shared
@@ -369,6 +365,7 @@ def start_coverage_service(
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,
     )
+    from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
     from tests.alternative_evidence_desk.review_http_support import (
         _Service,
         _workspace_manifest,
@@ -376,7 +373,9 @@ def start_coverage_service(
 
     session = LocalPortfolioWebSession(
         workspace=workspace,
-        workspace_manifest=_workspace_manifest("qa-portfolio-coverage"),
+        workspace_manifest=_workspace_manifest(
+            named_workspace_id(workspace) or "qa-portfolio-coverage"
+        ),
         resolver=_Resolver(
             _resolved(
                 top_k=top_k,

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.cli_contract import join, shell
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
 
 COMMAND: Final = join(list(command_prefix()), shell())
 RULE_WORDS: Final = {

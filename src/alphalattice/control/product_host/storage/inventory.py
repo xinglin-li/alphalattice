@@ -31,8 +31,8 @@ MANAGED_ROOTS = (
     ("runtime/evidence-knowledge", "EVIDENCE_KNOWLEDGE"),
     ("runtime/artifacts/alternative-evidence", "ALTERNATIVE_EVIDENCE"),
     ("runtime/artifacts/portfolio-strategy-lab", "PORTFOLIO_LEDGER"),
-    # Every other store that holds a workspace's content, so the budget is the disk it takes
-    # (V208); none is released by a clean-up, whose targets are the input owner's alone. The live
+    # Every other store that holds a workspace's content, so the budget is the disk it takes;
+    # none is released by a clean-up, whose targets are the input owner's alone. The live
     # operational stores (Task Control, the Feature build's registry, the checkpoints and
     # observations, a Task's execution folder) are left out: a running Task's own bookkeeping
     # grows and shrinks them under its admitted writes (DuckDB truncates its file at a

@@ -56,7 +56,7 @@ body[data-page] .banner:is(.warning, .danger)[data-box] {
 body[data-page] .banner:is(.warning, .danger)[data-box] {
   position: relative; /* the ring measures from it */
 }
-/* the ring: 1 px of light cut from the rim's gradient by a mask (a gradient border that keeps the radius) */
+/* The ring: 1 px of light cut from the rim's gradient by a mask (a gradient border that keeps the radius) */
 [data-layer="detail"]::before,
 dialog::before,
 html[data-nav=drawer] .window[data-side=open] .side::before,
@@ -88,11 +88,11 @@ body[data-page] :is([data-layer="detail"], dialog) .banner:is(.warning, .danger)
 body[data-page] :is([data-layer="detail"], dialog) .banner:is(.warning, .danger)[data-box]::before {
   content: none;
 }
-/* a control on the glass is a breath of tint, not an opaque chip, and a clear step darker under the pointer
+/* A control on the glass is a breath of tint, not an opaque chip, and a clear step darker under the pointer
    (`glass-control-hover`: the controls' own hover is the tint's twin on the glass); opaque, it keeps its own */
 body:not(.opaque-controls)[data-page] :where([data-layer="detail"], dialog, .banner:is(.warning, .danger)) :is([data-control="action"], [data-control="quiet"]):not(:disabled, [aria-disabled=true]) { background: var(--glass-control); border-color: var(--glass-control-edge); }
 body:not(.opaque-controls)[data-page] :where([data-layer="detail"], dialog, .banner:is(.warning, .danger)) :is([data-control="action"], [data-control="quiet"]):not(:disabled, [aria-disabled=true]):hover { background: var(--glass-control-hover); }
-/* the research map's nodes are tinted like a control on the glass, never a white face on it (the user,
+/* The research map's nodes are tinted like a control on the glass, never a white face on it (the user,
    2026-09-24: 这几个白色的button在玻璃材质的时候有点出戏) */
 body:not(.opaque-controls) dialog .map-node { background: var(--glass-control); border-color: var(--glass-control-edge); box-shadow: none; }
 body:not(.opaque-controls) dialog .map-node:hover { background: var(--glass-control-hover); border-color: var(--edge-strong); }
@@ -165,7 +165,7 @@ body[data-page][data-reading] :is(.tp-task, .object-row) > .list-row-props { ord
 /* A link inside running text is a word in the link ink, not a control chassis. */
 body[data-page] .inline-link { color: var(--ink-link); font-weight: var(--weight-label); text-decoration: none; }
 body[data-page] .inline-link:hover { text-decoration: underline; text-underline-offset: var(--underline-offset); }
-/* a long status sentence stays on the icon's line and wraps inside it, instead of dropping under the icon */
+/* A long status sentence stays on the icon's line and wraps inside it, instead of dropping under the icon */
 .prep-liveness > span { flex: 1 0 min(var(--width-xs), calc(100% - var(--icon-sm) - var(--space-2))); min-width: 0; }
 .version-row .list-row-props { flex-wrap: wrap; }
 html body[data-page] #main :is(.object-header h1) { font-size: var(--style-large-title-size); font-weight: var(--weight-label); line-height: var(--style-large-title-leading); letter-spacing: var(--style-large-title-tracking); }

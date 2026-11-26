@@ -133,7 +133,7 @@ def render_analyst_bundle(
     """The whole view: an index and the material files, packed by size.
 
     `earlier` is one line, by issuer, per finding an earlier reading made in a
-    filing still in the window that this packet passes over (W3): context in
+    filing still in the window that this packet passes over: context in
     the index, never the filing again.
     """
     entity_ids = packet.request.ordered_entity_ids

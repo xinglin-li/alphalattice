@@ -9,6 +9,9 @@ from typing import Protocol, cast
 
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.sector_history import SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
@@ -29,6 +32,9 @@ from alphalattice.foundation.feature_engine.panels.artifacts import (
 )
 from alphalattice.foundation.feature_engine.panels.history import (
     derive_feature_panel_history_eligibility,
+)
+from alphalattice.foundation.feature_engine.panels.market_observation import (
+    read_market_observation,
 )
 from alphalattice.foundation.feature_engine.panels.recovery_binding import (
     PanelRecoveryBindingPublisher,
@@ -53,9 +59,8 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
     PanelStateRepository,
 )
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
-from alphalattice.kernel.quant.sector_history import SectorReclassification
-from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
-from alphalattice.kernel.shared_kernel.spans import span
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
+from alphalattice.kernel.clock import observation_time
 
 
 @dataclass(frozen=True)
@@ -163,7 +168,7 @@ class _FeaturePanelSnapshotSource:
     # one the re-sourced manifest recorded).
     row_identity_basis: str = PANEL_ROW_IDENTITY_BY_BINDING
     membership: dict[str, object] | None = None
-    # The reclassifications the Panel's sessions read (V346), over its calculation axis.
+    # The reclassifications the Panel's sessions read, over its calculation axis.
     sector_reclassifications: tuple[SectorReclassification, ...] = ()
 
 
@@ -266,7 +271,7 @@ def reconcile_feature_panel_lifecycles(
     """Feature's one Panel lifecycle function: the rows, then the projection research reads.
 
     Market Data's bootstrap no longer supersedes Panels by its own SQL; a Feature build runs this
-    after it, so a publication that failed leaves no row its projection contradicts (V176).
+    after it, so a publication that failed leaves no row its projection contradicts.
 
     Args:
         panel_state: The Panel's lifecycle rows.
@@ -332,7 +337,7 @@ class FeaturePanelSnapshotPublisher:
             ValueError: Publication time is naive or the source cannot be verified.
 
         """
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("snapshot publication time must be timezone-aware")
         # Before anything is composed: a row of the right shape carrying another
@@ -468,7 +473,7 @@ class FeaturePanelSnapshotPublisher:
                 "failure_code": sector_progress["failure_code"],
             }
         if source.sector_reclassifications:
-            # Each reclassification the sessions read from its effective session (V346);
+            # Each reclassification the sessions read from its effective session;
             # absent while none is in force, so such a Panel's lineage is what it was.
             lineage = cast(dict[str, object], safe_summary["lineage"])
             lineage["sector_reclassifications"] = [
@@ -507,6 +512,18 @@ class FeaturePanelSnapshotPublisher:
                     1 for item in chunks if item.origin_binding_hash in {None, own_binding}
                 ),
             }
+        # What the market held for the Panel's listings over its sessions: the
+        # evidence Risk needs to omit the pairs across a missing bar rather than
+        # refuse them. Absent when no listing misses a session of its span, so a
+        # Panel without a gap keeps its identity.
+        observation = read_market_observation(
+            MarketDataRepository(self.panel_state.database),
+            manifest_revision=str(active["manifest_revision"]),
+            listing_ids=listing_ids,
+            sessions=tuple(sorted({cast(date, row["session_date"]) for row in availability})),
+        )
+        if observation is not None:
+            safe_summary["market_observation"] = observation.to_payload()
         manifest_payload = {
             "kind": "FeaturePanelSnapshotManifest",
             "panel_binding_hash": str(active["panel_binding_hash"]),
@@ -654,7 +671,7 @@ class FeaturePanelSnapshotPublisher:
         observed_at: datetime | None = None,
     ) -> None:
         """Fail closed on one unsafe snapshot before changing mutable authority."""
-        now = observed_at or datetime.now(UTC)
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("snapshot lifecycle time must be timezone-aware")
         projected = []
@@ -795,7 +812,7 @@ class FeaturePanelSnapshotPublisher:
                 raise ValueError("feature panel calculation axis differs from recorded membership")
         else:
             listing_ids = tuple(sorted(item.listing_id for item in manifest.listings))
-        # The Sector each session read, over the axis the build read it for (V346).
+        # The Sector each session read, over the axis the build read it for.
         history = self.feature_state.sector_history(manifest, listing_ids=listing_ids)
         if history is None:
             raise ValueError("sector source changed during snapshot publication")
@@ -900,7 +917,7 @@ class FeaturePanelSnapshotPublisher:
                 "materialization_receipt_hash": recorded.get("materialization_receipt_hash"),
             }
             if record.catalog_hash is not None:
-                # Cells a catalog this one only adds columns to computed (V92).
+                # Cells a catalog this one only adds columns to computed.
                 origins[binding_hash]["catalog_hash"] = record.catalog_hash
             if prepared.binding.row_identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION:
                 manifest_revision = record.manifest_revision or recorded.get("manifest_revision")

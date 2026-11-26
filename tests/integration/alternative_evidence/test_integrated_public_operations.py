@@ -148,7 +148,7 @@ def test_the_integrated_selection_flows_through_the_public_operations(tmp_path: 
             for c in ledger["cells"]
         )
         # The other issuers hold only their planted release: what they filed
-        # recently. A periodic report outside the window is no gap (W1), so no
+        # recently. A periodic report outside the window is no gap, so no
         # cell names one; a gap named beside a cell is still never a COMPLETE
         # cell (the first-release safety closeout).
         for entity in listed[2:]:
@@ -302,7 +302,7 @@ def test_the_integrated_selection_flows_through_the_public_operations(tmp_path: 
         cell_lines = [line for line in missing if any(line.startswith(f"{e} ") for e in entities)]
         assert cell_lines, missing
         assert any("unit need(s) unread" in line for line in cell_lines)
-        # No periodic report is a baseline since W1: none is named missing.
+        # No periodic report is a baseline: none is named missing.
         assert not any("periodic filing" in line for line in cell_lines)
         package = service.get(f"/api/cro/finding?{query}&finding_handle={handle}")
         assert package["status"] == "FINDING_EVIDENCE_PACKAGE"
@@ -669,8 +669,9 @@ def test_a_published_reading_filters_the_exact_review_lineage_without_rewriting_
             "interval": None,
             "evidence_cutoff": _NOW.isoformat(),
         }
-        second = sorted(packet.request.ordered_entity_ids)[1]
-        topic = "LEGAL_REGULATORY"
+        # A cell the reading delivers: the second issuer's first bundle's topic.
+        second = sorted({b["entity_id"] for b in all_reading["bundles"]})[1]
+        topic = next(b for b in all_reading["bundles"] if b["entity_id"] == second)["topics"][0]
         filters = {"view_entity_id": second, "view_topic": topic}
         cell = reading(**filters)
         assert cell["filters"] == {"entity_id": second, "topic": topic, "last_days": None}

@@ -1,4 +1,4 @@
-"""The operation registry: every typed operation, its CLI name and its fields (C1 rule 3).
+"""The operation registry: every typed operation, its CLI name and its fields.
 
 The operations are the ``PortfolioResearchOperation`` literal; their fields are the request's
 own field contract; which only read is the activity ledger's ``READ_OPERATIONS``. This module
@@ -28,7 +28,7 @@ from alphalattice.interface.local_application.portfolio_research import (
     PERSON_ONLY,
     PortfolioResearchOperation,
     PortfolioResearchOperationRequest,
-    PortfolioResearchRequestDocument,
+    full_request_document,
 )
 
 OPERATIONS: Final[tuple[str, ...]] = tuple(get_args(PortfolioResearchOperation.__value__))
@@ -226,19 +226,30 @@ GRAMMAR: Final[dict[str, Command]] = {
     "SESSION_USAGE_READ": Command(
         "session",
         "usage",
-        "Reads the usage of the agent Sessions bound to this workspace now, from their own "
-        "files and the children they record; nothing else runs, and reading off reads nothing.",
+        "Reads the bound conversations' numerical native telemetry from the catalog; "
+        "nothing else runs, and reading off reads nothing.",
     ),
     "USAGE_READING": Command(
         "usage-reading",
         "show",
-        "Shows whether the Host may read the bound agent Sessions' own files for usage, and "
-        "what it reads.",
+        "Shows whether the Host may receive and read native agent telemetry, and what it keeps.",
     ),
     "USAGE_READING_SET": Command(
         "usage-reading",
         "set",
         "Turns reading the bound agent Sessions' usage on or off for this workspace.",
+    ),
+    "ANALYST_READS": Command(
+        "analyst-reads",
+        "show",
+        "Shows how the lead reads a review's Analyst bundles, the person's standing answer, and "
+        "the bundle count it covers.",
+    ),
+    "ANALYST_READS_SET": Command(
+        "analyst-reads",
+        "set",
+        "Sets, on the person's relayed answer, whether a review's Analyst bundles are read by "
+        "subagents or in the lead session, for reviews of up to the given bundle count.",
     ),
     "EVIDENCE_ANALYSIS_SUBMIT": Command(
         "evidence",
@@ -464,7 +475,7 @@ GRAMMAR: Final[dict[str, Command]] = {
         collection=True,
     ),
     "EXPERIMENT_RUN": Command(
-        "study", "run", "Runs a kept plan as a Task, or reuses the identical completed study."
+        "study", "run", "Runs a kept plan as a Task, optionally testing a stated hypothesis."
     ),
     "EXPERIMENT_SUMMARY": Command(
         "study",
@@ -601,13 +612,14 @@ GRAMMAR: Final[dict[str, Command]] = {
     "GOAL_NOTE": Command(
         "goal",
         "note",
-        "Records a decision or conclusion in the goal's record; a conclusion must cite evidence.",
+        "Records a decision, conclusion or open hypothesis in the goal's record.",
         "goal_id",
     ),
     "GOAL_OPEN": Command(
         "goal",
         "open",
-        "Opens a goal from its declaration and binds this agent session to it.",
+        "Opens a goal from its declaration and binds this agent session to it; the Host mints "
+        "a new goal's id, and a goal_id opens only an existing goal.",
         "goal_id",
     ),
     "GOAL_REVISE": Command(
@@ -746,6 +758,37 @@ GRAMMAR: Final[dict[str, Command]] = {
         "Lists past studies, installed results, updates and CRO reviews, a page at a time.",
         collection=True,
     ),
+    "EXPERIENCE_READ": Command(
+        "experience",
+        "list",
+        "Reads recorded trials, their measures and conclusions.",
+        collection=True,
+    ),
+    "EXPERIENCE_BRIEF": Command(
+        "experience",
+        "brief",
+        "Reads what to know before new work on a goal, as known at a time, fitted to a token "
+        "budget in priority order: its current decisions, then lessons, then similar experiences.",
+    ),
+    "EXPERIENCE_CLASS": Command(
+        "experience",
+        "class",
+        "Reads every trial of a trial's class, across goals, workspaces and agents, as known at "
+        "a time: each member and its measures, each metric's spread and the search's size.",
+    ),
+    "EXPERIENCE_RECALL": Command(
+        "experience",
+        "recall",
+        "Recalls the experiences most like a query in a workspace, as known at a time, each with "
+        "its text and its trials' classes; refused by name until the retrieval models are "
+        "installed.",
+    ),
+    "EXPERIENCE_RECORD": Command(
+        "experience",
+        "record",
+        "Records a review's note on an ended trial or Task, or on a goal, with its verdict; the "
+        "Host renders the note into an experience.",
+    ),
     "RESEARCH_INPUTS": Command(
         "input",
         "list",
@@ -853,22 +896,24 @@ GRAMMAR: Final[dict[str, Command]] = {
         "task_id",
     ),
     "STORAGE_CONFIRM": Command(
-        "storage", "confirm", "Applies a storage clean-up plan, deleting the input copies it names."
+        "storage",
+        "confirm",
+        "Applies a storage clean-up plan, deleting the Panel chunks it names.",
     ),
     "STORAGE_EVIDENCE_REBUILD": Command(
         "storage",
         "rebuild",
-        "Rebuilds an evicted evidence index from its committed vectors, with a receipt.",
+        "Deprecated, removed in 0.3.0: refuses; the retrieval store keeps no evidence index.",
     ),
     "STORAGE_PIN": Command(
         "storage",
         "pin",
-        "Pins or unpins a research input or evidence index against storage clean-up.",
+        "Refuses: a research input takes no pin and the retrieval store keeps no evidence index.",
     ),
     "STORAGE_PLAN": Command(
         "storage",
         "plan",
-        "Plans a storage clean-up of unpinned input copies and saves it for confirmation.",
+        "Plans a storage clean-up of Panel chunks and saves it for confirmation.",
     ),
     "STORAGE_CAP_SHOW": Command(
         "storage", "cap", "Shows the operator storage cap, its automatic estimate and free disk."
@@ -882,7 +927,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "STORAGE_READBACK": Command(
         "storage",
         "show",
-        "Shows storage use, retained inputs and evidence indexes, pins and pending clean-up.",
+        "Shows storage use, evidence bytes and pending clean-up; inputs: `input list`.",
     ),
     "STRATEGY_CALIBRATION_PLAN": Command(
         "calibration",
@@ -947,7 +992,7 @@ GRAMMAR: Final[dict[str, Command]] = {
     "HOST_STOP": Command(
         "host",
         "stop",
-        "Stops this workspace's Host once its running work has ended; no Task is cancelled.",
+        "Stops this workspace's Host at safe points and retains Tasks for resumption.",
     ),
     "UPGRADE_ACKNOWLEDGE": Command(
         "upgrade",
@@ -1010,6 +1055,7 @@ PRIMARY: Final[tuple[str, ...]] = (
     "agent_answer",
     "analysis_answer",
     "review_answer",
+    "review_note",
     "event",
     "committee_message",
 )
@@ -1021,6 +1067,8 @@ FLAGS: Final[dict[str, str]] = {
     "agent_session": "session-id",
     "analysis_context_hash": "context",
     "analysis_publication_hash": "analysis",
+    "analyst_reads_bundles": "bundles",
+    "analyst_reads_mode": "mode",
     "automation_enabled": "enabled",
     "automation_package_ids": "packages",
     "backup_generations_kept": "keep",
@@ -1029,6 +1077,7 @@ FLAGS: Final[dict[str, str]] = {
     "committee_key": "key",
     "committee_role": "role",
     "committee_seen": "seen",
+    "goal_seen": "seen",
     "calibration_plan_hash": "plan",
     "candidate_hash": "candidate",
     "candidate_id": "candidate",
@@ -1080,6 +1129,17 @@ FLAGS: Final[dict[str, str]] = {
     "history_entry_id": "entry",
     "history_kind": "kind",
     "history_limit": "limit",
+    "experience_hypothesis": "hypothesis",
+    "experience_method": "method",
+    "experience_workspace": "from-workspace",
+    "experience_trial": "of-trial",
+    "experience_width": "width",
+    "experience_known_at": "known-at",
+    "experience_budget": "budget",
+    "experience_limit": "limit",
+    "experience_query": "query",
+    "review_subject": "reviews",
+    "review_verdict": "verdict",
     "incident_key": "incident",
     "input_binding_hash": "binding",
     "input_pinned": "pinned",
@@ -1097,6 +1157,7 @@ FLAGS: Final[dict[str, str]] = {
     "positions_date": "date",
     "origin_task_id": "origin",
     "person_confirmation": "person-said",
+    "status_section": "section",
     "portfolio_session": "session",
     "position_basis": "basis",
     "preparation_binding_hash": "preparation",
@@ -1195,8 +1256,8 @@ def _types(spec: dict[str, Any], definitions: dict[str, Any]) -> list[str]:
 
 
 def _reference(spec: dict[str, Any]) -> bool:
-    """Whether the contract types a field as a hash or an id, or a list of them (V399), or
-    names it an id the Host issues around one (`reference: issued`, V561)."""
+    """Whether the contract types a field as a hash or an id, or a list of them, or
+    names it an id the Host issues around one (`reference: issued`)."""
     if spec.get("reference") == "issued":
         return True
     options = (spec, *spec.get("anyOf", []))
@@ -1219,7 +1280,7 @@ def _first_sentence(text: str) -> str:
 
 
 def _limits(spec: dict[str, Any], definitions: dict[str, Any]) -> str:
-    """A field's choices and range as its contract states them, in a few words (V401)."""
+    """A field's choices and range as its contract states them, in a few words."""
     found: list[str] = []
     for option in _schema_options(spec, definitions):
         if option.get("enum"):
@@ -1243,7 +1304,7 @@ def _limits(spec: dict[str, Any], definitions: dict[str, Any]) -> str:
 
 
 def _inner_required(document: dict[str, Any]) -> dict[str, list[str]]:
-    """Each request field typed by a model, and the fields that model requires (V373)."""
+    """Each request field typed by a model, and the fields that model requires."""
     models = document.get("$defs", {})
     found: dict[str, list[str]] = {}
     for name, spec in sorted(document["properties"].items()):
@@ -1303,6 +1364,10 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("evidence-consent", "The consent to official SEC acquisition and its budget."),
             ("review", "A CRO review of a book: request, dossier, findings, answer."),
             ("bundle", "A specialist's prepared bundle and the answer to it."),
+            (
+                "analyst-reads",
+                "How the lead reads a review's Analyst bundles: the person's answer.",
+            ),
             ("committee", "The investment committee on a date's published positions."),
         ),
     ),
@@ -1319,6 +1384,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("portfolio-update", "A Portfolio update settling observed sessions."),
             ("automation", "The daily research update, on or off."),
             ("history", "Past studies, results, updates and reviews."),
+            ("experience", "Trials, measures and conclusions from recorded research."),
         ),
     ),
     (
@@ -1331,7 +1397,7 @@ HELP_GROUPS: Final[tuple[tuple[str, tuple[tuple[str, str], ...]], ...]] = (
             ("cpu-budget", "The CPU budget and how many Tasks run at once."),
             ("incident", "The supervisor's incidents and their remedies."),
             ("upgrade", "What an installed upgrade changed."),
-            ("host", "This workspace's Host: stop it once its running work has ended."),
+            ("host", "This workspace's Host: stop at safe points and retain Tasks for resumption."),
         ),
     ),
     (
@@ -1375,7 +1441,7 @@ ALTERNATIVES: Final[dict[str, tuple[tuple[str, ...], ...]]] = {
     ),
 }
 """The requests whose owner takes exactly one of several field groups, which `schema show` states
-as its `oneOf` (V409, the review's F4). The gate holds each group to the request's own fields."""
+as its `oneOf` (the review's F4). The gate holds each group to the request's own fields."""
 
 
 def table() -> dict[str, Any]:
@@ -1385,7 +1451,7 @@ def table() -> dict[str, Any]:
         Each command's operation, its required and allowed fields, and each
         request field's JSON types from the request document schema.
     """
-    document = PortfolioResearchRequestDocument.model_json_schema()
+    document = full_request_document().model_json_schema()
     properties = document["properties"]
     definitions = document.get("$defs", {})
     contracts = {operation: fields(operation) for operation in OPERATIONS}
@@ -1398,7 +1464,7 @@ def table() -> dict[str, Any]:
         },
         "flags": {name: flag_name(name) for name in sorted(properties)},
         "primary": list(PRIMARY),
-        # Each field's meaning and limits, from its contract (SC3), for the help (V401).
+        # Each field's meaning and limits, from its contract (SC3), for the help.
         "descriptions": {
             name: _first_sentence(spec.get("description", ""))
             for name, spec in sorted(properties.items())
@@ -1414,23 +1480,23 @@ def table() -> dict[str, Any]:
             for operation, (required, allowed) in sorted(contracts.items())
         },
         "types": {name: _types(spec, definitions) for name, spec in sorted(properties.items())},
-        # Each object field whose owner's model requires fields of its own (V373), so a next
+        # Each object field whose owner's model requires fields of its own, so a next
         # request that fills such an object in part reads as a template naming what is left.
         "inner_required": _inner_required(document),
         # Each field the contract types as a hash or an id: the only ones where the client reads
-        # a beginning the compact view shows back as the whole value (V393, V399).
+        # a beginning the compact view shows back as the whole value.
         "references": sorted(name for name, spec in properties.items() if _reference(spec)),
         "person_only": sorted(PERSON_ONLY),
         "first_use": sorted(FIRST_USE_STEPS),
         # The operations that change nothing (the activity ledger's): each answer names what it
-        # read and reads again from itself through `--from` (V449).
+        # read and reads again from itself through `--from`.
         "reads": sorted(READ_OPERATIONS),
         "collections": sorted(op for op, command in GRAMMAR.items() if command.collection),
-        # Each request's exactly-one field groups, as its owner refuses otherwise (V409).
+        # Each request's exactly-one field groups, as its owner refuses otherwise.
         "alternatives": {
             op: [list(group) for group in groups] for op, groups in sorted(ALTERNATIVES.items())
         },
-        # The top-level help's common path and its objects in the research's order (V401).
+        # The top-level help's common path and its objects in the research's order.
         "help_groups": [[group, [list(pair) for pair in nouns]] for group, nouns in HELP_GROUPS],
         "common_path": list(COMMON_PATH),
     }

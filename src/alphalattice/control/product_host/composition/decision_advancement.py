@@ -19,10 +19,24 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    resolve_playpen_root,
+    runtime_json,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    source_role_acquisition,
+    source_rule_closure_hash,
+)
+from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
-from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdatePlan
+from alphalattice.control.data_platform.maintenance.contracts import (
+    WorkspaceDataUpdatePlan,
+    WorkspaceDataUpdateReceipt,
+)
 from alphalattice.control.data_platform.readiness import _latest_common_us_session
 from alphalattice.control.product_host.composition.portfolio_updates import (
     PLAN_FIELDS as DECISION_PLAN_FIELDS,
@@ -67,6 +81,9 @@ from alphalattice.control.product_host.composition.strategy_scoring import (
 from alphalattice.control.product_host.composition.strategy_scoring import (
     _implementation_hash as scoring_identity,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    DECISION_ADVANCEMENT_SCHEMA,
+)
 from alphalattice.control.product_host.maintenance.data_update import (
     _STAGES as DATA_STAGES,
 )
@@ -75,6 +92,7 @@ from alphalattice.control.product_host.maintenance.data_update import (
     read_workspace_inputs,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
+from alphalattice.control.task_control.carried import carried_by
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -106,6 +124,7 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
 )
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
+from alphalattice.interface.local_application.questions import network_question
 from alphalattice.investment.alpha_research.publication.contracts import (
     FrozenComponentScoreSnapshot,
     FrozenFeaturePreparation,
@@ -139,13 +158,8 @@ from alphalattice.investment.portfolio_strategy_lab.publication.advancement_ledg
     AdvancementLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import render_decision_update
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root, runtime_json
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
-from alphalattice.kernel.shared_kernel.spans import span
 
-SCHEMA = "portfolio-conditional-decision-advancement"
+SCHEMA = DECISION_ADVANCEMENT_SCHEMA
 STAGES = (
     "verify_request",
     "update_inputs",
@@ -159,6 +173,7 @@ STAGES = (
 
 _IMPLEMENTATION_ROLE = "product_host.conditional_decision_advancement"
 RESUMED_OWN_MOVE = "research_update.resumed_own_move"
+_COMPLETED_OWN_MOVE = "completed_data_update"
 
 
 def latest_per_recipe(
@@ -334,7 +349,7 @@ class _Cancelled(Exception):
 
 
 class _Deferred(Exception):
-    """The provider asked the data stage to wait: the update waits with it (V601)."""
+    """The provider asked the data stage to wait: the update waits with it."""
 
     def __init__(self, result: StageExecutionResult) -> None:
         super().__init__(result.failure_code)
@@ -350,7 +365,7 @@ _DECISION_CANDIDATES = CommittedKind(
 
 
 class OwnMoveSuccessor(_Sealed):
-    """The ledger row naming the checkpoint a stopped update resumes on, its own move's."""
+    """The ledger row naming the successor made by an update's own Data cycle."""
 
     purpose: Literal["OWN_MOVE_SUCCESSOR"] = "OWN_MOVE_SUCCESSOR"
     plan_hash: str
@@ -367,6 +382,34 @@ _OWN_MOVES = CommittedKind(
 )
 
 
+_VerifiedFeatures = tuple[
+    dict[tuple[str, str, tuple[str, ...]], StrategyScorePlan],
+    dict[str, FrozenFeaturePreparation],
+]
+"""The Feature plans and preparations one execution of a Task verified."""
+
+
+def _advancement_identities() -> tuple[str, str, str, str]:
+    with source_role_acquisition():
+        # This file decides which publications feed scoring and calibration; Task
+        # Control's runner and registry, formerly tracked here,
+        # decide lifecycles and no number.
+        own = source_rule_closure_hash(
+            root=resolve_playpen_root(Path(__file__)),
+            semantic_owner="product_host",
+            numerical_role="CONDITIONAL_DECISION_ADVANCEMENT",
+            tracked_paths=(
+                "src/alphalattice/control/product_host/composition/decision_advancement.py",
+            ),
+        )
+        score, calibration, decision = (
+            scoring_identity(),
+            calibration_identity(),
+            decision_identity(),
+        )
+    return str(canonical_hash([own, score, calibration, decision])), score, calibration, decision
+
+
 class DecisionAdvancementApplication:
     """One advancement schema, composed into the existing dispatcher and ledger."""
 
@@ -378,8 +421,7 @@ class DecisionAdvancementApplication:
             admitting="RESEARCH_UPDATE_RUN",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
 
     def __init__(self, updates: PortfolioUpdateApplication, data: WorkspaceDataUpdateApplication):
         """Compose decision, data, scoring and calibration owners for durable QA updates.
@@ -400,6 +442,9 @@ class DecisionAdvancementApplication:
         self.calibration.additional_input = self._completed_input
         data.cycle_owner = self._cycle_owner
         self._waiting: dict[str, tuple[UUID, str, datetime]] = {}
+        # Each running Task's Feature steps as its current execution verified them, carried to
+        # that execution's later stages in this process (task_control.carried).
+        self._verified: dict[UUID, tuple[UUID, _VerifiedFeatures]] = {}
 
     def implementation(self) -> str:
         """Bind advancement rule syntax and its scoring, calibration and decision owner identities.
@@ -408,20 +453,7 @@ class DecisionAdvancementApplication:
             Exact combined implementation identity; operational task runner state is outside
             numerical meaning.
         """
-        # This file decides which publications feed scoring and calibration; Task
-        # Control's runner and registry, tracked here until the binding plan's B5,
-        # decide lifecycles and no number.
-        own = source_rule_closure_hash(
-            root=resolve_playpen_root(Path(__file__)),
-            semantic_owner="product_host",
-            numerical_role="CONDITIONAL_DECISION_ADVANCEMENT",
-            tracked_paths=(
-                "src/alphalattice/control/product_host/composition/decision_advancement.py",
-            ),
-        )
-        return str(
-            canonical_hash([own, scoring_identity(), calibration_identity(), decision_identity()])
-        )
+        return _advancement_identities()[0]
 
     def _load[M: BaseModel](
         self, category: str, identity: str, model: type[M], field: str = "content_hash"
@@ -581,7 +613,7 @@ class DecisionAdvancementApplication:
         owned = self._in_flight(tasks, package_id)
         if owned is not None:
             return owned
-        history = self.updates.history(checkpoint.content_hash)
+        history = self.updates.store.decision_history(checkpoint.history_hash)
         previous = history[-1] if history else None
         book = checkpoint.initial_book if previous is None else previous.book
         pending = None if previous is None else previous.pending_proposal
@@ -720,6 +752,7 @@ class DecisionAdvancementApplication:
             request=request,
             valuation_grants=data_plan.valuation_grants,
         )
+        implementation, score, calibration, decision = _advancement_identities()
         plan = DecisionAdvancementPlan.create(
             workspace_manifest_hash=self.updates.manifest.manifest_hash,
             catalog_hash=self.updates.application.resolver.strategy_catalog_hash,
@@ -734,10 +767,10 @@ class DecisionAdvancementApplication:
             score_requests=tuple(requests) if len(bindings) != 1 else (),
             history_score_hashes=tuple(historical),
             data_plan=data_plan,
-            implementation_hash=self.implementation(),
-            score_implementation_hash=scoring_identity(),
-            calibration_implementation_hash=calibration_identity(),
-            decision_implementation_hash=decision_identity(),
+            implementation_hash=implementation,
+            score_implementation_hash=score,
+            calibration_implementation_hash=calibration,
+            decision_implementation_hash=decision,
         )
         self._save("decision-programs", plan)
         return self._plan_body(plan, False)
@@ -754,7 +787,10 @@ class DecisionAdvancementApplication:
             ):
                 prior = self._plan_of(task, current=False)
                 if prior.package_id == package_id:
-                    if self._own_move(prior) is None:
+                    if (
+                        self._stopped(task.input, matched=task) is None
+                        or self._own_move(prior, task) is None
+                    ):
                         self._require(prior)
                     owner = {"task_id": str(task.task_id), "lifecycle": task.lifecycle.value}
                     return {**self._plan_body(prior, False), "in_flight": owner}
@@ -796,7 +832,7 @@ class DecisionAdvancementApplication:
             else f"Complete local Feature/Panel through session {plan.target.isoformat()}; "
             "no provider request. "
         )
-        return {
+        body: dict[str, object] = {
             "status": "PLANNED",
             "update_plan_hash": plan.content_hash,
             "strategy_package_id": plan.package_id,
@@ -824,11 +860,22 @@ class DecisionAdvancementApplication:
             ),
             "limitation": planned_claim(plan.target, plan.data_plan.before.data_through),
             # The plan's way on: its run, which reuses an identical update already made or in
-            # flight (V470).
+            # flight.
             "next_requests": {
                 "run": {"operation": "RESEARCH_UPDATE_RUN", "update_plan_hash": plan.content_hash}
             },
         }
+        return self._network_asked(body, needed=not (cached or held_inputs) and bool(provider_work))
+
+    def _network_asked(self, body: dict[str, object], *, needed: bool) -> dict[str, object]:
+        """A plan whose provider work needs a network the workspace does not admit: its network
+        read beside its run, and the person's coded question that opens it."""
+        asked = network_question(self.session.workspace, self.clock()) if needed else []
+        if not asked:
+            return body
+        ways = cast("dict[str, object]", body["next_requests"])
+        network = {"network": {"operation": "NETWORK_ACCESS"}}
+        return body | {"next_requests": ways | network, "person_questions": asked}
 
     def _plan_of(self, task: TaskRecord, *, current: bool = True) -> DecisionAdvancementPlan:
         if task.task_kind != ADVANCEMENT_TASK_KIND or task.input.input_schema_id != SCHEMA:
@@ -867,19 +914,24 @@ class DecisionAdvancementApplication:
 
         Returns:
             Existing uncancelled matching task admission, a stopped one a rerun resumes reopened,
-            or a newly admitted durable task.
+            one whose stop still holds as it stands, or a newly admitted durable task.
 
         Raises:
             ValueError: Plan authority/freshness or captured workspace inputs changed before
-                admission, or the network a stopped Task's stop names is still closed.
+                admission.
         """
         self._require(plan)
         envelope, goal, workflow = task_contract(plan)
         for task in self.session.task_control_registry.tasks():
             if task.input == envelope and task.lifecycle is not TaskLifecycle.CANCELLED:
-                # Its data stage's stop a rerun resumes reopens it, as the data update's own does,
-                # and a rerun while its network stays closed is refused by that stop (V600).
-                task = self.data.resume_stopped(task, plan.data_plan)
+                # Its data stage's stop a rerun resumes reopens it, as the data update's own does.
+                # While the network that stop names stays closed, the stop holds and the Task is
+                # answered as it stands: its own read words the stop and names its resume.
+                try:
+                    task = self.data.resume_stopped(task, plan.data_plan)
+                except ValueError as error:
+                    if str(error) != task.failure_code:
+                        raise
                 return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
         self._fresh(plan)
         if (
@@ -901,15 +953,17 @@ class DecisionAdvancementApplication:
         """
         self._waiting.pop(identity, None)
         plan = self.prepare(identity)
+        stopped = self._stopped(task_contract(plan)[0])
+        if stopped is None:
+            return plan
         moved = self.index.open(_OWN_MOVES, plan.content_hash)
-        if moved is not None and self._stopped(plan) is not None:
+        if moved is not None:
             # Each stopped resume revalidates the recorded move: no writer bound after its own.
             last = self.data._registry().working_binds()[-1]
             if (last.cycle_id, last.owner_task) != (moved.cycle_id, moved.owner_task):
                 raise ValueError("research_update.binding_changed")
-        if (found := self._own_move(plan)) is None:
+        if (record := self._own_move(plan, stopped)) is None:
             return plan
-        stopped, record = found
         retry = self.data.retry_after(plan.data_plan)
         if stopped.lifecycle is TaskLifecycle.DEFERRED and retry and retry > self.clock():
             self._waiting[plan.content_hash] = (stopped.task_id, stopped.record_hash, retry)
@@ -930,9 +984,11 @@ class DecisionAdvancementApplication:
             held and self.clock() < held[2] and registry.task(held[0]).record_hash == held[1]
         )
 
-    def _stopped(self, plan: DecisionAdvancementPlan) -> TaskRecord | None:
+    def _stopped(
+        self, envelope: TaskInputEnvelope, *, matched: TaskRecord | None = None
+    ) -> TaskRecord | None:
         """The plan's stopped Task a rerun takes up as itself, if any."""
-        envelope, tasks = task_contract(plan)[0], self.session.task_control_registry.tasks()
+        tasks = (matched,) if matched is not None else self.session.task_control_registry.tasks()
         stops = {TaskLifecycle.DEFERRED, TaskLifecycle.RECOVERY_REQUIRED}
         return next((t for t in tasks if t.input == envelope and t.lifecycle in stops), None)
 
@@ -956,38 +1012,48 @@ class DecisionAdvancementApplication:
         return str(held[-1].task_id) if held else None
 
     def _own_move(
-        self, plan: DecisionAdvancementPlan
-    ) -> tuple[TaskRecord, OwnMoveSuccessor] | None:
-        """The stopped Task and its row when only its own cycle moved the universe: one transition
-        onto the revision it last bound, no bind after it, every other binding held."""
-        stopped = self._stopped(plan)
+        self,
+        plan: DecisionAdvancementPlan,
+        task: TaskRecord,
+        *,
+        completed: WorkspaceDataUpdateReceipt | None = None,
+    ) -> OwnMoveSuccessor | None:
+        """One direct successor made by this Task's latest bind, with all other bindings held."""
         # A plan whose checkpoint is captured, or already moved, reads what it holds.
-        if (
-            stopped is None
-            or self._step(plan, STAGES[2])
-            or self._input(plan) != plan.checkpoint_hash
-        ):
+        if self._step(plan, STAGES[2]) or self._input(plan) != plan.checkpoint_hash:
             return None
         current = self.updates._checkpoint(plan.package_id)
+        if current.previous_checkpoint_hash != plan.checkpoint_hash:
+            return None
         binds, cycle = self.data._registry().working_binds(), self.data._cycle_id(plan.data_plan)
         if (
-            current.previous_checkpoint_hash != plan.checkpoint_hash
-            or not binds
-            or (binds[-1].cycle_id, binds[-1].owner_task) != (cycle, str(stopped.task_id))
-            or binds[-1].authority != "candidate_preparation"
+            not binds
+            or (binds[-1].cycle_id, binds[-1].owner_task) != (cycle, str(task.task_id))
             or current.source_hashes[-1] != binds[-1].manifest_revision
         ):
+            return None
+        if binds[-1].authority == "feature_input_gateway":
+            receipt = completed or self.data._receipt(plan.data_plan.content_hash)
+            if (
+                receipt is None
+                or receipt.plan_hash != plan.data_plan.content_hash
+                or receipt.cycle_id != cycle
+                or receipt.before != plan.data_plan.before
+                or receipt.after.manifest_revision != binds[-1].manifest_revision
+            ):
+                return None
+        elif binds[-1].authority != "candidate_preparation":
             return None
         self._require(plan, current.content_hash)
         before = self.updates.store.load_decision_checkpoint(plan.checkpoint_hash)
         added = set(current.ordered_listing_ids) - set(before.ordered_listing_ids)
-        return stopped, OwnMoveSuccessor.create(
+        return OwnMoveSuccessor.create(
             plan_hash=plan.content_hash,
             from_checkpoint_hash=plan.checkpoint_hash,
             to_checkpoint_hash=current.content_hash,
-            reason=RESUMED_OWN_MOVE,
+            reason=_COMPLETED_OWN_MOVE if completed is not None else RESUMED_OWN_MOVE,
             cycle_id=cycle,
-            owner_task=str(stopped.task_id),
+            owner_task=str(task.task_id),
             added_listing_ids=tuple(sorted(added)),
         )
 
@@ -997,7 +1063,7 @@ class DecisionAdvancementApplication:
         if task.input.input_schema_id != SCHEMA:
             return {}
         moved = self.index.open(_OWN_MOVES, self._plan_of(task, current=False).content_hash)
-        if moved is None:
+        if moved is None or moved.reason != RESUMED_OWN_MOVE:
             return {}
         words = runtime_json("config/registries/messages.json")["entries"][moved.reason]["words"]
         return {"resumed_on_own_move": {**moved.model_dump(mode="json"), "words": words}}
@@ -1006,7 +1072,7 @@ class DecisionAdvancementApplication:
         """Find an admitted nonterminal task for this exact advancement envelope.
 
         A deferred one is not in flight: its plan's rerun resumes it once due, and is refused
-        before then with its retry time (V601).
+        before then with its retry time.
 
         Args:
             plan: Sealed plan used to derive exact task input.
@@ -1071,7 +1137,7 @@ class DecisionAdvancementApplication:
         ):
             raise _Cancelled
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def execute_stage(
         self, *, task: TaskRecord, execution: TaskExecution, work_item: WorkItemDefinition
     ) -> StageExecutionResult:
@@ -1092,7 +1158,7 @@ class DecisionAdvancementApplication:
                 self._cancel(task)
                 value = self._step(plan, stage)
                 if value is None:
-                    value = self._execute(plan, stage, task)
+                    value = self._execute(plan, stage, task, execution)
             return StageExecutionResult(StageDisposition.READY, evidence=self._evidence(value))
         except _Cancelled:
             return StageExecutionResult(StageDisposition.CANCELLED)
@@ -1104,7 +1170,11 @@ class DecisionAdvancementApplication:
             )
 
     def _execute(
-        self, plan: DecisionAdvancementPlan, stage: str, task: TaskRecord
+        self,
+        plan: DecisionAdvancementPlan,
+        stage: str,
+        task: TaskRecord,
+        execution: TaskExecution,
     ) -> DecisionAdvancementStep:
         if stage == STAGES[0]:
             self._fresh(plan)
@@ -1140,7 +1210,7 @@ class DecisionAdvancementApplication:
                     raise _Cancelled
                 if result.disposition is StageDisposition.DEFERRED:
                     # The provider asked to wait: the update defers with the data stage's own
-                    # retry time, and its plan run again once due resumes it (V601).
+                    # retry time, and its plan run again once due resumes it.
                     raise _Deferred(result)
                 if result.disposition is not StageDisposition.READY:
                     if result.failure_code == "workspace_data_update.source_access_not_admitted":
@@ -1152,6 +1222,13 @@ class DecisionAdvancementApplication:
                         )
                     raise ValueError(result.failure_code or "research_update.inputs_incomplete")
                 self.data.verify_step(plan.data_plan, s, result.evidence)
+            completed = self.data._receipt(plan.data_plan.content_hash)
+            if (
+                completed is not None
+                and completed.before.manifest_revision != completed.after.manifest_revision
+                and (move := self._own_move(plan, task, completed=completed)) is not None
+            ):
+                self.index.commit(_OWN_MOVES, plan.content_hash, move)
             return self._commit(
                 plan,
                 stage,
@@ -1205,16 +1282,16 @@ class DecisionAdvancementApplication:
                 self._save("market-inputs", snapshot)
             products = [snapshot.content_hash]
             effective_authorities = {}
-            for index, binding in enumerate(plan.bindings):
-                current_authority = self.scoring._authority(binding)
-                with span("read", "historical_scores"):
-                    historical = [
-                        self.scoring.store.load_frozen_component_score(h)
-                        for h in plan.history_score_hashes
-                    ]
+            authorities = self.scoring.authorities(plan.bindings)
+            with span("read", "historical_scores"):
+                prior_scores = tuple(
+                    self.scoring.store.load_frozen_component_score(h)
+                    for h in plan.history_score_hashes
+                )
+            for index, current_authority in enumerate(authorities):
                 historical = [
                     s
-                    for s in historical
+                    for s in prior_scores
                     if recipe_hashes_match(
                         s.component_recipe_hash, current_authority.authority.model_set.recipe_hash
                     )
@@ -1240,6 +1317,7 @@ class DecisionAdvancementApplication:
             }
             prepared_inputs: dict[int, PreparedWorkspaceComponentInputs | None] = {}
             sealed: list[tuple[int, Any]] = []
+            checked = False  # a full source check after every source read of this stage
             for index, day in plan.requests:
                 self._cancel(task)
                 score_plan = self._score_plan(plan, day, source, index)
@@ -1269,17 +1347,24 @@ class DecisionAdvancementApplication:
                             prepared_inputs=prepared_inputs.get(index),
                         )
                     evidence = (score_plan.plan_hash, str(result.evidence[0].content_hash))
+                    # The whole source, the Panel's files with it, before the receipt publishes.
+                    if workspace_score_source_identity(self.session.workspace) != source:
+                        raise ValueError("research_update.source_changed_during_seal")
+                    checked = True
                     held = self._commit(plan, key, evidence, source)
+                plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
                 with span("verify", "score_features"):
-                    self._verify_features(held)
-                feature_preparation, _ = self.scoring.store.load_frozen_feature_preparation(
-                    held.products[1]
-                )
+                    self._verify_features(
+                        held,
+                        verified_feature_plans=plans,
+                        verified_feature_preparations=preparations,
+                    )
+                feature_preparation = preparations[held.products[1]]
                 effective_authorities[index] = feature_preparation.inference_authority_hash
                 sealed.append((index, feature_preparation))
                 products.append(held.content_hash)
             self._record_kept(task, plan, sealed, prepared_inputs)
-            if workspace_score_source_identity(self.session.workspace) != source:
+            if not checked and workspace_score_source_identity(self.session.workspace) != source:
                 raise ValueError("research_update.source_changed_during_seal")
             return self._commit(plan, stage, tuple(products), source)
         captured = self._need(plan, STAGES[2])
@@ -1288,8 +1373,13 @@ class DecisionAdvancementApplication:
             for identity in captured.products[1:]:
                 self._cancel(task)
                 features = self._load("decision-stages", identity, DecisionAdvancementStep)
+                plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
                 with span("verify", "score_features"):
-                    sp = self._verify_features(features)
+                    sp = self._verify_features(
+                        features,
+                        verified_feature_plans=plans,
+                        verified_feature_preparations=preparations,
+                    )
                 with span("predict", "scores"):
                     result = self.scoring.execute_step(
                         sp, SCORE_STAGES[2], {SCORE_STAGES[1]: features.products[1]}.__getitem__
@@ -1324,9 +1414,7 @@ class DecisionAdvancementApplication:
                         if market_rows is None:
                             with span("materialize", "calibration_rows"):
                                 market_rows = PreparedLocalQASnapshotRows(
-                                    self._load(
-                                        "market-inputs", captured.products[0], LocalQAMarketSnapshot
-                                    ),
+                                    market_snapshot,
                                     artifact_root=self.session.workspace / "artifacts",
                                     capacity=lambda size: require_storage_capacity(
                                         self.session.workspace, additional_bytes=size
@@ -1530,7 +1618,7 @@ class DecisionAdvancementApplication:
         raise ValueError("research_update.stage_unknown")
 
     def _owner_fields(self, fields: tuple[str, ...]) -> str:
-        """The manifest fields a stage's owner binds, as that owner binds them (V468, V223).
+        """The manifest fields a stage's owner binds, as that owner binds them.
 
         Each owner seals its plan with the fields it reads (OW10), not the whole manifest; the
         update verified the whole manifest against its own plan before the stage (`_require`),
@@ -1558,23 +1646,34 @@ class DecisionAdvancementApplication:
         | None = None,
         verified_feature_preparations: dict[str, FrozenFeaturePreparation] | None = None,
     ) -> StrategyScorePlan:
-        key = (step.plan_hash, step.content_hash, step.products)
-        if verified_feature_plans is not None and key in verified_feature_plans:
-            return verified_feature_plans[key]
-        plan = self._load("score-programs", step.products[0], StrategyScorePlan, "plan_hash")
-        self.scoring.verify_step(
-            plan, SCORE_STAGES[1], self.scoring._evidence(SCORE_STAGES[1], step.products[1])
-        )
-        if verified_feature_plans is not None:
-            verified_feature_plans[key] = plan
+        return self._verify_feature_group(
+            (step,),
+            verified_feature_plans=verified_feature_plans,
+            verified_feature_preparations=verified_feature_preparations,
+        )[0]
+
+    def _verify_feature_group(
+        self,
+        steps: tuple[DecisionAdvancementStep, ...],
+        *,
+        verified_feature_plans: dict[tuple[str, str, tuple[str, ...]], StrategyScorePlan] | None,
+        verified_feature_preparations: dict[str, FrozenFeaturePreparation] | None,
+    ) -> tuple[StrategyScorePlan, ...]:
+        opened = verified_feature_plans if verified_feature_plans is not None else {}
+        keys = tuple((step.plan_hash, step.content_hash, step.products) for step in steps)
+        missing = {}
+        requests = []
+        for key, step in zip(keys, steps, strict=True):
+            if key in opened or key in missing:
+                continue
+            plan = self._load("score-programs", step.products[0], StrategyScorePlan, "plan_hash")
+            missing[key] = plan
+            requests.append((plan, self.scoring._evidence(SCORE_STAGES[1], step.products[1])))
+        preparations = self.scoring.verify_feature_steps(tuple(requests))
         if verified_feature_preparations is not None:
-            verified_feature_preparations[step.products[1]] = self.scoring.store._load(
-                "frozen-feature-preparations",
-                step.products[1],
-                "preparation_hash",
-                FrozenFeaturePreparation,
-            )
-        return plan
+            verified_feature_preparations.update((p.preparation_hash, p) for p in preparations)
+        opened.update(missing)
+        return tuple(opened[key] for key in keys)
 
     def _ew_input(
         self,
@@ -1733,36 +1832,38 @@ class DecisionAdvancementApplication:
         parent = plan.parent_hash
         prior = self._parent(plan)
         checkpoint = self.updates.store.load_decision_checkpoint(self._input(plan))
-        for value in branch:
-            if (
-                value.parent_hash != parent
-                or value.checkpoint_hash != checkpoint.history_hash
-                or value.html_hash is None
-            ):
-                raise ValueError("research_update.branch_binding_invalid")
-            dp = self.updates._load_plan(value.plan_hash)
-            if (
-                dp.parent_hash != value.parent_hash
-                or dp.checkpoint_hash != checkpoint.content_hash
-                or dp.market_hash != value.source_snapshot_hash
-                or (
-                    dp.raw_market_hash is not None
-                    and dp.prior_market_hash
-                    != (None if prior is None else prior.source_snapshot_hash)
-                )
-                or (
-                    dp.prior_raw_market_hash is not None
-                    and (
-                        prior is None
-                        or dp.prior_raw_market_hash != self.updates.raw_basis(prior).content_hash
+        with self.updates.store.decision_observation_reads() as read:
+            for value in branch:
+                if (
+                    value.parent_hash != parent
+                    or value.checkpoint_hash != checkpoint.history_hash
+                    or value.html_hash is None
+                ):
+                    raise ValueError("research_update.branch_binding_invalid")
+                dp = self.updates._load_plan(value.plan_hash)
+                if (
+                    dp.parent_hash != value.parent_hash
+                    or dp.checkpoint_hash != checkpoint.content_hash
+                    or dp.market_hash != value.source_snapshot_hash
+                    or (
+                        dp.raw_market_hash is not None
+                        and dp.prior_market_hash
+                        != (None if prior is None else prior.source_snapshot_hash)
                     )
-                )
-            ):
-                raise ValueError("research_update.branch_source_lineage_invalid")
-            self.updates._observed(dp)
-            self.updates.store.load_html(value.html_hash)
-            parent = value.content_hash
-            prior = value
+                    or (
+                        dp.prior_raw_market_hash is not None
+                        and (
+                            prior is None
+                            or dp.prior_raw_market_hash
+                            != self.updates.raw_basis(prior, read=read).content_hash
+                        )
+                    )
+                ):
+                    raise ValueError("research_update.branch_source_lineage_invalid")
+                self.updates._observed(dp, read=read)
+                self.updates.store.load_html(value.html_hash)
+                parent = value.content_hash
+                prior = value
         if not branch or branch[-1].observed_through != plan.target:
             raise ValueError("research_update.branch_incomplete")
         return branch
@@ -1800,35 +1901,38 @@ class DecisionAdvancementApplication:
             snapshot = self._load("market-inputs", step.products[0], LocalQAMarketSnapshot)
             if snapshot.through != plan.target or len(step.products) != len(plan.requests) + 1:
                 raise ValueError("research_update.input_axis_invalid")
-            for (index, day), h in zip(plan.requests, step.products[1:], strict=True):
-                v = self._load("decision-stages", h, DecisionAdvancementStep)
-                sp = self._verify_features(
-                    v,
-                    verified_feature_plans=verified_feature_plans,
-                    verified_feature_preparations=verified_feature_preparations,
-                )
+            feature_steps = tuple(
+                self._load("decision-stages", h, DecisionAdvancementStep) for h in step.products[1:]
+            )
+            score_plans = self._verify_feature_group(
+                feature_steps,
+                verified_feature_plans=verified_feature_plans,
+                verified_feature_preparations=verified_feature_preparations,
+            )
+            for (index, day), v, sp in zip(plan.requests, feature_steps, score_plans, strict=True):
                 if (
                     sp != self._score_plan(plan, day, step.source_hash, index)
                     or v.plan_hash != plan.content_hash
                 ):
                     raise ValueError("research_update.features_binding_invalid")
         elif stage == STAGES[3]:
-            features = self._need(plan, STAGES[2]).products[1:]
-            for h, f in zip(step.products, features, strict=True):
-                v = self._load("decision-stages", f, DecisionAdvancementStep)
-                sp = self._verify_features(
-                    v,
-                    verified_feature_plans=verified_feature_plans,
-                    verified_feature_preparations=verified_feature_preparations,
-                )
+            feature_steps = tuple(
+                self._load("decision-stages", h, DecisionAdvancementStep)
+                for h in self._need(plan, STAGES[2]).products[1:]
+            )
+            preparations = (
+                verified_feature_preparations if verified_feature_preparations is not None else {}
+            )
+            score_plans = self._verify_feature_group(
+                feature_steps,
+                verified_feature_plans=verified_feature_plans,
+                verified_feature_preparations=preparations,
+            )
+            for h, v, sp in zip(step.products, feature_steps, score_plans, strict=True):
                 score = self.scoring.verify_score_step(
                     sp, SCORE_STAGES[2], self.scoring._evidence(SCORE_STAGES[2], h)
                 )
-                preparation = (
-                    None
-                    if verified_feature_preparations is None
-                    else verified_feature_preparations.get(v.products[1])
-                )
+                preparation = preparations.get(v.products[1])
                 if preparation is None:
                     preparation, _ = self.scoring.store.load_frozen_feature_preparation(
                         v.products[1]
@@ -1863,7 +1967,7 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.stage_unknown")
         return None
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     def _record_kept(
         self,
         task: TaskRecord,
@@ -1915,10 +2019,24 @@ class DecisionAdvancementApplication:
             ValueError: Reopened products or exact declared evidence differ.
         """
         plan = self._plan_of(task)
+        plans, preparations = carried_by(self._verified, execution, lambda: ({}, {}))
         with verified_lifecycle_admissions():
-            self._verify_products(plan, work_item.stage_id)
+            self._verify_products(
+                plan,
+                work_item.stage_id,
+                verified_feature_plans=plans,
+                verified_feature_preparations=preparations,
+            )
         if evidence != self._evidence(self._need(plan, work_item.stage_id)):
             raise ValueError("research_update.task_evidence_invalid")
+        if work_item.stage_id == "update_inputs":
+            from ..maintenance.daily_health import (  # lazy: after verifying Daily inputs
+                record_daily_health,
+            )
+
+            record_daily_health(self.session.task_control_registry, task, plan.target, self.clock())
+        if work_item.stage_id == STAGES[3]:  # the last stage that reads a Feature step
+            self._verified.pop(task.task_id, None)
         return evidence
 
     def _verify_task_evidence(self, task: TaskRecord, plan: DecisionAdvancementPlan) -> None:
@@ -1989,6 +2107,7 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.publication_task_ambiguous")
         return matches[0] if matches else None
 
+    @verified_lifecycle_admissions()
     def readback(
         self, task_id: UUID | None = None, *, publication_hash: str | None = None
     ) -> dict[str, object]:
@@ -2061,7 +2180,11 @@ class DecisionAdvancementApplication:
         checkpoint = self.updates.store.load_decision_checkpoint(
             value.input_checkpoint_hash or value.checkpoint_hash
         )
-        history = self.updates.history(plan.checkpoint_hash)
+        history = (
+            self.updates.store.decision_history(checkpoint.history_hash)
+            if checkpoint.content_hash == plan.checkpoint_hash
+            else self.updates.history(plan.checkpoint_hash)
+        )
         prefix = history[
             : next(i for i, v in enumerate(history) if v.content_hash == value.content_hash) + 1
         ]

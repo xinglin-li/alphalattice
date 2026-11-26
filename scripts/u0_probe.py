@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,8 @@ from alphalattice.control.product_host.composition.saved_object_readback import 
 
 
 def probe(harvest: Path, work: Path, out: Path, *, keep: bool = False) -> None:
+    os.environ.setdefault("ALPHALATTICE_DATA_ROOT", str(work / "data-root"))
+    os.environ.setdefault("ALPHALATTICE_BACKUP_ROOT", str(work / "backups"))
     from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
     from alphalattice.control.product_host.composition.local_web_session import (
@@ -81,12 +84,8 @@ def probe_harness(harvest: Path, work: Path, rows: list[dict[str, Any]]) -> None
         build_authority,
         start_service,
     )
-    from tests.portfolio_strategy_lab.local_web_support import (
-        _manifest,
-        _request,
-        _resolved,
-        _Resolver,
-    )
+    from tests.portfolio_strategy_lab.host_requests import _request
+    from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 
     from alphalattice.control.product_host.composition.local_web_session import (
         LocalPortfolioWebSession,

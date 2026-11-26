@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import urllib.request
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -18,11 +19,13 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.interface.local_application import native_bridge, workbench_assets
 from alphalattice.interface.local_application import native_setup as setup
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
+    workspace_connection_key,
 )
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_NAME,
@@ -37,8 +40,7 @@ from alphalattice.interface.local_application.native_setup import (
     declare_project,
     strip_product_hooks,
 )
-from alphalattice.kernel.knowledge import model_store
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 
 ROOT = Path(__file__).resolve().parents[3]
 READINESS_KEYS = (
@@ -99,9 +101,7 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     assert subject["pin_differs"] == "model,effort"
     assert subject["last_at"] == document["occurred_at"] == usage["last_at"]
     assert subject["sample_time_kind"] == "LATEST_USAGE_RECORD_AT"
-    assert subject["input_channel"] == (
-        "CODEX_SESSION_FILE" if host == "codex" else "CLAUDE_CODE_SESSION_FILE"
-    )
+    assert subject["input_channel"] == ("CODEX_OTLP" if host == "codex" else "CLAUDE_CODE_OTLP")
     for count in (
         "responses",
         "input_tokens",
@@ -136,6 +136,70 @@ def test_complete_usage_snapshot_fits_public_event_subject_and_files_once(live, 
     assert stored["observation_id"] == first["observation_id"]
     assert stored["source_sequence"] == document["producer_sequence"]
     assert stored["payload"]["subject"] == subject
+
+    # The native exporter uses this same authenticated Host socket and writer.
+    from alphalattice.foundation.data_layer import history
+
+    connection = LocalResearchConnection.read(live.workspace)
+    exporters = setup.agent_exporters(project, connection)
+    exporter_headers = tomllib.loads(exporters["codex_config"])["otel"]["exporter"]["otlp-http"][
+        "headers"
+    ]
+    attrs = {
+        "conversation.id" if host == "codex" else "session.id": "socket-session",
+        "model": "synthetic-model",
+        "gen_ai.usage.input_tokens": 15,
+        "gen_ai.usage.cache_read.input_tokens": 3,
+        "gen_ai.usage.cache_write.input_tokens": 4,
+        "gen_ai.usage.output_tokens": 5,
+        "gen_ai.input.messages": "PRIVATE-PROMPT-CANARY",
+    }
+    payload = {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [{"key": "service.name", "value": {"stringValue": host}}]
+                },
+                "scopeLogs": [
+                    {
+                        "logRecords": [
+                            {
+                                "timeUnixNano": "123",
+                                "body": {"stringValue": "PRIVATE-TOOL-CANARY"},
+                                "attributes": [
+                                    {
+                                        "key": key,
+                                        "value": {
+                                            "intValue"
+                                            if isinstance(value, int)
+                                            else "stringValue": str(value)
+                                        },
+                                    }
+                                    for key, value in attrs.items()
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+    }
+    request = urllib.request.Request(
+        connection.url + "/v1/logs",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            **exporter_headers,
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        assert response.status == 200 and response.read() == b"{}"
+    (received,) = history.agent_telemetry(
+        host, "socket-session", workspace_id=connection.workspace_id
+    )
+    assert received["output_tokens"] == 5 and received["workspace_id"] == connection.workspace_id
+    assert "PRIVATE" not in json.dumps(received)
+    assert received["parent_agent_id"] is None
 
 
 def test_a_reading_with_an_unusable_record_time_files_at_its_reading_time(tmp_path):
@@ -209,6 +273,7 @@ def test_off_binding_admits_only_its_exact_lead_without_native_discovery(tmp_pat
     assert not binding.serves(("claude-code", "parent"))
 
 
+@pytest.mark.proves("local_application.agent_exporters_preview_before_project_write")
 def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypatch, capsys):
     entry = _entry()
     roles = entry._roles()
@@ -236,7 +301,7 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
         models.add(card["model"])
         efforts.add(card["model_reasoning_effort"])
         # Every specialist writes: a stage card runs its path and saves the answers it
-        # continues from (V384), the two evidence specialists their answer file.
+        # continues from, the two evidence specialists their answer file.
         assert (card["sandbox_mode"], card["approval_policy"]) == ("workspace-write", "never")
     assert len(models) == 1, f"the specialists' cards name different models: {sorted(models)}"
     assert len(efforts) == 1, f"the specialists' cards name different efforts: {sorted(efforts)}"
@@ -268,6 +333,30 @@ def test_configuration_and_detach_preserve_unrelated_settings(tmp_path, monkeypa
     assert NativeResearchBinding.read(tmp_path) is None
     assert hooks.read_bytes() == before
     assert "native_bridge.session_mismatch" in capsys.readouterr().out
+    # Native exporter settings remain a preview until the person's explicit yes.
+    connection = LocalResearchConnection(
+        str(workspace.resolve()), "w1", "http://127.0.0.1:12345/", "a" * 32, "b" * 32
+    )
+    settings = tmp_path / ".claude/settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text(json.dumps({"model": "kept", "env": {"KEPT": "yes"}}))
+    settings_before = settings.read_bytes()
+    preview = setup.agent_exporters(tmp_path, connection)
+    assert settings.read_bytes() == settings_before and preview["claude_written"] is False
+    assert preview["claude_env"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == connection.url.rstrip("/")
+    codex = tomllib.loads(preview["codex_config"])["otel"]
+    assert codex["log_user_prompt"] is False
+    transport = workspace_connection_key(workspace)
+    assert codex["exporter"]["otlp-http"]["headers"]["X-Alphalattice-Workspace"] == transport
+    assert (
+        f"X-Alphalattice-Workspace={transport}"
+        in preview["claude_env"]["OTEL_EXPORTER_OTLP_HEADERS"]
+    )
+    written = setup.agent_exporters(tmp_path, connection, configure_claude=True)
+    configured = json.loads(settings.read_text())
+    assert written["claude_written"] is True and configured["model"] == "kept"
+    assert configured["env"] == {"KEPT": "yes", **preview["claude_env"]}
+    assert hooks.read_bytes() == before
 
 
 def _hook_group(event: str, matcher: str) -> dict[str, object]:
@@ -276,7 +365,7 @@ def _hook_group(event: str, matcher: str) -> dict[str, object]:
 
 
 def test_configure_removes_only_the_products_retired_hook_groups(tmp_path, monkeypatch, capsys):
-    """FLOW-1: an earlier configure's product hooks called a command that no longer exists and
+    """an earlier configure's product hooks called a command that no longer exists and
     kept the host's trust prompts; configuring again removes exactly those groups, keeping every
     other hook and setting as written."""
     claude = tmp_path / "claude-project"
@@ -515,7 +604,11 @@ def test_ordinary_project_setup_validates_local_declarations_without_trust(
             assert result["attachment_preflight"]["missing"] == ["native_session_binding"]
             assert result["research_nonblocking"] is True
             readiness = {item["key"]: item for item in result["host_readiness"]}
-            assert set(READINESS_KEYS) == readiness.keys()
+            assert (
+                set(READINESS_KEYS)
+                | {"serving_workspaces", "windows_long_paths", "model_store_scope"}
+                == readiness.keys()
+            )
             assert readiness["disk"]["present"] is None and readiness["network"]["present"] is None
             assert "native_proof" not in result and "host_trust" not in result
             assert {
@@ -623,7 +716,84 @@ def test_claude_host_configures_binds_and_inspects_without_the_codex_files(
     assert run("configure")[1]["status"] == "REFUSED"
 
 
-@pytest.mark.parametrize("missing", (None, *READINESS_KEYS))
+@pytest.mark.proves("local_application.doctor_names_windows_long_path_setting")
+def test_doctor_reports_windows_path_and_packaged_shell(tmp_path, monkeypatch, capsys):
+    if sys.platform == "win32":
+        import ctypes
+        import winreg
+        from contextlib import nullcontext
+
+        def packaged(length, buffer):
+            if buffer is None:
+                ctypes.cast(length, ctypes.POINTER(ctypes.c_uint32)).contents.value = 32
+                return 122
+            buffer.value = "Claude_example"
+            return 0
+
+        monkeypatch.setattr(winreg, "OpenKey", lambda *_: nullcontext(None))
+        monkeypatch.setattr(winreg, "QueryValueEx", lambda *_: (0, winreg.REG_DWORD))
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetCurrentPackageFamilyName", packaged)
+    monkeypatch.setattr(
+        setup,
+        "agent_setup",
+        lambda: {
+            "installed_leg": {"present": True},
+            "retrieval_runtime": {"present": True},
+        },
+    )
+    monkeypatch.setattr(setup, "codex_queue_readiness", lambda: {"present": True})
+    monkeypatch.setattr(model_store, "recipe_readiness", lambda *_: {"ready": True})
+    from alphalattice.interface.local_application import cli, client, host_lookup
+
+    good, stale = tmp_path / "workspaces" / "served", tmp_path / "workspaces" / "stale"
+    for directory in (good, stale):
+        directory.mkdir(parents=True)
+        (directory / "research-workspace.json").write_text("{}", encoding="utf-8")
+
+    class Host:
+        def __init__(self, workspace, **_):
+            self.workspace = workspace
+
+        def request(self, document):
+            return {"status": "SERVING" if self.workspace == good else "REFUSED"}
+
+    monkeypatch.setattr(client, "LocalResearchClient", Host)
+    monkeypatch.chdir(tmp_path)
+    items = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", None)}
+    assert "windows_long_paths" in items and "model_store_scope" in items
+    assert "serving_workspaces" in items
+    assert items["serving_workspaces"]["facts"]["workspaces"] == [str(good)]
+    cli._refused("local_client.service_not_running", 0, workspace=tmp_path)
+    refusal = json.loads(capsys.readouterr().out)
+    assert str(good) in refusal["detail"]
+    assert str(stale) not in refusal["detail"]
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            host_lookup,
+            "serving_workspaces",
+            lambda *args: {"status": "UNREADABLE", "workspaces": [], "reason": "PermissionError"},
+        )
+        cli._refused("local_client.service_not_running", 0, workspace=tmp_path)
+        assert "PermissionError" in json.loads(capsys.readouterr().out)["detail"]
+    long_paths, store = items["windows_long_paths"], items["model_store_scope"]
+    if sys.platform == "win32":
+        assert long_paths["present"] is False and "LongPathsEnabled" in long_paths["how_to_fill"]
+        assert store["present"] is False and store["facts"]["package_family"] == "Claude_example"
+        assert "redirect" in store["how_to_fill"].lower()
+        monkeypatch.setattr(
+            winreg, "QueryValueEx", lambda *_: (_ for _ in ()).throw(PermissionError())
+        )
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetCurrentPackageFamilyName", lambda *_: 15700)
+        unknown = {item["key"]: item for item in setup.host_readiness(tmp_path, "codex", None)}
+        assert unknown["windows_long_paths"]["present"] is None
+        assert unknown["windows_long_paths"]["facts"]["reason"] == "PermissionError"
+        assert unknown["model_store_scope"]["present"] is True
+    else:
+        assert long_paths["facts"]["applicable"] is False
+        assert store["facts"]["applicable"] is False
+
+
+@pytest.mark.parametrize("missing", (None, *READINESS_KEYS), ids=lambda value: value or "none")
 def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeypatch, missing):
     """Each missing dependency has a way to fill it and Host facts override the caller's PATH."""
     python = tmp_path / "bin/python"
@@ -660,7 +830,9 @@ def test_host_readiness_checks_dependencies_against_bound_host(tmp_path, monkeyp
     def run(argv, **_):
         return subprocess.CompletedProcess(argv, 0, stdout="")
 
-    monkeypatch.setattr(subprocess, "run", run)
+    from alphalattice.capabilities.domain_contracts import spawn
+
+    monkeypatch.setattr(spawn, "run", run)
     user = tmp_path / ".alphalattice/user"
     user.mkdir(parents=True)
     if missing != "user_backup":
@@ -801,7 +973,9 @@ def test_codex_queue_check_names_its_bounded_probe_result(tmp_path, monkeypatch,
             raise OSError("private launch detail")
         return subprocess.CompletedProcess(argv, 1 if outcome == "failed" else 0)
 
-    monkeypatch.setattr(subprocess, "run", run)
+    from alphalattice.capabilities.domain_contracts import spawn
+
+    monkeypatch.setattr(spawn, "run", run)
     result = setup.codex_queue_readiness()
     assert (result["present"], result["reason"]) == (outcome == "ready", reason)
     assert len(calls) == (0 if outcome == "missing" else 1)
@@ -850,7 +1024,7 @@ def test_claude_code_host_binding_is_kept_apart_from_codex(tmp_path):
     )
     assert filed["producer_id"] == "claude-code-native"
     assert filed["subject"]["native_host"] == "claude-code"
-    assert filed["subject"]["input_channel"] == "CLAUDE_CODE_SESSION_FILE"
+    assert filed["subject"]["input_channel"] == "CLAUDE_CODE_OTLP"
     with pytest.raises(NativeBridgeError, match="event_scope_invalid"):
         observation_request(project, binding, {"source": "native_usage", "usage": _usage("codex")})
 
@@ -860,6 +1034,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
 
     from pydantic import ValidationError
 
+    from alphalattice.interface.local_application import host_lookup
     from alphalattice.interface.local_application import native_bridge as bridge
     from alphalattice.interface.local_application.activity import (
         SUMMARY_RETAINED_CHARACTERS,
@@ -934,6 +1109,12 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
     shipped = {host: entry._roles(host) for host in ("codex", "claude-code")}
     # name: (the bridge's bound, how it stands to its contract, the contract's, what it bounds)
     table = {
+        "WORKSPACE_SCAN_LIMIT": (
+            host_lookup.WORKSPACE_SCAN_LIMIT,
+            "==",
+            64,
+            "project workspaces checked before reporting a partial discovery",
+        ),
         "SUBJECT_VALUE_CHARACTERS": (
             bridge.SUBJECT_VALUE_CHARACTERS,
             "==",
@@ -988,19 +1169,7 @@ def test_every_bound_the_bridge_applies_is_the_contract_of_what_it_carries(tmp_p
             ">=",
             2,
             "the rollouts a Codex specialist's spawn chain reads, a first record each: its "
-            "lead's own and a specialist's specialist's (V568)",
-        ),
-        "USAGE_READ_BYTES": (
-            bridge.USAGE_READ_BYTES,
-            "==",
-            512 * 1024 * 1024,
-            "a complete optional native session scan; overflow publishes no prefix",
-        ),
-        "USAGE_LINE_BYTES": (
-            bridge.USAGE_LINE_BYTES,
-            "==",
-            8 * 1024 * 1024,
-            "one complete native JSONL record; an overbound record publishes no prefix",
+            "lead's own and a specialist's specialist's",
         ),
         "USAGE_MODEL_ROWS": (
             bridge.USAGE_MODEL_ROWS,

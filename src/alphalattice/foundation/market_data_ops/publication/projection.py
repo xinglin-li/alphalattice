@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-import hashlib
 import json
 import math
 from collections.abc import Iterable
@@ -13,17 +12,18 @@ from fractions import Fraction
 from itertools import pairwise
 from typing import Final, Literal
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.foundation.market_data_ops.sources.contracts import (
     CorporateActionEvent,
     ProviderAdjustedClosePoint,
     RawDailyBar,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
+from alphalattice.kernel.identity import identity_sha256, integrity_sha256
 
 DailyPriceBasis = Literal["unadjusted", "split_adjusted"]
 _RAW_BAR_FIELDS: Final = tuple(item.name for item in fields(RawDailyBar))
 
-ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH = hashlib.sha256(
+ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH = identity_sha256(
     json.dumps(
         {
             "comparison": "provider-backward-action-adjustment",
@@ -90,7 +90,7 @@ def _canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _plain_number(value: object) -> str | None:
@@ -153,7 +153,7 @@ def _bar_hash(bar: RawDailyBar) -> str:
         f'"open":{open_},"provider":{provider},'
         f'"session_date":"{bar.session_date.isoformat()}","volume":{volume}}}'
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def action_set_hash(actions: Iterable[CorporateActionEvent]) -> str:
@@ -187,7 +187,7 @@ def action_set_hash(actions: Iterable[CorporateActionEvent]) -> str:
             ),
         )
     ]
-    return hashlib.sha256(
+    return identity_sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
@@ -205,7 +205,7 @@ def provider_adjusted_close_evidence_hash(
         }
         for item in sorted(points, key=lambda item: item.session_date)
     ]
-    return hashlib.sha256(
+    return integrity_sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
@@ -251,6 +251,7 @@ def project_research_series(
     actions: Iterable[CorporateActionEvent],
     *,
     daily_price_basis: DailyPriceBasis = "unadjusted",
+    action_digest: str | None = None,
 ) -> tuple[ProjectedBar, ...]:
     """Project a full feature series with the last session as the TR anchor.
 
@@ -259,7 +260,8 @@ def project_research_series(
     already-written Parquet snapshot.  ``unadjusted`` inputs require dynamic
     split projection. ``split_adjusted`` inputs (the current yfinance contract)
     already use a current share basis, so applying an action split again would
-    corrupt prices and volume; their OHLCV is projected unchanged.
+    corrupt prices and volume; their OHLCV is projected unchanged. A supplied
+    action digest must describe the exact events passed as actions.
     """
     ordered_bars = tuple(sorted(bars, key=lambda item: item.session_date))
     if not ordered_bars:
@@ -280,7 +282,7 @@ def project_research_series(
         if daily_price_basis == "unadjusted"
         else {session: 1.0 for session in multipliers}
     )
-    digest = action_set_hash(ordered_actions)
+    digest = action_set_hash(ordered_actions) if action_digest is None else action_digest
 
     later_multiplier = 1.0
     split_adjusted: list[tuple[float, float, float, float, float]] = [

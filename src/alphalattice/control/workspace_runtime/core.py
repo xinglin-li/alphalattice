@@ -13,13 +13,13 @@ from collections.abc import Iterator
 from pathlib import Path
 from uuid import UUID
 
-from alphalattice.control.workspace_runtime.lock import WorkspaceLock
-from alphalattice.control.workspace_runtime.paths import resolve_confined, resolve_workspace_root
-from alphalattice.kernel.shared_kernel.domain.errors import (
+from alphalattice.capabilities.domain_contracts.domain.errors import (
     WorkspaceCorruptionError,
     WorkspaceSecurityError,
 )
-from alphalattice.kernel.shared_kernel.domain.models import RunIdentity
+from alphalattice.capabilities.domain_contracts.domain.models import RunIdentity
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
+from alphalattice.control.workspace_runtime.paths import resolve_confined, resolve_workspace_root
 
 _ROOT_DIRECTORIES = ("knowledge", "skills", "data", "experiments", ".system")
 _SYSTEM_DIRECTORIES = ("staging", "recovery")

@@ -5,20 +5,92 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import hashlib
 import json
 import os
+import platform
+import re
 import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
+
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.kernel.config import Change, process_override
 
 ROOT = Path(__file__).resolve().parents[1]
 STRICT_MODULES = ROOT / "config" / "mypy-strict-modules.txt"
+COLD_AT_STAGE: dict[str, str] = {"strict-mypy": "1.2 s warm, 27 s cold"}
+"""The checks the hook leaves to the stages while their cache is cold, with their seconds (11-16,
+one staged change of a test and a source file): a cold one alone would pass the hook's budget.
+The hook runs every other guard step within its 30 seconds (the person, 11-19); a stage runs
+each step the hook did not judge on the same tree and inputs (REUSED_STEPS)."""
+VERDICTS = "alphalattice-guard-verdicts"
+"""The hook's passing verdicts, one file per key, in the Git common folder: the card's
+checkouts and its commit stage share it, and no checkout's tree holds it."""
+VERDICT_SCHEMA = "alphalattice.guard-verdict.v1"
+VERDICT_DAYS = 7
+"""How long a recorded verdict is kept; a stage reads it within minutes of its commit."""
+REUSED_STEPS: dict[str, str] = {
+    "strict-mypy": "tree",
+    "evidence-bindings": "tree",
+    "operation-registry": "tree",
+    "import-contracts": "tree",
+    "scoped-structural": "parent",
+    "identity-closures": "parent",
+    "boundaries": "parent",
+    "test-shape": "parent",
+    "source-semgrep": "parent",
+    "registries": "parent",
+    "identity-reach": "parent",
+    "counts": "parent",
+}
+"""The steps whose verdict a stage takes from the hook, by what each compares the tree with:
+`tree`, the tree alone; `parent`, the hook's HEAD and the stage's merge base, so a stage reuses
+it only when its card's change is the hook's. Every key also names the installed gate tools. A
+stage asks registries, identity-reach and counts in its staged snapshot, under the same names.
+Never reused: Ruff (changed files at the hook, every file at the stage), develop-conflict (a
+commit graph, not a tree), the materializer (it reads the person's user layer), tool-versions
+(it judges the environment, which the stage must read itself) and test-budget (the hook pairs
+moved tests from its HEAD, the stage from the merge base)."""
+SNAPSHOT_STEPS = {
+    "staged-registries": "registries",
+    "staged-identity-reach": "identity-reach",
+    "staged-counts": "counts",
+}
+"""A stage's staged-snapshot steps, each the hook's step of that name asked of the card's change."""
+GUARD_WORKERS = 6
+"""The guard steps that run at once, each in its own process: a step changes the working
+directory, the environment or the import path, and most are pure Python, so only processes run
+them side by side. Measured on the 32-core workshop host, staged, with the slowest started
+first: one at a time 112 to 123 s, four 56 to 59 s, six 26 to 34 s, eight 28 to 33 s; six ends
+near the slowest step. ALPHALATTICE_GUARD_WORKERS overrides it."""
+SLOWEST_FIRST = (
+    "scoped-structural",
+    "test-shape",
+    "source-semgrep",
+    "test-budget",
+    "operation-registry",
+    "identity-closures",
+    "identity-reach",
+    "boundaries",
+    "import-contracts",
+)
+"""The steps measured slowest (11-15, staged and over a card's change), started first so the
+guard ends near its slowest step; the others fill the pool behind them."""
+STEP_SECONDS = 1200.0
+"""One guard step's bound: well above the slowest step's measured 30 s, and below a stage's."""
+REAP_SECONDS = 30.0
+"""How long a step's ended process tree is given to go, before its end is named unproved."""
+
+
 STRUCTURAL_TESTS = (
     ROOT / "tests" / "structural" / "test_structural_guards.py",
     ROOT / "tests" / "structural" / "test_playpen_gate_routing.py",
@@ -62,6 +134,12 @@ _LAUNCHER_RESERVE = 512
 _COMMAND_LINE_UNITS = 32_766 - _LAUNCHER_RESERVE
 
 
+def _quiet_run(*args: Any, **options: Any) -> subprocess.CompletedProcess[Any]:
+    """Launch each gate child without opening a console on Windows."""
+    options.setdefault("timeout", STEP_SECONDS)
+    return spawn.run(*args, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), **options)
+
+
 def _ensure_workspace_environment() -> None:
     """Re-execute under `<root>/.venv`, the environment `uv.lock` describes.
 
@@ -80,25 +158,386 @@ def _ensure_workspace_environment() -> None:
             "playpen gate requires the workspace .venv; run "
             f"'uv sync --locked --all-extras' in {ROOT} (see README.md)"
         )
-    if Path(sys.executable).resolve() == target.resolve():
+    if Path(sys.prefix).resolve() == (ROOT / ".venv").resolve():
         return
     if os.environ.get(_ROOT_ENV_SENTINEL) == "1":
         raise RuntimeError("playpen gate failed to enter the workspace .venv")
     os.environ[_ROOT_ENV_SENTINEL] = "1"
-    result = subprocess.run(
+    result = _quiet_run(
         (str(target), str(Path(__file__).resolve()), *sys.argv[1:]),
         check=False,
     )
     raise SystemExit(result.returncode)
 
 
+def child_record(label: str, code: int, passing: tuple[int, ...] = (0,)) -> str:
+    """The gate's record of one child check, printed before the child's own words."""
+    verdict = "PASS" if code in passing else f"FAIL exit {code}"
+    return f"PLAYPEN_GATE_CHILD {label} {verdict}"
+
+
+def _relay(
+    label: str, args: Iterable[str], *, passing: tuple[int, ...] = (0,), **options: Any
+) -> subprocess.CompletedProcess[str]:
+    """Run one child check and print its words here, under its name and verdict.
+
+    A windowless child on Windows inherits no console and no handle, so a log on a
+    pipe or a file would hold the refusal without its findings (1114-C2-3). The
+    child's stdout and stderr are captured as one stream, in the order it wrote
+    them, and printed unchanged after the gate's record of it.
+    """
+
+    done = _quiet_run(
+        tuple(args),
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        **options,
+    )
+    print(child_record(label, done.returncode, passing), flush=True)
+    print(done.stdout, end="", flush=True)
+    return done
+
+
 def _run(label: str, *args: str) -> None:
     started = perf_counter()
     try:
-        subprocess.run(args, cwd=ROOT, check=True)
+        done = _relay(label, args)
+        if done.returncode:
+            raise subprocess.CalledProcessError(done.returncode, args, done.stdout)
     finally:
         elapsed = perf_counter() - started
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
+
+
+def _strict_mark(root: Path = ROOT) -> Path:
+    """The file a whole strict run leaves in mypy's cache for this interpreter."""
+    version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    return root / ".mypy_cache" / version / "alphalattice-strict-set"
+
+
+def mypy_cache_warm(root: Path = ROOT) -> bool:
+    """Whether strict mypy has run over its whole set here, so its cache answers in seconds; a
+    cache one module's run left is still cold for the set."""
+    return _strict_mark(root).is_file()
+
+
+def runs_at_commit(label: str, *, warm: bool | None = None) -> bool:
+    """The hook runs every check, a cold one in COLD_AT_STAGE only once its cache is warm."""
+    if label not in COLD_AT_STAGE:
+        return True
+    return mypy_cache_warm() if warm is None else warm
+
+
+def commit_scope(*, commit: bool) -> Callable[[str], bool]:
+    """Whether a check runs, naming each one skipped: the hook (``commit``) runs every check but a
+    cold one. Every stage runs every check the hook did not judge on its tree and inputs."""
+    if not commit:
+        return lambda label: True
+
+    def runs(label: str) -> bool:
+        if runs_at_commit(label):
+            return True
+        print(f"PLAYPEN_GATE_SKIPPED {label}: cold; the commit stage runs it", flush=True)
+        return False
+
+    return runs
+
+
+def verdict_context(*, staged: bool, base_ref: str, baseline: str | None) -> dict[str, Any]:
+    """What every reused step's verdict reads besides its name, read once: the tree it judges (the
+    hook's index, the stage's HEAD), the trees it compares with (the hook's HEAD and the merge
+    base; the stage's merge base for both), the target, the public ledger, the registry baseline
+    the interpreter and the installed gate tools."""
+    from importlib import metadata
+
+    def installed(name: str) -> str | None:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            return None
+
+    merge_base = _git_text("merge-base", base_ref, "HEAD")
+    public = ledger_records(ROOT)
+    return {
+        "schema": VERDICT_SCHEMA,
+        "tree": _git_text("write-tree") if staged else _git_text("rev-parse", "HEAD^{tree}"),
+        "parent": _git_text("rev-parse", f"{'HEAD' if staged else merge_base}^{{tree}}"),
+        "tools": {name: installed(name) for name in GATE_TOOLS},
+        "target": _git_text("rev-parse", "--verify", f"{base_ref}^{{commit}}"),
+        "ledger": public[0] if public else None,
+        "registry_baseline": baseline,
+        "python": sys.version,
+        "os": platform.system(),
+    }
+
+
+def verdict_inputs(label: str, context: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A step's inputs, or None for a step no stage reuses (REUSED_STEPS): a `tree` step reads
+    the tree and the interpreter; any other also what it compares the tree with and the rest."""
+    kind = REUSED_STEPS.get(label)
+    if kind is None:
+        return None
+    found = {"step": label} | {
+        name: context[name] for name in ("schema", "tree", "python", "os", "tools")
+    }
+    if kind == "tree":
+        return found
+    shared = ("target", "ledger", "registry_baseline")
+    return found | {"against": context[kind]} | {name: context[name] for name in shared}
+
+
+def verdict_key(inputs: Mapping[str, Any]) -> str:
+    """The record's name: the SHA-256 of its inputs' canonical JSON."""
+    text = json.dumps(inputs, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def verdict_folder() -> Path:
+    """The folder of the hook's passing verdicts, in this checkout's Git common folder: the real
+    one even inside staged_snapshot, whose GIT_DIR is a temporary repository."""
+    names = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")
+    clean = {key: value for key, value in os.environ.items() if key not in names}
+    common = _quiet_run(
+        ("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+        cwd=ROOT,
+        env=clean,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return Path(common) / VERDICTS
+
+
+def tree_is_committed(*, staged: bool = True) -> bool:
+    """Whether the files the steps read are the tree the key names: the index's for the hook
+    (``staged``), HEAD's for a stage, so no unstaged edit, no staged one at a stage, no untracked
+    file and no merge in progress. The hook records, and a stage reuses, only then."""
+    unstaged = _quiet_run(("git", "diff", "--quiet"), cwd=ROOT, check=False).returncode
+    if not staged:
+        unstaged |= _quiet_run(
+            ("git", "diff", "--cached", "--quiet"), cwd=ROOT, check=False
+        ).returncode
+    untracked = _git_text("ls-files", "--others", "--exclude-standard")
+    merging = _quiet_run(
+        ("git", "rev-parse", "-q", "--verify", "MERGE_HEAD"),
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+    ).returncode
+    return unstaged == 0 and not untracked and merging != 0
+
+
+def record_verdicts(passed: Mapping[str, str], keys: Mapping[str, str]) -> None:
+    """Keep each passing step's words under its key, replacing a file whole; drop old records."""
+    folder = verdict_folder()
+    folder.mkdir(exist_ok=True)
+    now = dt.datetime.now(dt.UTC)
+    for label, words in passed.items():
+        if label not in keys:
+            continue
+        record = {"step": label, "verdict": "PASS", "at": now.isoformat(), "words": words}
+        temporary = folder / f"{keys[label]}.{os.getpid()}.tmp"
+        temporary.write_text(json.dumps(record), encoding="utf-8")
+        os.replace(temporary, folder / f"{keys[label]}.json")
+    expired = now.timestamp() - VERDICT_DAYS * 86400
+    for entry in os.scandir(folder):
+        if entry.name.endswith(".json") and entry.stat().st_mtime < expired:
+            Path(entry.path).unlink(missing_ok=True)
+
+
+def record_hook_passes(passed: Mapping[str, str], keys: Mapping[str, str]) -> None:
+    """Keep the hook's passes for a stage only when tool-versions passed beside them: a pass
+    made with tools off their lock is no verdict a stage may trust. A failed write loses only
+    the reuse; the commit is judged by its checks."""
+    if "tool-versions" not in passed:
+        print("PLAYPEN_GATE_VERDICTS unrecorded: tool-versions did not pass", flush=True)
+        return
+    try:
+        record_verdicts(passed, keys)
+    except OSError as error:
+        print(f"PLAYPEN_GATE_VERDICTS unrecorded: {error}", flush=True)
+
+
+def recorded_verdict(key: str) -> dict[str, Any] | None:
+    """The hook's record under this key, or None: absent, unreadable or not a pass."""
+    try:
+        record = json.loads((verdict_folder() / f"{key}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) and record.get("verdict") == "PASS" else None
+
+
+def reuse_enabled() -> bool:
+    """A proof run sets ALPHALATTICE_GUARD_REUSE=0 to judge every step again."""
+    return os.environ.get("ALPHALATTICE_GUARD_REUSE", "1") != "0"
+
+
+def reused(label: str, key: str | None) -> bool:
+    """Print the hook's verdict for this step and say so, when one is recorded under its key."""
+    record = recorded_verdict(key) if key and reuse_enabled() else None
+    if key is None or record is None:
+        return False
+    print(
+        f"PLAYPEN_GATE_REUSED {label}: the hook passed this tree and its inputs at "
+        f"{record.get('at')} ({key[:12]})",
+        flush=True,
+    )
+    print(str(record.get("words", "")), end="", flush=True)
+    return True
+
+
+def step_keys(
+    labels: Iterable[str], *, staged: bool, base_ref: str, baseline: str | None
+) -> dict[str, str]:
+    """Each reusable step's key; none when the tree is not the committed one, or Git cannot say."""
+    try:
+        if not tree_is_committed(staged=staged):
+            print(
+                "PLAYPEN_GATE_VERDICTS none: the files differ from the tree the key names",
+                flush=True,
+            )
+            return {}
+        context = verdict_context(staged=staged, base_ref=base_ref, baseline=baseline)
+        found = {}
+        for label in labels:
+            inputs = verdict_inputs(label, context)
+            if inputs is not None:
+                found[label] = verdict_key(inputs)
+        return found
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"PLAYPEN_GATE_VERDICTS none: {type(error).__name__}: {error}", flush=True)
+        return {}
+
+
+@contextmanager
+def staged_snapshot(base_ref: str) -> Iterator[None]:
+    """Present the committed change to the existing staged checks without changing its checkout."""
+    head = _git_text("rev-parse", "HEAD")
+    base = _git_text("merge-base", base_ref, head)
+    common = Path(_git_text("rev-parse", "--git-common-dir"))
+    common = common if common.is_absolute() else ROOT / common
+    public = ledger_records(ROOT)
+    names = ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE")
+    with tempfile.TemporaryDirectory(prefix="staged-snapshot-") as folder:
+        repo = Path(folder)
+        clean = {key: value for key, value in os.environ.items() if key not in names}
+        _quiet_run(["git", "init", "-q", str(repo)], check=True, env=clean)
+        directory = repo / ".git"
+        (directory / "objects/info/alternates").write_bytes(
+            ((common / "objects").resolve().as_posix() + "\n").encode("utf-8")
+        )
+        view = dict(
+            GIT_DIR=str(directory), GIT_INDEX_FILE=str(repo / "index"), GIT_WORK_TREE=str(ROOT)
+        )
+        with process_override(Change("staged-git-view", view), native=True):
+            for ref, value in (("refs/heads/stage-base", base), ("refs/heads/develop", base)):
+                _quiet_run(["git", "update-ref", ref, value], cwd=ROOT, check=True)
+            if public is not None:
+                _quiet_run(
+                    ["git", "update-ref", "refs/heads/public-export", public[0]],
+                    cwd=ROOT,
+                    check=True,
+                )
+            _quiet_run(
+                ["git", "symbolic-ref", "HEAD", "refs/heads/stage-base"], cwd=ROOT, check=True
+            )
+            _quiet_run(["git", "read-tree", head], cwd=ROOT, check=True)
+            yield
+
+
+def _check_host_materialization() -> None:
+    """The host files' drift check: a stage's stop before the static checks, which read its
+    derivatives; at the hook, one step beside them, so its 5 s run while they do."""
+    _run(
+        "claude-host-materialization",
+        sys.executable,
+        str(ROOT / "scripts" / "materialize_claude_host.py"),
+        "--check",
+    )
+
+
+def budget_base(environ: Mapping[str, str]) -> str:
+    """The test budget's base: the tip a merge lands on, as its committer names it, else develop."""
+    return environ.get("ALPHALATTICE_TEST_BUDGET_BASE") or "develop"
+
+
+def static_refusals(
+    steps: Iterable[tuple[str, Callable[[], object]]],
+    runs: Callable[[str], bool] = lambda label: True,
+) -> list[str]:
+    """Run each static check that ``runs`` admits to its end, in order, and return the labels
+    that refused.
+
+    A command step returns None and raises CalledProcessError when it refuses; a guard returns
+    its verdict. A check that cannot run is named as unmeasured and counts as refused.
+    """
+    refused = []
+    for label, check in steps:
+        if not runs(label):
+            continue
+        try:
+            passed = check() is not False
+        except subprocess.CalledProcessError:
+            passed = False
+        except Exception as error:  # an unrunnable check is unmeasured, never passed
+            print(f"PLAYPEN_GATE_UNMEASURED {label}: {type(error).__name__}: {error}", flush=True)
+            passed = False
+        if not passed:
+            refused.append(label)
+    return refused
+
+
+def concurrent_refusals(
+    commands: Mapping[str, Sequence[str]],
+    workers: int,
+    *,
+    bound: float = STEP_SECONDS,
+    passed: dict[str, str] | None = None,
+) -> list[str]:
+    """Run each step's command as its own process, at most ``workers`` at once and the slowest
+    started first; print each step's words in the steps' order once it ends, and return the
+    labels that refused (``passed`` receives the words of each step that passed). A child that
+    cannot start, or outlives ``bound``, is named as unmeasured and refused; at its bound the
+    step's whole process tree is ended, so no child it started keeps the gate waiting."""
+
+    def one(label: str) -> tuple[int | None, str]:
+        with tempfile.TemporaryFile() as log:  # a file, not a pipe: no child holds the gate open
+            try:
+                done = spawn.run(
+                    tuple(commands[label]),
+                    cwd=ROOT,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=bound,
+                )
+                code: int | None = done.returncode
+                stopped = ""
+            except OSError as error:
+                return None, f"PLAYPEN_GATE_UNMEASURED {label}: {type(error).__name__}: {error}\n"
+            except subprocess.TimeoutExpired:
+                code, stopped = None, f"PLAYPEN_GATE_UNMEASURED {label}: past its {bound:.0f} s\n"
+            log.seek(0)
+            return code, log.read().decode("utf-8", errors="replace") + stopped
+
+    refused = []
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        rank = {name: place for place, name in enumerate(SLOWEST_FIRST)}
+        order = sorted(commands, key=lambda name: rank.get(name, len(rank)))
+        started = {label: pool.submit(one, label) for label in order}
+        for label, future in ((label, started[label]) for label in commands):
+            code, words = future.result(timeout=bound + 2 * REAP_SECONDS)
+            print(words, end="", flush=True)
+            if code != 0:
+                refused.append(label)
+            elif passed is not None:
+                passed[label] = words
+    return refused
 
 
 def _command_line_units(args: tuple[str, ...]) -> int:
@@ -151,30 +590,40 @@ def _batched(targets: tuple[str, ...], *, prefix: tuple[str, ...]) -> tuple[tupl
 
 
 def _run_over_targets(label: str, *prefix: str, targets: tuple[str, ...]) -> None:
-    """Run one check over every target, in as few processes as the OS allows.
+    """Run a named pre-commit hook across every Windows-safe batch."""
+    from importlib import import_module
 
-    Every batch runs before the step fails, so one batch's diagnostics never
-    hide another's, and the first failure is re-raised with the same
-    `CalledProcessError` a single invocation produced.
-    """
+    from pre_commit.main import main as pre_commit_main  # type: ignore[import-untyped]
 
-    batches = _batched(targets, prefix=prefix)
+    batches = _batched(targets, prefix=prefix)  # pre-commit's estimate omits Windows quoting
+    import_module("run_playpen_precommit")._prepare_environment()
     started = perf_counter()
-    first_failure: subprocess.CompletedProcess[bytes] | None = None
+    failure = 0
+    previous = Path.cwd()
+    skipped = os.environ.pop("SKIP", None)
     try:
+        os.chdir(ROOT)
         for batch in batches:
-            completed = subprocess.run((*prefix, *batch), cwd=ROOT, check=False)
-            if completed.returncode != 0 and first_failure is None:
-                first_failure = completed
+            failure |= pre_commit_main(("run", label, "--hook-stage", "manual", "--files", *batch))
     finally:
+        os.chdir(previous)
+        if skipped is not None:
+            os.environ["SKIP"] = skipped
         elapsed = perf_counter() - started
         print(f"PLAYPEN_GATE_TIMING {label} {elapsed:.3f}s", flush=True)
-    if first_failure is not None:
-        first_failure.check_returncode()
+    if failure:
+        raise subprocess.CalledProcessError(failure, ("pre-commit", "run", label))
+
+
+def _git_text(*args: str) -> str:
+    """One Git answer's text; a failure raises, which the caller's step names."""
+    return cast(
+        str, _quiet_run(("git", *args), cwd=ROOT, capture_output=True, text=True, check=True).stdout
+    ).strip()
 
 
 def _git_lines(*args: str) -> set[str]:
-    result = subprocess.run(("git", *args), cwd=ROOT, check=True, capture_output=True, text=True)
+    result = _quiet_run(("git", *args), cwd=ROOT, check=True, capture_output=True, text=True)
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
@@ -186,7 +635,7 @@ def _python_targets(*, staged: bool, all_python: bool) -> tuple[str, ...]:
                 str(path.relative_to(ROOT)).replace("\\", "/")
                 for root in roots
                 for path in (ROOT / root).rglob("*.py")
-                if not any(part in {"experiments", "tmp", "workspaces"} for part in path.parts)
+                if not {"tmp", "workspaces"} & set(path.relative_to(ROOT).parts)
             )
         )
     if staged:
@@ -199,7 +648,7 @@ def _python_targets(*, staged: bool, all_python: bool) -> tuple[str, ...]:
     )
 
 
-def _report_identity_closures(*, staged: bool) -> None:
+def _report_identity_closures(*, staged: bool, base_ref: str = "develop") -> None:
     """Report, never refuse: which source identities the changed files rotate.
 
     The binding plan's closure map (B5, B14). A commit that edits a file a closure
@@ -207,9 +656,8 @@ def _report_identity_closures(*, staged: bool) -> None:
     record the move, or keep the edit out of the closure, before anyone meets it.
     """
 
-    changed = _git_lines(
-        "diff", "--cached" if staged else "HEAD", "--name-only", "--diff-filter=ACMRD"
-    )
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    changed = _git_lines("diff", since, "--name-only", "--diff-filter=ACMRD")
     if not changed:
         return
     started = perf_counter()
@@ -264,14 +712,14 @@ def _reach_may_grow(*, staged: bool) -> list[str]:
         area = module if parts[-1] == "__init__" else module.rpartition(".")[0]
         if area not in areas and not (len(parts) > 2 and parts[2] in deciding):
             continue
-        before = subprocess.run(
+        before = _quiet_run(
             ["git", "show", f"HEAD:{path}"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             encoding="utf-8",
         )
-        after = subprocess.run(
+        after = _quiet_run(
             ["git", "show", f":{path}"] if staged else ["git", "show", f"HEAD:{path}"],
             cwd=ROOT,
             capture_output=True,
@@ -301,10 +749,9 @@ def _check_identity_reach(*, staged: bool) -> bool:
     if not candidates:
         return True
     print(f"identity reach: {len(candidates)} changed modules can widen it; measuring", flush=True)
-    result = subprocess.run(
+    result = _relay(
+        "identity-reach",
         [sys.executable, str(ROOT / "scripts" / "identity_readout.py"), "--reach-check"],
-        cwd=ROOT,
-        check=False,
     )
     print(f"PLAYPEN_GATE_TIMING identity-reach {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
@@ -351,7 +798,7 @@ def shrink_only_growth(
     ]
 
 
-def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
+def _check_registries(*, staged: bool, baseline: str | None = None, update: bool = False) -> bool:
     """Run the canonical registry guards and the staged census ratchet."""
 
     paths = _git_lines(
@@ -369,7 +816,7 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             private_test_growth,
             problems,
         )
-        from devtools.testing.sizes import validate_policy, validate_post_merge_scopes
+        from devtools.testing.sizes import policy_change, validate_post_merge_scopes
     finally:
         sys.path.pop(0)
     inputs = census_inputs(ROOT, baseline) if staged else None
@@ -380,16 +827,12 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
 
     # A reference left at a moved name's old place, found before the rename lands.
     found = problems(ROOT, changed) + moved_names(ROOT, staged=staged)
-    if staged:
-        found += census_check(
-            ROOT, baseline=baseline, moves=moves, inputs=inputs
-        )  # one pairing read
     # The tests' ratchet against the registry this change started from: registering a new
     # private import by hand passes the scan above, never this (LAWS.md TE5, V16).
     ratchet = "config/registries/test-private.json"
 
     def shown(revision: str, path: str = ratchet) -> str | None:
-        result = subprocess.run(
+        result = _quiet_run(
             ["git", "show", f"{revision}:{path}"],
             cwd=ROOT,
             capture_output=True,
@@ -410,10 +853,8 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
                 previous, value = json.loads(base), json.loads(current)
                 found += shrink_only_growth(path, previous, value, carry if moves else None)
                 if path == "config/registries/test-sizes.json":
-                    try:
-                        validate_policy(value)
-                    except ValueError as error:
-                        found.append(f"{path}:1: {error}")
+                    changed_policy = policy_change(previous, value, carry if moves else None)
+                    found += [f"{path}:1: {problem}" for problem in changed_policy]
     # The staged policy and its deferred declarations must come from the same index.
     try:
         size_path = "config/registries/test-sizes.json"
@@ -435,6 +876,10 @@ def _check_registries(*, staged: bool, baseline: str | None = None) -> bool:
             )
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
         found.append(f"test_size.rule: verify deferred structural declarations: {error}")
+    if staged:
+        found += census_check(
+            ROOT, baseline=baseline, update=update and not found, moves=moves, inputs=inputs
+        )  # one pairing read; never publish an update from a refused registry stage
     for line in found:
         print(f"REGISTRY {line}", flush=True)
     print(f"PLAYPEN_GATE_TIMING registries {perf_counter() - started:.3f}s", flush=True)
@@ -453,7 +898,7 @@ def ledger_records(root: Path) -> tuple[str, str, dict[str, bytes]] | None:
 
     def run(*args: str) -> subprocess.CompletedProcess[bytes]:
         try:
-            return subprocess.run(("git", *args), cwd=root, capture_output=True)
+            return _quiet_run(("git", *args), cwd=root, capture_output=True)
         except OSError as error:
             raise ValueError(
                 f"check_playpen.ledger_unreadable:{LEDGER}; restore Git before committing: {error}"
@@ -564,18 +1009,19 @@ def boundary_problems(
     return found + [f"{p}:{n}: devtools.evaluation imports {what}" for p, n, what in rows]
 
 
-def _check_boundaries(*, staged: bool) -> bool:
+def _check_boundaries(*, staged: bool, base_ref: str = "develop") -> bool:
     """Refuse a changed file's import across the public release or evaluation boundary."""
     from release.public_manifest import read_tree
 
     def current(path: str) -> bytes | None:  # the index's bytes, or the working tree's
         if not staged:
             return (ROOT / path).read_bytes() if (ROOT / path).is_file() else None
-        shown = subprocess.run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
+        shown = _quiet_run(["git", "show", f":{path}"], cwd=ROOT, capture_output=True)
         return shown.stdout if shown.returncode == 0 else None
 
     started = perf_counter()
-    diff = ("diff", "--cached" if staged else "HEAD", "--name-only", "--no-renames")
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    diff = ("diff", since, "--name-only", "--no-renames")
     texts = {path: current(path) for path in _git_lines(*diff)}
     blobs = {p: b for p, b in (read_tree(ROOT, "HEAD")[1] | texts).items() if b is not None}
     sys.path.insert(0, str(ROOT / "src"))
@@ -612,10 +1058,13 @@ def _check_import_contracts() -> bool:
     return not found
 
 
-def _check_scoped_structural(*, staged: bool) -> bool:
-    """Run the per_file structural scans over this change's Python files only (the fast lane)."""
-    diff = ("diff", "--cached" if staged else "HEAD", "--name-status", "--no-renames")
-    listing = subprocess.run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
+def _check_scoped_structural(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Run the per_file structural scans over this change's Python files only (the fast lane):
+    the staged index against HEAD for the hook, the tree against its merge base with `base_ref`
+    for the commit stage, so a committed change is scanned as its staged form was."""
+    since = "--cached" if staged else _git_text("merge-base", base_ref, "HEAD")
+    diff = ("diff", since, "--name-status", "--no-renames")
+    listing = _quiet_run(("git", *diff), cwd=ROOT, capture_output=True, text=True, check=True)
     named = {row.split("\t")[-1] for row in listing.stdout.splitlines()}
     if not any(path.endswith(".py") for path in named):
         return True
@@ -642,41 +1091,179 @@ def _check_scoped_structural(*, staged: bool) -> bool:
             str(Path(folder) / "pytest"),
             *tests,
         )
-        done = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        done = _relay("scoped-structural", command, passing=(0, 5), env=env)
     print(f"PLAYPEN_GATE_TIMING scoped-structural {perf_counter() - started:.3f}s", flush=True)
     return done.returncode in (0, 5)  # 5: no per_file node selected
 
 
-def _check_docstrings() -> bool:
-    """Refuse a source file whose public docstring findings grew (a ratchet, lower only).
-
-    Ruff's Google-convention docstring rules over the public API of ``src/alphalattice``,
-    counted per file against ``config/docstring-baseline.json``; a new public file starts at
-    zero. ``scripts/check_docstrings.py --update`` only lowers the baseline.
-    """
+def _check_counts(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Refuse an unbounded wait or loop above ``config/wait-baseline.json`` and a ``type: ignore``
+    above ``config/type-ignore-baseline.json``, in one child (scripts/check_counts.py): the staged
+    files for the hook, every tracked file otherwise against the merge base with ``base_ref``."""
 
     started = perf_counter()
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "check_docstrings.py")], cwd=ROOT, check=False
-    )
-    print(f"PLAYPEN_GATE_TIMING docstrings {perf_counter() - started:.3f}s", flush=True)
+    script = [sys.executable, str(ROOT / "scripts" / "check_counts.py")]
+    scope = ["--staged"] if staged else ["--all", "--base", base_ref]
+    result = _relay("counts", [*script, *scope], timeout=600)
+    print(f"PLAYPEN_GATE_TIMING counts {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
-def _check_test_shape(*, staged: bool) -> bool:
-    """Refuse a staged test change that breaks the writing rules in tests/README.md."""
+def _develop_conflicts(*, staged: bool, target: str = "develop") -> list[str]:
+    """The files where the change would conflict with `target`: the staged index for the hook, the
+    committed head for the stage. None when this checkout has no such branch, or a merge commit,
+    which resolves its own conflicts, is being staged."""
 
-    if not staged:
-        return True
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return _quiet_run(
+            ("git", *args),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+
+    if git("rev-parse", "-q", "--verify", target).returncode:
+        return []
+    change = "HEAD"
+    if staged:
+        if git("rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0:
+            return []
+        head = git("rev-parse", "-q", "--verify", "HEAD").stdout.strip()
+        tree = git("write-tree").stdout.strip()
+        named = ("-c", "user.name=fast-guard", "-c", "user.email=fast-guard@example.invalid")
+        written = git(*named, "commit-tree", tree, *(["-p", head] if head else []), "-m", "staged")
+        change = written.stdout.strip()
+    done = git("merge-tree", "--write-tree", "--name-only", "--no-messages", change, target)
+    if done.returncode == 0:
+        return []
+    if done.returncode == 1:
+        return [line for line in done.stdout.splitlines()[1:] if line.strip()]
+    raise RuntimeError(f"git merge-tree exited {done.returncode}: {done.stderr.strip()[:200]}")
+
+
+GATE_TOOLS = (
+    "actionlint-py",
+    "import-linter",
+    "mypy",
+    "pre-commit",
+    "pre-commit-hooks",
+    "ruff",
+    "semgrep",
+    "shellcheck-py",
+)
+"""The Python packages the gate's checks run; each must be the version uv.lock pins."""
+
+
+def tool_version_drift(lock: str, installed: Callable[[str], str | None]) -> list[str]:
+    """Each gate tool whose installed version is not uv.lock's, or that is missing. An older Ruff
+    passes the hook without the rules it lacks (11-14: 0.15.22 against 0.17.4 missed five)."""
+    found = []
+    for name in GATE_TOOLS:
+        pin = re.search(rf'^name = "{re.escape(name)}"\nversion = "([^"]+)"$', lock, re.M)
+        have = installed(name)
+        if pin is None or have != pin[1]:
+            locked = pin[1] if pin else "not in uv.lock"
+            found.append(f"{name} {have or 'missing'} installed, {locked} locked")
+    return found
+
+
+def _check_tool_versions() -> bool:
+    """Refuse a gate tool off its lock, naming the sync that restores it."""
+    from importlib import metadata
+
+    def installed(name: str) -> str | None:
+        try:
+            return metadata.version(name)
+        except metadata.PackageNotFoundError:
+            return None
+
     started = perf_counter()
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")], cwd=ROOT, check=False
-    )
-    print(f"PLAYPEN_GATE_TIMING test-shape {perf_counter() - started:.3f}s", flush=True)
+    found = tool_version_drift((ROOT / "uv.lock").read_text(encoding="utf-8"), installed)
+    for line in found:
+        print(f"TOOL-VERSION {line}: run uv sync --locked --all-extras", flush=True)
+    print(f"PLAYPEN_GATE_TIMING tool-versions {perf_counter() - started:.3f}s", flush=True)
+    return not found
+
+
+def _check_develop_conflict(*, staged: bool, base_ref: str = "develop") -> bool:
+    """Refuse a change that would conflict with develop, as the harness's commit does with main."""
+    started = perf_counter()
+    try:
+        files = _develop_conflicts(staged=staged, target=base_ref)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"develop-conflict unmeasured: {error}; restore Git and retry", file=sys.stderr)
+        return False
+    for path in files:
+        print(
+            f"develop-conflict: {path} conflicts with {base_ref}: "
+            f"merge {base_ref} into this branch, then commit",
+            file=sys.stderr,
+        )
+    print(f"PLAYPEN_GATE_TIMING develop-conflict {perf_counter() - started:.3f}s", flush=True)
+    return not files
+
+
+def _check_test_shape(
+    *, staged: bool, base_ref: str = "develop", semgrep_only: bool = False
+) -> bool:
+    """Refuse a test change that breaks the writing rules in tests/README.md: the staged index
+    for the hook, the committed head against its merge base with `base_ref` for the stage. The
+    semgrep source rules are their own step (``semgrep_only``, source-semgrep): over the hook's
+    budget, the commit stage runs them."""
+
+    started = perf_counter()
+    label = "source-semgrep" if semgrep_only else "test-shape"
+    script = [sys.executable, str(ROOT / "scripts" / "check_test_shape.py")]
+    if semgrep_only:
+        script.append("--semgrep-only")
+    result = _relay(label, script if staged else [*script, "--base", base_ref])
+    print(f"PLAYPEN_GATE_TIMING {label} {perf_counter() - started:.3f}s", flush=True)
     return result.returncode == 0
 
 
 def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
+    """The test budget with each test file's holders kept by its path and bytes (the scan cache
+    the gate names, ALPHALATTICE_SCAN_CACHE_DIR): a change to one test re-reads every test's
+    holders, so the hook parses only the files that changed since its last commit."""
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from devtools.architecture import structural
+        from devtools.testing import requirements
+    finally:
+        sys.path.pop(0)
+    with structural.kept_facts("test-budget-holders", requirements):
+        return _test_budget(staged=staged, base_ref=base_ref)
+
+
+def _kept_holders(path: str, text: str) -> list[Any]:
+    """One test file's requirement holders, from the running scan's store when it holds them."""
+    from devtools.architecture import structural
+    from devtools.testing import requirements
+
+    rows = structural.kept_fact(
+        requirements,
+        "holders:" + path,
+        text.encode("utf-8", errors="surrogateescape"),
+        lambda data: [
+            list(holder)
+            for holder in requirements.file_holders(
+                path, data.decode("utf-8", errors="surrogateescape")
+            )
+        ],
+        lambda value: (
+            isinstance(value, list)
+            and all(isinstance(row, list) and len(row) == 4 for row in value)
+        ),
+    )
+    return [
+        requirements.Holder(node, tuple(ids), words, digest) for node, ids, words, digest in rows
+    ]
+
+
+def _test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     """Report growth and refuse unregistered new tests or requirement rows.
 
     Read the merge base and staged holders once; unreadable input never means zero.
@@ -689,13 +1276,13 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         sys.path.pop(0)
 
     def git(*args: str) -> str:
-        done = subprocess.run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
+        done = _quiet_run(("git", *args), cwd=ROOT, capture_output=True, encoding="utf-8")
         if done.returncode:
             said = (done.stderr or done.stdout).strip().splitlines()[:1]
             raise RuntimeError(
                 f"`git {' '.join(args)}` failed: {' '.join(said) or done.returncode}"
             )
-        return done.stdout
+        return cast(str, done.stdout)
 
     try:
         pending = ROOT / git("rev-parse", "--git-path", "MERGE_HEAD").strip()
@@ -727,7 +1314,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
         if staged and set(specs) - blobs.keys():
             raise RuntimeError("test holder snapshot unavailable; repair the index")
         projected = {
-            path: requirements.file_holders(
+            path: _kept_holders(
                 path, blobs[":" + path] if staged else (ROOT / path).read_text("utf-8")
             )
             for path in changed_tests & indexed
@@ -741,24 +1328,43 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
             now = now if staged else disk.read_text("utf-8") if disk.is_file() else ""
             then = blobs.get(f"{base}:{path}", "") if path in before else ""
             later += (
-                projected[path]
-                if path in projected
-                else requirements.file_holders(path, now)
-                if now
-                else []
+                projected[path] if path in projected else _kept_holders(path, now) if now else []
             )
-            earlier += requirements.file_holders(path, then) if then else []
+            earlier += _kept_holders(path, then) if then else []
         pairs = staged_changes(ROOT, base=None if staged else base, tree=None if staged else "HEAD")
         fresh = requirements.fresh(earlier, later, staged_moves(ROOT, pairs=pairs))
         old_nodes = {test.node for test in earlier}
+        changed = [test for test in later if test.node in old_nodes and test not in earlier]
         added = [test.node for test in fresh if test.node not in old_nodes]
+        removed_sources = set(
+            git(
+                "diff",
+                *(["--cached"] if staged else []),
+                "--name-only",
+                "--diff-filter=D",
+                "-z",
+                base,
+                "--",
+                "src/",
+                "scripts/",
+            ).split("\0")
+        ) - {""}
+        removed_tests = {
+            path: blobs[f"{base}:{path}"]
+            for path in changed_tests & before
+            if (path not in indexed if staged else not (ROOT / path).is_file())
+        }
         registry = requirements.REGISTRY.as_posix()
         here = git("ls-files", "--", registry).strip() if staged else (ROOT / registry).is_file()
         declared = git("show", f":{registry}") if staged and here else None
         declared = (ROOT / registry).read_text("utf-8") if here and not staged else declared
         listed = git("ls-tree", "--name-only", base, "--", registry).strip()
         declared_then = git("show", f"{base}:{registry}") if listed else None
-        if fresh or declared != declared_then:
+        roster = None
+        if staged and declared is not None and os.environ.get("ALPHALATTICE_STAGE_TARGET"):
+            common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+            roster = common.parent.parent / "playpen-board" / "registries" / "lines.json"
+        if fresh or declared != declared_then or changed_tests:  # an area's shares need every test
             missing = paths - projected.keys()
             if staged:
                 more = read_blobs([":" + path for path in missing], ROOT)
@@ -766,7 +1372,7 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
                     raise RuntimeError("test holder snapshot unavailable; repair the index")
             for path in missing:
                 if staged or (ROOT / path).is_file():
-                    projected[path] = requirements.file_holders(
+                    projected[path] = _kept_holders(
                         path, more[":" + path] if staged else (ROOT / path).read_text("utf-8")
                     )
     except (
@@ -786,9 +1392,20 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
     tests = sum(net for path, net in nets if path.startswith("tests/") and not path.endswith(".md"))
     print(
         f"TEST-GROWTH net source {source:+d}, net tests {tests:+d}, "
-        f"new test functions {len(added)}; reviewer judges proportion",
+        f"new test functions {len(added)}",
         flush=True,
     )
+    try:
+        declared_rows = requirements.parse(declared) if declared else {}
+    except ValueError:
+        declared_rows = {}  # the guard below refuses an unreadable registry by name
+    sizes = "config/registries/test-sizes.json"  # the policy of the snapshot the diff measured
+    if staged:
+        policy = git("show", f":{sizes}") if git("ls-files", "--", sizes).strip() else None
+    else:
+        policy = (ROOT / sizes).read_text("utf-8") if (ROOT / sizes).is_file() else None
+    for line in requirements.growth(policy, source, tests, fresh, declared_rows, changed):
+        print(line, flush=True)  # a share cap is met by folding tests, so review judges it
     refused = requirements.guard(
         ROOT,
         fresh,
@@ -799,6 +1416,9 @@ def _check_test_budget(*, staged: bool, base_ref: str = "develop") -> bool:
             *earlier,
             *(t for path, group in projected.items() if path not in changed_tests for t in group),
         ],
+        retired_tests=removed_tests,
+        removed_sources=removed_sources,
+        roster=roster,
     )
     for line in refused:
         print(line, flush=True)
@@ -864,10 +1484,8 @@ def _require_private_structural_inputs() -> bool:
     return False
 
 
-def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environment) -> int:
-    """Run the gate; `ensure_environment` enters the workspace .venv (a test passes its own)."""
-    ensure_environment()
-    gate_started = perf_counter()
+def _parser() -> argparse.ArgumentParser:
+    """The gate's command line."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--staged",
@@ -877,8 +1495,17 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
     parser.add_argument(
         "--registry-baseline", default=os.environ.get("ALPHALATTICE_REGISTRY_BASELINE")
     )
+    parser.add_argument(
+        "--registry-update", action="store_true", help="Refresh a clean staged registry census."
+    )
     parser.add_argument("--all-python", action="store_true")
-    parser.add_argument("--base", default="develop", help="base commit for the test budget")
+    parser.add_argument("--strict-mypy-only", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--base",
+        default=budget_base(os.environ),
+        help="base commit for the test budget (default: $ALPHALATTICE_TEST_BUDGET_BASE, the tip a "
+        "merge commit lands on when it is not develop, else develop)",
+    )
     parser.add_argument(
         "--fast",
         action="store_true",
@@ -898,7 +1525,43 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
             "repeated here."
         ),
     )
+    parser.add_argument("--only", help=argparse.SUPPRESS)  # one step, run by the guard's pool
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("ALPHALATTICE_GUARD_WORKERS") or GUARD_WORKERS),
+        help="guard steps run at once, each in its own process (1: in order, in this process)",
+    )
+    parser.add_argument(
+        "--hook",
+        action="store_true",
+        help=("with --staged, the commit hook: every check but a cold one, its passes recorded"),
+    )
+    return parser
+
+
+def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environment) -> int:
+    """Run the gate; `ensure_environment` enters the workspace .venv (a test passes its own)."""
+    ensure_environment()
+    gate_started, parser = perf_counter(), _parser()
     args = parser.parse_args()
+    if args.registry_update and (not args.staged or not args.registry_baseline):
+        parser.error("--registry-update requires --staged and --registry-baseline")
+    if args.strict_mypy_only:
+        try:
+            _run(
+                "strict-mypy",
+                sys.executable,
+                "-m",
+                "mypy",
+                "--config-file",
+                "pyproject.toml",
+                *_strict_targets(),
+            )
+        finally:  # a refusal still leaves the whole set's cache
+            if _strict_mark().parent.is_dir():
+                _strict_mark().touch()
+        return 0
     if args.evidence and args.fast:
         parser.error("--evidence and --fast are mutually exclusive")
     if args.evidence:
@@ -931,72 +1594,181 @@ def main(*, ensure_environment: Callable[[], None] = _ensure_workspace_environme
         )
         return 0
 
-    if args.fast:
-        _run(
-            "claude-host-materialization",
-            sys.executable,
-            str(ROOT / "scripts" / "materialize_claude_host.py"),
-            "--check",
+    only = args.only is not None  # one step, as a child of the concurrent guard below
+    hook = args.hook and args.staged and not only
+    if hook:  # whole-tree facts (test-budget's holders) kept by blob across this checkout's commits
+        common = _quiet_run(
+            ("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+            cwd=ROOT,
+            capture_output=True,
+            encoding="utf-8",
+            stdin=subprocess.DEVNULL,
+            timeout=30,
         )
-    if not args.fast and not _require_private_structural_inputs():
+        if common.returncode == 0 and common.stdout.strip():
+            cache = Path(common.stdout.strip()) / "alphalattice-hook-facts"
+            os.environ.setdefault("ALPHALATTICE_SCAN_CACHE_DIR", str(cache))
+    at_commit = commit_scope(commit=hook)
+    stage = args.fast and not args.staged and not only  # the commit stage's guard
+    if args.fast and not only and not hook:
+        _check_host_materialization()
+    if not args.fast and not only and not _require_private_structural_inputs():
         return 1
+    # The static checks below each read the same immutable tree and none feeds another, so
+    # each runs to its end and every refusal is named in one attempt; the slow steps after
+    # them still wait for all of them. The materializer above stays a stop: later checks
+    # read the derivatives it verifies.
     python_targets = _python_targets(staged=args.staged, all_python=args.all_python)
-    if python_targets:
-        _run_over_targets(
-            "ruff-check",
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            "--config",
-            "pyproject.toml",
-            targets=python_targets,
-        )
-        _run_over_targets(
-            "ruff-format",
-            sys.executable,
-            "-m",
-            "ruff",
-            "format",
-            "--check",
-            "--config",
-            "pyproject.toml",
-            targets=python_targets,
-        )
-    if args.fast and not _check_scoped_structural(staged=args.staged):
-        return 1
+    ruff = (sys.executable, "-m", "ruff")
+    lint, form = (
+        (*ruff, "check", "--config", "pyproject.toml"),
+        (*ruff, "format", "--check", "--config", "pyproject.toml"),
+    )
     # Always the full strict set, never a subset. With follow_imports = "skip",
     # a module absent from the command line types as Any, so narrowing the list
     # both invents errors and hides real ones -- it is not the same check on
     # fewer files. It also buys nothing: warm-cache mypy over all of them is
     # about a second, and was never what made this gate slow.
-    _run(
-        "strict-mypy",
-        sys.executable,
-        "-m",
-        "mypy",
-        "--config-file",
-        "pyproject.toml",
-        *_strict_targets(),
+    mypy = (sys.executable, "-m", "mypy", "--config-file", "pyproject.toml")
+    steps: list[tuple[str, Callable[[], object]]] = [
+        *([("claude-host-materialization", _check_host_materialization)] if args.fast else []),
+        ("tool-versions", _check_tool_versions),
+        *(
+            [
+                (
+                    "ruff-check",
+                    lambda: _run_over_targets("ruff-check", *lint, targets=python_targets),
+                ),
+                (
+                    "ruff-format",
+                    lambda: _run_over_targets("ruff-format", *form, targets=python_targets),
+                ),
+            ]
+            if python_targets
+            else []
+        ),
+        *(
+            [
+                (
+                    "scoped-structural",
+                    lambda: _check_scoped_structural(staged=args.staged, base_ref=args.base),
+                )
+            ]
+            if args.fast
+            else []
+        ),
+        (
+            "strict-mypy",
+            lambda: _run_over_targets(
+                "strict-mypy", *mypy, *_strict_targets(), targets=("pyproject.toml",)
+            ),
+        ),
+        (
+            "identity-closures",
+            lambda: _report_identity_closures(staged=args.staged, base_ref=args.base),
+        ),
+        ("identity-reach", lambda: _check_identity_reach(staged=args.staged)),
+        ("evidence-bindings", _check_evidence_bindings),
+        ("operation-registry", _check_operation_registry),
+        (
+            "registries",
+            lambda: _check_registries(
+                staged=args.staged, baseline=args.registry_baseline, update=args.registry_update
+            ),
+        ),
+        ("boundaries", lambda: _check_boundaries(staged=args.staged, base_ref=args.base)),
+        ("import-contracts", _check_import_contracts),
+        ("counts", lambda: _check_counts(staged=args.staged, base_ref=args.base)),
+        (
+            "test-shape",
+            lambda: _check_test_shape(staged=args.staged, base_ref=args.base),
+        ),
+        (
+            "source-semgrep",
+            lambda: _check_test_shape(staged=args.staged, base_ref=args.base, semgrep_only=True),
+        ),
+        ("test-budget", lambda: _check_test_budget(staged=args.staged, base_ref=args.base)),
+        (
+            "develop-conflict",
+            lambda: _check_develop_conflict(staged=args.staged, base_ref=args.base),
+        ),
+    ]
+    if only:
+        chosen = [(label, check) for label, check in steps if label == args.only]
+        if not chosen:
+            parser.error(f"--only names no step of this gate: {args.only}")
+        return 1 if static_refusals(chosen) else 0
+    admitted = [
+        (label, check)
+        for label, check in steps
+        if at_commit(label) and (hook or label != "claude-host-materialization")
+    ]
+    keys = (
+        step_keys(
+            (label for label, _ in admitted if not (stage and label in SNAPSHOT_STEPS.values())),
+            staged=args.staged,
+            base_ref=args.base,
+            baseline=args.registry_baseline,
+        )
+        if hook or stage
+        else {}
     )
-    _report_identity_closures(staged=args.staged)
-    if not _check_identity_reach(staged=args.staged):
-        return 1
-    if not _check_evidence_bindings():
-        return 1
-    if not _check_operation_registry():
-        return 1
-    if not _check_registries(staged=args.staged, baseline=args.registry_baseline):
-        return 1
-    if not _check_boundaries(staged=args.staged):
-        return 1
-    if not _check_import_contracts():
-        return 1
-    if not _check_docstrings():
-        return 1
-    if not _check_test_shape(staged=args.staged):
-        return 1
-    if not _check_test_budget(staged=args.staged, base_ref=args.base):
+    if stage:  # the steps the hook judged on this tree and its inputs are not run again
+        admitted = [(name, check) for name, check in admitted if not reused(name, keys.get(name))]
+    passed: dict[str, str] = {}
+    if args.workers > 1 and len(admitted) > 1:
+        script = (sys.executable, str(Path(__file__).resolve()), *sys.argv[1:], "--only")
+        commands = {label: (*script, label) for label, _ in admitted}
+        refused = concurrent_refusals(commands, args.workers, passed=passed)
+    else:
+        refused = static_refusals(admitted)
+    if hook and keys and passed:
+        record_hook_passes(passed, keys)
+    if args.fast and args.all_python and not args.staged:
+        try:
+            with staged_snapshot(args.base):
+                twins = step_keys(
+                    SNAPSHOT_STEPS.values(),
+                    staged=True,
+                    base_ref=args.base,
+                    baseline=args.registry_baseline,
+                )
+                snapshot_steps = (
+                    (
+                        "staged-registries",
+                        lambda: _check_registries(staged=True, baseline=args.registry_baseline),
+                    ),
+                    ("staged-identity-reach", lambda: _check_identity_reach(staged=True)),
+                    ("staged-counts", lambda: _check_counts(staged=True, base_ref=args.base)),
+                )
+                refused += static_refusals(
+                    (label, check)
+                    for label, check in snapshot_steps
+                    if not reused(label, twins.get(SNAPSHOT_STEPS[label]))
+                )
+                hook_env = dict(os.environ)
+                hook_env.pop("SKIP", None)
+                hook_env["PATH"] = (
+                    str(Path(sys.executable).parent) + os.pathsep + hook_env.get("PATH", "")
+                )
+                hook_env["PRE_COMMIT_HOME"] = str(Path(tempfile.gettempdir()) / "stage-pre-commit")
+                for hook in ("check-added-large-files", "check-merge-conflict"):
+                    done = _relay(
+                        hook,
+                        [sys.executable, "-m", "pre_commit", "run", hook, "--hook-stage", "manual"],
+                        env=hook_env,
+                    )
+                    if done.returncode:
+                        refused.append(hook)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f"PLAYPEN_GATE_UNMEASURED staged-snapshot: {error}", flush=True)
+            refused.append("staged-snapshot")
+    if refused:
+        print(
+            f"PLAYPEN_GATE_REFUSED {len(refused)} static check(s): {', '.join(refused)}. "
+            "Each is named above; repair them all before the next attempt.",
+            flush=True,
+        )
         return 1
     if args.fast:
         # What actually cost minutes per commit: the whole-repo structural guard

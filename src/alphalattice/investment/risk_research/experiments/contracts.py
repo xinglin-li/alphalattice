@@ -21,7 +21,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 _HASH_PATTERN = r"^[0-9a-f]{64}$"
 
@@ -74,7 +74,7 @@ class RiskDevelopmentProgramBinding(BaseModel):  # type: ignore[misc]
     development_source_closure_hash: str | None = Field(
         default=None, pattern=_HASH_PATTERN, exclude_if=lambda v: v is None
     )
-    """The code closures a binding sealed before the binding plan's P.
+    """The code closures a binding sealed before the Program-binding change.
 
     A Program binds meaning only: the code that runs a study is bound by its plan's
     implementation hash, whose moves are recorded, so an edit that leaves the numbers

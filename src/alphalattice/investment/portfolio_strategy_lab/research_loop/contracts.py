@@ -7,11 +7,11 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.portfolio_strategy_lab.contracts import PortfolioLabContract
 from alphalattice.investment.portfolio_strategy_lab.regularization.contracts import (
     PortfolioResearchTerminalOutcome,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class PortfolioResearchScientistReview(PortfolioLabContract):

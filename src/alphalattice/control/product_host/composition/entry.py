@@ -3,44 +3,60 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import importlib.util
 import json
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 
-from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_DISCLOSURE,
-    LOCKED_SETUP_WORDS,
-    fill_command,
-    interpreter_path,
-)
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-
-from .model_sandbox import run_sandbox
-from .web_launcher import attached_child
-from .web_launcher import main as start
-
-ROOT: Path = resolve_playpen_root(Path(__file__))
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.interface.local_application import thin_cli
+from alphalattice.kernel import storage
+from alphalattice.kernel.config import current as process_config
 
 
 def serve(arguments: list[str]) -> int:
     """Start the Local Web Host with its declared retrieval environment."""
+    entry = argparse.ArgumentParser(add_help=False)
+    entry.add_argument("--workspace", type=Path, required=True)
+    entry.add_argument("--new-research", action="store_true")
+    entry.add_argument("--detach", action="store_true")
+    entry.add_argument("--stop-on-stdin", action="store_true")
+    selected, _rest = entry.parse_known_args(arguments)
+
+    from .web_launcher import (  # lazy: only serve prepares and launches a Host
+        attached_child,
+        detached_refusal,
+        prepare_native_threads,
+    )
+    from .web_launcher import main as start  # lazy: only serve starts a Host
+
+    if (
+        selected.detach
+        and (refusal := detached_refusal(selected.workspace, stop_on_stdin=selected.stop_on_stdin))
+        is not None
+    ):
+        return refusal
+    prepare_native_threads(selected.workspace)
     from alphalattice.control.product_host.composition.research_workspace import (
         RESEARCH_WORKSPACE_MANIFEST_NAME,
         read_research_workspace_manifest,
     )
+    from alphalattice.interface.local_application.retrieval_environment import (  # lazy: serve
+        LOCKED_SETUP_DISCLOSURE,
+        LOCKED_SETUP_WORDS,
+        fill_command,
+        interpreter_path,
+    )
 
     from .first_use_road import serve_road
 
-    entry = argparse.ArgumentParser(add_help=False)
-    entry.add_argument("--workspace", type=Path, required=True)
-    entry.add_argument("--new-research", action="store_true")
-    selected, _rest = entry.parse_known_args(arguments)
     # Before anything starts: the project's completed first use in another workspace is its
     # daily road, unless the person said yes to separate new research.
     if not selected.new_research and (road := serve_road(selected.workspace)) is not None:
-        print(json.dumps(road))  # noqa: T201  # bootstrap/lifecycle
+        print(json.dumps(road))
         return 2
     arguments = [a for a in arguments if a != "--new-research"]
     manifest = (
@@ -49,7 +65,8 @@ def serve(arguments: list[str]) -> int:
         else None
     )
     interpreter = interpreter_path()
-    checkout = (ROOT / "pyproject.toml").is_file()
+    root = resolve_playpen_root(Path(__file__))
+    checkout = (root / "pyproject.toml").is_file()
     packaged = manifest is not None and manifest.evidence_review is not None
     # The Host runs in the declared retrieval environment whenever it exists, so an Evidence
     # package installed while it runs is served by it; a package with none to run in refuses.
@@ -57,7 +74,7 @@ def serve(arguments: list[str]) -> int:
         packaged or (checkout and interpreter.is_file())
     ):
         if not checkout or not interpreter.is_file():
-            print(  # noqa: T201  # bootstrap/lifecycle
+            print(
                 json.dumps(
                     {
                         "status": "REFUSED",
@@ -73,17 +90,20 @@ def serve(arguments: list[str]) -> int:
             )
             return 2
         # Detach before a venv trampoline adds its own Job; that Job can mask the caller's.
-        if "--detach" in arguments:
+        if selected.detach:
             return start(
-                arguments, host_interpreter=interpreter, new_research=selected.new_research
+                arguments,
+                host_interpreter=interpreter,
+                new_research=selected.new_research,
+                native_threads_prepared=True,
             )
         # Inherit cwd/stdin/env. The workspace and input file arguments retain
         # their caller-relative meaning; no source is loaded from a sibling tree.
         # The checkout shim's sys.path bootstrap does not reach a new interpreter.
         # Give that child the same checkout source, even when its environment has
         # dependencies installed without an editable package installation.
-        environment = dict(os.environ)
-        source = str(ROOT / "src")
+        environment = process_config().child_environment()
+        source = str(root / "src")
         inherited_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = (
             source + os.pathsep + inherited_path if inherited_path else source
@@ -98,9 +118,9 @@ def serve(arguments: list[str]) -> int:
             env=environment,
         )
     return (
-        start(arguments, new_research=selected.new_research)
-        if "--detach" in arguments
-        else start(arguments)
+        start(arguments, new_research=selected.new_research, native_threads_prepared=True)
+        if selected.detach
+        else start(arguments, own_process_tree=True, native_threads_prepared=True)
     )
 
 
@@ -112,7 +132,7 @@ def restore(
     generation_hash: str | None,
     root: Path | None,
 ) -> dict[str, object]:
-    """Restore one backup generation from the backup root alone, with no Host (V328)."""
+    """Restore one backup generation from the backup root alone, with no Host."""
     from alphalattice.control.product_host.storage.backup import restore_from_root
 
     return restore_from_root(
@@ -125,23 +145,85 @@ def sandbox(workspace: Path, model_id: str, *, study: Path | None, keep: bool) -
 
     Its saved-object readback is shared with the checkout verification probe.
     """
+    from .model_sandbox import run_sandbox  # lazy: a CLI call that sends no trial loads no store
+
     answer: dict[str, object] = run_sandbox(workspace, model_id, study=study, keep=keep)
     return answer
 
 
+def _closed_output_pipe(error: OSError) -> bool:
+    """Windows may report EINVAL when flushing a pipe whose reader has closed."""
+    if isinstance(error, BrokenPipeError):
+        return True
+    if sys.platform != "win32" or error.errno != errno.EINVAL:
+        return False
+    import ctypes  # lazy: only Windows needs pipe-handle inspection.
+    import msvcrt  # lazy: only Windows has CRT handles.
+
+    try:
+        handle = msvcrt.get_osfhandle(sys.stdout.fileno())  # noqa: TID251  # inspect CLI pipe
+        return bool(
+            ctypes.windll.kernel32.GetFileType(ctypes.c_void_p(handle)) == 3
+        )  # FILE_TYPE_PIPE
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _install_storage_driver() -> None:
+    """The process's DuckDB driver, installed in the storage port before the CLI or Host opens a
+    file; the thin path above loads no DuckDB."""
+    from alphalattice.control.workspace_runtime import reader_threads  # lazy: past the thin path
+
+    storage.install_driver(reader_threads.DRIVER)
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run the declared command and return its exit status."""
+    """Run the declared command and return its exit status: one command, which makes one Host
+    start attempt whichever path reaches it (`thin_cli.one_command`)."""
+    with thin_cli.one_command():
+        return _run(argv)
+
+
+def _run(argv: list[str] | None) -> int:
+    process_config()
     arguments = sys.argv[1:] if argv is None else argv
     try:
-        from alphalattice.interface.local_application.cli import main as root
+        if argv is None:
+            try:
+                if (code := thin_cli.invoke(arguments)) is not None:
+                    return code
+            except thin_cli.DeliveryLost as error:
+                from alphalattice.interface.local_application.cli import (  # lazy: lost reply
+                    delivery_lost,
+                )
 
-        return int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
+                return delivery_lost(arguments, error)
+        _install_storage_driver()
+        from alphalattice.interface.local_application.cli import main as root  # lazy: CLI dispatch
+
+        result = int(root(arguments, serve=serve, restore=restore, sandbox=sandbox))
+        sys.stdout.flush()  # noqa: TID251  # detect a closed CLI output pipe
+        return result
+    except OSError as error:
+        if not _closed_output_pipe(error):
+            raise
+        # Avoid a second flush of buffered stdout during interpreter shutdown.
+        with suppress(OSError, ValueError, AttributeError), open(os.devnull, "w") as sink:
+            os.dup2(sink.fileno(), sys.stdout.fileno())  # noqa: TID251  # stop shutdown flush
+        from alphalattice.interface.local_application import cli_contract  # lazy: pipe refusal.
+
+        print(
+            cli_contract.worded("cli.output_pipe_closed"),
+            file=sys.stderr,  # noqa: TID251  # CLI stderr
+        )
+        return 1
     except ModuleNotFoundError as error:
         # A runtime dependency this interpreter lacks, named with the locked setup that
         # provides it; a missing product module is a broken tree and is raised as one.
         if error.name is None or error.name.split(".")[0] in {"alphalattice", "scripts"}:
             raise
-        print(  # noqa: T201  # bootstrap/lifecycle
+        checkout_root = resolve_playpen_root(Path(__file__))
+        print(
             json.dumps(
                 {
                     "status": "REFUSED",
@@ -153,24 +235,24 @@ def main(argv: list[str] | None = None) -> int:
                             "uv",
                             "sync",
                             "--project",
-                            str(ROOT),
+                            str(checkout_root),
                             "--locked",
                             "--all-extras",
                         ]
-                        if (ROOT / "pyproject.toml").is_file()
+                        if (checkout_root / "pyproject.toml").is_file()
                         else [
                             "uv",
                             "pip",
                             "install",
                             "--python",
                             sys.executable,
-                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.5",
+                            "alphalattice[data,data-live,live-evidence,quant,semantic]==0.2.9",
                         ]
                     ),
                     "interpreter": sys.executable
-                    if not (ROOT / "pyproject.toml").is_file()
+                    if not (checkout_root / "pyproject.toml").is_file()
                     else str(
-                        ROOT
+                        checkout_root
                         / ".venv"
                         / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
                     ),

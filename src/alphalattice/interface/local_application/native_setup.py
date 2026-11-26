@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
 from ctypes.util import find_library
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import cache, partial
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -26,10 +26,27 @@ from urllib.parse import unquote, urlencode, urlsplit
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.environment import (
+    offline,
+    package_versions,
+    recorded_environment,
+)
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+    runtime_json,
+)
+from alphalattice.control.workspace_runtime.content_store import replace_shared_file
+from alphalattice.control.workspace_runtime.lock import WorkspaceLock
 from alphalattice.interface.local_application import client, workbench_assets
 from alphalattice.interface.local_application.cli_contract import (
     BINDING_NOTICE,
+    CLIENT_HEADER,
+    INSTANCE_HEADER,
     REQUEST_PROVENANCE,
+    WORKSPACE_HEADER,
     agent_session,
     command,
     command_table,
@@ -44,6 +61,7 @@ from alphalattice.interface.local_application.client import (
     LocalResearchClientError,
 )
 from alphalattice.interface.local_application.failure_codes import safe_failure_code, setup_failure
+from alphalattice.interface.local_application.host_lookup import serving_workspaces
 from alphalattice.interface.local_application.native_bridge import (
     BINDING_DIRECTORY,
     BINDING_NAME,
@@ -61,7 +79,6 @@ from alphalattice.interface.local_application.native_bridge import (
     attachment_preflight,
     autobind_root,
     binding_notice,
-    clear_usage_checkpoints,
     codex_queue_readiness,
     command_readiness,
     declares_product,
@@ -73,20 +90,11 @@ from alphalattice.interface.local_application.native_usage import codex_thread_s
 from alphalattice.interface.local_application.questions import person_question
 from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_WORDS,
     setup_environment,
 )
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.environment import (
-    offline,
-    package_versions,
-    recorded_environment,
-)
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-    runtime_json,
-)
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.resources import logical_cpu_count
 
 PRODUCT_HOOK_MATCHER = "^alphalattice_.*$"
 """The matcher of the product's retired lifecycle hooks; configure removes groups with it."""
@@ -150,6 +158,21 @@ def _host_facts(binding: NativeResearchBinding | None) -> dict[str, Any]:
 
 
 HOST_DEPENDENCIES = {
+    "serving_workspaces": (
+        str(worded("doctor.serving_workspaces.enables")),
+        str(worded("doctor.serving_workspaces.how")),
+        "AGENT",
+    ),
+    "windows_long_paths": (
+        str(worded("doctor.windows_long_paths.enables")),
+        str(worded("doctor.windows_long_paths.recovery")),
+        "PERSON",
+    ),
+    "model_store_scope": (
+        str(worded("doctor.model_store_scope.enables")),
+        str(worded("doctor.model_store_scope.recovery")),
+        "AGENT",
+    ),
     "python": ("Run locked Python", "Use Python 3.12 and uv sync --locked; disclose it.", "AGENT"),
     "uv": (
         "Install the lock's dependencies",
@@ -169,9 +192,7 @@ HOST_DEPENDENCIES = {
     ),
     "retrieval_runtime": (
         "Read Evidence with its retrieval recipe",
-        LOCKED_SETUP_WORDS + " Then use install_retrieval_pack "
-        "--install hybrid-v2-minilm. Keep packs outside "
-        "the workspace; network acquisition still needs its permission.",
+        str(worded("native_setup.retrieval_runtime")),
         "AGENT",
     ),
     "background_notices": (
@@ -430,7 +451,7 @@ def _stale(front: _Fields, version: str, package: Callable[[str], str | None] | 
         return "package_changed" if package is not None and package(subject) != at.strip() else None
     if at.strip() != version:
         return "verified_at_another_version"
-    old = kind == "method" and (datetime.now(UTC).date() - day).days > REVIEW_DAYS
+    old = kind == "method" and (utc_now().date() - day).days > REVIEW_DAYS
     return "verified_over_30_days" if old else None
 
 
@@ -441,16 +462,84 @@ def _workbench_build() -> str:
     )
 
 
+def _windows_environment_facts() -> dict[str, Any]:
+    """Read Windows long-path and package identity without changing system settings."""
+    if sys.platform != "win32":
+        return {"applicable": False, "long_paths_enabled": True, "package_family": None}
+    import ctypes  # lazy: Windows package identity only.
+    import winreg  # lazy: the Windows registry is unavailable elsewhere.
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem"
+        ) as key:
+            enabled = bool(winreg.QueryValueEx(key, "LongPathsEnabled")[0])
+        long_reason = None
+    except FileNotFoundError:
+        enabled, long_reason = False, "REGISTRY_VALUE_ABSENT"
+    except OSError as error:
+        enabled, long_reason = None, type(error).__name__
+    try:
+        length = ctypes.c_uint32(0)
+        read = ctypes.windll.kernel32.GetCurrentPackageFamilyName
+        status = read(ctypes.byref(length), None)
+        if status == 15700:  # APPMODEL_ERROR_NO_PACKAGE
+            family, package_reason = None, None
+        elif status == 122 and length.value:  # ERROR_INSUFFICIENT_BUFFER
+            buffer = ctypes.create_unicode_buffer(length.value)
+            status = read(ctypes.byref(length), buffer)
+            family, package_reason = (buffer.value, None) if status == 0 else (None, str(status))
+        else:
+            family, package_reason = None, str(status)
+    except (AttributeError, OSError) as error:
+        family, package_reason = None, type(error).__name__
+    return {
+        "applicable": True,
+        "long_paths_enabled": enabled,
+        "long_paths_reason": long_reason,
+        "package_family": family,
+        "package_reason": package_reason,
+    }
+
+
+def _environment_specs(project: Path, store_root: Path) -> tuple[Any, ...]:
+    """Describe authenticated Hosts and Windows environment facts for doctor."""
+    windows = _windows_environment_facts()
+    serving = serving_workspaces(project, client.LocalResearchClient)
+    return (
+        ("serving_workspaces", None if serving["status"] == "UNREADABLE" else True, serving),
+        (
+            "windows_long_paths",
+            windows.get("long_paths_enabled"),
+            {
+                "LongPathsEnabled": windows.get("long_paths_enabled"),
+                "reason": windows.get("long_paths_reason"),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+        (
+            "model_store_scope",
+            None if windows.get("package_reason") else not bool(windows.get("package_family")),
+            {
+                "package_family": windows.get("package_family"),
+                "reason": windows.get("package_reason"),
+                "model_store": str(store_root),
+                "applicable": windows.get("applicable", True),
+            },
+        ),
+    )
+
+
 def host_readiness(
     project: Path, host: str, binding: NativeResearchBinding | None
 ) -> list[dict[str, Any]]:
     """One advisory dependency list: the measured facts, what they enable and who fills them."""
-    from alphalattice.kernel.knowledge.model_store import default_store_root, recipe_readiness
+    from alphalattice.capabilities.knowledge.model_store import default_store_root, recipe_readiness
 
     facts = _host_facts(binding)
     # What the agent fills is read from the first use's own source, so the two never disagree.
     fillable = {key: dict(item) for key, item in agent_setup().items()}
-    packs = recipe_readiness(default_store_root(), "hybrid-v2-minilm")
+    packs = recipe_readiness(default_store_root())
     queue = (
         {"present": True, "scope": "HOST_FEATURE"}
         if host == "claude-code"
@@ -477,12 +566,17 @@ def host_readiness(
     backups = sorted(path.name for path in (user / "backups").glob("*") if path.is_dir())
     python_version = str(recorded_environment()["python"])
     specifications = (
+        *_environment_specs(project, default_store_root()),
         (
             "python",
             python_version.split(".")[:2] == ["3", "12"],
             {"version": python_version, "interpreter": sys.executable},
         ),
-        ("uv", (uv := command_readiness([os.environ.get("UV", "uv"), "--version"]))["present"], uv),
+        (
+            "uv",
+            (uv := command_readiness([process_config().get("UV", "uv"), "--version"]))["present"],
+            uv,
+        ),
         (
             "installed_leg",
             (tool := fillable["installed_leg"]).pop("present"),
@@ -506,9 +600,9 @@ def host_readiness(
         ),
         (
             "cpu",
-            (os.cpu_count() or 0) > 0,
+            (logical_cpu_count() or 0) > 0,
             {
-                "logical_cores": os.cpu_count(),
+                "logical_cores": logical_cpu_count(),
                 "host": facts.get("cpu"),
                 "host_scope": facts["scope"],
             },
@@ -609,7 +703,7 @@ def problem_report(
         f"Report the {op} problem to the developers." for op in operations
     }:
         raise NativeBridgeError("local_client.report_sentence_not_admitted")
-    session = agent_session(os.environ)
+    session = agent_session(process_config().public)
     binding = None
     try:
         found = session_binding(project, workspace, session)
@@ -666,7 +760,7 @@ def problem_report(
         "scenario": {
             "id": "reported-problem",
             "sentence": sentence or f"Report the {last} problem to the developers.",
-            "now": datetime.now(UTC).isoformat(),
+            "now": utc_now().isoformat(),
             "injected_faults": [],
             "expected_route": [[op] for op in expected_route],
             "decider": "person",
@@ -743,7 +837,7 @@ def admitted_session_project(workspace: Path, requested: Path, host: str) -> Pat
     A workspace inside its agent project (``workspaces/`` of a checkout) finds that project
     up from itself, and the client's project must be it. A workspace kept elsewhere -- a
     second drive, an installed wheel's own folder -- finds none; the client's project is then
-    admitted only when it holds this host's configure-owned declaration itself (FLOW-1).
+    admitted only when it holds this host's configure-owned declaration itself.
 
     Args:
         workspace: The Host's own served workspace.
@@ -1054,7 +1148,7 @@ def _roles(host: str = "codex", root: Path | None = None) -> list[str]:
 
 
 def continue_here(project: Path, host: str) -> dict[str, Any]:
-    """How the session that installed AlphaLattice continues the research (STOPS-1).
+    """How the session that installed AlphaLattice continues the research.
 
     The installing session reads the guide and Skill by path. The agent checks its own
     subagent tool before each specialist; only a session advertising the role can start it.
@@ -1093,7 +1187,7 @@ def bind_session(
     usage: str = "read",
     roles: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Bind this exact host/Session without replacing another Session's workspace (V568).
+    """Bind this exact host/Session without replacing another Session's workspace.
 
     The CLI and independent usage observer find this exact binding within the project.
 
@@ -1134,7 +1228,7 @@ def bind_session(
     selected = (host, session_id)
     existing = NativeResearchBinding.read(project, session=selected)
     if existing is None:
-        document["observation_started_at"] = datetime.now(UTC).isoformat()
+        document["observation_started_at"] = utc_now().isoformat()
     else:
         if (
             existing.session_id != session_id
@@ -1371,10 +1465,76 @@ def _configuration(host: str = "codex") -> None:
         raise NativeBridgeError("native_bridge.roles_missing")
 
 
+def agent_exporters(
+    project: Path, connection: client.LocalResearchConnection, *, configure_claude: bool = False
+) -> dict[str, Any]:
+    """Preview both exporters; the person's explicit yes writes only Claude's project file.
+
+    Codex's user config is always printed, never opened. Export requests use the current
+    Host's existing credentials; a restart requires running this command again. The Host
+    independently removes content and opt-in attributes before any storage.
+    """
+    endpoint = connection.url.rstrip("/")
+    headers = {
+        CLIENT_HEADER: connection.token,
+        INSTANCE_HEADER: connection.instance,
+        WORKSPACE_HEADER: client.workspace_connection_key(Path(connection.workspace)),
+    }
+    environment = {
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_METRICS_EXPORTER": "otlp",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
+        "OTEL_EXPORTER_OTLP_HEADERS": urlencode(headers),
+        "OTEL_LOG_USER_PROMPTS": "0",
+        "OTEL_LOG_TOOL_DETAILS": "0",
+    }
+    # OTLP uses comma-separated percent-encoded key/value pairs, unlike a URL query.
+    environment["OTEL_EXPORTER_OTLP_HEADERS"] = environment["OTEL_EXPORTER_OTLP_HEADERS"].replace(
+        "&", ","
+    )
+    lines = ["[otel]", "log_user_prompt = false"]
+    for name, signal in (("exporter", "logs"), ("trace_exporter", "traces")):
+        table = f"otel.{name}.otlp-http"
+        lines += [
+            "",
+            f"[{table}]",
+            f"endpoint = {json.dumps(endpoint + '/v1/' + signal)}",
+            'protocol = "binary"',
+            f"[{table}.headers]",
+        ]
+        lines += [f"{json.dumps(key)} = {json.dumps(value)}" for key, value in headers.items()]
+    if configure_claude:
+        path = project / ".claude/settings.local.json"
+        if path.is_symlink() or path.parent.is_symlink():
+            raise NativeBridgeError("native_bridge.configuration_path_invalid")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with WorkspaceLock(path.with_suffix(".lock")):
+            document = json.loads(path.read_text("utf-8")) if path.exists() else {}
+            if not isinstance(document, dict) or not isinstance(document.get("env", {}), dict):
+                raise NativeBridgeError("native_bridge.configuration_path_invalid")
+            document["env"] = document.get("env", {}) | environment
+            staged = path.with_suffix(".json.tmp")
+            try:
+                staged.write_text(
+                    json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
+                )
+                replace_shared_file(staged, path)
+            finally:
+                staged.unlink(missing_ok=True)
+    return {
+        "status": "AGENT_EXPORTERS",
+        "claude_env": environment,
+        "claude_written": configure_claude,
+        "codex_config": "\n".join(lines) + "\n",
+    }
+
+
 def unbind_session(
     project: Path, *, session_id: str | None, host: str | None = None
 ) -> dict[str, object]:
-    """Detach this Session's own record; other Session bindings and research stay (V586).
+    """Detach this Session's own record; other Session bindings and research stay.
 
     An agent removes only its exact host/Session record. Outside any agent Session,
     a person may detach the sole record; multiple records require an exact owning Session.
@@ -1415,7 +1575,6 @@ def unbind_session(
     if session_id is not None and binding.session_id != session_id:
         raise NativeBridgeError("native_bridge.session_mismatch")
     binding.record_path(project).unlink()
-    clear_usage_checkpoints(binding.workspace, binding)
     return {
         "status": "DETACHED",
         "project": str(project),
@@ -1572,7 +1731,7 @@ def _install_tool() -> dict[str, Any]:
     """Run the existing locked tool-install steps with subprocess-owned scratch."""
     with setup_environment(ROOT) as environment:
         for command in TOOL_INSTALL:
-            subprocess.run(
+            spawn.run(
                 shlex.split(command),
                 cwd=ROOT,
                 env=environment,
@@ -1604,7 +1763,7 @@ def main() -> int:
         "--usage",
         choices=[value.lower() for value in USAGE_READINGS],
         default="read",
-        help="off: read no native Session file for usage.",
+        help="off: neither receive nor read native telemetry for this Session's usage.",
     )
     unbind = commands.add_parser(
         "unbind", help="Detach only the named session; research is unchanged."
@@ -1648,7 +1807,7 @@ def main() -> int:
             # The checkout's shim of `alphalattice session unbind`, by the session it names.
             result = unbind_session(ROOT, session_id=args.session_id, host=args.host)
         else:
-            session = agent_session(os.environ)
+            session = agent_session(process_config().public)
             if session is not None and args.host is not None and args.host != session[0]:
                 raise NativeBridgeError("native_bridge.session_mismatch")
             binding = NativeResearchBinding.read(ROOT, session=session)
@@ -1675,8 +1834,8 @@ def main() -> int:
         result = {**setup_failure(error), "reason": str(error), "next_commands": doctor_command}
     except OSError as error:
         # Its files are the checkout's host directories and the workspace's; one it cannot read
-        # or write is said with its way on, never a bare code (V539), and the check its words
-        # name is offered (V590).
+        # or write is said with its way on, never a bare code, and the check its words
+        # name is offered.
         result = {
             **setup_failure(error),
             **files_unavailable(error, project=ROOT, workspace=getattr(args, "workspace", None)),

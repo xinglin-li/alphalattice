@@ -8,9 +8,12 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    seal_model_validated,
+    validate_hash_compatible,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import PortfolioTrialMetrics
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model_validated, validate_hash_compatible
 
 _HASH = r"^[0-9a-f]{64}$"
 _DEVELOPMENT_COUNT = 494

@@ -315,9 +315,12 @@ class CanonicalAlphaDevelopmentService:
         revisions = sorted(
             {
                 store.load_model(
-                    category="sector-maps", content_hash=path.stem, model=SectorRevisionMap
+                    category="sector-maps",
+                    content_hash=name.removesuffix(".json"),
+                    model=SectorRevisionMap,
                 ).sector_revision
-                for path in sorted((store.root / "sector-maps").glob("*.json"))
+                for name in store.files.names("sector-maps")
+                if name.endswith(".json")
             }
         )
         if len(revisions) != 1:

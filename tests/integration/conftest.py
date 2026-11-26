@@ -1,9 +1,12 @@
+from tests._support.content_memo_fixtures import kept_here as kept_here
+from tests._support.history_fixtures import recording_history as recording_history
 from tests._support.project_discovery import project_discovery as project_discovery
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace as real_risk_workspace,
 )
 from tests._support.researcher_methodology_surface_fixtures import alpha_case as alpha_case
 from tests._support.researcher_methodology_surface_fixtures import alpha_seed as alpha_seed
+from tests._support.researcher_methodology_surface_fixtures import factor_history as factor_history
 from tests._support.researcher_methodology_surface_fixtures import factor_seed as factor_seed
 from tests._support.researcher_methodology_surface_fixtures import input_seed as input_seed
 from tests._support.researcher_methodology_surface_fixtures import inputs as inputs

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
@@ -19,11 +20,28 @@ from pydantic import (
 )
 from pydantic_core import to_jsonable_python
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+
+_SNAPSHOT: Final = json.JSONEncoder(separators=(",", ":"), sort_keys=True)
+"""A contract's payload as the stage compares it: keys sorted, so a record built from its fields
+and the same record read back compare equal."""
 
 
-def _hash(value: object) -> str:
-    return canonical_hash(to_jsonable_python(value))
+def _hash(value: object, expected: str | None = None) -> str:
+    """A contract's identity, hashed once per stage for the same payload; with `expected`, the
+    exact payload is checked against it, and answered by its writer's hash of the same payload."""
+    payload = to_jsonable_python(value)
+    wire = _SNAPSHOT.encode(payload)
+    identity = (
+        expected
+        if expected is not None
+        else stage_digest(
+            ("task-contract-payload", wire), payload, canonical_hash, snapshot=lambda _: wire
+        )
+    )
+    digest = (lambda _: identity) if expected is None else canonical_hash
+    return stage_digest(("task-contract", identity), payload, digest, snapshot=lambda _: wire)
 
 
 FAILURE_CODE_MAX_LENGTH = 120
@@ -210,7 +228,7 @@ class TaskInputEnvelope(ContractModel):
             ValueError: Canonical envelope identity differs.
         """
         identity = self.model_dump(mode="json", exclude={"input_hash"})
-        if self.input_hash != _hash(identity):
+        if self.input_hash != _hash(identity, self.input_hash):
             raise ValueError("task input envelope hash is invalid")
         return self
 
@@ -266,7 +284,7 @@ class ResearchGoal(ContractModel):
             ValueError: Canonical goal identity differs.
         """
         identity = self.model_dump(mode="json", exclude={"goal_hash"})
-        if self.goal_hash != _hash(identity):
+        if self.goal_hash != _hash(identity, self.goal_hash):
             raise ValueError("research goal hash is invalid")
         return self
 
@@ -337,7 +355,7 @@ class WorkItemDefinition(ContractModel):
         if self.dependency_ids != tuple(dict.fromkeys(self.dependency_ids)):
             raise ValueError("work item dependencies must be unique")
         identity = self.model_dump(mode="json", exclude={"definition_hash"})
-        if self.definition_hash != _hash(identity):
+        if self.definition_hash != _hash(identity, self.definition_hash):
             raise ValueError("work item definition hash is invalid")
         return self
 
@@ -420,7 +438,7 @@ class ResearchPlan(ContractModel):
                 raise ValueError("research plan dependencies must precede their child")
             seen.add(item.stage_id)
         identity = self.model_dump(mode="json", exclude={"plan_hash"})
-        if self.plan_hash != _hash(identity):
+        if self.plan_hash != _hash(identity, self.plan_hash):
             raise ValueError("research plan hash is invalid")
         return self
 
@@ -530,7 +548,7 @@ class TaskRecord(ContractModel):
         }:
             raise ValueError("task active work item is outside its plan")
         identity = self.model_dump(mode="json", exclude={"record_hash"})
-        if self.record_hash != _hash(identity):
+        if self.record_hash != _hash(identity, self.record_hash):
             raise ValueError("task record hash is invalid")
         return self
 
@@ -575,7 +593,7 @@ class TaskRecoveryLink(ContractModel):
         if self.successor_task_id == self.source_task_id:
             raise ValueError("task recovery link successor must differ from its source")
         identity = self.model_dump(mode="json", exclude={"link_hash"})
-        if self.link_hash != _hash(identity):
+        if self.link_hash != _hash(identity, self.link_hash):
             raise ValueError("task recovery link hash is invalid")
         return self
 
@@ -645,7 +663,7 @@ class WorkItemState(ContractModel):
         if len(set(references)) != len(references):
             raise ValueError("work item evidence references must be unique")
         identity = _cause_absent(self.model_dump(mode="json", exclude={"state_hash"}))
-        if self.state_hash != _hash(identity):
+        if self.state_hash != _hash(identity, self.state_hash):
             raise ValueError("work item state hash is invalid")
         return self
 
@@ -692,7 +710,7 @@ class TaskExecutionCompatibility(ContractModel):
             ValueError: Canonical execution compatibility identity differs.
         """
         identity = self.model_dump(mode="json", exclude={"compatibility_hash"})
-        if self.compatibility_hash != _hash(identity):
+        if self.compatibility_hash != _hash(identity, self.compatibility_hash):
             raise ValueError("task execution compatibility hash is invalid")
         return self
 
@@ -747,7 +765,7 @@ class TaskExecution(ContractModel):
             ValueError: Canonical execution-record identity differs.
         """
         identity = self.model_dump(mode="json", exclude={"execution_hash"})
-        if self.execution_hash != _hash(identity):
+        if self.execution_hash != _hash(identity, self.execution_hash):
             raise ValueError("task execution hash is invalid")
         return self
 
@@ -787,7 +805,7 @@ class TaskHeartbeatSignal(ContractModel):
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("task heartbeat clock must be timezone-aware")
         identity = self.model_dump(mode="json", exclude={"signal_hash"})
-        if self.signal_hash != _hash(identity):
+        if self.signal_hash != _hash(identity, self.signal_hash):
             raise ValueError("task heartbeat signal hash is invalid")
         return self
 
@@ -834,7 +852,7 @@ class TaskCommand(ContractModel):
             ValueError: Canonical cancellation command identity differs.
         """
         identity = self.model_dump(mode="json", exclude={"command_hash"})
-        if self.command_hash != _hash(identity):
+        if self.command_hash != _hash(identity, self.command_hash):
             raise ValueError("task command hash is invalid")
         return self
 
@@ -894,7 +912,7 @@ class TaskStageReceipt(ContractModel):
         if len(set(references)) != len(references):
             raise ValueError("task stage evidence references must be unique")
         identity = self.model_dump(mode="json", exclude={"receipt_hash"})
-        if self.receipt_hash != _hash(identity):
+        if self.receipt_hash != _hash(identity, self.receipt_hash):
             raise ValueError("task stage receipt hash is invalid")
         return self
 
@@ -964,7 +982,7 @@ class TaskSafeProjection(ContractModel):
         if self.verified_stage_count > self.total_stage_count:
             raise ValueError("task projection verified count exceeds plan")
         identity = self.model_dump(mode="json", exclude={"projection_hash"})
-        if self.projection_hash != _hash(identity):
+        if self.projection_hash != _hash(identity, self.projection_hash):
             raise ValueError("task safe projection hash is invalid")
         return self
 

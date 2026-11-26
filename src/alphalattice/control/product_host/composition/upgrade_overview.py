@@ -35,6 +35,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.control.product_host.composition.evidence_review_application import (
     EvidenceReviewApplication,
 )
@@ -59,8 +61,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
     KIND as PORTFOLIO_EXPERIMENT_KIND,
 )
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import review_book_key
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
@@ -77,13 +77,15 @@ _STUDY_KINDS = (
 )
 
 
-def installed_study_identities() -> dict[str, str]:
+def installed_study_identities(
+    implementation: Callable[[str], str] = _implementation_hash,
+) -> dict[str, str]:
     """Each study kind's installed implementation, as its REPLAY compares it.
 
     Computed from the source tree (about 0.6 s for the four kinds), so a Host asks once:
     the code it serves is the code it imported.
     """
-    return {f"study:{kind}": _implementation_hash(kind) for kind in _STUDY_KINDS}
+    return {f"study:{kind}": implementation(kind) for kind in _STUDY_KINDS}
 
 
 def upgrade_overview(
@@ -215,7 +217,7 @@ def _study(
     plan = ExperimentPlan.model_validate(task.input.payload["plan"])
     kind = plan.program.kind
     installed = identities.get(f"study:{kind}") or _implementation_hash(kind)
-    # The same comparison a replay makes first (binding plan): the plan's role, the
+    # The same comparison a replay makes first: the plan's role, the
     # recorded moves consulted.
     current = is_current(plan_implementation_role(plan), plan.implementation_hash, installed)
     calls = plan.execution_preview.get("expected_numerical_calls")

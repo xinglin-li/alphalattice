@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -16,7 +19,8 @@ from typing import Any, TextIO
 import pytest
 
 from devtools.testing import audit, requirements, sizes
-from devtools.testing.contracts import Backends, LayerContract
+from devtools.testing.contracts import LayerContract
+from devtools.testing.layout import Backends
 from devtools.testing.sizes import (
     _rule,
     admission_limit,
@@ -26,6 +30,7 @@ from devtools.testing.sizes import (
     load_policy,
     moved,
     scoped,
+    speed_budget,
     stage_files,
     tmp_entry_footprint,
     tmp_footprint,
@@ -34,6 +39,9 @@ from devtools.testing.sizes import (
 REQUIRED = pytest.StashKey[tuple[tuple[str, ...], tuple[str, ...]]]()
 CHANGED = pytest.StashKey[frozenset[str] | None]()  # a scoped run's changed paths, read once
 CONTRACT = pytest.StashKey[LayerContract]()
+LANE_CONTRACT = pytest.StashKey[
+    str | None
+]()  # a Large rule's size_contract: nightly_only, release_only
 OBSERVATION = pytest.StashKey[audit.ResourceObservation | None]()
 OBSERVATION_PHASES = pytest.StashKey[dict[str, float]]()
 OBSERVATION_STREAM = pytest.StashKey[TextIO | None]()
@@ -102,6 +110,87 @@ def pytest_configure_node(node: Any) -> None:
         node.workerinput["alphalattice_size_scope"] = families is not None
         if families is not None:
             node.workerinput["alphalattice_size_families"] = list(families)
+
+
+def worker_crash_evidence(worker: Any, node: str | None, directory: Path) -> dict[str, Any]:
+    """Read the worker exit and fault stream; an absent value stays unknown."""
+    worker_id = worker.gateway.id
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None:
+        raise ValueError("testing.worker_identity_unknown: invalid xdist worker identity")
+    record: dict[str, Any] = {"worker": worker_id, "node": node, "exit": None, "stack": None}
+    try:
+        process = worker.gateway._io.popen
+        exit_code = process.wait(timeout=2)
+        if type(exit_code) is not int:
+            raise ValueError("process did not provide an exit code")
+        record["exit"] = exit_code
+    except (AttributeError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        record["exit_error"] = f"worker exit unavailable: {type(error).__name__}: {error}"
+    try:
+        stack = (directory / f"worker-{worker_id}.fault.log").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        if not stack:
+            raise ValueError("fault stream is empty")
+        record["stack"] = stack
+    except (OSError, ValueError) as error:
+        record["stack_error"] = f"fault stream unavailable: {error}"
+    return record
+
+
+@pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
+def pytest_sessionstart(session: Any) -> None:
+    """Put each managed suite worker's native fault output in its attempt directory."""
+    config = session.config
+    worker = getattr(config, "workerinput", None)
+    if not os.environ.get("WK_SUITE_ATTEMPT") or not isinstance(worker, dict):
+        return
+    worker_id = worker.get("workerid")
+    xml = getattr(config.option, "xmlpath", None)
+    if not isinstance(worker_id, str) or re.fullmatch(r"gw[0-9]+", worker_id) is None or not xml:
+        raise pytest.UsageError(
+            "testing.worker_capture_unavailable: worker identity or JUnit path missing"
+        )
+    try:
+        stream = (Path(xml).parent / f"worker-{worker_id}.fault.log").open("x", encoding="utf-8")
+        faulthandler.enable(file=stream, all_threads=True)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise pytest.UsageError(f"testing.worker_capture_unavailable: {error}") from error
+    config._worker_fault_stream = stream
+
+
+@pytest.hookimpl(optionalhook=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_testnodedown(node: Any, error: Any) -> None:
+    """Remember each xdist process and capture a crash before its scheduler entry goes away."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    config = node.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is None:
+        workers = config._worker_capture_nodes = {}
+    scheduler = getattr(config.pluginmanager.getplugin("dsession"), "sched", None)
+    pending = getattr(scheduler, "node2pending", {}).get(node, ())
+    collection = getattr(scheduler, "collection", None)
+    running = collection[pending[0]] if error is not None and pending and collection else None
+    workers[node.gateway.id] = (node, running, error is not None)
+    xml = getattr(config.option, "xmlpath", None)
+    if error is not None and xml:
+        node._worker_crash_evidence = worker_crash_evidence(node, running, Path(xml).parent)
+
+
+@pytest.hookimpl(optionalhook=True, trylast=True)  # type: ignore[untyped-decorator]
+def pytest_handlecrashitem(crashitem: str, report: Any, sched: Any) -> None:
+    """Carry the actual exit and fault stream in the failed node's existing JUnit record."""
+    if not os.environ.get("WK_SUITE_ATTEMPT"):
+        return
+    record = getattr(getattr(report, "node", None), "_worker_crash_evidence", None)
+    if not isinstance(record, dict) or record.get("node") != crashitem:
+        report.longrepr = f"{report.longrepr}\nworker capture unmeasured: node identity unavailable"
+        return
+    exit_value = record.get("exit")
+    stack = record.get("stack") or record.get("stack_error", "fault stream unavailable")
+    exit_text = exit_value if exit_value is not None else "unknown"
+    report.longrepr = f"{report.longrepr}\nworker {record['worker']} exit {exit_text}\n{stack}"
 
 
 def ordered_requeue() -> type:
@@ -398,9 +487,63 @@ def _size_report(item: Any, report: Any) -> None:
             )
         policy = item.config.stash[SIZE_POLICY]
         size = dict(item.user_properties)["test_size"]
-        admission_limit(item.nodeid, size, sum(phases.values()), footprint[0], policy)
+        seconds = sum(phases.values())
+        bound = policy.get("admission_limits", {}).get(size, {})
+        admission_limit(item.nodeid, size, seconds, footprint[0], policy)
     except (KeyError, TypeError, ValueError) as error:
         report.outcome, report.longrepr = "failed", str(error)
+        if (
+            str(error).startswith("test_size.admission_limit:")
+            and footprint[0] <= bound["tmp_bytes"]
+        ):
+            # Over its seconds only: the gate measures it alone, as a timeout (lead_check retry).
+            limit = bound["seconds"]
+            report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "admission")
+
+
+def _golden_times(item: Any) -> None:
+    """What a case's goldens cost, in its JUnit: a fill holds its nested parents, whose lock waits
+    count as waits, so fill, lock and copy add up. Read from the owner only if a test loaded it."""
+    owner = sys.modules.get("devtools.evaluation.golden_workspaces")
+    if rows := owner.take_acquisitions() if owner else []:
+        locks = sum(row["lock_seconds"] for row in rows)
+        outer = [row for row in rows if not row["nested"]]
+        waited = sum(row["lock_seconds"] for row in rows if row["nested"])
+        fill = max(0.0, sum(row["fill_seconds"] for row in outer) - waited)  # 0 if the fill failed
+        copy = sum(row["copy_seconds"] for row in outer)
+        names = ",".join(f"{row['recipe']}:{'fill' if row['cold'] else 'copy'}" for row in rows)
+        item.user_properties.extend(
+            (
+                ("golden_fill_seconds", round(fill, 3)),
+                ("golden_lock_seconds", round(locks, 3)),
+                ("golden_copy_seconds", round(copy, 3)),
+                ("goldens", names),
+            )
+        )
+
+
+def pytest_terminal_summary(terminalreporter: Any) -> None:
+    """Report measured golden fills in Large tests from their existing teardown records."""
+    fills: list[str] = []
+    for reports in terminalreporter.stats.values():
+        for report in reports:
+            if getattr(report, "when", None) != "teardown":
+                continue
+            properties = dict(getattr(report, "user_properties", ()))
+            value = properties.get("golden_fill_seconds")
+            if (
+                properties.get("test_size") == "large"
+                and isinstance(value, int | float)
+                and isfinite(value)
+                and value > 0
+            ):
+                fills.append(
+                    f"{report.nodeid}: golden fill {value:.3f} s ({properties.get('goldens', '')})"
+                )
+    if fills:
+        terminalreporter.write_sep("=", "Golden fills in Large tests")
+        for line in sorted(fills):
+            terminalreporter.write_line(line)
 
 
 def _timeline(item: Any, report: Any) -> None:
@@ -411,6 +554,8 @@ def _timeline(item: Any, report: Any) -> None:
     item.user_properties.append((edge[0], round(edge[1], 3)))
     if report.when == "setup":
         item.user_properties.append(("worker", os.environ.get("PYTEST_XDIST_WORKER", "main")))
+    else:
+        _golden_times(item)
     report.user_properties = list(item.user_properties)
 
 
@@ -453,10 +598,14 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             ),
         )
         return
-    seconds = sum(phases.values())
+    # A library's first import, paid by whichever test triggers it first, is no test's own cost.
+    imported = item.stash[CONTRACT].library_import_seconds
+    seconds = max(0.0, sum(phases.values()) - imported)
+    item.user_properties.append(("library_import_seconds", imported))
     item.user_properties.append(("unit_own_seconds", seconds))
     report.user_properties = list(item.user_properties)
-    limit = dict(item.user_properties)["test_timeout_seconds"]
+    held = dict(item.user_properties)  # a unit test's own phases keep to its size's speed budget,
+    limit = held.get("speed_budget_seconds") or held["test_timeout_seconds"]  # not its hang guard
     if seconds <= limit:
         return
     report.outcome, report.longrepr = (
@@ -466,21 +615,27 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Any:
             "share setup or move the test to integration"
         ),
     )
-    event = dict(
-        event="TIMEOUT",
-        nodeid=item.nodeid,
-        phase="teardown",
-        limit_seconds=limit,
-        elapsed_seconds=seconds,
-        cause="unit-own-phases",
-    )
+    report.longrepr += _retry_evidence(item, "teardown", limit, seconds, "unit-own-phases")
+
+
+def _retry_evidence(item: Any, phase: str, limit: float, seconds: float, cause: str) -> str:
+    """A node failed on its seconds: a TIMEOUT event in the run's log asks the gate to run it
+    alone, which judges it again; an unwritable log is named in the failure."""
+    event = dict(event="TIMEOUT", nodeid=item.nodeid, phase=phase, limit_seconds=limit)
+    event.update(elapsed_seconds=seconds, cause=cause)
     log_file = item.config.getoption("log_file") or item.config.getini("log_file")
     if log_file:
         try:
+            if receipts := item.config.pluginmanager.get_plugin("pytest_receipts"):
+                slot = (
+                    receipts.heavy_slot
+                )  # the shared places, read as its own TIMEOUT event reads them
+                event["heavy_place_holders"] = slot._read(slot.HOLDERS, None)
             with Path(log_file).open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(event) + "\n")
         except OSError as error:
-            report.longrepr += f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+            return f"; testing.layer_contract_unmeasured: retry evidence: {error}"
+    return ""
 
 
 def gate(
@@ -506,18 +661,13 @@ def _properties(
     row: dict[str, Any],
     declared: list[str],
     classified: tuple[str, str, str, float],
-    *,
-    size_hang_guard: float | None = None,
 ) -> None:
-    """Attach each owner's existing size, real bound and requirement metadata once."""
+    """Attach each owner's existing size, hang guard and requirement metadata once. The guard
+    (sizes.hang_guard) kills a test only as hung; its speed is judged at admission, solo."""
     size, owner, declaration, seconds = classified
     if not declared:
         item.add_marker(size)
     previous = item.get_closest_marker("timeout")
-    if size_hang_guard is not None and previous is None:
-        seconds = max(
-            seconds, size_hang_guard
-        )  # admission measures completed phases; this is only a hang guard
     if previous:
         limit = previous.args[0] if previous.args else previous.kwargs.get("timeout")
         if isinstance(limit, (int, float)) and limit > 0:
@@ -609,12 +759,28 @@ def _start_session_footprint(config: Any) -> None:
 
 def pytest_configure(config: Any) -> None:
     """The producer's optional required nodes override only their own ordinary deselection."""
+    value = os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]")
+    source = "inline list"
+    if value.startswith("@"):
+        path = Path(value[1:])
+        source = str(path)
+        if not path.is_absolute():
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}; name an absolute list file"
+            )
+        try:
+            value = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError) as error:
+            raise pytest.UsageError(
+                f"test_size.required_selection_unavailable: {path}: {error}; "
+                "restore the required list"
+            ) from error
     try:
-        required = requirements.selection(
-            json.loads(os.environ.get("ALPHALATTICE_PIPELINE_REQUIRED_TESTS", "[]"))
-        )
-    except (ValueError, TypeError):
-        raise pytest.UsageError("test_size.required_selection_invalid") from None
+        required = requirements.selection(json.loads(value))
+    except (ValueError, TypeError) as error:
+        raise pytest.UsageError(
+            f"test_size.required_selection_invalid: {source}: {error}; restore the required list"
+        ) from None
     required = _nested_required(required)
     deselect = tuple(config.option.deselect or ()) if required else ()
     if required:
@@ -653,6 +819,27 @@ def pytest_configure(config: Any) -> None:
 @pytest.hookimpl(trylast=True)  # type: ignore[untyped-decorator]
 def pytest_sessionfinish(session: Any) -> None:
     """Retain component costs once per process; missing evidence cannot prove the stage budget."""
+    config = session.config
+    workers = getattr(config, "_worker_capture_nodes", None)
+    if workers is not None and os.environ.get("WK_SUITE_ATTEMPT"):
+        try:
+            directory = Path(config.option.xmlpath).parent
+            records = [
+                worker_crash_evidence(node, running, directory)
+                for node, running, _ in workers.values()
+            ]
+            data = {
+                "schema": "alphalattice.pytest-workers.v1",
+                "attempt": os.environ["WK_SUITE_ATTEMPT"],
+                "source_sha": os.environ.get("WK_SUITE_SOURCE_SHA"),
+                "workers": records,
+            }
+            with (directory / "worker-exits.json").open("x", encoding="utf-8") as stream:
+                json.dump(data, stream, allow_nan=False)
+                stream.write("\n")
+        except (OSError, ValueError, AttributeError, KeyError) as error:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+            print(f"testing.worker_capture_unavailable: {error}", file=sys.stderr)
     observer = session.config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:
@@ -678,6 +865,10 @@ def pytest_sessionfinish(session: Any) -> None:
 
 
 def pytest_unconfigure(config: Any) -> None:
+    stream = getattr(config, "_worker_fault_stream", None)
+    if stream is not None:
+        faulthandler.disable()
+        stream.close()
     observer = config.stash.get(SESSION_FOOTPRINT, None)
     if observer is not None:
         try:
@@ -726,7 +917,7 @@ def framework_fixtures(
     return frozenset(codes)
 
 
-RELEASE_ONLY = "release-lane test: it reads the release archives, so it runs at promotion, not here"
+RELEASE_ONLY = "release lane by rule (test-sizes.json): it runs at each promotion, not here"
 
 
 def _size_attributes(
@@ -749,6 +940,7 @@ def _size_attributes(
     contract = (
         str(large_rule["size_contract"]) if large_rule and "size_contract" in large_rule else None
     )
+    item.stash[LANE_CONTRACT] = contract
     if clock is not None:
         clock["collection_seconds"] += time.perf_counter() - began
     if selected and size == "large" and not contract:
@@ -756,14 +948,9 @@ def _size_attributes(
             "test_size.large_contract: register a Large rule with "
             f"size_contract=nightly_only: {item.nodeid}"
         )
-    _properties(
-        item,
-        ids,
-        row,
-        declared,
-        classified,
-        size_hang_guard=policy["limits"]["medium"] if selected and size == "small" else None,
-    )
+    _properties(item, ids, row, declared, classified)
+    if (budget := speed_budget(policy, size)) is not None:
+        item.user_properties.append(("speed_budget_seconds", budget))
     return contract
 
 
@@ -771,11 +958,16 @@ def _lane_contract(item: Any, contract: str | None, lane: str) -> bool:
     """Whether a Large rule's lane contract omits the item here; the nightly lists a release-only
     one skipped, with its reason, so it is never a red."""
     if contract == "nightly_only" and lane != "nightly":
-        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly on pc1")
+        print(f"test_size.nightly_only: {item.nodeid}; run in the nightly")
         return True
     if contract == "release_only" and lane == "nightly":
         item.add_marker(pytest.mark.skip(reason=RELEASE_ONLY))
     return False
+
+
+def _stage_admits(stage: str, size: str, layer: str) -> bool:
+    """Commit leaves slow and journey tests to their later scheduled tier."""
+    return stage != "commit" or (size != "large" and layer not in {"e2e", "native"})
 
 
 def _size_included(
@@ -809,29 +1001,20 @@ def _record_moved(
     changed: frozenset[str] | None,
     *,
     floor: bool = False,
-    omitted: tuple[Any, ...] = (),
 ) -> None:
     """Beside the run's JUnit, ``structural-moved.json``: the structural guards a commit stage
-    leaves to post-merge, and whether this run ran them (a post-merge run, unscoped, always does),
-    so a post-merge red among them is a red the stage no longer catches (the week's signal)."""
+    leaves to the nightly, and whether this run ran them (an unscoped run always does), so a
+    nightly red among them is a red the stage no longer catches (the week's signal)."""
     xml = getattr(config.option, "xmlpath", None)
     found = sorted({n.replace("\\", "/") for n in (i.nodeid for i in items) if moved(n, policy)})
     if lane != "merge" or not xml or not found:
         return
-    excluded = {item.nodeid.replace("\\", "/") for item in omitted}
     record = {
         "tier": "commit stage" if floor or changed is not None else "post-merge",
         "moved": found,
-        "ran": [
-            n
-            for n in found
-            if n not in excluded and (changed is None or n.split("::")[0] in changed)
-        ],
+        "ran": [],
     }
-    if floor:
-        config.stash[FLOOR_MOVED] = record
-    else:
-        _write_moved(config, record)
+    config.stash[FLOOR_MOVED] = record
 
 
 def _write_moved(config: Any, record: dict[str, Any]) -> None:
@@ -843,12 +1026,12 @@ def _write_moved(config: Any, record: dict[str, Any]) -> None:
     if reporter is not None:
         reporter.write_line(
             f"STRUCTURAL-MOVED {len(record['moved'])} guards leave the commit stage "
-            f"for post-merge; this {record['tier']} run ran {len(record['ran'])} of them"
+            f"for the nightly; this {record['tier']} run ran {len(record['ran'])} of them"
         )
 
 
 def pytest_collection_finish(session: Any) -> None:
-    """A floor receipt names the moved guards actually kept after all collection hooks."""
+    """Name the moved guards actually kept after all collection hooks."""
     record = session.config.stash.get(FLOOR_MOVED, None)
     if record is not None:
         kept = {item.nodeid.replace("\\", "/") for item in session.items}
@@ -856,15 +1039,52 @@ def pytest_collection_finish(session: Any) -> None:
         _write_moved(session.config, record)
 
 
-def pytest_itemcollected(item: Any) -> None:
-    """Under CodSpeed every selected test is measured as its cost: it deselects unmarked tests."""
-    if os.environ.get("CODSPEED_ENV") is not None or item.config.getoption("codspeed", False):
-        item.add_marker(pytest.mark.benchmark)
+@pytest.hookimpl(wrapper=True, tryfirst=True)  # type: ignore[untyped-decorator]
+def pytest_collection(session: Any) -> Any:
+    """Name an xdist worker's collection refusal in the run's log. pytest sends the worker's
+    collection to the controller in a finally, so a UsageError then ends the worker silently: the
+    controller, which never collects, reports only a crash on a test that never ran."""
+    try:
+        return (yield)
+    except pytest.UsageError as error:
+        worker = getattr(session.config, "workerinput", {}).get("workerid")
+        if worker:
+            print(f"ERROR: [{worker}] {error}", file=sys.stderr, flush=True)
+        raise
+
+
+PAID_AGENT, PAID_RUN = "paid_agent", "ALPHALATTICE_PAID_AGENT_RUN"
+PERFORMANCE, PERFORMANCE_RUN = "performance", "ALPHALATTICE_PERFORMANCE_RUN"
+ON_REQUEST = {PAID_AGENT: PAID_RUN, PERFORMANCE: PERFORMANCE_RUN}
+
+
+def deselect_on_request(config: Any, items: list[Any]) -> None:
+    """No stage, queue, nightly or full run selects a test only an explicit command runs: a paid
+    agent run spends money on a model turn, and a performance row measures only in a run of its
+    own. Each runs when its variable is 1; a performance run is refused unless it is serial with
+    pytest-benchmark loaded, since the plugin disables its measurement under xdist."""
+    for marker, variable in ON_REQUEST.items():
+        held = [item for item in items if item.get_closest_marker(marker) is not None]
+        if not held:
+            continue
+        if os.environ.get(variable) != "1":
+            config.hook.pytest_deselected(items=held)
+            items[:] = [item for item in items if item.get_closest_marker(marker) is None]
+        elif marker == PERFORMANCE and (
+            not config.pluginmanager.hasplugin("benchmark")
+            or config.getoption("dist", "no") != "no"
+            or "PYTEST_XDIST_WORKER" in os.environ
+        ):
+            raise pytest.UsageError(
+                "performance.serial_run_required: run the performance rows alone, with "
+                "`uv run --group performance pytest -p no:xdist -m performance`"
+            )
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Materialize each test's registered size and declaring owner during collection."""
 
+    deselect_on_request(config, items)
     lane = os.environ.get("ALPHALATTICE_TEST_LANE", "")
     floor = sizes.floor_mode(lane)
     changed = changed_paths(floor=floor) if lane in {"merge", "fast"} else None
@@ -903,6 +1123,9 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             seen.add(item.nodeid)
             ids, row, declared, (size, owner, declaration, seconds) = _proven(item, rows, policy)
             marks.append((item.nodeid, ids, Path(item.path)))
+            if not _stage_admits(stage, size, row.get("layer", "")):
+                omitted.append(item)
+                continue
             contract = _size_attributes(
                 item,
                 config,
@@ -939,7 +1162,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             items.clear()
             return
         raise pytest.UsageError(str(error)) from error
-    _record_moved(config, lane, items, policy, changed, floor=floor, omitted=tuple(omitted))
+    _record_moved(config, lane, items, policy, changed, floor=floor)
     if lane or required or omitted:
         config.hook.pytest_deselected(items=omitted)
         items[:] = kept

@@ -26,12 +26,12 @@ from typing import Literal, Protocol, Self
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.environment import (
+from alphalattice.capabilities.domain_contracts.environment import (
     numerical_thread_limit,
     numerical_thread_pools,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.source_identity import (
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import (
     switched_source_identity,
 )
 

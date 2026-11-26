@@ -7,6 +7,7 @@ from datetime import date
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_close,
 )
@@ -33,7 +34,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.calibration impo
     publish_consumed_observations,
     publish_observations,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import TEST_PACKAGE
 
 

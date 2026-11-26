@@ -24,9 +24,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import pandas as pd
-
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import DesktopCoreFeatureBundle
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     method_family_content_hash,
@@ -36,10 +38,11 @@ from alphalattice.foundation.feature_engine.producers.factors.core_bundle import
     is_maintained_control,
     numerical_spec_hash,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
-FeatureKernelFunction = Callable[[pd.DataFrame, FactorSpec], pd.Series]
+if TYPE_CHECKING:
+    import pandas as pd
+
+type FeatureKernelFunction = Callable[[pd.DataFrame, FactorSpec], pd.Series]
 
 
 @dataclass(frozen=True)
@@ -112,31 +115,38 @@ class FeatureKernelRegistry:
         however their composition function happened to list them.
         """
         return str(
-            canonical_hash(
-                {
-                    "kind": "InstalledFeatureKernelCapability",
-                    "kernels": [
-                        {
-                            "implementation_id": item.implementation_id,
-                            "method_family": item.method_family,
-                            "method_family_owners": list(item.method_family_owners),
-                            "required_fields": list(item.required_fields),
-                            "implementation_hash": item.implementation_hash,
-                            # The declaration says what the implementation is;
-                            # this binds the bytes that actually implement it.
-                            # Without both, the installed build identity would
-                            # stand still through an unaccompanied code edit.
-                            "method_family_content_hash": method_family_content_hash(
-                                item.method_family, item.method_family_owners
-                            ),
-                        }
-                        for item in sorted(
-                            self._kernels.values(), key=lambda value: value.implementation_id
-                        )
-                    ],
-                }
+            stage_digest(
+                ("installed-feature-kernel-capability",),
+                self.capability_payload(),
+                canonical_hash,
             )
         )
+
+    def capability_payload(self) -> dict[str, object]:
+        """What `installed_capability_hash` seals. A worker that rebuilds the shipped kernels
+        compares this payload with the one its build hashed, exactly and with no second hash."""
+        return {
+            "kind": "InstalledFeatureKernelCapability",
+            "kernels": [
+                {
+                    "implementation_id": item.implementation_id,
+                    "method_family": item.method_family,
+                    "method_family_owners": list(item.method_family_owners),
+                    "required_fields": list(item.required_fields),
+                    "implementation_hash": item.implementation_hash,
+                    # The declaration says what the implementation is;
+                    # this binds the bytes that actually implement it.
+                    # Without both, the installed build identity would
+                    # stand still through an unaccompanied code edit.
+                    "method_family_content_hash": method_family_content_hash(
+                        item.method_family, item.method_family_owners
+                    ),
+                }
+                for item in sorted(
+                    self._kernels.values(), key=lambda value: value.implementation_id
+                )
+            ],
+        }
 
     def resolve(self, implementation_id: str) -> RegisteredFeatureKernel:
         """Resolve an installed code-owned kernel by its stable implementation handle.
@@ -209,6 +219,8 @@ class FeatureKernelRegistry:
             ValueError: The implementation is unregistered, source fields are absent,
                 or the kernel returns a different number of rows.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         kernel = self.resolve(specification.formula_ref)
         required = {"listing_id", "session_date", *kernel.required_fields}
         missing = sorted(required - set(source.columns))

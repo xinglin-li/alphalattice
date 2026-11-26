@@ -6,7 +6,7 @@ Owners raise codes -- dotted names (`research_experiment.input_not_admitted`) or
 document -- is not served or persisted: its name has a space, or it has a quote or a path
 separator, which a code never has. The Web handler, the Agent bridge, the activity ledger and the
 recovery view say a typed code instead, and the Host's log keeps the detail under an
-incident that code carries (binding plan, rule 2): a caller learns that something failed
+incident that code carries: a caller learns that something failed
 and where to look, never the Host's internals.
 """
 
@@ -16,16 +16,15 @@ import logging  # only a withheld failure is logged; a call's imports are its co
 import os
 import re
 import subprocess
+import sys
 from collections.abc import Mapping
 from copy import deepcopy
-from hashlib import sha256
 from typing import Any, Final
 from uuid import UUID
 
-from pydantic import ValidationError
-
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 from alphalattice.interface.local_application.cli_contract import schema_request
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.kernel.identity import identity_sha256
 
 from .cli_contract import error_projection, refusal_words
 
@@ -142,7 +141,7 @@ def setup_failure(error: Exception) -> dict[str, object]:
                 cause = {"kind": "OS", "exception": name}
                 if current.errno is not None:
                     cause.update(errno=current.errno, message=os.strerror(current.errno))
-                if getattr(current, "winerror", None) is not None:
+                if sys.platform == "win32" and current.winerror is not None:
                     cause["winerror"] = current.winerror
             elif isinstance(current, (ValueError, KeyError, TypeError)):
                 code = f"setup.input_invalid:{name}"
@@ -167,8 +166,6 @@ def public_failure(error: BaseException, fallback: str) -> str:
     the value. Anything else is `fallback:<exception class>:<incident>`, the incident a digest
     of the failure, with the detail logged under it.
     """
-    # The owners' models' failure; imported here, so the client's transport never loads them.
-
     code = owner_failure_code(error)
     if code is not None:
         return code
@@ -184,6 +181,8 @@ def public_failure(error: BaseException, fallback: str) -> str:
         code = safe_failure_code(str(error))
         if code is not None:
             return code
+    from pydantic import ValidationError  # lazy: only uncoded failures need model inspection.
+
     if isinstance(error, ValidationError):
         fields = []
         for item in error.errors():
@@ -240,6 +239,8 @@ def within(error: BaseException, *place: str) -> BaseException:
     Returns:
         The same refusal with each item's location prefixed by `place`.
     """
+    from pydantic import ValidationError  # lazy: only nested refusals need model inspection.
+
     if not isinstance(error, ValidationError):
         return error
     lines: list[Any] = [{**item, "loc": (*place, *item["loc"])} for item in error.errors()]
@@ -262,6 +263,8 @@ def located_failure(
     contract's error type) and the contract's words (`message`), never a value. Any other
     failure answers the code `public_failure` gives.
     """
+    from pydantic import ValidationError  # lazy: only document refusals need model inspection.
+
     if not isinstance(error, ValidationError):
         failure = {"failure_code": public_failure(error, fallback)}
         return {**failure, **error_projection(failure)}
@@ -406,6 +409,19 @@ def _request_read(reasons: Mapping[str, str], request: Mapping[str, object]) -> 
         return {"operation": "ACTIVITY_LIST", "limit": 200}
     if "update_task_id" in reasons:
         return {"operation": "TASKS"}
+    if "task_id" in reasons and request.get("operation") == "DATA_UPDATE_READBACK":
+        return {"operation": "TASKS"}
+    if set(reasons) == {"input_binding_hash"} and request.get("operation") == "EXPERIMENT_PLAN":
+        return {"operation": "RESEARCH_INPUTS"}
+    if set(reasons) == {"input_binding_hash"} and request.get("operation") == "EXPERIMENT_CONTROLS":
+        return {
+            "operation": "EXPERIMENT_CONTROLS",
+            **{
+                key: request[key]
+                for key in ("research_input_id", "experiment_kind")
+                if key in request
+            },
+        }
     if (
         request.get("operation") in {"TASK_RECOVERY", "RECOVER"}
         or request.get("recovery_task_id")
@@ -474,7 +490,7 @@ def typed_failures(body: dict[str, object]) -> dict[str, object]:
 def _withheld(text: str, *, prefix: str = FAILURE_DETAIL_WITHHELD, incident: bool = True) -> str:
     """`prefix:<incident>`, the incident a digest of the text, which the Host's log keeps."""
 
-    digest = sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
+    digest = identity_sha256(text.encode("utf-8", "replace")).hexdigest()[:8]
     logging.getLogger("alphalattice.local_web").error("%s:%s %s", prefix, digest, text[:2000])
     return f"{prefix}:{digest}" if incident else prefix
 

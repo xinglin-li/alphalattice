@@ -12,6 +12,15 @@ from uuid import UUID
 import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.identity import (
+    canonical_hash,
+    schema_structure,
+)
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.capabilities.portfolio_inputs.tradability.surface import (
     decision_eligible_at_closes,
 )
@@ -26,6 +35,9 @@ from alphalattice.control.product_host.composition.strategy_score_inputs import 
 )
 from alphalattice.control.product_host.composition.strategy_scoring import (
     StrategyScoringApplication,
+)
+from alphalattice.control.product_host.composition.task_kinds import (
+    STRATEGY_CALIBRATION_TASK_KIND,
 )
 from alphalattice.control.product_host.storage.plan_previews import (
     PLAN_PREVIEWS_DIRECTORY,
@@ -77,22 +89,13 @@ from alphalattice.investment.portfolio_strategy_lab.application.strategy_package
 from alphalattice.investment.portfolio_strategy_lab.publication.artifacts import (
     PortfolioResearchArtifactStore,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.identity import (
-    canonical_hash,
-    schema_structure,
-)
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 PLAN_FIELDS = ("calibration_inputs",)
 """The manifest fields a plan reads: the calibration inputs it prepares. A plan binds them, never
-the whole manifest, so a publication of fields it does not read leaves it applicable (V223,
+the whole manifest, so a publication of fields it does not read leaves it applicable (
 OW10)."""
 
-TASK_KIND = "portfolio_calibration_preparation"
+TASK_KIND = STRATEGY_CALIBRATION_TASK_KIND
 STAGES = (
     "verify_inputs",
     "seal_observations",
@@ -103,8 +106,8 @@ RESULT_CATEGORY = "prepared-component-inputs"
 
 
 IMPLEMENTATION_ROLE = "product_host.strategy_calibration"
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation_hash() -> str:
@@ -209,8 +212,7 @@ class StrategyCalibrationApplication:
             admitting="STRATEGY_CALIBRATION_RUN",
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
     issued_score_hashes: Callable[[str, str], dict[date, str]] | None = None
     additional_input: (
         Callable[
@@ -230,7 +232,7 @@ class StrategyCalibrationApplication:
         self.store = PortfolioResearchArtifactStore(self.session.workspace / "artifacts")
         self.last_plan: CalibrationPlan | None = None
         # Every plan an answer named, by its hash, sealed on disk until it expires: a run
-        # from any of them, after a restart too, reopens it and checks it again (V493, V525).
+        # from any of them, after a restart too, reopens it and checks it again.
         self._plans: PreviewRegistry[CalibrationPlan] = PreviewRegistry(
             model=CalibrationPlan,
             clock=self.clock,
@@ -262,7 +264,7 @@ class StrategyCalibrationApplication:
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest scoring reads, the one holder the Host refreshes (V182)."""
+        """The workspace manifest scoring reads, the one holder the Host refreshes."""
         return self.scoring.manifest
 
     def _published_scores(self) -> tuple[FrozenComponentScoreSnapshot, ...]:
@@ -352,7 +354,7 @@ class StrategyCalibrationApplication:
             if observation.source_binding_hash != source_hash:
                 raise ValueError("portfolio_calibration.current_score_source_changed")
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between (V534).
+        # may have replaced in between.
         planned = CalibrationPlan.create(
             workspace_manifest_hash=manifest_fields_hash(self.manifest, PLAN_FIELDS),
             binding=binding,
@@ -390,7 +392,7 @@ class StrategyCalibrationApplication:
 
         The run's observations need a score for each (`_observations`, on the same XNYS and
         XNAS calendar), so the plan refuses, naming them, instead of admitting a run that
-        stops in `seal_observations` and waits for recovery (V334).
+        stops in `seal_observations` and waits for recovery.
 
         Args:
             seed_sessions: The calibration seed's formation sessions.

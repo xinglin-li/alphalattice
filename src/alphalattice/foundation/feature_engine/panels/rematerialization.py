@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 from collections import OrderedDict
@@ -10,14 +9,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.contracts import (
@@ -49,6 +48,7 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_schema_hash,
 )
+from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     ROBUST_SECTOR_NEUTRAL_Z,
 )
@@ -61,7 +61,10 @@ from alphalattice.foundation.feature_engine.producers.preprocessing.robust_cross
     allows_missing_source_rows,
     panel_ordered_members_identity,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
+from alphalattice.kernel.identity import identity_sha256
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class PanelRematerializationMismatch(ValueError):
@@ -135,6 +138,8 @@ class ArtifactOnlyPanelRematerializer:
         a filesystem path.  The recipe binds the catalog, axes and base closure;
         every value chunk is re-hashed by ``_load_base_year`` before release.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         recipe = self._store.load_model(
             category="recipes", content_hash=recipe_hash, model=PanelDerivationRecipe
         )
@@ -298,7 +303,7 @@ class ArtifactOnlyPanelRematerializer:
                 }
                 output = temp_root / f"{expected.chunk_hash}.parquet"
                 pq.write_table(hashed.replace_schema_metadata(metadata), output, compression="zstd")
-                physical_sha = file_sha256(output)
+                physical_sha = file_sha256(output)  # a temporary file: read once, never kept
                 metadata_hash = _metadata_hash(output)
                 if metadata_hash != expected.metadata_hash:
                     raise PanelRematerializationMismatch(
@@ -546,6 +551,8 @@ class ArtifactOnlyPanelRematerializer:
         sector_history: SectorHistory,
         replays: _Replays,
     ) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         year_sessions = tuple(s for s in recipe.sessions if chunk.holds(s))
         # One row per member of each session, in physical order; a Panel under
         # the binding rule holds the whole axis on every session.
@@ -643,6 +650,8 @@ class ArtifactOnlyPanelRematerializer:
         binding: FeaturePanelBinding,
         base_cache: OrderedDict[int, pd.DataFrame],
     ) -> PanelMaterialization:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         receipt_sessions = tuple(
             sorted({date.fromisoformat(str(item["session_date"])) for item in receipt_rows})
         )
@@ -778,6 +787,8 @@ class ArtifactOnlyPanelRematerializer:
         recipe: PanelDerivationRecipe,
         year: int,
     ) -> pd.DataFrame:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         if year in cache:
             frame = cache.pop(year)
             cache[year] = frame
@@ -807,6 +818,8 @@ class ArtifactOnlyPanelRematerializer:
         factor_ids: tuple[str, ...],
         recipe: PanelDerivationRecipe,
     ) -> pd.DataFrame:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         key_descriptor = next((item for item in base.key_chunks if item.year == year), None)
         if key_descriptor is None:
             raise PanelRematerializationMismatch("feature_panel.base_closure_incomplete")
@@ -913,6 +926,8 @@ class ArtifactOnlyPanelRematerializer:
         bounds: tuple[date, date],
         factor_ids: tuple[str, ...],
     ) -> pa.Table:
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         mask = _within(receipt_table.column("session_date"), bounds)
         receipts = receipt_table.filter(mask).to_pandas()
         receipts["session_date"] = pd.to_datetime(receipts["session_date"]).dt.date
@@ -1020,7 +1035,7 @@ def _metadata_hash(path: Path) -> str:
         key.decode("utf-8"): value.decode("utf-8") for key, value in sorted(metadata.items())
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def recipe_sector_history(
@@ -1037,7 +1052,7 @@ def recipe_sector_history(
     """
     return SectorHistory(
         current_revision=recipe.sector_revision,
-        current={item.listing_id: item.sector_name for item in sector_map.entries},
+        current={item.listing_id: item.sector_name for item in classified(sector_map)},
         reclassifications=tuple(
             SectorReclassification(
                 listing_id=item.listing_id,

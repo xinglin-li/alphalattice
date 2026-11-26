@@ -42,8 +42,11 @@ def read_development_score_rows(
     of the resolution that loading the child performed.
     """
 
-    numerical, scores = store.read_candidate_numerical_fold_result(numerical_result_hash)
-    fold, validation = store.read_fold_surface(fold_surface_hash)
+    folds, numerical_results, _ = store.read_development_folds(
+        (fold_surface_hash,), (numerical_result_hash,)
+    )
+    numerical, scores = numerical_results[numerical_result_hash]
+    fold, validation = folds[fold_surface_hash]
     return _join_score_rows(numerical, scores, fold, validation)
 
 

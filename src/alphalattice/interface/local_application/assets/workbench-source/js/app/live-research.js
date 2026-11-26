@@ -30,7 +30,7 @@ const LiveResearch = (() => {
       const body=await Data.read('/api/experiments/preview?'+new URLSearchParams({experiment_plan_hash:hash}));
       if(ticket!==S.sharedTicket || !wanted()) return false; // a later inspect or manual choice owns the panel
       S.shared={hash,ticket,loading:false,body,error:''};
-      if(body?.status==='AVAILABLE') openReader(); // round 67 / 69: what is new for the person comes first — the reader opens on the shared PLAN
+      if(body?.status==='AVAILABLE') openReader(); // what is new for the person comes first — the reader opens on the shared PLAN
       return true;
     } catch(e) { if(ticket===S.sharedTicket) S.shared={hash,ticket,loading:false,body:null,error:e.message}; }
     if(ticket===S.sharedTicket && wanted()) paint();
@@ -245,7 +245,7 @@ const LiveResearch = (() => {
     S.missing=body.missing_fields || [];
     S.authoringOptions=body.authoring_options || null;
     S.featureInput=body.feature_input || null;
-    S.prereq=body.prerequisites || null; // U60: what the kind's flow needs on this input
+    S.prereq=body.prerequisites || null; // what the kind's flow needs on this input
     S.request={...(body.plan_request || {} )}; delete S.request.operation;
     S.input=body.research_input_id || body.input_id || S.request.research_input_id || S.input;
     S.binding=body.input_binding_hash || S.request.input_binding_hash || S.binding;
@@ -275,7 +275,7 @@ const LiveResearch = (() => {
     [S.input,S.binding]=key ? JSON.parse(key) : ['', ''];
     // No standalone declaration exists for these kinds: the owner would refuse the read. The
     // saved sources it requires are chosen here instead; nothing is read until one is named.
-    if(GUIDED.has(kind) && !origin) { S.busy=''; S.dirty=false; S.guide=guideFor(kind); restoreLocator(); paint(); return guideRead(); } // a guided entry reads nothing until a source is named; its guide lists the sources the flow needs (U60)
+    if(GUIDED.has(kind) && !origin) { S.busy=''; S.dirty=false; S.guide=guideFor(kind); restoreLocator(); paint(); return guideRead(); } // a guided entry reads nothing until a source is named; its guide lists the sources the flow needs
     S.guide=null;
     // No exact version chosen: the choice is the page, not a refusal; there is no draft to protect.
     if(!origin && (!S.input || !S.binding)) { S.busy=''; S.dirty=false; restoreLocator(); paint(); return; }
@@ -326,7 +326,7 @@ const LiveResearch = (() => {
     return new Promise((resolve)=>{
       replaceAnswer=resolve;
       alertDialog(t('Replace the edited draft?'), t('This declaration was edited on this page and is kept nowhere else. Replacing it drops those edits; saved results, admitted PLANs and Tasks are unchanged.'),
-        html`${btn(t('Keep editing'),'research-replace','keep','button')}${btn(t('Copy declaration'),'copy-yaml','','button')}${btn(t('Replace draft'),'research-replace','replace','button primary')}`); // round 82: the alert
+        html`${btn(t('Keep editing'),'research-replace','keep','button')}${btn(t('Copy declaration'),'copy-yaml','','button')}${btn(t('Replace draft'),'research-replace','replace','button primary')}`); // the alert
       const dialog=typeof $==='function' ? $('#dialog') : null; if(dialog) dialog.addEventListener('close',()=>answerReplace('keep'),{once:true});
     });
   }
@@ -483,14 +483,14 @@ const LiveResearch = (() => {
     if(f.path.some(k=>['__proto__','prototype','constructor'].includes(k)))throw Error('Control path unavailable');
     let target=S.document;
     for(const key of f.path.slice(0,-1)) {
-      if(!Object.hasOwn(target,key) || target[key]===null)target[key]={}; // U42: a null section (no policy) is opened by its first field
+      if(!Object.hasOwn(target,key) || target[key]===null)target[key]={}; // a null section (no policy) is opened by its first field
       if(typeof target[key]!=='object' || Array.isArray(target[key])) throw Error('Control path unavailable');
       target=target[key];
     }
     const key=f.path.at(-1);
-    if(f.type==='universe') target[key]=e.target.value==='' ? f.whole : f.whole+f.sample_mark+e.target.value; // R4 (V339): empty is the whole universe
+    if(f.type==='universe') target[key]=e.target.value==='' ? f.whole : f.whole+f.sample_mark+e.target.value; // R4: empty is the whole universe
     else if(f.options && f.type!=='multiple' && e.target.value==='') { const was=f.path.slice(0,-1).reduce((v,k)=>v?.[k],S.answered); if(was && typeof was==='object' && was[key]===null) target[key]=null; else { delete target[key]; settleEmpty(f.path); } }
-    else target[key]=f.options ? (f.type==='multiple' ? (Array.isArray(e.target.value) ? e.target.value : []).map(j=>optionValue(f.options[Number(j)])) : optionValue(f.options[Number(e.target.value)])) : f.type==='number' ? e.target.valueAsNumber : e.target.value; // a multiple choice reaches here as the list's chosen values (round 95)
+    else target[key]=f.options ? (f.type==='multiple' ? (Array.isArray(e.target.value) ? e.target.value : []).map(j=>optionValue(f.options[Number(j)])) : optionValue(f.options[Number(e.target.value)])) : f.type==='number' ? e.target.valueAsNumber : e.target.value; // a multiple choice reaches here as the list's chosen values
     if(f.type==='multiple' && typeof document!=='undefined') { const count=document.getElementById('researchFieldCount'+e.target.dataset.researchField); if(count) count.textContent=chosenText(f,target[key]); }
     if(S.fields.some(field=>(field.when || []).some(c=>c.path.join('.')===f.path.join('.')))) {
       // A value other controls are conditioned on changed: the parameters those controls
@@ -506,7 +506,7 @@ const LiveResearch = (() => {
     }
   }
   /* A section the owner answered as null and emptied again by the controls is null again: a
-   * cleared catalog policy is the tranche book the draft began with (U42), never an empty policy. */
+   * cleared catalog policy is the tranche book the draft began with, never an empty policy. */
   function settleEmpty(path) {
     for(let n=path.length-1;n>0;n--) {
       const at=path.slice(0,n), parent=at.slice(0,-1).reduce((v,k)=>v?.[k],S.document), key=at.at(-1), v=parent?.[key];
@@ -569,9 +569,9 @@ const LiveResearch = (() => {
     finally { if(ticket===S.revision) S.busy=''; paint(); }
     return true;
   }
-  /* What a PLAN refusal carries beyond its words (the owner's body): where a YAML text stopped parsing (U17),
-   * the bound a policy's top_k broke (U45), and the ways back it names -- the Alpha study's Portfolio draft
-   * (U45) and the explored study's promotion, which is its page's (R4). */
+  /* What a PLAN refusal carries beyond its words (the owner's body): where a YAML text stopped parsing,
+   * the bound a policy's top_k broke, and the ways back it names -- the Alpha study's Portfolio draft
+   * and the explored study's promotion, which is its page's (R4). */
   function refusalWays(b) {
     if(!b) return '';
     const at=b.document_location, most=b.expected?.['portfolio.policy.top_k']?.maximum, next=b.next_requests || {}, draft=next.portfolio_draft, promote=next.promote;
@@ -796,7 +796,7 @@ const LiveResearch = (() => {
     if(w.mismatch) return html`<section class="prep-scene lab-work" data-scene="mismatch">${head}${noteLine(t('Not this page\'s Task'),workMismatch(w),'warning',btn(t('Inspect task'),'task',w.task,'button compact'))}</section>`;
     if(!v) return html`<section class="prep-scene lab-work" data-scene="pending">${head}${w.error ? notRead(t('Task not read'),w.error,explain(w.error),btn(t('Read again'),'research-work-refresh','','button compact')) : noteLine(t('Reading the Task'),t('Its stages and liveness come from Task Control; nothing is started by reading.'))}</section>`;
     const words=familyWords(w);
-    // N6 (laws 72, 98): a finished Task is one line -- done, what it is, its reader; its stages are the Task's own record
+    // laws 72, 98: a finished Task is one line -- done, what it is, its reader; its stages are the Task's own record
     if(v.lifecycle==='SUCCEEDED' && published) return html`<section class="prep-scene lab-work lab-work-done" data-scene="experiment" data-lifecycle="SUCCEEDED">${noteLine(html`<strong>${t('Completed')}</strong> · ${familyOf(w) ? kindLabel(familyOf(w)) : t('Experiment Task')}`,t(words.done),'ok',html`${btn(t(words.reader),'task-result',w.task,'button primary compact')}${btn(t('Dismiss'),'research-work-dismiss','','text-btn')}`,'checkcircle')}</section>`;
     const complete=v.lifecycle==='SUCCEEDED' ? (w.readback ? readbackNotice(w) : noteLine(t('Completed; its result is being read'),w.lateReads>=AUTOMATIC_READBACK_READS ? t('Task Control verified the last stage, but the readback did not say "published" after {n} reads; Read again tries once more, or open the Task for its owner\'s answer.',{n:AUTOMATIC_READBACK_READS}) : t('Task Control verified the last stage; the readback is read once more.'),'neutral',w.lateReads>=AUTOMATIC_READBACK_READS ? btn(t('Read again'),'research-work-refresh','','button compact') : ''))
       : w.stale ? noteLine(t('Not re-read since {time}',{time:when(new Date(w.stale.since).toISOString())}),html`${w.stale.error} · ${t('The last observation is kept below; nothing about the Task is inferred from a failed read.')}`,'warning') : '';
@@ -807,10 +807,10 @@ const LiveResearch = (() => {
   const GROUPS=[['experiment.sessions','Interval and cutoff'],['experiment.budget','Budget'],['factor','Factors and policies'],['risk','Estimator'],['alpha','Model declaration'],['portfolio','Policy'],['experiment','Experiment']];
   const groupOf=(f)=>{ const p=f.path.join('.'); return (GROUPS.find(([prefix])=>p===prefix || p.startsWith(prefix+'.')) || ['','Declaration'])[1]; };
   const chosenText=(f,value)=>t('{n} of {m} chosen',{n:Array.isArray(value) ? value.length : 0,m:f.options.length});
-  /* R4 (V339): the universe, whole or a sample of its names, as one size: empty is the whole
+  /* R4: the universe, whole or a sample of its names, as one size: empty is the whole
    * profile, N writes `whole + sample_mark + N`; the owner's bounds are its minimum cross-section
    * and one fewer than the Panel's names, and a Panel too small to sample holds the field. */
-  /* A refused field's reason (V248): the owner's code in words, or the contract's error type in words. */
+  /* A refused field's reason: the owner's code in words, or the contract's error type in words. */
   const REASON_WORDS={missing:'Required',extra_forbidden:'Not a field of this section',greater_than:'Too small',greater_than_equal:'Too small',less_than:'Too large',less_than_equal:'Too large',
     int_parsing:'Not a whole number',int_from_float:'Not a whole number',float_parsing:'Not a number',bool_parsing:'Not true or false',string_type:'Not text',literal_error:'Not one of the choices',date_from_datetime_parsing:'Not a date',date_parsing:'Not a date',too_short:'Too few',too_long:'Too many'};
   const reasonWords=(r)=>REASON_WORDS[r] ? t(REASON_WORDS[r]) : coded(r);
@@ -820,24 +820,24 @@ const LiveResearch = (() => {
       note:can ? t('Empty for the whole universe ({whole}); a sample holds {min} to {max} names.',{whole:f.whole,min:f.sample_min,max:f.sample_max}) : t('This Panel has too few names to sample; the study runs on the whole universe ({whole}).',{whole:f.whole})};
   }
   function control(f, i) {
-    const value=valueAt(f.path), name='researchField'+i, invalid=Boolean(S.error) && ((S.errorBody?.fields || []).some(p=>namesField(f,Array.isArray(p) ? p.join('.') : String(p))) || namesField(f,S.errorField) || refusedBy(f,S.error)); // U39: every field the answer names
+    const value=valueAt(f.path), name='researchField'+i, invalid=Boolean(S.error) && ((S.errorBody?.fields || []).some(p=>namesField(f,Array.isArray(p) ? p.join('.') : String(p))) || namesField(f,S.errorField) || refusedBy(f,S.error)); // every field the answer names
     const attrs=html`data-research-field="${i}"${S.busy==='run' ? html` disabled data-tip="${t('Submitting the confirmed PLAN; editing resumes when the owner answers.')}"` : ''}${invalid ? html` aria-invalid="true"` : ''}`;
     const sample=f.type==='universe' ? universeInput(f,value,name,attrs) : null;
     const bounds=sample ? sample.note : f.min!=null && f.max!=null ? t(f.min_exclusive ? 'More than {min}, at most {max}' : 'Between {min} and {max}',{min:f.min,max:f.max}) : f.min!=null ? t(f.min_exclusive ? 'More than {min}' : 'At least {min}',{min:f.min}) : f.max!=null ? t('At most {max}',{max:f.max}) : '';
     const unit=f.unit ? t('Unit: {unit}',{unit:f.unit}) : '';
     const input=sample ? sample.input : f.options && f.type==='multiple' ? choiceList(name, f.options.map((v,j)=>({value:String(j), label:v?.label ?? String(optionValue(v)), mono:v?.label==null, checked:Array.isArray(value) && value.includes(optionValue(v))})), attrs, html`<span id="researchFieldCount${i}">${chosenText(f,value)}</span>`)
       : f.options ? picker(name, [['',t('Choose explicitly')],...f.options.map((v,j)=>[String(j), v?.label ?? String(optionValue(v))])], {selected: value==null ? '' : String(f.options.findIndex(v=>optionValue(v)===value)), attrs, disabled:S.busy==='run', label:t(f.label || name)})
-      : html`<input id="${name}" class="ui-field${f.type==='date' ? ' mono' : ''}" type="${f.type==='number' ? 'number' : 'text'}" value="${value ?? ''}"${attrs}${f.type==='date' ? html` data-date="true" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" autocomplete="off"` : ''}${f.min==null || f.min_exclusive ? '' : html` min="${f.min}"`}${f.max==null ? '' : html` max="${f.max}"`}${f.step==null ? '' : html` step="${f.step}"`}>`; // N6: a date in the product's ISO form, not the browser's order
+      : html`<input id="${name}" class="ui-field${f.type==='date' ? ' mono' : ''}" type="${f.type==='number' ? 'number' : 'text'}" value="${value ?? ''}"${attrs}${f.type==='date' ? html` data-date="true" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" autocomplete="off"` : ''}${f.min==null || f.min_exclusive ? '' : html` min="${f.min}"`}${f.max==null ? '' : html` max="${f.max}"`}${f.step==null ? '' : html` step="${f.step}"`}>`; // a date in the product's ISO form, not the browser's order
     // one refusal names several fields: every one is ringed, the message is said once, under the first
     const said=invalid && !errorSaid; if(invalid) errorSaid=true;
-    const reason=invalid && !said ? S.errorBody?.reasons?.[f.path.join('.')] : ''; // U39 (V248): a further refused field's own reason
+    const reason=invalid && !said ? S.errorBody?.reasons?.[f.path.join('.')] : ''; // a further refused field's own reason
     return html`<div class="field${invalid ? ' is-invalid' : ''}"><label for="${name}">${t(f.label || f.path.join('.'))}</label>${input}${[f.help ? t(f.help) : '',bounds,unit].filter(Boolean).map(x=>html`<small>${x}</small>`)}${reason ? html`<small class="field-error">${reasonWords(reason)}</small>` : ''}${said ? html`<small class="field-error" role="alert">${innerCode(S.error) ? explain(S.error) : ownerDetail(S.error) || explain(S.error) || S.error}</small>` : ''}</div>`;
   }
   let errorSaid=false;
   function controls() {
     errorSaid=false;
     const groups=new Map();
-    S.fields.forEach((f,i)=>{ if(!visibleField(f) || (f.options && f.type!=='multiple')) return; const g=groupOf(f); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(control(f,i)); }); // single choices are the head's chips (round 56)
+    S.fields.forEach((f,i)=>{ if(!visibleField(f) || (f.options && f.type!=='multiple')) return; const g=groupOf(f); if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(control(f,i)); }); // single choices are the head's chips
     const kept=S.document ? uncovered(S.fields,S.document) : [];
     return html`${[...groups].map(([g,fields])=>html`<section class="lab-control-group" data-stack-box="field"><h3>${t(g)}</h3><div class="form-grid">${fields}</div></section>`)}${kept.length ? html`${factsRef(html`${countText(kept.length,'{n} other declared field, kept exactly as declared','{n} other declared fields, kept exactly as declared')}`, html`<p class="caption">${t('These entries have no control here and travel unchanged with the declaration: {fields}. Switch to YAML to read or edit them.',{fields:kept.join(' · ')})}</p>`)}` : ''}`;
   }
@@ -857,7 +857,7 @@ const LiveResearch = (() => {
     return rows;
   }
   function scopeReader() {
-    return html`${kv([...sourceRows(),[t('Creates'),S.work ? html`${t('Task')} ${btn(html`<span class="mono">${short(S.work.task)}</span>`,'task',S.work.task,'text-btn')}` : t('One Task, once the PLAN is confirmed')]])}${featuresSection()}`; // N6: after a run it names the Task, never `No task yet`
+    return html`${kv([...sourceRows(),[t('Creates'),S.work ? html`${t('Task')} ${btn(html`<span class="mono">${short(S.work.task)}</span>`,'task',S.work.task,'text-btn')}` : t('One Task, once the PLAN is confirmed')]])}${featuresSection()}`; // after a run it names the Task, never `No task yet`
   }
   // a Factor draft's research-local definitions, from the head's ··· (the product's head button, 2026-09-25)
   const featureTool=()=>{
@@ -945,13 +945,13 @@ const LiveResearch = (() => {
     const inputs=eligible();
     return html`<div class="field"><label id="expInputLabel" for="expInput">${t('Research input version')}</label>${picker('expInput',[['',t('Select an input')],...inputs.map(v=>[inputKey(v),versionLabel(v)])],{selected:JSON.stringify([S.input,S.binding]),kind:'text',disabled,attrs:disabled ? 'aria-describedby="researchModeReason"' : '',labelId:'expInputLabel'})}<small>${S.binding ? cutoffOf(S.binding) : t('Published versions only; the working store is never used for research.')}</small></div>`;
   }
-  /* Round 56: the declaration's properties as chips under its title — the exact input, the kind,
+  /* the declaration's properties as chips under its title — the exact input, the kind,
    * every single-choice control of the schema (the Controls view's selects) and the interval; a
    * chip's choice writes the same field the select wrote, through the same owner reads. */
   const PROPERTY_KEYS={'factor.screening_policy':'s','factor.redundancy_policy':'r','alpha.target_recipe_id':'t','alpha.model_capability_handle':'m','alpha.model_parameters.family':'f'};
-  const choiceWords=(f,v)=>v?.label ?? (f.path.join('.')==='portfolio.risk_task_id' ? `${t('Risk study')} ${LiveViews.shortRef(optionValue(v))}` : methodWords(optionValue(v))); // U41: a linked Risk study by its reference
+  const choiceWords=(f,v)=>v?.label ?? (f.path.join('.')==='portfolio.risk_task_id' ? `${t('Risk study')} ${LiveViews.shortRef(optionValue(v))}` : methodWords(optionValue(v))); // a linked Risk study by its reference
   const optionLabel=(f,value)=>{ const o=f.options.find(v=>optionValue(v)===value); return o==null ? '' : choiceWords(f,o); };
-  const unsettable=(f)=>f.path.reduce((v,k)=>v==null ? v : v[k],S.answered)===null; // U41, U42: a choice the owner answered as none may be none again
+  const unsettable=(f)=>f.path.reduce((v,k)=>v==null ? v : v[k],S.answered)===null; // a choice the owner answered as none may be none again
   function propertyRow() {
     const held=Boolean(S.busy) || S.busy==='run';
     const context=html`${kindLabel(S.kind)} · ${S.input || t('Select an input')}`;
@@ -964,7 +964,7 @@ const LiveResearch = (() => {
     if(app.mode==='controls' && dates.length) chips.push(propertyChip(t('Interval'),html`${dates[0]}${dates.length>1 ? html` — ${dates[1]}` : ''}${dates.length>2 ? html` · ${t('cutoff')} ${dates[2]}` : ''}`,{icon:'calendar',key:'d',press:'research-dates'}));
     return html`<div class="property-row" aria-label="${t('Declared properties')}">${chips}</div>`;
   }
-  /* a property chip's choice: the same edit the select made, then the chips redrawn */
+  /* A property chip's choice: the same edit the select made, then the chips redrawn */
   function setField(i,j) {
     const f=S.fields[i]; if(!f || (j<0 ? null : optionValue(f.options[j]))===(valueAt(f.path) ?? null)) return; // choosing the current value edits nothing
     edit({target:{dataset:{researchField:String(i)},value:j<0 ? '' : String(j),id:''}}); // -1: none, as the owner answered it
@@ -977,7 +977,7 @@ const LiveResearch = (() => {
   function stateView(state) {
     const shell=(kind,body)=>html`<section class="panel pad lab-state" data-box="${kind==='refused' ? 'decision' : 'workspace'}" data-state="${kind}">${body}</section>`;
     if(state==='loading') return shell('loading',html`<h2>${t('Reading the {kind} declaration for {input}',{kind:kindLabel(S.kind),input:S.input || t('the selected source')})}</h2><p class="caption" role="status">${t('Waiting for the product owner')} · ${t('No PLAN, execution or preparation follows from this read.')}</p>`);
-    if(state==='unprepared') { const prep=preparation(); return html`<div class="lab-state" data-state="unprepared">${emptyState(html`${t('This workspace holds no verified research input yet')}${infoMark(`${t(prep?.task_id ? 'A preparation Task is recorded for this workspace; its scene says where it stands. Research declarations need a published input version.' : 'One explicit preparation makes it research-ready: sources are captured, a Panel is built and one input version is published. Opening this page starts nothing.')} ${t('Saved research, if any, stays readable on the Factor, Alpha and Risk pages.')}`)}`,link(t(prep?.task_id ? 'Open the preparation' : 'Prepare the workspace'),'overview','button primary'))}</div>`; } // N6: the one empty state, not framed twice
+    if(state==='unprepared') { const prep=preparation(); return html`<div class="lab-state" data-state="unprepared">${emptyState(html`${t('This workspace holds no verified research input yet')}${infoMark(`${t(prep?.task_id ? 'A preparation Task is recorded for this workspace; its scene says where it stands. Research declarations need a published input version.' : 'One explicit preparation makes it research-ready: sources are captured, a Panel is built and one input version is published. Opening this page starts nothing.')} ${t('Saved research, if any, stays readable on the Factor, Alpha and Risk pages.')}`)}`,link(t(prep?.task_id ? 'Open the preparation' : 'Prepare the workspace'),'overview','button primary'))}</div>`; } // the one empty state, not framed twice
     if(state==='refused') { const prep=preparation(); const unprepared=Boolean(prep && !prep.inputs?.length); return shell('refused',html`<h2>${t('The owner did not open this {kind} declaration',{kind:kindLabel(S.kind)})}</h2>${explain(S.error) ? html`<p>${explain(S.error)}</p>` : ''}<p class="mono refusal-code">${S.error}</p>${unprepared ? html`<p>${t('The workspace readiness read also reports no verified research input yet; the preparation path is on the Data pages.')} ${link(t('Open the preparation'),'overview','button compact')}</p>` : ''}<p class="caption">${t('Choose another input version or start another kind above; nothing was planned or run.')}</p>${GUIDED.has(S.kind) ? '' : inputSelect(Boolean(S.handoff && S.handoff.kind!=='factor'))}`); }
     const all=Data.inputs(), inputs=eligible(), other=all.filter(v=>!inputs.includes(v));
     const others=other.length ? html`<p class="caption">${countText(other.length,'{n} version not eligible:','{n} versions not eligible:')} ${other.map(v=>`${versionLabel(v)} · ${v.available ? codeWords(v.lifecycle) : t('source files unavailable')}`).join('; ')}</p>${link(t('Input versions'),'inputs','button compact')}` : '';
@@ -1004,7 +1004,7 @@ const LiveResearch = (() => {
   const STATE_WORDS={loading:['queued','reading'],refused:['error','not opened'],unprepared:['blocked','not ready'],'no-input':['draft','no input chosen'],guided:['draft','saved source required']};
   const labState=(state)=>S.plan ? stateLine('planned') : state==='ready' ? stateLine('draft',{word:t(S.dirty ? 'edited draft' : 'draft')}) : stateLine(STATE_WORDS[state][0],{word:t(STATE_WORDS[state][1])});
   const button=(label,action)=>typedBtn(t(label),action,'','button primary',S.busy || !S.ready ? t('Wait for a ready declaration') : '',S.busy || !S.ready ? 'aria-describedby="labStateReason"' : '');
-  /* The Scope / PLAN reader (round 69; round 92: a reading pane in the lane, never the side
+  /* The Scope / PLAN reader (a reading pane in the lane, never the side
    * column) -- the shared PLAN, an exact reuse or the Task on the page, then the PLAN preview with
    * its confirmation (or the scope before a PLAN) and the exact references. It opens with a PLAN,
    * a shared PLAN, a Task on the page or from ···, and repaints with the draft. */
@@ -1030,7 +1030,7 @@ const LiveResearch = (() => {
     const workbench=state==='ready' ? html`<section class="editor-workbench panel" data-box="workspace"><header class="editor-workbench-header"><span class="editor-file">${icon(app.mode==='controls' ? 'edit' : 'file')}<strong>${app.mode==='controls' ? t('Declaration') : 'research.yaml'}</strong><span class="editor-file-note">${t(S.dirty ? 'Edited draft · kept on this page only; copy it to keep it' : 'Draft declaration')}</span></span>${tabStrip(t('Declaration views'),[{word:t('Controls'),action:'mode',value:'controls',on:app.mode==='controls',attrs:!S.fields.length || S.busy ? 'disabled aria-describedby="researchModeReason"' : 'aria-describedby="researchModeReason"'},{word:t('YAML'),action:'mode',value:'yaml',on:app.mode==='yaml',attrs:S.busy ? 'disabled aria-describedby="researchModeReason"' : 'aria-describedby="researchModeReason"'}],'editor-tabs')}</header><div class="declaration-context">${propertyRow()}<div class="lab-produces"><span class="editor-kind">${hint(t('What this declares'), t(KIND_LINES[S.kind] || 'A research declaration on the exact input.'))}</span></div></div><span class="sr-only" id="researchModeReason">${modeReason}</span><div class="declaration-content">${editor}</div><footer class="editor-statusbar"><div id="validationNotice" aria-live="polite">${S.error ? html`<span class="caption">${S.error}${explain(S.error) ? html` · ${explain(S.error)}` : ''}${S.errorBody?.document_location ? html` · ${t('line {line}, column {column}',S.errorBody.document_location)}` : ''}</span>` : S.busy ? t('Waiting for the product owner') : S.plan ? t('PLAN matches this declaration') : hint(t('Draft'), t('Editing is not execution; create a PLAN to validate.'))}</div></footer></section>`
       : state==='guided' ? guideView() : stateView(state);
 
-    // a refusal a field carries (its ring and its message) is not repeated above the form (round 21)
+    // a refusal a field carries (its ring and its message) is not repeated above the form
     const carried=Boolean(S.error) && state==='ready' && app.mode==='controls' && S.fields.some(f=>visibleField(f) && (namesField(f,S.errorField) || refusedBy(f,S.error)));
     // the kinds' tabs lead the page in every state (the user, 2026-09-24)
     const kindRow=kindTabs(S.busy==='run');

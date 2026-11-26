@@ -20,7 +20,6 @@ under it for no scientific reason.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Mapping
 from datetime import date
 from functools import cache
@@ -31,6 +30,14 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    switched_source_identity,
+)
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioPerSideCostAssumption,
 )
@@ -117,11 +124,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     RiskAllocationProjection,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
-from alphalattice.kernel.shared_kernel.source_identity import (
-    switched_source_identity,
-)
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]
@@ -1064,7 +1067,7 @@ def component_formation_receipt(
 ) -> str:
     """One receipt over every component row a formation consumed."""
     row_hashes = [
-        hashlib.sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
+        identity_sha256(np.ascontiguousarray(row, dtype="<f8").tobytes()).hexdigest()
         for row in component_rows
     ]
     return str(

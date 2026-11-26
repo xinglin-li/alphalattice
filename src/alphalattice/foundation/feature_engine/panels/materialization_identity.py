@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
 from datetime import date
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
+
+from alphalattice.kernel.identity import identity_sha256
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def align_feature_source_sessions(frame: pd.DataFrame, sessions: Sequence[date]) -> pd.DataFrame:
     """Keep absent sessions in a lookback, never fill their numerical observations."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     expected = tuple(sessions)
     observed = tuple(pd.to_datetime(frame["session_date"]).dt.date)
     if (
@@ -36,6 +42,8 @@ def align_feature_source_sessions(frame: pd.DataFrame, sessions: Sequence[date])
 
 def feature_source_values_hash(frame: pd.DataFrame, columns: Sequence[str]) -> str:
     """Hash exact numerical arguments, independently of batch/projection metadata."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     dates = tuple(pd.to_datetime(frame["session_date"]).dt.date)
     if not dates or dates != tuple(sorted(set(dates))):
         raise ValueError("feature.source_window_calendar_invalid")
@@ -46,8 +54,8 @@ def feature_source_values_hash(frame: pd.DataFrame, columns: Sequence[str]) -> s
         {
             "columns": numeric,
             "sessions": dates,
-            "values": hashlib.sha256(np.where(missing, 0.0, values).tobytes()).hexdigest(),
-            "missing": hashlib.sha256(missing.tobytes()).hexdigest(),
+            "values": identity_sha256(np.where(missing, 0.0, values).tobytes()).hexdigest(),
+            "missing": identity_sha256(missing.tobytes()).hexdigest(),
         }
     )
 
@@ -75,7 +83,7 @@ def _canonical_hash(value: object) -> str:
     payload = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def feature_materialization_receipt_hash(
@@ -172,7 +180,7 @@ def feature_row_content_hash_from_canonical(
         f'"values":{_ROW_VALUES_ENCODER.encode(dict(zip(factor_ids, values, strict=True)))}'
         "}"
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def feature_row_is_numerically_identical(

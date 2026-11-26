@@ -27,21 +27,13 @@ import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from alphalattice.control.product_host.composition.research_authoring import (
-    build_research_program_workflow,
     host_resolved_factor_inventory,
     installed_desk_verifiers,
-)
-from alphalattice.control.product_host.research_authoring.authority import (
-    WorkspaceResearchAuthorityResolver,
-)
-from alphalattice.control.product_host.research_authoring.execution import (
-    build_installed_desk_executors,
 )
 from alphalattice.control.research_program.authoring.document import load_authoring_document
 from alphalattice.foundation.factor_research.evaluation.oos_evidence import (
@@ -79,6 +71,9 @@ from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
 )
+from alphalattice.foundation.feature_engine.panels.development_input import (
+    ResolvedDevelopmentFeatureInput,
+)
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     FACTOR_METHOD_FAMILY_OWNERS,
     method_family_content_hash,
@@ -100,23 +95,32 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
 )
 from tests._support.researcher_methodology_session_fixtures import build_external_factor_workspace
+from tests._support.researcher_methodology_session_fixtures import (
+    outcome_catalog_root as outcome_catalog_root,
+)
 from tests.researcher_methodology_surface.external_factor_method import (
     EXTERNAL_FACTOR_ID,
     EXTERNAL_IMPLEMENTATION_ID,
     EXTERNAL_METHOD_FAMILY,
     EXTERNAL_METHOD_FAMILY_OWNERS,
     external_factor_spec,
+    external_feature_catalog,
     external_formula_specification,
     external_kernel_registry,
     external_specification_catalog,
 )
 from tests.researcher_methodology_surface.factor_evidence_support import (
-    DEVELOPMENT_EVIDENCE_POLICY,
-    DEVELOPMENT_REDUNDANCY_POLICY,
+    factor_inventory,
+    factor_workflow,
+    short_lookback_factor_input,
 )
 from tests.researcher_methodology_surface.real_workspace import (
+    DEVELOPMENT_SYMBOLS,
+    FACTOR_SCALE,
     MARKET_PROFILE_ID,
+    SUFFICIENT_SYMBOLS,
     RealRiskWorkspace,
+    build_real_risk_workspace,
     publish_causal_outcomes,
 )
 
@@ -133,60 +137,9 @@ _PUBLISHED_AT = datetime(2026, 8, 2, tzinfo=UTC)
 
 
 def _document() -> dict[str, Any]:
-    """The frozen typed/YAML batch request, exactly as authored.
-
-    Read rather than assembled. A document built in Python here would let this
-    case study quietly grant itself fields the real loader would reject.
-    """
+    """Read the authored batch through the real document loader."""
 
     return copy.deepcopy(dict(load_authoring_document(_REQUEST.read_text(encoding="utf-8"))))
-
-
-def _compose(workspace: RealRiskWorkspace, root: Path, document: dict[str, Any]) -> Any:
-    """Compose exactly what the canonical CLI composes, through Product Host.
-
-    Nothing in this function knows the external method exists. That is the
-    acceptance: the Host resolves an inventory off the published Panel, installs
-    the Factor executor for the declared kind, and installs its verifiers -- and
-    every one of those steps is the product's own, unbranched.
-
-    The installed owners are forwarded, not named. A composer always holds the
-    catalog revision and kernel set its workspace's writers were built with; here
-    it hands them to the reader as well, because the Host verifies a Panel's clock
-    authority against installed owners before resolving it. What is in them stays
-    the workspace's business.
-    """
-
-    envelope = ResearchExperimentEnvelope.create(**document["experiment"])
-    inventory = host_resolved_factor_inventory(
-        workspace=workspace.workspace, market_profile_id=MARKET_PROFILE_ID
-    )
-    executors = build_installed_desk_executors(
-        envelope=envelope,
-        workspace=workspace.workspace,
-        workspace_root=root,
-        document=document,
-        feature_catalog=workspace.feature_catalog,
-        feature_kernels=workspace.feature_kernels,
-        # Cross-section scale, not science: ten listings cannot meet the
-        # production redundancy floor of a hundred common listings.
-        factor_evidence_policy=DEVELOPMENT_EVIDENCE_POLICY,
-        factor_redundancy_policy=DEVELOPMENT_REDUNDANCY_POLICY,
-    )
-    return build_research_program_workflow(
-        workspace=workspace.workspace,
-        workspace_root=root,
-        executors=executors,
-        factor_inventory=inventory,
-        # The composer's existing seam, used for what it is for. The dispatcher
-        # would otherwise build a resolver holding the shipped owners, and the
-        # Panel this workspace published is one only its own revision answers for.
-        authority=WorkspaceResearchAuthorityResolver(
-            workspace=workspace.workspace,
-            feature_catalog=workspace.feature_catalog,
-            feature_kernels=workspace.feature_kernels,
-        ),
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,48 +157,81 @@ class ExternalFactorRun:
 
 
 @pytest.fixture(scope="module")
-def external_outcomes(external_factor_workspace: RealRiskWorkspace) -> RealRiskWorkspace:
-    """The external workspace with the causal outcomes a Factor program reads, published once.
-
-    Every test that runs a Factor program here names this rather than counting on another
-    test to have published them first: a scheduler that starts the longest work first
-    can run such a test first on its worker, where nothing published them.
+def external_outcomes(
+    tmp_path_factory: pytest.TempPathFactory, outcome_catalog_root: Path
+) -> RealRiskWorkspace:
+    """Publish causal outcomes once for the external Factor walk on the sufficient set.
+    Each consuming test declares this fixture so it can run alone on any worker.
     """
 
+    external_factor_workspace = build_external_factor_workspace(
+        tmp_path_factory.mktemp("external-factor-scale"),
+        fresh=False,
+        symbols=SUFFICIENT_SYMBOLS,
+        standard=FACTOR_SCALE,
+    )
     publish_causal_outcomes(external_factor_workspace, at=_PUBLISHED_AT)
     return external_factor_workspace
+
+
+@pytest.fixture(scope="session")
+def optimal_external_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("development-external-factor"),
+        symbols=DEVELOPMENT_SYMBOLS,
+        feature_catalog=external_feature_catalog(),
+        feature_kernels=external_kernel_registry(),
+        fresh=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def external_input(
+    optimal_external_workspace: RealRiskWorkspace, outcome_catalog_root: Path
+) -> ResolvedDevelopmentFeatureInput:
+    publish_causal_outcomes(optimal_external_workspace, at=_PUBLISHED_AT)
+    return short_lookback_factor_input(optimal_external_workspace)
+
+
+def _execute(
+    workspace: RealRiskWorkspace, root: Path, feature_input: ResolvedDevelopmentFeatureInput | None
+) -> ExternalFactorRun:
+    document = _document()
+    inventory = factor_inventory(workspace, feature_input)
+    workflow, authority = factor_workflow(
+        workspace, root, document, inventory, feature_input, sufficient=feature_input is None
+    )
+    evidence, binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="external")
+    assert binding.actor_kind is ActorKind.HUMAN
+    output = root / str(document["experiment"]["output_workspace"])
+    receipt, child = FactorDevelopmentReceiptReader(output).load(evidence.artifact_uris[0])
+    return ExternalFactorRun(
+        workflow=workflow,
+        document=document,
+        root=output,
+        inventory=inventory,
+        evidence=evidence,
+        receipt=receipt,
+        child=child,
+        authority=authority.resolve(ResearchExperimentEnvelope.create(**document["experiment"])),
+    )
 
 
 @pytest.fixture(scope="module")
 def external_run(
     external_outcomes: RealRiskWorkspace, tmp_path_factory: pytest.TempPathFactory
 ) -> ExternalFactorRun:
-    """Freeze the authored batch over the published outcomes, and run it once."""
+    return _execute(external_outcomes, tmp_path_factory.mktemp("external-factor-run"), None)
 
-    external_factor_workspace = external_outcomes
-    root = tmp_path_factory.mktemp("external-factor-run")
-    document = _document()
-    workflow = _compose(external_factor_workspace, root, document)
-    evidence, binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="external")
-    assert binding.actor_kind is ActorKind.HUMAN
-    output = root / str(document["experiment"]["output_workspace"])
-    receipt, child = FactorDevelopmentReceiptReader(output).load(evidence.artifact_uris[0])
-    envelope = ResearchExperimentEnvelope.create(**document["experiment"])
-    return ExternalFactorRun(
-        workflow=workflow,
-        document=document,
-        root=output,
-        inventory=host_resolved_factor_inventory(
-            workspace=external_factor_workspace.workspace, market_profile_id=MARKET_PROFILE_ID
-        ),
-        evidence=evidence,
-        receipt=receipt,
-        child=child,
-        authority=WorkspaceResearchAuthorityResolver(
-            workspace=external_factor_workspace.workspace,
-            feature_catalog=external_factor_workspace.feature_catalog,
-            feature_kernels=external_factor_workspace.feature_kernels,
-        ).resolve(envelope),
+
+@pytest.fixture(scope="module")
+def development_run(
+    optimal_external_workspace: RealRiskWorkspace,
+    external_input: ResolvedDevelopmentFeatureInput,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> ExternalFactorRun:
+    return _execute(
+        optimal_external_workspace, tmp_path_factory.mktemp("bounded-external-run"), external_input
     )
 
 
@@ -261,24 +247,18 @@ def _inventory_entries(context_factors: tuple[Any, ...]) -> tuple[FactorInventor
 
 
 def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
-    tmp_path: Path,
+    optimal_external_workspace: RealRiskWorkspace,
 ) -> None:
     """An external method reaches a published panel with a measured identity."""
-
-    external_factor_workspace = build_external_factor_workspace(tmp_path, fresh=True)
-    external_run = SimpleNamespace(  # the build is the claim: this Panel is written, not copied
-        inventory=host_resolved_factor_inventory(
-            workspace=external_factor_workspace.workspace, market_profile_id=MARKET_PROFILE_ID
-        )
+    workspace = optimal_external_workspace
+    inventory = host_resolved_factor_inventory(
+        workspace=workspace.workspace, market_profile_id=MARKET_PROFILE_ID
     )
-    by_factor = {entry.factor_id: entry for entry in external_run.inventory}
-    # The whole installed axis and nothing else: the shipped catalog plus this
-    # one external Factor. The shipped catalog's own size is the feature-engine
-    # owner's pin, not a number restated here -- a literal that has to move with
-    # every catalog revision measures the revision, not the seam.
-    installed = external_factor_workspace.feature_catalog.factors
+    by_factor = {entry.factor_id: entry for entry in inventory}
+    installed = workspace.feature_catalog.factors
     assert len(installed) == len(FeatureCatalog.load().factors) + 1
-    assert len(external_run.inventory) == len(installed)
+    assert len(inventory) == len(installed)
+    assert all(len(entry.methodology_hash) == 64 for entry in inventory)
     assert EXTERNAL_FACTOR_ID in by_factor
 
     entry = by_factor[EXTERNAL_FACTOR_ID]
@@ -305,8 +285,6 @@ def test_an_external_method_reaches_a_published_panel_with_a_measured_identity(
 
 
 def test_an_injected_specification_catalog_admits_the_external_method_only() -> None:
-    """An injected specification catalog admits the external method only."""
-
     injected = external_specification_catalog()
     admitted = admitted_extension_factor_specs(
         catalog=injected,
@@ -364,21 +342,21 @@ def test_the_authored_batch_reaches_real_evidence_and_replays_without_computing(
     assert replayed.desk_input_binding_hash == evidence.desk_input_binding_hash
 
 
-def test_the_verifier_refuses_a_fully_resealed_graph(external_run: ExternalFactorRun) -> None:
+def test_the_verifier_refuses_a_fully_resealed_graph(development_run: ExternalFactorRun) -> None:
     """The verifier refuses a fully resealed graph."""
 
     verifier = next(
-        item for item in installed_desk_verifiers() if item.kind == external_run.evidence.kind
+        item for item in installed_desk_verifiers() if item.kind == development_run.evidence.kind
     )
     # The healthy graph passes, or the refusals below would prove nothing.
     verifier.verify(
-        program=external_run.receipt.program,
-        evidence=external_run.evidence,
-        authority=external_run.authority,
-        output_workspace=external_run.root,
+        program=development_run.receipt.program,
+        evidence=development_run.evidence,
+        authority=development_run.authority,
+        output_workspace=development_run.root,
     )
 
-    binding = external_run.receipt.input_binding
+    binding = development_run.receipt.input_binding
     context = binding.context_factors
     reordered = (context[1], context[0], *context[2:])
     assert factor_catalog_hash(_inventory_entries(reordered)) != factor_catalog_hash(
@@ -411,21 +389,21 @@ def test_the_verifier_refuses_a_fully_resealed_graph(external_run: ExternalFacto
         values.update(rewritten)
         resealed_binding = FactorDevelopmentInputBinding.create(**values)
         resealed_receipt = FactorDevelopmentReceipt.create(
-            program=external_run.receipt.program,
+            program=development_run.receipt.program,
             input_binding=resealed_binding,
-            checkpoint_hash=external_run.receipt.checkpoint_hash,
+            checkpoint_hash=development_run.receipt.checkpoint_hash,
         )
-        uri = publish_factor_development_receipt(external_run.root, resealed_receipt)
+        uri = publish_factor_development_receipt(development_run.root, resealed_receipt)
         resealed_evidence = ResearchExecutionEvidence.create(
-            kind=external_run.evidence.kind,
-            program_hash=external_run.evidence.program_hash,
-            desk_program_hash=external_run.evidence.desk_program_hash,
-            method_binding_hash=external_run.evidence.method_binding_hash,
-            authority_hash=external_run.evidence.authority_hash,
+            kind=development_run.evidence.kind,
+            program_hash=development_run.evidence.program_hash,
+            desk_program_hash=development_run.evidence.desk_program_hash,
+            method_binding_hash=development_run.evidence.method_binding_hash,
+            authority_hash=development_run.evidence.authority_hash,
             disposition="COMPUTED",
             numerical_call_count=1,
             artifact_uris=(uri,),
-            formation_sessions=external_run.evidence.formation_sessions,
+            formation_sessions=development_run.evidence.formation_sessions,
             desk_input_binding_hash=resealed_binding.binding_hash,
         )
         expected = (
@@ -435,20 +413,25 @@ def test_the_verifier_refuses_a_fully_resealed_graph(external_run: ExternalFacto
         )
         with pytest.raises(AuthoringError, match=expected):
             verifier.verify(
-                program=external_run.receipt.program,
+                program=development_run.receipt.program,
                 evidence=resealed_evidence,
-                authority=external_run.authority,
-                output_workspace=external_run.root,
+                authority=development_run.authority,
+                output_workspace=development_run.root,
             )
 
 
 def test_a_missing_deterministic_child_fails_replay(
-    external_outcomes: RealRiskWorkspace, tmp_path: Path
+    optimal_external_workspace: RealRiskWorkspace,
+    external_input: ResolvedDevelopmentFeatureInput,
+    tmp_path: Path,
 ) -> None:
     """A missing deterministic child fails replay."""
 
     document = _document()
-    workflow = _compose(external_outcomes, tmp_path, document)
+    inventory = factor_inventory(optimal_external_workspace, external_input)
+    workflow, _ = factor_workflow(
+        optimal_external_workspace, tmp_path, document, inventory, external_input
+    )
     evidence, _binding = workflow.run(document, actor_kind=ActorKind.HUMAN, actor_id="external")
     output = tmp_path / str(document["experiment"]["output_workspace"])
     _receipt, child = FactorDevelopmentReceiptReader(output).load(evidence.artifact_uris[0])
@@ -464,15 +447,8 @@ def test_a_missing_deterministic_child_fails_replay(
 
 
 def _proposal(child: Any) -> FactorResearchProposal:
-    """Propose exactly the Factors the evidence says are proposable.
-
-    Derived rather than fixed. Whether a seeded random walk produces positive or
-    mixed evidence is not something a mechanics case may assume, and the input
-    compiler refuses an empty proposal when eligible candidates exist.
-
-    The limitations come from the Host's own required set. They used to be a
-    single value chosen here, which passed only because the acknowledgement was
-    checked inside the Agent adapter and this route never went near it.
+    """Use the eligible Factors and the Host-derived limits recorded in the evidence.
+    The generated walk may produce mixed evidence, so the proposal follows its actual verdict.
     """
 
     cluster_by_factor = {
@@ -503,22 +479,22 @@ def _proposal(child: Any) -> FactorResearchProposal:
 
 
 def test_human_and_external_automation_curate_identically_with_distinct_provenance(
-    external_run: ExternalFactorRun,
+    development_run: ExternalFactorRun,
 ) -> None:
     """Human and external automation curate identically with distinct provenance."""
 
-    child = external_run.child
+    child = development_run.child
     proposal = _proposal(child)
     human = submit_factor_development_curation(
-        evidence_root=external_run.root,
-        receipt_handle=external_run.evidence.artifact_uris[0],
+        evidence_root=development_run.root,
+        receipt_handle=development_run.evidence.artifact_uris[0],
         proposal=proposal,
         actor_kind=ActorKind.HUMAN,
         actor_id="researcher@example.test",
     )
     external = submit_factor_development_curation(
-        evidence_root=external_run.root,
-        receipt_handle=external_run.evidence.artifact_uris[0],
+        evidence_root=development_run.root,
+        receipt_handle=development_run.evidence.artifact_uris[0],
         proposal=proposal,
         actor_kind=ActorKind.EXTERNAL_AUTOMATION,
         actor_id="external-codex",
@@ -545,7 +521,7 @@ def test_human_and_external_automation_curate_identically_with_distinct_provenan
     )
     assert human.checkpoint.checkpoint_hash == child.checkpoint_hash
 
-    filed = FactorDevelopmentCurationReader(external_run.root).submissions(child.checkpoint_hash)
+    filed = FactorDevelopmentCurationReader(development_run.root).submissions(child.checkpoint_hash)
     assert len(filed) == 2
     assert {value.actor_submission.actor_kind for value in filed} == {
         ActorKind.HUMAN,
@@ -554,15 +530,15 @@ def test_human_and_external_automation_curate_identically_with_distinct_provenan
     assert len({value.submission.submission_hash for value in filed}) == 1
 
     # Replay walks the persisted decisions and still performs no numerical work.
-    replayed, _ = external_run.workflow.replay(
-        external_run.document, actor_kind=ActorKind.HUMAN, actor_id="external"
+    replayed, _ = development_run.workflow.replay(
+        development_run.document, actor_kind=ActorKind.HUMAN, actor_id="external"
     )
     assert replayed.disposition == "REUSED_EXACT"
     assert replayed.numerical_call_count == 0
 
 
 def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
-    external_run: ExternalFactorRun,
+    development_run: ExternalFactorRun,
 ) -> None:
     """A curation decision the host never admitted cannot be persisted."""
 
@@ -578,10 +554,10 @@ def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
         admit_factor_research_curation,
     )
 
-    child = external_run.child
+    child = development_run.child
     honest = admit_factor_research_curation(
         checkpoint=child,
-        review_binding_hash=external_run.receipt.method_binding_hash,
+        review_binding_hash=development_run.receipt.method_binding_hash,
         proposal=_proposal(child),
         actor_kind=ActorKind.HUMAN,
         actor_id="researcher@example.test",
@@ -595,9 +571,9 @@ def test_a_curation_decision_the_host_never_admitted_cannot_be_persisted(
     )
     with pytest.raises(FactorResearchDecisionAuthorityError, match="policy_not_installed"):
         publish_factor_development_curation(
-            external_run.root,
+            development_run.root,
             checkpoint=child,
-            review_binding_hash=external_run.receipt.method_binding_hash,
+            review_binding_hash=development_run.receipt.method_binding_hash,
             receipt=resealed,
         )
 

@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     ProcessResourceUsage,
     ResolvedRuntimeCapacityPlan,
@@ -69,7 +70,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioResearchSpec,
     PortfolioSupportCoverage,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from tests.portfolio_strategy_lab.local_web_support import _resolved, _Resolver
 
 # A synthetic calendar with no historical shape in it: not 1,260, not 494, not
@@ -400,6 +400,7 @@ def test_a_zero_work_receipt_cannot_move_the_watermark() -> None:
 # ============================================ advancement is not study slicing
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_a_study_window_change_asks_no_owner_for_anything(tmp_path: Path) -> None:
     """Row 9: same ledger, different window, zero policy/fit/score/Risk work."""
 
@@ -449,6 +450,7 @@ def test_a_study_window_change_asks_no_owner_for_anything(tmp_path: Path) -> Non
 # ================================================ one product surface, one task
 
 
+@pytest.mark.usefixtures("portfolio_result_history")
 def test_a_result_can_name_the_task_that_produced_it(tmp_path: Path) -> None:
     """A researcher holds a result hash; the run behind it must be reachable."""
 

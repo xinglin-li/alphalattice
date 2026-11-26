@@ -1,5 +1,100 @@
 {
 "entries": {
+"src/alphalattice/foundation/data_layer/knowledge.py::num_threads::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "Tantivy divides its default 128 MB writer arena across admitted workers and requires 15 MB per worker; eight is the largest valid width without growing the arena."
+},
+"src/alphalattice/interface/local_application/portfolio_request_fields/__init__.py::_FAMILIES_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps one request family's field definitions for each of the 8 families."
+},
+"src/alphalattice/investment/portfolio_strategy_lab/application/strategy_package.py::_ROOTS_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps the recorded value moves of at most 8 data roots, evicting the least recently used."
+},
+"src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_BOOSTERS_HELD::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A chronological LightGBM scope keeps at most 64 parsed boosters, evicting the least recently used."
+},
+"src/alphalattice/capabilities/alpha_modeling/adapters/lightgbm_chronological.py::_DATASETS_HELD::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "A chronological LightGBM scope keeps at most 8 binned datasets, evicting the least recently used."
+},
+"src/alphalattice/foundation/feature_engine/panels/sector_classification.py::_NAMES_HELD::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps World's Sector names for at most 64 recent data root, listing and cutoff reads."
+},
+"src/alphalattice/investment/alpha_research/experiments/development_artifacts.py::alpha_array_files::64": {
+"class": "METHOD",
+"count": 1,
+"description": "An Alpha part filename contains the 64 hexadecimal characters of its unchanged SHA-256 identity."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::complete_onboarding_audit::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "The staged raw-bar row ends with ingestion_id and original observed_at, after the RawDailyBar fields."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::ingestion_id::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "Read the staged payload's preserved ingestion_id immediately before its observed_at metadata."
+},
+"src/alphalattice/foundation/market_data_ops/storage/duckdb.py::_cutoff::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the UTC timestamp from seconds to the microsecond cutoff used by the world reader."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::epoch::1970": {
+"class": "METHOD",
+"count": 3,
+"description": "The UTC Unix epoch for exact microsecond conversion of universe event clocks."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::selected_at::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The UTC Unix epoch for exact conversion of the selection cutoff to a decision time."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::cutoff::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The Unix epoch's fixed UTC year; cutoff converts the reader's instant to the log's integer microseconds without floating-point rounding."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world_reads.py::binding::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "A research-input binding's folder name is its binding hash, 64 lowercase hex digits, so only a database in such a folder's source is a copy read through its selection."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::LATEST::253402300799999999": {
+"class": "LIMIT",
+"count": 1,
+"description": "A read's own moment as a cutoff: the end of year 9999, past every knowledge time, so a read without a selection's cutoff sees all that is known."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::ADMISSION_ROWS::21": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most bars one admission stages, in whole years, bounding its Arrow batch."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::days::10": {
+"class": "METHOD",
+"count": 1,
+"description": "How far past the last valid date sessions are read, so a date after the last session finds its next one."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::hours::6": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's length in hours, with its minutes; a shorter session is a half day."
+},
+"src/alphalattice/foundation/market_data_ops/storage/world.py::minutes::30": {
+"class": "METHOD",
+"count": 1,
+"description": "A full session's minutes past its hours; a shorter session is a half day."
+},
 "src/alphalattice/control/data_platform/delegation.py::DataDecisionRule.max_cases::10": {
 "class": "METHOD",
 "count": 1
@@ -1214,7 +1309,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::26": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::32": {
 "class": "LIMIT",
@@ -1464,19 +1559,12 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANKER_DEPTH_PER_DOCUMENT::12": {
+"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RERANK_SHORTLIST_DEPTH::3": {
 "class": "METHOD",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::2": {
-"class": "LIMIT",
-"count": 1
+"count": 1,
+"description": "Cap each Evidence search at three fused candidates for cross-encoder scoring."
 },
 "src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::20": {
-"class": "LIMIT",
-"count": 1
-},
-"src/alphalattice/evidence/alternative_evidence/analysis/packet.py::RESIDUAL_RERANK_PAIR_BUDGET::24": {
 "class": "LIMIT",
 "count": 1
 },
@@ -1922,7 +2010,7 @@
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::200": {
 "class": "LIMIT",
-"count": 1
+"count": 2
 },
 "src/alphalattice/evidence/alternative_evidence/retrieval/contracts.py::max_length::240": {
 "class": "LIMIT",
@@ -2056,6 +2144,16 @@
 "class": "LIMIT",
 "count": 2
 },
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_SESSION_THREADS::16": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most threads one preparation unit is planned (S2 measured 1 to 16, identical)."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::safe_intra_op_threads::4": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The desktop-safe threads of one unit when no CPU budget says otherwise."
+},
 "src/alphalattice/evidence/alternative_evidence/runtime/execution.py::MAXIMUM_CPU_BUDGET::1024": {
 "class": "LIMIT",
 "count": 1
@@ -2091,10 +2189,6 @@
 "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::__post_init__::64": {
 "class": "METHOD",
 "count": 2
-},
-"src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_after_the_first_unit::0.5": {
-"class": "METHOD",
-"count": 1
 },
 "src/alphalattice/evidence/alternative_evidence/runtime/task_adapter.py::_parameter::64": {
 "class": "METHOD",
@@ -2740,9 +2834,10 @@
 "class": "METHOD",
 "count": 1
 },
-"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_path::64": {
+"src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::_pointer_name::64": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "A ledger pointer is named by its 64-character lowercase hexadecimal SHA-256 identity."
 },
 "src/alphalattice/foundation/feature_engine/panels/feature_closure_ledger.py::provisional::64": {
 "class": "METHOD",
@@ -2764,9 +2859,10 @@
 "class": "METHOD",
 "count": 2
 },
-"src/alphalattice/foundation/feature_engine/panels/logical_identity.py::_validate_hash::64": {
+"src/alphalattice/foundation/feature_engine/panels/logical_identity.py::_mapping_name::64": {
 "class": "METHOD",
-"count": 1
+"count": 1,
+"description": "Snapshot mapping names require the 64 hexadecimal characters of a SHA-256 digest."
 },
 "src/alphalattice/foundation/feature_engine/panels/logical_identity.py::provisional::64": {
 "class": "METHOD",
@@ -4374,7 +4470,7 @@
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::days::45": {
 "class": "METHOD",
-"count": 1
+"count": 2
 },
 "src/alphalattice/foundation/market_data_ops/runtime/universe_onboarding.py::hydration_chunk_size::25": {
 "class": "LIMIT",
@@ -11080,7 +11176,7 @@
 "class": "LIMIT",
 "count": 1
 },
-"src/alphalattice/kernel/shared_kernel/bounded_memo.py::BoundedMemo.default_capacity::1024": {
+"src/alphalattice/capabilities/domain_contracts/bounded_memo.py::BoundedMemo.default_capacity::1024": {
 "class": "LIMIT",
 "count": 1
 },
@@ -11107,6 +11203,1951 @@
 "src/alphalattice/control/data_platform/data_decision_rule.py::DataDecisionRule.panel_floor::1e-12": {
 "class": "METHOD",
 "count": 1
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_POLL_SECONDS::0.5": {
+"class": "EXECUTION",
+"count": 1,
+"description": "How often a later unit reads whether its book's first unit is prepared."
+},
+"src/alphalattice/evidence/alternative_evidence/runtime/execution.py::FIRST_UNIT_WAIT_SECONDS::1800.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest a later unit waits for its book's first unit before it takes its share of the cores."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_CAP_SECONDS::30.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest wait between two attempts of a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::RATE_LIMIT_BACKOFF_SECONDS::2.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first wait before retrying a rate-limited provider call."
+},
+"src/alphalattice/foundation/market_data_ops/sources/providers.py::backed_off::2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The factor by which each later wait before a rate-limited retry grows."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SESSIONS_PER_YEAR_AT_LEAST::245": {
+"class": "METHOD",
+"count": 1,
+"description": "A calendar year's US sessions counted low, so Factor folds sized from a standard's history years fit every window of that span."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's Factor listing floor, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::SHIPPED_FACTOR_SCALE::10": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped standard's history years, at which the Factor policies keep their defaults byte-equal."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::minimum_formal_periods::3": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest formal periods a scaled Factor redundancy pair needs; the walk's scale shrinks the default twenty no further."
+},
+"src/alphalattice/foundation/factor_research/experiments/execution.py::train_sessions::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest training sessions a scaled Factor walk-forward fold keeps."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::bootstrap_from_candidate_manifest_document::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest listings a candidate set's Factor floor may name: a cross-section needs a pair."
+},
+"src/alphalattice/foundation/market_data_ops/sources/universe.py::minimum_factor_listings::100": {
+"class": "METHOD",
+"count": 1,
+"description": "The shipped research standard's Factor listing floor, read by the Factor experiment's evidence and redundancy policies."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::_cutoff_us::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert the evidence cutoff from seconds to the microseconds the Host's retrieval store reads."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::common::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A query stem most of a chunk's lines state (more than half of them) locates no line, so it does not count."
+},
+"src/alphalattice/evidence/alternative_evidence/retrieval/session.py::stems::3": {
+"class": "METHOD",
+"count": 1,
+"description": "A query word counts from four letters, so short function words locate nothing."
+},
+"src/alphalattice/evidence/alternative_evidence/analysis/contracts.py::max_length::300": {
+"class": "LIMIT",
+"count": 1,
+"description": "A retrieval supersession record's reason is one sentence of at most 300 characters."
+},
+"src/alphalattice/evidence/alternative_evidence/documents/library.py::known_us::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Convert a document's availability time from seconds to the store's microsecond known time."
+},
+"src/alphalattice/capabilities/data/quality.py::EXTREME_MOVE_THRESHOLD::0.5": {
+"class": "METHOD",
+"count": 1,
+"description": "The absolute daily return, fifty percent, beyond which a close is flagged as an extreme move."
+},
+"src/alphalattice/capabilities/data/quality.py::MAXIMUM_CONSECUTIVE_GAP::20": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most consecutive missing sessions, twenty, a symbol may have before its data quality check fails."
+},
+"src/alphalattice/capabilities/data/quality.py::MISSING_RATIO_LIMIT::0.02": {
+"class": "LIMIT",
+"count": 1,
+"description": "The largest missing-session ratio, two percent, a series may have before its data quality check fails."
+},
+"src/alphalattice/capabilities/data/quality.py::_anniversary::10": {
+"class": "METHOD",
+"count": 1,
+"description": "The ten years subtracted from the as-of date to find the anniversary date the quality check reads."
+},
+"src/alphalattice/capabilities/data/quality.py::day::28": {
+"class": "METHOD",
+"count": 1,
+"description": "The day of month, twenty-eight, used when the anniversary date does not exist, such as February 29."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::120": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The largest Retry-After wait, in seconds, a rate-limited universe fetch accepts before it gives up."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::2": {
+"class": "EXECUTION",
+"count": 2,
+"description": "The exponential backoff base, so a timed-out or rate-limited universe fetch waits one, then two seconds."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::200": {
+"class": "METHOD",
+"count": 1,
+"description": "The one HTTP status, 200, that a universe source response must return before its content is parsed."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::3": {
+"class": "EXECUTION",
+"count": 2,
+"description": "The final attempt number, three, after which a timed-out or rate-limited universe fetch raises instead of retrying."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::4": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The exclusive end of the retry range, so a universe fetch makes at most three attempts."
+},
+"src/alphalattice/capabilities/data/universe.py::fetch_universe_source::429": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The HTTP 429 status that marks a universe fetch as rate limited, so it waits and retries."
+},
+"src/alphalattice/capabilities/data/universe.py::symbol_column::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The table column index, two, that holds each index constituent's ticker symbol."
+},
+"src/alphalattice/capabilities/domain_contracts/arrow_identity.py::day::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Day numbers are zero-padded to 2 digits in each ISO date's text."
+},
+"src/alphalattice/capabilities/domain_contracts/arrow_identity.py::month::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Month numbers are zero-padded to 2 digits in each ISO date's text."
+},
+"src/alphalattice/capabilities/domain_contracts/arrow_identity.py::year::4": {
+"class": "METHOD",
+"count": 1,
+"description": "Years are zero-padded to 4 digits in each ISO date's text, as %04d-%02d-%02d."
+},
+"src/alphalattice/capabilities/domain_contracts/bounded_memo.py::default_capacity::1024": {
+"class": "LIMIT",
+"count": 1,
+"description": "The metadata entries per logical CPU a cache holds by default, so its capacity grows with the machine."
+},
+"src/alphalattice/capabilities/domain_contracts/domain/base.py::_require_uuid4::4": {
+"class": "METHOD",
+"count": 1,
+"description": "The UUID version an identifier must carry, which is 4, or the identifier is refused."
+},
+"src/alphalattice/capabilities/domain_contracts/domain/base.py::max_length::256": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest a short string identifier may be, in characters, after surrounding whitespace is stripped."
+},
+"src/alphalattice/capabilities/domain_contracts/environment.py::_loaded_module_handles::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The Windows flag 3 asks the process listing for both 32-bit and 64-bit loaded modules."
+},
+"src/alphalattice/capabilities/domain_contracts/environment.py::_thread_pool_controller::15": {
+"class": "EXECUTION",
+"count": 3,
+"description": "The last of the 16 discovery attempts, at index 15, gives up instead of retrying a changing module snapshot."
+},
+"src/alphalattice/capabilities/domain_contracts/environment.py::_thread_pool_controller::16": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Module discovery makes up to 16 attempts when the loaded modules change during the snapshot."
+},
+"src/alphalattice/capabilities/domain_contracts/environment.py::count::1024": {
+"class": "LIMIT",
+"count": 1,
+"description": "The initial buffer holds 1024 module handles before a larger listing is requested."
+},
+"src/alphalattice/capabilities/domain_contracts/environment.py::count::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "The buffer grows to the reported need plus 64 extra module handles when a listing comes back too large."
+},
+"src/alphalattice/capabilities/domain_contracts/identity_successors.py::_read_set::64": {
+"class": "METHOD",
+"count": 1,
+"description": "The length of a valid identity value, 64 lowercase hex characters, the size of a SHA-256 digest."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.01": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first wait, 0.01 seconds, in the durable replace schedule, taken while a reader still holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.02": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The second wait, 0.02 seconds, in the durable replace schedule, taken while a reader still holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.05": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The third wait, 0.05 seconds, in the durable replace schedule, taken while a reader still holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.1": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The fourth wait, 0.1 seconds, in the durable replace schedule, taken while a reader still holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The fifth wait, 0.2 seconds, in the durable replace schedule, taken while a reader still holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::DURABLE_REPLACE_DELAYS::0.3": {
+"class": "EXECUTION",
+"count": 2,
+"description": "The final 0.3 second waits of the durable replace schedule, after which a still-blocked replace is refused."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::QUICK_REPLACE_DELAYS::0.01": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first wait, 0.01 seconds, before a catalog swap retries a target a reader holds for an instant."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::QUICK_REPLACE_DELAYS::0.025": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The second wait, 0.025 seconds, in the catalog swap's retry schedule while a reader holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::QUICK_REPLACE_DELAYS::0.05": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The third wait, 0.05 seconds, in the catalog swap's retry schedule while a reader holds the target."
+},
+"src/alphalattice/capabilities/domain_contracts/persistence.py::QUICK_REPLACE_DELAYS::0.1": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The last wait, 0.1 seconds, in the catalog swap's retry schedule before the swap is refused."
+},
+"src/alphalattice/capabilities/domain_contracts/runtime_resources.py::_RESOURCES_HELD::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "The count of shipped JSON resources one process holds, a few dozen registries and catalogs."
+},
+"src/alphalattice/capabilities/domain_contracts/project_layout.py::timeout::10": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The seconds the uv tool-directory query may run before the lookup fails."
+},
+"src/alphalattice/capabilities/domain_contracts/recipe_identity.py::_without_labels::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A tuple annotation with two arguments, the second Ellipsis, is variable length and is not walked by position."
+},
+"src/alphalattice/capabilities/domain_contracts/recipe_identity.py::value_type::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A mapping annotation's value type is its second type argument when the annotation has exactly two."
+},
+"src/alphalattice/capabilities/domain_contracts/sealing.py::draft::64": {
+"class": "METHOD",
+"count": 1,
+"description": "The zero placeholder of 64 characters fills the seal field while the draft's canonical hash is computed."
+},
+"src/alphalattice/capabilities/domain_contracts/sealing.py::identity::64": {
+"class": "METHOD",
+"count": 1,
+"description": "The zero placeholder of 64 characters fills the seal field while the identity's canonical hash is computed."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::CLOSURE_FORM::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The rule closure's hash form 2 digests the code that runs instead of the raw source text."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::_resource_sha256::64": {
+"class": "METHOD",
+"count": 1,
+"description": "A recorded resource hash is accepted only when it is a string of 64 characters."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::_settled_stamp::-2": {
+"class": "METHOD",
+"count": 1,
+"description": "A file's stamp counts as settled by its last two times, its modification and change times."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::_settled_stamp::10": {
+"class": "METHOD",
+"count": 1,
+"description": "The base of the nanosecond conversion that compares a file's stamp with the racy-write window."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::_settled_stamp::9": {
+"class": "METHOD",
+"count": 1,
+"description": "The power of ten that turns the racy-write window from seconds into nanoseconds."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::_walked::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The closure walk tests each module-name prefix from its third part onward as a number-deciding package."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::capacity::128": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps the closures of at most 128 recent role inputs, evicting the least recently used."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::capacity::2048": {
+"class": "LIMIT",
+"count": 1,
+"description": "A process keeps the parsed canonical forms of at most 2048 settled module files."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::deciding::3": {
+"class": "METHOD",
+"count": 1,
+"description": "A module counts as number-deciding only when its name has at least three parts and its third names a listed package."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::digest::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Every odd-indexed token of a module's template is a name slot that the digest fills with its bound marker."
+},
+"src/alphalattice/capabilities/domain_contracts/source_identity.py::source_component_id_from_tracked_path::3": {
+"class": "METHOD",
+"count": 1,
+"description": "A tracked path needs at least three parts after src before its physical namespace group is dropped."
+},
+"src/alphalattice/capabilities/domain_contracts/spans.py::MAXIMUM_DETAIL_CHARACTERS::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest detail text a span row keeps is cut to 64 characters."
+},
+"src/alphalattice/capabilities/domain_contracts/spans.py::MAXIMUM_SPAN_KEYS::256": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most span keys the ledger keeps, beyond which new keys are not added."
+},
+"src/alphalattice/capabilities/domain_contracts/spans.py::readout_value::6": {
+"class": "METHOD",
+"count": 3,
+"description": "Seconds in the span readout's values are rounded to six decimal places."
+},
+"src/alphalattice/capabilities/domain_contracts/spans.py::rows::6": {
+"class": "METHOD",
+"count": 2,
+"description": "The inclusive and exclusive seconds of each span row are rounded to six decimal places."
+},
+"src/alphalattice/capabilities/domain_contracts/spawn.py::exitpriority::10": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The finalizer order that closes a Windows pool worker's process-tree scope after the pool's own exit handlers."
+},
+"src/alphalattice/capabilities/domain_contracts/waits.py::CEILING::3600.0": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest any one wait may last, in seconds, which is an hour."
+},
+"src/alphalattice/capabilities/domain_contracts/waits.py::delay::2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The factor by which each polling delay grows before the next check, up to the maximum interval."
+},
+"src/alphalattice/capabilities/domain_contracts/waits.py::jitter::1000003": {
+"class": "EXECUTION",
+"count": 2,
+"description": "The modulus that turns the monotonic clock's nanoseconds into a fraction, spreading each process's polling jitter."
+},
+"src/alphalattice/capabilities/domain_contracts/waits.py::wait_until::0.05": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The first polling interval in seconds of a wait, before the delay doubles toward its maximum."
+},
+"src/alphalattice/capabilities/domain_contracts/waits.py::wait_until::2.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The largest polling interval in seconds a wait reaches as its delay doubles."
+},
+"src/alphalattice/capabilities/knowledge/contracts.py::_validate_relative_posix::32": {
+"class": "METHOD",
+"count": 1,
+"description": "The lowest printable character code, so any control character below it makes a resource path invalid."
+},
+"src/alphalattice/capabilities/knowledge/contracts.py::max_length::128": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest stable id, in characters, that a knowledge resource's name may take."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::BGE_ENCODER::134037628": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the BGE encoder pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::DOWNLOAD_ATTEMPTS::5": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Five is how many times one install retries a broken transfer before the download is reported interrupted."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::ETTIN_RERANKER::20976635": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the Ettin reranker pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::MINILM_ENCODER::475370661": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the MiniLM encoder pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::MINILM_INT8_ENCODER::123481449": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the int8-quantized MiniLM encoder pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::MSMARCO_INT8_RERANKER::23727592": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the int8-quantized MS MARCO reranker pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::MSMARCO_RERANKER::91707303": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the MS MARCO reranker pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::QWEN3_ENCODER::1207469357": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the Qwen3 encoder pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::QWEN3_RERANKER::1207471008": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the Qwen3 reranker pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::STATIC_ENCODER::108305839": {
+"class": "LIMIT",
+"count": 1,
+"description": "The approximate size in bytes of the static encoder pack, a size estimate of its installed files."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::_sha256::20": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The file hash reads each file in 1 MiB blocks, so a pack is hashed without being read whole into memory."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::_transfer::200": {
+"class": "METHOD",
+"count": 2,
+"description": "A 200 reply means the server sent the whole file, so it replaces any partial file from byte zero."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::_transfer::206": {
+"class": "METHOD",
+"count": 1,
+"description": "A 206 reply carries the ranged rest of the file, which is appended to the partial file."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::_transfer::416": {
+"class": "METHOD",
+"count": 1,
+"description": "A 416 reply to a resumed transfer means the partial file already holds every byte, so it counts as whole."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::_transfer::500": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Server errors from 500 upward are asked again as a broken transfer instead of being refused."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::fetch::2.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Each retry waits 2.0 to the power of its attempt number in seconds, before the 30 second cap applies."
+},
+"src/alphalattice/capabilities/knowledge/model_store.py::fetch::30.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The longest wait in seconds between two download attempts, capping the exponential retry backoff."
+},
+"src/alphalattice/capabilities/quant/cross_section.py::MAD_SCALE::1.4826": {
+"class": "METHOD",
+"count": 1,
+"description": "The constant that scales the median absolute deviation into a standard deviation estimate for robust standardization."
+},
+"src/alphalattice/capabilities/quant/cross_section.py::MIN_COVERAGE::0.98": {
+"class": "METHOD",
+"count": 1,
+"description": "The minimum share of a cross-section's values that must be present for the feature's preprocessing to apply."
+},
+"src/alphalattice/capabilities/quant/cross_section.py::MIN_SECTOR_SAMPLE::5": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest members a sector needs in a cross-section before its equal-weight center is subtracted."
+},
+"src/alphalattice/capabilities/quant/cross_section.py::WINSOR_MULTIPLIER::5.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of scaled median absolute deviations from the median at which robust clipping bounds each value."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::ANNUALIZATION::252.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 252 trading sessions per year whose square root scales a daily volatility to an annual one."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_bollinger_pctb::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The band reach of two standard deviations around the 20-session mean that positions the %B measure."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_linear_slope::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest values, two, a series needs before its linear slope is computed; shorter series return none."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_residuals::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The regression's two design columns, an intercept and the market, which must be full rank for residuals to exist."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_sample_excess_kurtosis::4": {
+"class": "LIMIT",
+"count": 2,
+"description": "The fewest values, four, a sample excess kurtosis needs before it is computed."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_sample_skew::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The count-minus-two term in the sample skew's bias correction that scales the third standardized moment."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_sample_skew::3": {
+"class": "LIMIT",
+"count": 2,
+"description": "The fewest values, three, a sample skew needs before it is computed."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::_wilder_rsi::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100 that maps relative strength onto the RSI scale from zero to 100, and the value when average loss is zero."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::alpha::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The constant two under the square root in the Corwin-Schultz alpha term, a fixed part of the spread estimate."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::atr::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window that smooths the true range into the average true range used by ADX."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::atr_value::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window that averages the true range into the ATR value for the normalized ATR factor."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::compute_factor::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window behind the RSI series and the ATR-normalized factor's observation count."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::compute_factor::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of each downside return in the downside volatility, which is then annualized."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::compute_factor::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The factor two that doubles the square root of the negative price-change covariance in the spread estimate."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::compute_factor::5": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest monthly observations, five, that a seasonality factor needs, except the twelve-month one needing one."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::denominator::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of each time point's deviation from its mean in the linear slope's sum of squared deviations."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::denominator::2.0": {
+"class": "METHOD",
+"count": 2,
+"description": "The coefficient two in the Corwin-Schultz constant three minus two root two that scales the alpha terms."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::denominator::3.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The three in the Corwin-Schultz constant, three minus two root two, that divides the alpha terms."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::denominator::4.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The four standard deviations spanning the Bollinger band from minus two to plus two, which scales %B."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::dx::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100 that scales the directional movement index into a percentage between zero and 100."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::first::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The count-minus-two factor in the excess kurtosis's first coefficient, which scales the fourth moment."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::first::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The count-minus-three factor in the excess kurtosis's first coefficient, which scales the fourth moment."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::gamma::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of the two-session log range in the Corwin-Schultz gamma term."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::k::0.34": {
+"class": "METHOD",
+"count": 1,
+"description": "The 0.34 numerator of the Yang-Zhang weight k that mixes the overnight and open-to-close variances."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::k::1.34": {
+"class": "METHOD",
+"count": 1,
+"description": "The 1.34 offset in the Yang-Zhang weight k's denominator, which sets the weight's size."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::mean::20": {
+"class": "METHOD",
+"count": 1,
+"description": "The 20-session rolling mean whose centre is the Bollinger band that %B positions against."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::min_periods::12": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest sessions, twelve, the fast exponential average needs before its MACD value is reported."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::min_periods::20": {
+"class": "LIMIT",
+"count": 2,
+"description": "The fewest sessions, twenty, the Bollinger mean and deviation need before a %B value is reported."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::min_periods::26": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest sessions, twenty-six, the slow exponential average needs before its MACD value is reported."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::min_periods::9": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest MACD values, nine, the signal line needs before its value is reported."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::minus_di::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100 that scales the minus directional indicator into a percentage."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::minus_di::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window that smooths minus directional movement into the minus directional indicator."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::observations::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14 sessions the RSI factor reports as its observation count for the result."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::observations::20": {
+"class": "METHOD",
+"count": 1,
+"description": "The 20 sessions the Bollinger %B factor reports as its observation count for the result."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::observations::28": {
+"class": "LIMIT",
+"count": 1,
+"description": "The cap of twenty-eight sessions on the ADX factor's reported observation count."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::observations::35": {
+"class": "METHOD",
+"count": 1,
+"description": "The 35 sessions the MACD histogram factor reports as its observation count for the result."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::plus_di::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100 that scales the plus directional indicator into a percentage."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::plus_di::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window that smooths plus directional movement into the plus directional indicator."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::residual::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of each deviation from the fitted trend, summed into the trend's residual sum of squares."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::result::100.0": {
+"class": "METHOD",
+"count": 2,
+"description": "The 100 that maps the relative-strength ratio onto the RSI scale from zero to 100."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::rows::-14": {
+"class": "METHOD",
+"count": 1,
+"description": "The last fourteen sessions of the window that the stochastic %K factor reads."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::rows::-21": {
+"class": "METHOD",
+"count": 1,
+"description": "The last twenty-one sessions of the window that the Chaikin money flow factor reads."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::rows::-63": {
+"class": "METHOD",
+"count": 1,
+"description": "The last sixty-three sessions of the window that the on-balance volume slope factor reads."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::second::2": {
+"class": "METHOD",
+"count": 2,
+"description": "The count-minus-two factor in the excess kurtosis's second term, which sets the normal-distribution offset."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::second::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The count-minus-three factor in the excess kurtosis's second term, which sets the normal-distribution offset."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::second::3.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The factor three in the excess kurtosis's second term, the normal distribution's kurtosis of three."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::selected_monthly::-5": {
+"class": "METHOD",
+"count": 1,
+"description": "The last five prior-year returns in the evaluation month's calendar slot that the seasonality factor averages."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::series::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session RSI series whose last value is the RSI factor's reading."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::span::12": {
+"class": "METHOD",
+"count": 1,
+"description": "The twelve-session span of the fast exponential average that sets its smoothing in the MACD line."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::span::26": {
+"class": "METHOD",
+"count": 1,
+"description": "The twenty-six-session span of the slow exponential average that the MACD line subtracts."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::span::9": {
+"class": "METHOD",
+"count": 1,
+"description": "The nine-session span of the exponential average that smooths the MACD line into its signal."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::spread::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The factor two that doubles the transformed alpha ratio in the Corwin-Schultz spread estimate."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::squared::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of the log high-low ratio, the per-session squared range in the Corwin-Schultz estimate."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::standard_deviation::20": {
+"class": "METHOD",
+"count": 1,
+"description": "The twenty-session sample standard deviation that sets the Bollinger band's width."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::total::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square of each deviation from the mean in the total sum of squares, the trend's R-squared denominator."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::-5": {
+"class": "METHOD",
+"count": 1,
+"description": "The mean of the five largest sessional returns in the lottery factor's window."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::-50": {
+"class": "METHOD",
+"count": 1,
+"description": "The last fifty sessions' mean that the 50-200 moving-average gap factor compares with the 200-session mean."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100 that scales a factor's value onto a percentage scale from zero to 100."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::14": {
+"class": "METHOD",
+"count": 1,
+"description": "The 14-session Wilder window that smooths the directional movement index into the ADX value."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::2": {
+"class": "METHOD",
+"count": 3,
+"description": "The squared market deviation in coskewness, and the two down-market observations a downside beta needs."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::2.0": {
+"class": "METHOD",
+"count": 2,
+"description": "The factor two in the Bollinger lower-band term, which places the band two deviations below the mean."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::value::4.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The four in the Parkinson volatility constant, four times ln two, which scales the mean squared log range."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::variance::0.5": {
+"class": "METHOD",
+"count": 1,
+"description": "The one-half weight on the squared log high-low range in the Garman-Klass variance estimator."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::variance::2": {
+"class": "METHOD",
+"count": 2,
+"description": "The squared log range and squared log open-to-close term that the Garman-Klass variance estimator averages."
+},
+"src/alphalattice/capabilities/quant/factor_formulas.py::variance::2.0": {
+"class": "METHOD",
+"count": 2,
+"description": "The factor two in the Garman-Klass constant two ln two minus one, which weights the open-to-close term."
+},
+"src/alphalattice/capabilities/quant/return_models.py::SEED::1729": {
+"class": "METHOD",
+"count": 1,
+"description": "The random seed, 1729, that fixes the return model's draws so each run reproduces the same results."
+},
+"src/alphalattice/capabilities/validation/contracts.py::ge::100": {
+"class": "LIMIT",
+"count": 1,
+"description": "The smallest bootstrap resample count a bootstrap request may ask for."
+},
+"src/alphalattice/capabilities/validation/contracts.py::le::10000": {
+"class": "LIMIT",
+"count": 1,
+"description": "The largest bootstrap resample count a bootstrap request may ask for."
+},
+"src/alphalattice/capabilities/validation/contracts.py::le::18446744073709551615": {
+"class": "LIMIT",
+"count": 1,
+"description": "The largest value an unsigned 64-bit field may hold, which is 2 to the 64th power minus one."
+},
+"src/alphalattice/capabilities/validation/contracts.py::le::2": {
+"class": "LIMIT",
+"count": 2,
+"description": "The most revisions a revision index may reach and the largest remaining revision budget, both 2."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::BOOTSTRAP_RESAMPLES::2000": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of bootstrap resamples the return-model statistics use, so the count changes their resampled values."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::SEED::1729": {
+"class": "METHOD",
+"count": 1,
+"description": "The random seed the return-model statistics use for resampling, so the same losses give the same result."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::diebold_mariano_hac::3": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest aligned loss observations a Diebold-Mariano comparison accepts, so shorter loss paths are refused."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::hln::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The forecast horizon in the Harvey-Leybourne-Newbold correction, which shrinks the Diebold-Mariano statistic."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::lag::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 100-period scale in the Newey-West lag rule, which sets how fast the lag grows with sample length."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::lag::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The numerator of the Newey-West lag rule's exponent of 2/9, which sets how the lag grows with length."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::lag::4.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The multiplier in the Newey-West lag rule, scaling the automatic HAC lag count."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::lag::9.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The denominator of the Newey-West lag rule's exponent of 2/9, which sets how the lag grows with length."
+},
+"src/alphalattice/capabilities/validation/return_model_statistics.py::p_value::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The 2 under the square root that converts the statistic into a two-sided normal p-value."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::bootstrap_resamples::2000": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of bootstrap resamples the validation draws, fixed at 2000 by the frozen profile."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::bootstrap_seed::1729": {
+"class": "METHOD",
+"count": 1,
+"description": "The random seed of the frozen bootstrap profile, so its resamples repeat exactly on each run."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::12": {
+"class": "METHOD",
+"count": 4,
+"description": "The monthly profile's validation, step, holdout and annualization periods, each frozen at 12."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::156": {
+"class": "METHOD",
+"count": 2,
+"description": "The weekly profile's training window and minimum bootstrap observations, each frozen at 156."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::252": {
+"class": "METHOD",
+"count": 4,
+"description": "The daily profile's validation, step, holdout and annualization periods, each frozen at 252."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::36": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly profile's minimum bootstrap observations, frozen at 36."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::52": {
+"class": "METHOD",
+"count": 4,
+"description": "The weekly profile's validation, step, holdout and annualization periods, each frozen at 52."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::60": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly profile's training window, frozen at 60 observations."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::7": {
+"class": "METHOD",
+"count": 2,
+"description": "The minimum calendar years of the daily and weekly profiles, each frozen at 7."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::756": {
+"class": "METHOD",
+"count": 2,
+"description": "The daily profile's training window and minimum bootstrap observations, each frozen at 756."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::expected::9": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly profile's minimum calendar years, frozen at 9."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::minimum_bootstrap_calendar_years::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The fewest calendar years a bootstrap sample must span, fixed at 3 by the frozen profile."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::minimum_folds::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The fewest folds a schedule may yield, fixed at 3 by the frozen profile."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::12": {
+"class": "METHOD",
+"count": 4,
+"description": "The monthly tuple's 12, passed as the profile's validation, step, holdout and annualization periods."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::156": {
+"class": "METHOD",
+"count": 2,
+"description": "The weekly tuple's 156, passed as the profile's training window and minimum bootstrap observations."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::252": {
+"class": "METHOD",
+"count": 4,
+"description": "The daily tuple's 252, passed as the profile's validation, step, holdout and annualization periods."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::36": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly tuple's 36, passed as the profile's minimum bootstrap observations."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::52": {
+"class": "METHOD",
+"count": 4,
+"description": "The weekly tuple's 52, passed as the profile's validation, step, holdout and annualization periods."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::60": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly tuple's 60, passed as the profile's training window."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::7": {
+"class": "METHOD",
+"count": 2,
+"description": "The daily and weekly tuples' 7, passed as the profile's minimum calendar years."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::756": {
+"class": "METHOD",
+"count": 2,
+"description": "The daily tuple's 756, passed as the profile's training window and minimum bootstrap observations."
+},
+"src/alphalattice/capabilities/validation/schedule_contracts.py::values::9": {
+"class": "METHOD",
+"count": 1,
+"description": "The monthly tuple's 9, passed as the profile's minimum calendar years."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::MINIMUM_CORRELATION_OBSERVATIONS::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest finite pairs a correlation needs, below which the correlation is not computed."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::average::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The rank a tie shares, the average of its first and last one-based positions in sorted order."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::bottom::0.1": {
+"class": "METHOD",
+"count": 1,
+"description": "The percentile at or below which a cross-section's targets form the bottom decile of the spread."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::gross_decile_spread::100": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest finite pairs a decile spread needs; with fewer, the spread is not computed and returns None."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::lag::100.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The sample size at which the Newey-West lag rule's scaling term equals one."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::lag::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The numerator of the Newey-West lag exponent, which is two-ninths of the sample-size term."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::lag::4.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The coefficient of the Newey-West lag rule, which scales its sample-size term to set the lag length."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::lag::9.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The denominator of the Newey-West lag exponent, which sets the power applied to the sample-size term."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::newey_west_mean_test::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The factor that counts each Bartlett-weighted autocovariance in both directions within the long-run variance."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::p_value::2.0": {
+"class": "METHOD",
+"count": 1,
+"description": "The base of the square root that scales the t-statistic for the two-sided normal p-value's erfc term."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::percentiles::0.5": {
+"class": "METHOD",
+"count": 1,
+"description": "The half-rank offset that centers each rank in its percentile, keeping percentiles strictly between zero and one."
+},
+"src/alphalattice/capabilities/validation/screening_statistics.py::top::0.9": {
+"class": "METHOD",
+"count": 1,
+"description": "The percentile at or above which a cross-section's targets form the top decile of the spread."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::BLS_INDEX_CAP_BYTES::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "Bytes in a kibibyte, converting the BLS index page's byte cap from mebibytes to bytes."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::BLS_INDEX_CAP_BYTES::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "Mebibytes the BLS index page may be before the source refuses it as too large."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::BLS_RELEASE_CAP_BYTES::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "Bytes in a kibibyte, converting the BLS release page's byte cap from mebibytes to bytes."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::BLS_RELEASE_CAP_BYTES::16": {
+"class": "LIMIT",
+"count": 1,
+"description": "Mebibytes the BLS release page may be before the source refuses it as too large."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::CANONICAL_MARKDOWN_CAP_BYTES::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "Bytes in a kibibyte, converting the canonical Markdown cap from mebibytes to bytes."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::CANONICAL_MARKDOWN_CAP_BYTES::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "Mebibytes the canonical Markdown text may be before extraction refuses it as too large."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::MAX_ARCHIVE_HREFS::4096": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most archive hyperlinks accepted from one archive index, a bound on how many links are read."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::MAX_ARCHIVE_HREF_CODEPOINTS::2048": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest archive hyperlink, in Unicode codepoints, that is accepted from an archive index."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::MAX_TREE_SIZE::500000": {
+"class": "LIMIT",
+"count": 1,
+"description": "The largest tree size, in nodes, handed to the extractor as its maximum before it refuses a document."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::SEC_PRIMARY_CAP_BYTES::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "Bytes in a kibibyte, converting the SEC primary document cap from mebibytes to bytes."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::SEC_PRIMARY_CAP_BYTES::32": {
+"class": "LIMIT",
+"count": 1,
+"description": "Mebibytes a SEC primary filing document may be before the source refuses it as too large."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::SEC_SUBMISSION_CAP_BYTES::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "Bytes in a kibibyte, converting the SEC submission cap from mebibytes to bytes."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::SEC_SUBMISSION_CAP_BYTES::64": {
+"class": "LIMIT",
+"count": 1,
+"description": "Mebibytes a SEC submission file may be before the source refuses it as too large."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::TABLE_COLUMN_LIMIT::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most distinct column headings a table may have and still be carried rather than left out."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::TABLE_ROW_LIMIT::20": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most rows a table may have and still be carried as a table rather than left out."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_HEADING_BLOCK_CHARACTERS::200": {
+"class": "METHOD",
+"count": 1,
+"description": "The longest a Markdown heading line may be, in characters, before its text is demoted to a paragraph."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_LAYOUT_LINE_CELLS::4": {
+"class": "METHOD",
+"count": 1,
+"description": "The most cells a one-row layout table may hold and still be unwrapped to the line of text it displays."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_LAYOUT_LINE_CHARACTERS::240": {
+"class": "METHOD",
+"count": 1,
+"description": "The most characters a one-row layout table may hold and still be read as a single line of text."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_LINKED_PROSE_LINK_SHARE::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The divisor that sets link share: a block whose links exceed a third of its characters is treated as navigation."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_MAXIMUM_UNWRAP_PASSES::8": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most passes that unwrap nested one-cell layout tables before the unwrapping stops."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_TABLE_CELL_LIMIT::400": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most characters a table cell keeps in full before it is cut at a word with a note of what was omitted."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_demote_long_headings::2": {
+"class": "METHOD",
+"count": 2,
+"description": "The regex group that holds a Markdown heading's text, whose length is checked against the heading limit."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_render_table::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A table of contents is recognised once at least half of its rows are contents rows."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_render_table::4": {
+"class": "METHOD",
+"count": 1,
+"description": "A table needs at least four rows before it can be recognised as a table of contents."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::_short_text::4": {
+"class": "LIMIT",
+"count": 1,
+"description": "A heading element's text is given up once its raw text passes four times the heading limit."
+},
+"src/alphalattice/evidence/live_evidence/online_sources.py::cut::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The divisor that sets where a word break is searched for, from half the cell limit up to the full limit."
+},
+"src/alphalattice/foundation/data_layer/arrays.py::THREADED::17": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The bit shift that sets the 128 KiB size from which the integrity hash runs threaded."
+},
+"src/alphalattice/foundation/data_layer/backup.py::_file_digest::1024": {
+"class": "EXECUTION",
+"count": 2,
+"description": "Multiplies by 1024 to make the one-mebibyte read block that a file digest streams the file in."
+},
+"src/alphalattice/foundation/data_layer/backup.py::indent::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The two-space JSON indent the backup manifest is written with, which sets the manifest's exact bytes."
+},
+"src/alphalattice/foundation/data_layer/backup.py::pages::128": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The database pages copied per backup step, so each step copies 128 pages before it yields."
+},
+"src/alphalattice/foundation/data_layer/backup.py::read_manifest::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The one manifest version, 2, that a backup must carry to be read, so other versions are refused."
+},
+"src/alphalattice/foundation/data_layer/backup.py::version::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The manifest version, 2, written into every new backup manifest."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::UNTRACED_BOUND::0.2": {
+"class": "METHOD",
+"count": 1,
+"description": "A call is flagged when more than 0.2 of its wall time is left untraced by its direct steps."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::_breakdown::1000000.0": {
+"class": "METHOD",
+"count": 2,
+"description": "Microseconds per second converts the summed call and untraced times in the breakdown to seconds."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::_breakdown::6": {
+"class": "METHOD",
+"count": 6,
+"description": "Six decimal places round the breakdown's seconds, and its untraced share, to microsecond precision."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::_split::1000000.0": {
+"class": "METHOD",
+"count": 3,
+"description": "Microseconds per second converts the split span times of an agent gap to seconds."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::gap::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Microseconds per second converts a call's untraced gap to the seconds it reports."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::goal_trace::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Microseconds per second converts a traced call's untraced gap to the seconds it reports."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::start::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Milliseconds in a record's duration_ms become microseconds when subtracted from its end time to give its start."
+},
+"src/alphalattice/foundation/data_layer/breakdown.py::tree::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Microseconds per second converts each step's span to the seconds its stage reports."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::DIMENSION::512": {
+"class": "METHOD",
+"count": 1,
+"description": "The width of each embedding vector the encoder emits and the index stores, which every vector must match."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::PAIR_TOKENS::256": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest token length a query-passage pair is truncated to, cutting from the right."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::SHORTLIST::20": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most passages the cross-encoder reranks in one call, above which the reranker refuses the request."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::THREADS::4": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The intra-op threads each encoder session runs, capped at four and at the machine's logical CPU count."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::body::8": {
+"class": "METHOD",
+"count": 1,
+"description": "The byte width of the length prefix in front of a safetensors JSON header, which the tensor bytes follow."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::gelu::0.5": {
+"class": "METHOD",
+"count": 2,
+"description": "The one-half factor of the exact GELU activation, scaling the dense output before the error function term."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::gelu::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The square root of two that scales the dense output into the argument of the exact GELU's error function."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::normed::1e-05": {
+"class": "METHOD",
+"count": 1,
+"description": "The epsilon added to the variance before the square root in layer normalization, guarding against division by zero."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::safetensors::8": {
+"class": "METHOD",
+"count": 1,
+"description": "The byte width of the little-endian header length that starts a safetensors file, giving the JSON header's size."
+},
+"src/alphalattice/foundation/data_layer/encoders.py::variance::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The power that squares each deviation from the mean, the second moment used in layer normalization's variance."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::PLACES::16": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most metric rows a trial is placed against, a bound on the rows its placement query returns."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::found::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Divides microseconds by one million to give the seconds a found trial's span total reports."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::found::6": {
+"class": "METHOD",
+"count": 2,
+"description": "The decimal places a found trial keeps when rounding its cost or its seconds."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::known::1000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Divides a note's microsecond time by one million to read the instant the note is known at."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::z::1e-12": {
+"class": "METHOD",
+"count": 1,
+"description": "The standard deviation below which a metric has no spread, so its z-score is withheld."
+},
+"src/alphalattice/foundation/data_layer/experiences.py::z::6": {
+"class": "METHOD",
+"count": 1,
+"description": "The decimal places a placement's z-score is rounded to."
+},
+"src/alphalattice/foundation/data_layer/governance.py::days::30": {
+"class": "METHOD",
+"count": 1,
+"description": "A missing workspace keeps its live references and backups for thirty days while its folder may return."
+},
+"src/alphalattice/foundation/data_layer/governance.py::days::7": {
+"class": "METHOD",
+"count": 1,
+"description": "A body no live reference holds is kept for seven days after its production before collection."
+},
+"src/alphalattice/foundation/data_layer/history_alpha_arrays.py::_import_alpha_parts::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The three columns of each part relation row, content, layout and digest, that an import accepts."
+},
+"src/alphalattice/foundation/data_layer/history_alpha_arrays.py::_import_alpha_parts::64": {
+"class": "METHOD",
+"count": 1,
+"description": "The exact length, 64, of each content or digest string an imported part relation must carry as lowercase hexadecimal."
+},
+"src/alphalattice/foundation/data_layer/history_alpha_results.py::lanes::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The expected lane bitmask of a stage with a target and economic return but no score lane."
+},
+"src/alphalattice/foundation/data_layer/history_alpha_results.py::lanes::4": {
+"class": "METHOD",
+"count": 1,
+"description": "The expected lane bitmask of a stage that carries a score lane, with the score bit set."
+},
+"src/alphalattice/foundation/data_layer/history_carried_results.py::named::64": {
+"class": "METHOD",
+"count": 1,
+"description": "A stored file's name is a valid digest only at 64 lowercase hex characters, the length of a SHA-256 digest."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::CALLS_KEPT::1024": {
+"class": "LIMIT",
+"count": 1,
+"description": "The number of live CLI calls and the conversations' last calls the Host keeps for links."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::_EPOCH::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The Unix epoch year, the zero point from which history timestamps are counted in UTC."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::_new_step::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per microsecond, which converts the wall clock into the microseconds a step's start records."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::_new_step::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The random byte count of a new trace id, rendered as thirty-two hexadecimal characters when no trace is current."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::_new_step::8": {
+"class": "METHOD",
+"count": 1,
+"description": "The random byte count of a new span id, rendered as sixteen hexadecimal characters."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::chunk::500": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The number of trace rows each lookup statement reads in one batch while a goal's steps are assembled."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::goal_trace::500": {
+"class": "EXECUTION",
+"count": 1,
+"description": "How many trace rows one batched lookup takes when a goal's trace is assembled."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::recall_experiences::5": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default number of experiences a recall returns, the closest to the query in the workspace."
+},
+"src/alphalattice/foundation/data_layer/history_runtime.py::timestamp::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per microsecond, which converts a microsecond offset from the epoch into a timestamp in nanoseconds."
+},
+"src/alphalattice/foundation/data_layer/inputs.py::import_carried::-5": {
+"class": "METHOD",
+"count": 4,
+"description": "Five characters, the .json suffix, are cut from a carried file's name to read its binding hash."
+},
+"src/alphalattice/foundation/data_layer/inputs.py::timeout::5.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Seconds a carry publisher waits for its per-manifest lock before the wait fails."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::COMMON_WORDS_FROM::10000": {
+"class": "METHOD",
+"count": 1,
+"description": "The indexed chunk count from which a query leaves out the words that at least half of the chunks hold."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::DECODED::65536": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The number of vectors decoded in one step while derived index files are written."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::DELTA::1024": {
+"class": "LIMIT",
+"count": 1,
+"description": "The number of chunks a serving index takes after its in-memory matrix before the Host opens it again."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::FUSED_CANDIDATES_PER_SOURCE::12": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most candidates one source contributes to a precise search's single fused shortlist."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::WINDOW::32": {
+"class": "LIMIT",
+"count": 1,
+"description": "The number of candidates each source supplies per channel in a precise search."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::_load::5": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of fields a derived index file's stamp must hold, or the file is rebuilt rather than read."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::common::2": {
+"class": "METHOD",
+"count": 1,
+"description": "A word is common when twice its holding chunk count reaches the indexed chunk count, meaning at least half hold it."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::encoded::-127": {
+"class": "METHOD",
+"count": 1,
+"description": "The lower clip bound of an int8 quantized vector component, symmetric with the upper bound of 127."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::encoded::127": {
+"class": "METHOD",
+"count": 1,
+"description": "The upper clip bound of an int8 quantized vector component, the largest value an encoded component takes."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::fuse::50": {
+"class": "LIMIT",
+"count": 1,
+"description": "The number of fused hits fuse returns by default, the top of the calibrated combined ranking."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::lexical::50": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default number of fused hits the lexical and vector channels are combined into, the top of the ranking."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::retrieve::20": {
+"class": "LIMIT",
+"count": 1,
+"description": "The largest result limit a knowledge retrieval accepts, with any higher limit refused as invalid."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::retrieve::5": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default number of knowledge hits a retrieval returns when the caller names no limit."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::retrieve::50": {
+"class": "LIMIT",
+"count": 1,
+"description": "The candidate count per channel and the result cap a retrieval uses when no precise depth is named."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::retrieve::512": {
+"class": "LIMIT",
+"count": 1,
+"description": "The longest query, in characters, a knowledge retrieval accepts before it refuses the query as invalid."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::scale::127": {
+"class": "METHOD",
+"count": 1,
+"description": "The divisor that maps each vector dimension's largest magnitude onto the int8 range of 127."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::score::0.5": {
+"class": "METHOD",
+"count": 2,
+"description": "Each channel's share of a fused hit's combined score, one half for the lexical score and one half for the vector score."
+},
+"src/alphalattice/foundation/data_layer/knowledge.py::search::50": {
+"class": "LIMIT",
+"count": 2,
+"description": "The default number of chunks a search returns, the best by similarity, unless a caller names a limit."
+},
+"src/alphalattice/foundation/data_layer/log.py::ATTRS_CHARACTERS::4096": {
+"class": "LIMIT",
+"count": 1,
+"description": "Caps one event's attribute text at 4096 characters."
+},
+"src/alphalattice/foundation/data_layer/log.py::BATCH_SECONDS::0.2": {
+"class": "EXECUTION",
+"count": 1,
+"description": "An open batch of events commits once it is 0.2 seconds old."
+},
+"src/alphalattice/foundation/data_layer/log.py::BATCH_SIZE::64": {
+"class": "EXECUTION",
+"count": 1,
+"description": "An open batch of events commits once it holds 64 events."
+},
+"src/alphalattice/foundation/data_layer/log.py::LOCK_AT::30": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The lock byte sits at byte offset 2 to the 30th, past any real end of file, so it never overlaps data."
+},
+"src/alphalattice/foundation/data_layer/log.py::WORKER_END_SECONDS::10.0": {
+"class": "EXECUTION",
+"count": 1,
+"description": "Seconds the stop of orphaned worker processes waits for them to end before giving up."
+},
+"src/alphalattice/foundation/data_layer/log.py::_last_us::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds divided by 1000 give the wall-clock moment in microseconds that the log's clock reads."
+},
+"src/alphalattice/foundation/data_layer/log.py::envelope::8": {
+"class": "METHOD",
+"count": 1,
+"description": "A span identifier of 8 random bytes, written as 16 hex characters, is made for each phased event."
+},
+"src/alphalattice/foundation/data_layer/log.py::now::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds divided by 1000 give the current wall-clock moment in microseconds for a new event."
+},
+"src/alphalattice/foundation/data_layer/log.py::open::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds divided by 1000 give the wall-clock moment in microseconds used when the log checkpoints its month."
+},
+"src/alphalattice/foundation/data_layer/log.py::open::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The registry.seeded state value 2 marks a seed whose definition ids are recorded with the seeding event."
+},
+"src/alphalattice/foundation/data_layer/market_health.py::market_health::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of times the session date is passed to the health projection's three date placeholders."
+},
+"src/alphalattice/foundation/data_layer/project.py::ADMISSION_SUMMARY_TEXT_VERSION::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The admission version from which a stored admission summary's optional machine text is read as its JSON provider list."
+},
+"src/alphalattice/foundation/data_layer/project.py::ARTIFACT_PROFILE_TEXT_VERSION::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The artifact.produced version from which a stored profile's optional machine text is read as its JSON shape."
+},
+"src/alphalattice/foundation/data_layer/project.py::_EPOCH::1970": {
+"class": "METHOD",
+"count": 1,
+"description": "The epoch year against which registry times are counted in naive UTC microseconds."
+},
+"src/alphalattice/foundation/data_layer/project.py::_artifact::17": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of placeholders the artifact row insert binds, matching its seventeen listed columns."
+},
+"src/alphalattice/foundation/data_layer/project.py::_daily::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Micro-units per whole unit, so a recorded cost is stored as a whole number of millionths."
+},
+"src/alphalattice/foundation/data_layer/project.py::_typed::8": {
+"class": "METHOD",
+"count": 1,
+"description": "Bits per byte, which sets the byte width of an integer's signed binary form."
+},
+"src/alphalattice/foundation/data_layer/project.py::int::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The two-bit variant field of a UUIDv7, set to binary 10 as RFC 9562 requires."
+},
+"src/alphalattice/foundation/data_layer/project.py::int::62": {
+"class": "METHOD",
+"count": 2,
+"description": "The width of a UUIDv7's random tail, 62 bits, which sits after its two-bit variant field."
+},
+"src/alphalattice/foundation/data_layer/project.py::ms::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per millisecond, which turns the wall clock into the Unix milliseconds a UUIDv7 carries."
+},
+"src/alphalattice/foundation/data_layer/project.py::register::-3": {
+"class": "METHOD",
+"count": 1,
+"description": "Which field counted from the end of a definition's values holds its registered sequence, the third from last."
+},
+"src/alphalattice/foundation/data_layer/project.py::registry_us::1000000": {
+"class": "METHOD",
+"count": 1,
+"description": "Microseconds per second, which converts a registry time's whole seconds into microseconds."
+},
+"src/alphalattice/foundation/data_layer/project.py::task_parent::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The Task type version from which its parent task and goal are read from its own attributes."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::12": {
+"class": "METHOD",
+"count": 1,
+"description": "The random bits in a UUIDv7's rand_a field, which fills the bits below its 48-bit timestamp."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::48": {
+"class": "METHOD",
+"count": 1,
+"description": "The width of the millisecond timestamp a UUIDv7 keeps, masked to its 48 bits."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::64": {
+"class": "METHOD",
+"count": 1,
+"description": "The bit position that places a UUIDv7's random rand_a field below its timestamp field."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::7": {
+"class": "METHOD",
+"count": 1,
+"description": "The UUIDv7 version nibble, which marks the id as RFC 9562 version seven."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::76": {
+"class": "METHOD",
+"count": 1,
+"description": "The bit position of a UUIDv7's version nibble, just below its 48-bit timestamp."
+},
+"src/alphalattice/foundation/data_layer/project.py::value::80": {
+"class": "METHOD",
+"count": 1,
+"description": "The bit position of a UUIDv7's 48-bit timestamp, at the top of its 128-bit id."
+},
+"src/alphalattice/foundation/data_layer/reading.py::BRIEF_BUDGET::2000": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default budget, in tokens, of a brief an agent reads before it registers a trial."
+},
+"src/alphalattice/foundation/data_layer/reading.py::BRIEF_BUDGETS::100": {
+"class": "LIMIT",
+"count": 1,
+"description": "The smallest token budget a brief may be given, the start of the accepted budget range."
+},
+"src/alphalattice/foundation/data_layer/reading.py::BRIEF_BUDGETS::32001": {
+"class": "LIMIT",
+"count": 1,
+"description": "The exclusive end of the accepted brief budget range, so the largest budget a brief may be given is 32000."
+},
+"src/alphalattice/foundation/data_layer/reading.py::CHARS_PER_TOKEN::4": {
+"class": "METHOD",
+"count": 1,
+"description": "The characters counted per token when a brief estimates an item's cost against its budget."
+},
+"src/alphalattice/foundation/data_layer/reading.py::CONDITION_METRICS::21": {
+"class": "METHOD",
+"count": 1,
+"description": "The 21-session window over which the cross-sectional dispersion metric is averaged."
+},
+"src/alphalattice/foundation/data_layer/reading.py::CONDITION_METRICS::252": {
+"class": "METHOD",
+"count": 2,
+"description": "The 252 sessions of the market return window and of the trading year that annualises volatility."
+},
+"src/alphalattice/foundation/data_layer/reading.py::CONDITION_METRICS::63": {
+"class": "METHOD",
+"count": 1,
+"description": "The 63-session window over which the market volatility metric's standard deviation is taken."
+},
+"src/alphalattice/foundation/data_layer/reading.py::READ_SECONDS::60": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The seconds a view read waits for the reader's answer before the stuck reader is ended."
+},
+"src/alphalattice/foundation/data_layer/reading.py::_PART_ROWS::500": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most rows each part reads before it is fitted, a bound on the rows one part reads."
+},
+"src/alphalattice/foundation/data_layer/reading.py::_experience_rows::25": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default number of trial rows the experience read returns, newest first, when no limit is given."
+},
+"src/alphalattice/foundation/data_layer/reading.py::_receive::8": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The eight-byte length header that frames each answer read from the reader's pipe."
+},
+"src/alphalattice/foundation/data_layer/reading.py::_requests::8": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The eight-byte length header that frames each request read from the Host's request stream."
+},
+"src/alphalattice/foundation/data_layer/reading.py::experience::25": {
+"class": "LIMIT",
+"count": 1,
+"description": "The default row limit of an experience read, the most trials returned when the caller gives no limit."
+},
+"src/alphalattice/foundation/data_layer/reading.py::experience_class::200": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most trials a class read returns across goals, workspaces and agents, unless a limit is given."
+},
+"src/alphalattice/foundation/data_layer/reading.py::header::8": {
+"class": "EXECUTION",
+"count": 3,
+"description": "The eight-byte length header that frames each pickled message exchanged with the reader's pipe."
+},
+"src/alphalattice/foundation/data_layer/reading.py::timeout::10": {
+"class": "EXECUTION",
+"count": 2,
+"description": "The seconds to wait for the reader to end, and again for it to be killed, before giving up."
+},
+"src/alphalattice/foundation/data_layer/recall.py::CAPACITY::512": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most characters one retrieval chunk holds, using the splitter's own measure, so chunks never overlap."
+},
+"src/alphalattice/foundation/data_layer/recall.py::_hold::512": {
+"class": "METHOD",
+"count": 1,
+"description": "The embedding vector length, 512, that the held retrieval model is registered with."
+},
+"src/alphalattice/foundation/data_layer/recall.py::dimension::512": {
+"class": "METHOD",
+"count": 1,
+"description": "The embedding vector length, 512, that the model manifest and the stored model entry declare."
+},
+"src/alphalattice/foundation/data_layer/recall.py::recall::5": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most similar experiences a recall returns in fused order, five by default."
+},
+"src/alphalattice/foundation/data_layer/recall.py::reference_spec::512": {
+"class": "METHOD",
+"count": 1,
+"description": "The embedding vector length, 512, that the reference spec declares for the retrieval model."
+},
+"src/alphalattice/foundation/data_layer/return_series.py::MIN_OVERLAP::12": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest common months a pair of series needs to be correlated; a pair with fewer is left out."
+},
+"src/alphalattice/foundation/data_layer/return_series.py::POINTS::600": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most monthly points a return series holds, six hundred months or fifty years."
+},
+"src/alphalattice/foundation/data_layer/return_series.py::SAMPLE::200": {
+"class": "LIMIT",
+"count": 1,
+"description": "The most newest registered series whose pairwise correlations estimate the class's mean correlation."
+},
+"src/alphalattice/foundation/data_layer/return_series.py::effective_n::2": {
+"class": "LIMIT",
+"count": 1,
+"description": "The fewest series, two, needed before the effective number of independent trials is computed."
+},
+"src/alphalattice/foundation/data_layer/root.py::LAKE_THREAD_CEILING::8": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The most threads a lake statement fans out to, past which extra threads cost more than they gain."
+},
+"src/alphalattice/foundation/data_layer/root.py::SCHEMA_VERSION::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The PRAGMA user_version of databases this code creates, and the version it refuses any other database for."
+},
+"src/alphalattice/foundation/data_layer/root.py::build_log::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The seed registry version a log is built with when the caller gives none."
+},
+"src/alphalattice/foundation/data_layer/spans.py::context::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The hexadecimal base that reads a stored span identifier back into the integer of its span context."
+},
+"src/alphalattice/foundation/data_layer/spans.py::end_time::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Converts the event log's microsecond end time into the nanoseconds that a span's end time is held in."
+},
+"src/alphalattice/foundation/data_layer/spans.py::force_flush::30000": {
+"class": "EXECUTION",
+"count": 3,
+"description": "The milliseconds a span flush may take before it gives up, bounding how long a flush waits."
+},
+"src/alphalattice/foundation/data_layer/spans.py::occurred_us::1000": {
+"class": "METHOD",
+"count": 3,
+"description": "Converts a span's nanosecond time into the microseconds that a step event stores as occurred_us."
+},
+"src/alphalattice/foundation/data_layer/spans.py::parent::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The hexadecimal base that reads a stored parent span identifier back into the integer of its parent context."
+},
+"src/alphalattice/foundation/data_layer/spans.py::start_time::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Converts the event log's microsecond start time into the nanoseconds that a span's start time is held in."
+},
+"src/alphalattice/foundation/data_layer/spans.py::started_us::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Converts a span's nanosecond start time into the microseconds that a step event stores as started_us."
+},
+"src/alphalattice/foundation/data_layer/spans.py::trace::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The hexadecimal base that reads a stored trace identifier back into the integer of its trace."
+},
+"src/alphalattice/foundation/data_layer/store.py::DERIVED_REWRITE::0.5": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The share of a derived file's rows that must be dead before idle maintenance rewrites the file."
+},
+"src/alphalattice/foundation/data_layer/store.py::IDLE_MAINTENANCE_WRITES::16": {
+"class": "EXECUTION",
+"count": 1,
+"description": "The catalog snapshot count that, with the one-day rule, triggers idle maintenance at the Host's next idle turn."
+},
+"src/alphalattice/foundation/data_layer/store.py::OWED_EVENTS_VERSION::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The admission commit info version from which its owed events are read as a list, one per admission."
+},
+"src/alphalattice/foundation/data_layer/store.py::_known::2": {
+"class": "METHOD",
+"count": 1,
+"description": "The number of columns a legacy valid interval must name, its opening and closing versions, to date a row."
+},
+"src/alphalattice/foundation/data_layer/store.py::days::3": {
+"class": "METHOD",
+"count": 1,
+"description": "The days a file that no kept snapshot names waits before deletion."
+},
+"src/alphalattice/foundation/data_layer/store.py::days::7": {
+"class": "METHOD",
+"count": 1,
+"description": "The days the catalog keeps each snapshot, which sets how far back past commits can be read."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::_IDS::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The trace identifier is 16 bytes, which each OTLP record's traceId must match when it arrives."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::_IDS::8": {
+"class": "METHOD",
+"count": 2,
+"description": "The span and parent span identifiers are each 8 bytes, which each OTLP record's ids must match."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::_row::2": {
+"class": "LIMIT",
+"count": 3,
+"description": "The base 2 of the 2**63 bound keeps each integer value and time within the signed 64-bit range."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::_row::63": {
+"class": "LIMIT",
+"count": 3,
+"description": "The exponent 63 of the 2**63 bound keeps each integer value and time within the signed 64-bit range."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::decode::1024": {
+"class": "LIMIT",
+"count": 2,
+"description": "One of the 1024 factors in the default 4 MiB limit on the decoded body of one OTLP batch."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::decode::2": {
+"class": "METHOD",
+"count": 1,
+"description": "Two hex digits encode each byte of a trace or span identifier in an OTLP/JSON record."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::decode::4": {
+"class": "LIMIT",
+"count": 1,
+"description": "The 4 in the default 4 MiB limit on the decoded body of one OTLP batch."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::decompressor::16": {
+"class": "METHOD",
+"count": 1,
+"description": "The zlib window-bits offset of 16 makes the decompressor read gzip framing for a gzip-encoded batch."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::seconds::1000": {
+"class": "METHOD",
+"count": 1,
+"description": "Milliseconds per second converts a record's duration_ms to the seconds of its model time."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::seconds::1000000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per second converts a point's start and end times to the seconds of its model time."
+},
+"src/alphalattice/foundation/data_layer/telemetry.py::stamps::1000000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per second converts each row's time to seconds for the UTC timestamps of a model's responses."
+},
+"src/alphalattice/foundation/data_layer/upgrade.py::_FACT_PART_CHARACTERS::1800": {
+"class": "LIMIT",
+"count": 1,
+"description": "The characters of an encoded fact stamp each recorded part carries, a bound on one log row's size."
 }
 },
 "note": "Six registries name what the product is made of. Three are already held where they live: the packages (``config/package-architecture.json``, the structural guards), the operations (``operations.py``, ``operation_registry``) and the identity roles (``config/identity-roles.json``, the source-identity guards). The other three are held here, each against a baseline in ``config/registries/`` that may only shrink:",

@@ -302,7 +302,7 @@ def test_authored_replay_segments_preserve_holds_state_and_refuse_changed_scores
         decision=np.ones_like(eligible),
         realized=damaged,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     fallback_inputs = replace(
         inputs,

@@ -18,10 +18,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from fractions import Fraction
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
@@ -45,8 +46,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.investment.alpha_research.evaluation.contracts import AlphaMetricPolicy
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     ResearchExperimentEnvelope,
@@ -57,7 +57,7 @@ CURRENT_SNAPSHOT_HANDLE = "current"
 
 EXPLORATION_SAMPLE_MARK = ".sample-"
 """A universe handle `<profile>.sample-<n>` names a sample of the profile's names: the
-exploration lane's small universe (binding plan, B17)."""
+exploration lane's small universe."""
 MINIMUM_EXPLORATION_SAMPLE = int(AlphaMetricPolicy.model_fields["minimum_cross_section"].default)
 """An Alpha study ranks a session only on this many names (its metric policy's minimum
 cross-section); a smaller sample would publish no rank IC."""
@@ -114,7 +114,7 @@ def exploration_sample_size(handle: str) -> int | None:
 
 
 def _rank(listing_id: str) -> str:
-    return sha256(f"alphalattice.exploration-sample:{listing_id}".encode()).hexdigest()
+    return identity_sha256(f"alphalattice.exploration-sample:{listing_id}".encode()).hexdigest()
 
 
 def panel_sector_labels(
@@ -177,7 +177,7 @@ def panel_sector_labels(
 def exploration_sample(
     listing_ids: tuple[str, ...], size: int, sectors: Mapping[str, str]
 ) -> tuple[str, ...]:
-    """A sample of a Panel's listings by Sector, in the axis order (binding plan, decision 4).
+    """A sample of a Panel's listings by Sector, in the axis order.
 
     The names are given out one at a time, each to the Sector with the highest Sainte-Lague
     quotient (its names over twice its names taken plus one; a Sector with none taken first;
@@ -343,7 +343,9 @@ class WorkspaceResearchAuthorityResolver:
         sample = exploration_sample_size(envelope.universe_handle)
         if sample is not None and envelope.kind not in EXPLORATION_SAMPLE_KINDS:
             raise AuthoringError(f"research_lane.sample_not_supported:{envelope.kind}")
-        store = MarketDataRepository(self._workspace)
+        store = MarketDataRepository(
+            self._workspace, cutoff_us=envelope.sessions.as_of.selection_cutoff_us
+        )
         current_manifest = None
         if envelope.data_snapshot_handle == CURRENT_SNAPSHOT_HANDLE:
             # Preserve the generic current-route refusal order: an unknown
@@ -373,8 +375,13 @@ class WorkspaceResearchAuthorityResolver:
             raise AuthoringError(
                 "research_authoring.snapshot_universe_lineage_unavailable"
             ) from error
+        # An exact Panel names a sealed roster that can have been admitted after
+        # the study's decision date. Keep the decision cutoff for dated reads.
+        manifest_store = (
+            store if current_manifest is not None else MarketDataRepository(self._workspace)
+        )
         try:
-            manifest = store.load_universe_manifest_revision(manifest_revision)
+            manifest = manifest_store.load_universe_manifest_revision(manifest_revision)
         except ValueError as error:
             raise AuthoringError("research_authoring.universe_handle_unresolved") from error
         if manifest.profile.market_profile_id != profile:

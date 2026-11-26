@@ -2,6 +2,7 @@
 
 import pytest
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.control.product_host.composition.local_web_session import LocalPortfolioWebSession
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
@@ -10,16 +11,20 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.maintenance.data_update import bind_existing_data_workspace
 from alphalattice.control.product_host.research_authoring.factor_inputs import bind_factor_inputs
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.control.task_control.upgrade import carry_tasks
 from alphalattice.foundation.causal_outcomes.execution.methods import ONE_SESSION_RECIPE_ID
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from tests.portfolio_strategy_lab.local_web_support import _json
+from alphalattice.foundation.data_layer.history import carry_arrays, carry_research_inputs
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.real_workspace import (
     AS_OF,
-    HISTORY_START,
+    FACTOR_SCALE,
     OBSERVED_AT,
+    READINESS_STANDARD,
+    READINESS_UNIVERSE,
     SeededWalkProvider,
     _source_loader_for,
     build_real_risk_workspace,
+    history_start,
     publish_causal_outcomes,
 )
 
@@ -29,11 +34,12 @@ def fresh_prepared(tmp_path_factory):
     root = tmp_path_factory.mktemp("first-use")
     symbols = tuple(f"F{i:03d}" for i in range(120))
     schedule = materialize_calendar_schedule(
-        ("XNAS",), start=HISTORY_START, end=AS_OF, as_of_timestamp=OBSERVED_AT
+        ("XNAS",), start=history_start(FACTOR_SCALE), end=AS_OF, as_of_timestamp=OBSERVED_AT
     )
     provider = SeededWalkProvider(symbols, tuple(v["session_date"] for v in schedule.to_pylist()))
     live = LocalPortfolioWebSession.from_workspace(root, clock=lambda: OBSERVED_AT)
-    live.data_provider, live.data_source_loader = provider, _source_loader_for(symbols)
+    live.data_provider = provider
+    live.data_source_loader = _source_loader_for(symbols, FACTOR_SCALE)
     with live:
         # Bound execution width for the four-worker run, not its data or checks.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
@@ -124,7 +130,8 @@ def fresh_prepared(tmp_path_factory):
         assert _json(live, "/api/experiments/controls")["status"] == "READY"
         storage = _json(live, "/api/workspace/storage")
         assert storage["budget"]["active_listing_count"] == 120
-        assert storage["managed_bytes"] < storage["logical_bytes"]
+        # The research inputs stay on the data root, never copied in, so no file is held twice.
+        assert storage["managed_bytes"] == storage["logical_bytes"] > 0, storage["by_root"]
         assert storage["capacity_status"] == "WITHIN_BUDGET"
         # A first use composes its Panel once, for the membership its qualification binds
         # so the plan has nothing to release: no chunk lies outside the published one.
@@ -134,6 +141,10 @@ def fresh_prepared(tmp_path_factory):
         assert len(session.task_control_registry.tasks()) >= 1
         assert app.plan()["status"] == "ALREADY_PREPARED"
         view = app.readback()
+    # Its Tasks go with the workspace past the machine that made them, as a carried store.
+    carry_tasks(root, root)
+    carry_arrays(root, root)  # and its lanes
+    carry_research_inputs(root, root)  # and its bound inputs
     return root, task_id, view
 
 
@@ -145,10 +156,12 @@ def prepared(tmp_path_factory):
     This path only supplies a starting workspace via the supported local binding
     operations. Each process gets an independent writable database copy.
     """
+    symbols, sector_size = READINESS_UNIVERSE
     data = build_real_risk_workspace(
         tmp_path_factory.mktemp("prepared-input"),
-        symbols=tuple(f"F{i:03d}" for i in range(120)),
-        sector_size=6,
+        symbols=symbols,
+        sector_size=sector_size,
+        standard=READINESS_STANDARD,
     )
     root = data.workspace
     publish_research_workspace_manifest(root, ResearchWorkspaceManifest.research_only("prepared"))

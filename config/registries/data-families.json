@@ -3754,6 +3754,18 @@
         "product_host.composition.native_usage_reader"
       ]
     },
+    "knowledge-lexical-index": {
+      "summary": "Tantivy lexical view of the log's normalized knowledge terms",
+      "class": "derived",
+      "tier": 4,
+      "home": "machine/knowledge-lexical-v1, committed by the log's Host",
+      "location": "machine-data-root",
+      "bytes": null,
+      "writers": ["data_layer.knowledge:_LexicalView"],
+      "covers": ["table:knowledge_lexical_terms"],
+      "readers": ["data_layer.knowledge:KnowledgeStore"],
+      "placement_reason": "The view is refreshed from the log's chunk and term rows and rebuilt when its chunk stamp no longer matches. It owns no source body or admission."
+    },
     "knowledge-vector-index": {
       "summary": "read-only float32 vector matrix and row metadata for the Host's retrieval index",
       "class": "derived",

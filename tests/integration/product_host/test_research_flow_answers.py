@@ -18,19 +18,18 @@ from alphalattice.control.product_host.composition.local_web_session import (
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.task_control.queue import write_queue_setting
+from alphalattice.control.workspace_runtime.content_store import (
+    ContentAddressedStoreError,
+    full_content_proof,
+)
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchSpec,
 )
-from tests.portfolio_strategy_lab.local_web_support import (
-    _agent,
-    _json,
-    _request,
-    _resolved,
-    _Resolver,
-)
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import _agent, _resolved, _Resolver
 
 ALPHA, BETA = ("ALPHA_BOOK", "BETA_BOOK")
 
@@ -102,10 +101,13 @@ def test_trial_and_feature_listings_keep_readable_siblings_with_damaged_records(
     from alphalattice.control.product_host.research_authoring.feature_extensions import (
         FeatureExtensions,
     )
+    from alphalattice.control.product_host.research_authoring.feature_research import (
+        ResearchFeatureDefinitions,
+    )
 
     class Builds:
         def definitions(self):
-            return SimpleNamespace(store=SimpleNamespace(root=tmp_path / "plans"))
+            return ResearchFeatureDefinitions(tmp_path)
 
     trials = FeatureTrials(
         workspace=tmp_path,
@@ -1019,7 +1021,7 @@ def test_a_books_risk_window_and_its_bound_section_are_refused_with_the_way_on()
     assert unavailable and unavailable["next_action"] == "START_THE_WINDOW_AFTER_THE_LOOKBACK"
 
 
-def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, monkeypatch):
+def _check_book_support_refusal(live, monkeypatch):
     "A support refusal is worded with its cause and the book's way on."
     from alphalattice.control.product_host.composition.plain_refusals import explain
     from alphalattice.control.product_host.composition.task_recovery import stop_detail
@@ -1059,6 +1061,72 @@ def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(live, m
     assert way["next_requests"]["portfolio_draft"]["task_id"] == "alpha-1" and asked == [task]
     host._stopped_way(task, "research_experiment.execution_binding_changed", "BLOCKED")
     assert asked == [task]
+
+
+@pytest.mark.parametrize(
+    ("operation", "binding", "expect_strategy_controls"),
+    [
+        (None, None, False),
+        ("MODEL_TRAINING_INPUT_PLAN", None, True),
+        ("EXPERIMENT_CONTROLS", "b" * 64, True),
+        ("EXPERIMENT_CONTROLS", "f" * 64, False),
+    ],
+    ids=("book-support", "training-component", "risk-known-binding", "risk-unknown-binding"),
+)
+def test_a_support_refusal_is_worded_with_its_cause_and_the_books_way_on(
+    live, monkeypatch, operation, binding, expect_strategy_controls
+) -> None:
+    """A research refusal keeps its reason and offers the read that can repair it."""
+    if operation is None:
+        _check_book_support_refusal(live, monkeypatch)
+        return
+
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceExperimentInput,
+        publish_research_workspace_manifest,
+    )
+    from alphalattice.interface.local_application.cli_contract import refusal_problem
+    from alphalattice.interface.local_application.failure_codes import owner_failure_code
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchOperationRequest,
+    )
+
+    host = live.operations
+    assert host is not None
+    manifest = host.workspace_manifest.with_bindings(
+        experiment_inputs=(
+            ResearchWorkspaceExperimentInput(input_id="selected", binding_hash="b" * 64),
+        )
+    )
+    publish_research_workspace_manifest(live.workspace, manifest)
+    host._hold(manifest)
+    if operation == "MODEL_TRAINING_INPUT_PLAN":
+        request = PortfolioResearchOperationRequest(
+            operation=operation, research_input_id="selected", component_id="UNKNOWN_COMPONENT"
+        )
+        failure_code = "model_training.component_selection_invalid"
+    else:
+        request = PortfolioResearchOperationRequest(
+            operation=operation,
+            research_input_id="unknown",
+            experiment_kind="risk.covariance-development",
+            input_binding_hash=binding,
+        )
+        failure_code = "research_experiment.input_not_admitted"
+    try:
+        answer = host.execute(request)
+    except ValueError as error:
+        answer = {"failure_code": owner_failure_code(error), "status": "REFUSED"}
+    assert answer["failure_code"] == failure_code
+    offers = answer.get("next_requests") or {}
+    if expect_strategy_controls:
+        assert offers.get("valid_values") == {"operation": "RESEARCH_STRATEGY_CONTROLS"}
+        assert refusal_problem(answer) is None
+        controls = host.execute(PortfolioResearchOperationRequest(**offers["valid_values"]))
+        assert controls.get("status") == "AVAILABLE"
+    else:
+        assert offers["inputs"] == {"operation": "RESEARCH_INPUTS"}
+        assert "valid_values" not in offers
 
 
 def test_prepared_training_inputs_offer_their_components_study(tmp_path):
@@ -1131,6 +1199,9 @@ def test_a_strategy_short_of_its_risk_window_names_it_and_offers_the_risk_study(
 
 def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path, monkeypatch):
     "Risk recovery carries its selected input and exact history, skipping absent formations."
+    from alphalattice.control.product_host.composition.operation_route_families import (
+        host_door,
+    )
     from alphalattice.control.product_host.composition.portfolio_research_operations import (
         PortfolioResearchOperations,
     )
@@ -1219,6 +1290,7 @@ def test_strategy_risk_recovery_keeps_history_ranges_and_selected_input(tmp_path
 
     monkeypatch.setattr(owner, "plan", refused_plan)
     host = PortfolioResearchOperations.__new__(PortfolioResearchOperations)
+    host.door = host_door()
     host.research_strategies = owner
     answer = host._workspace_operation(
         PortfolioResearchOperationRequest(
@@ -1287,6 +1359,7 @@ def test_a_strategys_risk_history_is_judged_by_one_owner_for_its_plan_and_prepar
 
 def _research_update_plan(package: str, target: Any) -> Any:
     """A sealed research update plan of one strategy, each of its parts well formed ()."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.data_platform.maintenance.contracts import (
         MaintenanceTrigger,
         WorkspaceDataUpdateBinding,
@@ -1300,7 +1373,6 @@ def _research_update_plan(package: str, target: Any) -> Any:
     from alphalattice.control.product_host.composition.research_workspace import (
         ResearchWorkspaceScoreInput,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     fixture = "a" * 64
     binding = WorkspaceDataUpdateBinding.seal(
@@ -1370,10 +1442,10 @@ def _admitted(registry: Any, envelope: Any, goal: Any, plan: Any) -> str:
 
 def test_a_cancelled_research_update_keeps_its_stop_and_offers_its_task_record(live, capsys):
     "A cancelled research update keeps its stop and offers its task record."
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.product_host.composition.decision_advancement import task_contract
     from alphalattice.control.task_control.contracts import TaskExecutionCompatibility
     from alphalattice.interface.local_application.cli import main
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     registry = live.session.task_control_registry
     envelope, goal, workflow = task_contract(_research_update_plan(ALPHA, date(2026, 9, 29)))
@@ -1451,13 +1523,13 @@ def test_a_cancelled_research_update_keeps_its_stop_and_offers_its_task_record(l
 
 def _planned_task(registry: Any, kind: str, plan: dict[str, object]) -> str:
     """A Task of `kind` whose sealed plan is `plan`: what a reader picking among Tasks reads."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.task_control.contracts import (
         ResearchGoal,
         ResearchPlan,
         TaskInputEnvelope,
         WorkItemDefinition,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     envelope = TaskInputEnvelope.create(
         task_kind=kind, input_schema_id=f"{kind}.fixture", payload={"plan": plan}
@@ -1481,7 +1553,9 @@ def _planned_task(registry: Any, kind: str, plan: dict[str, object]) -> str:
     return _admitted(registry, envelope, goal, work)
 
 
-def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(live, monkeypatch):
+def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
+    live, monkeypatch, kept_here
+):
     "Completed update metadata keeps exact target claim and sealed lookup."
     from alphalattice.control.product_host.composition.decision_advancement import (
         STAGES,
@@ -1591,10 +1665,21 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(li
     payload = json.loads(stored.read_text(encoding="utf-8"))
     payload["published_at"] = "2026-10-03T00:00:00+00:00"
     stored.write_text(json.dumps(payload), encoding="utf-8")
-    damaged = _json(live, "/api/research-update/automation")["runs_forward"][0]["latest_update"]
-    assert damaged["status"] == "REFUSED" and damaged["failure_code"] and damaged["detail"]
-    assert damaged["next_requests"]["task"] == {"operation": "STATUS", "task_id": str(task.task_id)}
-    assert "review_selector" not in damaged and "claim" not in damaged
+    # A kept read answers the sealed candidate; where nothing is kept, the read at its name refuses
+    # the changed bytes by name, as full proof does (EV2).
+    held = _json(live, "/api/research-update/automation")["runs_forward"][0]["latest_update"]
+    if kept_here:
+        assert held["claim"] == publication.claim
+    else:
+        assert held["status"] == "REFUSED"
+        assert held["failure_code"] == "content_store.artifact_tampered"
+    with full_content_proof(), pytest.raises(ContentAddressedStoreError, match="tampered"):
+        owner.ledger.content.load_model(
+            category="decision-candidates",
+            content_hash=publication.content_hash,
+            model=PortfolioUpdatePublication,
+            identity_field="content_hash",
+        )
 
 
 def test_a_strategys_latest_work_is_read_by_its_package_and_never_anothers(

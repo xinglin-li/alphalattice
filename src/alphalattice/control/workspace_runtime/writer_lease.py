@@ -17,8 +17,8 @@ from alphalattice.control.workspace_runtime.verified_facts import (
 class WorkspaceWriterLease:
     """An advisory OS lock held for the lifetime of a writable runtime.
 
-    Its holder is the workspace's one writer, so it also keeps the workspace's file facts
-    (`verified_facts`) while it holds the lock.
+    A writable holder also keeps the workspace's file facts (`verified_facts`) while
+    it holds the lock.
     """
 
     _handle: BinaryIO | None
@@ -34,11 +34,12 @@ class WorkspaceWriterLease:
         return self._handle is not None
 
     @classmethod
-    def acquire(cls, workspace: Path) -> WorkspaceWriterLease:
+    def acquire(cls, workspace: Path, *, keep_facts: bool = True) -> WorkspaceWriterLease:
         """Acquire the workspace's nonblocking process-lifetime writer lease.
 
         Args:
             workspace: Physical workspace root containing the control or writer-lock file.
+            keep_facts: Keep persistent file facts when the holder will write the workspace.
 
         Returns:
             Held lease; the caller must close it when the writable runtime ends.
@@ -68,8 +69,9 @@ class WorkspaceWriterLease:
         except OSError as exc:
             handle.close()
             raise RuntimeError("workspace_runtime.writer_already_owned") from exc
-        keep_file_facts(workspace)
-        return cls(_handle=handle, _workspace=workspace)
+        if keep_facts:
+            keep_file_facts(workspace)
+        return cls(_handle=handle, _workspace=workspace if keep_facts else None)
 
     def close(self) -> None:
         """Release the advisory writer lock and close its handle; absence is a no-op."""

@@ -13,7 +13,7 @@ from typing import cast
 import numpy as np
 import numpy.typing as npt
 
-from alphalattice.kernel.quant.cross_section import equal_sector_demean
+from alphalattice.capabilities.quant.cross_section import equal_sector_demean
 
 type FloatArray = npt.NDArray[np.float64]
 type BoolArray = npt.NDArray[np.bool_]

@@ -168,6 +168,20 @@ class AlternativeEvidenceDocumentReference(AlternativeEvidenceContract):
                 raise ValueError("alternative_evidence.document_reference_clock_invalid")
         return self
 
+    @staticmethod
+    def availability_basis(
+        source_name: str, accepted_at: datetime | None, available_at: datetime
+    ) -> str:
+        """What a document's availability rests on: the official acceptance itself, a recorded
+        import's capture (its acceptance known or not), or the source's own statement."""
+        if accepted_at is not None and available_at == accepted_at:
+            return "OFFICIAL_ACCEPTANCE"
+        if source_name == "ISSUER_RECORDED":
+            if accepted_at is not None:
+                return "RECORDED_IMPORT_CAPTURE"
+            return "RECORDED_IMPORT_CAPTURE_ACCEPTANCE_UNKNOWN"
+        return "SOURCE_STATED"
+
     def temporal_view(self) -> dict[str, object]:
         """Expose disclosure clocks together with their recorded precision basis.
 
@@ -183,16 +197,7 @@ class AlternativeEvidenceDocumentReference(AlternativeEvidenceContract):
         retrieved later is as old as its acceptance says.
         """
         accepted = self.accepted_at
-        if accepted is not None and self.available_at == accepted:
-            basis = "OFFICIAL_ACCEPTANCE"
-        elif self.source_name == "ISSUER_RECORDED":
-            basis = (
-                "RECORDED_IMPORT_CAPTURE"
-                if accepted is not None
-                else "RECORDED_IMPORT_CAPTURE_ACCEPTANCE_UNKNOWN"
-            )
-        else:
-            basis = "SOURCE_STATED"
+        basis = self.availability_basis(self.source_name, accepted, self.available_at)
         return {
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "published_precision": self.published_precision or "UNKNOWN",

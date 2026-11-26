@@ -8,7 +8,6 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import pandas as pd
 
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
@@ -19,6 +18,9 @@ from alphalattice.foundation.feature_engine.runtime.service import (
     PANEL_SESSION_BATCH_SIZE,
     feature_source_frame,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 if TYPE_CHECKING:
     from alphalattice.foundation.feature_engine.runtime.service import FeatureFoundationService
@@ -46,6 +48,8 @@ def rebase_moved(
     Feature disagreement rebuilds all Features in reached Panel spans; outside those spans,
     Panel disagreement escalates its exact Feature cells. Missing values agree only together.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     observed = service.market_data.raw_bar_sessions_by_listing([listing_id], through=as_of_session)
     if not observed.get(listing_id):
         return ()
@@ -117,6 +121,8 @@ def panel_inputs(
     service: FeatureFoundationService, listing_ids: Sequence[str] = ()
 ) -> tuple[PanelSpans, pd.DataFrame | None]:
     """Admit/read the stored Panel once per reach generation, keeping only rebased listings."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     snapshot = service.panel_state.feature_panel_snapshot_for_active(
         service.manifest.profile.market_profile_id
     )
@@ -154,6 +160,8 @@ def _panel_moved(
     agreement: tuple[float, float],
 ) -> tuple[Moved, int]:
     """Compare against fresh listing Features through the installed Panel preprocessing."""
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     stored = stored.loc[
         (stored.listing_id == listing_id)
         & ~pd.to_datetime(stored.session_date).dt.date.isin(rewritten)

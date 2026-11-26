@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.artifacts import (
     _ExecutionOutcomeArtifactStore,
 )
@@ -24,10 +25,22 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
     CausalExecutionOutcomePolicyHoldoutReader,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 PLAYPEN_ROOT = Path(__file__).resolve().parents[3]
 PLAYPEN_SRC = PLAYPEN_ROOT / "src"
+
+
+@pytest.fixture
+def outcome_catalog(tmp_path, monkeypatch):
+    from alphalattice.foundation.data_layer import history
+
+    root = tmp_path / "data-root"
+    monkeypatch.setenv("ALPHALATTICE_DATA_ROOT", str(root))
+    history.open_history("test-policy", "policy fixture", tmp_path / "workspace", root)
+    try:
+        yield
+    finally:
+        history.close_history()
 
 
 def _authority() -> PolicyHoldoutExecutionOutcomeAuthority:
@@ -139,7 +152,70 @@ def _reader(tmp_path: Path) -> tuple[CausalExecutionOutcomePolicyHoldoutReader, 
     return reader, sealed
 
 
-def test_policy_holdout_reader_releases_only_the_exact_authorized_axis(tmp_path: Path) -> None:
+def _outcome_read_cases(artifact_root: Path):
+    """The same outcome reads for a fixture or an independently copied QA workspace."""
+    reader = CausalExecutionOutcomeDevelopmentReader(artifact_root)
+    store = reader.artifacts
+    cases = []
+    for manifest in store.manifests():
+        ref = reader.manifest_uri(manifest.snapshot_hash)
+        reader.marker_for_snapshot(manifest.snapshot_hash)
+        reader.resolve_method_seal(manifest.snapshot_hash)
+        for chunk in (*manifest.development_chunks, *manifest.sealed_holdout_chunks):
+            cases.append((f"chunk:{chunk.content_hash}", lambda c=chunk: store.read_chunk(c)))
+            cases.append(
+                (
+                    f"projection:{chunk.content_hash}",
+                    lambda c=chunk: store.read_chunk(
+                        c, columns=["formation_session", "holding_end_session"]
+                    ),
+                )
+            )
+
+            def verified(c=chunk):
+                owner = object.__new__(CausalExecutionOutcomePolicyHoldoutReader)
+                owner.artifacts, owner._verified_tables = store, {}
+                return owner._verified_table(c)
+
+            cases.append((f"policy:{chunk.content_hash}", verified))
+        dates = sorted(
+            set(
+                pa.concat_tables(
+                    [
+                        store.read_chunk(c, columns=["formation_session"])
+                        for c in manifest.development_chunks
+                    ]
+                )["formation_session"].to_pylist()
+            )
+        )
+        assert dates
+        for selection in (
+            tuple(dates),
+            (dates[0],),
+            tuple(sorted({dates[len(dates) // 2], dates[-1]})),
+        ):
+            cases.append(
+                (
+                    f"sessions:{len(selection)}:{selection[0]}",
+                    lambda r=ref, chosen=selection: reader.read_development_sessions(r, chosen),
+                )
+            )
+        cases.append(("schedule", lambda r=ref: reader.read_development_schedule(r)))
+        for cutoff in (dates[0], dates[len(dates) // 2], dates[-1]):
+            cases.append(
+                (
+                    f"matured:{cutoff}",
+                    lambda r=ref, c=cutoff: reader.available_development_sessions(
+                        r, holding_end_through=c
+                    ),
+                )
+            )
+    return cases
+
+
+def test_policy_holdout_reader_releases_only_the_exact_authorized_axis(
+    tmp_path: Path, outcome_catalog
+) -> None:
     reader, _sealed = _reader(tmp_path)
     requested = (date(2025, 1, 1), date(2025, 1, 2), date(2025, 1, 4))
 
@@ -161,7 +237,9 @@ def test_policy_holdout_reader_rejects_a_fabricated_claim_capability(tmp_path: P
         )
 
 
-def test_existing_release_index_requires_an_exact_schema(tmp_path: Path) -> None:
+def test_existing_release_index_requires_an_exact_schema(
+    tmp_path: Path, outcome_catalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
     reader, _sealed = _reader(tmp_path)
     claim_hash = "7" * 64
     values = {
@@ -209,21 +287,232 @@ def test_existing_release_index_requires_an_exact_schema(tmp_path: Path) -> None
             claim_hash=claim_hash,
         )
 
+    # An outcome is catalog-backed and repeat publication keeps one artifact.
+    import pyarrow as pa
+
+    from alphalattice.capabilities.data.errors import DataError
+    from alphalattice.foundation.data_layer import history
+
+    root = history.data_root()
+
+    day, at = date(2024, 1, 2), datetime(2024, 1, 2, tzinfo=UTC)
+    row = {
+        "listing_id": "listing",
+        "symbol": "X",
+        "sequence": 1,
+        "formation_session": day,
+        "formation_close_at": at,
+        "entry_session": day,
+        "entry_open_at": at,
+        "holding_end_session": day,
+        "holding_end_open_at": at,
+        "actual_session_span": 2,
+        "entry_status": "verified",
+        "holding_end_status": "missing",
+        "entry_open_split_adjusted": 1.0,
+        "holding_end_open_split_adjusted": None,
+        "period_dividend_split_adjusted": 0.0,
+        "simple_return": None,
+        "entry_source_row_hash": "entry",
+        "holding_end_source_row_hash": "exit",
+        "row_hash": "row",
+    }
+    row["row_hash"] = canonical_hash(
+        {key: value for key, value in row.items() if key != "row_hash"}
+    )
+    outcomes = _ExecutionOutcomeArtifactStore(tmp_path / "artifacts")
+    values = pa.Table.from_pylist([row], schema=_schema())
+    chunk = outcomes.publish_chunk(split="DEVELOPMENT", table=values)
+    assert outcomes.publish_chunk(split="DEVELOPMENT", table=values) == chunk
+    different = values.set_column(
+        values.schema.get_field_index("entry_open_split_adjusted"),
+        "entry_open_split_adjusted",
+        pa.array([2.0], type=pa.float64()),
+    )
+    with pytest.raises(DataError, match="different values"):
+        outcomes.publish_chunk(split="DEVELOPMENT", table=different)
+    assert not outcomes._parquet_path(chunk.split, chunk.content_hash).exists()
+    assert outcomes.read_chunk(chunk).equals(values)
+
+    # The upgrade runner maps and compares an old file before switching readers.
+    from hashlib import sha256
+
+    from pyarrow import parquet as pq
+
+    from alphalattice.foundation.causal_outcomes.execution.contracts import (
+        CausalExecutionOutcomeMarker,
+    )
+    from alphalattice.foundation.causal_outcomes.execution.readers import (
+        execution_outcome_upgrade_family,
+    )
+    from alphalattice.foundation.data_layer.upgrade import UpgradeRunner
+
+    old_workspace = tmp_path / "old-workspace"
+    old = _ExecutionOutcomeArtifactStore(old_workspace / "artifacts")
+
+    def old_chunk(split, base=chunk, data=values):
+        metadata = {
+            "alphalattice.snapshot_kind": "CausalExecutionOutcomeChunk",
+            "alphalattice.chunk_hash": base.content_hash,
+            "alphalattice.split": split,
+        }
+        meta_hash = sha256(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        value = base.model_copy(
+            update={
+                "split": split,
+                "metadata_hash": meta_hash,
+                "uri": old._uri(f"{split.casefold().replace('_', '-')}/chunks", base.content_hash),
+            }
+        )
+        path = old._parquet_path(split, base.content_hash)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(
+            data.replace_schema_metadata({k.encode(): v.encode() for k, v in metadata.items()}),
+            path,
+        )
+        return value, path
+
+    development, old_path = old_chunk("DEVELOPMENT")
+    sealed, _ = old_chunk("SEALED_HOLDOUT")
+    fields = {
+        "kind": "CausalExecutionOutcomeSnapshot",
+        "research_cadence": "DAILY",
+        "market_as_of": day,
+        "listing_ids": ("listing",),
+        "listing_set_hash": "a" * 64,
+        "schedule_hash": "b" * 64,
+        "ordered_session_triples_hash": "c" * 64,
+        "source_rows_semantic_hash": "d" * 64,
+        "price_basis": "open_split_adjusted",
+        "return_formula_identity": (
+            "formation-close-next-common-open-following-common-open-simple-return"
+        ),
+        "corporate_action_identity": "provider-split-adjusted-open-and-period-dividend",
+        "data_validity_class": "CURRENT_UNIVERSE_RESEARCH_ONLY",
+        "development_chunks": (development,),
+        "sealed_holdout_chunks": (sealed,),
+        "development_formation_count": 1,
+        "sealed_holdout_formation_count": 1,
+        "limitations": (),
+    }
+    draft = CausalExecutionOutcomeManifest.model_construct(**fields, snapshot_hash="")
+    manifest = CausalExecutionOutcomeManifest(
+        **fields,
+        snapshot_hash=canonical_hash(draft.model_dump(mode="json", exclude={"snapshot_hash"})),
+    )
+    ref = old.publish_json(
+        category="manifests",
+        payload=manifest.model_dump(mode="json"),
+        identity_field="snapshot_hash",
+    ).uri
+    marker_fields = {
+        "kind": "CausalExecutionOutcomeMarker",
+        "snapshot_hash": manifest.snapshot_hash,
+        "manifest_ref": ref,
+        "schedule_hash": manifest.schedule_hash,
+        "listing_set_hash": manifest.listing_set_hash,
+    }
+    marker = CausalExecutionOutcomeMarker(
+        **marker_fields, marker_hash=canonical_hash(marker_fields)
+    )
+    old.publish_json(
+        category="markers",
+        payload=marker.model_dump(mode="json"),
+        identity_field="marker_hash",
+    )
+    # A committed policy release has a separate extension outside its manifest.
+    extension_row = row | {"listing_id": "extension"}
+    extension_row["row_hash"] = canonical_hash(
+        {key: value for key, value in extension_row.items() if key != "row_hash"}
+    )
+    extension_values = pa.Table.from_pylist([extension_row], schema=_schema())
+    extension_hash = canonical_hash(
+        {
+            "schema": "desktop-causal-execution-outcome",
+            "rows": (("extension", str(day), extension_row["row_hash"]),),
+        }
+    )
+    extension_base = chunk.model_copy(update={"content_hash": extension_hash})
+    extension, _ = old_chunk("SEALED_HOLDOUT", extension_base, extension_values)
+    release_fields = {
+        "claim_hash": "1" * 64,
+        "source_snapshot_hash": manifest.snapshot_hash,
+        "source_listing_set_hash": manifest.listing_set_hash,
+        "universe_manifest_revision": "2" * 64,
+        "source_watermark_hash": "3" * 64,
+        "embargo_session": day - timedelta(days=253),
+        "formation_sessions": tuple(day - timedelta(days=i) for i in reversed(range(252))),
+        "extension_chunk": extension,
+    }
+    draft_release = PolicyHoldoutExecutionOutcomeRelease.model_construct(
+        **release_fields, release_hash=""
+    )
+    release = PolicyHoldoutExecutionOutcomeRelease(
+        **release_fields,
+        release_hash=canonical_hash(
+            draft_release.model_dump(mode="json", exclude={"release_hash"})
+        ),
+    )
+    old.publish_json(
+        category="policy-holdout-releases",
+        payload=release.model_dump(mode="json"),
+        identity_field="release_hash",
+    )
+    index = old.root / "policy-holdout-releases" / "by-claim" / f"{release.claim_hash}.json"
+    index.parent.mkdir(parents=True)
+    index.write_text(
+        json.dumps({"claim_hash": release.claim_hash, "release_hash": release.release_hash})
+    )
+    cases = _outcome_read_cases(old_workspace / "artifacts")
+    before = [(name, read()) for name, read in cases]
+    family = execution_outcome_upgrade_family()
+    upgrade = UpgradeRunner(
+        root,
+        history.holding(),
+        (old_workspace,),
+        (family,),
+        lambda *_args: {"fixture": "verified"},
+    )
+    assert upgrade.run() is True
+    artifact = upgrade.id_map[("execution-outcomes", chunk.content_hash)]
+    assert uuid.UUID(artifact).version == 7
+    assert history.execution_outcome_artifact_id(chunk.content_hash) == artifact
+    assert [
+        tuple(row)
+        for row in history.holding().read(
+            "SELECT artifact_id, content_digest FROM artifact WHERE artifact_id = ?", (artifact,)
+        )
+    ] == [(artifact, chunk.content_hash)]
+    assert not history.holding().read(
+        "SELECT 1 FROM definition WHERE family = 'provider' AND name = ?",
+        ("alphalattice-causal-execution",),
+    )
+    assert old_path.is_file() and old.read_chunk(chunk).equals(values)
+    assert old.read_chunk(extension).equals(extension_values)
+    assert uuid.UUID(upgrade.id_map[("execution-outcomes", extension_hash)]).version == 7
+    after = [(name, read()) for name, read in cases]
+    for (name, first), (other, second) in zip(before, after, strict=True):
+        assert name == other
+        assert first.equals(second) if isinstance(first, pa.Table) else first == second
+
 
 def test_policy_holdout_reader_rejects_value_tamper_with_preserved_metadata(
     tmp_path: Path,
+    outcome_catalog,
 ) -> None:
     reader, sealed = _reader(tmp_path)
-    path = reader.artifacts.resolve_chunk(sealed)
-    table = pq.read_table(path)
-    values = table["simple_return"].to_pylist()
-    values[0] = 0.5
-    changed = table.set_column(
-        table.schema.get_field_index("simple_return"),
-        "simple_return",
-        pa.array(values, type=pa.float64()),
+    from alphalattice.foundation.data_layer import history
+
+    artifact = history.holding().read(
+        "SELECT artifact_id FROM artifact WHERE content_digest = ?", (sealed.content_hash,)
+    )[0][0]
+    history.store().lake.execute(
+        "UPDATE lake.results.execution_outcome SET simple_return = 0.5 "
+        "WHERE artifact_id = ? AND formation_session = ?",
+        (artifact, date(2025, 1, 2)),
     )
-    pq.write_table(changed, path)
     reader._verified_tables.clear()
 
     with pytest.raises(ValueError, match="chunk is tampered"):
@@ -232,6 +521,7 @@ def test_policy_holdout_reader_rejects_value_tamper_with_preserved_metadata(
 
 def test_unsealed_snapshot_stays_legacy_readback_and_grants_no_method_authority(
     tmp_path: Path,
+    outcome_catalog,
 ) -> None:
     """Unsealed snapshot stays legacy readback and grants no method authority."""
 
@@ -255,7 +545,7 @@ def test_unsealed_snapshot_stays_legacy_readback_and_grants_no_method_authority(
 
 
 def test_policy_holdout_final_schedule_point_stays_one_session(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome_catalog
 ) -> None:
     """Policy holdout final schedule point stays one session."""
 

@@ -36,13 +36,15 @@ from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
+from alphalattice.interface.local_application.cli_contract import client_refusal, worded
+from alphalattice.interface.local_application.client import LocalResearchClient
+from alphalattice.interface.local_application.failure_codes import LocalResearchClientError
 from alphalattice.investment.sector_research.contracts import SectorResearchError
 from alphalattice.investment.sector_research.experiments.campaign import SectorCampaignRequest
 from alphalattice.investment.sector_research.experiments.campaign_evidence import (
     SectorForecastSelectionSubmission,
 )
 from alphalattice.investment.sector_research.experiments.service import (
-    SectorExperimentRequest,
     SectorResearchDevelopmentService,
 )
 from alphalattice.protocols.actor_execution import ActorKind
@@ -73,42 +75,30 @@ def _service(
 
 
 def _publish(workspace: Path, args: argparse.Namespace) -> dict[str, object]:
-    service = _service(workspace)
     parameters = (
         {str(key): int(value) for key, value in json.loads(args.parameters).items()}
         if args.parameters is not None
         else None
     )
-    published = service.publish(
-        SectorExperimentRequest(
-            causal_outcome_snapshot_hash=args.snapshot_hash,
-            sector_revision=args.sector_revision,
-            method_id=args.method,
-            training_start=args.training_start,
-            training_end=args.training_end,
-            forecast_start=args.forecast_start,
-            forecast_end=args.forecast_end,
-            parameters=parameters,
-        )
+    result = LocalResearchClient(workspace).publish_sector_development(
+        {
+            "causal_outcome_snapshot_hash": args.snapshot_hash,
+            "sector_revision": args.sector_revision,
+            "method_id": args.method,
+            "training_start": args.training_start.isoformat(),
+            "training_end": args.training_end.isoformat(),
+            "forecast_start": args.forecast_start.isoformat(),
+            "forecast_end": args.forecast_end.isoformat(),
+            "parameters": parameters,
+        }
     )
-    # Verified from the store, not from the objects still in memory.
-    lineage = service.verify(experiment_hash=published.experiment.experiment_hash)
-    return {
-        "action": "PUBLISHED",
-        "experiment_hash": published.experiment.experiment_hash,
-        "sector_target_evidence_hash": published.target_evidence.evidence_hash,
-        "forecast_surface_hash": published.surface.surface_hash,
-        "evaluation_hash": published.evaluation.evaluation_hash,
-        "causal_outcome_snapshot_hash": lineage.outcome_snapshot_hash,
-        "outcome_method_binding_hash": lineage.outcome_method_binding_hash,
-        "maturity_lag_sessions": lineage.maturity_lag_sessions,
-        "method_id": published.surface.recipe.method_id,
-        "formation_count": len(published.formation_sessions),
-        "forecast_formation_count": len(published.forecast_formation_sessions),
-        "sector_count": len(published.ordered_sectors),
-        "current_pointer_writes": 0,
-        "alpha_model_fits": 0,
-    }
+    if "refused" in result:
+        return result | {
+            "action": "REFUSED",
+            "failure_code": result["refused"],
+            "current_pointer_writes": 0,
+        }
+    return result
 
 
 def _inspect(workspace: Path, *, experiment_hash: str | None) -> dict[str, object]:
@@ -219,7 +209,8 @@ def _campaign(workspace: Path, args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch a Sector command and report an inadmissible Host handoff in words."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--workspace",
@@ -264,7 +255,7 @@ def main() -> int:
     action.add_argument("--publish", action="store_true")
     action.add_argument("--inspect", action="store_true")
     action.add_argument("--campaign", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     workspace = args.workspace.resolve()
     for field in ("outcome_artifact_root", "membership_artifact_root", "output_artifact_root"):
         value = getattr(args, field)
@@ -306,6 +297,16 @@ def main() -> int:
             "failure_code": "sector_research.evidence_not_published",
             "current_pointer_writes": 0,
         }
+    except LocalResearchClientError as error:
+        refusal = client_refusal(str(error))
+        result = {
+            "action": "REFUSED",
+            "status": "REFUSED",
+            "failure_code": str(error),
+            "detail": worded(refusal.detail),
+            "next_action": refusal.next_action,
+            "current_pointer_writes": 0,
+        }
     except SectorResearchError as error:
         # A typed refusal is the informative outcome, not a stack trace.
         result = {
@@ -314,7 +315,7 @@ def main() -> int:
             "current_pointer_writes": 0,
         }
     print(json.dumps(result, sort_keys=True, default=str))
-    return 0
+    return 2 if result.get("action") == "REFUSED" else 0
 
 
 if __name__ == "__main__":

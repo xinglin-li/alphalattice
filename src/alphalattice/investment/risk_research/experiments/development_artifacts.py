@@ -19,11 +19,18 @@ current or admitted pointer.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Callable, Iterator
 from datetime import date
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.foundation.data_layer import history, risk_history
+from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
+from alphalattice.foundation.market_data_ops.storage import world
 from alphalattice.investment.risk_research.contracts import (
     HistoricalCovarianceChunk,
     RiskFormationEvaluation,
@@ -31,19 +38,33 @@ from alphalattice.investment.risk_research.contracts import (
 from alphalattice.investment.risk_research.estimators.contracts import (
     RiskEstimatorRecipeEnvelope,
 )
+from alphalattice.investment.risk_research.estimators.matrix_identity import matrix_content_hash
 from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.investment.risk_research.surfaces.artifacts import (
+    CovarianceChunkLease,
+    RiskArtifactError,
+    RiskArtifactStore,
+)
 
 _HASH = r"^[0-9a-f]{64}$"
 
 DEVELOPMENT_SURFACE_CATEGORY = "development/covariance-surfaces"
 DEVELOPMENT_DIAGNOSTICS_CATEGORY = "development/covariance-diagnostics"
+DEVELOPMENT_CHECKPOINT_CATEGORY = "development/build-checkpoints"
 
 
 class _Contract(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RiskFormationAxis(_Contract):
+    """The listing axis used for one development formation and its excluded names."""
+
+    formation_session: date
+    ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
+    excluded_listing_ids: tuple[str, ...]
 
 
 class RiskDevelopmentDiagnostics(_Contract):
@@ -115,6 +136,12 @@ class RiskDevelopmentCheckpoint(_Contract):
     chunks: tuple[HistoricalCovarianceChunk, ...]
     evaluations: tuple[RiskFormationEvaluation, ...]
     component_shrinkages: tuple[tuple[str, tuple[float, ...]], ...] = ()
+    formation_axes: tuple[RiskFormationAxis, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    ordered_listing_ids: tuple[str, ...] | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
     checkpoint_hash: str = Field(pattern=_HASH)
 
     @classmethod
@@ -138,11 +165,35 @@ class RiskDevelopmentCheckpoint(_Contract):
             or sessions != tuple(e.formation_session for e in self.evaluations)
             or hashes != tuple(e.matrix_hash for e in self.evaluations)
             or any(len(series) != len(sessions) for _, series in self.component_shrinkages)
+            or (
+                self.formation_axes is not None
+                and tuple(axis.formation_session for axis in self.formation_axes) != sessions
+            )
             or self.checkpoint_hash
             != canonical_hash(self.model_dump(mode="json", exclude={"checkpoint_hash"}))
         ):
             raise ValueError("risk_research.development_checkpoint_invalid")
+        if self.ordered_listing_ids is not None and self.formation_axes is not None:
+            raise ValueError("risk_research.development_checkpoint_axis_mismatch")
+        for chunk, axis in self.chunks_with_axes():
+            if axis is not None and (len(axis) != chunk.asset_count or len(set(axis)) != len(axis)):
+                raise ValueError("risk_research.development_checkpoint_axis_mismatch")
         return self
+
+    def chunks_with_axes(
+        self,
+    ) -> Iterator[tuple[HistoricalCovarianceChunk, tuple[str, ...] | None]]:
+        """Yield each sealed chunk with its declared shared or per-formation listing axis."""
+        position = 0
+        for chunk in self.chunks:
+            axis = self.ordered_listing_ids
+            if self.formation_axes is not None:
+                formations = self.formation_axes[position : position + chunk.matrix_count]
+                axis = formations[0].ordered_listing_ids
+                if any(item.ordered_listing_ids != axis for item in formations):
+                    raise ValueError("risk_research.development_checkpoint_axis_mismatch")
+            yield chunk, axis
+            position += chunk.matrix_count
 
 
 class RiskDevelopmentCovarianceSurface(_Contract):
@@ -186,9 +237,19 @@ class RiskDevelopmentCovarianceSurface(_Contract):
     ordered_listing_ids: tuple[str, ...] = Field(min_length=1)
     formation_sessions: tuple[date, ...] = Field(min_length=1)
     chunks: tuple[HistoricalCovarianceChunk, ...] = Field(min_length=1)
+    formation_axes: tuple[RiskFormationAxis, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     diagnostics_hash: str = Field(pattern=_HASH)
     limitations: tuple[str, ...] = Field(min_length=1)
     surface_hash: str = Field(pattern=_HASH)
+
+    def chunk_listing_ids(self, chunk: HistoricalCovarianceChunk) -> tuple[str, ...]:
+        """Return the shared listing axis validated for this chunk's formations."""
+        if self.formation_axes is None:
+            return self.ordered_listing_ids
+        position = self.formation_sessions.index(chunk.formation_sessions[0])
+        return self.formation_axes[position].ordered_listing_ids
 
     @property
     def selected_numerical_binding_hash(self) -> str:
@@ -217,6 +278,7 @@ class RiskDevelopmentCovarianceSurface(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
+        """Verify the binding, formation axes, chunks and sealed surface identity."""
         # The surface's own method fields must agree with the Program binding it
         # carries. Without this the artifact could describe one method in its
         # envelope and a different one in its binding, and every hash on it would
@@ -229,8 +291,34 @@ class RiskDevelopmentCovarianceSurface(_Contract):
             raise ValueError("risk_research.development_surface_adapter_route_invalid")
         if sum(chunk.matrix_count for chunk in self.chunks) != len(self.formation_sessions):
             raise ValueError("risk_research.development_surface_count_invalid")
-        if any(chunk.asset_count != len(self.ordered_listing_ids) for chunk in self.chunks):
-            raise ValueError("risk_research.development_surface_axis_invalid")
+        if self.formation_axes is None:
+            if any(chunk.asset_count != len(self.ordered_listing_ids) for chunk in self.chunks):
+                raise ValueError("risk_research.development_surface_axis_invalid")
+        else:
+            if (
+                tuple(axis.formation_session for axis in self.formation_axes)
+                != self.formation_sessions
+            ):
+                raise ValueError("risk_research.development_surface_axis_invalid")
+            for axis in self.formation_axes:
+                selected = set(axis.ordered_listing_ids)
+                if (
+                    tuple(item for item in self.ordered_listing_ids if item in selected)
+                    != axis.ordered_listing_ids
+                    or tuple(item for item in self.ordered_listing_ids if item not in selected)
+                    != axis.excluded_listing_ids
+                ):
+                    raise ValueError("risk_research.development_surface_axis_invalid")
+            position = 0
+            for chunk in self.chunks:
+                axes = self.formation_axes[position : position + chunk.matrix_count]
+                if any(
+                    axis.ordered_listing_ids != axes[0].ordered_listing_ids
+                    or len(axis.ordered_listing_ids) != chunk.asset_count
+                    for axis in axes
+                ):
+                    raise ValueError("risk_research.development_surface_axis_invalid")
+                position += chunk.matrix_count
         computed = tuple(session for chunk in self.chunks for session in chunk.formation_sessions)
         # Order, not membership: the covariance axis is positional.
         if computed != tuple(self.formation_sessions):
@@ -239,6 +327,140 @@ class RiskDevelopmentCovarianceSurface(_Contract):
         if self.surface_hash != expected:
             raise ValueError("risk_research.development_surface_identity_invalid")
         return self
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
+
+
+def covariance_chunks(
+    workspace: Path,
+) -> Iterator[tuple[RiskArtifactStore, HistoricalCovarianceChunk, tuple[str, ...], Path]]:
+    """Read the sealed covariance references from published surfaces and durable checkpoints."""
+    if not workspace.is_dir():
+        return
+    for folder, children, _files in os.walk(workspace, onerror=_raise_walk_error):
+        if "risk-research" not in children:
+            continue
+        children.remove("risk-research")
+        store = RiskArtifactStore(Path(folder))
+        for payload in store.iter_json(
+            category=DEVELOPMENT_SURFACE_CATEGORY, identity_field="surface_hash"
+        ):
+            surface = RiskDevelopmentCovarianceSurface.model_validate(payload)
+            for chunk in surface.chunks:
+                axis = surface.chunk_listing_ids(chunk)
+                yield (
+                    store,
+                    chunk,
+                    axis,
+                    store._path("covariance/chunks", chunk.content_hash, "bin"),
+                )
+
+        try:
+            checkpoints = sorted((store.root / DEVELOPMENT_CHECKPOINT_CATEGORY).iterdir())
+        except FileNotFoundError:
+            checkpoints = []
+        for path in checkpoints:
+            if path.suffix != ".json":
+                continue
+            checkpoint = RiskDevelopmentCheckpoint.model_validate_json(path.read_bytes())
+            if path.stem != checkpoint.execution_key:
+                raise RiskArtifactError("risk_research.development_checkpoint_scope_mismatch")
+            for chunk, axis in checkpoint.chunks_with_axes():
+                packed = store._path("covariance/chunks", chunk.content_hash, "bin")
+                if axis is not None:
+                    yield store, chunk, axis, packed
+                elif not packed.is_file():
+                    raise RiskArtifactError("risk_research.covariance_chunk_incomplete")
+                # A pre-catalog dense checkpoint only has packed bytes, copied by the workspace.
+
+
+def _legacy_covariance_chunks(
+    workspace: Path,
+) -> Iterator[tuple[RiskArtifactStore, HistoricalCovarianceChunk, tuple[str, ...]]]:
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for store, chunk, axis, path in covariance_chunks(workspace):
+        key = (chunk.content_hash, axis)
+        if key not in seen and path.is_file():
+            seen.add(key)
+            yield store, chunk, axis
+
+
+def carry_risk_covariance(
+    workspace: Path, copy: Path, *, source_root: Path | None = None
+) -> Iterator[Path]:
+    """Carry catalog-only chunks into a backup or copy at their retained-file paths."""
+    workspace = workspace.resolve()
+    for store, chunk, axis, path in covariance_chunks(workspace):
+        target = copy / path.relative_to(workspace)
+        if path.is_file() or target.is_file():
+            continue
+        packed = store.catalog_covariance(chunk, axis, root=source_root)
+        if packed is None:
+            raise RiskArtifactError("risk_research.covariance_chunk_incomplete")
+        store._atomic_write(target, packed.astype("<f8", copy=False).tobytes())
+        yield target
+
+
+def risk_covariance_upgrade_family(holder: Callable[[Path], str | None]) -> Family:
+    """Move each sealed legacy chunk with its owning workspace and prove the original seals."""
+
+    def deferred(workspace: Path) -> bool:
+        # A workspace backup restores market tables as exports, not as a live market database.
+        # Its packed Risk chunks remain readable until authoritative listings have arrived.
+        if (
+            not (workspace / "held-state" / "generation.json").is_file()
+            or (workspace / "market-data.duckdb").is_file()
+        ):
+            return False
+        return any(
+            risk_history.unregistered_risk_listings(store.coordinate_axis(chunk, axis)) != []
+            for store, chunk, axis in _legacy_covariance_chunks(workspace)
+        )
+
+    def holds(workspace: Path) -> bool:
+        if deferred(workspace):
+            return False
+        identity = holder(workspace)
+        return any(
+            identity is None
+            or risk_history.risk_covariance_held(
+                chunk.content_hash,
+                store.coordinate_key(store.coordinate_axis(chunk, axis)),
+                identity,
+            )
+            != chunk.matrix_count
+            for store, chunk, axis in _legacy_covariance_chunks(workspace)
+        )
+
+    def step(runner: UpgradeRunner) -> None:
+        for workspace in runner.workspaces:
+            identity = holder(workspace)
+            for index, (store, chunk, axis) in enumerate(_legacy_covariance_chunks(workspace)):
+                if index == 0:
+                    identity = history.workspace_on_log(workspace, workspace.name, identity)
+                    world.admit_universe(workspace / "market-data.duckdb", identity)
+                packed = store.legacy_covariance(chunk)
+                store.admit_covariance(chunk, axis, packed, workspace_id=identity)
+
+    def verify(runner: UpgradeRunner) -> bool:
+        for workspace in runner.workspaces:
+            for store, chunk, axis in _legacy_covariance_chunks(workspace):
+                packed = store.catalog_covariance(chunk, axis)
+                if packed is None:
+                    return False
+                lease = CovarianceChunkLease(packed=packed, chunk=chunk)
+                if any(
+                    matrix_content_hash(lease.matrix(day)) != expected
+                    for day, expected in zip(
+                        chunk.formation_sessions, chunk.matrix_hashes, strict=True
+                    )
+                ):
+                    return False
+        return True
+
+    return Family("risk-covariance", step, verify, holds, deferred=deferred)
 
 
 __all__ = [

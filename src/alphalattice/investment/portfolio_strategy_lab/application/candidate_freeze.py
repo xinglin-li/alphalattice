@@ -8,7 +8,7 @@ have published exactly this result, each a refusal of its own.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from alphalattice.investment.portfolio_strategy_lab.application.finalization import (
     CompletedDevelopmentRun,
@@ -26,6 +26,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.finalization_led
 from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger import (
     PortfolioLedgerStore,
 )
+from alphalattice.kernel.clock import observation_time
 
 
 class PortfolioFinalizationCompositionError(ValueError):
@@ -78,7 +79,9 @@ def freeze_candidate(
         raise PortfolioFinalizationCompositionError(
             "product_host.development_task_published_another_program"
         )
-    execution = ledger.load_execution(result.execution_ledger_hash)
+    execution, report = ledger.load_execution_and_report(
+        result.execution_ledger_hash, result.report_hash
+    )
     candidate = FrozenPortfolioCandidate.create(
         workspace_id=workspace_id,
         spec_hash=result.spec_hash,
@@ -91,9 +94,9 @@ def freeze_candidate(
         execution_ledger_hash=execution.ledger_hash,
         economic_ledger_hash=result.economic_ledger_hash,
         report_hash=result.report_hash,
-        control_receipt_hash=ledger.load_report(result.report_hash).control_receipt.receipt_hash,
+        control_receipt_hash=report.control_receipt.receipt_hash,
         pre_protected_state=SealedPreProtectedState.of(execution),
-        frozen_at=frozen_at or datetime.now(UTC),
+        frozen_at=frozen_at or observation_time(),
     )
     store.publish_freeze(candidate=candidate, receipt=PortfolioCandidateFreezeReceipt.of(candidate))
     return candidate

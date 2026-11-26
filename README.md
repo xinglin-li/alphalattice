@@ -6,7 +6,6 @@ English | [简体中文](README.zh-CN.md)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](docs/public-source/getting-started.md)
 [![uv](https://img.shields.io/badge/uv-locked-261230.svg)](docs/public-source/getting-started.md)
 [![Mentioned in Awesome](https://awesome.re/mentioned-badge.svg)](https://github.com/wilsonfreitas/awesome-quant)
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/xinglin-li/alphalattice?utm_source=badge)
 
 **Ask for a dated research portfolio and inspect its positions, source evidence and recorded review in one workspace.**
 
@@ -25,22 +24,17 @@ and limits in older sector and price records. Verification runs check for
 look-ahead. The committee can decline to endorse a result. AlphaLattice runs
 locally and is open source.
 
-## 0.2.4, now
+## 0.2.9, now
 
-- Reads show a bounded summary with a pointer to the complete answer, which `--output` saves whole.
-- Completing a Goal starts from a filled-in request: its recorded facts and references are already bound, and the agent adds its judgment.
-- The local Host can stay up between sessions. A matching session reuses it, and it stops by itself once no work is owed and it has been idle for its configured period. On Claude Code desktop, the agent can start it in the app's Terminal panel.
-- An invalid research plan offers its named recovery steps, and a cancelled membership update keeps what it needs to restore its change.
+**AlphaLattice 0.2.9 starts faster, runs Tasks more reliably, frees unused storage, and makes research results easier to check.**
 
-See the [0.2.4 release notes](docs/public-source/release-notes.md#024) for each change. The versioned notes keep each measured workload and its limits.
+- **Faster.** Supported commands reuse the resident Host. Daily scoring, review preparation and Chinese Evidence search take less time.
+- **Steadier.** Interactive Tasks get priority, cancellation interrupts active queries and cleans up child processes, Windows Daily updates can use an open market database, and restored workspaces can start again.
+- **Lighter on disk.** See storage by category, confirm a cleanup, and have the Host clear owned Task scratch and expired backups.
+- **Results you can trust.** Each Daily reports five market-data checks, and files are checked again when they change or during idle verification.
+- **For integrators.** Operations share a registered interface, caches and outbound requests have bounds, and seven packages have new import paths.
 
-Use Claude Code or Codex as the lead. To see what a run used, open a session's
-**Participants** in the Workbench (**Team**, then **Sessions**): it shows the models and
-tokens each member used, and marks any gaps.
-
-Give your agent this repository's link and one intent:
-
-> Use https://github.com/xinglin-li/alphalattice to build me a reviewed Trend Rebound strategy from public data and show its dated research positions; open the Workbench in your built-in browser so I can follow it.
+See the [0.2.9 release notes](docs/public-source/release-notes.md#029) for each change. The versioned notes keep each measured workload and its limits.
 
 ## Two ways to use AlphaLattice
 
@@ -49,19 +43,19 @@ Give your agent this repository's link and one intent:
    and the strategy, produces that date's research positions and follows them
    through review, committee discussion and a report.
 
-   **Expect a pause for your answer.** The agent stops once to ask whether
-   AlphaLattice may keep this workspace's network on for daily updates, fetching
-   market data and SEC filings within the default budget (3 per issuer,
-   600 documents and 3 GB overall). **The work waits until you answer yes or no.**
-   Your yes stays in force until you tell it to stop; each network use is disclosed
-   and recorded in activity, including automated updates.
+   The agent asks once whether AlphaLattice may keep this workspace's network on
+   for daily updates, fetching market data and SEC filings within the default budget
+   (3 per issuer, 600 documents and 3 GB overall). The first use continues without
+   waiting for your answer. Your yes stays in force until you tell it to stop;
+   network use is disclosed, including for automated updates. Activity records it
+   when available and names observation gaps.
 
    At the first-use report, the agent also asks whether daily updates should
    convene the investment committee. Decide it in the conversation, then or at any
    later time, and change it the same way, for example "Stop convening the
    committee on daily updates." Until you say yes, later updates get the portfolio
-   manager's view on the reviewed positions. The first use does not wait for this
-   answer.
+   manager's view on the reviewed positions, with the option to convene the
+   committee. The first use does not wait for this answer.
 
 2. **Daily update, in a new session in the same folder.** Say
    `Positions for <next session>, reviewed.` The agent uses the installed strategy
@@ -80,9 +74,9 @@ Give your agent this repository's link and one intent:
 
 *Example run on synthetic data: a saved risk study shows its input window and diagnostics.*
 
-![The activity timeline of an example research workspace.](docs/assets/readme/activity-1280.png)
+![The History view of an example research workspace.](docs/assets/readme/activity-1280.png)
 
-*Example run on synthetic data: the activity record keeps the work behind the result.*
+*Example run on synthetic data: History lists recorded Tasks and updates.*
 
 <details>
 <summary>The same example run at a narrower width</summary>
@@ -92,6 +86,19 @@ Give your agent this repository's link and one intent:
 *Example run on synthetic data at a browser width of 900 pixels.*
 
 </details>
+
+## Install and start
+
+When [0.2.9](https://github.com/xinglin-li/alphalattice/releases/tag/v0.2.9)
+is available, run this PowerShell command in the folder you want to use.
+
+```powershell
+if (-not (Get-Command uvx -ErrorAction SilentlyContinue)) { throw 'Install uv / 安装 uv https://docs.astral.sh/uv/getting-started/installation/' } else { & { $priorRoot = $env:ALPHALATTICE_DATA_ROOT; try { $env:ALPHALATTICE_DATA_ROOT = Join-Path $PWD.Path 'alphalattice-data'; uvx --isolated --python 3.12 --from https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-0.2.9-py3-none-any.whl --with-requirements https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-requirements.txt --overrides https://github.com/xinglin-li/alphalattice/releases/download/v0.2.9/alphalattice-runtime-overrides.txt alphalattice --workspace ./alphalattice-workspace serve --no-browser } finally { $env:ALPHALATTICE_DATA_ROOT = $priorRoot } } }
+```
+
+[Install and start](docs/public-source/install.md) has the macOS and Linux
+command and the Claude Code plugin. You can also give your agent this repository link and your
+research intent.
 
 ## Before you start
 
@@ -124,7 +131,15 @@ See [Getting started](docs/public-source/getting-started.md) and the
 for installation, downloads and the permissions each step needs.
 
 Already using AlphaLattice? Follow [Upgrading](docs/public-source/upgrading.md)
-before installing a later 0.2.x patch in your existing workspace.
+when moving from 0.2.0 to a later 0.2.x patch in your existing workspace.
+Back up the agent project's `.alphalattice/user/`, note the workspace's absolute
+path, and stop its Host with `alphalattice host stop`, waiting for it to release
+the workspace before replacing the installation. For a source checkout, update the code, sync the locked dependencies
+and follow the doctor's repairs; a wheel uses its own runtime requirements and
+constraints. Continue in the same project and workspace, keeping earlier sealed
+goals and reports.
+If a refusal remains unresolved, generate `alphalattice problem report --output "<out>/report.json"`
+and review it before sharing in a GitHub issue; your agent asks before sending it.
 
 ## Why AlphaLattice
 
@@ -242,22 +257,20 @@ historical source availability alongside the performance.
 | [Agents](docs/public-source/agents.md) | Follow goals, sessions and specialist work. |
 | [Extending](docs/public-source/extending.md) | Develop and inspect factors and models. |
 | [Data and care](docs/public-source/data-and-care.md) | Update, inspect, back up and restore a workspace. |
-| [Privacy](docs/public-source/privacy.md) | Read what usage records contain and disable their reader. |
+| [Privacy](docs/public-source/privacy.md) | Read what usage records contain, disable their reader, or configure optional trace export. |
 | [Downloads and data terms](docs/public-source/third-party-and-data.md) | Read the terms for models and data sources. |
 
 The [guide index](docs/public-source/README.md) links the other reference pages.
 
 Use [backup and restore](docs/public-source/data-and-care.md) into a new directory
-to preserve the saved records and their integrity checks. [Privacy](docs/public-source/privacy.md)
+to preserve the saved records and their integrity checks. One Host runs per data
+root; a second is refused by name, and [Storage](docs/public-source/data-and-care.md#storage)
+gives the way on. [Privacy](docs/public-source/privacy.md)
 explains recorded usage and its switch.
 
 ## This release and where it is going
 
-**0.2.4 is the current release.** It brings bounded reads with a saved complete
-answer, a Goal completion that starts from its recorded facts, a local Host that stays
-up between sessions and stops itself when idle, and named recovery for invalid plans.
-The [release notes](docs/public-source/release-notes.md#024) describe the delivered
-behaviour; earlier notes keep their observed workloads and remaining limits.
+**0.2.9 is the current release.** It gives each job in the program's core one owner: the clock, settings, network access, hashing and database connections. One resident Host per data root serves a thin command line, resources are granted by lease within the four-core budget, a check already done is trusted until its input changes, and each Daily checks its data's health. The [release notes](docs/public-source/release-notes.md#029) describe the delivered behaviour; earlier notes keep their observed workloads and remaining limits.
 
 Each minor version's scope is planned in advance. Its release notes state the
 checks run, measured workloads and unproved limits; patches in between make the
@@ -268,28 +281,14 @@ inputs, sealed results and your authority.
 The next 0.2.x patches, in order. Each holds one theme, and each publishes its
 measured time, disk and memory against a stated budget:
 
-- **0.2.5: a measured baseline.** A first use and a daily, replayed without a model,
-  report each stage's time and the program's peak memory in minutes; later speed and
-  memory changes are measured against it.
-- **0.2.6: memory within budget.** Bring first use and daily updates within 8 GB.
-- **0.2.7: realistic replay.** Replay real-world events (corporate actions, late
-  reports, provider outages) through the real data client and its cache.
-- **0.2.8: data checks.** Check the health of the data every day, in the program and
-  the Workbench.
-- **0.2.9: nothing stored twice.** A storage data model; upgrades reuse unchanged data.
-- **0.2.10: caching and checking, done once.** Hash once, verify at trust boundaries
-  and recompute only what changed, borrowing from Git's index and Bazel's action
-  cache.
-- **0.2.11: less waiting on the program.** The program prepares likely next steps
-  while the agent is thinking.
-- **0.2.12: history you can query by date.** Ask what was known, tried and decided on
-  a past date, with nothing learned after it.
-- **0.2.13: an evaluation flywheel.** One runner and fixed gates check every patch
-  from the product's own records.
-- **0.2.14: a first result in ten minutes.** A short trial on a small sample, labelled
-  as a trial.
-- **0.2.15: ground for daily supervision.** A store for the forward record of
-  positions.
+- **0.2.10: the daily fits the machine, and you can try it.** One command to install and a Claude Code plugin. Its targets: first use and daily updates within 8 GB of memory, and a first result, labelled as a trial, within ten minutes from an empty folder.
+- **0.2.11: realistic replay.** Replay real-world events (corporate actions, late reports, provider outages) through the real data client and its cache.
+- **0.2.12: a plugin platform.** The product's parts register through one interface registry, with profiles and plugin trust; the model families become the first plugins.
+- **0.2.13: history you can query by date.** Ask what was known, tried and decided on a past date, with nothing learned after it.
+- **0.2.14: the product in plugins, and the agent protocol as an API.** The product's parts move onto the plugin platform one at a time, and the agent protocol is finished as an API that keeps working for existing callers.
+- **0.2.15: less waiting on the program.** The program prepares likely next steps while the agent is thinking.
+- **0.2.16: an evaluation flywheel.** One runner and fixed gates check every patch from the product's own records.
+- **0.2.17: ground for daily supervision.** What 0.3's daily supervision needs, including a store for the forward record of positions.
 
 Later minor versions:
 
@@ -338,7 +337,7 @@ For a security vulnerability, report privately as described in [SECURITY](SECURI
 
 ## About
 
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 The [design principles](docs/public-source/design-principles.md) explain how the
 agent, the software and the person share the work.

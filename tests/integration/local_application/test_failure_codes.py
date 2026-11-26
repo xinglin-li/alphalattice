@@ -30,26 +30,53 @@ from alphalattice.interface.local_application.portfolio_research import (
 )
 
 
-def test_a_committee_document_refusal_keeps_its_members_own_read() -> None:
-    """An invalid member message offers that member's keyed floor read."""
-    member = dict(
-        update_task_id="00000000-0000-0000-0000-000000000001",
-        committee_role="ALPHA",
-        committee_key="a" * 32,
-    )
-    request = dict(
-        operation="COMMITTEE_SUBMIT",
-        **member,
-        committee_message=dict(
-            kind="STANCE",
-            text="Support.",
-            positions=dict.fromkeys((f"T{i}" for i in range(1, 34)), "SUPPORT"),
-        ),
-    )
+@pytest.mark.parametrize(
+    "operation",
+    ("COMMITTEE_SUBMIT", "EXPERIMENT_CONTROLS", "EXPERIMENT_PLAN", "DATA_UPDATE_READBACK"),
+    ids=("committee-member", "study-controls", "study-plan", "data-update-readback"),
+)
+def test_a_committee_document_refusal_keeps_its_members_own_read(operation) -> None:
+    """A malformed field offers its own admitted read in the original selection's context."""
+    if operation == "COMMITTEE_SUBMIT":
+        member = dict(
+            update_task_id="00000000-0000-0000-0000-000000000001",
+            committee_role="ALPHA",
+            committee_key="a" * 32,
+        )
+        request_fields = dict(
+            operation=operation,
+            **member,
+            committee_message=dict(
+                kind="STANCE",
+                text="Support.",
+                positions=dict.fromkeys((f"T{i}" for i in range(1, 34)), "SUPPORT"),
+            ),
+        )
+        read = {"operation": "COMMITTEE_READ", **member}
+    elif operation == "DATA_UPDATE_READBACK":
+        request_fields = {"operation": operation, "task_id": "?"}
+        read = {"operation": "TASKS"}
+    elif operation == "EXPERIMENT_PLAN":
+        request_fields = {
+            "operation": operation,
+            "research_input_id": "factor-development",
+            "input_binding_hash": "?",
+            "experiment_document": {"experiment": {"kind": "risk.covariance-development"}},
+        }
+        read = {"operation": "RESEARCH_INPUTS"}
+    else:
+        read = {
+            "operation": operation,
+            "research_input_id": "factor-development",
+            "experiment_kind": "factor.screening-development",
+        }
+        request_fields = {**read, "input_binding_hash": "?"}
     with pytest.raises(ValidationError) as caught:
-        PortfolioResearchRequestDocument.model_validate(request)
-    answer = located_failure(caught.value, "local_client.request_invalid", request=request)
-    assert answer["next_requests"]["valid_values"] == {"operation": "COMMITTEE_READ", **member}
+        PortfolioResearchRequestDocument.model_validate(request_fields)
+    answer = located_failure(caught.value, "local_client.request_invalid", request=request_fields)
+    assert answer["failure_code"] == "local_client.request_invalid"
+    assert (answer.get("next_requests") or {}).get("valid_values") == read
+    PortfolioResearchRequestDocument.model_validate(read)
 
 
 def test_an_install_missing_its_setup_offers_its_own_form() -> None:

@@ -6,24 +6,16 @@ seal an artifact before the next begins, so a restart resumes after the last
 expensive step rather than repeating it. Span selection is a Host step with
 its own receipt, which is what makes the packet an actor read reproducible.
 
-A coverage run is the same adapter over several units: one Task whose work
-items are the same stages qualified by unit (`u01_admit_evidence_request` ...
-`u07_select_evidence_spans`), each unit its own request of at most eight
-issuers, executed one after another by the one runner. A unit that refuses
-seals a typed failure and the run goes on to the next unit; a unit whose
-intent was already prepared -- by an earlier run, a cancelled run or a single
-preparation -- carries that preparation's sealed artifacts forward instead
-of computing them again. Nothing here schedules: the plan is the schedule.
+Coverage runs qualify those stages by unit. A unit's refusal is sealed for
+that unit; a previously prepared unit reuses its sealed artifacts.
 """
 
 from __future__ import annotations
 
-import hashlib
-import time
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
-from functools import partial
+from datetime import datetime
 from typing import Self, cast
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
@@ -31,6 +23,10 @@ from uuid import UUID
 from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.host_stop import HostStopping
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.control.task_control.contracts import (
     PLAN_WORK_ITEM_LIMIT,
     ResearchGoal,
@@ -46,13 +42,8 @@ from alphalattice.control.task_control.contracts import (
 )
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
-from alphalattice.kernel.knowledge.runtime import (
-    VERIFIED_PACKS,
-    before_first_inference,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import integrity_sha256
 from alphalattice.protocols.actor_execution import ActorKind, ActorSubmissionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 
@@ -85,6 +76,7 @@ from ..documents.contracts import (
     AlternativeEvidenceDocumentReference,
     AlternativeEvidenceDocumentSet,
 )
+from ..documents.library import EvidenceDocumentUnverifiable
 from ..documents.structure import DocumentStructure
 from ..documents.tables import TableViewError, render_table_view, table_catalogue
 from ..publication.analysis import AlternativeEvidenceAnalysisPublicationView
@@ -118,12 +110,12 @@ from .coverage import (
     seal_unit_failure,
     sources_short,
 )
-from .execution import PREPARATIONS, machine_load, plan_execution
+from .execution import PREPARATIONS, first_unit_settled, machine_load, plan_execution
 from .failure_diagnostics import failure_cause
-from .failure_diagnostics import failure_code as _failure_code
+from .failure_diagnostics import failure_code as _diagnostic_failure_code
 from .history import require_answer_format
 from .policy import AdmittedEvidencePolicy
-from .progress import ACQUIRE, BUILD, SELECT, PreparationProgress
+from .progress import ACQUIRE, SELECT, PreparationProgress
 from .service import (
     AlternativeEvidenceAnalysisActor,
     AlternativeEvidenceDocumentIntelligenceRuntime,
@@ -515,7 +507,7 @@ def _verify_table_view(
     if (
         content_sha256 != binding.parent_source_content_hash
         or media_type != binding.parent_media_type
-        or hashlib.sha256(content).hexdigest() != content_sha256
+        or integrity_sha256(content).hexdigest() != content_sha256
     ):
         raise ValueError("alternative_evidence.brief_table_view_original_mismatch")
     try:
@@ -540,10 +532,6 @@ def _verify_table_view(
         or view.rows_to != binding.rows_to
     ):
         raise ValueError("alternative_evidence.brief_span_source_mismatch")
-
-
-_MODEL_STAGES = frozenset({BUILD, SELECT})
-"""The stages whose time is the model's: a later unit's wait for the first."""
 
 
 def split_unit_stage(stage_id: str) -> tuple[str | None, str]:
@@ -585,7 +573,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         self.runtime = runtime
         self.registry = registry
         self.resources = resources
-        self.clock: Callable[[], datetime] = clock or (lambda: datetime.now(UTC))
+        self.clock: Callable[[], datetime] = clock or (utc_now)
         """The service's clock, against which a live acquisition's deadline is
         judged while it runs -- the same clock that stamps the Task."""
         self._runs: dict[str, AlternativeEvidenceCoverageRun] = {}
@@ -674,7 +662,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             machine_load(preparations_running=self.preparations_running()),
             units=len(self._run(task).units),
             task_id=task.task_id,
-            planned_at=datetime.now(UTC),
+            planned_at=utc_now(),
         )
         self.runtime.execution.record(plan)
         PREPARATIONS.begin(task.task_id, plan)
@@ -702,20 +690,11 @@ class AlternativeEvidenceDocumentTaskAdapter:
         del execution
         rank = self._rank(task, work_item.stage_id)
         stage = split_unit_stage(work_item.stage_id)[1]
-        later = rank > 0 and stage in _MODEL_STAGES
-        if later and stage == SELECT:
+        if rank > 0 and stage == SELECT:
             self._after_the_first_unit(task)
-        # A later unit's build waits only at its first model call (F2): its reading,
-        # cutting and session loading run while the first unit prepares. Its sessions
-        # are its own share of the CPU budget, the first unit's its whole plan.
-        gate = partial(self._after_the_first_unit, task) if later and stage == BUILD else None
         # One stage at a time holds the runtime's shared state; a stage gives it
         # up only where it touches none (`EvidenceWriter`).
-        with (
-            VERIFIED_PACKS.threads_for(PREPARATIONS.threads(task.task_id, first=rank == 0)),
-            before_first_inference(gate),
-            self.runtime.writer.held(rank=rank),
-        ):
+        with self.runtime.writer.held(rank=rank):
             return self._execute_stage(task, work_item)
 
     def _after_the_first_unit(self, task: TaskRecord) -> None:
@@ -728,15 +707,14 @@ class AlternativeEvidenceDocumentTaskAdapter:
         107 s one at a time.
         """
         first = self._run(task).units[0].unit_id
-        while True:
+
+        def state() -> object:  # None: the Task ended or failed
             current = self.registry.task(task.task_id)
-            if current.lifecycle is not TaskLifecycle.RUNNING:
-                return
-            if self.unit_states(current)[first]["state"] != "PENDING":
-                # The later units' sessions take their share of the budget.
-                PREPARATIONS.open(task.task_id)
-                return
-            time.sleep(0.5)
+            if current.lifecycle is not TaskLifecycle.RUNNING or current.failure_code:
+                return None
+            return self.unit_states(current)[first]["state"]
+
+        first_unit_settled(state, ("task", str(task.task_id)))
 
     def _rank(self, task: TaskRecord, stage_id: str) -> int:
         """A unit's place in its run (heaviest first): who goes first at the writer."""
@@ -788,10 +766,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     fetched=count.advance,
                 )
                 count.finish(len(source_set.documents))
-                # The refusal names the coverage reached and needed, and the issuers
-                # without a source, which the unit's failure keeps (V541); an issuer whose
-                # index at the cutoff showed nothing filed is left out of the share, as the
-                # packing and the installer leave it out (V587).
+                # Retain coverage; exclude quiet indexes.
                 short = sources_short(
                     request.ordered_entity_ids,
                     {value.entity_id for value in snapshot.citations},
@@ -816,7 +791,10 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 # receipt was committed.
                 count.expect(len(source_set.documents))
                 document_set = self.runtime.canonicalize(
-                    source_set=source_set, published_at=source_set.acquired_at, began=count.advance
+                    source_set=source_set,
+                    published_at=source_set.acquired_at,
+                    as_of=request.evidence_as_of,
+                    began=count.advance,
                 )
                 count.finish(len(document_set.documents))
                 evidence = _evidence(
@@ -972,8 +950,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             code = _failure_code(error)
             if unit_id is None or _stops_the_run(code):
                 return StageExecutionResult(disposition=StageDisposition.BLOCKED, failure_code=code)
-            # One unit's refusal is that unit's, sealed by the owner's own code
-            # under the stage that refused; the run goes on to the next unit.
+            # Seal this unit's refusal and continue the run.
             run = self._run(task)
             cause = failure_cause(error, stage, lambda: self._document_set(task, unit_id))
             failure = seal_unit_failure(
@@ -981,7 +958,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 unit_id=unit_id,
                 ordered_entity_ids=request.ordered_entity_ids,
                 stage_id=stage,
-                failure_code=_failure_code(error),
+                failure_code=code,
                 exception_type=cause.exception_type,
                 exception_message=cause.detail,
                 recorded_at=now,
@@ -1099,8 +1076,8 @@ class AlternativeEvidenceDocumentTaskAdapter:
         issuer's filing index read at this cutoff (`read_inventory`) when there is one:
         exact, and an empty plan is an issuer that filed nothing. What a current analysis at
         or before the cutoff read in the window is not counted: it is named as
-        read earlier, and an issuer with nothing else in the window is carried
-        (W3). Else its latest sealed selection plan at or before the cutoff, or
+        read earlier, and an issuer with nothing else in the window is carried. Else its latest
+        sealed selection plan at or before the cutoff, or
         the policy budget named as the reservation of an issuer never read --
         no request is made here.
         """
@@ -1327,7 +1304,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         )
 
     def stale_authority(self, task: TaskRecord) -> str | None:
-        """The refusal a coverage run's packets meet once their authority moved (V547).
+        """The refusal a coverage run's packets meet once their authority moved.
 
         The Host no longer holds the authority they were prepared under -- an install replaced
         the package, or official acquisition was served or withdrawn -- so none of them can be
@@ -1396,7 +1373,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     run = self.runtime.artifacts.load(
                         COVERAGE_RUN_CATEGORY, path.stem, AlternativeEvidenceCoverageRun
                     )
-                except (ValueError, KnowledgeRetrievalError, FileNotFoundError):
+                except (ValueError, FileNotFoundError):
                     continue
                 if not run.units:
                     index.setdefault(run.scope_hash, []).append(run)
@@ -1413,7 +1390,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             return None
         try:
             return self._run(task)
-        except (ValueError, KnowledgeRetrievalError):
+        except ValueError:
             return None
 
     def recorded_run(self, run_hash: str) -> AlternativeEvidenceCoverageRun | None:
@@ -1428,7 +1405,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             run = self.runtime.artifacts.load(
                 COVERAGE_RUN_CATEGORY, run_hash, AlternativeEvidenceCoverageRun
             )
-        except (ValueError, KnowledgeRetrievalError, FileNotFoundError):
+        except (ValueError, FileNotFoundError):
             return None
         self._runs[run_hash] = run
         return run
@@ -1489,7 +1466,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             if now is not None:
                 try:
                     _cutoff, expires_at = self.preparation_window(candidate, found[1])
-                except (ValueError, KnowledgeRetrievalError):
+                except ValueError:
                     continue
                 if now > expires_at:
                     continue
@@ -1512,7 +1489,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 self._document_set(task, unit_id).canonicalization_binding_hash,
                 self._generation(task, unit_id).retrieval_binding_hash,
             )
-        except (ValueError, KeyError, KnowledgeRetrievalError):
+        except (ValueError, KeyError):
             return False
         installed = (
             self.runtime.acquisition.acquisition_binding_hash,
@@ -1831,7 +1808,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             try:
                 for unit in run.units:
                     self.prepared_packet(task.task_id, now=now, unit_id=unit.unit_id)
-            except (ValueError, KnowledgeRetrievalError):
+            except ValueError:
                 continue
             return task
         return None
@@ -1858,9 +1835,6 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     if str(error) == "alternative_evidence.brief_source_stale":
                         stale = True
                         continue
-                    stale = False
-                    break
-                except KnowledgeRetrievalError:
                     stale = False
                     break
             if stale:
@@ -2095,7 +2069,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     receipt_hash,
                     AlternativeEvidenceRetrievalAccessReceipt,
                 )
-            except (ValueError, KeyError, KnowledgeRetrievalError):
+            except (ValueError, KeyError):
                 rows.append({"task_id": task_id, "unit_id": unit_id, "selection": "UNREADABLE"})
                 continue
             rows.append(
@@ -2145,7 +2119,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
             return None
         try:
             return self.source_check(UUID(task_id), unit_id=unit_id)
-        except (ValueError, KeyError, KnowledgeRetrievalError):
+        except (ValueError, KeyError):
             return None
 
     def prepared_receipts(self) -> dict[str, tuple[str, str | None]]:
@@ -2170,7 +2144,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
                     receipt_hash, _span_set = self.prepared_receipt_identity(
                         task.task_id, unit_id=unit_id
                     )
-                except (ValueError, KeyError, KnowledgeRetrievalError):
+                except (ValueError, KeyError):
                     continue
                 found.setdefault(receipt_hash, (str(task.task_id), unit_id))
         return found
@@ -2214,9 +2188,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
         # travels in the refusal instead of escaping as an untyped error.
         try:
             self.runtime.documents.verify(document_set)
-        except KnowledgeRetrievalError as error:
+        except EvidenceDocumentUnverifiable as error:
             raise ValueError(
-                f"alternative_evidence.brief_document_unverifiable:{error.failure.code}"
+                f"alternative_evidence.brief_document_unverifiable:{error.code}"
             ) from error
         references = {value.semantic_handle: value for value in document_set.documents}
         contents: dict[str, bytes] = {}
@@ -2242,9 +2216,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
                             reference.workspace_document_id, reference.workspace_revision
                         )
                     )
-                except KnowledgeRetrievalError as error:
+                except EvidenceDocumentUnverifiable as error:
                     raise ValueError(
-                        f"alternative_evidence.brief_document_unverifiable:{error.failure.code}"
+                        f"alternative_evidence.brief_document_unverifiable:{error.code}"
                     ) from error
             content = contents[span.document_handle]
             text = content.decode("utf-8")
@@ -2263,7 +2237,9 @@ class AlternativeEvidenceDocumentTaskAdapter:
                 raise ValueError("alternative_evidence.brief_span_source_mismatch")
             if span.table_view is not None:
                 if original_for is None:
-                    original_for = self.runtime.original_reader(document_set)
+                    original_for = self.runtime.original_reader(
+                        document_set, as_of=request.evidence_as_of
+                    )
                 _verify_table_view(
                     span,
                     text=text,
@@ -2289,7 +2265,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         """Validate a submitted answer through the neutral sealer.
 
         Use this before admission and again at execution. ``packet`` is the one the
-        admitting request already verified (V117); at execution it is opened
+        admitting request already verified; at execution it is opened
         and verified again.
         """
         answer = require_answer_format(submitted.answer)
@@ -2692,7 +2668,7 @@ def coverage_unit(
 
     The unit's preparation intent binds its request, obligation, resource binding and the
     admission's three consent flags; the intent excludes the admission's clock, so the
-    request's own cutoff stands in for it (W1: Evidence seals its admission, never its
+    request's own cutoff stands in for it (Evidence seals its admission, never its
     caller).
 
     Args:
@@ -2796,15 +2772,25 @@ def validate_scoped_obligation(
         raise ValueError("alternative_evidence.task_obligation_sources_unadmitted")
 
 
+_WIRE = json.JSONEncoder(separators=(",", ":"), sort_keys=True)
+
+
 def _hash(value: object) -> str:
-    return str(canonical_hash(to_jsonable_python(value)))
+    """A value's identity, hashed once per stage or request for the same payload."""
+    payload = to_jsonable_python(value)
+    wire = _WIRE.encode(payload)
+    return str(
+        stage_digest(
+            ("alternative-evidence-task", wire), payload, canonical_hash, snapshot=lambda _: wire
+        )
+    )
 
 
 def _authority_moved(
     resources: AlternativeEvidenceDocumentTaskResources, mode: AlternativeEvidenceMode
 ) -> str:
     """The refusal of work prepared under authority the Host no longer holds, naming what
-    moved (V547): the source mode -- official acquisition served or withdrawn -- else the
+    moved: the source mode -- official acquisition served or withdrawn -- else the
     installed package, which an install replaces with every packet prepared under it."""
     live = mode is AlternativeEvidenceMode.LIVE_OFFICIAL
     moved = "source" if live != (resources.live_source is not None) else "package"
@@ -2824,6 +2810,12 @@ always had -- and a new preparation carries every unit that completed."""
 
 def _stops_the_run(code: str) -> bool:
     return any(code == value or code.endswith(":" + value) for value in _RUN_STOPPING_CODES)
+
+
+def _failure_code(error: Exception) -> str:
+    if isinstance(error, HostStopping):
+        raise error
+    return _diagnostic_failure_code(error)
 
 
 __all__ = [

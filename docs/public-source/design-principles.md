@@ -1,5 +1,5 @@
 # Design principles
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 AlphaLattice is a local quantitative research workstation operated by a person's own Claude Code or Codex agent. From one sentence it takes a research intention through recorded inputs, numerical studies, a book, an investment committee and a delivery report. Its positions are research results, never investment advice or orders.
 
@@ -19,7 +19,7 @@ The person's attention goes where the decision is theirs: activation outside the
 - **Specialists hold least privilege.** They read by default and run only what their assignment names. In the committee each member acts only with its own key.
 - **Outside text is data.** Filings, evidence and earlier answers are never instructions.
 - **Nothing leaves the machine unasked, and nothing trades.** Publication is the person's, and AlphaLattice places no orders.
-- **Every act is recorded,** so an agent's account can be checked against the record.
+- **Work is recorded by its owners,** and gaps in observation are named, so an agent's account can be checked against the available records.
 
 The evaluation grades safety on every turn: a forbidden act or a skipped question fails an attempt, even if a later turn succeeds (principle 12).
 
@@ -29,7 +29,7 @@ AlphaLattice runs on the person's own host agent, today Claude Code or Codex, an
 
 Setting that layer aside does not leave little to do. It reveals how much remains: everything a domain needs before an agent's work can be trusted. That space lies outside every harness, whichever host or model runs on top, and it grows as more harnesses appear, including ones built on open-weight models and plain model APIs. It is not a thin layer around a model; it is the hardest part of the system to get right. The command contract is host-agnostic: one source already serves two hosts, and another harness needs an adapter for its guidance, not a new product.
 
-**No model inside.** The product itself calls no language model. The only models in the loop are the person's own host agent and the specialists it starts, and Evidence's retrieval models run on the machine. There is no model API key to configure and no hidden usage to pay for. The person can choose the lead and specialist models in their host configuration, with the shipped cards supplying defaults. Their research does not pass through a service they did not choose.
+**Local retrieval.** The person's host agent and specialists provide the research conversation. Evidence uses retrieval models on the machine; an enhanced recipe includes a local language-model reranker. Local retrieval needs no model API key. The person can choose the lead and specialist models in their host configuration, with the shipped cards supplying defaults. Their research does not pass through a service they did not choose.
 
 The host agent brings judgment: reasoning, reading, writing and running commands. AlphaLattice's Host brings what must be reliable:
 - recorded inputs and methods, and sealed numerical studies;
@@ -38,7 +38,7 @@ The host agent brings judgment: reasoning, reading, writing and running commands
 - the market calendar and its holds;
 - authority enforced at admission;
 - a committee whose rules are kept and whose dissent is preserved;
-- a complete record, and answers that correct an agent's mistakes.
+- recorded work, visible observation gaps and answers that correct an agent's mistakes.
 
 A language model cannot provide these by design, and they are where most of the engineering lives. A capable analyst is not yet an investment firm; the firm's systems for orders, risk, compliance and records make it one.
 
@@ -90,22 +90,22 @@ Every product is recorded under an identity, kept where its kind belongs, and fo
 **Checking should be nearly free,** because slow verification invites skipping it. The direction:
 - compute a digest once, when a record is written, and carry it;
 - compose identities from their parts' digests, so a check reads only what changed;
-- verify fully at trust boundaries (admission, reuse and publication), not on every read;
+- verify fully at the edges: where a record enters (its write, an import, a stage's check), where it leaves (export, publication, replay, an exact readback), and in an idle scrub that finds a file changed under its name; never on an ordinary read;
 - keep the hashing in compiled code.
 
-Measurement leads the work. In one early profile, nearly half of a publication's time went to hashing the same objects up to five times; removing the repeats left every digest byte-identical.
+Measurement leads the work. In one early profile, a publication hashed the same objects more than once; removing the repeats left every digest byte-identical.
 
 ## 6. Quick where someone waits, patient and watched everywhere else
 
 The scarce resources are the person's waiting time and the agent's turn; memory and disk are plentiful. So work is arranged by who is waiting for it:
-- Long work runs as a Task on the Host, outside the agent's turn. The agent makes one wait call and is woken when the Task ends.
+- Long work runs as a Task on the Host. Where the agent's host can deliver a completion notice, the agent can wait for it; otherwise it follows the Task's offered wait.
 - Work that must wait for the market is held until its data is ready, then runs by itself.
 - A run uses the CPU budget it is given, sized to the machine by default, so the person can keep working. Workers and threads change when a result arrives, never what it is, and stay out of its identity. Where a setting could move a last bit, a sealed canary proves it does not: a model fitted on more than one thread must reproduce the trees, curve and predictions sealed at one, or the fit is refused by name.
-- Nothing computed once is computed again. Studies are reused by exact identity, and Evidence keeps its relevance scores by content across restarts.
+- Completed studies can be reused by exact identity, and Evidence can reuse admitted, sealed relevance scores by content across restarts. Missing scores are computed again.
 
 **Background work is watched.** Handing work off is safe only if someone notices when it stops. A host agent waiting on a long program cannot tell a slow run from a dead one, so it waits on or starts again. The Host runs a supervisor outside the processes that do the numerical work. It reads every unfinished Task and classifies it by rule, never by a model's guess: a heartbeat gone stale, a runner the Host can no longer see, work that stopped advancing, a Task awaiting recovery, or one that nothing drives. A refusal, a decision left to the person or a provider's deferral is the Task's own state, not an incident.
 
-Each finding becomes an incident record: when it was seen, the remedies offered, each recovery attempt and its resolution. The incident travels with the Task's answer, so a waiting agent wakes on the problem instead of waiting forever. It is offered the way on (recover, cancel or re-plan) through the ordinary operations, with no extra power. If the Host itself stops, the verified stages are kept and the Task resumes when the Host is served again. The Workbench shows the person the same Tasks and incidents.
+Each finding becomes an incident record: when it was seen, the remedies offered, each recovery attempt and its resolution. The incident travels with the Task's answer, so a waiting agent wakes on the problem instead of waiting forever. It is offered the way on (recover, cancel or re-plan) through the ordinary operations, with no extra power. If the Host itself stops, verified stages are kept; compatible work can resume when it serves again, and a stopped Task's recovery controls name the permitted way on. The Workbench shows the person the same Tasks and incidents.
 
 The direction:
 - **A cache of derived artifacts shared across processes**, such as decoded arrays, verified models and Feature panels, keyed by content identity within a budget. Eviction weighs recompute cost and use against size and pins the active strategy's current inputs and models, so a one-off scan cannot flush what is used every day. A hit still proves its content.
@@ -118,11 +118,11 @@ Background work stays visible as Tasks, never an invisible world beside the rese
 
 The command interface has an object-and-action grammar, named flags, structured answers and an exit code for each outcome (principle 9). Research declarations are YAML or JSON, so a method can be read and compared before it runs instead of being reconstructed from improvised commands. A [formula factor](formula-factors.md) shows the path end to end: its expression and preprocessing recipe are part of the executed specification, so a changed recipe cannot borrow an earlier recipe's measured effect.
 
-Every answer carries its status, a refusal's words, and the next requests its owner will accept. The agent sends the chosen one as it stands, for example `alphalattice request --from answer.json --action run`, because a rebuilt request can lose its selection, binding or authority. The [saved-answer client](../../src/alphalattice/interface/local_application/client.py) refuses an unresolved choice.
+Answers can carry status, refusal words and next requests their owner will accept. When a request is offered, the agent sends the chosen one as it stands, for example `alphalattice request --from answer.json --action run`, because a rebuilt request can lose its selection, binding or authority. The [saved-answer client](../../src/alphalattice/interface/local_application/client.py) refuses an unresolved choice.
 
 **One owner per responsibility.** Each responsibility has one owner, for admission and execution alike. A change extends that owner and deletes what it displaces. It never adds a second path, a wrapper for one caller or a copied block. Two places that decide the same thing drift apart: an answer offers a next step that different code refuses, and the system rejects its own suggestion. With one rule read by both, a correction is made once, and the guide can name the one place that is true. The same rule keeps the code small: a change lands in the smallest owner that can carry it, growth is budgeted, and tests may not outgrow the source they test. Shape guards in the repository refuse growth that would erode this.
 
-These choices cost real effort and paid off beyond their first purpose. Every operation is a command with a typed answer and offered next steps, so the whole system can be walked, perturbed and graded with no person or model in the loop. The deterministic walk, the deliberate mistakes, the intent and loop tests, the committee floor and the redacted problem report all use this one interface. A product operable only through screens could not be tested this way, nor could its agent be held to the same rules.
+These choices cost real effort and paid off beyond their first purpose. Operations have typed answers, and offered next steps let the system be walked, perturbed and graded with no person or model in the loop. The deterministic walk, the deliberate mistakes, the intent and loop tests, the committee floor and the redacted problem report all use this one interface. A product operable only through screens could not be tested this way, nor could its agent be held to the same rules.
 
 ## 8. The person's window: the Workbench sits beside the conversation
 
@@ -135,7 +135,7 @@ It is one product with the command interface, not a second one. Its pages show t
 Wherever the product needs a form, whether a command, a file, an interface or a role, it takes the most widely used one in its field. A language model has met the established forms throughout its training, so an agent working in them already knows the shape. It guesses right more often and recovers sooner from a wrong guess. Every invented rule is a cost paid again each session, in help reads, schema reads and correction rounds. So the product adds a rule of its own only where no established form reaches, and states why.
 - **The command line** follows Git and the Unix and GNU tools: an object and an action, as in `git remote add`; a positional operand for the one thing acted on, as in `goal show <id>`, with named options; `-` for standard input and `--` to end the options; `--help` at every level; the answer on standard output and progress on standard error; one verb for each meaning.
 - **The agent's files** use the forms its host already reads: an `AGENTS.md` guide at the root, Skills as folders with a `SKILL.md`, and specialist cards in each host's own agent format.
-- **Declarations and answers** are YAML and JSON, with each request's shape published as JSON Schema. Data at rest is Parquet, and versions follow PEP 440.
+- **Declarations and answers** are YAML and JSON, with each request's shape published as JSON Schema. Market-table backups use Parquet, and versions follow PEP 440.
 - **The code** follows the patterns of widely used open-source projects where they fit. An Alpha model adapter has `fit` and `predict`, the interface Python's machine-learning libraries share. A result is addressed by a hash of its content and origin, much as version control addresses its objects. An evaluation trace is a sequence of timed steps with namespaced attributes, in JSON Lines, a shape common tracing tools read. None of this depends on the projects it resembles.
 - **The roles and words** come from the investment profession. The committee seats a portfolio manager, Alpha and Risk specialists and a chief risk officer, with the duties those titles carry; studies speak of rank IC, turnover and Ledoit-Wolf shrinkage. A model asked to act as a chief risk officer already knows the part, so its card states only what is particular here.
 
@@ -153,7 +153,7 @@ The same text is how the system learns, with no fine-tuning and no training serv
 
 An agent will pick the wrong action, quote a figure incorrectly or misread a held result. Models change, hosts differ, and no guide covers every case. Lengthening the guide to prevent each mistake makes it longer and less reliable, and fixing one behaviour that way can quietly break another.
 
-So the system assumes the agent errs, and corrects it. Every refusal names the rule that failed and offers the request that resolves it, keeping the work already done. A refusal that only says no leaves the same mistake waiting for the next attempt. When an answer itself sends the agent down a false route, the answer is fixed at its owner; the guide grows only when the agent truly lacks a rule.
+So the system assumes the agent errs, and corrects it. A refusal names what failed and can offer a request or another way on, keeping the work already done. A refusal that only says no leaves the same mistake waiting for the next attempt. When an answer itself sends the agent down a false route, the answer is fixed at its owner; the guide grows only when the agent truly lacks a rule.
 
 The committee's number refusal shows the pattern: the judgment can stay, and the figure becomes an alias that can be checked. The [feedback-grader tests](../../tests/unit/evaluation/test_feedback.py) grade exactly this loop. A refused attempt followed by an accepted, bound correction converges; a safety breach on any turn fails the attempt, even if a later turn succeeds.
 
@@ -200,7 +200,7 @@ Each minor version's scope and acceptance are fixed before work begins, and corr
 
 The [verification workflow](../../.github/workflows/ci.yml) checks the source checkout and an installed wheel as separate paths, on the release and continuation branches.
 
-Claims stay within their evidence. Windows is the verified platform; macOS and Linux are not yet verified. A completed study establishes its recorded result under its inputs and method, and promises no return. Every known limit ships with the release that carries it.
+Claims stay within their evidence. Windows is the supported platform; CI checks installation and an offline first use on macOS and Linux, while other use there is not guaranteed. A completed study establishes its recorded result under its inputs and method, and promises no return. Release notes describe measured workloads and their limits.
 
 ## 15. One door for work and exchanges
 
@@ -228,7 +228,7 @@ A command being retired names its replacement while the old form still works. Gu
 
 ## 19. The record is the lever
 
-An agent system improves at the speed its history can be read. AlphaLattice keeps that history in one append-only ledger: each request, decision and result, who made it and on what evidence, with sealed results an agent can verify. Codes for each kind of question and links from a decision to its later outcome are being added to that record patch by patch.
+An agent system improves at the speed its history can be read. AlphaLattice records observed operations, Task transitions and checked artifact references in its activity ledger, alongside the owners' Goal, Task and sealed-result records. A gap in observation is named. Codes for each kind of question and links from a decision to its later outcome are being added to that record patch by patch.
 
 Agents can then do the analysis a person once did by hand. They find recurring exceptions, slow paths and offers that fail, and propose a rule, a change of words or a change of code. A decision agents make the same way on the same evidence, again and again, becomes a declared rule, so its next occurrence costs nobody a turn.
 

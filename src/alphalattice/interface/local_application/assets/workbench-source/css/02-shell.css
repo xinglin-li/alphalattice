@@ -123,7 +123,7 @@ html[data-dock=right] .lane-frame {
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
 }
-/* the path takes the row's free room and pushes the tools to the end: no spacer element, whose own gap a
+/* The path takes the row's free room and pushes the tools to the end: no spacer element, whose own gap a
    narrow row cannot spare (F3) */
 .top-where {
   display: flex;
@@ -153,10 +153,10 @@ html[data-dock=right] .lane-frame {
   max-width: var(--share-crumb);
 }
 .top-where > .top-page[aria-current] {
-  flex: 0 1 auto; /* N1: the marks follow it now, so it is not the last child; it gives way last */
+  flex: 0 1 auto; /* the marks follow it now, so it is not the last child; it gives way last */
   min-width: 0;
 }
-/* an object's name in the path (a book, a session, a study, a case) is cut at one width, whole on hover */
+/* An object's name in the path (a book, a session, a study, a case) is cut at one width, whole on hover */
 .top-where > :is(.top-group, .top-page).top-object {
   max-width: var(--crumb-object);
   overflow: hidden;
@@ -269,7 +269,7 @@ html[data-dock=right] .lane-frame {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* an empty verbs slot takes no gap of the row (F3, 375: the place kept 8 px less) */
+/* An empty verbs slot takes no gap of the row (F3, 375: the place kept 8 px less) */
 .top-actions:empty {
   display: none;
 }
@@ -697,7 +697,7 @@ html[data-dock=right][data-nav=drawer] .window[data-side=open] .side[data-leavin
 [data-layer="detail"]:not(.inspector[data-open]) { position: relative; } /* a sticky reading is positioned already; the ring measures from it */
 [data-layer="detail"] > .reading-pane-head { flex: none; }
 [data-layer="detail"] > .reading-pane-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; overscroll-behavior: contain; }
-/* a region that takes focus (the lane, the detail, the pushed layer) is its own indication: no ring around it */
+/* A region that takes focus (the lane, the detail, the pushed layer) is its own indication: no ring around it */
 #main:focus-visible,
 [data-layer="detail"]:focus-visible {
   outline: none;

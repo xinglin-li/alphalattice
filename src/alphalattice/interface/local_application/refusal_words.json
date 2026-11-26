@@ -1,4 +1,84 @@
 {
+ "door.operation_unknown": {
+  "message_id": "door.operation_unknown",
+  "detail": "door.operation_unknown",
+  "next_action": "READ_CAPABILITIES_AND_RETRY"
+ },
+ "door.operation_duplicate": {
+  "message_id": "door.operation_duplicate",
+  "detail": "door.operation_duplicate",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.operation_unregistered": {
+  "message_id": "door.operation_unregistered",
+  "detail": "door.operation_unregistered",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.operation_unrecognized": {
+  "message_id": "door.operation_unrecognized",
+  "detail": "door.operation_unrecognized",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.family_import_failed": {
+  "message_id": "door.family_import_failed",
+  "detail": "door.family_import_failed",
+  "next_action": "REPAIR_INSTALLATION"
+ },
+ "door.person_unavailable": {
+  "message_id": "door.person_unavailable",
+  "detail": "door.person_unavailable",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.person_required": {
+  "message_id": "door.person_required",
+  "detail": "door.person_required",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.paid_run_approval_required": {
+  "message_id": "door.paid_run_approval_required",
+  "detail": "door.paid_run_approval_required",
+  "next_action": "ASK_THE_PERSON"
+ },
+ "door.decision_not_pending": {
+  "message_id": "door.decision_not_pending",
+  "detail": "door.decision_not_pending",
+  "next_action": "READ_PENDING_DECISIONS"
+ },
+ "door.decisions_unavailable": {
+  "message_id": "door.decisions_unavailable",
+  "detail": "door.decisions_unavailable",
+  "next_action": "CHECK_WORKSPACE"
+ },
+ "upgrade.refused": {"detail": "The upgrade stopped before the Host could serve. Before the first start, create current data-root and workspace backups. On resume, use the recorded backup generations and repair the named family.", "next_action": "VERIFY_BACKUPS_AND_REPAIR_THE_NAMED_FAMILY"},
+ "upgrade.in_progress": {"detail": "The Host is upgrading this machine's data to 0.2.8 and serves only the upgrade until it completes. Read the plan and its progress with alphalattice upgrade show (or on /api/upgrade), and acknowledge it with alphalattice upgrade acknowledge if it waits for you.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.acknowledged": {"detail": "This upgrade plan is already acknowledged and running. Read its progress on /api/upgrade.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.plan_changed": {"detail": "The upgrade plan named is not the one shown now. Read /api/upgrade again and acknowledge the plan it shows.", "next_action": "READ_THE_UPGRADE_PLAN"},
+ "upgrade.backup_space": {"detail": "Writing this upgrade's backups would leave less free space than the floor, so nothing was written. Free space where the plan names, then start the Host again.", "next_action": "FREE_SPACE_AND_START_AGAIN"},
+ "workspace_database.runtime_extension_refused": {"detail": "Workspace connections use the installed data dependencies. Runtime extension installation and loading through a workspace connection are unavailable.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
+ "data_layer.extension_unavailable": {"detail": "An installed data extension could not load. Restore the engine-matched data dependencies with uv sync --locked --extra data.", "next_action": "RESTORE_LOCKED_DATA_DEPENDENCIES"},
+ "data_layer.history_unavailable": {"detail": "The Host's history is unavailable, so this Portfolio result cannot be published. Restore the Host history and try again.", "next_action": "RESTORE_THE_HOST_HISTORY"},
+ "experience.trial_unknown": {"detail": "That trial is not in the Host's history.", "next_action": "NAME_A_TRIAL_FROM_AN_EXPERIENCE_READ"},
+ "experience.class_width_unknown": {"detail": "A class's width is recipe, method_version or method.", "next_action": "NAME_THE_CLASS_WIDTH"},
+ "experience.goal_unknown": {"detail": "That goal is not in the Host's history as known then.", "next_action": "NAME_A_GOAL_THE_HISTORY_HELD"},
+ "experience.brief_budget_invalid": {"detail": "A brief's budget is 100 to 32,000 tokens.", "next_action": "GIVE_A_BUDGET_IN_RANGE"},
+ "experience.known_at_invalid": {"detail": "A known time is an ISO-8601 time with its offset.", "next_action": "GIVE_THE_TIME_WITH_ITS_OFFSET"},
+ "experience.history_unavailable": {"detail": "The Host's research history is unavailable, so its trial experience could not be read.", "next_action": "RESTORE_THE_HOST_HISTORY"},
+ "experience.recall_models_missing": {"detail": "The retrieval models are not installed, so experiences cannot be recalled. Install the retrieval-store packs with scripts/install_retrieval_pack.py --install retrieval-store --network.", "next_action": "INSTALL_THE_RETRIEVAL_STORE_PACKS"},
+ "experience.recall_query_invalid": {"detail": "A recall query is 1 to 512 characters and its limit 1 to 20.", "next_action": "GIVE_A_QUERY_AND_LIMIT_IN_RANGE"},
+ "experience.note_incomplete": {"detail": "A note says its hypothesis, method and conclusion, each a sentence, and each lesson is a sentence.", "next_action": "COMPLETE_THE_NOTE_AND_RECORD_AGAIN"},
+ "experience.layer_unknown": {"detail": "A note reviews a trial, a Task or a goal.", "next_action": "NAME_WHAT_THE_NOTE_REVIEWS"},
+ "experience.verdict_unknown": {"detail": "A verdict is success, failure or inconclusive.", "next_action": "NAME_THE_VERDICT"},
+ "experience.unit_unknown": {"detail": "That trial or Task is not in the Host's history.", "next_action": "NAME_A_TRIAL_OR_TASK_OF_THIS_WORKSPACE"},
+ "experience.trials_malformed": {"detail": "A review task's note names its trials as a list of trial ids.", "next_action": "LIST_THE_TRIALS_REVIEWED"},
+ "data_layer.review_trials_need_a_review_task": {"detail": "Only a Task of kind review names the trials it reviewed; a single trial is reviewed on its own.", "next_action": "REVIEW_EACH_TRIAL_OR_OPEN_A_REVIEW_TASK"},
+ "data_layer.review_trial_unknown": {"detail": "A reviewed trial must be in the Host's history and have ended.", "next_action": "NAME_ENDED_TRIALS_OF_THIS_WORKSPACE"},
+ "data_layer.review_workspace_disagrees": {"detail": "A review names a trial or Task of this workspace only.", "next_action": "NAME_A_TRIAL_OR_TASK_OF_THIS_WORKSPACE"},
+ "data_layer.review_before_its_end": {"detail": "That trial or Task has not ended; a review comes once it has ended.", "next_action": "REVIEW_IT_ONCE_IT_HAS_ENDED"},
+ "data_layer.review_unknown_goal": {"detail": "That goal is not one of this workspace's in the Host's history.", "next_action": "NAME_A_GOAL_OF_THIS_WORKSPACE"},
+ "experience.hypothesis_unknown": {"detail": "That hypothesis is not in the Host's history. State it on the goal first.", "next_action": "STATE_THE_HYPOTHESIS_ON_THE_GOAL"},
+ "experience.hypothesis_workspace": {"detail": "That hypothesis belongs to another workspace. State one on this workspace's goal.", "next_action": "STATE_THE_HYPOTHESIS_ON_THE_GOAL"},
+ "experience.hypothesis_goal": {"detail": "That hypothesis belongs to a different goal from this request.", "next_action": "SELECT_THE_HYPOTHESIS_FOR_THIS_GOAL"},
+ "experience.hypothesis_existing_run": {"detail": "This study already has a run with a different hypothesis association; its history cannot be changed by reuse.", "next_action": "READ_THE_EXISTING_STUDY"},
  "alpha_research.development_artifact_identity_invalid": {
   "detail": "A stored Alpha record does not match its requested identity, so it was not read. Restore a verified workspace backup into a new folder and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -30,6 +110,21 @@
  },
  "person_confirmation.question_mismatch": {
   "detail": "This question code does not cover the requested operation. Keep the offered request and its question together.",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_missing": {
+  "message_id": "person_confirmation.question_missing",
+  "detail": "person_confirmation.question_missing",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_words_differ": {
+  "message_id": "person_confirmation.question_words_differ",
+  "detail": "person_confirmation.question_words_differ",
+  "next_action": "READ_THE_OFFERED_QUESTION"
+ },
+ "person_confirmation.question_code_required": {
+  "message_id": "person_confirmation.question_code_required",
+  "detail": "person_confirmation.question_code_required",
   "next_action": "READ_THE_OFFERED_QUESTION"
  },
  "local_web.assets_stale": {
@@ -89,7 +184,8 @@
   "next_action": "READ_CAPABILITIES_SCHEMA"
  },
  "activity.storage_unavailable": {
-  "detail": "This Host was composed without its activity ledger, so it records no events and answers no activity; the Host `alphalattice serve` starts keeps one.",
+  "message_id": "activity.storage_unavailable",
+  "detail": "activity.storage_unavailable",
   "next_action": "SERVE_THE_WORKSPACE_HOST"
  },
  "actor_execution.specialist_answer_problems": {
@@ -325,6 +421,12 @@
   "detail": "The requested artifact {subject} is not kept in this workspace. Read workspace show to find a kept input or result. If a completed record names this missing file, restore a backup that holds it into a new folder and work there.",
   "next_action": "READ_WORKSPACE_SHOW_OR_RESTORE_A_BACKUP"
  },
+ "data.full_history_audit_approval_required": {
+  "message_id": "data.full_history_audit.confirm",
+  "detail": "data.full_history_audit.confirm",
+  "next_action": "PLAN_AGAIN_THEN_CONFIRM_THE_AUDIT",
+  "next_requests": {"plan": {"operation": "DATA_UPDATE_PLAN"}}
+ },
  "data.truth_review_required": {
   "detail": "A data decision is needed before this Task can continue. The declared workspace rule decides within its bound; a case outside the rule or without its authority goes to the agent, or to the person for consent. Read Data issues, settle the named case, then resume this same Task.",
   "next_action": "DATA_ISSUES"
@@ -427,6 +529,11 @@
   "detail": "The declaration's Alpha section names factors, or a factor evidence handle, other than the ones its curation selected; leave them to the handoff, which fills them.",
   "next_action": "EDIT_DECLARATION_AND_PLAN"
  },
+ "factor_research.review_decision_policy_not_installed": {
+  "message_id": "factor_research.review_decision_policy_not_installed_detail",
+  "detail": "factor_research.review_decision_policy_not_installed_detail",
+  "next_action": "READ_THE_STUDY_AND_CURATE_AGAIN"
+ },
  "factor_research.review_limitations_incomplete": {
   "detail": "A curation acknowledges every limitation the study's review states, and `{subject}` is not acknowledged; add it to `limitations_acknowledged`, as the curation template lists them.",
   "next_action": "EDIT_THE_CURATION_AND_SUBMIT_AGAIN"
@@ -514,6 +621,11 @@
  "local_web.handler_failed": {
   "detail": "The Host failed on this request in a way it did not expect (`{subject}`; the same fingerprint means the same cause), and nothing it would have written was kept. Send the request once more; if it fails with the same fingerprint, report the request and the fingerprint, and go on with other work.",
   "next_action": "SEND_ONCE_MORE_THEN_REPORT_THE_FINGERPRINT"
+ },
+ "model_training.component_selection_invalid": {
+  "message_id": "model_training.component_selection_invalid",
+  "detail": "The requested component is not installed for model training. Read the research strategy controls and use the training request for your intended component.",
+  "next_action": "RESEARCH_STRATEGY_CONTROLS"
  },
  "model_training.preview_required": {
   "detail": "A plan stays runnable for 60 minutes after its answer, across a Host restart; this one is past that or was never planned in this workspace, so nothing ran. Plan the training inputs again (`training plan`) from the same input and component, then run the plan hash the new answer names.",
@@ -844,6 +956,11 @@
   "detail": "The update was planned on bindings that have changed since -- the strategy's activation or models, its catalog or the workspace's declaration -- so it no longer runs or resumes, and no later update of the strategy is planned while it waits; cancel its Task (`alphalattice research-update show --package <package>` names it), then plan the update again.",
   "next_action": "CANCEL_THE_UPDATE_AND_PLAN_AGAIN"
  },
+ "research_update.features_binding_invalid": {
+  "message_id": "research_update.features_binding_invalid",
+  "detail": "research_update.features_binding_invalid",
+  "next_action": "READ_UPDATE_AND_PLAN_AGAIN"
+ },
  "research_input.publication_unavailable": {
   "detail": "The publication record cannot be read. Inspect the workspace (`alphalattice workspace show`), storage and kept backups (`alphalattice backup list`); restore a generation that holds it into a new directory before reading this input there. No input identity or published state is inferred from unreadable bytes.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_THE_PUBLICATION"
@@ -964,6 +1081,11 @@
   "detail": "A target of the cleanup is not eligible under the current roots (something still uses it, or only its owner may release it); plan the cleanup again (`alphalattice storage plan`).",
   "next_action": "PLAN_THE_CLEANUP_AGAIN"
  },
+ "storage.input_pin_retired": {
+  "message_id": "storage.input_pin_retired",
+  "detail": "storage.input_pin_retired",
+  "next_action": "READ_STORAGE"
+ },
  "storage.input_binding_missing": {
   "detail": "The retained input manifest at {subject}/manifest.json is missing, so storage cannot verify its retained references. Restore the workspace from a backup that holds it (`alphalattice backup list`, then `alphalattice backup restore --dir <new directory> --generation <verified generation hash> --workspace-id <workspace id> --root <backup root>` into a new folder) and work there.",
   "next_action": "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
@@ -1035,6 +1157,16 @@
  "tasks.cursor_moved_reload": {
   "detail": "The Task the cursor named is no longer in this listing; read its first page again.",
   "next_action": "READ_THE_FIRST_PAGE"
+ },
+ "wait.stopped": {
+  "message_id": "shared.wait.stopped",
+  "detail": "shared.wait.stopped",
+  "next_action": "SEND_THE_REQUEST_AGAIN"
+ },
+ "wait.timeout": {
+  "message_id": "shared.wait.timeout",
+  "detail": "shared.wait.timeout",
+  "next_action": "READ_ITS_STATUS_AND_WAIT_AGAIN"
  },
  "workspace_backup.root_unwritable": {
   "detail": "The Host cannot create or write the backup root, so no generation was made; the root is the application-data directory unless ALPHALATTICE_BACKUP_ROOT names another. Serve the Host with ALPHALATTICE_BACKUP_ROOT naming a directory it can write, outside the workspace, then back up again.",
@@ -1139,6 +1271,10 @@
  },
  "alternative_evidence.artifact_tampered": {
   "detail": "The named evidence artifact does not verify against its recorded identity. Inspect storage and backup list; restore a verified copy into a new directory before reading it there.",
+  "next_action": "INSPECT_STORAGE_AND_RESTORE_VERIFIED_EVIDENCE"
+ },
+ "alternative_evidence.workspace_document_tampered": {
+  "detail": "The named evidence document does not verify against the body it was published with. Inspect storage and `alphalattice backup list`; restore a verified copy into a new directory before reviewing it there.",
   "next_action": "INSPECT_STORAGE_AND_RESTORE_VERIFIED_EVIDENCE"
  },
  "alternative_evidence.artifact_unavailable": {
@@ -1494,7 +1630,8 @@
   "next_action": "READ_THE_NEWEST_ACTIVITY_PAGE_THEN_USE_ITS_RETURNED_CURSOR"
  },
  "activity.observation_id_invalid": {
-  "detail": "The selected observation must use its complete 64-character lowercase hexadecimal identity. Read the activity page and use the exact observation id it returns.",
+  "message_id": "activity.observation_id_invalid",
+  "detail": "activity.observation_id_invalid",
   "next_action": "READ_ACTIVITY_THEN_USE_ITS_COMPLETE_OBSERVATION_ID"
  },
  "activity.query_selection_conflict": {
@@ -1653,6 +1790,10 @@
   "detail": "Whether each daily update convenes the investment committee is the person's decision: ask the person in one line and, on their answer, send this again with --person-said and --asked. Nothing was changed.",
   "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_YES"
  },
+ "evidence_review.analyst_reads_human_only": {
+  "detail": "How a review's Analyst bundles are read is the person's decision: ask them the review's question and relay their answer with --person-said and --question-code review.analyst_reads. Nothing was changed.",
+  "next_action": "ASK_THE_PERSON_THEN_RELAY_THEIR_ANSWER"
+ },
  "committee.not_open": {
   "detail": "No committee is open on this update; open it with `alphalattice committee open --update <task>`.",
   "next_action": "OPEN_THE_COMMITTEE"
@@ -1729,6 +1870,10 @@
  "research_update.target_before_publication": {
   "detail": "This book has already published a later update, so an earlier date's update cannot be planned after it; that date's positions are kept in the book's history. Read the latest update with the offered request.",
   "next_action": "READ_THE_LATEST_UPDATE"
+ },
+ "research_update.stage_missing": {
+  "detail": "The update has not reached the {subject} stage. Wait for its Task, then read again.",
+  "next_action": "WAIT_FOR_THE_UPDATE_TASK_THEN_READ"
  },
  "research_update.target_not_completed": {
   "detail": "The update's session has not completed with its data yet: a date's positions wait for its formation close and the data settling after it. Under a first use the Host holds the update and runs it once at the time `held_until` names, so keep your goal wait running. Otherwise nothing runs until you plan again: send the offered plan after the time `information_available_at` names.",

@@ -1,7 +1,7 @@
 # The installed regularized linear model (EX). Its reference recipe is the Alpha campaign's ridge
 # baseline (alpha 10). Each family's strength is its own axis under `when`: ridge's alpha, the
 # sparse families' multiplier of the largest useful alpha, and the elastic net's L1 ratio. The
-# axes are the adapter's domain as a search space (V309). This wave the declaration enters no
+# axes are the adapter's domain as a search space. The declaration enters no
 # identity.
 model_id: regularized_linear
 family: linear

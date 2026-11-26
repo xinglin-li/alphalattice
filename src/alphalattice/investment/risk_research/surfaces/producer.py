@@ -9,17 +9,17 @@ return surface supplies the causal open-to-open history.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import numpy as np
 import numpy.typing as npt
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_contracts import SectorRevisionMap
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 from .decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
@@ -36,7 +36,7 @@ RISK_PRODUCER_ID: Final = "SECTOR_DEGARCH_504_EXACT_CLOSURE"
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return hashlib.sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
 
 
 def _require_hash(value: str, *, code: str) -> None:
@@ -185,6 +185,18 @@ def _classification_design(
     return factor_ids, design
 
 
+class FactorSurfaceStore(Protocol):
+    """Read and admit sealed native outputs by the producer's input identity."""
+
+    def read(self, input_digest: str) -> FactorIdiosyncraticRiskSurface | None:
+        """Return the verified surface for this input identity when it is held."""
+        ...
+
+    def admit(self, surface: FactorIdiosyncraticRiskSurface) -> FactorIdiosyncraticRiskSurface:
+        """Store and verify a freshly produced surface."""
+        ...
+
+
 class RiskSurfaceProducer:
     """Execute the installed recipe and emit both public projections."""
 
@@ -199,7 +211,9 @@ class RiskSurfaceProducer:
         """
         self.recipe = recipe
 
-    def produce(self, inputs: RiskDecompositionInputs) -> ProducedRiskSurface:
+    def produce(
+        self, inputs: RiskDecompositionInputs, *, store: FactorSurfaceStore | None = None
+    ) -> ProducedRiskSurface:
         """Produce direct allocation volatility and factor/idiosyncratic attribution evidence.
 
         The producer uses causal EWMA state, standardized clipped/demeaned returns, equal-weight
@@ -209,6 +223,7 @@ class RiskSurfaceProducer:
 
         Args:
             inputs: Bound causal history and complete classification on the ordered listing axis.
+            store: The Host's native factor store, when the caller has one.
 
         Returns:
             Produced surface with direct-volatility allocation and classification-bound attribution
@@ -225,45 +240,6 @@ class RiskSurfaceProducer:
         )
         sessions = inputs.history_sessions[-required:]
         returns = np.asarray(inputs.open_to_open_log_returns[-required:], dtype=np.float64)
-        history_volatility, today_volatility = _ewma_clock(
-            returns,
-            decay=self.recipe.conditional_volatility_decay,
-            initialization_sessions=self.recipe.conditional_volatility_initialization_sessions,
-            variance_floor=self.recipe.variance_floor,
-        )
-        fit_rows = self.recipe.factor_fit_sessions
-        block = returns[-fit_rows:]
-        volatility = history_volatility[-fit_rows:]
-        if not np.isfinite(volatility).all():
-            raise RiskDecompositionError("risk_research.producer_volatility_history_incomplete")
-        standardized = np.nan_to_num(
-            block / np.maximum(volatility, 1e-12),
-            nan=0.0,
-        )
-        standardized = np.minimum(
-            np.maximum(standardized, -self.recipe.residual_clip_bound),
-            self.recipe.residual_clip_bound,
-        )
-        standardized = standardized - standardized.mean(axis=0)
-
-        factor_ids, exposures = _classification_design(
-            ordered_listing_ids=inputs.ordered_listing_ids,
-            classification=inputs.classification,
-            formation_sectors=inputs.formation_sectors,
-        )
-        counts = exposures.sum(axis=0)
-        if np.any(counts <= 0.0):
-            raise RiskDecompositionError("risk_research.producer_factor_empty")
-        factor_returns = (standardized @ exposures) / counts
-        specific_returns = standardized - factor_returns @ exposures.T
-        factor_covariance = np.atleast_2d(np.cov(factor_returns, rowvar=False, ddof=1)).astype(
-            np.float64, copy=False
-        )
-        denominator = max(fit_rows - len(factor_ids), 1)
-        idiosyncratic_variance = np.maximum(
-            np.square(specific_returns).sum(axis=0) / denominator,
-            self.recipe.variance_floor,
-        )
         producer_identity = canonical_hash(
             {
                 "kind": "RiskSurfaceProducer",
@@ -288,17 +264,60 @@ class RiskSurfaceProducer:
                 "float": "IEEE754_FLOAT64",
             }
         )
-        surface = FactorIdiosyncraticRiskSurface.create(
-            recipe=self.recipe,
-            formation_session=inputs.formation_session,
-            ordered_listing_ids=inputs.ordered_listing_ids,
-            ordered_factor_ids=factor_ids,
-            exposures=exposures,
-            factor_covariance=factor_covariance,
-            idiosyncratic_variance=np.asarray(idiosyncratic_variance, dtype=np.float64),
-            conditional_volatility=today_volatility,
-            producer_identity=producer_identity,
-        )
+        surface = store.read(producer_identity) if store is not None else None
+        if surface is None:
+            history_volatility, today_volatility = _ewma_clock(
+                returns,
+                decay=self.recipe.conditional_volatility_decay,
+                initialization_sessions=self.recipe.conditional_volatility_initialization_sessions,
+                variance_floor=self.recipe.variance_floor,
+            )
+            fit_rows = self.recipe.factor_fit_sessions
+            block = returns[-fit_rows:]
+            volatility = history_volatility[-fit_rows:]
+            if not np.isfinite(volatility).all():
+                raise RiskDecompositionError("risk_research.producer_volatility_history_incomplete")
+            standardized = np.nan_to_num(
+                block / np.maximum(volatility, 1e-12),
+                nan=0.0,
+            )
+            standardized = np.minimum(
+                np.maximum(standardized, -self.recipe.residual_clip_bound),
+                self.recipe.residual_clip_bound,
+            )
+            standardized = standardized - standardized.mean(axis=0)
+
+            factor_ids, exposures = _classification_design(
+                ordered_listing_ids=inputs.ordered_listing_ids,
+                classification=inputs.classification,
+                formation_sectors=inputs.formation_sectors,
+            )
+            counts = exposures.sum(axis=0)
+            if np.any(counts <= 0.0):
+                raise RiskDecompositionError("risk_research.producer_factor_empty")
+            factor_returns = (standardized @ exposures) / counts
+            specific_returns = standardized - factor_returns @ exposures.T
+            factor_covariance = np.atleast_2d(np.cov(factor_returns, rowvar=False, ddof=1)).astype(
+                np.float64, copy=False
+            )
+            denominator = max(fit_rows - len(factor_ids), 1)
+            idiosyncratic_variance = np.maximum(
+                np.square(specific_returns).sum(axis=0) / denominator,
+                self.recipe.variance_floor,
+            )
+            surface = FactorIdiosyncraticRiskSurface.create(
+                recipe=self.recipe,
+                formation_session=inputs.formation_session,
+                ordered_listing_ids=inputs.ordered_listing_ids,
+                ordered_factor_ids=factor_ids,
+                exposures=exposures,
+                factor_covariance=factor_covariance,
+                idiosyncratic_variance=np.asarray(idiosyncratic_variance, dtype=np.float64),
+                conditional_volatility=today_volatility,
+                producer_identity=producer_identity,
+            )
+            if store is not None:
+                surface = store.admit(surface)
         return ProducedRiskSurface(
             surface=surface,
             allocation=RiskAllocationProjection.of(surface),

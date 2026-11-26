@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import cast
 
-from alphalattice.kernel.live_evidence.errors import LiveEvidenceError
-from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
-from alphalattice.kernel.shared_kernel.domain.serialization import sha256_hex
+from alphalattice.capabilities.domain_contracts.domain.serialization import sha256_hex
+from alphalattice.evidence.live_evidence.errors import LiveEvidenceError
+from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
 from ..contracts import ADMITTED_DOCUMENT_CAPACITY, AlternativeEvidenceReadingDepth
 from ..sources.contracts import AcquiredEvidenceDocument

@@ -10,7 +10,7 @@ import json
 import math
 import tomllib
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from datetime import date
 from pathlib import Path
 from typing import Any, NoReturn
@@ -45,7 +45,6 @@ class Row:
     run: tuple[str, ...] = ()
     module: str = ""
     plugins: tuple[str, ...] = ()
-    selection: dict[str, Any] = field(default_factory=dict)
     public: tuple[str, ...] = ()
     job: str = ""
     escape: str = ""

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import socket
-import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -13,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli, cli_contract, client
 from alphalattice.interface.local_application.cli_contract import envelope
 
@@ -189,7 +189,7 @@ def test_the_real_cli_reads_without_a_workspace_session_or_server_and_writes_not
     for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "PYTHONPATH"):
         environment.pop(name, None)
     for extra in ([], ["--section", "exact_references"]):
-        ran = subprocess.run(
+        ran = spawn.run(
             [sys.executable, str(SCRIPT), "answer", "show", "--file", str(source), *extra],
             cwd=tmp_path,
             env=environment,
@@ -361,7 +361,7 @@ def test_numeric_section_conversion_failures_have_the_local_refusal(
     environment = dict(os.environ, ALPHALATTICE_NETWORK_DISABLED="1", PYTHONDONTWRITEBYTECODE="1")
     for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "PYTHONPATH"):
         environment.pop(name, None)
-    ran = subprocess.run(
+    ran = spawn.run(
         [
             sys.executable,
             "-X",
@@ -581,7 +581,7 @@ def test_the_saved_reader_accepts_only_json_or_yaml_output_format(tmp_path: Path
     environment = dict(os.environ, ALPHALATTICE_NETWORK_DISABLED="1", PYTHONDONTWRITEBYTECODE="1")
     for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "PYTHONPATH"):
         environment.pop(name, None)
-    ran = subprocess.run(
+    ran = spawn.run(
         [sys.executable, str(SCRIPT), "answer", "show", "--file", str(source), "--format", "html"],
         cwd=tmp_path,
         env=environment,

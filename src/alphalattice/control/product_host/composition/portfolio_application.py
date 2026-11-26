@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -53,6 +53,7 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
 )
 from alphalattice.investment.portfolio_strategy_lab.reporting.static import PortfolioReportContext
+from alphalattice.kernel.clock import utc_now
 
 PUBLIC_REFUSALS: tuple[str, ...] = tuple(
     value.refusal_code for value in INSTALLED_PUBLIC_CONTROL_CATALOG.refusals
@@ -62,7 +63,7 @@ PUBLIC_REFUSALS: tuple[str, ...] = tuple(
 PLAN_FIELDS = ("default_strategy_package_id", "default_score_source_mode", "strategy_installation")
 """The workspace manifest's fields a Portfolio research plan reads: the strategy the resolver
 serves. A plan binds these, never the whole manifest, so a capture, a training or a scoring
-publication leaves an admitted research Task recoverable (V284)."""
+publication leaves an admitted research Task recoverable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +117,7 @@ class PortfolioResearchApplication:
         ),
     )
     """The re-plan of the development replay this application admits, which the
-    recovery view offers (V188)."""
+    recovery view offers."""
 
     def __init__(
         self,
@@ -126,9 +127,10 @@ class PortfolioResearchApplication:
         manifest_binding: Callable[[], str],
         session: WorkspaceApplicationSession,
         resolver: PortfolioExecutionResolver,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         report_context: Callable[[PortfolioExecutionProgram, date], PortfolioReportContext]
         | None = None,
+        pipeline: PortfolioResearchPipelineStore | None = None,
     ) -> None:
         """Compose exact portfolio input, task, storage, execution and report owners.
 
@@ -140,12 +142,13 @@ class PortfolioResearchApplication:
             resolver: Deterministic strategy/input resolution owner.
             clock: Explicit observed-time source.
             report_context: Optional deterministic report context resolver.
+            pipeline: The Host's retained history store, when already composed.
         """
         self.workspace_id = workspace_id
         self.workspace = workspace.resolve()
         self.manifest_binding = manifest_binding
         """The plan fields' hash as the manifest stands now (`PLAN_FIELDS`), read from the
-        Host's one manifest holder, so a publication another owner makes is seen (V284)."""
+        Host's one manifest holder, so a publication another owner makes is seen."""
         self.session = session
         self.resolver = resolver
         self.clock = clock
@@ -153,7 +156,7 @@ class PortfolioResearchApplication:
             self.workspace, capacity=ResearchInputStorage(session).admit_evidence_bytes
         )
         artifact_root = self.ledger.artifact_root
-        self.pipeline = PortfolioResearchPipelineStore(artifact_root)
+        self.pipeline = pipeline or PortfolioResearchPipelineStore(artifact_root)
         # The installed declarations, so a report rebuilt from a stored ledger
         # can still say which strategy produced it without resolving anything.
         self.executor = PortfolioResearchExecutor(
@@ -297,7 +300,7 @@ class PortfolioResearchApplication:
         spec: PortfolioResearchSpec,
         planned: PlannedPortfolioResearch | None = None,
     ) -> CompletedPortfolioResearch:
-        """Admit and execute in one call; an exact reuse answers without a Task (V195)."""
+        """Admit and execute in one call; an exact reuse answers without a Task."""
         work = planned or self.plan(spec)
         reused = self.reused(spec, work)
         return reused if reused is not None else self.execute(self.admit(spec=spec, planned=work))
@@ -308,7 +311,7 @@ class PortfolioResearchApplication:
         """An exact reuse, answered from the stored result without a Task.
 
         The one reuse rule `strategy-book run` and the synchronous route (the standalone script)
-        keep (V195): the plan decides reuse, and the stored result answers under the Task that first
+        keep: the plan decides reuse, and the stored result answers under the Task that first
         produced it, taking no Task, no place in the queue and no second publication. A result
         the by-result index does not name (published before the index) answers None, so one Task
         is admitted and its publication names it.
@@ -343,6 +346,9 @@ class PortfolioResearchApplication:
         that admission never calls, so an admission costs no score replay and no
         Risk surface even on a full miss.
         """
+        from alphalattice.foundation.data_layer import history  # lazy: needs the Host writer
+
+        history.require_portfolio_result_store()
         work = planned or self.plan(spec)
         if work.preview.spec_hash != spec.spec_hash:
             raise ValueError("portfolio_application.plan_spec_mismatch")
@@ -455,6 +461,7 @@ class PortfolioResearchApplication:
             adapters={adapter.task_kind: adapter},
             runtime_path=str(self.session.runtime_path),
             clock=self.clock,
+            task_scope=lambda task: self.session.task_resources(task, self.clock),
             stage_scope=storage_capacity_scope,
         )
         try:
@@ -569,7 +576,7 @@ class PortfolioResearchApplication:
     def export(self, result_hash: str) -> str:
         """The command that reproduces one result's request.
 
-        A result published before V403 holds the command it was published with, which its
+        A previously published result holds the command it was published with, which its
         identity covers; a later one's is composed from its originating Task's request.
 
         Args:

@@ -35,7 +35,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from typing import Literal, Self, cast
 
 import numpy as np
@@ -43,6 +42,10 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import (
+    canonical_hash,
+    successor_identity_payload,
+)
 from alphalattice.investment.alpha_research.experiments.selected_scores import (
     AlphaSelectedRowAxis,
     AlphaSelectedScoreProjection,
@@ -50,10 +53,7 @@ from alphalattice.investment.alpha_research.experiments.selected_scores import (
 from alphalattice.investment.alpha_research.targets.materialization import (
     CanonicalTargetMaterialization,
 )
-from alphalattice.kernel.shared_kernel.identity import (
-    canonical_hash,
-    successor_identity_payload,
-)
+from alphalattice.kernel.identity import identity_sha256
 
 from .stock_returns import (
     StockCalibrationEvidence,
@@ -93,7 +93,7 @@ def _value_identity(values: FloatArray) -> str:
             {
                 "dtype": str(contiguous.dtype),
                 "shape": [int(value) for value in contiguous.shape],
-                "content": sha256(contiguous.tobytes()).hexdigest(),
+                "content": identity_sha256(contiguous.tobytes()).hexdigest(),
             }
         )
     )

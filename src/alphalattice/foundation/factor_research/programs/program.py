@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionOutcomeManifest,
 )
@@ -46,7 +47,6 @@ from alphalattice.foundation.factor_research.programs.walk_forward import (
 )
 from alphalattice.foundation.feature_engine.contracts import panel_member_counts
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReadRequest
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 class FactorResearchProgramBoundaryError(ValueError):
@@ -107,8 +107,8 @@ class FactorResearchProgramSpec(_Contract):
         "CURRENT_UNIVERSE_RESEARCH_ONLY"
     )
     listing_ids: tuple[str, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
-    """The names the evidence is computed over, for an exploration sample (binding plan,
-    decision 4); None for the whole Panel. The targets stay the whole cross-section's, so a
+    """The names the evidence is computed over, for an exploration sample; None for the
+    whole Panel. The targets stay the whole cross-section's, so a
     sample changes which names are ranked, not what a name's target is. Absent from the
     identity of a whole-Panel program, so every program sealed before it keeps its hash."""
     program_hash: str = Field(pattern=r"^[0-9a-f]{64}$")

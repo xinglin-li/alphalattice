@@ -81,7 +81,7 @@ const shown=()=>c.F.page(), here=()=>entries[at];
   await entered(held,'PLAN while staying');
   held.release(planBody(H('1'))); await pending; await settled();
   assert.equal(place().get('feature_plan'),H('1'),'staying, the saved PLAN is the page');
-  assert.ok(String(shown()).includes('A trial runs against=<span class="owner-text">A completed Alpha study handed off'),'V354: the PLAN says what its trial runs against, in the owner’s words');
+  assert.ok(String(shown()).includes('A trial runs against=<span class="owner-text">A completed Alpha study handed off'),'the PLAN says what its trial runs against, in the owner’s words');
   held=gate('/api/features/build'); pending=c.F.build();
   await entered(held,'build while staying');
   held.release({task_id:'task-stay'}); await pending;

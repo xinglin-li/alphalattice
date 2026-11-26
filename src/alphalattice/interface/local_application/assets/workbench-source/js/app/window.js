@@ -6,15 +6,15 @@ const SIDEBAR = [
   {page: 'overview', word: 'Home', icon: 'overview', attention: () => LiveViews.needs()}, // what needs you (Home's Needs a decision)
   {page: 'goals', word: 'Goals', icon: 'flag'},
   {page: 'tasks', word: 'Tasks', icon: 'task', attention: () => openTaskCount(), count: () => runningTaskCount()}, // what needs you apart from what runs (the user, 2026-09-25)
-  {page: 'data', word: 'Data', icon: 'data', attention: () => LiveViews.dataNeeds()}, // N5 (the user, 2026-09-24: 并且可以把data移动到Studies上面): one row, its pages the place's tabs
-  {group: 'studies', word: 'Studies', icon: 'lab', pages: ['factor', 'feature-research', 'foundation', 'alpha', 'alpha-compare', 'models', 'risk', 'portfolio', 'compare']}, // N6: the research chain's order -- the risk model before the portfolio it sizes (the user, 2026-09-24: risk应该在portfolio上面)
+  {page: 'data', word: 'Data', icon: 'data', attention: () => LiveViews.dataNeeds()}, // one row, its pages the place's tabs
+  {group: 'studies', word: 'Studies', icon: 'lab', pages: ['factor', 'feature-research', 'foundation', 'alpha', 'alpha-compare', 'models', 'risk', 'portfolio', 'compare']}, // the research chain's order -- the risk model before the portfolio it sizes (the user, 2026-09-24: risk应该在portfolio上面)
   {group: 'evidence', word: 'Evidence', icon: 'evidence', pages: ['books', 'evidence', 'evidence-stream', 'evidence-reading', 'handoff', 'report']},
   {group: 'team', word: 'Team', icon: 'team', pages: ['team-sessions', 'team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence']},
   {page: 'history', word: 'History', icon: 'history'},
 ];
 const SIDEBAR_GROUPS = {};
 for (const item of SIDEBAR) if (item.group) for (const page of item.pages) SIDEBAR_GROUPS[page] = item;
-/* param names the addressed object; keep retains a list view on an object, and also adds pages without their own tab.
+/* Param names the addressed object; keep retains a list view on an object, and also adds pages without their own tab.
  * remember restores the last list view; the dock stops at the list while the path names the selected tab. */
 const PAGE_TABS = {books: {tabs: ['evidence', 'evidence-stream', 'evidence-reading', 'handoff', 'report'], param: 'review_selector'},
   'team-sessions': {tabs: ['team', 'team-committee', 'team-participants', 'team-outputs', 'team-evidence'], param: 'team'},
@@ -291,13 +291,13 @@ const Window = (() => {
   // the list an object was opened from, where it is not its home's (a version opened from Storage & retention)
   const viaPage = () => { const v = routeObjectId() ? hashParams().get('via') || '' : ''; return v && v !== app.page && (SIDEBAR_GROUPS[v] || FOLDER_OF[v]) ? v : ''; };
   const entryUrl = (page) => { const set = PAGE_TABS[page]; if (!set?.remember) return railUrl(page); const last = readPreference('tab:' + page); return routeUrl(set.tabs.includes(last) ? last : page); };
-  // a data issue is read on Data maintenance: that is its list in the path (N5)
+  // a data issue is read on Data maintenance: that is its list in the path
   const LIST_HOME = {issues: 'data'};
   function pathSegments() {
     const page = app.page, group = SIDEBAR_GROUPS[page], via = viaPage(), tabOf = FOLDER_OF[page];
     // a tab of a place: an object's folder always, a list's view or Data's page while no object is addressed
     const parent = tabOf && (OBJECT_FOLDERS.has(tabOf) || !routeObjectId() || PAGE_TABS[tabOf].keep?.includes(page)) ? tabOf : '';
-    // a place that is a row of its own (Data) opens the path as a group does (N5)
+    // a place that is a row of its own (Data) opens the path as a group does
     const place = !group && tabOf && !OBJECT_FOLDERS.has(tabOf) ? SIDEBAR.find((x) => x.page === tabOf) : null;
     const segs = group ? [{kind: 'dir', word: t(group.word)}] : place ? [{kind: 'list', word: t(place.word), href: entryUrl(place.page)}] : [];
     if (parent) {
@@ -362,7 +362,7 @@ const Window = (() => {
     const appearance = btnAttrs(icon(dark ? 'sun' : 'moon'), 'appearance', '', 'icon-btn top-appearance', html`aria-label="${t(dark ? 'Switch to Light' : 'Switch to Dark')}" data-tip="${t(dark ? 'Switch to Light' : 'Switch to Dark')}"`);
     const follow = typeof LiveActivity !== 'undefined' && LiveActivity.followPaused?.() ? btn(html`${icon('play')}${t('Follow again')}`, 'activity-follow-again', '', 'text-btn') : '';
     top.innerHTML = html`${rail ? '' : toggle}<nav class="top-where" aria-label="${t('Where you are')}">${whereMarkup()}</nav><span class="top-actions"></span>${recentMenu()}${follow}${find}${appearance}${rail ? toggle : ''}`;
-    syncPageTop(); // N1: a redrawn row takes the page's marks, menu and verbs again (an inspector's open or close redraws it)
+    syncPageTop(); // a redrawn row takes the page's marks, menu and verbs again (an inspector's open or close redraws it)
   }
 
   /* A hosted detail narrows only its list; otherwise it floats under the top row and moves no content.
@@ -564,7 +564,7 @@ const Window = (() => {
     const state = main.querySelector('template.page-state')?.innerHTML.trim() || '';
     const info = main.querySelector('template.page-info')?.content.textContent.replace(/\s+/g, ' ').trim() || '';
     const menu = main.querySelector('template.page-menu')?.innerHTML.trim() || '';
-    const path = String(whereMarkup()); // N2: the page's scope and object are known after its paint
+    const path = String(whereMarkup()); // the page's scope and object are known after its paint
     const marks = path + '|' + state + '|' + info + '|' + menu;
     if (where.pageMarks === marks) return fitTop();
     where.pageMarks = marks;
@@ -706,7 +706,7 @@ const Window = (() => {
   /* Tabs share one row under the head for an object's folders or the list's views; addressed objects keep allowed views.
    * Each count comes from its own owner, and remembered places restore their last selected tab. */
   const TAB_COUNT = {team: () => LiveTeam.counts?.().exchanges, 'team-participants': () => LiveTeam.counts?.().participants, 'team-evidence': () => LiveTeam.counts?.().observations, inputs: () => (Data.inputs() || []).length, alpha: () => (Data.experiments() || []).filter((v) => v.kind === 'alpha.model-development').length, portfolio: () => Data.portfolioEntries().length,
-    'evidence-stream': () => LiveReview.counts?.().documents, 'evidence-reading': () => LiveReview.counts?.().citations, handoff: () => LiveReview.counts?.().findings}; // B1: a book's tabs count their objects where the owner records them
+    'evidence-stream': () => LiveReview.counts?.().documents, 'evidence-reading': () => LiveReview.counts?.().citations, handoff: () => LiveReview.counts?.().findings}; // a book's tabs count their objects where the owner records them
   function pageTabs() {
     const list = FOLDER_OF[app.page] || (PAGE_TABS[app.page] ? app.page : ''), set = PAGE_TABS[list];
     if (!set || !set.tabs.includes(app.page)) return '';

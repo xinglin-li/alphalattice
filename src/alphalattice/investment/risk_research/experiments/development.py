@@ -33,6 +33,9 @@ from datetime import date
 import numpy as np
 from numpy.typing import NDArray
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.spans import span
+from alphalattice.capabilities.quant.sector_history import reclassification_payload, sector_slices
 from alphalattice.investment.risk_research.contracts import (
     CausalRiskReturnSurface,
     RiskFormationEvaluation,
@@ -49,11 +52,13 @@ from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
 from alphalattice.investment.risk_research.experiments.development_artifacts import (
+    DEVELOPMENT_CHECKPOINT_CATEGORY,
     DEVELOPMENT_DIAGNOSTICS_CATEGORY,
     DEVELOPMENT_SURFACE_CATEGORY,
     RiskDevelopmentCheckpoint,
     RiskDevelopmentCovarianceSurface,
     RiskDevelopmentDiagnostics,
+    RiskFormationAxis,
 )
 from alphalattice.investment.risk_research.experiments.window import (
     REQUIRED_LOOKBACK_SESSIONS,
@@ -64,9 +69,6 @@ from alphalattice.investment.risk_research.surfaces.artifacts import (
     RiskArtifactStore,
 )
 from alphalattice.investment.risk_research.surfaces.returns import CausalRiskReturnReader
-from alphalattice.kernel.quant.sector_history import reclassification_payload, sector_slices
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.spans import span
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
 type FloatArray = NDArray[np.float64]
@@ -177,16 +179,28 @@ def build_development_covariance_surface(
     if len(axis) != expected:
         raise AuthoringError("research_authoring.bounded_window_inconsistent")
 
+    bounded_set = set(axis)
+    sparse = any(
+        end in bounded_set
+        for omission in return_surface.omissions or ()
+        for _start, end in omission.pairs
+    )
     with span("read", "risk_returns"):
-        returns = return_reader.read_sessions(return_surface, axis)
+        if sparse:
+            return_reader.prepare_windows(return_surface, axis)
+            returns = None
+        else:
+            returns = return_reader.read_sessions(return_surface, axis)
     equal_weights: FloatArray = np.full(
         len(ordered_listing_ids), 1.0 / len(ordered_listing_ids), dtype=np.float64
     )
-    # Each formation's book is balanced over the Sectors in force at it (V346).
+    # Each formation's book is balanced over the Sectors in force at it.
     sector_weights: list[FloatArray] = []
+    sector_mappings: list[Mapping[str, str]] = []
     for rows, mapping in sector_slices(sector_by_listing_id, formation_sessions):
         weights = _sector_balanced_weights(ordered_listing_ids, mapping)
         sector_weights.extend(weights for _ in range(rows.stop - rows.start))
+        sector_mappings.extend(mapping for _ in range(rows.stop - rows.start))
 
     evaluations: list[RiskFormationEvaluation] = []
     chunks = []
@@ -195,6 +209,8 @@ def build_development_covariance_surface(
     chunk_hashes: list[str] = []
     previous_matrix: FloatArray | None = None
     previous_maximum: float | None = None
+    previous_axis: tuple[str, ...] | None = None
+    formation_axes: list[RiskFormationAxis] = []
     estimate_calls = 0
     # Ordered by first appearance, so the series stay aligned to the formation
     # axis and a method that names its components keeps that naming durable.
@@ -211,7 +227,7 @@ def build_development_covariance_surface(
         )
     )
     checkpoint_path = (
-        artifact_store.root / "development/build-checkpoints" / f"{execution_key}.json"
+        artifact_store.root / DEVELOPMENT_CHECKPOINT_CATEGORY / f"{execution_key}.json"
     )
     if checkpoint_path.exists():
         checkpoint = RiskDevelopmentCheckpoint.model_validate_json(checkpoint_path.read_bytes())
@@ -223,10 +239,34 @@ def build_development_covariance_surface(
         ):
             raise AuthoringError("risk_research.development_checkpoint_scope_mismatch")
         reader = HistoricalCovarianceReader(artifact_store.root.parent)
+        if sparse != (checkpoint.formation_axes is not None) or (
+            checkpoint.ordered_listing_ids is not None
+            and checkpoint.ordered_listing_ids != ordered_listing_ids
+        ):
+            raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
+        position = 0
         for chunk in checkpoint.chunks:
-            if chunk.asset_count != len(ordered_listing_ids):
+            chunk_listings = ordered_listing_ids
+            if not sparse and chunk.asset_count != len(ordered_listing_ids):
                 raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
-            with reader.lease(chunk) as lease:
+            if sparse:
+                assert checkpoint.formation_axes is not None
+                axes = checkpoint.formation_axes[position : position + chunk.matrix_count]
+                for item in axes:
+                    end = axis.index(item.formation_session)
+                    expected_axis = return_reader.read_window(
+                        return_surface, axis[end - REQUIRED_LOOKBACK_SESSIONS : end + 1]
+                    )
+                    if (
+                        item.ordered_listing_ids != expected_axis.ordered_listing_ids
+                        or item.excluded_listing_ids != expected_axis.excluded_listing_ids
+                        or item.ordered_listing_ids != axes[0].ordered_listing_ids
+                        or len(item.ordered_listing_ids) != chunk.asset_count
+                    ):
+                        raise AuthoringError("risk_research.development_checkpoint_axis_mismatch")
+                chunk_listings = axes[0].ordered_listing_ids
+                position += chunk.matrix_count
+            with reader.lease(chunk, ordered_listing_ids=chunk_listings, resume=True) as lease:
                 for formation, expected_hash in zip(
                     chunk.formation_sessions, chunk.matrix_hashes, strict=True
                 ):
@@ -234,8 +274,14 @@ def build_development_covariance_surface(
                     if matrix_content_hash(matrix) != expected_hash:
                         raise AuthoringError("risk_research.development_checkpoint_matrix_mismatch")
                     previous_matrix = matrix
+                artifact_store.continue_covariance(lease, chunk_listings)
         chunks.extend(checkpoint.chunks)
         evaluations.extend(checkpoint.evaluations)
+        formation_axes.extend(checkpoint.formation_axes or ())
+        if evaluations:
+            previous_axis = (
+                formation_axes[-1].ordered_listing_ids if sparse else ordered_listing_ids
+            )
         component_series.update((k, list(v)) for k, v in checkpoint.component_shrinkages)
         if evaluations:
             previous_maximum = evaluations[-1].maximum_eigenvalue
@@ -244,6 +290,39 @@ def build_development_covariance_surface(
         remaining = len(formation_sessions) - len(evaluations)
         packed_width = len(ordered_listing_ids) * (len(ordered_listing_ids) + 1) // 2
         reserve_output(remaining * packed_width * 8 + len(formation_sessions) * 8192)
+
+    def flush_chunk() -> None:
+        with span("write", "covariance_chunk"):
+            chunks.append(
+                artifact_store.publish_covariance_chunk(
+                    formation_sessions=tuple(chunk_sessions),
+                    matrices=tuple(chunk_matrices),
+                    matrix_hashes=tuple(chunk_hashes),
+                    ordered_listing_ids=(
+                        formation_axes[-1].ordered_listing_ids if sparse else ordered_listing_ids
+                    ),
+                )
+            )
+        chunk_sessions.clear()
+        chunk_matrices.clear()
+        chunk_hashes.clear()
+        checkpoint = RiskDevelopmentCheckpoint.create(
+            execution_key=execution_key,
+            expected_formation_count=len(formation_sessions),
+            chunks=tuple(chunks),
+            evaluations=tuple(evaluations),
+            component_shrinkages=tuple((k, tuple(v)) for k, v in component_series.items()),
+            **(
+                {"formation_axes": tuple(formation_axes)}
+                if sparse
+                else {"ordered_listing_ids": ordered_listing_ids}
+            ),
+        )
+        with span("write", "risk_checkpoint"):
+            artifact_store._atomic_write(
+                checkpoint_path, checkpoint.model_dump_json().encode("utf-8")
+            )
+
     for offset in range(len(evaluations), len(formation_sessions)):
         if not chunk_sessions and cancel_requested is not None and cancel_requested():
             raise RiskDevelopmentCancelled("risk_research.cancelled_at_chunk_boundary")
@@ -252,13 +331,45 @@ def build_development_covariance_surface(
         # session it is evaluated against. Positions are derived from the bound
         # axis, so the run cannot read outside what was sealed.
         end = REQUIRED_LOOKBACK_SESSIONS + offset
-        window = returns[end - REQUIRED_LOOKBACK_SESSIONS : end + 1]
+        if sparse:
+            selected = return_reader.read_window(
+                return_surface, axis[end - REQUIRED_LOOKBACK_SESSIONS : end + 1]
+            )
+            estimate_axis = selected.ordered_listing_ids
+            window = selected.returns
+            if chunk_sessions and formation_axes[-1].ordered_listing_ids != estimate_axis:
+                flush_chunk()
+                if cancel_requested is not None and cancel_requested():
+                    raise RiskDevelopmentCancelled("risk_research.cancelled_at_chunk_boundary")
+            realized = return_reader.read_window(return_surface, (axis[end + 1],))
+            realized_set = set(realized.ordered_listing_ids)
+            realized_axis = tuple(item for item in estimate_axis if item in realized_set)
+            if not realized_axis:
+                raise AuthoringError("risk_research.development_realized_axis_empty")
+            realized_indices = tuple(estimate_axis.index(item) for item in realized_axis)
+            next_return = realized.returns[
+                0, [realized.ordered_listing_ids.index(item) for item in realized_axis]
+            ]
+            excluded_realized = tuple(item for item in estimate_axis if item not in realized_set)
+            equal: FloatArray = np.full(
+                len(realized_axis), 1.0 / len(realized_axis), dtype=np.float64
+            )
+            sector = _sector_balanced_weights(realized_axis, sector_mappings[offset])
+        else:
+            assert returns is not None
+            estimate_axis = ordered_listing_ids
+            window = returns[end - REQUIRED_LOOKBACK_SESSIONS : end + 1]
+            realized_indices = None
+            next_return = returns[end + 1]
+            excluded_realized = ()
+            equal = equal_weights
+            sector = sector_weights[offset]
         with span("compute", "covariance_estimate"):
             estimate = adapter.estimate(
                 recipe=recipe_envelope,
                 inputs=BoundRiskReturnInput.create(
                     return_surface_hash=return_surface.surface_hash,
-                    ordered_listing_ids=ordered_listing_ids,
+                    ordered_listing_ids=estimate_axis,
                     formation_session=formation_session,
                     returns=window,
                 ),
@@ -268,19 +379,38 @@ def build_development_covariance_surface(
         with span("verify", "covariance_estimate"):
             _admit_estimate(
                 estimate,
-                ordered_listing_ids=ordered_listing_ids,
+                ordered_listing_ids=estimate_axis,
                 formation_session=formation_session,
             )
+        comparison_indices = None
+        dropped_previous = dropped_current = None
+        comparable_previous = previous_matrix
+        if previous_axis is not None and previous_axis != estimate_axis:
+            common = tuple(item for item in estimate_axis if item in set(previous_axis))
+            dropped_previous = tuple(item for item in previous_axis if item not in common)
+            dropped_current = tuple(item for item in estimate_axis if item not in common)
+            if common:
+                comparison_indices = (
+                    tuple(estimate_axis.index(item) for item in common),
+                    tuple(previous_axis.index(item) for item in common),
+                )
+            else:
+                comparable_previous = None
         with span("compute", "formation_evaluation"):
             evaluations.append(
                 evaluate_formation(
                     estimate=estimate,
                     next_session=axis[end + 1],
-                    next_return=returns[end + 1],
-                    equal_weights=equal_weights,
-                    sector_weights=sector_weights[offset],
-                    previous_matrix=previous_matrix,
+                    next_return=next_return,
+                    equal_weights=equal,
+                    sector_weights=sector,
+                    previous_matrix=comparable_previous,
                     previous_maximum_eigenvalue=previous_maximum,
+                    realized_indices=realized_indices if excluded_realized else None,
+                    realized_excluded_listing_ids=excluded_realized or None,
+                    comparison_indices=comparison_indices,
+                    comparison_dropped_previous=dropped_previous,
+                    comparison_dropped_current=dropped_current,
                 )
             )
         for name, intensity in estimate.component_shrinkages:
@@ -288,36 +418,22 @@ def build_development_covariance_surface(
         previous_matrix = np.array(estimate.matrix, copy=True)
         previous_matrix.setflags(write=False)
         previous_maximum = estimate.diagnostics.maximum_eigenvalue
+        previous_axis = estimate_axis
+        if sparse:
+            formation_axes.append(
+                RiskFormationAxis(
+                    formation_session=formation_session,
+                    ordered_listing_ids=estimate_axis,
+                    excluded_listing_ids=selected.excluded_listing_ids,
+                )
+            )
         chunk_sessions.append(formation_session)
         chunk_matrices.append(estimate.matrix)
         chunk_hashes.append(estimate.diagnostics.matrix_hash)
         if len(chunk_matrices) == DEVELOPMENT_CHUNK_FORMATIONS or offset == (
             len(formation_sessions) - 1
         ):
-            with span("write", "covariance_chunk"):
-                chunks.append(
-                    artifact_store.publish_covariance_chunk(
-                        formation_sessions=tuple(chunk_sessions),
-                        matrices=tuple(chunk_matrices),
-                        matrix_hashes=tuple(chunk_hashes),
-                    )
-                )
-            chunk_sessions.clear()
-            chunk_matrices.clear()
-            chunk_hashes.clear()
-            checkpoint = RiskDevelopmentCheckpoint.create(
-                execution_key=execution_key,
-                expected_formation_count=len(formation_sessions),
-                chunks=tuple(chunks),
-                evaluations=tuple(evaluations),
-                component_shrinkages=tuple((k, tuple(v)) for k, v in component_series.items()),
-            )
-            # Reuse the existing Risk atomic writer; this working cursor is
-            # separate from its immutable published surface/diagnostic families.
-            with span("write", "risk_checkpoint"):
-                artifact_store._atomic_write(
-                    checkpoint_path, checkpoint.model_dump_json().encode("utf-8")
-                )
+            flush_chunk()
 
     if any(len(series) != len(evaluations) for series in component_series.values()):
         # A method that reported components on some formations and not others
@@ -347,6 +463,7 @@ def build_development_covariance_surface(
         chunks=tuple(chunks),
         diagnostics_hash=diagnostics.diagnostics_hash,
         limitations=DEVELOPMENT_LIMITATIONS,
+        **({"formation_axes": tuple(formation_axes)} if sparse else {}),
     )
     artifact_store.publish_json(
         category=DEVELOPMENT_SURFACE_CATEGORY,

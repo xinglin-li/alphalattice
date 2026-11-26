@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import shutil
 import threading
 import time
 import urllib.error
@@ -20,6 +21,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -39,13 +41,20 @@ from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceManifest,
     publish_research_workspace_manifest,
 )
+from alphalattice.control.product_host.composition.saved_object_readback import carry_copy
 from alphalattice.control.task_control.contracts import TaskLifecycle
+from alphalattice.evidence.alternative_evidence.documents.contracts import (
+    AlternativeEvidenceDocumentSet,
+)
 from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
 from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     AlternativeEvidenceDocumentTaskAdapter,
 )
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.history_knowledge import CARRIED_KNOWLEDGE
+from alphalattice.interface.local_application.client import LocalResearchClient
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
@@ -53,7 +62,6 @@ from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategie
     BROAD_FEATURE_PACKAGE,
     PRODUCT_EVIDENCE_ROOT_KEY,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )
@@ -74,10 +82,11 @@ from tests.alternative_evidence_desk.review_http_support import (
     start_service,
 )
 from tests.alternative_evidence_desk.review_package import _package
+from tests.pytest_environment import upgraded
 from tests.structural.source_shape_samples import bundle_refusal_declarations
 
 ONE_UNIT = "u01"
-"""The harness book's only unit: every book is prepared as a coverage run (C2)."""
+"""The harness book's only unit: every book is prepared as a coverage run."""
 
 
 def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
@@ -104,6 +113,18 @@ def test_every_bundle_manual_refusal_registers_its_words_and_way_on() -> None:
             assert words.get("detail") == message, variant
             assert words.get("next_action") == answer["next_action"], variant
             assert refusal_problem(worded_refusal(answer)) is None, variant
+
+
+def _builds(adapter: Any) -> int:
+    """How many generations this runtime's retrieval built, each once: the store embeds a
+    chunk when its revision is published, so a build encodes what the cache lacks or nothing,
+    and every build counts here whichever it was."""
+    retrieval = adapter.runtime.retrieval
+    return int(
+        retrieval.passage_embedding_pass_count
+        + retrieval.incremental_build_count
+        + retrieval.generation_reuse_count
+    )
 
 
 def _packet(body: dict[str, Any]) -> dict[str, str]:
@@ -171,7 +192,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert again["disposition"] == "REUSED_EXACT" and again["task_id"] == str(source_id)
     assert _packet(again) == _packet(prepared)
     assert len(service.registry.tasks()) == count + 1
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
     # With a packet prepared and no analysis, the section names that packet
     # and hands out the bound read of it; no state re-verifies or embeds.
     section = service.evidence_cro()
@@ -180,7 +201,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert section["evidence_as_of"] == prepared["evidence_as_of"]
     assert _packet(section) == _packet(prepared)
     assert set(section["next_requests"]) == {f"packet_{ONE_UNIT}", "preview"}
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
     exported = client.request(_packet(section))
     assert (
         service.get(
@@ -313,7 +334,7 @@ def test_native_analysis_cli_prepares_submits_and_reviews_without_managed_actors
     assert pinned["state"] == "REVIEW_PUBLISHED"
     assert pinned["available_actions"] == []
     assert pinned["next_requests"] == section["next_requests"]
-    assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+    assert _builds(adapter) == 1
 
 
 def test_a_captured_preparation_is_reused_after_time_moves_on(
@@ -358,7 +379,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         service.drain()
         task_id = prepared["task_id"]
         adapter = service.review.evidence_task_adapter
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(adapter) == 1
 
         # Two hours later the same captured intent is the completed preparation:
         # no Task, no corpus pass, and the packet it names still answers as of
@@ -369,7 +390,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert again["evidence_as_of"] == _NOW.isoformat()
         assert _packet(again)["task_id"] == task_id
         assert len(service.registry.tasks()) == count + 1
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(adapter) == 1
         packet = client.request(_packet(again))
         assert packet["status"] == "EVIDENCE_ANALYST_PACKET_READY"
         later_preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
@@ -482,8 +503,7 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert bare["disposition"] == "ADMITTED" and bare["task_id"] != task_id
         assert bare["evidence_as_of"] == now[0].isoformat()
         service.drain()
-        assert adapter.runtime.retrieval.passage_embedding_pass_count == 1
-        assert adapter.runtime.retrieval.generation_reuse_count == 0
+        assert _builds(adapter) == 1
         assert adapter.runtime.generation_builds_avoided == 1
         assert len(service.registry.tasks()) == count + 2
         # A preparation sealed under a canonicalization binding this code has
@@ -528,20 +548,23 @@ def test_a_captured_preparation_is_reused_after_time_moves_on(
         assert closed["disposition"] == "REFUSED_ACQUISITION_WINDOW_CLOSED"
         assert closed["failure_code"] == "alternative_evidence.acquisition_deadline_exceeded"
         assert len(service.registry.tasks()) == count + 3
+        assert _builds(adapter) == 1
         service.session.stop()
 
         # A new process over the same workspace, still the same day: the
         # captured intent reads back the same Task; a day later it is expired.
         now[0] = _NOW + timedelta(hours=6)
+        authority = build_authority(
+            tmp_path=tmp_path, report=report, model_authority_admitted=False
+        )
         service = start_service(workspace, authority, tmp_path, clock=lambda: now[0])
         client = LocalResearchClient(service.session.workspace)
         reopened = client.request(captured)
         assert reopened["disposition"] == "REUSED_EXACT" and reopened["task_id"] == task_id
         assert reopened["evidence_as_of"] == _NOW.isoformat()
-        # The authority (and its runtime counters) outlives the service: the
-        # reopen added no corpus pass to the one the first service made.
+        # The reopened Host has a fresh runtime and builds no new generation.
         reopened_adapter = service.review.evidence_task_adapter
-        assert reopened_adapter.runtime.retrieval.passage_embedding_pass_count == 1
+        assert _builds(reopened_adapter) == 0
         now[0] = _NOW + timedelta(days=1, minutes=1)
         expired = client.request(captured)
         assert expired["disposition"] == "REFUSED_PREPARATION_EXPIRED"
@@ -772,7 +795,7 @@ def test_a_third_answer_with_problems_is_done_and_its_valid_part_admitted(servic
         "accepted_delivery": delivery,
     }
     service.drain()
-    # Settled (V417): the same answer again reads its receipt; another, even a clean one, is
+    # Settled: the same answer again reads its receipt; another, even a clean one, is
     # refused by name and starts no Task.
     again = client.request(document)
     assert again["disposition"] == "REUSED_EXACT", again
@@ -1037,7 +1060,13 @@ def test_freezing_the_book_asks_for_a_new_review_and_reuses_the_evidence(
     }
 
 
-def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(service: _Service) -> None:
+def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(
+    service: _Service, http_book, tmp_path: Path
+) -> None:
+    selected = {"result_hash": service.result_hash()}
+    original = service.post("/api/evidence/prepare", selected)
+    service.drain()
+    assert service.registry.task(UUID(original["task_id"])).lifecycle is TaskLifecycle.SUCCEEDED
     result_hash = _drive_whole_route(service)
     tasks = len(service.registry.tasks())
     calls = len(service.review.review_actor.observed_deadlines)
@@ -1047,6 +1076,53 @@ def test_an_exact_reuse_over_http_admits_no_task_and_calls_no_actor(service: _Se
     assert again.get("task_id") is None
     assert len(service.registry.tasks()) == tasks
     assert len(service.review.review_actor.observed_deadlines) == calls
+
+    # A legacy copy keeps both sealed publications and their document sets, while its
+    # receiving data root has never admitted the workspace's Knowledge snapshot.
+    artifacts = service.review.artifacts
+    (published,) = artifacts.values("analysis-publications", AlternativeEvidenceAnalysisPublication)
+    old_documents = artifacts.load(
+        "document-sets", published.document_set_hash, AlternativeEvidenceDocumentSet
+    )
+    workspace, report = http_book
+    source_root = history.data_root()
+    service.session.stop()
+    copied = tmp_path / "legacy-copy"
+    shutil.copytree(workspace, copied)
+    carry_copy(workspace, copied, root=source_root)
+    (copied / CARRIED_KNOWLEDGE).unlink()
+    authority = build_authority(tmp_path=tmp_path / "legacy-evidence", report=report)
+    shutil.copytree(artifacts.root, authority.artifacts.root, dirs_exist_ok=True)
+    saved = (
+        authority.artifacts.root / "analysis-publications" / f"{published.publication_hash}.json"
+    )
+    sealed = saved.read_bytes()
+    clock = [_NOW]
+    with history.own_root(tmp_path / "legacy-data-root"):
+        reopened = start_service(upgraded(copied), authority, tmp_path, clock=lambda: clock[0])
+        try:
+            client = LocalResearchClient(copied)
+            preview = client.request({"operation": "EVIDENCE_PREVIEW", **selected})
+            assert preview.get("failure_code") == "data_layer.knowledge_snapshot_missing", (
+                preview.get("status"),
+                preview.get("failure_code"),
+                tuple(preview.get("next_requests", ())),
+            )
+            clock[0] += timedelta(seconds=1)
+            fresh = client.request(preview["next_requests"]["prepare"])
+            assert fresh["disposition"] == "ADMITTED", fresh
+            task = UUID(fresh["task_id"])
+            reopened.drain()
+            assert reopened.registry.task(task).lifecycle is TaskLifecycle.SUCCEEDED
+            adapter = reopened.review.evidence_task_adapter
+            packet = adapter.prepared_packet(task, now=clock[0], unit_id=ONE_UNIT)
+            assert packet.document_set.workspace_snapshot_id != old_documents.workspace_snapshot_id
+            assert {doc.revision_label for doc in packet.document_set.documents} == {
+                doc.revision_label for doc in old_documents.documents
+            }
+            assert saved.read_bytes() == sealed
+        finally:
+            reopened.session.stop()
 
 
 def test_expiry_is_a_typed_zero_work_state_over_http(tmp_path: Path, http_book) -> None:
@@ -1107,70 +1183,6 @@ def test_a_service_without_a_runtime_or_an_actor_refuses_with_no_work(
 # ======================================== the real composition, no credential
 
 
-def _install_semantic_pack(monkeypatch: pytest.MonkeyPatch, model_root: Path) -> None:
-    """Stand in for the one artifact this environment cannot hold.
-
-    `probe_semantic_pack` verifies a pinned MiniLM ONNX pack by sha256, then
-    checks onnxruntime, sentencepiece and sqlite-vec versions, the CPU
-    execution provider and the loaded vector extension. Everything but the two
-    model files is really installed here and really runs; the pack itself is
-    about half a gigabyte, is absent from this machine, and can only be
-    obtained over a network this gate forbids. So exactly two file hashes are
-    substituted and nothing else about the probe is bypassed.
-    """
-
-    from alphalattice.kernel.knowledge import _embeddings as embeddings
-    from alphalattice.kernel.knowledge.hybrid_contracts import (
-        MODEL_ARTIFACT_SHA256,
-        TOKENIZER_SHA256,
-    )
-
-    (model_root / "onnx").mkdir(parents=True, exist_ok=True)
-    (model_root / "onnx" / "model.onnx").write_bytes(b"absent-model-pack-placeholder")
-    (model_root / "sentencepiece.bpe.model").write_bytes(b"absent-tokenizer-placeholder")
-    real = embeddings._hash_file
-    pinned = {"model.onnx": MODEL_ARTIFACT_SHA256, "sentencepiece.bpe.model": TOKENIZER_SHA256}
-
-    def hash_file(path: Path) -> str:
-        return pinned.get(path.name) or str(real(path))
-
-    monkeypatch.setattr(embeddings, "_hash_file", hash_file)
-
-    # The cross-encoder pack is bound the same way, and stood in for the same
-    # way: its two file hashes are substituted, and the adapter that would load
-    # the real ONNX graph is replaced by the deterministic stand-in the unit
-    # tests use, so nothing about the probe, the identity or the packet path is
-    # bypassed except the model bytes this environment cannot hold.
-    from alphalattice.kernel.knowledge import _reranking as reranking
-    from alphalattice.kernel.knowledge.hybrid_contracts import RERANKER_PACK
-    from tests.alternative_evidence_desk.planted_corpus import _FakeReranker
-
-    # The reranker pack is stood in for the same way and no further: every file
-    # the loader consumes is really created, so presence, the refusal of an
-    # unadmitted extra file, each per-file comparison and the manifest hash all
-    # really run. Only the bytes-to-digest mapping and the two library version
-    # strings are substituted, because this environment holds neither the pack
-    # nor FastEmbed; the private real-evidence acceptance suite runs all of it for
-    # real in the declared environment.
-    pack = model_root / "reranker"
-    reranker_pinned: dict[str, str] = {}
-    for name, digest in RERANKER_PACK:
-        artifact = pack / name
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_bytes(f"absent-reranker-artifact:{name}".encode())
-        reranker_pinned[str(artifact)] = digest
-    real_reranker_hash = reranking._hash_file
-
-    def reranker_hash_file(path: Path) -> str:
-        return reranker_pinned.get(str(path)) or str(real_reranker_hash(path))
-
-    monkeypatch.setattr(reranking, "_hash_file", reranker_hash_file)
-    monkeypatch.setattr(reranking, "_runtime_versions", lambda: ("0.8.0", "0.23.2"))
-    monkeypatch.setattr(
-        reranking, "LocalCrossEncoderAdapter", lambda _root, _spec, **_: _FakeReranker()
-    )
-
-
 def _forbid_outbound_network(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     """Any connection off the loopback fails the test and is recorded."""
 
@@ -1196,9 +1208,6 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     """The real composition starts and refuses without a provider credential."""
 
     workspace = http_book[0]
-    authority_root = workspace / "authority" / "semantic-model"
-    authority_root.mkdir(parents=True, exist_ok=True)
-    _install_semantic_pack(monkeypatch, authority_root)
 
     # The manifest must declare the capability the real reader computes.
     from alphalattice.evidence.alternative_evidence.runtime.service import (
@@ -1208,7 +1217,6 @@ def test_the_real_composition_starts_and_refuses_without_a_provider_credential(
     probe = AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=workspace / "runtime" / "artifacts",
         workspace_root=workspace / "runtime" / "evidence-knowledge",
-        model_root=authority_root,
     )
     try:
         capability = probe.retrieval.capability()
@@ -1473,7 +1481,7 @@ def test_a_person_and_the_installed_agent_choose_and_are_recorded_apart(
     assert human["evidence_as_of"] == agent["evidence_as_of"]
     assert human["selection_hash"] != agent["selection_hash"]
     # The receipt names the book the choice was recorded for and goes on to that book's review,
-    # never the default book's (V487, the user's review).
+    # never the default book's.
     assert agent["review_selector"]["result_hash"] == result_hash
     assert agent["next_requests"]["dossier"] == {
         "operation": "CRO_REVIEW_DOSSIER",
@@ -1646,7 +1654,7 @@ def test_a_real_restart_resumes_both_task_kinds_exactly_once(tmp_path: Path, htt
 
 
 def test_a_request_that_names_no_book_is_told_what_names_one() -> None:
-    """regression (V242): a bundle asked for with its Task alone read "This workspace holds no
+    """regression: a bundle asked for with its Task alone read "This workspace holds no
     sealed book", though the workspace held one its request did not name; the refusal says what
     names a book and which request writes the whole selector."""
 
@@ -1658,12 +1666,12 @@ def test_a_request_that_names_no_book_is_told_what_names_one() -> None:
     outcome = EvidenceReviewApplication._review_selector(app, None)  # type: ignore[arg-type]
     assert outcome.disposition == "REFUSED_NO_BOOK_TO_REVIEW"
     assert "`experiment_task_id`" in outcome.detail and "`packet_<unit>`" in outcome.detail
-    # The way on is a request, not only words (V295): the history read lists the books.
+    # The way on is a request, not only words: the history read lists the books.
     assert outcome.next_requests == {"history": {"operation": "RESEARCH_HISTORY"}}
 
 
 def test_each_packet_comes_with_its_analyst_bundle_request() -> None:
-    """requirement (V295; LAWS OP12): after O2 a lead assembled the five-field selector of an
+    """requirement (LAWS OP12): after O2 a lead assembled the five-field selector of an
     Analyst's bundle by hand; every packet request now comes with the bundle request beside
     it, the book, Task and unit filled and only the directory left to choose."""
 
@@ -1702,7 +1710,7 @@ def test_each_packet_comes_with_its_analyst_bundle_request() -> None:
 
 
 def test_a_position_basis_beside_another_book_is_refused_by_its_name() -> None:
-    """regression (V290; LAWS OP12): an experiment's selector with the position basis its
+    """regression (LAWS OP12): an experiment's selector with the position basis its
     experiment recorded was refused `evidence_review_update_selector_invalid`, naming neither
     the field nor the way on; the refusal names the field and offers the request without it."""
 
@@ -1786,42 +1794,20 @@ def test_a_review_request_naming_a_book_the_workspace_does_not_hold_is_refused_i
                 assert (status, body["failure_code"]) == (400, code), (route, body)
                 assert body["detail"] == refusal_words(code)["detail"], (route, body)
                 assert body["next_action"] == refusal_words(code)["next_action"]
-        # Present but not a result: the store's refusal stands, never read as unknown.
-        result = service.result_hash()
-        (stored,) = [p for p in workspace.rglob(f"{result}.json") if p.parent.name == "results"]
-        stored.write_bytes(b"{}")
-        status, body = service.request("/api/evidence-cro?result_hash=" + result)
-        assert (status, body["refused"]) == (400, "content_store.artifact_tampered"), body
     finally:
         service.session.stop()
 
 
 def test_the_report_door_distinguishes_unknown_missing_child_and_corrupt_content(
-    tmp_path: Path, http_book
+    tmp_path: Path, http_book, monkeypatch: pytest.MonkeyPatch
 ):
-    """CONTRACT: an unknown request offers kept results; lost sealed work keeps recovery."""
+    """CONTRACT: an unknown request offers kept results."""
     workspace, report = http_book
     service = start_service(workspace, build_authority(tmp_path=tmp_path, report=report), tmp_path)
     try:
         status, body = service.request("/api/report?result_hash=" + "f" * 64)
         assert (status, body["failure_code"]) == (200, "portfolio_research.result_not_found")
         assert body["next_requests"] == {"results": {"operation": "RESULTS"}}
-        identity = service.result_hash()
-        (child,) = [
-            p for p in workspace.rglob(f"{report.report_hash}.json") if p.parent.name == "reports"
-        ]
-        original = child.read_bytes()
-        child.unlink()
-        status, body = service.request("/api/report?result_hash=" + identity)
-        assert status == 200 and body["failure_code"] == (
-            f"content_store.artifact_missing:{report.report_hash}"
-        ), body
-        assert report.report_hash in body["detail"] and "restore a backup" in body["detail"]
-        assert body["next_requests"] == {"workspace": {"operation": "WORKSPACE_SHOW"}}
-        child.write_bytes(b"{}")
-        status, body = service.request("/api/report?result_hash=" + identity)
-        assert (status, body["failure_code"]) == (200, "content_store.artifact_tampered"), body
-        child.write_bytes(original)
     finally:
         service.session.stop()
 

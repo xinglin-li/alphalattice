@@ -22,8 +22,10 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # as a script in CI, or imported in tests
-from public_manifest import PRIVATE_PREFIXES, SCANS  # the export's own line rules
+if __package__:  # imported, as release.test_durations
+    from .public_manifest import PRIVATE_PREFIXES, SCANS  # the export's own line rules
+else:  # run as a script in CI, its folder first on the import path
+    from public_manifest import PRIVATE_PREFIXES, SCANS
 
 
 def node_of(case: ET.Element) -> str:

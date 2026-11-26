@@ -119,10 +119,12 @@ from alphalattice.foundation.market_data_ops.sources.price_integrity import (
     TradingSessionAuthority,
 )
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
+from alphalattice.foundation.market_data_ops.storage import world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
     MarketDataRepository,
 )
+from alphalattice.kernel.clock import utc_now
 
 DataEngineerDiagnoser = Callable[
     [
@@ -209,7 +211,7 @@ def _reconciliation_cause(error: ValueError) -> dict[str, object]:
 
 
 def _feature_failure_cause(coverage_summary: Mapping[str, object]) -> dict[str, object] | None:
-    """What a Feature build that failed saw, in the stage's words, or None (V444).
+    """What a Feature build that failed saw, in the stage's words, or None.
 
     The build keeps its cause in its own summary (`materialization_failure`); the cycle's
     outcome carries it beside the code so the Task that ran the cycle keeps it too.
@@ -340,7 +342,7 @@ class WorkspaceMaintenanceRecords(Protocol):
 
 @dataclass(frozen=True)
 class _QualityEvidence:
-    """The quality step's judged evidence, before the gateway records its assessment (V109)."""
+    """The quality step's judged evidence, before the gateway records its assessment."""
 
     manifest: UniverseManifest
     evidence: tuple[ListingQualityEvidence, ...]
@@ -1203,16 +1205,16 @@ class WorkspaceMaintenanceCoordinator:
             as_of_session=request.target_market_session,
             invalidations=invalidations,
         )
-        # The build is this cycle's step, under the Task that runs the cycle (W10, V102): its
+        # The build is this cycle's step, under the Task that runs the cycle (W10): its
         # per-listing receipts make a build that stopped cheap to run again, and a deferred one is
         # built again by the next cycle once its retry time has passed. A first use whose
-        # membership waits for its baseline qualification composes no Panel for it (V311).
+        # membership waits for its baseline qualification composes no Panel for it.
         compose_panel = not (
             needs_feature_initialization and self._baseline_awaits_qualification(request)
         )
         outcome = self.feature_foundation.build(
             feature_request,
-            observed_at=self._utc(self.clock() if self.clock is not None else datetime.now(UTC)),
+            observed_at=self._utc(self.clock() if self.clock is not None else utc_now()),
             refresh_sector=True,
             compose_panel=compose_panel,
         )
@@ -1464,7 +1466,7 @@ class WorkspaceMaintenanceCoordinator:
         )
 
     def _baseline_awaits_qualification(self, request: WorkspaceMaintenanceRequest) -> bool:
-        """Whether a first use's membership still waits for its baseline qualification (V311).
+        """Whether a first use's membership still waits for its baseline qualification.
 
         With no universe bootstrap and no baseline obligation recorded, the judgement after the
         build binds a qualified manifest (`_qualify_features_for_membership`), so a Panel composed
@@ -1825,7 +1827,7 @@ class WorkspaceMaintenanceCoordinator:
             return self._refused_binding_cause(request, admitted_ids)
         if carried is None:
             # Through the activation coordinator, as every activation: its map and receipt,
-            # the reclassifications' effective session among them, reach the ledger (V346).
+            # the reclassifications' effective session among them, reach the ledger.
             # Carried evidence is the active membership's own revision, already activated.
             self.feature_foundation.sector_activation.activate(
                 manifest=reduced,
@@ -2350,13 +2352,19 @@ class WorkspaceMaintenanceCoordinator:
                 if changed_sessions:
                     raise ValueError("uniform provider rescale contains changed-return sessions")
                 continue
-            if revision.session_set_changed and not self._set_change_admitted(
-                revision.listing_id,
-                changed_sessions,
-                date.fromisoformat(str(active_panel["as_of_session"])),
-                verified=revision.listing_id in verified_session_sets,
-                appended=bool(append_sessions.get(revision.listing_id)),
-                prior=prior_listing_ids,
+            # The receipt explains an adjusted tail even when a prior Feature pass consumed
+            # the raw append. Feature input authority is checked by its own readers.
+            if (
+                revision.session_set_changed
+                and not revision.tail_append
+                and not self._set_change_admitted(
+                    revision.listing_id,
+                    changed_sessions,
+                    date.fromisoformat(str(active_panel["as_of_session"])),
+                    verified=revision.listing_id in verified_session_sets,
+                    appended=bool(append_sessions.get(revision.listing_id)),
+                    prior=prior_listing_ids,
+                )
             ):
                 raise ValueError("provider session-set change unexplained", revision.listing_id)
             if not changed_sessions:
@@ -2504,7 +2512,7 @@ class WorkspaceMaintenanceCoordinator:
         sector_source: UniverseManifest | None = None,
     ) -> _GovernanceEvaluation:
         # The evidence is read and judged under one retained instance and without the
-        # workspace's write gate: only the recording writes (RH, V109). The step held the gate
+        # workspace's write gate: only the recording writes (RH). The step held the gate
         # over the whole list, about 38 s for 473 names on the first use and still 1.5 s for 60
         # fixture names, while every other write (a Task's progress among them) waited. The
         # maintenance cycle is the only writer of what it reads, and runs this step itself.
@@ -2574,7 +2582,9 @@ class WorkspaceMaintenanceCoordinator:
         # listing, without a connection request per read or a full-width bar
         # object per session.
         inputs = self.market_data.quality_governance_inputs(
-            listing_ids, through=request.target_market_session
+            listing_ids,
+            through=request.target_market_session,
+            cutoff_us=world_reads.cutoff(observed_at),
         )
         raw_closes = _raw_close_points(inputs.raw_close_series)
         anchors = self.market_data.latest_action_audit_receipts(

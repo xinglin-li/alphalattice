@@ -12,6 +12,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     CROAlternativeEvidencePackage,
 )
@@ -43,9 +46,6 @@ from alphalattice.evidence.alternative_evidence.sources.contracts import (
     AcquiredEvidenceDocumentSet,
     AcquiredEvidenceSourceReferenceSet,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 
 def alternative_evidence_playpen_root(source_path: Path) -> Path:
@@ -135,6 +135,26 @@ SUPPORTED_HISTORICAL_BINDINGS: tuple[HistoricalEvidenceBindings, ...] = (
             "906d733cbae3d8904964959d1ebd72f8182f0d316f8e54aa19d69e28f575742a"
         ),
     ),
+    # The tuple of develop before review searched the Host's retrieval store (34eecd808): a
+    # workspace on a 0.2.8 development build may hold analyses and reviews sealed under it.
+    # Review on the retrieval store rotates the canonicalization binding (the store-backed
+    # library), the retrieval binding (the store's generations and search) and the analysis
+    # policy (the per-query scores the receipt seals). Listed so those artifacts re-read exactly
+    # as sealed, labelled historical; it grants no current eligibility.
+    HistoricalEvidenceBindings(
+        acquisition_binding_hash=(
+            "01133406e6c5153e9c7513cdfae0e08865e18c54c09009de3be5bc44a6cff175"
+        ),
+        canonicalization_binding_hash=(
+            "a9653304f517cbf7b54fc7322f64598c96f8c47e7e9042bdd5190f1f986f5476"
+        ),
+        retrieval_binding_hash=("897ebf16a9006c85d63f787002c4608f41f5328baf1eb8b23bda8a84efeca457"),
+        analysis_policy_hash=("d4e87ce6199820036b37e6dc7651d6a7488f60efafa4f077d30cec161a177faf"),
+        decision_policy_hash=("b6c20ccd60d75b42f42654664264f599c60062dadd60f0b196e641ebc211916b"),
+        publication_binding_hash=(
+            "d0095e24a209736d3c762e40e676b1f32469e2daba5e834bfb93f5710e8591a5"
+        ),
+    ),
     # No kept workspace holds a publication under the removed bindings. Their readback
     # is observed history, never current authority (`ObservedEvidenceBindings`).
 )
@@ -146,7 +166,7 @@ class ObservedEvidenceBindings:
 
     Its publications read back as history under a contract of their own kind,
     fully verified and never current authority; new work refuses them as
-    superseded (binding plan, E2). Before this, a tuple nobody listed -- the QA
+    superseded. Before this, a tuple nobody listed -- the QA
     tuples D2 retired, or one a change forgot to list -- refused the readback of
     every review resting on it.
     """
@@ -220,15 +240,14 @@ def alternative_document_binding_hash(playpen_root: Path) -> str:
                         "src/alphalattice/evidence/alternative_evidence/documents/quality.py",
                         "src/alphalattice/evidence/alternative_evidence/documents/structure.py",
                         "src/alphalattice/evidence/alternative_evidence/documents/workspace.py",
+                        "src/alphalattice/evidence/alternative_evidence/documents/library.py",
                     ),
                 ),
                 "schema": schema_structure(AlternativeEvidenceDocumentSet),
+                # The store's revisions are bound by content: each revision's SHA-256 is in
+                # the snapshot the document set seals (LAWS.md ID8).
                 "workspace_owners": _files(
-                    playpen_root,
-                    (
-                        "src/alphalattice/kernel/live_evidence/online_sources.py",
-                        "src/alphalattice/kernel/knowledge/retrieval.py",
-                    ),
+                    playpen_root, ("src/alphalattice/evidence/live_evidence/online_sources.py",)
                 ),
             }
         )
@@ -258,16 +277,9 @@ def alternative_retrieval_binding_hash(playpen_root: Path) -> str:
                     ),
                 ),
                 "schema": schema_structure(AlternativeEvidenceRetrievalGeneration),
-                "workspace_owners": _files(
-                    playpen_root,
-                    (
-                        "src/alphalattice/kernel/knowledge/retrieval.py",
-                        "src/alphalattice/kernel/knowledge/retrieval_contracts.py",
-                        "src/alphalattice/kernel/knowledge/hybrid.py",
-                        "src/alphalattice/kernel/knowledge/hybrid_contracts.py",
-                        "src/alphalattice/kernel/knowledge/_reranking.py",
-                    ),
-                ),
+                # The store is bound by content, not by its source: a generation seals the
+                # recipe, models and search settings (`index_spec_hash`) and the chunk and
+                # vector sets its search reads (LAWS.md ID8).
             }
         )
     )

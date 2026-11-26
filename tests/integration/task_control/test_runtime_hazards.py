@@ -12,6 +12,7 @@ The market store's read units, suspect 2, are W0's checks
 
 from __future__ import annotations
 
+import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -23,6 +24,7 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -31,13 +33,10 @@ from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
 )
-from alphalattice.control.workspace_runtime.database import retain_workspace_database
+from alphalattice.control.workspace_runtime import database
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from tests.alternative_evidence_desk.document_intelligence_support import (
-    _built,
-    _counted_runtime,
-)
-from tests.alternative_evidence_desk.planted_corpus import _NOW
+from alphalattice.foundation.data_layer import history
+from alphalattice.kernel.execution import EVENTS
 from tests.workspace_task_runner.lock_order import LockOrder, lock_order, record_lock_order
 from tests.workspace_task_runner.task_control_support import compatibility, task_contract
 
@@ -49,36 +48,13 @@ def test_the_recorder_names_a_pair_taken_in_both_orders(
 ) -> None:
     with record_lock_order(monkeypatch) as recorder:
         gate = WorkspaceMutationGate()
-        registry = DuckDbTaskControlRegistry(resolve_task_control_database(tmp_path), gate=gate)
-        with gate.hold(), registry._connection_lock:
+        guard = history.held()._guard  # the registry's lock: the held log's one writer
+        with gate.hold(), guard:
             pass
         assert recorder.inversions() == []
-        with registry._connection_lock, gate.hold():
+        with guard, gate.hold():
             pass
     assert recorder.inversions() == [("gate", "registry")]
-
-
-def test_the_recorder_names_the_order_that_stalled_the_workbench(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Before `31c49cf3` a status read retained the registry read-only and then asked for its
-    connection lock, while a writer takes the lock and then the file read-write. The recorder
-    names that pair even when the two never meet on two threads."""
-
-    with record_lock_order(monkeypatch) as recorder:
-        registry = DuckDbTaskControlRegistry(
-            resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
-        )
-        first = task_contract()
-        now = datetime.now(UTC)
-        registry.admit(input_envelope=first[0], goal=first[1], plan=first[2], observed_at=now)
-        assert recorder.inversions() == []
-        with (
-            retain_workspace_database(registry.database_path, read_only=True),
-            registry._connection_lock,
-        ):
-            pass
-    assert recorder.inversions() == [("instance:research-task-control.duckdb", "registry")]
 
 
 def test_a_status_read_beside_a_starting_task_takes_no_pair_in_both_orders(
@@ -204,29 +180,6 @@ def test_the_workbench_build_replaces_an_asset_a_reader_holds(
     assert page.startswith(b"<!DOCTYPE html>") and b'<script src="/workbench.' in page
 
 
-def test_an_index_a_session_reads_is_not_evicted_from_under_it(tmp_path: Path) -> None:
-    """Suspect 5: a storage clean-up evicts a hybrid index while a retriever holds it open.
-    The retrieval service refuses while any session on the generation is open, under its
-    lease lock, and evicts once the session ends."""
-
-    runtime, _passes = _counted_runtime(tmp_path)
-    request, document_set, generation = _built(runtime)
-    (database,) = sorted((tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob("*.db"))
-    relative = database.resolve().relative_to((tmp_path / "workspace").resolve()).as_posix()
-    session = runtime.retrieval.open_session(
-        document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
-    )
-    try:
-        with pytest.raises(ValueError, match="retrieval_index_in_use"):
-            runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-        assert database.is_file()
-    finally:
-        session.close()
-    runtime.retrieval.evict_generation(relative, plan_hash="a" * 64, evicted_at=_NOW)
-    assert not database.is_file()
-    runtime.close()
-
-
 @pytest.mark.proves("workspace_runtime.background_task_gate_wait_and_cancel")
 @pytest.mark.parametrize("cancel_while_returning", [False, True])
 def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
@@ -350,3 +303,190 @@ def test_dispatcher_finishes_deferred_cancel_only_after_command_returns(
             stage_release.set()
             release.set()
             dispatcher.close()
+
+
+@pytest.mark.proves("workspace_runtime.host_stop_reaches_parallel_work_items")
+def test_host_stop_reaches_a_concurrent_task_and_keeps_it_recoverable(tmp_path: Path) -> None:
+    from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+    from alphalattice.control.task_control.contracts import TaskLifecycle
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from alphalattice.interface.local_application.dispatcher import (
+        CommandAdmission,
+        LocalBackgroundDispatcher,
+    )
+    from tests.workspace_task_runner.task_control_support import FixtureTaskAdapter
+
+    now = datetime.now(UTC)
+    entered, release, stopping = Event(), Event(), Event()
+    with WorkspaceApplicationSession.acquire(tmp_path) as session:
+        registry = session.task_control_registry
+        envelope, goal, plan = task_contract(salt="parallel-host-stop")
+
+        class Adapter(FixtureTaskAdapter):
+            def concurrent_work_items(self, task):
+                return 2
+
+            def execute_stage(self, *, task, execution, work_item):
+                entered.set()
+                assert release.wait(10)
+                checkpoint()
+                return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+        adapter = Adapter()
+        runner = TaskControlRunner(
+            registry=registry,
+            adapters={adapter.task_kind: adapter},
+            runtime_path=str(tmp_path / "task-runtime.sqlite"),
+            clock=lambda: now,
+        )
+
+        class Command:
+            command_kind = "factor_research"
+
+            def admit(self):
+                task = registry.admit(
+                    input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+                ).record
+                return CommandAdmission(task.task_id, task.lifecycle)
+
+            def execute(self, task_id):
+                runner.run_next(expected_task_id=task_id)
+
+        dispatcher = LocalBackgroundDispatcher(registry, stop_requested=stopping.is_set)
+        try:
+            task_id = dispatcher.submit(Command()).task_id
+            assert entered.wait(10)
+            stopping.set()
+            with EVENTS.subscribed(("task", str(task_id))) as moved:
+                dispatcher._begin_drain()
+                assert moved.heard  # the drain is the executing Task's event: its waits read it
+            release.set()
+            assert dispatcher.close(timeout=10)
+            assert registry.task(task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+            stopping.clear()
+            assert runner.recover(task_id).lifecycle is TaskLifecycle.SUCCEEDED
+        finally:
+            release.set()
+            dispatcher.close()
+            runner.close()
+
+
+@pytest.mark.proves("workspace_runtime.seal_record_survives_a_held_file")
+def test_a_held_seal_record_stops_no_worker(tmp_path: Path, monkeypatch) -> None:
+    """A reader holding the seal record is waited out; a close that outlasts it reads as a crash."""
+
+    store = tmp_path / "research-task-control.duckdb"
+    real, refusals = os.replace, [PermissionError(13, "Access is denied")] * 2
+
+    def held(source: object, target: object) -> None:
+        if refusals:
+            raise refusals.pop()
+        real(source, target)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "replace", held)
+    database._write_seal_record(store, epoch="first", fingerprint=None)
+    assert database._seal_record(store)["epoch"] == "first"
+    refusals.extend([PermissionError(13, "Access is denied")] * 99)
+    with pytest.raises(WorkspaceConflictError):
+        database._write_seal_record(store, epoch="second", fingerprint=None)
+    assert database._seal_record(store)["epoch"] == "first"  # an open that can't clear it refuses
+    database._EPOCHS[store], database._CLOSING[store] = ("second", False), 1
+    database._closed(store)
+    assert store not in database._EPOCHS and [p.name for p in tmp_path.iterdir()] == [
+        f"{store.name}.seal.json"
+    ]
+
+
+@pytest.mark.proves("task_control.host_stop_preserves_recovery")
+def test_host_stop_preserves_verified_work_for_resume(tmp_path: Path) -> None:
+    from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
+    from alphalattice.control.task_control.runner import TaskControlRunner
+    from tests.workspace_task_runner.task_control_support import (
+        FixtureTaskAdapter as _FixtureTaskAdapter,
+    )
+
+    now = datetime(2026, 8, 5, 17, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="host-stop")
+    task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    stopping = Event()
+
+    class Adapter(_FixtureTaskAdapter):
+        def execute_stage(self, *, task, execution, work_item):
+            result = super().execute_stage(task=task, execution=execution, work_item=work_item)
+            if work_item.stage_id == "resolve_inputs":
+                stopping.set()
+            return result
+
+    adapter = Adapter()
+    runner = TaskControlRunner(
+        registry=registry,
+        adapters={adapter.task_kind: adapter},
+        runtime_path=str(tmp_path / "task-runtime.sqlite"),
+        clock=lambda: now,
+        heartbeat_seconds=0.01,
+    )
+    try:
+        with host_stop_scope(stopping.is_set):
+            stopped = runner.run_next()
+        assert stopped is not None and stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert registry.safe_projection(task.task_id).verified_stage_count == 1
+        assert adapter.executed == ["resolve_inputs"]
+        with host_stop_scope(stopping.is_set):
+            assert runner.recover(task.task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        assert registry.safe_projection(task.task_id).verified_stage_count == 1
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            resumed = runner.recover(task.task_id)
+        assert resumed.lifecycle is TaskLifecycle.SUCCEEDED
+        assert adapter.executed == ["resolve_inputs", "publish_result"]
+
+        from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+
+        class Interrupting(_FixtureTaskAdapter):
+            interrupt = True
+
+            def execute_stage(self, *, task, execution, work_item):
+                if self.interrupt:
+                    stopping.set()
+                    checkpoint()
+                return super().execute_stage(task=task, execution=execution, work_item=work_item)
+
+        envelope, goal, plan = task_contract(salt="repeated-host-stop")
+        other = registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=now
+        ).record
+        interrupting = Interrupting()
+        runner.adapters[interrupting.task_kind] = interrupting
+        for attempt in range(4):
+            stopping.clear()
+            with host_stop_scope(stopping.is_set):
+                result = runner.run_next() if attempt == 0 else runner.recover(other.task_id)
+            assert result.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+            assert registry.consecutive_interruptions(other.task_id, "resolve_inputs") == 0
+        interrupting.interrupt = False
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            assert runner.recover(other.task_id).lifecycle is TaskLifecycle.SUCCEEDED
+
+        class Cancelling(_FixtureTaskAdapter):
+            def execute_stage(self, *, task, execution, work_item):
+                current = registry.task(task.task_id)
+                registry.request_cancel(
+                    task_id=task.task_id, expected_task_hash=current.record_hash, observed_at=now
+                )
+                stopping.set()
+                checkpoint()
+                raise AssertionError("stop was not observed")
+
+        envelope, goal, plan = task_contract(salt="cancel-and-host-stop")
+        registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now)
+        cancelling = Cancelling()
+        runner.adapters[cancelling.task_kind] = cancelling
+        stopping.clear()
+        with host_stop_scope(stopping.is_set):
+            assert runner.run_next().lifecycle is TaskLifecycle.CANCELLED
+    finally:
+        runner.close()

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import struct
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TypeVar, cast
@@ -18,6 +16,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
@@ -42,16 +42,17 @@ from alphalattice.foundation.feature_engine.panels.logical_contracts import (
     PanelPhysicalChunk,
     PanelPhysicalMaterializationManifest,
     PanelPublicationMarker,
-    identity_payload,
+    seal_logical_identity,
 )
 from alphalattice.foundation.feature_engine.panels.logical_semantic_index import (
     LOGICAL_SLICE_ALGORITHM_IDENTITY,
     FeaturePanelLogicalSemanticIndex,
     FeaturePanelLogicalSessionSemantic,
     build_logical_semantic_index,
+    logical_calendar_hash,
 )
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.identity import identity_sha256
 
 _Model = TypeVar("_Model", bound=BaseModel)
 _RESERVED_COLUMNS = frozenset(
@@ -79,7 +80,7 @@ class PanelLogicalArtifactStore:
     def __init__(self, closure_store: PanelClosureArtifactStore) -> None:
         """Place logical artifacts beside the immutable Panel closure store."""
         self._store = closure_store
-        self._operational = closure_store.root / "logical" / "operational"
+        self._operational = "logical/operational"
 
     @property
     def closure_store(self) -> PanelClosureArtifactStore:
@@ -105,10 +106,9 @@ class PanelLogicalArtifactStore:
 
     def marker_for_snapshot(self, snapshot_hash: str) -> PanelPublicationMarker | None:
         """Resolve a legacy snapshot to its sealed logical publication marker."""
-        pointer = self._mapping_path(snapshot_hash)
-        if not pointer.exists():
+        payload = self._pointer(self._mapping_name(snapshot_hash))
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         marker = self.load_model(
             "publication-markers",
             str(payload["marker_hash"]),
@@ -120,9 +120,9 @@ class PanelLogicalArtifactStore:
 
     def publish_snapshot_mapping(self, marker: PanelPublicationMarker) -> None:
         """Publish an immutable snapshot-to-marker mapping pointer."""
-        pointer = self._mapping_path(marker.legacy_snapshot_hash)
-        if pointer.exists():
-            current = self._read_pointer(pointer)
+        pointer = self._mapping_name(marker.legacy_snapshot_hash)
+        current = self._pointer(pointer)
+        if current is not None:
             if current.get("marker_hash") != marker.marker_hash:
                 raise ValueError("feature_panel.logical_content_mismatch")
             return
@@ -130,18 +130,15 @@ class PanelLogicalArtifactStore:
 
     def latest_marker(self) -> PanelPublicationMarker | None:
         """The marker published last, by its mapping pointer's write: the next one's predecessor."""
-        pointers = sorted(
-            (self._operational / "snapshot-mappings").glob("*.json"),
-            key=lambda path: path.stat().st_mtime_ns,
-        )
-        return self.marker_for_snapshot(pointers[-1].stem) if pointers else None
+        written = self._store.files.written(f"{self._operational}/snapshot-mappings")
+        pointers = [name.removesuffix(".json") for name in written if name.endswith(".json")]
+        return self.marker_for_snapshot(pointers[-1]) if pointers else None
 
     def current_marker(self) -> PanelPublicationMarker | None:
         """Read the current operational logical publication marker."""
-        pointer = self._operational / "current.json"
-        if not pointer.exists():
+        payload = self._pointer(f"{self._operational}/current.json")
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         return self.load_model(
             "publication-markers", str(payload["marker_hash"]), PanelPublicationMarker
         )
@@ -150,8 +147,9 @@ class PanelLogicalArtifactStore:
         self, *, expected_marker_hash: str | None, next_marker: PanelPublicationMarker
     ) -> None:
         """Advance the current marker only from the expected identity."""
-        pointer = self._operational / "current.json"
-        current = self._read_pointer(pointer).get("marker_hash") if pointer.exists() else None
+        pointer = f"{self._operational}/current.json"
+        held = self._pointer(pointer)
+        current = None if held is None else held.get("marker_hash")
         if current != expected_marker_hash:
             if current == next_marker.marker_hash:
                 return
@@ -165,36 +163,39 @@ class PanelLogicalArtifactStore:
         replacement_marker_hash: str | None,
     ) -> None:
         """Restore the captured operational pointer after a failed HEAD cutover."""
-        pointer = self._operational / "current.json"
-        current = self._read_pointer(pointer).get("marker_hash") if pointer.exists() else None
+        pointer = f"{self._operational}/current.json"
+        held = self._pointer(pointer)
+        current = None if held is None else held.get("marker_hash")
         if current != expected_marker_hash:
             raise ValueError("feature_panel.identity_migration_cas_failed")
         if replacement_marker_hash is None:
-            pointer.unlink(missing_ok=True)
+            self._store.files.remove(pointer)
             return
         marker = self.load_model(
             "publication-markers", replacement_marker_hash, PanelPublicationMarker
         )
         self._write_pointer(pointer, {"marker_hash": marker.marker_hash})
 
-    def _mapping_path(self, snapshot_hash: str) -> Path:
-        _validate_hash(snapshot_hash)
-        return self._operational / "snapshot-mappings" / f"{snapshot_hash}.json"
+    def _mapping_name(self, snapshot_hash: str) -> str:
+        if len(snapshot_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in snapshot_hash
+        ):
+            raise ValueError("invalid Panel identity hash")
+        return f"{self._operational}/snapshot-mappings/{snapshot_hash}.json"
 
-    @staticmethod
-    def _read_pointer(path: Path) -> dict[str, object]:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+    def _pointer(self, name: str) -> dict[str, object] | None:
+        """The pointer's payload, or None when there is none."""
+        data = self._store.files.read(name)
+        if data is None:
+            return None
+        payload = json.loads(data.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("feature Panel logical identity pointer is invalid")
         return payload
 
-    @staticmethod
-    def _write_pointer(path: Path, payload: Mapping[str, object]) -> None:
+    def _write_pointer(self, name: str, payload: Mapping[str, object]) -> None:
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        staged.write_bytes(serialized)
-        os.replace(staged, path)
+        self._store.files.write(name, serialized)
 
 
 class PanelLogicalIdentityPublisher:
@@ -213,18 +214,22 @@ class PanelLogicalIdentityPublisher:
         self._closure_ledger = closure_ledger
 
     def publish_snapshot(
-        self, manifest_ref: str, *, published_at: datetime | None = None
+        self,
+        manifest_ref: str,
+        *,
+        published_at: datetime | None = None,
+        on_chunk_digest: Callable[[Path, str], None] | None = None,
     ) -> PanelPublicationMarker:
-        """Publish logical and physical authorities for a sealed Panel snapshot."""
+        """Publish a sealed Panel and carry newly proved chunk digests to the caller."""
         manifest = self._resolver.load_feature_panel_manifest(manifest_ref)
         snapshot_hash = str(manifest["snapshot_hash"])
         existing = self._store.marker_for_snapshot(snapshot_hash)
         if existing is not None:
             return existing
-        observed = published_at or datetime.now(UTC)
+        observed = published_at or observation_time()
         if observed.tzinfo is None or observed.utcoffset() is None:
             raise ValueError("Panel logical publication clock must be timezone-aware")
-        built = self._build_logical_authorities(manifest)
+        built = self._build_logical_authorities(manifest, on_chunk_digest=on_chunk_digest)
         logical_manifest, revision, semantic_index, physical = built
         derivation = self._build_derivation(manifest=manifest, revision=revision)
         self._store.publish_model(
@@ -245,7 +250,7 @@ class PanelLogicalIdentityPublisher:
             if derivation.recovery_disposition == "RECOVERY_CLOSURE_VERIFIED"
             else "PHYSICAL_RETENTION_REQUIRED"
         )
-        marker = _identified(
+        marker = seal_logical_identity(
             PanelPublicationMarker,
             {
                 "legacy_snapshot_hash": snapshot_hash,
@@ -281,7 +286,10 @@ class PanelLogicalIdentityPublisher:
         return marker
 
     def _build_logical_authorities(
-        self, manifest: Mapping[str, object]
+        self,
+        manifest: Mapping[str, object],
+        *,
+        on_chunk_digest: Callable[[Path, str], None] | None,
     ) -> tuple[
         PanelLogicalContentManifest,
         PanelLogicalRevision,
@@ -324,15 +332,18 @@ class PanelLogicalIdentityPublisher:
             annual.append(annual_item)
             all_sessions.extend(item.session_date for item in observed_sessions)
             session_semantics.extend(observed_sessions)
-            physical_chunks.extend(
-                _physical_chunk(
+            annual_hash = canonical_hash(annual_item.model_dump(mode="json"))
+            for path, raw_chunk in zip(paths, year_chunks, strict=True):
+                physical_chunk = _physical_chunk(
                     path=path,
                     raw_chunk=raw_chunk,
-                    annual=annual_item,
+                    year=annual_item.year,
+                    annual_hash=annual_hash,
                     schema_hash=str(manifest["schema_hash"]),
                 )
-                for path, raw_chunk in zip(paths, year_chunks, strict=True)
-            )
+                if on_chunk_digest is not None:
+                    on_chunk_digest(path, physical_chunk.raw_sha256)
+                physical_chunks.append(physical_chunk)
         if factor_ids is None or listing_ids is None:
             raise ValueError("feature_panel.logical_content_mismatch")
         if membership_epochs is not None:
@@ -354,20 +365,20 @@ class PanelLogicalIdentityPublisher:
         }
         if membership_epochs is not None:
             logical_values["membership_epochs"] = membership_epochs
-        logical_manifest = _identified(
+        logical_manifest = seal_logical_identity(
             PanelLogicalContentManifest, logical_values, "logical_manifest_hash"
         )
         listing_set_hash = canonical_hash(listing_ids)
         if listing_set_hash != str(manifest["listing_set_hash"]):
             raise ValueError("feature_panel.logical_content_mismatch")
-        revision = _identified(
+        revision = seal_logical_identity(
             PanelLogicalRevision,
             {
                 "logical_manifest_hash": logical_manifest.logical_manifest_hash,
                 "catalog_semantics_hash": str(lineage["catalog_hash"]),
                 "cross_section_policy_hash": str(lineage["policy_hash"]),
                 "listing_set_hash": listing_set_hash,
-                "calendar_hash": canonical_hash(sessions),
+                "calendar_hash": logical_calendar_hash(sessions),
             },
             "logical_panel_hash",
         )
@@ -380,7 +391,7 @@ class PanelLogicalIdentityPublisher:
             sessions=tuple(session_semantics),
             membership_epochs=membership_epochs,
         )
-        physical = _identified(
+        physical = seal_logical_identity(
             PanelPhysicalMaterializationManifest,
             {
                 "logical_panel_hash": revision.logical_panel_hash,
@@ -478,7 +489,7 @@ class PanelLogicalIdentityPublisher:
             != (recipe.sector_map_hash if recipe is not None else recovery_binding.sector_map_hash)
         ):
             raise ValueError("feature_panel.logical_content_mismatch")
-        return _identified(
+        return seal_logical_identity(
             PanelDerivationBinding,
             {
                 "legacy_snapshot_hash": snapshot_hash,
@@ -507,11 +518,12 @@ class PanelLogicalIdentityPublisher:
         )
 
     def _recipe_for_snapshot(self, snapshot_hash: str) -> PanelDerivationRecipe | None:
-        assessments = self._store.closure_store.root / "retention-assessments"
+        files = self._store.closure_store.files
         matches: set[str] = set()
-        if assessments.is_dir():
-            for path in assessments.glob("*.json"):
-                payload = json.loads(path.read_text(encoding="utf-8"))
+        for name in files.names("retention-assessments"):
+            data = files.read(f"retention-assessments/{name}")
+            if name.endswith(".json") and data is not None:
+                payload = json.loads(data.decode("utf-8"))
                 if payload.get("snapshot_hash") != snapshot_hash:
                     continue
                 assessment = PanelRetentionAssessment.model_validate(payload)
@@ -745,7 +757,7 @@ def _column_mask_and_bits(column: pa.ChunkedArray) -> tuple[np.ndarray, np.ndarr
 def _logical_column_digest(
     *, factor_id: str, key_hash: str, valid: np.ndarray, bits: np.ndarray
 ) -> str:
-    digest = hashlib.sha256(b"PanelLogicalValueColumn\0")
+    digest = identity_sha256(b"PanelLogicalValueColumn\0")
     digest.update(factor_id.encode("utf-8"))
     digest.update(b"\0")
     digest.update(key_hash.encode("ascii"))
@@ -772,13 +784,13 @@ def logical_session_digest(
         raise ValueError("logical Panel session matrix differs from its axes")
     axis = (factor_axis_hash or canonical_hash(factor_ids)).encode("ascii")
     session_text = session.isoformat().encode("ascii")
-    digest = hashlib.sha256(b"FeaturePanelLogicalSession\0")
+    digest = identity_sha256(b"FeaturePanelLogicalSession\0")
     digest.update(session_text)
     digest.update(struct.pack(">I", len(listing_ids)))
     # Each row's hash is the same bytes in the same order as one update per field: its
     # session's prefix hashed once and copied, and its validity and bits sliced from the
     # session's matrices, row by row as they lie.
-    prefix = hashlib.sha256(b"FeaturePanelLogicalRow\0" + session_text)
+    prefix = identity_sha256(b"FeaturePanelLogicalRow\0" + session_text)
     valid_cells = np.ascontiguousarray(valid)
     bits_cells = np.ascontiguousarray(bits)
     valid_width = valid_cells.itemsize * len(factor_ids)
@@ -803,7 +815,8 @@ def _physical_chunk(
     *,
     path: Path,
     raw_chunk: Mapping[str, object],
-    annual: PanelLogicalAnnualContent,
+    year: int,
+    annual_hash: str,
     schema_hash: str,
 ) -> PanelPhysicalChunk:
     metadata = pq.ParquetFile(path).metadata
@@ -813,8 +826,8 @@ def _physical_chunk(
         for column in range(metadata.row_group(group).num_columns)
     }
     return PanelPhysicalChunk(
-        year=annual.year,
-        logical_annual_hash=canonical_hash(annual.model_dump(mode="json")),
+        year=year,
+        logical_annual_hash=annual_hash,
         legacy_chunk_hash=str(raw_chunk["chunk_hash"]),
         uri=str(raw_chunk["uri"]),
         raw_sha256=file_sha256(path),
@@ -826,19 +839,6 @@ def _physical_chunk(
         compression_codecs=tuple(sorted(codecs)),
         parquet_created_by=metadata.created_by,
     )
-
-
-def _identified[Model: BaseModel](
-    model: type[Model], values: Mapping[str, object], field: str
-) -> Model:
-    provisional = model.model_construct(**values, **{field: "0" * 64})
-    payload = identity_payload(provisional, field)
-    return cast(Model, model.model_validate({**values, field: canonical_hash(payload)}))
-
-
-def _validate_hash(value: str) -> None:
-    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
-        raise ValueError("invalid Panel identity hash")
 
 
 __all__ = [

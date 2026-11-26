@@ -8,9 +8,9 @@
  * deliverables and references). A person opens, revises, notes, attaches and abandons. */
 const LiveGoals = (() => {
   const pages = new Set(['goals', 'goal', 'goal-conversation', 'goal-results', 'cases']); // `cases`: the research case page's old addresses
-  const S = {hash: '', key: '', body: null, rows: null, error: '', loading: false, ticket: 0, verifying: false, verifyError: '', dirty: false, activity: null, draft: null, references: [], dialogHash: ''};
+  const S = {hash: '', key: '', body: null, rows: null, error: '', loading: false, ticket: 0, verifying: false, verifyError: '', dirty: false, activity: null, draft: null, references: [], dialogHash: '', time: null, timing: false, timeError: ''};
   const KINDS = [['RESEARCH', 'Research'], ['DATA', 'Data'], ['OPERATIONS', 'Operations'], ['REVIEW', 'Review']];
-  // a first use is opened from the person's sentence, never in the composer (V452, OP19): its word beside the composer's kinds
+  // a first use is opened from the person's sentence, never in the composer (OP19): its word beside the composer's kinds
   const KIND_WORDS = [...KINDS, ['FIRST_USE', 'First use']];
   const kindWord = (kind) => t((KIND_WORDS.find(([k]) => k === kind) || [])[1] || '') || codeWords(kind);
   const PURPOSES = [['NEW_RESEARCH', 'New research'], ['EXISTING_RESULTS', 'Interpret existing results'], ['CONTINUATION', 'Continue prior research']];
@@ -98,12 +98,12 @@ const LiveGoals = (() => {
   const GOAL_STATES = {OPEN: ['pending', 'state|Open'], COMPLETE: ['succeeded', 'Record complete'], ABANDONED: ['cancelled', 'Abandoned']};
   const OUTCOMES = {ACHIEVED: 'Achieved', PARTLY_ACHIEVED: 'Partly achieved', NOT_ACHIEVED: 'Not achieved'};
   const outcomeWord = (outcome) => (outcome ? t(OUTCOMES[outcome] || '') || codeWords(outcome) : '');
-  // U54: a listed goal's check, as the Team's outputs show it -- the Host's state, Complete once it found the record complete
+  // a listed goal's check, as the Team's outputs show it -- the Host's state, Complete once it found the record complete
   const checkLine = (g) => { const [s, w] = GOAL_STATES[g.state] || ['metadata', '']; return stateLine(s, {word: html`${t(w) || codeWords(g.state)}${g.state === 'COMPLETE' && g.outcome ? html` · ${outcomeWord(g.outcome)}` : ''}`, next: ''}); };
   /* Goals as a lobby (F2, law 136): grouped by state -- the open ones open, the closed folded -- or by kind; one
    * line a row: the title, its kind, revision and references, the day. The owner's older pages are read from the foot. */
   const RANK = {OPEN: 0, COMPLETE: 1, ABANDONED: 2};
-  /* U23: a goal by the agent sessions its row names (the Host's `sessions`, the list its record computes); a goal
+  /* a goal by the agent sessions its row names (the Host's `sessions`, the list its record computes); a goal
    * several sessions worked on is one group of them all, one no session took yet a group of its own. */
   const sessionWords = (x) => `${codeWords(x.vendor)} ${short(x.session_id)}`;
   const sessionGroup = (g) => { const all = g.sessions || []; return all.length ? {key: all.map((x) => x.vendor + ':' + x.session_id).join(','), label: all.map(sessionWords).join(' · '), rank: all.length, open: true} : {key: '', label: t('No session yet'), rank: Infinity, open: false}; };
@@ -153,7 +153,7 @@ const LiveGoals = (() => {
     const folder = app.page === 'goal-conversation' ? conversation(b) : app.page === 'goal-results' ? results(b) : timeline(b);
     return html`${top}${head(b)}${firstUse(b)}${folder}`;
   }
-  /* U70 (V452, OP19): a first use is the person's, run by their agent from their sentence (the lede): each step it took
+  /* a first use is the person's, run by their agent from their sentence (the lede): each step it took
    * as theirs (`record.delegated_steps`, the goal's ledger), the hours its delegation has left (`record.delegation`),
    * and one Stop that ends it -- the goal abandoned, the network it opened closed by the Host. */
   const STEP_WORDS = {WORKSPACE_PREPARE_CONFIRM: 'Confirmed the preparation', DATA_ISSUE_CONFIRM: 'Decided a data issue'};
@@ -176,10 +176,10 @@ const LiveGoals = (() => {
     return panel(html`${t('Your first use')}${hours ? html` · ${hours}` : ''}`, t('Opened from your sentence: the agent running it takes the first steps as yours, for its hours; Stop ends them.'),
       steps.length ? kv(rows, 'kv-columns') : emptyState(t('No step taken for you yet.')), writable(b) ? btn(t('Stop'), 'goal-first-use-stop', '', 'button compact') : '', 'data-first-use');
   }
-  // FLOW-1 request summaries are owner status codes; authored and accepted-answer text stays exact.
+  // request summaries are owner status codes; authored and accepted-answer text stays exact.
   const messageSummary = (m) => m.input_channel === 'PRODUCT_OPERATION' ? coded(m.summary) : m.input_channel === 'PRODUCT_REVIEW' ? said(m.summary) : html`<span class="owner-text">${m.summary}</span>`;
   /* The timeline: the Host's facts (registration, the revision, the Tasks and sessions it recorded), the agents'
-   * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage (U32). */
+   * messages as they arrived and the decision notes; the notes whole in their thread, the sessions' usage. */
   function timeline(b) {
     const g = b.goal, r = b.record || {}, by = actorWords(g.submitted_by);
     const said = (m) => [m.agent_id, LiveTeam.roleName(m.role)].filter(Boolean).join(' · ') || t('Agent');
@@ -192,9 +192,38 @@ const LiveGoals = (() => {
     const tasks = (r.tasks || []).map((x) => objectRow({state: String(x.state).toLowerCase(), name: codeWords(x.kind), to: {action: 'task', value: x.task_id}}, {key: x.task_id, columns: ['id'], props: [html`<span class="mono">${short(x.task_id)}</span>`], time: x.updated_at ? hint(when(x.updated_at), `${t('Task record updated')} · ${whenText(x.updated_at)}`) : ''}));
     const facts = panel(t('Host facts'), t('What the Host recorded under this goal; an agent\'s words are its own.'), html`${kv([[t('Sessions'), (r.sessions || []).length ? (r.sessions || []).map((s) => html`${codeWords(s.vendor)} <span class="mono">${short(s.session_id)}</span>`).reduce((a, x, i) => html`${a}${i ? ' · ' : ''}${x}`, '') : t('none bound')], [t('Requests'), count(r.request_count ?? 0)], [t('Messages'), count(r.message_count ?? 0)]], 'kv-columns')}${tasks.length ? html`<div class="card-list lines slotted">${tasks}</div>` : ''}`);
     const notes = panel(html`${t('Decision notes')} <span class="num">${count(g.statements.length)}</span>`, t('An attributed decision or conclusion with its evidence standing; a note is not product validation or scientific approval.'), g.statements.length ? html`<div class="case-thread">${g.statements.map((s) => statement(s, b.statement_context?.[s.statement_id]))}</div>` : emptyState(t('No decision note yet.'), writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button primary') : ''), g.statements.length && writable(b) ? btn(t('Add a decision note'), 'goal-note', '', 'button compact') : '');
-    return html`${notes}${facts}${usage(r.session_usage || [])}${runLog({id: 'goalTimeline', title: t('Timeline'), lines, count: lines.length})}`;
+    return html`${notes}${facts}${usage(r.session_usage || [])}${time(g.goal_id)}${runLog({id: 'goalTimeline', title: t('Timeline'), lines, count: lines.length})}`;
   }
-  /* U32: each session's models and tokens under this goal -- its totals by model, each participant's latest
+  /* the goal's time, read on demand from its traces (GOAL_PROFILE's `trace`): each CLI call in time order with the
+   * Host steps under it, the agent's time between one conversation's calls (split by its own records where the Host
+   * has them, else inferred from the call times), a call its steps leave mostly untraced marked, and the breakdown. */
+  async function readTime() {
+    const id = S.body?.goal?.goal_id; if (!id || S.timing) return;
+    S.timing = true; S.timeError = ''; render();
+    try { const b = await Data.read('/api/goals/profile?' + new URLSearchParams({goal_id: id})); S.time = {id, trace: b.trace || null}; }
+    catch (e) { S.timeError = e.message; } finally { S.timing = false; render(); }
+  }
+  const secs = (x) => (x == null ? '' : x < 1 ? `${Math.round(x * 1000)} ms` : `${Number(x).toFixed(x < 10 ? 2 : 1)} s`);
+  function time(id) {
+    const read = btn(t('goal.time.read'), 'goal-time', '', 'button compact'), x = S.time?.id === id ? S.time.trace : undefined;
+    const body = S.timing ? skeleton() : S.timeError ? refusal({reason: S.timeError}, 'warning', {state: 'failed', word: t('goal.time.unread'), action: read})
+      : x === undefined ? emptyState(t('goal.time.unread'), read) : !x?.calls?.length ? emptyState(t('goal.time.none')) : waterfall(x);
+    return panel(t('goal.time.title'), t('goal.time.why'), body, x === undefined || S.timing ? '' : read);
+  }
+  function waterfall(x) {
+    const lo = x.window.started_us, span = Math.max(1, (x.window.ended_us ?? lo) - lo), k = x.breakdown;
+    const at = (a, b) => `margin-left:${(100 * (a - lo) / span).toFixed(2)}%;width:${Math.max(0.3, 100 * ((b ?? a) - a) / span).toFixed(2)}%`;
+    const bar = (cls, a, b, label, depth = 0) => html`<div class="waterfall-row depth-${Math.min(depth, 4)}"><span class="waterfall-label">${label}</span><span class="waterfall-track"><i class="waterfall-bar ${cls}" style="${at(a, b)}"></i></span><span class="num">${b == null ? t('goal.time.live') : secs((b - a) / 1e6)}</span></div>`;
+    const rows = [...x.calls.map((c) => ({at: c.started_us, call: c})), ...x.agent.map((a) => ({at: a.started_us, agent: a}))].sort((a, b) => a.at - b.at).map(({call, agent}) => agent
+      ? bar(agent.inferred ? 'agent inferred' : 'agent', agent.started_us, agent.ended_us, html`${t('goal.time.agent')}${agent.inferred ? html` · ${t('goal.time.inferred')}` : ''}`)
+      : html`${bar(call.untraced_flagged ? 'call flagged' : 'call', call.started_us, call.ended_us, html`<span class="mono">${call.name}</span>${call.unattributed ? html` · ${t('goal.time.unattributed')}` : ''}${call.untraced_flagged ? html` · ${badge('attention', t('goal.time.untraced', {s: secs(call.untraced_seconds)}))}` : ''}`)}${call.steps.map((s) => bar('step', s.started_us, s.ended_us, codeWords(s.name), s.depth))}`);
+    const agent = k.agent_split === 'NATIVE_EVENTS' ? t('goal.time.split', {model: secs(k.model_seconds), tools: secs(k.tool_seconds), person: secs(k.person_seconds), rest: secs(k.unattributed_seconds)}) : t('goal.time.inferred');
+    const facts = kv([[t('goal.time.calls'), html`${count(x.calls.length)} · ${secs(k.call_seconds)}`], [t('goal.time.agent'), html`${secs(k.agent_seconds)} · ${agent}`],
+      [t('goal.time.untraced_total'), html`${secs(k.untraced_seconds)}${k.untraced_share == null ? '' : html` · ${Math.round(100 * k.untraced_share)}%`}${k.untraced_flagged_calls ? html` · ${t('goal.time.flagged', {n: k.untraced_flagged_calls, bound: Math.round(100 * k.untraced_bound)})}` : ''}`],
+      ...k.stages.map((s) => [codeWords(s.name), html`${secs(s.seconds)} · ${t('goal.time.steps', {n: s.steps})}`])], 'kv-columns');
+    return html`${facts}<div class="waterfall" role="list">${rows}</div>`;
+  }
+  /* each session's models and tokens under this goal -- its totals by model, each participant's latest
    * reading by model, a mark where a reading differs from the agent's pinned card. A session's totals are its
    * own so far, whatever else it worked on; the Host says so. */
   function usage(sessions) {
@@ -394,7 +423,7 @@ const LiveGoals = (() => {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: $('#goalAbandonReason').value || 'Abandoned by a person'});
     closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
-  /* U70: Stop ends the first use -- its goal abandoned (the Host closes the network its delegation opened) -- confirmed once. */
+  /* Stop ends the first use -- its goal abandoned (the Host closes the network its delegation opened) -- confirmed once. */
   function stopFirstUse() {
     S.dialogHash = S.body.goal.goal_id;
     openDialog(t('First use · explicit confirmation'), t('Stop the first use?'), html`<p>${t('The agent takes no more steps for you, and a network it opened is closed; the goal closes as abandoned, its record readable.')}</p>`, html`${btn(t('Stop'), 'goal-first-use-stop-commit', '', 'button primary', true)}`);
@@ -403,7 +432,7 @@ const LiveGoals = (() => {
     const b = await Data.post('/api/goals/abandon', {goal_id: S.dialogHash, change_reason: 'Stopped by the person in the Workbench'});
     closeDialog(); S.body = null; S.rows = null; open(b.goal_id || b.goal_hash);
   }
-  /* V668 / PG2: all owner-declared reference kinds use the same sealed reference
+  /* PG2: all owner-declared reference kinds use the same sealed reference
    * reader. GOAL_REFERENCE reopens the exact request and checks its recorded identity;
    * its summary is the owner's projection, never the Goal's Facts or a latest object. */
   const REPORT_READOUTS = [
@@ -478,5 +507,5 @@ const LiveGoals = (() => {
     finally { if (S.paging === pending) { S.paging = null; render(); } }
   }
   function leaveReads() {S.ticket++;S.loading=false;S.verifying=false;S.paging=null;S.error='';S.verifyError='';S.dirty=true;S.rows=null;}
-  return {pages, leaveReads, selected, checkLine, outcomeWord, stepWords, hoursLeft, listing, ensure, observe, verify, page, open, list, edit, setKind, save, attach, attachSave, note, noteSave, abandon, abandonCommit, stopFirstUse, stopFirstUseCommit, evidence, openReference, referenceMatchesAddress, refreshReference, continueFrom, exportGoal, more, hasFacts, factsSections};
+  return {pages, leaveReads, readTime, selected, checkLine, outcomeWord, stepWords, hoursLeft, listing, ensure, observe, verify, page, open, list, edit, setKind, save, attach, attachSave, note, noteSave, abandon, abandonCommit, stopFirstUse, stopFirstUseCommit, evidence, openReference, referenceMatchesAddress, refreshReference, continueFrom, exportGoal, more, hasFacts, factsSections};
 })();

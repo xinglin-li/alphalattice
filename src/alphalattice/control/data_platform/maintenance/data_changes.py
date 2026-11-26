@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.data_platform.maintenance.contracts import (
     RemovedMemberTail,
     WorkspaceDataChange,
@@ -51,7 +52,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     CurrentUniverseMaintenanceListing,
     MarketDataRepository,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.resources import worker_width
 
 type BookObligations = dict[str, tuple[str, tuple[str, ...]]]
 
@@ -334,12 +335,11 @@ class WorkspaceDataChanges:
         if scope is None:
             return None
         runner = self._quote_runner(plan, scope, provider)
-        while True:
+        outcome = None
+        while outcome is None or outcome.status is CurrentUniverseMaintenanceStatus.RUNNING:
             if cancelled():
                 return "workspace_data_update.formation_cancelled", None
             outcome = runner.run(observed_at=observed_at, work_budget=1)
-            if outcome.status is not CurrentUniverseMaintenanceStatus.RUNNING:
-                break
         if outcome.status is CurrentUniverseMaintenanceStatus.DEFERRED:
             return outcome.failure_code or "workspace_data_update.formation_source_deferred", None
         failures = tuple(
@@ -573,12 +573,11 @@ class WorkspaceDataChanges:
         receipts = []
         for manifest in self.valuation_scopes(plan):
             runner = self._quote_runner(plan, manifest, provider)
-            while True:
+            outcome = None
+            while outcome is None or outcome.status is CurrentUniverseMaintenanceStatus.RUNNING:
                 if cancelled():
                     raise ValueError("workspace_data_update.valuation_cancelled")
                 outcome = runner.run(observed_at=observed_at, work_budget=1)
-                if outcome.status is not CurrentUniverseMaintenanceStatus.RUNNING:
-                    break
             if outcome.status is not CurrentUniverseMaintenanceStatus.COMPLETED or outcome.failed:
                 rows = market.current_universe_maintenance_listings(runner.maintenance_id)
                 raise ValueError(
@@ -682,7 +681,7 @@ class WorkspaceDataChanges:
             manifest=manifest,
             provider=provider,
             as_of_session=plan.request.target_market_session,
-            max_workers=2,
+            max_workers=worker_width(2),
             mutation_gate=self.gate,
             full_audit_listing_ids=approved,
             full_history_escalation_listing_ids=approved,

@@ -3,9 +3,10 @@
 The Host already owns three truths about work: the shared operation owner sees
 every request and its answer, the dispatcher knows when a command has returned,
 and Task Control and the artifact owners hold lifecycle and results. This
-module composes the existing Unified Observation Ledger under the workspace so
-those facts are *recorded* as they happen and can be *read back* in bounded
-pages, without becoming a second store, a broker or a new authority.
+module writes those facts into the Host's history as they happen (each one a
+span or a log record in the machine's log, under this workspace) and reads them
+back in bounded pages, without becoming a second store, a broker or a new
+authority.
 
 What is recorded, and at which trust level, is decided here and nowhere else:
 
@@ -22,8 +23,8 @@ What is recorded, and at which trust level, is decided here and nowhere else:
   declared about its own work. The boundary assigns the level; the client
   cannot.
 
-Activity is optional infrastructure. A store that cannot be opened leaves the
-product usable and the observer visibly UNAVAILABLE; a callback that fails
+Activity is optional infrastructure. A Host whose history does not record leaves
+the product usable and the observer visibly UNAVAILABLE; a callback that fails
 leaves the operation's result and the Task's lifecycle exactly as they were and
 counts one missing observation that no later success conceals. Only typed
 failure codes and exception class names are ever persisted: no exception
@@ -42,21 +43,35 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import Any, Final, cast
 from uuid import UUID, uuid4
 
+from pydantic_core import to_jsonable_python
+
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.observation_runtime.adapters import safe_observation_draft
 from alphalattice.control.observation_runtime.contracts import (
     ObservationAuthority,
     ObservationAvailability,
+    ObservationDraft,
     ObservationReadCursor,
+    ObservationReadPage,
+    ObservationRecord,
     ObservationRetentionClass,
 )
-from alphalattice.control.observation_runtime.ledger import (
+from alphalattice.control.observation_runtime.log_reads import (
+    INDEXED,
     MAXIMUM_READ_PAGE,
-    ObservationLedger,
+    OBSERVATION_ID,
+    OBSERVATION_INDEXED,
+    SUBJECT_INDEXED,
+    LogObservations,
     ObservationStorageError,
-    UnifiedObservationPort,
+    agent_attributes,
+    agent_event,
+    payload_of,
 )
 from alphalattice.control.observation_runtime.policy import (
     EXTERNAL_ACTIVITY_SCHEMA,
@@ -64,17 +79,22 @@ from alphalattice.control.observation_runtime.policy import (
     default_observation_policies,
 )
 from alphalattice.control.observation_runtime.profile import align_clock_inputs, stage_profile
-from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.native_usage_reader import UNVERIFIED_LIMIT
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     ArtifactReference,
     PortfolioResearchOperations,
     task_status_body,
 )
+from alphalattice.control.product_host.publication.goals import sessions_of
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.control.task_control.timing import read_stage_spans, stage_spans_path
+from alphalattice.control.task_control.upgrade import set_aside
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.admit import SECRET_NAME
+from alphalattice.foundation.data_layer.chain import canonical
+from alphalattice.foundation.data_layer.log import ATTRS_CHARACTERS
 from alphalattice.interface.local_application.activity import (
     ActivityReadQuery,
     ExternalActivityEventDocument,
@@ -117,10 +137,10 @@ from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
 from alphalattice.interface.local_application.questions import asked_questions, person_question
-from alphalattice.kernel.shared_kernel.clocks import clock_metadata
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.clock import clock_metadata, utc_now
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import worker_width
 
-OBSERVATION_LEDGER_NAME = "observations.sqlite"
 """Under `<workspace>/runtime`, the same store the Desk publishers use."""
 
 OPERATION_SOURCE_KIND = "PRODUCT_OPERATION"
@@ -202,23 +222,24 @@ def _joined(
 
 @dataclass
 class WorkspaceActivity:
-    """One recorder and one bounded reader over the workspace ledger."""
+    """One recorder and one bounded reader over the workspace's records in the Host's history."""
 
     workspace: Path
     workspace_id: str
     gate: WorkspaceMutationGate
     instance: str
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
-    storage_cap_reader: Callable[[], int] | None = None
+    clock: Callable[[], datetime] = utc_now
     native_usage_state: Callable[[], dict[str, object]] | None = None
     serving_host: dict[str, object] = field(default_factory=dict, init=False)
     """Optional Host-owned usage health read; only its safe status and reason are exposed."""
     store_failure: str | None = field(default=None, init=False)
     """The typed code of the storage failure that left this observer UNAVAILABLE."""
 
-    _ledger: ObservationLedger | None = field(default=None, init=False, repr=False)
-    _port: UnifiedObservationPort | None = field(default=None, init=False, repr=False)
+    _keeping: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    """Held while an agent's event is checked against its replays and written, once."""
     _sequences: dict[tuple[str, str], int] = field(default_factory=dict, init=False, repr=False)
+    _operation_spans: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+    """Each entered operation's span in the history, by operation_ref, until it returns."""
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _dispatcher: LocalBackgroundDispatcher | None = field(default=None, init=False, repr=False)
     _registry: DuckDbTaskControlRegistry | None = field(default=None, init=False, repr=False)
@@ -234,29 +255,21 @@ class WorkspaceActivity:
     _last_failure_type: str | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        """Open the optional observation ledger and its policy-bound event port.
+        """Set the 0.2.7 observation ledger aside and record the replay clock's correlation, when
+        there is one, in the Host's history.
 
-        A storage refusal is retained as a visible failure code; recording is not silently retried
-        and operation execution remains separate.
+        The old `runtime/observations.sqlite` retires without import (the person, 11-15): the
+        upgrade keeps it under `retired-0.2.7/` and the live root no longer holds it. An activity
+        built where no Host's history records (a Host refuses to start without it)
+        keeps nothing: the failure code is retained, every read says why, and recording is not
+        silently retried; operation execution remains separate.
         """
-        try:
-            # Observations have their own SQLite writer; recording an entry or refusal must
-            # not wait behind the workspace mutation whose admission it describes.
-            ledger = ObservationLedger(
-                self.workspace / "runtime" / OBSERVATION_LEDGER_NAME,
-                gate=WorkspaceMutationGate(),
-                storage_cap_reader=self.storage_cap_reader,
-            )
-        except ObservationStorageError as error:
-            # Optional infrastructure: the product stays usable and every read
-            # says why nothing is being recorded. Nothing is retried silently.
-            self.store_failure = error.failure_code
-            self._note_failure(error.failure_code, type(error).__name__)
+        runtime = self.workspace / "runtime"
+        set_aside(runtime, (runtime / f"{LEDGER_0_2_7}{end}" for end in ("", "-wal", "-shm")))
+        if not history.recording():
+            self.store_failure = "activity.storage_unavailable"
+            self._note_failure(self.store_failure, None)
             return
-        self._ledger = ledger
-        self._port = UnifiedObservationPort(
-            ledger=ledger, policies=default_observation_policies(), clock=self.clock
-        )
         if isinstance(correlation := getattr(self.clock, "correlation", None), dict):
             self._append(
                 schema_kind="ClockCorrelationRecorded",
@@ -290,7 +303,10 @@ class WorkspaceActivity:
                 goal, operations.heartbeats.runtime_paths
             )
         dispatcher.on_command_returned = self.command_returned
-        self._wake_sender = ThreadPoolExecutor(max_workers=1, thread_name_prefix="codex-wake")
+        self._wake_sender = execution_port().register_pool(
+            ThreadPoolExecutor(max_workers=worker_width(1), thread_name_prefix="codex-wake"),
+            name="codex-wake",
+        )
         for held in registry.interrupt_wakes(observed_at=self.clock()):
             self._isolated(functools.partial(self._record_wake, held))
 
@@ -302,12 +318,10 @@ class WorkspaceActivity:
         self._wake_changed(None)
 
     def close(self) -> None:
-        """Finish the wake being sent, then close the optional observation ledger."""
+        """Finish the wake being sent."""
         sender, self._wake_sender = self._wake_sender, None
         if sender is not None:
             sender.shutdown(wait=True)
-        if self._ledger is not None:
-            self._ledger.close()
 
     # ------------------------------------------------------------ Codex wakes
 
@@ -383,12 +397,12 @@ class WorkspaceActivity:
 
     @property
     def available(self) -> bool:
-        """Read whether this activity ledger was successfully opened.
+        """Read whether this activity's records are kept: the Host's history records.
 
         Returns:
             Whether activity storage is available.
         """
-        return self._ledger is not None
+        return self._reads is not None
 
     @property
     def source_id(self) -> str:
@@ -404,9 +418,9 @@ class WorkspaceActivity:
         """Read the optional activity store epoch.
 
         Returns:
-            Exact ledger epoch string or None when storage is unavailable.
+            The history's epoch string, or None when storage is unavailable.
         """
-        return None if self._ledger is None else str(self._ledger.store_epoch)
+        return None if self._reads is None else str(self._reads.store_epoch)
 
     # ----------------------------------------------------- operation observer
 
@@ -519,7 +533,7 @@ class WorkspaceActivity:
                 == body.get("answer_reference")
                 and conversation.get("bundle_reference") == body.get("bundle_reference")
                 and isinstance(conversation.get("observation_id"), str)
-                and re.fullmatch(r"[0-9a-f]{64}", conversation["observation_id"]) is not None
+                and OBSERVATION_ID.fullmatch(conversation["observation_id"]) is not None
                 and conversation.get("original_session_host") in {"codex", "claude-code"}
                 and isinstance(conversation.get("original_session_id"), str)
                 and _REFERENCE_VALUE.fullmatch(conversation["original_session_id"]) is not None
@@ -538,8 +552,8 @@ class WorkspaceActivity:
                 # ordinary recorded returns without adding a second purported first receipt.
                 linked = (
                     None
-                    if self._ledger is None
-                    else self._ledger.unique_correlated_observation(
+                    if self._reads is None
+                    else self._reads.unique_correlated_observation(
                         task_run_id(str(body["task_id"])),
                         PRODUCT_OPERATION_SCHEMA,
                         conversation["observation_id"],
@@ -601,19 +615,17 @@ class WorkspaceActivity:
             caller: The caller kind the entry boundary supplied.
         """
         code = _persisted_code(failure_code)
-        ledger = self._ledger
-        if code is None or ledger is None:
-            return
+        at = self.clock()
         provenance = REQUEST_PROVENANCE.get()
-        self._isolated(
-            lambda: ledger.count_refusal(
-                operation=operation,
-                failure_code=code,
-                caller=caller,
-                vendor=None if provenance is None else provenance.vendor,
-                refused_at=self.clock(),
+        if code is not None:
+            vendor = None if provenance is None else provenance.vendor
+            refusal = {"operation": operation, "failure_code": code, "caller": caller}
+            refused = refusal | {"vendor": vendor}
+            self._isolated(
+                lambda: history.fact(
+                    telemetry.EVENT_REQUEST_REFUSED, refused, at=at, workspace=self.workspace_id
+                )
             )
-        )
 
     def refusals(self, *, days: int) -> dict[str, object]:
         """Read the refusals counted over the last `days` days, the most frequent first.
@@ -625,10 +637,10 @@ class WorkspaceActivity:
             The `ACTIVITY_REFUSALS` answer: the first day read, each counted row and the total,
             or the store's refusal when the observer is unavailable.
         """
-        if self._ledger is None:
+        if self._reads is None:
             return _refused("activity.storage_unavailable", "RESTART_HOST_AFTER_STORE_REPAIR")
         since = (self.clock().astimezone(UTC) - timedelta(days=days - 1)).date().isoformat()
-        rows = self._ledger.refusal_counts(since_day=since)
+        rows = self._reads.refusal_counts(since_day=since)
         return {
             "status": "ACTIVITY_REFUSALS",
             "since_day": since,
@@ -779,11 +791,10 @@ class WorkspaceActivity:
 
         Identity is the producer's own `(producer_id, producer_session,
         producer_sequence)`: a replay of the same event reuses the row, a reused
-        sequence with different content is refused by the ledger, and the
-        producer restarts its sequence by opening a new session.
+        sequence with different content is refused, and the producer restarts its
+        sequence by opening a new session.
         """
-        port = self._port
-        if port is None:
+        if self._reads is None:
             return _refused("activity.storage_unavailable", "RESTART_HOST_AFTER_STORE_REPAIR")
         registry = self._registry
         subject = dict(document.subject)
@@ -801,7 +812,7 @@ class WorkspaceActivity:
         source_id = f"{document.producer_id}:{document.producer_session}"
         try:
             draft = safe_observation_draft(
-                policies=port.policies,
+                policies=_POLICIES,
                 schema_kind=EXTERNAL_ACTIVITY_SCHEMA,
                 occurred_at=document.occurred_at,
                 source_kind=EXTERNAL_SOURCE_KIND,
@@ -824,19 +835,20 @@ class WorkspaceActivity:
                     sorted({*document.correlation_ids, *([str(task_id)] if verified else [])})
                 ),
             )
-            result = port.emit(draft)
+            disposition, kept = self._keep(draft)
         except ValueError as error:
             code = safe_failure_code(str(error)) or "activity.event_not_admitted"
             return _refused(code, "READ_ACTIVITY_EVENT_CONTRACT")
         except ObservationStorageError as error:
             self._note_failure(error.failure_code, type(error).__name__)
             return _refused(error.failure_code, "RETRY_SAME_SEQUENCE_LATER")
+        self._isolated(history.flush)  # the reply names the record: it is committed first
         self._note_append()
         return {
-            "status": result.disposition,
-            "observation_id": result.observation_id,
+            "status": disposition,
+            "observation_id": kept.observation_id,
             "source_id": source_id,
-            "source_sequence": result.source_sequence,
+            "source_sequence": kept.source_sequence,
             "authority": ObservationAuthority.AGENT_PROPOSAL.value,
             "task_verified": verified,
             "summary_truncated": truncated,
@@ -846,20 +858,21 @@ class WorkspaceActivity:
     # --------------------------------------------------------------- reads
 
     def read(self, query: ActivityReadQuery) -> dict[str, object]:
-        """One bounded page plus the current projection of every Task it names.
+        """One bounded page, the current projection of every Task it names and the CLI call at the
+        root of each of its traces.
 
         The Task join reads only the projections this page references (plus the
         watched ids), never the whole projection table; a Task admitted moments
         ago that has no row yet is read from the registry directly.
         """
         started = perf_counter()
-        ledger = self._ledger
+        ledger = self._reads
         page = None if ledger is None else ledger.observations_after(query.after, limit=query.limit)
         referenced = {str(value) for value in query.watch}
         items = [] if page is None else [activity_item(item) for item in page.items]
         if page is not None:
             referenced.update(
-                item.envelope.task_id for item in page.items if item.envelope.task_id is not None
+                item.record.task_id for item in page.items if item.record.task_id is not None
             )
         tasks = self._task_projections(referenced)
         return {
@@ -872,6 +885,7 @@ class WorkspaceActivity:
             "items": items,
             "unavailable": 0 if page is None else page.unavailable_count,
             "tasks": tasks,
+            "calls": _calls(ledger, page),
             "observer": self.observer_state(),
             **({"workspace_writer": writer} if (writer := self.gate.waiting()) else {}),
             "read_cost": {
@@ -886,46 +900,52 @@ class WorkspaceActivity:
         }
 
     def _profile_rows(self, goal: Goal) -> tuple[list[Any], list[Any], int, list[Any]]:
-        ledger, head = self._ledger, 0
+        ledger, head = self._reads, 0
         rows: list[dict[str, Any]] = []
         gaps: list[dict[str, Any]] = []
         clocks: list[dict[str, Any]] = []
         if ledger is None:
             return rows, [{"code": "LEDGER_UNAVAILABLE"}], head, clocks
         cursor = ObservationReadCursor(store_epoch=ledger.store_epoch, ordinal=0)
-        while True:
+
+        def page_at(at: ObservationReadCursor) -> ObservationReadPage | None:
             try:
-                page = ledger.observations_after(cursor, limit=MAXIMUM_READ_PAGE)
+                return ledger.observations_after(at, limit=MAXIMUM_READ_PAGE)
             except ObservationStorageError:
                 gaps.append({"code": "LEDGER_ROWS_UNREADABLE"})
-                break
+                return None
+
+        page = page_at(cursor)
+        while page is not None:
             head = head or page.head_ordinal
             for item in page.items:
-                envelope, payload = item.envelope, item.envelope.inline_safe_payload
+                record, payload = item.record, item.record.inline_safe_payload
                 if item.ordinal > head:
                     break
                 if payload is None:
-                    gaps.append(
-                        {"code": "LEDGER_ROW_UNAVAILABLE", "source": envelope.observation_id}
-                    )
+                    gaps.append({"code": "LEDGER_ROW_UNAVAILABLE", "source": record.observation_id})
                 elif (
-                    envelope.schema_kind in {PRODUCT_OPERATION_SCHEMA, "ClockCorrelationRecorded"}
-                    and envelope.source_kind == OPERATION_SOURCE_KIND
-                    and envelope.authority == ObservationAuthority.OPERATIONAL_ASSERTION
+                    record.schema_kind in {PRODUCT_OPERATION_SCHEMA, "ClockCorrelationRecorded"}
+                    and record.source_kind == OPERATION_SOURCE_KIND
+                    and record.authority == ObservationAuthority.OPERATIONAL_ASSERTION
                 ):
-                    target = rows if envelope.schema_kind == PRODUCT_OPERATION_SCHEMA else clocks
+                    target = rows if record.schema_kind == PRODUCT_OPERATION_SCHEMA else clocks
                     target.append(
                         {
                             **payload,
-                            "at": envelope.observed_at.isoformat(),
-                            "source": envelope.source_id,
-                            "provenance": envelope.observation_id,
-                            "clock_domain": "LEDGER_OBSERVED_AT",
+                            "at": record.observed_at.isoformat(),
+                            "source": record.source_id,
+                            "provenance": record.observation_id,
+                            "clock_domain": payload.get("clock_domain", "LEDGER_OBSERVED_AT"),
                         }
                     )
             if not page.more or page.next_cursor.ordinal >= head:
                 break
+            if not page.advances(cursor):
+                gaps.append({"code": "LEDGER_CURSOR_STALLED"})
+                break
             cursor = page.next_cursor
+            page = page_at(cursor)
         owned = {
             (r["source"], r.get("operation_ref"))
             for r in rows
@@ -989,8 +1009,19 @@ class WorkspaceActivity:
                 gaps.append({"code": "CLOCK_WINDOW_UNOBSERVED"})
         return start.isoformat(), end.isoformat(), source
 
+    def _goal_trace(self, goal: Goal) -> dict[str, Any] | None:
+        """The goal's calls from the log: those naming it, and those of each session that worked
+        for it (its record names them) without naming it."""
+        operations = self._operations
+        attributed = () if operations is None else operations.goals.store.attributed(goal.goal_id)
+        sessions = [session["session_id"] for session in sessions_of(attributed)]
+        trace: dict[str, Any] | None = history.goal_trace(
+            str(goal.goal_id), sessions, workspace=self.workspace_id
+        )
+        return trace
+
     def goal_profile(self, goal: Goal, runtime_paths: tuple[Path, ...]) -> dict[str, Any]:
-        """Read each scoped owner input once; the ledger cut fixes the answer's window."""
+        """Read each scoped owner input once; the history's head fixes the answer's window."""
         rows, gaps, head, clocks = self._profile_rows(goal)
         phases: list[dict[str, Any]] = []
         for task in sorted({row["task_id"] for row in rows if row.get("task_id")}):
@@ -1038,6 +1069,7 @@ class WorkspaceActivity:
                 diagnostics=gaps,
             ),
             "status": "GOAL_PROFILE",
+            "trace": self._goal_trace(goal),
             "goal_id": str(goal.goal_id),
             "goal_hash": goal.goal_hash,
             "goal_kind": goal.declaration.kind,
@@ -1072,7 +1104,7 @@ class WorkspaceActivity:
         """
         if not 1 <= limit <= 50:
             raise ValueError("activity.recent_limit_invalid")
-        ledger = self._ledger
+        ledger = self._reads
         writer = self.gate.waiting()
         if ledger is None:
             return {
@@ -1150,7 +1182,7 @@ class WorkspaceActivity:
         if query.observation_id is not None:
             return self._accepted_answer_detail(query.observation_id)
         started = perf_counter()
-        ledger = self._ledger
+        ledger = self._reads
         page = (
             None
             if ledger is None
@@ -1215,7 +1247,7 @@ class WorkspaceActivity:
     def _accepted_answer_detail(self, observation_id: str) -> dict[str, object]:
         """Open one selected native event or owner return and verify its sealed answer."""
         started = perf_counter()
-        ledger, operations = self._ledger, self._operations
+        ledger, operations = self._reads, self._operations
         answer: dict[str, object] = {
             "status": "UNAVAILABLE",
             "reason": "activity.accepted_answer_unavailable",
@@ -1224,16 +1256,16 @@ class WorkspaceActivity:
         observations = 0
         if ledger is not None:
             try:
-                envelope = ledger.read(observation_id)
+                record = ledger.read(observation_id)
             except (ObservationStorageError, ValueError):
                 pass
             else:
                 observations = 1
-                payload = envelope.inline_safe_payload or {}
+                payload = record.inline_safe_payload or {}
                 subject = payload.get("subject")
                 if (
-                    envelope.schema_kind == EXTERNAL_ACTIVITY_SCHEMA
-                    and envelope.availability is ObservationAvailability.AVAILABLE
+                    record.schema_kind == EXTERNAL_ACTIVITY_SCHEMA
+                    and record.availability is ObservationAvailability.AVAILABLE
                     and payload.get("event_kind") == "NATIVE_COORDINATION_MESSAGE"
                     and isinstance(subject, dict)
                     and (subject.get("message_kind"), subject.get("input_channel"))
@@ -1248,6 +1280,8 @@ class WorkspaceActivity:
                         observations += checked
                     else:  # a hook's, or a review thread's acceptance: its Task from the thread
                         if subject.get("input_channel") == "PRODUCT_REVIEW":
+                            from . import committee  # lazy: research review on the activity feed
+
                             task = committee.accepted_task(
                                 operations.goals.store, str(subject.get("reference"))
                             )
@@ -1257,22 +1291,21 @@ class WorkspaceActivity:
                             "observation_id": observation_id,
                         }
                 elif (
-                    envelope.schema_kind == PRODUCT_OPERATION_SCHEMA
-                    and envelope.schema_version == 1
-                    and envelope.source_kind == OPERATION_SOURCE_KIND
+                    record.schema_kind == PRODUCT_OPERATION_SCHEMA
+                    and record.source_kind == OPERATION_SOURCE_KIND
                     and (
-                        envelope.source_id == self.source_id
-                        or re.fullmatch(r"local-web:[0-9a-f]{32}", envelope.source_id) is not None
+                        record.source_id == self.source_id
+                        or re.fullmatch(r"local-web:[0-9a-f]{32}", record.source_id) is not None
                     )
-                    and envelope.authority is ObservationAuthority.OPERATIONAL_ASSERTION
-                    and envelope.availability is ObservationAvailability.AVAILABLE
+                    and record.authority is ObservationAuthority.OPERATIONAL_ASSERTION
+                    and record.availability is ObservationAvailability.AVAILABLE
                     and payload.get("operation") == "AGENT_ANSWER_SUBMIT"
                     and payload.get("phase") == "RETURNED"
                     and payload.get("status") in {"ACCEPTED", "DONE"}
                     and isinstance(subject, dict)
                     and isinstance(subject.get("task_id"), str)
-                    and envelope.task_id == payload.get("task_id") == subject["task_id"]
-                    and envelope.run_id == task_run_id(subject["task_id"])
+                    and record.task_id == payload.get("task_id") == subject["task_id"]
+                    and record.run_id == task_run_id(subject["task_id"])
                     and operations is not None
                     and operations.review is not None
                 ):
@@ -1281,9 +1314,9 @@ class WorkspaceActivity:
                             subject, verdict=payload["status"]
                         ),
                         "observation_id": observation_id,
-                        "source_kind": envelope.source_kind,
-                        "source_id": envelope.source_id,
-                        "authority": envelope.authority.value,
+                        "source_kind": record.source_kind,
+                        "source_id": record.source_id,
+                        "authority": record.authority.value,
                     }
         return {
             "workspace_id": self.workspace_id,
@@ -1300,14 +1333,14 @@ class WorkspaceActivity:
     def _product_accepted_event_detail(
         self, observation_id: str, subject: Mapping[str, object]
     ) -> tuple[dict[str, object], int]:
-        """Read a default relay only through its actual correlated owner-return envelope."""
+        """Read a default relay only through its actual correlated owner-return record."""
         unavailable: dict[str, object] = {
             "status": "UNAVAILABLE",
             "reason": "activity.accepted_answer_unavailable",
             "observation_id": observation_id,
             "missing": ["accepted_operation_return"],
         }
-        ledger, operations = self._ledger, self._operations
+        ledger, operations = self._reads, self._operations
         if ledger is None or operations is None or operations.review is None:
             return unavailable, 0
         try:
@@ -1330,7 +1363,6 @@ class WorkspaceActivity:
         accepted = payload.get("subject")
         if not (
             receipt.schema_kind == PRODUCT_OPERATION_SCHEMA
-            and receipt.schema_version == 1
             and receipt.source_kind == OPERATION_SOURCE_KIND
             and (
                 receipt.source_id == self.source_id
@@ -1502,9 +1534,7 @@ class WorkspaceActivity:
         stage_id: str | None = None,
     ) -> None:
         """Allocate this source's next sequence and append; failure only degrades."""
-
-        port = self._port
-        if port is None:
+        if self._reads is None:
             self._note_failure("activity.storage_unavailable", None)
             return
         with self._lock:
@@ -1513,7 +1543,7 @@ class WorkspaceActivity:
             self._sequences[key] = sequence
         try:
             draft = safe_observation_draft(
-                policies=port.policies,
+                policies=_POLICIES,
                 schema_kind=schema_kind,
                 occurred_at=self.clock(),
                 source_kind=source_kind,
@@ -1527,7 +1557,7 @@ class WorkspaceActivity:
                 stage_id=stage_id,
                 correlation_ids=correlation_ids,
             )
-            port.emit(draft)
+            self._keep(draft)
         except ObservationStorageError as error:
             self._note_failure(error.failure_code, type(error).__name__)
             return
@@ -1538,6 +1568,52 @@ class WorkspaceActivity:
             )
             return
         self._note_append()
+
+    def _keep(self, draft: ObservationDraft) -> tuple[str, ObservationRecord]:
+        """Validate a draft and write it into the Host's history once.
+
+        Returns:
+            APPENDED with the record written (its id the event's), or REUSED_EXACT with the one an
+            agent's replayed sequence already wrote.
+
+        Raises:
+            ObservationStorageError: The Host's history does not record, or did not keep it.
+            ValueError: The draft is refused, it is of a kind the history keeps no event for, or
+                a replayed sequence changed its content.
+        """
+        reads = self._reads
+        if reads is None:
+            raise ObservationStorageError("activity.storage_unavailable", "history not recording")
+        if draft.schema_kind not in (PRODUCT_OPERATION_SCHEMA, EXTERNAL_ACTIVITY_SCHEMA, *_FACTS):
+            raise ValueError("observation.payload_not_admitted")
+        kept, observed_at = _POLICIES.validate_and_redact(draft), self.clock()
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("observation clock must be timezone-aware")
+        observed_at = observed_at.astimezone(UTC)
+        with self._keeping:
+            if kept.schema_kind == EXTERNAL_ACTIVITY_SCHEMA:
+                existing = reads.replayed(kept.source_id, kept.source_sequence)
+                if existing is not None:
+                    if _own(existing) != _own(kept):
+                        raise ValueError("observation.source_sequence_collision")
+                    return "REUSED_EXACT", existing
+            try:
+                event_id = trace_record(kept, observed_at, self._operation_spans, self.workspace_id)
+            except ObservationStorageError:
+                raise
+            except Exception as error:  # the history did not keep it: never counted as kept
+                raise ObservationStorageError(
+                    "activity.observer_failed", type(error).__name__
+                ) from error
+        if event_id is None:
+            raise ObservationStorageError("activity.storage_unavailable", "history not recording")
+        return "APPENDED", record_of(kept, observed_at, event_id)
+
+    @property
+    def _reads(self) -> LogObservations | None:
+        """This workspace's records in the Host's log; None while the history does not record."""
+        opened = history.opened_log()
+        return None if opened is None else LogObservations(opened[0], self.workspace_id)
 
     def _note_failure(self, failure_code: str, failure_type: str | None) -> None:
         with self._lock:
@@ -1554,10 +1630,10 @@ class WorkspaceActivity:
             self._recording_failed = False
 
     def _cursor_at_head(self) -> str | None:
-        ledger = self._ledger
-        if ledger is None:
+        reads = self._reads
+        if reads is None:
             return None
-        return f"{ledger.store_epoch}:{ledger.head_ordinal()}"
+        return f"{reads.store_epoch}:{reads.head_ordinal()}"
 
 
 def _wake_line(event: str, kind: str, lifecycle: str, failure: str | None) -> str:
@@ -1605,8 +1681,9 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     if codex is None:
         return {**result, "failure": "CODEX_COMMAND_MISSING"}
     try:
-        subprocess.run(
+        spawn.run(
             [codex, "queue", "--thread", thread, "--message", message],
+            process_kind="codex_wake_queue",
             check=True,
             capture_output=True,
             timeout=60,
@@ -1618,7 +1695,7 @@ def _queue_wake(thread: str, message: str, path: str | None = None) -> dict[str,
     except OSError:
         return {**result, "failure": "CODEX_QUEUE_START_FAILED"}
     # `delivered` is the stored spelling of queued: it and WAKE_DELIVERED and task.wake_delivered
-    # sit in people's activity ledgers, so they stay, and every word a reader sees says queued.
+    # sit in people's activity histories, so they stay, and every word a reader sees says queued.
     return {**result, "delivered": True}
 
 
@@ -1643,6 +1720,22 @@ def _usage_view(usage: dict[str, Any]) -> dict[str, object]:
     if isinstance(reason := view["reason"], str):
         words = refusal_words(reason)
         view.update({key: words[key] for key in ("detail", "next_action") if key in words})
+    if isinstance(seconds := usage.get("model_seconds"), (float, int)) and 0 <= seconds < float(
+        "inf"
+    ):
+        view["model_seconds"] = seconds
+    links = usage.get("lineage")
+    if type(unplaced := usage.get("unplaced")) is int and unplaced >= 0:
+        view["unplaced"] = unplaced
+    if isinstance(links, (list, tuple)):
+        valid = [
+            list(pair)
+            for pair in links
+            if isinstance(pair, (list, tuple))
+            and len(pair) == 2
+            and all(isinstance(value, str) and _SESSION_ID.fullmatch(value) for value in pair)
+        ]
+        view["lineage"], view["lineage_count"] = valid[:UNVERIFIED_LIMIT], len(valid)
     unverified = usage.get("unverified")
     if isinstance(unverified, list) and unverified:
         view["unverified"] = [
@@ -1656,6 +1749,158 @@ def _usage_view(usage: dict[str, Any]) -> dict[str, object]:
         )
         view["unverified_detail"] = refusal_words(UNVERIFIED).get("detail")
     return view
+
+
+LEDGER_0_2_7 = "observations.sqlite"
+"""The retired observation ledger's file in a 0.2.7 workspace's runtime folder."""
+_POLICIES = default_observation_policies()
+"""The schema policies every record is validated and redacted by before it is kept."""
+
+
+OWN: Final = (
+    "occurred_at",
+    "source_kind",
+    "source_id",
+    "source_sequence",
+    "task_id",
+    "run_id",
+    "stage_id",
+    "correlation_ids",
+    "authority",
+    "retention_class",
+)
+"""A record's own fields, beside its payload and the clock the Host kept it at: what no column
+of its event holds."""
+
+
+def _calls(
+    reads: LogObservations | None, page: ObservationReadPage | None
+) -> dict[str, dict[str, object]]:
+    """The CLI call at the root of each trace a page's items are in, by trace."""
+    traces = {item.trace_id for item in page.items if item.trace_id} if page else set()
+    return reads.calls(traces) if reads is not None and traces else {}
+
+
+def _own(record: ObservationDraft | ObservationRecord) -> dict[str, Any]:
+    """What a replayed agent event must repeat: its own fields and its payload, as the log reads
+    an agent's event back (`payload_of`, which keeps no empty subject)."""
+    own: dict[str, Any] = record.model_dump(mode="json", include=set(OWN))
+    payload = dict(record.inline_safe_payload or {})
+    return own | {
+        "payload": payload_of(
+            telemetry.EVENT_AGENT_ACTIVITY, agent_attributes(payload), payload.get("summary")
+        )
+    }
+
+
+def record_of(kept: ObservationDraft, observed_at: datetime, event_id: str) -> ObservationRecord:
+    """The record a kept draft is, kept at `observed_at` by the event `event_id`."""
+    return ObservationRecord(
+        **kept.model_dump(mode="python", include={*OWN, "schema_kind", "inline_safe_payload"}),
+        observed_at=observed_at,
+        observation_id=event_id,
+    )
+
+
+def trace_record(
+    kept: ObservationDraft, observed_at: datetime, spans: dict[str, Any], workspace: str
+) -> str | None:
+    """Write a kept record into the Host's history in `workspace` as one event: its payload as the
+    event's attributes and its own fields (`OWN`) with `observed_at` as the `observation`
+    attribute. The event's type is its kind and the event's id its identity: that id, None outside
+    a Host.
+
+    An operation is one step: requested writes its started row, returned or failed its ended row.
+    An agent's event is a fact with its GenAI names, its summary the text; every other record is
+    a fact of its type, and each person question an operation asked or answered is its own fact."""
+    payload = dict(kept.inline_safe_payload or {})
+    own = kept.model_dump(mode="json", include=set(OWN))
+    observation = {"observation": own | {"observed_at": to_jsonable_python(observed_at)}}
+    kind = kept.schema_kind
+    if kind == PRODUCT_OPERATION_SCHEMA:
+        ref, (attributes, text) = (
+            str(payload["operation_ref"]),
+            bounded(payload | observation, None),
+        )
+        if payload["phase"] == "REQUESTED":
+            step = history.begin(
+                telemetry.SPAN_PRODUCT_OPERATION, attributes, text, workspace=workspace
+            )
+            spans[ref], event_id = step, None if step is None else str(step["event_id"])
+        else:
+            step, failed = spans.pop(ref, None), payload["phase"] == "FAILED"
+            event_id = history.finish(
+                step,
+                telemetry.SPAN_PRODUCT_OPERATION,
+                attributes,
+                text,
+                failed=failed,
+                workspace=workspace,
+            )
+        for question in (payload.get("subject") or {}).get("person_questions") or ():
+            asked = {"operation": payload["operation"], **question}
+            history.fact(telemetry.EVENT_PERSON_QUESTION, asked, workspace=workspace)
+        return event_id
+    if kind == EXTERNAL_ACTIVITY_SCHEMA:
+        attributes, text = bounded(agent_attributes(payload) | observation, payload.get("summary"))
+        heard: str | None = history.fact(
+            telemetry.EVENT_AGENT_ACTIVITY,
+            attributes,
+            subject=("agent_event", agent_event(kept.source_id, kept.source_sequence)),
+            text=text,
+            actor=("agent", str(payload["producer_id"])),
+            at=kept.occurred_at,
+            workspace=workspace,
+        )
+        return heard
+    about = None
+    if kind == "TaskControlTransition" and kept.task_id is not None:
+        about = ("task", kept.task_id)
+    elif kind == "ArtifactVerificationObserved":
+        about = ("artifact", str(payload["artifact_hash"]))
+    attributes, text = bounded(payload | observation, None)
+    kept_as: str | None = history.fact(
+        _FACTS[kind], attributes, subject=about, text=text, workspace=workspace
+    )
+    return kept_as
+
+
+def bounded(attributes: dict[str, Any], text: str | None) -> tuple[dict[str, Any], str | None]:
+    """An observation event's attributes and text as the log keeps them: as they are when the
+    attributes fit its bound and no field's name reads as a credential's to it (a public
+    `case_token` the observation policy admits); else the attributes the reads select on, marked
+    `observation.in_text`, and the whole, attributes and text, as the event's text, which has no
+    bound and which the log still refuses when a value is shaped like a credential."""
+    fits = len(canonical(attributes).decode()) <= ATTRS_CHARACTERS
+    if fits and not _credential_named(attributes):
+        return attributes, text
+    observation = attributes["observation"]
+    index = {key: attributes[key] for key in INDEXED if key in attributes}
+    subject = attributes.get("subject") or {}
+    kept = {key: subject[key] for key in SUBJECT_INDEXED if key in subject}
+    index |= {"subject": kept} if kept else {}
+    keys = {key: observation[key] for key in OBSERVATION_INDEXED}
+    index["observation"] = keys | {"in_text": True}
+    return index, canonical({"attributes": attributes, "text": text}).decode()
+
+
+def _credential_named(value: Any, name: str = "") -> bool:
+    """Whether the log's name rule (`admit.SECRET_NAME`) reads a field of `value` as a credential:
+    a named field with a value, unless it names a keychain entry (`*_ref`)."""
+    if isinstance(value, dict):
+        return any(_credential_named(item, str(key)) for key, item in value.items())
+    if isinstance(value, list):
+        return any(_credential_named(item, name) for item in value)
+    named = bool(SECRET_NAME.search(name)) and not name.endswith("_ref")
+    return named and isinstance(value, str) and bool(value)
+
+
+_FACTS = {
+    "TaskControlTransition": telemetry.EVENT_TASK_TRANSITION,
+    "ArtifactVerificationObserved": telemetry.EVENT_ARTIFACT_VERIFIED,
+    "ClockCorrelationRecorded": telemetry.EVENT_CLOCK_CORRELATED,
+}
+"""The record kinds kept as facts, by their event type."""
 
 
 def _persisted_code(value: object) -> str | None:
@@ -1686,7 +1931,6 @@ __all__ = [
     "ARTIFACT_SOURCE_KIND",
     "EXTERNAL_SOURCE_KIND",
     "FAILURE_DETAIL_WITHHELD",
-    "OBSERVATION_LEDGER_NAME",
     "OPERATION_SOURCE_KIND",
     "TASK_SOURCE_KIND",
     "ArtifactReference",

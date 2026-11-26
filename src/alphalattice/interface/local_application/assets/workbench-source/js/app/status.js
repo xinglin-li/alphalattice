@@ -9,6 +9,7 @@ const STATES = {
   running: {word: 'Running', tone: TONE.active, line: 'Executing; submission is not completion.', moving: true},
   cancel_requested: {word: 'Cancelling', tone: TONE.attention, line: 'Cancellation requested; the worker stops at its next safe checkpoint.', moving: true},
   in_progress: {word: 'In progress', tone: TONE.active, moving: true},
+  joined: {word: 'Already in flight', tone: TONE.active, moving: true},
   reused_in_flight: {word: 'Reused · in flight', tone: TONE.rest, moving: true},
   preparing: {word: 'Preparing the workspace', tone: TONE.active, line: 'The first preparation runs while the local service runs; closing the page stops nothing.', moving: true},
   settling: {word: 'Settling', tone: TONE.active, line: 'The choice was sent; the owner\'s next readback says where the Task stands.', moving: true},
@@ -51,32 +52,32 @@ const STATES = {
   alternative_evidence_superseded: {word: 'Superseded', tone: TONE.attention, line: 'This analysis was superseded; a current review needs newer evidence. Its publications remain readable.', next: 'prepare newer evidence'},
   review_input_incomplete: {word: 'Review input incomplete', tone: TONE.attention, line: 'This book lacks a sealed preceding session or pretrade weights; it stays readable and missing changes are not zero.'},
   review_published: {word: 'Review published', tone: TONE.done, line: 'A CRO review is published for this exact book and evidence version.'},
-  // the book's sources (round E1): an issuer's holding, a unit of a coverage run, a checked resource's outcome, a check's outcome
+  // the book's sources: an issuer's holding, a unit of a coverage run, a checked resource's outcome, a check's outcome
   held: {word: 'Held', tone: TONE.rest, line: 'The workspace holds this issuer\'s admitted documents; they are verified against their references at use, never assumed current.'},
   no_source: {word: 'No source', tone: TONE.attention, line: 'No admitted document is held for this issuer; nothing is invented for it.', next: 'prepare, or admit a source'},
   prepared: {word: 'Prepared', tone: TONE.done, line: 'The unit\'s packet is prepared and readable; a prepared packet is not an analysis.'},
   analyzed: {word: 'Analyzed', tone: TONE.done, line: 'An analysis is published for the unit; an analysis is not a CRO decision.'},
   reviewed: {word: 'Reviewed', tone: TONE.done, line: 'A published review read this unit\'s analysis.'},
-  evidence_reviewed: {word: 'Reviewed', tone: TONE.rest, line: 'The review read passages for this issuer; what it concluded is the report\'s.'}, // B1: the Overview's issuer row
+  evidence_reviewed: {word: 'Reviewed', tone: TONE.rest, line: 'The review read passages for this issuer; what it concluded is the report\'s.'}, // the Overview's issuer row
   not_started: {word: 'Not started', tone: TONE.rest, line: 'No preparation has reached this unit.'},
   reused_local: {word: 'Reused', tone: TONE.rest, line: 'The body the workspace held was reused without a request, verified against its reference.'},
   fetched: {word: 'Fetched', tone: TONE.active, line: 'The body was transferred from the official locator in this check.'},
   complete: {word: 'Complete', tone: TONE.done, line: 'Every item the owner expected was delivered; nothing is said about what was not planned.'},
   unavailable: {word: 'Unavailable', tone: TONE.failure, line: 'Nothing expected was available; every failure is named.'},
   empty: {word: 'Empty', tone: TONE.rest, line: 'Nothing was expected and nothing was delivered.'},
-  // the ledger's cells (round E2; the read model's delivery_state, contract section 3.1): the words a cell's code takes
+  // the ledger's cells (the read model's delivery_state, contract section 3.1): the words a cell's code takes
   pending_delivery: {word: 'Pending', tone: TONE.rest, line: 'Routed; nothing of the sealed plan delivered yet.'},
   no_route: {word: 'No route', tone: TONE.rest, line: 'No region of the issuer\'s documents routes to the topic and no typed observation serves it; one bounded broader search ran. Not "nothing found".'},
   awaiting: {word: 'Awaiting', tone: TONE.attention, line: 'Waiting for an actor\'s answer; nothing runs.'},
   kept_acceptable: {word: 'Admitted with the acceptable items', tone: TONE.attention, line: 'The Host kept the acceptable items and dropped the rest; no more answers are read for this bundle.'}, // contract 10.4, the last answer read
   returned_for_correction: {word: 'Returned for correction', tone: TONE.attention, line: 'The Host read the answer and named its problems by item; nothing was admitted.', next: 'correct the named items and submit again'}, // contract 10.4
-  // the reading's states (round E3): a passage's delivery, a table's progress, a typed statement, a continuation
+  // the reading's states: a passage's delivery, a table's progress, a typed statement, a continuation
   delivered: {word: 'Delivered', tone: TONE.done, line: 'The excerpt bytes are in the packet as sealed.'},
   served_by_later_reading: {word: 'Served by a later reading', tone: TONE.rest, line: 'The same text was delivered by a later reading of the same document; this row is context, not recent.'},
   unknown_progress: {word: 'Unknown progress', tone: TONE.rest, line: 'A page sealed before pages carried rows: nothing is proved and nothing is guessed.'},
   ambiguous: {word: 'Ambiguous', tone: TONE.attention, line: 'A sentence to read, with its reason; neither a clean nor a negative statement.'},
   nothing_resumable: {word: 'Nothing resumable', tone: TONE.rest, line: 'No continuation can read more; the remainders name what the plan leaves unread.'},
-  // an issuer's review state (round E4; the Analyst's sealed completion per issuer) and a finding's answer
+  // an issuer's review state (the Analyst's sealed completion per issuer) and a finding's answer
   source_missing: {word: 'No source held', tone: TONE.attention, line: 'No admitted document for the issuer; nothing was checked.'},
   no_spans_delivered: {word: 'No passages delivered', tone: TONE.attention, line: 'Documents held, but the plan delivered no passage to read.'},
   not_reported: {word: 'Not reported', tone: TONE.attention, line: 'Material delivered but no check answered for the issuer; never done.'},
@@ -85,7 +86,7 @@ const STATES = {
   executed_no_findings: {word: 'Read, no finding reported', tone: TONE.rest, line: 'Its passages reached the Analyst and the answer reported no finding for it; not a completed check and not clearance.'},
   executed_with_findings: {word: 'Read, findings reported', tone: TONE.rest, line: 'Its passages reached the Analyst and the answer reported findings for it.'},
   not_answered: {word: 'Not answered', tone: TONE.attention, line: 'The held assessment gives this finding no disposition yet; it stays open.'},
-  // an evidence index's availability (round E5; the storage owner's word)
+  // an evidence index's availability (the storage owner's word)
   available: {word: 'Available', tone: TONE.done, line: 'Present and proved; a prepared packet reads it.'},
   evicted_by_retention: {word: 'Evicted', tone: TONE.rest, line: 'Released by an approved cleanup; rebuilds from its committed vectors.'},
   missing_or_tampered: {word: 'Missing or tampered', tone: TONE.failure, line: 'The index file is not the one the record names; nothing reads it.'},

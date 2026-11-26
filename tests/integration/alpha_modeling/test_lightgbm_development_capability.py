@@ -55,6 +55,14 @@ from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment impo
     alpha_model_numerical_scope,
     resolve_alpha_model_numerical_environment,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.validation.contracts import (
+    RebalanceEvidencePoint,
+    ResearchSplitSpec,
+    ValidationTimeline,
+)
+from alphalattice.capabilities.validation.enums import SplitMode
+from alphalattice.capabilities.validation.splitting import build_research_split
 from alphalattice.investment.alpha_research.experiments.contracts import (
     AlphaFoldCommitment,
 )
@@ -69,14 +77,6 @@ from alphalattice.investment.alpha_research.inputs.folds import (
 from alphalattice.investment.alpha_research.inputs.training import (
     build_alpha_training_input_binding,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.validation.contracts import (
-    RebalanceEvidencePoint,
-    ResearchSplitSpec,
-    ValidationTimeline,
-)
-from alphalattice.kernel.validation.enums import SplitMode
-from alphalattice.kernel.validation.splitting import build_research_split
 from tests.alpha_research.fixtures import research_foundation_binding
 
 FACTOR_IDS = ("nonlinear-a", "nonlinear-b", "size", "trend")
@@ -682,7 +682,7 @@ def test_dynamic_panel_rank_ic_is_equal_session_weighted_and_fail_closed() -> No
 def test_lightgbm_curve_and_stored_trees_do_not_move_with_the_thread_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Binding plan B3: LightGBM's built-in l2 sums in parallel, so the last bits of the curve
+    """LightGBM's built-in l2 sums in parallel, so the last bits of the curve
     early stopping reads moved with the thread count; the l2 the adapters install reproduces
     the one-thread curve at any count, and the stored model text records no count."""
 
@@ -910,7 +910,9 @@ def test_dataset_reuse_mutates_every_binning_field_and_preserves_operator_parame
     with chronological_lightgbm_dataset_cache():
         original, key = adapter._dataset(Backend, **arguments)
         assert adapter._dataset(Backend, **deepcopy(arguments)) == (original, key)
-        for field, value in parameters.items():
+        # The fields that keep reuse are asked first, while the bounded scope holds the original.
+        preserving = ("num_threads", "verbosity")
+        for field, value in sorted(parameters.items(), key=lambda item: item[0] not in preserving):
             altered = deepcopy(arguments)
             altered["dataset_params"][field] = changed(value)
             result, other_key = adapter._dataset(Backend, **altered)

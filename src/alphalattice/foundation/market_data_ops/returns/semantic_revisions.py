@@ -7,12 +7,14 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
+from alphalattice.control.workspace_runtime.artifacts import ADJUSTED_RETURN_CHAIN, ArtifactResolver
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     MarketDataRepository,
     ProviderAdjustedSeriesRevision,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def set_change_explained(
@@ -73,7 +75,7 @@ def build_adjusted_return_semantic_revision(
         deltas.append(
             AdjustedReturnSemanticDelta(
                 **identity,
-                semantic_hash=canonical_hash(identity),
+                semantic_hash=seal_payload_digest("semantic_hash", identity, digest=canonical_hash),
             )
         )
     kept = (
@@ -98,7 +100,11 @@ def build_adjusted_return_semantic_revision(
     )
     return AdjustedReturnSemanticRevision(
         cursor=len(frozen),
-        chain_hash=canonical_hash([value.semantic_hash for value in frozen]),
+        chain_hash=stage_digest(
+            (ADJUSTED_RETURN_CHAIN, tuple(value.semantic_hash for value in frozen)),
+            [value.semantic_hash for value in frozen],
+            canonical_hash,
+        ),
         deltas=frozen,
     )
 

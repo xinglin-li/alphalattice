@@ -53,7 +53,7 @@ const History = (() => {
     return html`${objectHead(t('History'), html`<p class="lede">${t('Browse saved research, including failed and interrupted tasks.')}</p>${meta}`, '', '', [])}${collectionRefusal}${refused}${historyItems().length ? detailSplit(lobby(), 'object') : refused.length || unread ? '' : emptyState(t('No saved record yet'), link(t('New experiment'), 'lab', 'button primary'), 'page-empty')}`;
   }
   function openItem(id) {
-    // N1: the list that showed the row is the one a record steps through (a study's own list, not
+    // the list that showed the row is the one a record steps through (a study's own list, not
     // History's: `3 / 6` stood over a book opened from a list of one); History's own in the order shown
     const from = app.pressed?.isConnected && app.page !== 'history' ? app.pressed.closest('.card-list, [role=list]') : null;
     const shown = from ? [...from.querySelectorAll('[data-row][data-key]')].map((r) => r.dataset.key) : [];

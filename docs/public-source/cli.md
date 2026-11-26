@@ -1,10 +1,11 @@
 # Use the CLI
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 Use `alphalattice <noun> <verb>`. Global `--workspace`, `--view`,
 `--goal` and `--lang` options work before the noun or after the action. Most
 operations need the workspace's Host; an agent session binds itself by working
-on that workspace. [Getting started](getting-started.md) covers installation;
+on that workspace. A command that needs the Host starts an initialized
+workspace's Host when none answers; later commands reuse it. [Getting started](getting-started.md) covers installation;
 the [agent guide](../../AGENTS.md) owns procedures and person decisions.
 
 ```powershell
@@ -24,7 +25,7 @@ The envelope carries `operation`, `outcome`, `status`, `data`, `failure_code`,
 `detail`, `next_requests`, `next_commands`, `next_templates`, timing and context.
 When observed, `session_launches` counts this session's CLI launches, including
 help and schema reads. `data` contains the owner answer or its display projection.
-An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. The same permission source is kept in activity, including automated updates.
+An admitted network step also carries `network_use`: `under` names whose setting allowed it and `words` is its disclosure. Activity records the same permission source when available, including for automated updates; observation gaps are named.
 A refusal names the code, explanation and permitted continuation. Keep its
 references and follow that continuation.
 
@@ -34,7 +35,7 @@ references and follow that continuation.
 | `INVALID_INPUT` | 1 | Correct the named request or declaration. |
 | `REFUSED` | 2 | Read the allowed continuation or person decision. |
 | `PENDING` | 3 | Follow admitted work or its decision. |
-| `NO_HOST` | 4 | Follow the named connection route; start a Host only if absent. |
+| `NO_HOST` | 4 | No Host answers and none could start; follow the named connection route. |
 
 An accepted `bundle submit` exits `OK` (0). Its `task_lifecycle` and offered Task
 read report the review's continuing work; `--wait` can follow that Task.
@@ -109,6 +110,22 @@ within 32 KiB, with whole offers and a `full_answer` pointer; full stdout from
 `--view full` is deprecated in favour of the summary and a saved answer
 ([0.2.4 notes](release-notes.md#024)).
 
+## Inspect and reclaim storage
+
+`alphalattice task show <task> --section storage` shows the data root's
+allocated bytes by category and how many bytes the current workspace can
+reclaim. It also reports which Task scratch directories the Host removed at
+startup and which it kept because it could not prove their ownership or removal.
+
+Run `alphalattice storage reclaim` in a terminal to review the workspace's
+exact cleanup plan and confirm it once. In a non-interactive session, save the
+plan with `alphalattice storage reclaim --output cleanup.json`. After the
+person approves that plan, apply it with
+`alphalattice storage reclaim --confirm <plan-hash> --asked "QUESTION_AS_ASKED" --person-said "YES_AS_SAID"`
+using the full saved `plan_hash`, the question as asked, and the person's own
+words. The Host checks that the plan is still eligible before removing
+anything. See [storage and workspace care](data-and-care.md#storage).
+
 ## Dates and network permission
 
 ```powershell
@@ -119,11 +136,15 @@ alphalattice research-update plan --package <package> --date <date> --output upd
 
 `alphalattice network show` reads the effective control. `alphalattice network set --enabled true` and `alphalattice network set --enabled false` change it under the person's decision or a valid first-use delegation. A person's setting wins over a delegation; the operator's offline switch and a research run's offline hold win over either.
 
-For the one daily-network question, the agent relays the person's yes through `network set --enabled true` and `evidence-consent set --per-issuer 3`, using `--person-said` and `--asked` for their words and the question. This authorizes the stated daily updates and default SEC budget until the person says stop. `alphalattice evidence-consent show` reads the source budget; `alphalattice evidence-consent set --per-issuer 10` changes it with the required authority. Omitted `--documents` and `--bytes` retain the current total bounds; a wider budget needs the person's decision. See [network consent and revocation](privacy.md#workspace-network-and-consent).
+For the one daily-network question, the agent relays the person's yes through `network set --enabled true` and `evidence-consent set --per-issuer 3`, using `--person-said` and `--asked` for their words and the question, and `--question-code network.daily_updates` for its code. This authorizes the stated daily updates and default SEC budget until the person says stop. `alphalattice evidence-consent show` reads the source budget; `alphalattice evidence-consent set --per-issuer 10` changes it with the required authority. Omitted `--documents` and `--bytes` retain the current total bounds; a wider budget needs the person's decision. See [network consent and revocation](privacy.md#workspace-network-and-consent).
 
 ## The daily committee
 
 The first use's report asks the person once whether each daily update also convenes the investment committee. The agent relays their answer with `alphalattice committee daily --enabled true` or `alphalattice committee daily --enabled false`, using `--person-said` and `--asked`. Unanswered, the setting is off: a daily update's published review then answers `GIVE_THE_PM_VIEW`, so the agent gives the portfolio manager's view of the reviewed positions, and the committee for that date stays offered. `alphalattice workspace show` reads the setting as `committee_daily`.
+
+## How a review's Analysts are read
+
+A review that hands out more than one Evidence Analyst bundle asks the person once (`ask_now`, code `review.analyst_reads`) whether each bundle is read by its own subagent or by the lead session itself, one after another. The agent relays their answer with `alphalattice analyst-reads set --mode SUBAGENTS` or `--mode IN_SESSION`, with `--bundles` as the review names it, `--person-said` and `--question-code review.analyst_reads`. The answer stands for later reviews with no more bundles than it covers; a review with more asks again. Nothing is chosen until the person answers. `alphalattice analyst-reads show` reads the setting.
 
 ## Waits, document limits and units
 
@@ -155,3 +176,13 @@ and applicable size limits.
 Read Portfolio metrics with the unit declared for their `metric_units`
 path. Unknown sections list available paths. [Research flows](research-flows.md)
 explains result claims, and [Privacy](privacy.md) explains observed usage.
+
+`alphalattice session exporters --workspace W` prints native exporter settings for
+the running Host: Claude Code's project environment and Codex's user-config lines.
+Only on the person's yes, add `--configure-claude` to merge the environment into
+the admitted project's local Claude Code settings; other settings are retained.
+Codex's user config is always printed, never written. These settings contain the
+Host's local authentication token; keep them private and regenerate them after a
+Host restart. The endpoint accepts loopback exports only and removes prompt, tool
+and opt-in content before storage. `session bind --usage off` disables this
+Session's ingest and usage reading. Missing exports remain unmeasured.

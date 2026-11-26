@@ -13,6 +13,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding, canonical_hash
 from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelCompositionBinding,
@@ -417,6 +418,17 @@ def test_closure_source_scope_skips_unavailable_historical_manifests(
         resolver=resolver,
         snapshot_hashes=frozenset({snapshot_hash}),
     )
+
+    # A Host's retained writer and this read must share the workspace database owner.
+    writer = open_workspace_database(database, read_only=False)
+    try:
+        try:
+            counts = source.sector_revision_ledger_counts()
+        except duckdb.ConnectionException as exc:
+            pytest.fail(f"closure source did not share the workspace database: {exc}")
+        assert counts == (10, 0)
+    finally:
+        writer.close()
 
     inventory = source.inventory_snapshots()
 
@@ -837,7 +849,7 @@ def test_installed_preprocessing_catalog_and_clipping_evidence_round_trip(tmp_pa
         "factor_records": [],
         "total_clipped_count": 0,
     }
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
     evidence_hash = canonical_hash(payload)
     descriptor = resolver.publish_panel_clipping_evidence(
@@ -926,24 +938,38 @@ def _clip_record(
 _D1, _D2, _D3, _D4 = "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"
 
 
-def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order() -> None:
+def test_clipping_evidence_joins_cells_by_session_and_keeps_calendar_order(monkeypatch) -> None:
     """Clipping evidence joins cells by session and keeps calendar order."""
 
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
     from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
+    from alphalattice.foundation.feature_engine.producers import cross_section
     from alphalattice.foundation.feature_engine.producers.cross_section import (
         SectorNeutralPanelMaterializer,
     )
+    from alphalattice.foundation.feature_engine.producers.preprocessing import contracts
 
     materializer = SectorNeutralPanelMaterializer(FeatureCatalog.load())
     original = _clip_record("1" * 64, (_D1, _D2, _D3), (1, 2, 3))
     replacement = _clip_record("2" * 64, (_D2,), (9,), finite=20)
 
-    whole = materializer.clipping_evidence_from_records(
-        (original,),
-        panel_binding_hash="b" * 64,
-        owned={("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
-        sessions=(_D1, _D2, _D3),
-    )
+    hashes = []
+
+    def count(value):
+        if isinstance(value, dict) and value.get("kind") == "PanelFactorClippingRecord":
+            hashes.append(1)
+        return canonical_hash(value)
+
+    with monkeypatch.context() as probe, stage_digests():
+        probe.setattr(cross_section, "canonical_hash", count)
+        probe.setattr(contracts, "canonical_hash", count)
+        whole = materializer.clipping_evidence_from_records(
+            (original,),
+            panel_binding_hash="b" * 64,
+            owned={("1" * 64, "factor_a"): frozenset((_D1, _D2, _D3))},
+            sessions=(_D1, _D2, _D3),
+        )
+        assert hashes == [1]
     assert whole.factor_records[0].per_session_clipped_counts == (1, 2, 3)
     assert whole.ordered_sessions_hash == canonical_hash([original.ordered_sessions_hash])
     assert whole.factor_records[0].boundary_identity == canonical_hash(
@@ -1536,6 +1562,7 @@ def test_development_overlay_reuses_base_and_feeds_exact_dynamic_view(
 def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> None:
     """Panel snapshot identity binds the preprocessing method."""
 
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
         ROBUST_SECTOR_NEUTRAL_Z,
         build_installed_panel_preprocessing_catalog,
@@ -1549,7 +1576,6 @@ def test_panel_snapshot_identity_binds_the_preprocessing_method(tmp_path) -> Non
     from alphalattice.foundation.feature_engine.publication.snapshots import (
         resolve_panel_preprocessing_lineage,
     )
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
     catalog = build_installed_panel_preprocessing_catalog()
     recipe, adapter = catalog.resolve_executable(ROBUST_SECTOR_NEUTRAL_Z)

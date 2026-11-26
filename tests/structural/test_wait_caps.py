@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from devtools.pipeline.stage import deadline_names
+from devtools.pipeline.facets import deadline_names
 
 
 def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
@@ -29,7 +29,7 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
             for n in ast.walk(function)
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
         }
-        if any(
+        if "pause" in calls[name] or any(
             isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and isinstance(n.func.value, ast.Name)
@@ -51,10 +51,12 @@ def test_every_capped_client_waiter_has_its_cap_rule_reviewed() -> None:
     }, capped
     assert sleeps == {"_sleep_before_read"}, sleeps
     # A Codex wake is sent by the Host from the Task's journal, never by the client. An agent
-    # verb's chain (AGENT-TIME verbs 2 and 3) takes one deadline from its cap in `_chain` and
+    # verb's chain (the chained verbs) takes one deadline from its cap in `_chain` and
     # waits only through `_follow`, in its `followed` method, reviewed with the deadline owners.
+    # A goal's and a floor's waits wait at the Host (its long poll), each read through restarts.
+    hosted = {"_wait_for_goal", "_committee_wait"}
     for name in capped - {"_sleep_before_read", "_wait", "_chain"}:
-        assert "_sleep_before_read" in calls[name], name
+        assert ("_sleep_before_read" in calls[name]) != (name in hosted), name
         if name != "_read_through_restarts":
             assert "_read_through_restarts" in calls[name], name
     assert {"_follow", "_wait_for_goal", "_read_through_restarts"} <= calls["_wait"]
@@ -78,14 +80,17 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
     reviewed = {
         (client_path, name)
         for name in (
+            # Makes every waiter's one deadline (its --max-wait within the hour, or the hour); it
+            # does not wait.
+            "_deadline",
             "_sleep_before_read",
             "_read_through_restarts",
             "_follow",
             "_wait_for_goal",
             "_wait",
-            # AGENT-TIME verbs 2 and 3: one deadline bounds every follow of a verb's Tasks.
+            # the chained verbs: one deadline bounds every follow of a verb's Tasks, and each
+            # follow takes that deadline as it is.
             "_chain",
-            "followed",
             "_committee_wait",
         )
     }
@@ -106,17 +111,28 @@ def test_every_host_deadline_owner_has_its_wait_or_nonwait_reviewed() -> None:
                 "submit_evidence_analysis",
             ),
             ("control/product_host/composition/portfolio_research_operations.py", "_moved_on"),
+            # A goal's narrative and a member's floor read wait on their goal's events (and the
+            # floor's next moment) within the request's wait_seconds, re-reading each wake.
+            ("control/product_host/composition/goals.py", "_narrative_moved"),
+            ("control/product_host/composition/committee.py", "read_addressed"),
+            # A detached start spends one deadline on its Host's ready byte, its exit and the
+            # serving check, and stops a Host that said neither by it.
+            ("control/product_host/composition/web_launcher.py", "_heard_from"),
             ("control/workspace_runtime/database.py", "_acquire"),
+            # An access outside the engine waits for a live instance on the one deadline it sets,
+            # re-reading the books at each wake, and refuses by name at its end.
+            ("control/workspace_runtime/database.py", "_outside"),
             ("control/workspace_runtime/database.py", "wait"),
             # Sets and restores the request's deadline; it does not wait itself.
             ("control/workspace_runtime/mutation_gate.py", "request_deadline"),
             # Foreground waits are bounded; background Tasks wait because no person awaits them.
             ("control/workspace_runtime/mutation_gate.py", "hold"),
             ("interface/local_application/dispatcher.py", "close"),
+            # A refused body's drain reads chunks within the socket's timeout and stops, closing
+            # the connection, at its own overall deadline; it reads no shared state.
+            ("interface/local_application/web.py", "_discard_announced_body"),
             ("interface/local_application/web.py", "join_request_threads"),
             ("interface/local_application/web.py", "stop"),
-            # A detached launch's readiness wait: bounded, reread each pause, refused at its end.
-            ("control/product_host/composition/web_launcher.py", "_detach"),
             (
                 "control/product_host/composition/evidence_review_application.py",
                 "_refresh_coverage",

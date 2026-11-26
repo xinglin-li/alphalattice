@@ -8,7 +8,7 @@ flags and the record version, and hands all of them over under one lock
 dispatcher owns whether this Host's command has returned and why a worker
 stopped outside Task Control, and those two facts are kept apart from Task
 Control's state rather than masked over it; the service owns which Task kinds
-it can resume; the owner that admits each Task kind declares its re-PLAN (V188),
+it can resume; the owner that admits each Task kind declares its re-PLAN,
 and the service hands those declarations over. Nothing here
 repairs, retries, kills a process, restarts a native Agent or changes a
 scientific policy -- `active_remediation_attempt_count` is 0 by contract, a
@@ -35,6 +35,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
 from alphalattice.control.guanyin.data.workspace_maintenance import (
     maintenance_failure_detail,
     maintenance_words,
@@ -79,7 +85,6 @@ from alphalattice.interface.local_application.failure_codes import (
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 STALE_HEARTBEAT_SECONDS = 30.0
 """The runner's own stale-execution threshold (`TaskControlRunner.stale_active_tasks`), reused,
@@ -143,7 +148,7 @@ class StopFact(_Contract):
     The typed reason Task Control recorded for a stop, with a bounded user-safe
     explanation. `recoverable` is Task Control's own RECOVERY_REQUIRED, never a guess
     from the code. `cause` is what the stopped stage's owner saw beside the code, as its
-    work item keeps it (V444).
+    work item keeps it.
     """
 
     code: str = Field(min_length=1, max_length=240)
@@ -349,7 +354,7 @@ class TaskRecoveryView(_Contract):
             raise ValueError("task recovery view verified count exceeds plan")
         if (self.guardian is None) != (self.guardian_availability == "NOT_PUBLISHED"):
             raise ValueError("task recovery view guardian availability is inconsistent")
-        if self.view_hash != canonical_hash(self.model_dump(mode="json", exclude={"view_hash"})):
+        if self.view_hash != scoped_model_digest(self, "view_hash", digest=canonical_hash):
             raise ValueError("task recovery view hash is invalid")
         return self
 
@@ -357,7 +362,12 @@ class TaskRecoveryView(_Contract):
 def _with_hash(model, values: dict[str, object], field: str):  # type: ignore[no-untyped-def]
     provisional = model.model_construct(**values, **{field: "0" * 64})
     identity = provisional.model_dump(mode="json", exclude={field})
-    return model(**values, **{field: canonical_hash(identity)})
+    digest = (
+        seal_payload_digest(field, identity, digest=canonical_hash)
+        if model is TaskRecoveryView
+        else canonical_hash(identity)
+    )
+    return model(**values, **{field: digest})
 
 
 def _owner_words(code: str) -> str | None:
@@ -365,7 +375,7 @@ def _owner_words(code: str) -> str | None:
 
     The door's words for a data or Feature code, then the Host's (`explain`), which name the way
     on, then the maintenance guardian's, which name the stop: a stop reads its owner's words
-    wherever it stopped, never words for one kind and the governed fallback for another (V504:
+    wherever it stopped, never words for one kind and the governed fallback for another (
     RR5's book read the bare code).
     """
     worded = (
@@ -404,6 +414,11 @@ def stop_detail(task_kind: str, code: str, source: str) -> str:
             "A previously verified stage's evidence could not be verified during recovery, "
             "so the Task stopped before continuing. Restore the evidence or declare the work "
             "again through its owner's plan."
+        )
+    if code == "HOST_STOP_REQUESTED":
+        return (
+            "The Host stopped this Task at a safe point. Verified work is kept; "
+            "serve the Host again to resume the same Task."
         )
     if code == "TASK_EXECUTION_INTERRUPTED":
         return (
@@ -596,7 +611,7 @@ def resolved_read(body: dict[str, object], fact: TaskAttentionFact | None) -> No
     """
     if fact is None or fact.resolution != "SUCCESSOR_SUCCEEDED":
         return
-    for key in ("failure_code", "network_access"):
+    for key in ("failure_code", "network_access", "next_commands", "pack"):
         body.pop(key, None)
     successor = fact.successor_task_id
     # Only the fields each read already carries, so a typed read keeps its shape.
@@ -1207,6 +1222,7 @@ def build_task_recovery_view(
                 item
                 for item in items
                 if item.lifecycle in {WorkItemLifecycle.BLOCKED, WorkItemLifecycle.CANCELLED}
+                or (item.stage_id == task.active_work_item_id and item.failure_cause is not None)
             ),
             None,
         )
@@ -1279,7 +1295,9 @@ def build_task_recovery_view(
         "observed_at": observed_at,
         "attention": attention,
     }
-    return _with_hash(TaskRecoveryView, values, "view_hash")
+    # Background projections can be built outside a serving request or work item.
+    with stage_digests():
+        return _with_hash(TaskRecoveryView, values, "view_hash")
 
 
 def way_on(
@@ -1302,6 +1320,9 @@ def way_on(
     requests = {**owned, **offered, **subject}
     if requests:
         body["next_requests"] = requests
+    for key in ("next_commands", "pack"):
+        if key in way:
+            body[key] = way[key]
     if "detail" in body and body.get("lifecycle") == "CANCELLED":
         body["detail"] = CANCELLATION_REPLAN
     lead = (
@@ -1339,15 +1360,17 @@ __all__ = [
 
 
 def task_facts(registry: Any, task_id: UUID) -> tuple[Any, ...] | None:
-    """A Task's kind, lifecycle, update clock and the successor that continued its stop.
+    """A Task's kind, lifecycle, update clock, the successor that continued its stop and its
+    record's version.
 
     Args:
         registry: Task Control's registry.
         task_id: The Task.
 
     Returns:
-        The facts a goal reads, the last the successor that succeeded (read as
-        `task_attention` reads it) or none; nothing when the Task is absent.
+        The facts a goal reads: the fourth the successor that succeeded (read as
+        `task_attention` reads it) or none, the fifth the version Task Control advances with
+        each write of the Task's record; nothing when the Task is absent.
     """
     try:
         task = registry.task(task_id)
@@ -1355,7 +1378,7 @@ def task_facts(registry: Any, task_id: UUID) -> tuple[Any, ...] | None:
         return None
     facts = task.task_kind, task.lifecycle.value, task.updated_at
     if task.lifecycle is not TaskLifecycle.BLOCKED:
-        return (*facts, None)
+        return (*facts, None, task.version)
     links = registry.recovery_links(task.task_id)
     successors = {}
     for link in links:
@@ -1363,4 +1386,4 @@ def task_facts(registry: Any, task_id: UUID) -> tuple[Any, ...] | None:
             successors[link.successor_task_id] = registry.task(link.successor_task_id)
     fact = task_attention(task, successors=successors, links=links)
     ended = fact.resolution == "SUCCESSOR_SUCCEEDED" and fact.successor_task_id
-    return (*facts, UUID(fact.successor_task_id) if ended else None)
+    return (*facts, UUID(fact.successor_task_id) if ended else None, task.version)

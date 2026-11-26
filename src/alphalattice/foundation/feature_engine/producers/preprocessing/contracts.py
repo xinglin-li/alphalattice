@@ -19,7 +19,11 @@ from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
 
 
 class PanelPreprocessingError(ValueError):
@@ -291,9 +295,7 @@ class PanelFactorClippingRecord(_Contract):
             raise PanelPreprocessingError("PANEL_CLIPPING_RECORD_TOTAL_MISMATCH")
         if self.clipped_count > self.finite_input_count:
             raise PanelPreprocessingError("PANEL_CLIPPING_RECORD_COUNT_EXCEEDS_INPUT")
-        if self.record_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"record_hash"})
-        ):
+        if self.record_hash != scoped_model_digest(self, "record_hash", digest=canonical_hash):
             raise PanelPreprocessingError("PANEL_CLIPPING_RECORD_IDENTITY_INVALID")
         return self
 
@@ -358,8 +360,7 @@ class PanelClipObservationRecord(_Contract):
             raise PanelPreprocessingError("PANEL_CLIP_OBSERVATION_SESSION_AXIS_MISMATCH")
         if self.ordered_sessions_hash != canonical_hash(list(self.sessions)):
             raise PanelPreprocessingError("PANEL_CLIP_OBSERVATION_SESSIONS_INVALID")
-        identity = self.model_dump(mode="json", exclude={"record_hash"})
-        if self.record_hash != canonical_hash(identity):
+        if self.record_hash != scoped_model_digest(self, "record_hash", digest=canonical_hash):
             raise PanelPreprocessingError("PANEL_CLIP_OBSERVATION_IDENTITY_INVALID")
         return self
 
@@ -380,9 +381,9 @@ class PanelClipObservationRecord(_Contract):
         """
         provisional = cls.model_construct(**values, record_hash="0" * 64)
         identity = provisional.model_dump(mode="json", exclude={"record_hash"})
+        digest = seal_payload_digest("record_hash", identity, digest=canonical_hash)
         return cast(
-            PanelClipObservationRecord,
-            cls.model_validate({**values, "record_hash": canonical_hash(identity)}),
+            PanelClipObservationRecord, cls.model_validate({**values, "record_hash": digest})
         )
 
 
@@ -428,9 +429,7 @@ class PanelClippingEvidence(_Contract):
         if self.raw_input_identity == self.transformed_identity and self.total_clipped_count:
             # Values were clipped, so the two sides cannot be the same array.
             raise PanelPreprocessingError("PANEL_CLIPPING_EVIDENCE_TRANSFORM_NOT_OBSERVED")
-        if self.evidence_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"evidence_hash"})
-        ):
+        if self.evidence_hash != scoped_model_digest(self, "evidence_hash", digest=canonical_hash):
             raise PanelPreprocessingError("PANEL_CLIPPING_EVIDENCE_IDENTITY_INVALID")
         return self
 

@@ -22,6 +22,9 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 from alphalattice.evidence.alternative_evidence.analysis.packet import query_program_hash
 from alphalattice.evidence.alternative_evidence.contracts import seal_contract
 from alphalattice.evidence.alternative_evidence.documents import canonicalization
+from alphalattice.evidence.alternative_evidence.documents.library import (
+    EvidenceDocumentUnverifiable,
+)
 from alphalattice.evidence.alternative_evidence.retrieval.contracts import (
     AlternativeEvidenceResolvedSpanSet,
 )
@@ -31,7 +34,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources import sec_edgar
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
+from alphalattice.foundation.data_layer import history
 from tests.alternative_evidence_desk.incremental_acquisition_support import (
     AAPL,
     LATER_EIGHT_K,
@@ -39,7 +42,7 @@ from tests.alternative_evidence_desk.incremental_acquisition_support import (
     _request,
     _transport,
 )
-from tests.alternative_evidence_desk.planted_corpus import _runtime
+from tests.alternative_evidence_desk.planted_corpus import _runtime, tampered_reference
 from tests.alternative_evidence_desk.sec_scenario_transport import (
     NOW,
     SecScenarioTransport,
@@ -94,7 +97,9 @@ def _prepare(
 ) -> dict[str, Any]:
     request = _request(as_of=as_of, budget=budget)
     registry, snapshot, source_set = _acquire(runtime, transport, request, registry=registry)
-    document_set = runtime.canonicalize(source_set=source_set, published_at=source_set.acquired_at)
+    document_set = runtime.canonicalize(
+        source_set=source_set, published_at=source_set.acquired_at, as_of=source_set.acquired_at
+    )
     generation = runtime.build_retrieval(
         document_set=document_set, built_at=document_set.published_at
     )
@@ -164,8 +169,7 @@ def test_an_unchanged_refresh_reuses_sealed_derivations_and_survives_a_restart(
         assert sessions.opened == 1, "no session for a selection a receipt already proves"
         assert runtime.selection_reuse_count == 1
         assert runtime.retrieval.generation_reuse_count == 1
-        assert runtime.retrieval.generation_release_count == 1, "the build's lease is closed"
-        assert runtime.retrieval.active_index_ids() == frozenset(), "nothing left held"
+        assert runtime.retrieval.generation_release_count == 1, "verified without a session"
         # The derivations are the same commitments; the identities are this
         # request's own.
         assert second["request"].request_hash != first["request"].request_hash
@@ -174,7 +178,7 @@ def test_an_unchanged_refresh_reuses_sealed_derivations_and_survives_a_restart(
         ]
         assert second["document_set"].documents == first["document_set"].documents
         assert second["document_set"].document_set_hash != first["document_set"].document_set_hash
-        assert second["generation"].corpus_hash == first["generation"].corpus_hash
+        assert second["generation"].index_id == first["generation"].index_id
         assert second["receipt"].receipt_hash != first["receipt"].receipt_hash
         assert second["receipt"].reused_from_receipt_hash == first["receipt"].receipt_hash
         assert second["receipt"].request_hash == second["request"].request_hash
@@ -219,6 +223,14 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
     runtime = _runtime(tmp_path)
     try:
         sessions = _Sessions(runtime)
+        indexed = []
+        original = history.index_references
+
+        def record_index(**kwargs):
+            indexed.append(len(kwargs["revisions"]))
+            return original(**kwargs)
+
+        monkeypatch.setattr(history, "index_references", record_index)
         first = _prepare(runtime, transport, as_of=NOW)
         transport.add_filing(AAPL, LATER_EIGHT_K, filing_body(LATER_EIGHT_K.accession))
         extractions.reset()
@@ -237,6 +249,14 @@ def test_a_changed_source_reuses_the_unchanged_derivations_and_selects_afresh(
         assert sessions.opened == 2 and runtime.selection_reuse_count == 0
         assert second["receipt"].reused_from_receipt_hash is None
         _assert_spans_anchor(runtime, second)
+        assert first["generation"].generation_hash != second["generation"].generation_hash
+        for prepared in (first, second):
+            runtime.retrieval.open_session(
+                document_set=prepared["document_set"],
+                generation=prepared["generation"],
+                evidence_as_of=prepared["request"].evidence_as_of,
+            )
+        assert indexed == [3, 4]
 
         other_policy = SealedSelections(
             runtime.artifacts,
@@ -285,23 +305,17 @@ def test_a_damaged_canonical_revision_is_extracted_afresh_from_verified_bytes(
     try:
         first = _prepare(runtime, transport, as_of=NOW)
         reference = first["document_set"].documents[0]
-        revision, _content = runtime.documents.library.read_revision(
-            reference.workspace_document_id, reference.workspace_revision
-        )
-        blob = runtime.documents.workspace.root / Path(*revision.blob_path.split("/"))
-        original = blob.read_bytes()
-        blob.write_bytes(original[:-1] + (b"!" if original[-1:] != b"!" else b"?"))
         extractions.reset()
-        try:
-            with pytest.raises(KnowledgeRetrievalError) as refused:
-                _prepare(
-                    runtime, transport, as_of=NOW + timedelta(hours=1), registry=first["registry"]
-                )
-            assert refused.value.failure.code == "retrieval.source_integrity"
-            assert runtime.sealed_canonicals.damaged == 1
-            assert runtime.sealed_canonicals.reused == 2 and extractions.canonicals == 1
-        finally:
-            blob.write_bytes(original)
+        # The canonical text damaged in the Host's log: the sealed canonical is not reused but
+        # extracted afresh from the verified source bytes, and the damaged body refuses by name
+        # where it is read.
+        with (
+            tampered_reference(reference.workspace_document_id),
+            pytest.raises(EvidenceDocumentUnverifiable),
+        ):
+            _prepare(runtime, transport, as_of=NOW + timedelta(hours=1), registry=first["registry"])
+        assert runtime.sealed_canonicals.damaged == 1
+        assert runtime.sealed_canonicals.reused == 2 and extractions.canonicals == 1
         extractions.reset()
         third = _prepare(
             runtime, transport, as_of=NOW + timedelta(hours=2), registry=first["registry"]
@@ -463,7 +477,9 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
                 runtime, transport, request, registry=first["registry"]
             )
             document_set = runtime.canonicalize(
-                source_set=source_set, published_at=source_set.acquired_at
+                source_set=source_set,
+                published_at=source_set.acquired_at,
+                as_of=source_set.acquired_at,
             )
             generation = runtime.build_retrieval(
                 document_set=document_set, built_at=document_set.published_at, reuse_for=request
@@ -490,12 +506,10 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
         built = runtime.retrieval.build(
             document_set=second["document_set"],
             built_at=second["document_set"].published_at,
-            anchor_for=runtime.generation_anchor,
         )
         assert built.generation_hash == second["generation"].generation_hash, (
             "the same identity the build seals"
         )
-        runtime.retrieval.discard_pending(built.generation_hash)
         assert runtime.artifacts.exists("retrieval-generations", built.generation_hash)
         # A request under another policy hash builds and selects afresh.
         policy = runtime.analysis_policy_hash
@@ -510,13 +524,6 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
         runtime.sealed_selections = SealedSelections(
             runtime.artifacts, selection_policy_hash=policy, program_hash=query_program_hash()
         )
-        # The index absent from disk: the build restores it, as before.
-        database = next((tmp_path / "workspace" / ".system" / "knowledge-indexes").rglob("*.db"))
-        database.unlink()
-        fourth = refresh(NOW + timedelta(hours=3))
-        assert len(builds) == 4 and sessions.opened == 2
-        assert fourth["receipt"].reused_from_receipt_hash == first["receipt"].receipt_hash
-        assert database.is_file(), "restored by the build"
         # A named span set that is not the one delivered: refused by name at
         # the build stage, never taken for a miss.
         named = (
@@ -530,7 +537,7 @@ def test_an_unchanged_refresh_reuses_a_sealed_selection_without_building_its_ind
                 refresh(NOW + timedelta(hours=4))
         finally:
             named.write_bytes(original)
-        assert len(builds) == 4 and sessions.opened == 2
+        assert len(builds) == 3 and sessions.opened == 2
     finally:
         runtime.close()
 

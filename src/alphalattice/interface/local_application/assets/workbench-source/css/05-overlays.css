@@ -387,7 +387,7 @@ body[data-page] :is(.button,.dialog-list-btn,.comparison-candidate) {
   font-size: var(--style-callout-size);
   line-height: var(--style-callout-leading);
 }
-/* v3.10: calmer comparison furniture. Identities and unresolved constraints never filter out. */
+/* Calmer comparison furniture. Identities and unresolved constraints never filter out. */
 :is(.input-with-icon,.search-wrap,.es-search) {
   border: 1px solid var(--ui-line);
   border-radius: var(--radius-pill);

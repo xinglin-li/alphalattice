@@ -1,4 +1,4 @@
-"""V661: every whole canonical Task reader declares whether it needs complete authority."""
+"""every whole canonical Task reader declares whether it needs complete authority."""
 
 from __future__ import annotations
 
@@ -33,9 +33,9 @@ STRICT_READERS = {
     COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_tasks_wait __post_init__ _prepare_confirm _strategy_task "
-        "_automation_answer upgrade cpu_budget _install",
+        "_tasks_wait __post_init__ _strategy_task _automation_answer upgrade cpu_budget _install",
     ),
+    COMPOSITION + "research_operations.py": ("", "_prepare_confirm"),
     COMPOSITION + "portfolio_updates.py": (
         "PortfolioUpdateApplication",
         "reusable admit readback publication_task",
@@ -92,10 +92,6 @@ STRICT_READERS = {
         "AlternativeEvidenceDocumentTaskAdapter",
         "_carried_index completed_unit run_tasks prepared_receipts",
     ),
-    "evidence/alternative_evidence/storage/inventory.py": (
-        "EvidenceStorageInventory",
-        "generation_readers",
-    ),
     "interface/local_application/dispatcher.py": (
         "LocalBackgroundDispatcher",
         # Idle expiry must prove no owned Task still needs the Host from complete authority.
@@ -109,10 +105,11 @@ STRICT_READERS = {
 # while the default actual-resume branch keeps its strict scan above.
 # P3a TASKS projects attention from readable canonical records and names unreadable IDs on
 # the selected session page; it grants no admission, control or supervision authority.
-# BADGE: History's rows (in `_execute`) and the supervisor's attention projection fold a
+# BADGE: History's rows (in `_execute_host`) and the supervisor's attention projection fold a
 # resolved stop under its successor from readable canonical records in admission order; they
 # grant no authority either.
 PARTIAL_READERS = {
+    COMPOSITION + "local_web_session.py": ("LocalPortfolioWebSession", "_recovery_commands"),
     COMPOSITION + "evidence_review_application.py": (
         "EvidenceReviewApplication",
         "recovery_commands",
@@ -123,7 +120,7 @@ PARTIAL_READERS = {
     COMPOSITION + "research_experiments.py": ("ResearchExperimentApplication", "listing"),
     COMPOSITION + "portfolio_research_operations.py": (
         "PortfolioResearchOperations",
-        "_execute pending_decisions guardian upgrade tasks",
+        "_execute_host pending_decisions guardian upgrade tasks",
     ),
     COMPOSITION + "task_supervision.py": ("TaskSupervisor", "attention"),
     COMPOSITION + "upgrade_overview.py": ("", "upgrade_overview"),
@@ -150,8 +147,8 @@ def _expected_readers():
     ] = 1
     # One public operation dispatch, not a canonical-record reader.
     expected[
-        COMPOSITION + "portfolio_research_operations.py",
-        "PortfolioResearchOperations._task_routes",
+        COMPOSITION + "task_operations.py",
+        "execute",
         "public-TASKS",
     ] = 1
     return expected
@@ -186,11 +183,11 @@ def _record_reader_calls(sources, *, canonical=False):
             scope = ".".join(reversed(scope))
             action = node.func.attr
             if (
-                path == COMPOSITION + "portfolio_research_operations.py"
-                and scope == "PortfolioResearchOperations._task_routes"
+                path == COMPOSITION + "task_operations.py"
+                and scope == "execute"
                 and action == "tasks"
                 and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "self"
+                and node.func.value.id == "operations"
             ):
                 action = "public-TASKS"
             found[path, scope, action] += 1

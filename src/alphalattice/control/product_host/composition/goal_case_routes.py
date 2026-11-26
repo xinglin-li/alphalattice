@@ -8,13 +8,15 @@ replace research cases.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
 
-from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.publication.goals import GoalStore
 
 CASE_ROUTES: Final = (
     ("GET", "/api/research/cases", "CASE_LIST"),
@@ -87,9 +89,7 @@ def case_request(operation: str, fields: Mapping[str, Any]) -> PortfolioResearch
                 goal_declaration=declaration,
                 change_reason=reason,
             )
-        if goal_id is None:
-            raise ValueError("research_case.case_id_invalid")
-        return PortfolioResearchOperationRequest(
+        return PortfolioResearchOperationRequest(  # a new case's id is the Host's
             operation="GOAL_OPEN",
             goal_id=goal_id,
             goal_declaration=declaration,
@@ -144,7 +144,7 @@ def case_record(goal: Mapping[str, Any]) -> dict[str, Any]:
         "document": case_document(goal["declaration"]),
         "references": goal["references"],
         "statements": goal["statements"],
-        # Assignments are Team's now, in the goal's conversation; the UI pass shows them.
+        # Assignments are Team's now, in the goal's conversation; the interface shows them.
         "assignments": [],
         "case_hash": goal["goal_hash"],
     }

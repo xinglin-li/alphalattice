@@ -7,7 +7,6 @@ from bisect import bisect_left
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -17,13 +16,16 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.foundation.data_layer import arrays, history
 from alphalattice.foundation.market_data_ops.storage.rebase import PRICES
 from alphalattice.foundation.market_data_ops.storage.rebase import apply as apply_rebase
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 from .contracts import (
     HistoryProofParts,
@@ -364,21 +366,28 @@ class _WorkspaceObservationHistoryStore:
     ) -> _PartColumns:
         expected_shape = (part.stop - part.start, len(head.ordered_listing_ids))
         category = _part_category(head.column_names, expected_shape)
-        target = self._path(category, part.content_hash, "parquet")
+        self._require_hash(part.content_hash)
         try:
             key = f"{category}/{part.content_hash}"
+            payload = history.read_alpha_part(part.content_hash, category)
+            parquet = pq.ParquetFile(pa.BufferReader(payload))
+            metadata = parquet.metadata
             if key not in verified:
-                verified[key] = self.content.load_columns(
-                    category=category, content_hash=part.content_hash
-                )
+                # A single Arrow worker cannot parallelize these column reads.
+                table = parquet.read(use_threads=pa.cpu_count() > 1)
+                verified[key] = {
+                    name: np.ascontiguousarray(table.column(name).to_numpy())
+                    for name in table.column_names
+                }
             columns = verified[key]
-            metadata = pq.read_metadata(target)
             shape = json.loads((metadata.metadata or {})[b"shape"])
+            row_count = metadata.num_rows
             if (
                 shape != list(expected_shape)
                 or any(type(value) is not int for value in shape)
-                or metadata.num_rows != expected_shape[0] * expected_shape[1]
+                or row_count != expected_shape[0] * expected_shape[1]
                 or tuple(columns) != head.column_names
+                or arrays.digest(columns) != part.content_hash
                 or any(
                     values.dtype != np.dtype("float64")
                     or values.shape != (expected_shape[0] * expected_shape[1],)
@@ -390,6 +399,9 @@ class _WorkspaceObservationHistoryStore:
             code = (
                 _MISSING if str(error).startswith("content_store.artifact_missing:") else _INVALID
             )
+            raise self.error(code) from error
+        except DataError as error:
+            code = _MISSING if error.failure.code == "data_layer.part_missing" else _INVALID
             raise self.error(code) from error
         except (OSError, pa.ArrowException, KeyError, TypeError, json.JSONDecodeError) as error:
             raise self.error(_INVALID) from error
@@ -483,11 +495,13 @@ class _WorkspaceObservationHistoryStore:
                 start = stop
                 continue
             try:
-                content_hash = content.publish_columns(
-                    category=_part_category(tuple(held), (stop - start, len(ordered_listing_ids))),
-                    columns={name: value[start:stop] for name, value in held.items()},
-                )
-            except ContentAddressedStoreError as error:
+                columns = {name: value[start:stop] for name, value in held.items()}
+                described = arrays.describe(columns)
+                content_hash = described.content_digest
+                category = _part_category(tuple(held), (stop - start, len(ordered_listing_ids)))
+                payload = described.body()
+                history.keep_alpha_part(content_hash, category, payload, capacity=content.capacity)
+            except (ContentAddressedStoreError, DataError) as error:
                 raise self.error(_INVALID) from error
             parts.append(
                 seal_current_contract(
@@ -690,6 +704,7 @@ class _WorkspaceObservationHistoryStore:
                     for part in head.parts:
                         self._part(head, part, {})
                 else:
+                    protected.add(path)  # the old files stay as the upgrade's input
                     try:
                         metadata = pq.read_metadata(path)
                         shape = json.loads((metadata.metadata or {})[b"shape"])
@@ -726,11 +741,12 @@ class _WorkspaceObservationHistoryStore:
                 category = _part_category(
                     head.column_names, (part.stop - part.start, len(head.ordered_listing_ids))
                 )
-                protected.add(self._path(category, part.content_hash, "parquet"))
+                old_part = self._path(category, part.content_hash, "parquet")
+                if old_part.is_file():
+                    protected.add(old_part)
 
         def fact(path: Path) -> WorkspaceObservationHistoryFile:
-            payload = path.read_bytes()
-            return WorkspaceObservationHistoryFile(path, sha256(payload).hexdigest(), len(payload))
+            return WorkspaceObservationHistoryFile(path, file_sha256(path), path.stat().st_size)
 
         return WorkspaceObservationHistoryRetention(
             roots=tuple(fact(path) for path in sorted(protected)),

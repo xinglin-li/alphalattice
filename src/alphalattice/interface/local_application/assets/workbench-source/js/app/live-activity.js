@@ -8,11 +8,11 @@
  * reports itself hidden (an embedded pane does so permanently); it slows down instead. */
 const LiveActivity = (() => {
   // The first read is the feed's tail and the only way back in time the read offers, so it asks
-  // for the most the read gives (round 24f): the Team page's retained sessions are whatever that
+  // for the most the read gives: the Team page's retained sessions are whatever that
   // tail holds; later reads continue from the cursor.
   const LIMIT = 200, VISIBLE = 50, MAX_GROUPS = 200, MAX_ITEMS = 40, MAX_PAGES = 4;
   const INTERVAL = 3000, HIDDEN_INTERVAL = 15000, BACKOFF = 10000, CATCH_UP = 250;
-  const S = {cursor: null, epoch: null, watermark: 0, groups: new Map(), tasks: {}, error: '', observer: null,
+  const S = {cursor: null, epoch: null, watermark: 0, groups: new Map(), tasks: {}, calls: {}, error: '', observer: null,
     notice: '', unavailable: 0, unseen: 0, primed: false, fetching: null, timer: null, cost: null, disposition: null, stopped: false,
     stale: false, following: null, paused: null, followGeneration: 0, pendingOpen: null, pendingNoticed: null, opening: null, reconciled: 0};
   // A Goal follows only the Tasks and decisions its owners attributed, never a similar name.
@@ -57,6 +57,8 @@ const LiveActivity = (() => {
     const keep = new Set([...S.groups.values()].map((g) => g.task_id).filter(Boolean));
     for (const task of followedTasks()) keep.add(task);
     for (const id of Object.keys(S.tasks)) if (!keep.has(id)) delete S.tasks[id];
+    const traced = new Set([...S.groups.values()].flatMap((g) => g.items.map((v) => v.trace_id)));
+    for (const trace of Object.keys(S.calls)) if (!traced.has(trace)) delete S.calls[trace];
   }
   /* Facts of a group. Three truths stay apart: what the operation returned, what Task Control
    * says *now* (the fresh projection wins over any recorded transition), and whether an owner
@@ -71,6 +73,7 @@ const LiveActivity = (() => {
     const p = (returned || requested)?.payload || {};
     const live = g.task_id ? S.tasks[g.task_id] || null : null;
     const gap = g.items.some((v) => v.availability !== 'AVAILABLE');
+    const call = S.calls[g.items.find((v) => S.calls[v.trace_id])?.trace_id] || null; // the CLI call it ran under
     let state, tone, basis;
     if (live?.status === 'REFUSED') { state = 'REFUSED'; tone = 'refused'; basis = 'unavailable'; }
     else if (live) { state = live.lifecycle; tone = state.toLowerCase(); basis = 'current'; }
@@ -79,7 +82,7 @@ const LiveActivity = (() => {
     else if (requested) { state = 'REQUESTED'; tone = 'running'; basis = 'returned'; }
     else if (declared.length) { state = declaredWords(declared.at(-1).payload).state; tone = 'metadata'; basis = 'declared'; }
     else { state = gap ? 'PAYLOAD_NOT_RETAINED' : 'RECORDED'; tone = 'metadata'; basis = 'recorded'; }
-    return {ops, declared, transition, artifact, returned, requested, payload: p, live, gap, state, tone, basis,
+    return {ops, declared, transition, artifact, returned, requested, payload: p, live, gap, state, tone, basis, call,
       verified: Boolean(artifact?.payload), artifactKind: artifact?.payload?.artifact_kind || null, artifactHash: artifact?.payload?.artifact_hash || null,
       taskKind: live?.task_kind || transition?.payload?.task_class || null,
       operation: p.operation || (declared.length ? declaredWords(declared.at(-1).payload).operation : '') || (transition ? transition.payload?.task_class : '') || '',
@@ -361,7 +364,7 @@ const LiveActivity = (() => {
     if (g.task_id) return LiveTasks.open(g.task_id);
     throw Error('This result kind has no reader in the workbench yet.');
   }
-  /* One recorded group as a row (round 20): the state as a dot, the operation and its caller as
+  /* One recorded group as a row: the state as a dot, the operation and its caller as
    * the title, the reference and the state's words as properties, the clock at the end; the way
    * is the verified result or the Task; the reads that follow are the row's hover actions and the
    * exact observations and the full state facts a fact opener on the row. The key anchors reading state through a
@@ -372,21 +375,22 @@ const LiveActivity = (() => {
     const state = codeWords(f.state);
     const exact = g.items.map((v) => logLine(lineOf(v))), meta = metaLine(f);
     const lead = statusDot(f.tone, state);
-    const title = html`${codeWords(f.operation)}<span class="fv-log-by"> · ${actorWords(f.caller, f.payload?.producer_id)}</span>`;
+    const called = f.call?.command ? t(f.call.ended_at ? 'activity.call' : 'activity.call_running', {command: f.call.command}) : '';
+    const title = html`${codeWords(f.operation)}<span class="fv-log-by"> · ${actorWords(f.caller, f.payload?.producer_id)}${called ? html` · ${called}` : ''}</span>`;
     const way = f.verified ? {action: 'activity-open', value: g.key} : g.task_id ? {action: 'task', value: g.task_id} : null;
     const refusedSubject = f.state === 'REFUSED' ? subjectLine(f, g, true) : '';
     if (refusedSubject) meta[4] = joinMarkup([meta[4], refusedSubject].filter(Boolean));
     const observations = html`${factsRef(html`${t('Exact observations')} · ${g.items.length}`, html`${meta.filter(Boolean).map(bit => html`<p>${bit}</p>`)}${exact}${f.payload.latency_milliseconds !== undefined ? html`<p>${t('Owner latency')}: ${f.payload.latency_milliseconds} ms</p>` : ''}`)}`;
     return objectRow({lead: lead, name: title, why: refusedSubject ? '' : subjectLine(f, g) || t('No reference recorded'), to: way, cls: 'activity-row' + (attention ? ' attention' : '')}, {columns: ['state', 'basis', 'live', 'result', 'failure', 'worker', 'gap', 'observations'], props: [...meta.map((bit, index) => bit && index && !attention && f.basis === 'current' ? ['', bit, 'drop'] : bit), observations], time: clock(g.at), actions: nextRead(f, g), attrs: html`data-activity-key="${g.key}"`});
   }
-  /* The record of one object (round 67): the recorded groups that name its Task, as the feed's
+  /* The record of one object: the recorded groups that name its Task, as the feed's
    * own rows in recorded order; the exact observations under each. */
   function recordOf(taskId) {
     const groups = [...S.groups.values()].filter((g) => g.task_id === taskId).sort((a, b) => a.last - b.last);
     if (!groups.length) return html`<p class="caption">${t('Nothing recorded for this object in the retained activity window.')}</p>`;
     return html`<div class="card-list lines slotted">${groups.map(row)}</div>`;
   }
-  /* The Task's log (round 72): every retained observation of the Task as one line -- the instant,
+  /* The Task's log: every retained observation of the Task as one line -- the instant,
    * who, the words, the telling reference as code -- in recorded order; `starterOf` is who admitted
    * it (the first operation the record holds for it). */
   const lineOf = (v) => observationLine(v, (p) => { const d = declaredWords(p); return [t('External client · not verified'), html`${codeWords(d.operation)} · ${codeWords(d.state)}`, '']; });
@@ -413,14 +417,14 @@ const LiveActivity = (() => {
    * compares: a poll that changed nothing the reader sees replaces nothing. */
   const costLine = () => (S.cost ? t('{n} entries read in {ms} ms · cursor {cursor}', {n: S.cost.observations, ms: S.cost.elapsed_ms, cursor: String(S.cursor || '').slice(-8)}) : t('Not read yet'));
   function paintCost() { if (typeof document === 'undefined' || !document.querySelectorAll) return; for (const el of document.querySelectorAll('[data-activity-cost]')) el.textContent = costLine(); }
-  // N6: the followed Task is a state with its control (notes); the log's sentence is the label's (i)
+  // the followed Task is a state with its control (notes); the log's sentence is the label's (i)
   function section() {
     const rows = ordered();
     const following = S.paused ? followWord() : S.following ? html`${goalScope() ? followWord() : t('Following Task {task} · its verified result will open here; pin to keep the current view.', {task: shortRef(S.following)})} ${btn(t('Pin current view'), 'activity-pin', '', 'text-btn')}` : '';
     return runLog({id: 'activityLog', title: t('Workspace activity'), caption: t('Recorded operations, Task returns and verified results · newest first · no simulated progress'), notes: html`${following ? html`<p class="run-log-following">${following}</p>` : ''}${G.error ? notRead(t('Goal'),G.error) : ''}${banners()}`, lines: rows.map(row), empty: emptyState(t('No recorded activity yet.')), status: html`<span data-activity-cost>${t('Not read yet')}</span>`, cls: 'activity-log', linesCls: 'card-list lines slotted activity-rows'});
   }
 
-  /* Announce, never navigate (round 75: count, never toast): a new Task, a verified result, a
+  /* Announce, never navigate (count, never toast): a new Task, a verified result, a
    * refusal or a declared event counts as unseen -- the sidebar's number, the rows' state lines
    * and the record say it; a toast is for the person's own actions. The reader's open object,
    * page and Task Center selection stay exactly where they are. */
@@ -439,7 +443,7 @@ const LiveActivity = (() => {
   }
   function rebuild(reason) {
     // Only this module's own state: never the open object, the Task Center selection or a draft.
-    S.notice = reason; S.groups.clear(); S.tasks = {}; S.watermark = 0;
+    S.notice = reason; S.groups.clear(); S.tasks = {}; S.calls = {}; S.watermark = 0;
   }
   /* One page into state. Retained groups, the watermark and the cursor all belong to one store
    * (`S.epoch`). A page from another store -- RESET, or a TAIL/CONTINUED that names a different
@@ -482,6 +486,7 @@ const LiveActivity = (() => {
     if (S.pendingOpen) openFollowed(); else if (S.following || S.paused && goalScope()) reconcileFollowed();
   }
   function mergeFresh(body) {
+    Object.assign(S.calls, body.calls || {}); // a running call's later read ends it
     const fresh = Object.values(body.tasks || {});
     for (const v of fresh) if (S.tasks[v.task_id] || followedTasks().includes(v.task_id) || [...S.groups.values()].some((g) => g.task_id === v.task_id)) S.tasks[v.task_id] = v;
     if (fresh.length) Data.mergeTasks(fresh);
@@ -519,7 +524,7 @@ const LiveActivity = (() => {
   }
   function paint() {
     if (typeof LiveTasks !== 'undefined' && LiveTasks.paintActivity) LiveTasks.paintActivity();
-    else Window.renderSide(); // the Tasks row's count (round 62)
+    else Window.renderSide(); // the Tasks row's count
     paintCost();
     if (typeof LiveTeam !== 'undefined' && LiveTeam.refresh) LiveTeam.refresh();
     if (typeof LiveGoals !== 'undefined' && LiveGoals.observe) void LiveGoals.observe();
@@ -537,7 +542,7 @@ const LiveActivity = (() => {
    * in-flight request instead of starting a second loop, and its completion schedules exactly
    * one timer once the page is live again. */
   function stop() { S.stopped = true; clearTimeout(S.timer); S.timer = null; }
-  /* FLOW-1: a Team or Goal page asks the Host to read the bound Sessions' usage once as it opens;
+  /* a Team or Goal page asks the Host to read the bound Sessions' usage once as it opens;
    * nothing reads on a timer, and a failed read shows only in the usage state. */
   let usageAskedAt = 0;
   function readSessionUsage() {

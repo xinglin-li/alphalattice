@@ -1,4 +1,4 @@
-// V659 / TE12: owner declarations drive the vocabulary boundary, not a scene's few values.
+// TE12: owner declarations drive the vocabulary boundary, not a scene's few values.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 assert.equal(process.env.TZ,'UTC');
 const library=require('./workbench_library.cjs'),finish=library.guard('workbench_owner_words');

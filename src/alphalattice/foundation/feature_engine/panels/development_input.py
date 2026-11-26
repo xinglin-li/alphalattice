@@ -12,20 +12,22 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal, Protocol, Self
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self
 
-import pandas as pd
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
     FeaturePanelReadRequest,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
+
+if TYPE_CHECKING:
+    pass
 
 DEVELOPMENT_FEATURE_OVERLAY_CATEGORY = "development/feature-overlay"
 
@@ -70,7 +72,7 @@ class BaseFeatureReader(Protocol):
 
 def sha256_file(path: Path) -> str:
     """The SHA-256 of a file's bytes, read in blocks."""
-    digest = sha256()
+    digest = integrity_sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
@@ -188,7 +190,7 @@ class CompositeDevelopmentFeatureReader:
     def listing_ids(self, manifest_ref: str | None = None) -> tuple[str, ...]:
         """The base Panel's listing axis, which this surface covers row for row.
 
-        What an exploration sample is drawn from (binding plan, B17).
+        What an exploration sample is drawn from.
         """
         del manifest_ref
         if self._listing_ids is None:
@@ -214,6 +216,8 @@ class CompositeDevelopmentFeatureReader:
 
     def batches(self, request: FeaturePanelReadRequest) -> Iterator[pa.RecordBatch]:
         """The base rows joined row for row with the overlay's requested columns."""
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         if request.manifest_ref != self.manifest_ref or not set(request.factor_columns).issubset(
             self.ordered_factor_ids
         ):

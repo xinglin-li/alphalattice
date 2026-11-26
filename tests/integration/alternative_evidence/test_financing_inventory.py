@@ -246,7 +246,7 @@ def test_an_absence_stated_for_one_instrument_negates_no_other(tmp_path: Path) -
     assert units[TWO_IN_ONE_CLAUSE[:24]].basis == "mixed statement"
     # a continuation that names the instrument by a pronoun is read for the
     # polarity it states: a draw 'under it' makes the paragraph mixed; an
-    # absence 'under it' keeps it negative (the lead's second finding)
+    # absence 'under it' keeps it negative
     assert units[PRONOMINAL_DRAW[:24]].basis == "mixed statement"
     assert units[PRONOMINAL_ABSENCE[:24]].basis == "explicit negative"
     for unit in inventory.matters:

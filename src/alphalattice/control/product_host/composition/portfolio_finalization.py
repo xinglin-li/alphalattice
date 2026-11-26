@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
@@ -103,6 +103,7 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
 from alphalattice.investment.risk_research.surfaces.returns import (
     RiskReturnArtifactStore,
 )
+from alphalattice.kernel.clock import utc_now
 from alphalattice.oversight.model_validation.protected_gate import (
     ProtectedValidationGate,
     ProtectedValidationStore,
@@ -395,7 +396,7 @@ class HostFinalizationRelease:
     workspace_id: str
     pending: PortfolioLedgerStore | None = None
     public: PortfolioLedgerStore | None = None
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    clock: Callable[[], datetime] = utc_now
     releases: int = 0
     promotions: int = 0
 
@@ -501,7 +502,7 @@ class HostUpstreamEvidence:
             identity_hash=opened_identity,
             closure_hash=closure_hash,
             child_count=child_count,
-            admitted_at=datetime.now(UTC),
+            admitted_at=utc_now(),
         )
 
     def _open(self, *, role: str, identity_hash: str) -> tuple[str, str, int] | None:
@@ -749,9 +750,10 @@ class HostValidatedPortfolioHandoffReader:
 
         result = ledger.load_result(release.released_result_hash)
         program = ledger.load_program(result.program_hash)
-        execution = ledger.load_execution(result.execution_ledger_hash)
+        execution, report = ledger.load_execution_and_report(
+            result.execution_ledger_hash, result.report_hash
+        )
         economics = ledger.load_economics(result.economic_ledger_hash)
-        report = ledger.load_report(result.report_hash)
         comparison = ledger.load_comparison(report.benchmark_comparison_hash)
         return ValidatedPortfolioAuthorityView(
             handoff=handoff,
@@ -794,7 +796,8 @@ class PortfolioFinalizationApplication:
         alpha_evidence_root: Path | None = None,
         alpha_evidence_closure: AlphaEvidenceClosureReader | None = None,
         alpha_recipe: AlphaProductRecipeView = INSTALLED_ALPHA_PRODUCT_RECIPE,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
+        finalization_store: PortfolioFinalizationStore | None = None,
     ) -> None:
         """Compose public/pending stores, validation, upstream evidence and release.
 
@@ -807,6 +810,7 @@ class PortfolioFinalizationApplication:
             alpha_evidence_closure: Optional deterministic upstream closure reader.
             alpha_recipe: Exact installed Alpha recipe declaration.
             clock: Explicit observed-time source.
+            finalization_store: The Host's retained candidate store, when already composed.
         """
         self.workspace_id = workspace_id
         self.session = session
@@ -815,7 +819,7 @@ class PortfolioFinalizationApplication:
         artifact_root = session.workspace / "runtime" / "artifacts"
         self.ledger = PortfolioLedgerStore(artifact_root)
         self.pending = PortfolioLedgerStore(artifact_root, namespace=PENDING_FINALIZATION_NAMESPACE)
-        self.store = PortfolioFinalizationStore(artifact_root)
+        self.store = finalization_store or PortfolioFinalizationStore(artifact_root)
         # Composition constructs the Gate and hands it Portfolio's registry as a
         # read-only port; Portfolio only ever sees the evaluation port back.
         self.gate: ProtectedEvaluationPort = gate or ProtectedValidationGate(
@@ -904,6 +908,7 @@ class PortfolioFinalizationApplication:
             adapters={adapter.task_kind: adapter},
             runtime_path=str(self.session.runtime_path),
             clock=self.clock,
+            task_scope=lambda task: self.session.task_resources(task, self.clock),
             stage_scope=storage_capacity_scope,
         )
         try:

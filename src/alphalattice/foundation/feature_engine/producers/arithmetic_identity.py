@@ -25,7 +25,7 @@ value is the recorded one, a component keeps the byte value every Panel and cata
 sealed under (``switched_identity``). A changed rule is a new identity; a comment never is.
 
 A Panel and a catalog binding compare these values by equality, so the value they bind is held at
-its recorded origin (LAWS.md ID1): a change recorded in ``config/identity-successors.json`` under
+its recorded origin (LAWS.md ID1): a change recorded in ``config/identity-successors/`` under
 the component's role as keeping every value it computes leaves the bound value where it was,
 and an unrecorded change is a new identity. The roles read the value before that hold
 (``control_arithmetic_rule_identity``, ``method_family_rule_identity``), so the readout names
@@ -40,10 +40,10 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Final
 
-from alphalattice.kernel.shared_kernel import source_identity
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts import source_identity
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 
 SHARED_FACTOR_ARITHMETIC_OWNERS: Final = (
     "alphalattice.foundation.feature_engine.producers.base_materializer",

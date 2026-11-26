@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     EvidenceDirection,
     EvidenceLifecycle,
@@ -23,7 +24,6 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
 from alphalattice.evidence.alternative_evidence.contracts import (
     seal_contract,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import (
     REVIEW_CLAIM_LIMITS,
 )

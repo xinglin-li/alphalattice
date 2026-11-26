@@ -7,29 +7,88 @@ package still pays only for the workspaces its own cases resolve against.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
+from alphalattice.foundation.data_layer import history
+from tests._support import development_universe
 from tests.researcher_methodology_surface.real_workspace import (
+    DEVELOPMENT_SYMBOLS,
+    FACTOR_SCALE,
+    SUFFICIENT_SYMBOLS,
+    SYMBOLS,
     RealRiskWorkspace,
     build_real_risk_workspace,
     development_feature_catalog,
 )
 
 
+@contextmanager
+def open_outcome_catalog(root: Path) -> Iterator[Path]:
+    """Isolate causal outcome recording from the workspace's own catalog."""
+    with history.own_root(root):
+        history.open_history("methodology-outcomes", "Methodology outcomes", root, root=root)
+        yield root
+
+
+def shared_outcome_catalog(factory: pytest.TempPathFactory) -> Path:
+    """The process's one outcome catalog. The session's workspaces are shared across modules,
+    and a workspace's publication reads its outcome bodies from the catalog that recorded them,
+    so every module publishing on them records here."""
+    return factory.getbasetemp() / "methodology-outcome-catalog"
+
+
+SESSION_WORKSPACES = frozenset(
+    {
+        "development_risk_workspace",
+        "extension_feature_workspace",
+        "external_factor_workspace",
+        "real_risk_workspace",
+    }
+)
+
+
+@pytest.fixture(scope="module")
+def outcome_catalog_root(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[Path]:
+    """Hold the module's isolated catalog for its shared publication fixtures. A session
+    workspace builds under a root of its own, which is refused while the catalog records, so the
+    workspaces this module's cases use are built before the catalog opens: a later case's first
+    use would otherwise build inside the hold an earlier case left open."""
+    used = {
+        name
+        for item in request.session.items
+        if getattr(item, "module", None) is request.module
+        for name in item.fixturenames
+    }
+    for name in sorted(used & SESSION_WORKSPACES):
+        request.getfixturevalue(name)
+    with open_outcome_catalog(shared_outcome_catalog(tmp_path_factory)) as root:
+        yield root
+
+
 @pytest.fixture(scope="session")
 def real_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
-    """The product's own writers, end to end, once per source tree.
-
-    Session scope shares the copy inside one process; the golden cache under
-    ``tmp/golden-workspaces``, or the shared ``ALPHALATTICE_TEST_GOLDEN_ROOT``, shares the
-    eighty-second build across processes and checkouts,
-    so a gate that runs several groups needing this workspace builds it once
-    and each group pays a copy of a few seconds.
+    """Build through product writers once per tree; share a golden across processes
+    and copy it for each worker. The cache root can be set by ALPHALATTICE_TEST_GOLDEN_ROOT.
     """
 
-    return build_real_risk_workspace(tmp_path_factory.mktemp("real-risk-workspace"))
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("real-risk-workspace"), factory=tmp_path_factory
+    )
+
+
+@pytest.fixture(scope="session")
+def development_risk_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    return build_real_risk_workspace(
+        tmp_path_factory.mktemp("development-workspace"),
+        symbols=DEVELOPMENT_SYMBOLS,
+        factory=tmp_path_factory,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -79,7 +138,22 @@ def external_factor_workspace(tmp_path_factory: pytest.TempPathFactory) -> RealR
     return build_external_factor_workspace(tmp_path_factory.mktemp("external-factor"), fresh=False)
 
 
-def build_external_factor_workspace(root: Path, *, fresh: bool) -> RealRiskWorkspace:
+def factor_scale_workspace(factory: pytest.TempPathFactory) -> RealRiskWorkspace:
+    """The sufficient test data set at FACTOR_SCALE. A module whose studies run the walk-forward
+    policy, which needs that history, overrides ``real_risk_workspace`` with it; every such module
+    copies the one golden the nightly builds."""
+
+    return build_real_risk_workspace(
+        factory.mktemp("factor-scale-workspace"),
+        factory=factory,
+        symbols=SUFFICIENT_SYMBOLS,
+        standard=FACTOR_SCALE,
+    )
+
+
+def build_external_factor_workspace(
+    root: Path, *, fresh: bool, standard=development_universe.STANDARD, symbols=SYMBOLS
+) -> RealRiskWorkspace:
     """The outside method's catalog revision and kernel registry, installed together."""
 
     from tests.researcher_methodology_surface.external_factor_method import (
@@ -92,6 +166,8 @@ def build_external_factor_workspace(root: Path, *, fresh: bool) -> RealRiskWorks
         feature_catalog=external_feature_catalog(),
         feature_kernels=external_kernel_registry(),
         fresh=fresh,
+        symbols=symbols,
+        standard=standard,
     )
 
 

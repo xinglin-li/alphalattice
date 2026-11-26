@@ -1,5 +1,5 @@
 # AlphaLattice: guide for your research agent
-Last checked: 2026-11-04 against 0.2.4
+Last checked: 2026-11-23 against 0.2.9
 
 **Your first step in every session, before any answer:** run `Get-Content
 .alphalattice/user/memory/MEMORY.md, .alphalattice/user/guide.md` (or `cat` them),
@@ -18,7 +18,7 @@ step, and a nested part's own hint describes only that part.
 `.alphalattice/user/` holds this person's tuning of the checkout: memories, a local
 guide, and method for each card and Skill. No release contains or writes it. Read
 its index and guide first, as above, and `agent-notes/INDEX.md` in a workspace you
-continue. They refine this
+continue when that file exists. They refine this
 guide and never widen what it permits; a memory is background, so verify what it
 names before acting on it. A sealing goal answer offers `RECORD_THE_EXPERIENCE`:
 follow it through the alphalattice-maintenance Skill, using its Goal and Task reads.
@@ -46,7 +46,23 @@ inputs request, repair the invalid fields and plan again with the same research 
 
 ## Open the workspace
 
-At first use and any refusal naming a missing dependency, run the doctor from the checkout's root, after `uv sync --locked --all-extras`: `uv run python -m alphalattice.interface.local_application.native_setup doctor` (on the wheel leg, with the tool environment's interpreter beneath `uv tool dir`). Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs, and relay one question before an outside-lock install.
+At first use and any refusal naming a missing dependency, run the doctor for the
+active installation. In a source checkout, run `uv run python -m alphalattice.interface.local_application.native_setup doctor`
+from its root after `uv sync --locked --all-extras`. For a persistent wheel, run the
+same module with the tool environment's Python beneath `uv tool dir`.
+
+From the pinned Claude Code launch folder, keep the launch command's data-root
+setting and `uvx` options. Replace the command from `alphalattice` through
+`--no-browser` with this one, which uses the pinned wheel's Python.
+
+```text
+python -m alphalattice.interface.local_application.native_setup --project . doctor --host claude-code
+```
+
+Fill each missing `host_readiness` item by its `who_decides`, disclose locked repairs,
+and relay one question before an outside-lock install.
+
+Data extensions come from the locked DuckLake and SQLite scanner packages. Do not use runtime SQL `INSTALL` to repair them; restore the locked data dependencies and follow the named refusal.
 
 Off PATH, use the binding block in the shared guides and pass the matching absolute prefix to every specialist; no shell update or restart is needed. Portable examples use alphalattice as a placeholder. When serving from another shell, set ALPHALATTICE_SHELL to your specialists' shell: posix or powershell.
 
@@ -146,6 +162,12 @@ alphalattice --workspace "workspaces/my-research" first-use prepare --sentence "
 It first checks the setup a first use cannot run without, and opens nothing while
 it is missing: the resolved command your specialists' routes run in their own fresh
 shells, including its absolute uv launcher off PATH, and the retrieval environment.
+On Codex it also checks that Codex trusts this project: an untrusted project loads
+neither its `.codex/config.toml` nor the specialists, and Codex warns that untrusted
+project-local configuration is disabled. `project_trust` is the person's item: relay its
+`words` and one step in one line, `codex exec --trust` in the project, and never change
+their Codex settings yourself. A `project_trust` whose `present` is null is unknown: a Codex
+configuration it names cannot be read; first use continues, and you relay its `words`.
 Run each `missing` item's `commands`,
 disclosing them (a person's item is asked once, in one line). Download and install
 `config/requirements-retrieval.lock` packages as your act, without repeating first-use
@@ -182,6 +204,11 @@ its way on: decide each data issue with its offered `confirm`, or take the refus
 step under the delegation, then run the same command again. The network setting and the offline switch matter only
 when an answer refuses for them. Never restart the Host or serve a second one for
 network access, and never ask the person to.
+
+Optional trace export is the person's separate choice. Do not set
+`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, or enable
+`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`, without their explicit decision.
+The workspace network control and offline switch still apply.
 
 Follow the wait and first-use wake procedure in [operating](.agents/skills/alphalattice-research/references/operating.md).
 On Codex, a wake registration that answers `local_client.codex_unreachable` means no wake
@@ -256,7 +283,9 @@ with Alpha, Risk and the CRO. `alphalattice committee open` offers each speciali
 view of the date's positions and its `submit` and `wait` on the floor. Prepare the
 three (ALPHA, RISK, CRO), then in one turn start them using the role-selection rule above
 (each bundle's route runs two commands, which the registered CRO type's allowlist also covers),
-each with its bundle's path, and in that same turn submit your own stance,
+each with its bundle's path and, on Claude Code, with the Agent tool's `run_in_background`: a
+member started in the foreground holds your turn while it waits for the reveal, which waits for
+your stance. In that same turn submit your own stance,
 argued from `alphalattice committee show --update <task>`, which lists each member's questions with the
 floor's facts by their S alias: the reveal waits for your stance, and nothing of theirs shows before it. As PM you judge whether the book adds
 up: what changed and what it cost, its research envelope, whether it can be carried out,
@@ -372,7 +401,8 @@ as it stands; the Host takes nothing else for it.
   change issuers or scope.
 - Strategy activation, except under the first use's delegation; deactivation
   always. Model and Factor activation.
-- Daily research automation, the daily committee setting and the usage-reading switch.
+- Daily research automation, the daily committee setting, how a review's Analyst bundles
+  are read, and the usage-reading switch.
 - Storage cleanup and pins; data-decision grants and their revocation.
 - Preparation, data issues and membership changes outside the first use's
   delegation, and a new research-input version: keep the current input and tell

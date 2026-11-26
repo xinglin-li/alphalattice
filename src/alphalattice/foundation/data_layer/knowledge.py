@@ -277,6 +277,202 @@ class WordCounts:
         return frozenset(word for word in words if 2 * self.holding[word] >= self.documents)
 
 
+class _LexicalView:
+    """Tantivy's derived view of the log's normalized terms. The log owns chunk identity."""
+
+    def __init__(self, directory: Path) -> None:
+        import tantivy  # lazy: only lexical reads need the optional data dependency
+
+        self.engine = tantivy
+        self.schema = (
+            tantivy.SchemaBuilder()
+            .add_text_field("body", tokenizer_name="han_spaced", index_option="position")
+            .add_text_field("chunk", tokenizer_name="raw", stored=True, index_option="basic")
+            .add_text_field("version", tokenizer_name="raw", index_option="basic")
+            .add_text_field("recipe", tokenizer_name="raw", index_option="basic")
+            .add_unsigned_field("ordinal", fast=True, indexed=True)
+            .add_unsigned_field("rowid", fast=True)
+            .build()
+        )
+        directory.mkdir(exist_ok=True)
+        self.index = tantivy.Index(self.schema, str(directory))
+        self.index.register_tokenizer(
+            "han_spaced", tantivy.TextAnalyzerBuilder(tantivy.Tokenizer.whitespace()).build()
+        )
+        self.reader = self.index.searcher()
+        self.words = WordCounts()
+        self.bounds: dict[str | None, dict[str, tuple[int, int]]] = {}
+        top = self.reader.search(
+            tantivy.Query.all_query(), limit=1, count=False, order_by_field="rowid"
+        ).hits
+        self.tip = (
+            (int(top[0][0]), str(self.reader.doc(top[0][1]).get_first("chunk"))) if top else (0, "")
+        )
+
+    def refresh(self, con: sqlite3.Connection) -> None:
+        """Append from the log, or rebuild if the old chunk no longer names this log's prefix."""
+        last = con.execute(
+            "SELECT rowid, chunk_id FROM knowledge_chunk ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        tip = (int(last[0]), str(last[1])) if last else (0, "")
+        if tip == self.tip:
+            if not self.bounds:
+                self.read_bounds(con)
+            return
+        old, chunk = self.tip
+        anchor = con.execute(
+            "SELECT chunk_id FROM knowledge_chunk WHERE rowid = ?", (old,)
+        ).fetchone()
+        rebuild = bool(old and (anchor is None or anchor[0] != chunk))
+        after = 0 if rebuild else old
+        # An old log has only positional FTS terms, including for sources whose body lives
+        # outside the log. Rebuild from those durable terms without copying any source body.
+        con.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS temp.knowledge_lexical_terms"
+            " USING fts5vocab(main, knowledge_fts, instance)"
+        )
+        # Both streams use chunk row order. Match them once instead of asking SQLite
+        # to scan the temporary aggregate on the inner side for each indexed chunk.
+        terms = iter(
+            con.execute(
+                "SELECT doc, group_concat(term, ' ') FROM ("
+                " SELECT doc, term FROM temp.knowledge_lexical_terms WHERE doc > ?"
+                " ORDER BY doc, offset) GROUP BY doc ORDER BY doc",
+                (after,),
+            )
+        )
+        rows = con.execute(
+            "SELECT rowid, chunk_id, version_id, recipe_id, ordinal FROM knowledge_chunk"
+            " WHERE rowid > ? ORDER BY rowid",
+            (after,),
+        )
+        # The native writer divides its 128 MB arena across workers, at least 15 MB each.
+        writer = self.index.writer(num_threads=min(worker_width(cpu_width()), 8))
+        if rebuild:
+            writer.delete_all_documents()
+        tokens = next(terms, None)
+        for rowid, chunk_id, version, recipe, ordinal in rows:
+            text = ""
+            if tokens is not None and tokens[0] < rowid:
+                raise DataError(
+                    "lexical terms do not name a held knowledge chunk",
+                    code="data_layer.knowledge_source_conflict",
+                )
+            if tokens is not None and tokens[0] == rowid:
+                text = tokens[1]
+                tokens = next(terms, None)
+            doc = self.engine.Document()
+            doc.add_unsigned("rowid", rowid)
+            doc.add_unsigned("ordinal", ordinal)
+            doc.add_text("chunk", chunk_id)
+            doc.add_text("version", version)
+            doc.add_text("recipe", recipe)
+            doc.add_text("body", text)
+            writer.add_document(doc)
+        if tokens is not None:
+            raise DataError(
+                "lexical terms do not name a held knowledge chunk",
+                code="data_layer.knowledge_source_conflict",
+            )
+        writer.commit()
+        writer.wait_merging_threads()
+        self.index.reload()
+        self.reader = self.index.searcher()
+        self.tip = tip
+        self.read_bounds(con)
+
+    def read_bounds(self, con: sqlite3.Connection) -> None:
+        """Keep compact ordinal bounds for native admission and full-source ranges."""
+        scopes: dict[str | None, dict[str, tuple[int, int]]] = {None: {}}
+        for version, recipe, low, high in con.execute(
+            "SELECT version_id, recipe_id, min(ordinal), max(ordinal) FROM knowledge_chunk"
+            " GROUP BY version_id, recipe_id"
+        ):
+            scopes.setdefault(recipe, {})[version] = (low, high)
+            floor, ceiling = scopes[None].get(version, (low, high))
+            scopes[None][version] = (min(low, floor), max(high, ceiling))
+        self.bounds = scopes
+
+    def term(self, text: str) -> Any:
+        """Parse one already split word or Han phrase."""
+        query = self.engine.Query
+        words = _spaced(text).lower().replace("_", " ").split()
+        if not words:
+            return query.empty_query()
+        return (
+            query.term_query(self.schema, "body", words[0], index_option="position")
+            if len(words) == 1
+            else query.phrase_query(self.schema, "body", words)
+        )
+
+    def union(self, clauses: Sequence[Any]) -> Any:
+        return self.engine.Query.boolean_query(
+            [(self.engine.Occur.Should, clause) for clause in clauses]
+        )
+
+    def intersect(self, clauses: Sequence[Any]) -> Any:
+        return self.engine.Query.boolean_query(
+            [(self.engine.Occur.Must, clause) for clause in clauses]
+        )
+
+    def scope_query(
+        self,
+        admitted: Sequence[tuple[str, str]],
+        ranges: tuple[tuple[str, int, int], ...],
+        recipe_id: str | None,
+    ) -> Any:
+        """Keep source versions and chunk ordinals in the native filter below ranking."""
+        query = self.engine.Query
+        bounds = self.bounds.get(recipe_id, {})
+        admitted = [(version, source) for version, source in admitted if version in bounds]
+        all_recipes = recipe_id is None or set(self.bounds) == {None, recipe_id}
+        if ranges:
+            by_source: dict[str, list[str]] = {}
+            for version, source in admitted:
+                by_source.setdefault(source, []).append(version)
+            by_bounds: dict[tuple[int, int] | None, set[str]] = {}
+            for source, lo, hi in ranges:
+                for version in by_source.get(source, ()):
+                    first, last = bounds[version]
+                    lower, upper = max(first, lo), min(last, hi)
+                    if lower <= upper:
+                        key = None if (lower, upper) == (first, last) else (lower, upper)
+                        by_bounds.setdefault(key, set()).add(version)
+            clauses = []
+            for limits, versions in by_bounds.items():
+                part = query.term_set_query(self.schema, "version", sorted(versions))
+                if limits is not None:
+                    part = self.intersect(
+                        (
+                            part,
+                            query.range_query(
+                                self.schema, "ordinal", self.engine.FieldType.Unsigned, *limits
+                            ),
+                        )
+                    )
+                clauses.append(part)
+            gate = self.union(clauses) if clauses else query.empty_query()
+        elif all_recipes and len(admitted) == len(bounds):
+            return None
+        else:
+            gate = query.term_set_query(
+                self.schema, "version", [version for version, _ in admitted]
+            )
+        if not all_recipes:
+            gate = self.intersect(
+                (gate, query.term_query(self.schema, "recipe", recipe_id, index_option="basic"))
+            )
+        return query.const_score_query(gate, 0.0)
+
+    def top(self, expression: Any, gate: Any, limit: int) -> dict[int, float]:
+        """Read only ranked addresses and their rowid column from the derived view."""
+        if gate is not None:
+            expression = self.intersect((expression, gate))
+        rows = self.reader.search(expression, limit=limit, count=False).hits
+        rowids = self.reader.fast_field_values("rowid", [address for _, address in rows])
+        return {int(rowid): float(score) for rowid, (score, _) in zip(rowids, rows, strict=True)}
+
+
 class KnowledgeStore:
     """The Host's shared source and embedding store; never opens another SQLite writer."""
 
@@ -286,7 +482,6 @@ class KnowledgeStore:
         """Use the serving Host's writer and its shared cache-build ownership."""
         self.log = log
         self.evidence_asof = evidence_asof
-        self._words = WordCounts()
 
     def scope(
         self,
@@ -713,43 +908,19 @@ class KnowledgeStore:
         limit: int = 50,
         per_source: bool = False,
     ) -> tuple[SearchHit, ...]:
-        """Search the FTS index within an admitted workspace and source-time boundary: the best
-        `limit` matches, or each source's best `limit` when `per_source`. Outside the precise mode
-        (`per_source`) and a sealed read (`SEALED_KIND`), the words most chunks hold are left out
-        (`WordCounts`); those two keep every word, as their inputs name no index-wide count."""
+        """Rank the log's admitted text view, keeping every word on a sealed read."""
         terms = _TERMS.findall(query)
         if not terms or limit < 1:
             return ()
-        common: frozenset[str] = frozenset()
-        if not per_source and scope.kind != SEALED_KIND:
-            with self.log.reading() as con:
-                common = self._words.common(
-                    con.execute("SELECT coalesce(max(rowid), 0) FROM knowledge_chunk").fetchone()[
-                        0
-                    ],
-                    lambda: con.execute("SELECT count(*) FROM knowledge_fts_docsize").fetchone()[0],
-                    lambda word: con.execute(
-                        "SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH ?",
-                        (f'"{word}"',),
-                    ).fetchone()[0],
-                    [*(t.lower() for t in terms if not _HAN.search(t)), *_HAN.findall(query)],
-                )
-        terms = [term for term in terms if term.lower() not in common]
-        if not terms:  # every word is one most chunks hold: the vector channel ranks alone
-            return ()
         cutoff_us, kind, superseded = scope.cutoff_us, scope.kind, scope.superseded
         world = json.dumps([f"{document}/{version}" for document, version in scope.evidence])
-        expression = " OR ".join('"' + _spaced(term).strip() + '"' for term in terms)
-        sql = (
-            "SELECT s.source_id, v.version, c.ordinal, c.chunk_id, c.char_start, c.char_end,"
-            " c.chunk_digest, bm25(knowledge_fts, 1.0) AS rank, c.rowid"
-            " FROM knowledge_fts JOIN knowledge_chunk c ON c.rowid = knowledge_fts.rowid"
-            " JOIN knowledge_source_version v ON v.version_id = c.version_id"
+        admitted = (
+            "SELECT v.version_id, s.source_id FROM knowledge_source_version v"
             " JOIN knowledge_source s ON s.source_id = v.source_id"
             " LEFT JOIN experience_made m ON s.kind = 'experience'"
             " AND m.experience_id = s.source_id"
             " LEFT JOIN event retired ON retired.seq = m.replaced_seq"
-            " WHERE knowledge_fts MATCH ? AND v.known_us <= ?"
+            " WHERE v.known_us <= ?"
             " AND (? IS NULL OR ? = (coalesce(v.superseded_us <= ?, 0)"
             " OR coalesce(retired.recorded_us <= ?, 0)))"
             " AND (? IS NOT 1 OR s.kind = 'experience')"
@@ -757,37 +928,8 @@ class KnowledgeStore:
             " AND (s.kind != 'evidence' OR s.source_id || '/' || v.version"
             " IN (SELECT value FROM json_each(?)))"
             " AND (? IS NULL OR s.kind = ?)"
-            " AND (? IS NULL OR c.recipe_id = ?)"
             " AND EXISTS (SELECT 1 FROM knowledge_workspace_source w"
             " WHERE w.workspace_id = ? AND w.version_id = v.version_id)"
-        )
-        range_parameters: tuple[Any, ...] = ()
-        if scope.ranges:
-            inside = (
-                " FROM json_each(?) r"
-                " JOIN knowledge_source_version version ON version.source_id = r.value ->> 0"
-                " JOIN knowledge_chunk chunk ON chunk.version_id = version.version_id"
-                " AND chunk.ordinal BETWEEN r.value ->> 1 AND r.value ->> 2"
-            )
-            ranges = json.dumps(scope.ranges)
-            first, last = self.log.read(
-                f"SELECT min(chunk.rowid), max(chunk.rowid){inside}", (ranges,)
-            )[0]
-            if first is None:  # the ranges hold no chunk
-                return ()
-            # FTS5 walks only the rows between the ranges' first and last chunk, in one cursor:
-            # bm25 reads its index-wide statistics once a cursor (22 ms a query at 1,000,000
-            # chunks), so the ranges are never queried one by one. Within that span the rowid is
-            # tested against one set; unary + keeps SQLite from restarting MATCH for each rowid.
-            sql += " AND knowledge_fts.rowid BETWEEN ? AND ?"
-            sql += f" AND +knowledge_fts.rowid IN (SELECT chunk.rowid{inside})"
-            range_parameters = (first, last, ranges)
-        sql = (
-            "SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY source_id"
-            f" ORDER BY rank, rowid) AS place FROM ({sql})) WHERE place <= ?"
-            " ORDER BY rank, rowid"
-            if per_source
-            else sql + " ORDER BY rank, c.rowid LIMIT ?"
         )
         filters = (
             cutoff_us,
@@ -800,31 +942,76 @@ class KnowledgeStore:
             world,
             kind,
             kind,
-            recipe_id,
-            recipe_id,
             scope.workspace,
-            *range_parameters,
-            limit,
         )
-        with self.log.reading() as con:
-            rows = con.execute(sql, (expression, *filters)).fetchall()
-            if not rows and any(_HAN.search(term) for term in terms):
-                # A phrase no chunk holds is matched by its characters, less the common ones: an
-                # AND of characters most chunks hold matches most chunks and ranks none.
-                parts = [
-                    "(" + " AND ".join(f'"{char}"' for char in term if char not in common) + ")"
+        with self.log.lexical_reading() as con:
+            rows = [tuple(row) for row in con.execute(admitted, filters)]
+            if not rows:
+                return ()
+            index = self.log.knowledge_lexical
+            if index is None:
+                database = str(con.execute("PRAGMA database_list").fetchone()[2])
+                index = self.log.knowledge_lexical = _LexicalView(
+                    Path(database).parent / "knowledge-lexical-v1"
+                )
+            index.refresh(con)
+            common: frozenset[str] = frozenset()
+            if not per_source and kind != SEALED_KIND:
+                common = index.words.common(
+                    index.tip[0],
+                    lambda: index.reader.num_docs,
+                    lambda word: index.reader.doc_freq("body", word),
+                    [
+                        *(term.lower() for term in terms if not _HAN.search(term)),
+                        *_HAN.findall(query),
+                    ],
+                )
+            terms = [term for term in terms if term.lower() not in common]
+            if not terms:
+                return ()
+            groups = [rows]
+            if per_source:
+                by_source: dict[str, list[tuple[str, str]]] = {}
+                for version, source in rows:
+                    by_source.setdefault(source, []).append((version, source))
+                groups = list(by_source.values())
+            gates = [index.scope_query(group, scope.ranges, recipe_id) for group in groups]
+
+            def rank(clauses: Sequence[Any]) -> dict[int, float]:
+                expression = index.union(clauses)
+                return {
+                    rowid: score
+                    for gate in gates
+                    for rowid, score in index.top(expression, gate, limit).items()
+                }
+
+            scores = rank([index.term(term) for term in terms])
+            if not scores and any(_HAN.search(term) for term in terms):
+                fallback = [
+                    index.intersect([index.term(char) for char in term if char not in common])
                     if _HAN.search(term)
-                    else f'"{term}"'
+                    else index.term(term)
                     for term in terms
                     if not _HAN.search(term) or set(term) - common
                 ]
-                if parts:
-                    rows = con.execute(sql, (" OR ".join(parts), *filters)).fetchall()
+                if fallback:
+                    scores = rank(fallback)
+            if not scores:
+                return ()
+            selected = sorted(scores, key=lambda rowid: (-scores[rowid], rowid))
+            found = con.execute(
+                "SELECT v.source_id, v.version, c.ordinal, c.chunk_id, c.char_start, c.char_end,"
+                " c.chunk_digest, c.rowid FROM json_each(?) j"
+                " JOIN knowledge_chunk c ON c.rowid = j.value"
+                " JOIN knowledge_source_version v USING (version_id)"
+                " ORDER BY CAST(j.key AS INTEGER)",
+                (json.dumps(selected),),
+            ).fetchall()
         return tuple(
             SearchHit(
-                row[0], row[1], row[2], Chunk(*row[3:7]), -float(row[7]), row[8], ("lexical",)
+                row[0], row[1], row[2], Chunk(*row[3:7]), scores[row[7]], row[7], ("lexical",)
             )
-            for row in rows
+            for row in found
         )
 
     def vector_index(self, *, recipe_id: str, model_id: str, directory: Path) -> NumpyVectorIndex:
@@ -1431,22 +1618,24 @@ class NumpyVectorIndex:
                 np.fromiter((ordinal for _, ordinal in places), dtype=np.int32, count=len(places)),
             )
         )
-        self._source_rows = np.argsort(self._row_sources, kind="stable")
+        self._source_rows = np.lexsort((self._ordinals, self._row_sources))
+        self._source_ordinals = self._ordinals[self._source_rows]
         self._source_offsets = np.r_[0, np.cumsum(np.bincount(self._row_sources))]
 
     def _in_ranges(self, ranges: tuple[tuple[str, int, int], ...]) -> np.ndarray:
-        """The rows inside one of `ranges` (source id, first ordinal, last ordinal), ascending:
-        read from each source's own rows, never a pass over every row."""
-        inside = []
+        """Locate each source's ordinal interval in the precomputed order and union its row mask."""
+        inside = np.zeros(len(self._codes), dtype=np.bool_)
         for source, first, last in ranges:
             code = self._source_codes.get(source)
-            if code is not None:
-                rows = self._source_rows[
-                    self._source_offsets[code] : self._source_offsets[code + 1]
-                ]
-                ordinals = self._ordinals[rows]
-                inside.append(rows[(ordinals >= first) & (ordinals <= last)])
-        return np.unique(np.concatenate(inside)) if inside else np.empty(0, dtype=np.intp)
+            if code is None:
+                continue
+            start = self._source_offsets[code]
+            stop = self._source_offsets[code + 1]
+            ordinals = self._source_ordinals[start:stop]
+            lo = start + np.searchsorted(ordinals, first, side="left")
+            hi = start + np.searchsorted(ordinals, last, side="right")
+            inside[self._source_rows[lo:hi]] = True
+        return np.flatnonzero(inside)
 
     def _none(self) -> Matrix:
         """A read-only matrix of no row, as the mapped one is read-only."""

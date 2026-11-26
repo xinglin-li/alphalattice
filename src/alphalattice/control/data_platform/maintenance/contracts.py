@@ -11,11 +11,15 @@ from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import successor_identity_payload
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_payload_digest,
+    seal_payload_digest,
+)
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import FeatureCandidateRecheck
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import UniverseManifest
-from alphalattice.kernel.shared_kernel.identity import successor_identity_payload
 
 
 class MaintenanceTrigger(StrEnum):
@@ -390,9 +394,14 @@ class MarketDataChangeSet:
             "membership_removals": sorted(set(self.membership_removals)),
             "receipt_hashes": sorted(set(self.receipt_hashes)),
         }
-        expected = canonical_hash(payload)
-        if self.change_set_hash and self.change_set_hash != expected:
-            raise ValueError("market-data change-set hash does not match its content")
+        if self.change_set_hash:  # a supplied identity is checked once per stage for its content
+            expected = scoped_payload_digest(
+                payload, "change_set_hash", self.change_set_hash, digest=canonical_hash
+            )
+            if self.change_set_hash != expected:
+                raise ValueError("market-data change-set hash does not match its content")
+        else:
+            expected = seal_payload_digest("change_set_hash", payload, digest=canonical_hash)
         object.__setattr__(self, "listing_changes", ordered)
         object.__setattr__(self, "membership_additions", tuple(payload["membership_additions"]))
         object.__setattr__(self, "membership_removals", tuple(payload["membership_removals"]))
@@ -824,7 +833,8 @@ class WorkspaceMaintenanceCycle:
         phase: Recorded current phase.
         status: Recorded lifecycle state.
         market_data_change_set: Observed input changes when available.
-        child_task_refs: Recorded child task references.
+        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         effect_receipts: Committed effect receipt references.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
@@ -854,7 +864,8 @@ class WorkspaceMaintenanceOutcome:
         status: Maintenance disposition.
         phase: Last recorded phase.
         change_set_hash: Optional observed change identity.
-        child_task_refs: Recorded child task references.
+        child_task_refs: Empty, read by nothing: a sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         retry_after_at: Optional next retry clock.
         failure_code: Optional stable failure cause.
         failure_cause: The failed step's recorded cause: its
@@ -1176,7 +1187,9 @@ class WorkspaceDataUpdateReceipt(_SealedDataUpdate):
         completed_at: Completion clock.
         before: Prior input status.
         after: Verified resulting input status.
-        child_task_refs: Completed child task references.
+        child_task_refs: Written empty and read by nothing; it stays only so every sealed
+            receipt keeps its content hash. A sub-task names its parent by its own
+            parent_task_id on the log's task row, that relation's one home.
         transition_receipt_hash: Optional universe-transition receipt.
         valuation_receipt_hashes: Committed held-listing valuation receipts.
         removed_member_tails: Recorded missing formation sessions of removed members.

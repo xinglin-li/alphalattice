@@ -12,10 +12,10 @@ from dataclasses import InitVar, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.control.data_platform.candidate_requalification import (
     CandidateDataRequalification,
 )
@@ -32,7 +32,7 @@ from alphalattice.foundation.feature_engine.storage.repositories import (
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboarding,
     CurrentUniverseOnboardingOutcome,
-    ten_calendar_year_anniversary,
+    history_floor,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import CandidateDataRecheck
 from alphalattice.foundation.market_data_ops.sources.manifest import (
@@ -62,7 +62,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+from alphalattice.kernel.identity import identity_sha256
 
 
 class WorkspaceReadinessStatus(StrEnum):
@@ -263,7 +263,7 @@ def _transition_id(
             "workspace-readiness-manifest-transition",
         )
     )
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return identity_sha256(payload.encode("utf-8")).hexdigest()
 
 
 def daily_source_ready_at(session_close: datetime) -> datetime:
@@ -629,7 +629,7 @@ class WorkspaceReadinessGate:
         qualification_start = (
             max(
                 self._inherited_history_start(record),
-                ten_calendar_year_anniversary(target_session or latest),
+                history_floor(target_session or latest, bootstrap.standard),
             )
             if record
             else None

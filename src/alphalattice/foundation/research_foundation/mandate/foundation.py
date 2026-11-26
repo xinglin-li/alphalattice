@@ -6,6 +6,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from alphalattice.capabilities.domain_contracts.domain.enums import DataValidityClass
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sector_treatment import (
+    SECTOR_HISTORY_BACKFILLED,
+    sector_treatment,
+)
+from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.causal_outcomes.execution.contracts import (
@@ -22,13 +29,6 @@ from alphalattice.foundation.research_foundation.contracts import (
     ResearchFoundationBinding,
     ResearchFoundationMarker,
 )
-from alphalattice.kernel.shared_kernel.domain.enums import DataValidityClass
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sector_treatment import (
-    SECTOR_HISTORY_BACKFILLED,
-    sector_treatment,
-)
-from alphalattice.kernel.validation.enums import RebalanceFrequency
 
 _CURRENT_FACTOR_LIMITATIONS = (
     "CURRENT_ACTIVE_SURVIVORS",

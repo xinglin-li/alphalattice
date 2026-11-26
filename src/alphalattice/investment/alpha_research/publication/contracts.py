@@ -9,8 +9,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 
 from ..experiments.development_contracts import seal_current_contract
 
@@ -115,7 +120,8 @@ class WorkspaceObservationHistoryHead(_Contract):
         A head written before them keeps its seal.
         """
         apart = {"head_hash"} | (set(_PROOF_FIELDS) if self.axes_proof is None else set())
-        return str(canonical_hash(self.model_dump(mode="json", exclude=apart)))
+        payload = self.model_dump(mode="json", exclude=apart)
+        return str(seal_payload_digest("head_hash", payload, digest=canonical_hash))
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> WorkspaceObservationHistoryHead:
@@ -165,7 +171,7 @@ class WorkspaceObservationHistoryMarker(_Contract):
 
 
 class SectorReclassificationRecord(_Contract):
-    """One listing's move to another Sector, read from its effective session on (V346)."""
+    """One listing's move to another Sector, read from its effective session on."""
 
     listing_id: str = Field(min_length=1)
     effective_session: date
@@ -214,6 +220,12 @@ class SectorHistoryRecord(_Contract):
         )
 
 
+def array_blocks_digest(blocks: tuple[str, ...]) -> str:
+    """The identity of a snapshot's ordered array blocks, hashed once per stage for its writer
+    and its readers."""
+    return stage_digest(("frozen-array-blocks", blocks), blocks, canonical_hash)
+
+
 class FrozenScoreObservationSnapshot(_Contract):
     """Input-only snapshot: no training labels, selected model or research marker."""
 
@@ -223,7 +235,7 @@ class FrozenScoreObservationSnapshot(_Contract):
     ordered_listing_ids: tuple[str, ...]
     sector_by_listing_id: dict[str, str]
     sector_history: SectorHistoryRecord | None = Field(default=None, exclude_if=lambda v: v is None)
-    """The reclassifications its sessions read beside the current map (V346); absent while
+    """The reclassifications its sessions read beside the current map; absent while
     none is in force, so such a snapshot is what it was."""
     array_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     array_blocks: tuple[str, ...] | None = Field(default=None, exclude_if=lambda v: v is None)
@@ -256,10 +268,10 @@ class FrozenScoreObservationSnapshot(_Contract):
             or self.ordered_formula_ids != tuple(sorted(set(self.ordered_formula_ids)))
             or (
                 self.array_blocks is not None
-                and self.array_content_hash != canonical_hash(self.array_blocks)
+                and self.array_content_hash != array_blocks_digest(self.array_blocks)
             )
             or self.snapshot_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"snapshot_hash"}))
+            != scoped_model_digest(self, "snapshot_hash", digest=canonical_hash)
         ):
             raise ValueError("alpha_research.frozen_observation_identity_invalid")
         return self
@@ -286,7 +298,7 @@ class FrozenFeaturePreparation(_Contract):
             or len(self.source_binding_hashes) != len(self.vintages)
             or len(self.feature_values_hashes) != len(self.vintages)
             or self.preparation_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"preparation_hash"}))
+            != scoped_model_digest(self, "preparation_hash", digest=canonical_hash)
         ):
             raise ValueError("alpha_research.frozen_feature_preparation_invalid")
         return self
@@ -342,7 +354,7 @@ class FrozenComponentScoreSnapshot(_Contract):
             or self.prediction_calls != len(self.model_identity_hashes)
             or (self.fit_calls != 0 and self.model_set_publication_hash is None)
             or self.snapshot_hash
-            != canonical_hash(self.model_dump(mode="json", exclude={"snapshot_hash"}))
+            != scoped_model_digest(self, "snapshot_hash", digest=canonical_hash)
         ):
             raise ValueError("alpha_research.frozen_score_identity_invalid")
         return self

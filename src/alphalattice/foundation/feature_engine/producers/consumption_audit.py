@@ -49,11 +49,11 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     FeatureObservationClock,
@@ -69,7 +69,9 @@ from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     installed_formula_specs,
 )
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 FUTURE_PROBE_SESSIONS: Final = 3
 """Ordered sessions kept after the observation, so look-ahead has somewhere to hide."""
@@ -181,6 +183,8 @@ def _probe_frame(rows: int, *, listings: int) -> tuple[pd.DataFrame, pd.DataFram
     implementation reads, and that is a property of the code rather than of any
     particular price history.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     index: np.ndarray = np.arange(rows, dtype=float)
 
@@ -264,29 +268,30 @@ def _perturbed(
     return from a leader mean, and a common shift cancels exactly -- so it would
     report that a leader/lag method consumes nothing.
     """
+
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
+    def bump(frame: pd.DataFrame, rows: pd.Series, columns: tuple[str, ...]) -> None:
+        present = [column for column in columns if column in frame]
+        if present:
+            values = frame.loc[rows, present]
+            if not all(pd.api.types.is_numeric_dtype(dtype) for dtype in values.dtypes):
+                values = values.apply(pd.to_numeric, errors="coerce")
+            frame.loc[rows, present] = values.to_numpy() * [
+                factors.get(column, 1.0) for column in present
+            ]
+
     session = market["session_date"].iloc[position]
     bumped_source = source.copy()
     own = (bumped_source["session_date"] == session) & (bumped_source["listing_id"] == listing_id)
-    for column in _PROBED_COLUMNS:
-        if column in bumped_source:
-            bumped_source.loc[own, column] = pd.to_numeric(
-                bumped_source.loc[own, column], errors="coerce"
-            ) * factors.get(column, 1.0)
+    bump(bumped_source, own, _PROBED_COLUMNS)
     # The Market child is one series shared by every member, so its session moves
     # for all of them; that is what a Market observation actually is.
     shared = bumped_source["session_date"] == session
-    for column in ("market_provider_adjusted_close", "market_return_log"):
-        if column in bumped_source:
-            bumped_source.loc[shared, column] = pd.to_numeric(
-                bumped_source.loc[shared, column], errors="coerce"
-            ) * factors.get(column, 1.0)
+    bump(bumped_source, shared, ("market_provider_adjusted_close", "market_return_log"))
     bumped_market = market.copy()
     market_rows = bumped_market["session_date"] == session
-    for column in _PROBED_COLUMNS:
-        if column in bumped_market:
-            bumped_market.loc[market_rows, column] = pd.to_numeric(
-                bumped_market.loc[market_rows, column], errors="coerce"
-            ) * factors.get(column, 1.0)
+    bump(bumped_market, market_rows, _PROBED_COLUMNS)
     return bumped_source, bumped_market
 
 
@@ -312,6 +317,7 @@ class _CoreEvaluator:
     def __init__(self, catalog: FeatureCatalog, rows: int) -> None:
         self._materializer = BaseFeatureMaterializer(catalog)
         self._source, self._market = _probe_frame(rows, listings=1)
+        self._observation = self._source["session_date"].iloc[-1 - FUTURE_PROBE_SESSIONS].date()
         self._cache: dict[tuple[int, str] | None, pd.DataFrame] = {}
 
     def values(self, probe: tuple[int, str] | None) -> pd.DataFrame:
@@ -327,6 +333,7 @@ class _CoreEvaluator:
                 listing_id="L00",
                 projected_bars=source.drop(columns=["listing_id"], errors="ignore"),
                 market_bars=market,
+                sessions=None if probe is None else {self._observation},
             )
             self._cache[probe] = block.values
         return self._cache[probe]
@@ -357,6 +364,8 @@ class _ExtensionEvaluator:
 
 
 def _calendar_source_position(rows: int, observation: int) -> int | None:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     periods = sessions.to_period("M")
     selected = periods[observation] - 12
@@ -365,6 +374,8 @@ def _calendar_source_position(rows: int, observation: int) -> int | None:
 
 
 def _calendar_earliest_position(rows: int, observation: int) -> int | None:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     sessions = pd.bdate_range("2015-01-05", periods=rows)
     periods = sessions.to_period("M")
     selected = periods[observation] - 13
@@ -517,11 +528,7 @@ def audit_installed_formula_consumption(
         )
         baseline = baseline_core[spec.factor_id].to_numpy(dtype=float)
         probe = {
-            (position, direction): float(
-                core.values((position, direction))[spec.factor_id].to_numpy(dtype=float)[
-                    core_observation
-                ]
-            )
+            (position, direction): float(core.values((position, direction))[spec.factor_id].iloc[0])
             for position in positions
             for direction in _PROBE_DIRECTIONS
         }

@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from uuid import uuid4
 
+import numpy as np
+import pytest
+
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge import model_store
 from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AlternativeEvidenceAnalystAnswer,
     AlternativeEvidenceAnswerFinding,
@@ -25,15 +33,7 @@ from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
 )
 from alphalattice.evidence.alternative_evidence.sources.recorded import RecordedEvidenceDocument
-from alphalattice.kernel.knowledge.hybrid import (
-    WorkspaceHybridKnowledgeIndex,
-    WorkspaceHybridKnowledgeRetriever,
-)
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    HybridCapabilityReport,
-    HybridIndexSpec,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import encoders, history, recall
 from alphalattice.protocols.actor_execution import ActorKind
 
 _NOW = datetime(2026, 8, 12, 16, 0, tzinfo=UTC)
@@ -88,83 +88,112 @@ _TOPIC_KEYWORDS: tuple[str, ...] = (
 )
 
 
-def _one_hot(position: int) -> tuple[float, ...]:
-    return tuple(1.0 if index == position else 0.0 for index in range(384))
-
-
-def _embedding(text: str) -> tuple[float, ...]:
+def _embedding(text: str) -> np.ndarray:
     """A keyword one-hot: each topic keyword is its own direction, background is another."""
 
     lowered = text.casefold()
-    for position, keyword in enumerate(_TOPIC_KEYWORDS):
-        if keyword in lowered:
-            return _one_hot(position)
-    return _one_hot(len(_TOPIC_KEYWORDS))
+    position = next(
+        (index for index, keyword in enumerate(_TOPIC_KEYWORDS) if keyword in lowered),
+        len(_TOPIC_KEYWORDS),
+    )
+    row = np.zeros(encoders.DIMENSION, dtype=np.float32)
+    row[position] = 1.0
+    return row
 
 
-class _EmbeddingAdapter:
-    def close(self) -> None:
-        return None
+class _PlantedEncoder:
+    """The store's encoder for the planted corpora: `_embedding` of each text."""
 
-    def embed_passages(
-        self,
-        texts: tuple[str, ...],
-        *,
-        cancelled: Any | None = None,
-    ) -> tuple[tuple[float, ...], ...]:
-        if cancelled is not None and cancelled():
-            raise RuntimeError("cancelled")
-        return tuple(_embedding(text) for text in texts)
+    def __init__(self, _pack: Path | None = None) -> None:
+        self.passages: list[int] = []
+        """The size of each passage batch encoded."""
 
-    def embed_query(self, text: str) -> tuple[float, ...]:
+    def embed_passages(self, texts: list[str]) -> np.ndarray:
+        self.passages.append(len(texts))
+        return np.stack([_embedding(text) for text in texts])
+
+    def embed_query(self, text: str) -> np.ndarray:
         return _embedding(text)
 
 
 class _FakeReranker:
     """Scores a passage by how many of the query's words it states.
 
-    Stands in for the cross-encoder the way `_EmbeddingAdapter` stands in for
+    Stands in for the cross-encoder the way `_PlantedEncoder` stands in for
     the embedder: deterministic, cheap, and ordered the way a real reranker
     would order these synthetic corpora, where the planted claim restates the
     query and the background does not.
     """
 
-    def score(self, query: str, passages: list[str]) -> tuple[float, ...]:
+    def __init__(self, _pack: Path | None = None) -> None:
+        pass
+
+    def score(
+        self, query: str, passages: tuple[str, ...], *, deadline: float
+    ) -> encoders.RerankScores:
         # Five-letter stems, so "interrupted" credits "interruption" the way a
         # real reranker would.
         wanted = {word.strip("?,.")[:5] for word in query.casefold().split() if len(word) > 4}
-        return tuple(
+        scores = tuple(
             float(sum(1 for stem in wanted if stem in passage.casefold())) for passage in passages
         )
+        return encoders.RerankScores(scores, timed_out=False)
 
 
-def _ready(_root: Path, spec: HybridIndexSpec) -> HybridCapabilityReport:
-    return HybridCapabilityReport.ready(spec)
+@contextmanager
+def review_store(folder: Path) -> Iterator[None]:
+    """The Host's history and the store's two models as a review needs them: the planted
+    encoder and reranker in place of the packs, and a history opened in `folder` unless this
+    process's Host already records one. The held search is dropped when it ends."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(encoders, "StaticEncoder", _PlantedEncoder)
+        patch.setattr(encoders, "Reranker", _FakeReranker)
+        patch.setattr(model_store, "default_store_root", lambda: folder / "models")
+        patch.setattr(model_store, "verify_directory", lambda _directory, _pack: None)
+        opened = not history.recording()
+        if opened:
+            history.open_history(f"test-{uuid4().hex[:12]}", "test", folder)
+        recall.close()
+        try:
+            yield
+        finally:
+            recall.close()
+            if opened:
+                history.release_history()
 
 
-def _index_factory(workspace: Any, model_root: Path) -> WorkspaceHybridKnowledgeIndex:
-    return WorkspaceHybridKnowledgeIndex(
-        workspace,
-        model_root=model_root,
-        capability_probe=_ready,
-        adapter_factory=lambda _root, _spec: _EmbeddingAdapter(),
-        reranker_factory=lambda _root, _spec: _FakeReranker(),
-    )
+@contextmanager
+def tampered_reference(document_id: str) -> Iterator[None]:
+    """The canonical text of `document_id` changed in the Host's log, as an edited or damaged
+    data root would hold it, and restored when it ends. The log refuses edits by trigger; this
+    stands in for a change made outside it, so the trigger is lifted for the write alone."""
+    opened = history.opened_log()
+    assert opened is not None, "a review's documents live in the Host's log"
+    log = opened[0]
+    with log.unit() as con:
+        ((seq, text),) = con.execute(
+            "SELECT v.body_seq, t.text FROM knowledge_source_version v"
+            " JOIN event_text t ON t.seq = v.body_seq WHERE v.source_id = ?",
+            (document_id,),
+        ).fetchall()
+    payload = json.loads(text)
+    body = payload["content"]
+    payload["content"] = body[:-1] + ("?" if body.endswith("!") else "!")
 
+    def write(value: str) -> None:
+        with log.unit() as con:
+            (trigger,) = con.execute(
+                "SELECT sql FROM sqlite_master WHERE name = 'event_text_no_update'"
+            ).fetchone()
+            con.execute("DROP TRIGGER event_text_no_update")
+            con.execute("UPDATE event_text SET text = ? WHERE seq = ?", (value, seq))
+            con.execute(trigger)
 
-def _retriever_factory(
-    workspace: Any,
-    model_root: Path,
-    spec: HybridIndexSpec,
-) -> WorkspaceHybridKnowledgeRetriever:
-    return WorkspaceHybridKnowledgeRetriever(
-        workspace,
-        model_root=model_root,
-        index_spec=spec,
-        capability_probe=_ready,
-        adapter_factory=lambda _root, _spec: _EmbeddingAdapter(),
-        reranker_factory=lambda _root, _spec: _FakeReranker(),
-    )
+    write(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    try:
+        yield
+    finally:
+        write(text)
 
 
 def _recorded_document(
@@ -201,9 +230,6 @@ def _runtime(tmp_path: Path) -> AlternativeEvidenceDocumentIntelligenceRuntime:
     return AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=tmp_path / "artifacts",
         workspace_root=tmp_path / "workspace",
-        model_root=tmp_path / "models",
-        index_factory=_index_factory,
-        retriever_factory=_retriever_factory,
     )
 
 

@@ -34,7 +34,7 @@ import re
 from collections.abc import Mapping
 from typing import Any, cast
 
-import yaml  # type: ignore[import-untyped]
+import yaml as yaml  # type: ignore[import-untyped]
 
 from .contracts import AuthoringError
 
@@ -274,12 +274,55 @@ def looks_like_python_path(value: str) -> bool:
     return value.startswith(("alphalattice.", "builtins.", "os.", "subprocess."))
 
 
+def allowed_value_notes(schema: Mapping[str, Any], *, limit: int = 40) -> list[str]:
+    """List each enumerated field of a declaration's schema with its allowed values.
+
+    The saved declaration heads with these values, so readers need not look them up separately.
+
+    Args:
+        schema: The declaration's JSON schema, its `$defs` included.
+        limit: The most fields listed.
+
+    Returns:
+        One ``path: a | b`` line per enumerated field; a list's items are ``path[]``.
+    """
+    definitions = schema.get("$defs") or {}
+    notes: list[str] = []
+
+    def resolve(node: Any) -> Any:
+        seen: set[str] = set()  # a chain that names a definition twice is a cycle: it lists none
+        while isinstance(node, Mapping) and isinstance(reference := node.get("$ref"), str):
+            if reference in seen:
+                return {}
+            seen.add(reference)
+            node = definitions.get(reference.rsplit("/", 1)[-1], {})
+        return node
+
+    def walk(node: Any, path: str, depth: int) -> None:
+        node = resolve(node)
+        if not isinstance(node, Mapping) or depth > 6 or len(notes) >= limit:
+            return
+        if isinstance(node.get("enum"), list):
+            notes.append(f"{path}: " + " | ".join(str(value) for value in node["enum"]))
+            return
+        for option in node.get("anyOf") or node.get("oneOf") or ():
+            walk(option, path, depth + 1)
+        if isinstance(node.get("items"), Mapping):
+            walk(node["items"], f"{path}[]", depth + 1)
+        for name, child in (node.get("properties") or {}).items():
+            walk(child, f"{path}.{name}" if path else str(name), depth + 1)
+
+    walk(schema, "", 0)
+    return list(dict.fromkeys(notes))
+
+
 __all__ = [
     "AUTHORITY_KEY_NAMES",
     "AUTHORITY_KEY_SUFFIXES",
     "FORBIDDEN_KEYS",
     "MAXIMUM_DEPTH",
     "UnparsableDocument",
+    "allowed_value_notes",
     "dump_declaration",
     "load_safe_yaml_document",
     "load_selection_only_document",

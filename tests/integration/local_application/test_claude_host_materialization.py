@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -53,7 +53,7 @@ def test_each_role_card_becomes_one_subagent_with_its_sandbox_tools(materialize)
         tools = {tool.strip() for tool in fields["tools"].split(",")}
         # No Agent for any card. The two evidence specialists read their bundle whole, write
         # their own answer file and run only its route's submit. The stage roles run their own
-        # commands and write their declarations (V384).
+        # commands and write their declarations.
         evidence = name in {"alphalattice_evidence_analyst", "alphalattice_cro"}
         assert card["sandbox_mode"] == "workspace-write"
         stage = {"Read", "Grep", "Glob", "Edit", "Write", "Bash"}
@@ -164,7 +164,7 @@ def test_each_card_carries_its_capability_and_graph(materialize):
 
 
 def test_the_skill_carries_every_command_its_paths_use(materialize):
-    """requirement (V384): the lead is an agent like the stage roles, so its Skill carries the
+    """requirement: the lead is an agent like the stage roles, so its Skill carries the
     same command list, current with the table, naming every command its shortest paths run."""
 
     skill = (ROOT / ".agents/skills/alphalattice-research/SKILL.md").read_text(encoding="utf-8")
@@ -353,7 +353,8 @@ def test_every_command_example_writes_and_reads_under_out_or_the_workspace(mater
 
 
 def test_both_agent_guides_read_the_dates_before_activation_and_review_the_positions_after():
-    """Both guides bind activation and position review to their dates and publication."""
+    """Both guides bind activation and position review to their dates and publication, and what
+    follows a published review to its offered next action, in the same words wherever said."""
     for path in (
         ROOT / "AGENTS.md",
         ROOT / ".agents/skills/alphalattice-research/SKILL.md",
@@ -365,3 +366,13 @@ def test_both_agent_guides_read_the_dates_before_activation_and_review_the_posit
         assert dates < text.index("admits the first update") < text.index("own publication")
         assert "causal replay" in text
         assert re.search(r"strategy-book review[^`\n]*--update\b", text)
+    skill = ROOT / ".agents/skills/alphalattice-research"  # the Claude copy is byte-exact
+    rule = re.search(
+        r"follow its offered next action, never the daily setting: .+?"
+        r" the committee offered in one line",
+        (skill / "SKILL.md").read_text(encoding="utf-8"),
+    )
+    assert rule and all(
+        rule[0] in (skill / "references" / name).read_text(encoding="utf-8")
+        for name in ("research-lead.md", "cro-handoff.md")
+    )

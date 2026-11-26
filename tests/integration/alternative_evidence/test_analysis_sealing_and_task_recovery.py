@@ -19,6 +19,8 @@ from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.domain.errors import AlphaLatticeError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
@@ -59,7 +61,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
     SubmittedEvidenceAnalysis,
     alternative_evidence_document_task_contract,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import ActorKind, seal_actor_submission
 from tests.alternative_evidence_desk.document_intelligence_support import (
     _obligation,
@@ -73,7 +74,12 @@ from tests.alternative_evidence_desk.planted_corpus import (
     _CitingActor,
     _recorded_document,
     _runtime,
+    tampered_reference,
 )
+
+HISTORICAL_EXCEPTION = "KnowledgeRetrievalError"
+"""The retired retrieval core's exception, as a unit failure recorded before its retirement
+names it; a current failure is a typed AlphaLatticeError with its code."""
 
 
 def _admission(
@@ -127,7 +133,7 @@ def test_the_host_seals_publishes_and_replays_the_analysis(tmp_path: Path) -> No
     assert package.structure(handle).state is EvidenceStructureState.SINGLE_SOURCE
     assert package.structure(handle).supporting_document_count == 1
     # The one current report is what the window holds: a topic it does not
-    # serve is no gap (no periodic report is a baseline since W1), so the
+    # serve is no gap (no periodic report is a baseline), so the
     # package names nothing missing -- and whatever it names is an issuer and
     # topic line.
     assert package.missing_evidence == ()
@@ -509,20 +515,15 @@ def test_a_tampered_workspace_document_is_a_named_packet_refusal(tmp_path: Path)
     assert completed is not None and completed.lifecycle is TaskLifecycle.SUCCEEDED
     packet = adapter.prepared_packet(completed.task_id, now=_NOW)
     reference = packet.document_set.documents[0]
-    # The canonical blob the packet reads, not the original bytes the source
-    # store keeps beside it (a recorded markdown source has the same size).
-    blob = next(
-        path
-        for path in (tmp_path / "workspace" / "knowledge" / "blobs").rglob("*")
-        if path.is_file() and path.stat().st_size == reference.byte_count
-    )
-    original = blob.read_bytes()
-    blob.write_bytes(original[:-1] + bytes([original[-1] ^ 0x01]))
-    try:
-        with pytest.raises(ValueError, match="brief_document_unverifiable:retrieval\\."):
-            adapter.prepared_packet(completed.task_id, now=_NOW)
-    finally:
-        blob.write_bytes(original)
+    # The canonical text the packet reads, in the Host's log, not the original bytes the
+    # source store keeps.
+    with (
+        tampered_reference(reference.workspace_document_id),
+        pytest.raises(
+            ValueError, match=r"brief_document_unverifiable:alternative_evidence.workspace_document"
+        ),
+    ):
+        adapter.prepared_packet(completed.task_id, now=_NOW)
     assert adapter.prepared_packet(completed.task_id, now=_NOW) == packet
     runtime.close()
 
@@ -544,8 +545,6 @@ def test_a_stage_failure_names_the_owners_own_code(
         UNIT_FAILURE_CATEGORY,
         _failure_code,
     )
-    from alphalattice.kernel.knowledge.hybrid import _retrieval_error
-    from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
     from tests.alternative_evidence_desk.portfolio_coverage_support import run_one
     from tests.alternative_evidence_desk.review_http_support import (
         build_authority,
@@ -553,10 +552,11 @@ def test_a_stage_failure_names_the_owners_own_code(
         start_service,
     )
 
-    corrupt = _retrieval_error(
-        "hybrid projection differs from source", code="retrieval.index_corrupt"
+    corrupt = AlphaLatticeError(
+        "hybrid projection differs from source",
+        category="retrieval",
+        code="retrieval.index_corrupt",
     )
-    assert isinstance(corrupt, KnowledgeRetrievalError)
     assert _failure_code(corrupt) == "alternative_evidence.task_failed:retrieval.index_corrupt"
 
     class _Refusing(BaseModel):
@@ -573,9 +573,11 @@ def test_a_stage_failure_names_the_owners_own_code(
         "alternative_evidence.stage_lineage_missing"
     )
     assert _failure_code(RuntimeError("lost process")) == "alternative_evidence.task_failed"
-    assert len(_failure_code(_retrieval_error("x" * 300, code="retrieval." + "y" * 200))) <= (
-        FAILURE_CODE_MAX_LENGTH
-    )
+    assert len(
+        _failure_code(
+            AlphaLatticeError("x" * 300, category="retrieval", code="retrieval." + "y" * 200)
+        )
+    ) <= (FAILURE_CODE_MAX_LENGTH)
     legacy = {
         "kind": "AlternativeEvidenceUnitFailure",
         "run_hash": "a" * 64,
@@ -592,11 +594,11 @@ def test_a_stage_failure_names_the_owners_own_code(
     assert historical.exception_type is historical.exception_message is None
     recorded = seal_unit_failure(
         **historical.model_dump(exclude={"failure_hash"}),
-        exception_type=type(corrupt).__name__,
+        exception_type=HISTORICAL_EXCEPTION,
         exception_message=str(corrupt),
     )
     assert recorded.failure_code == historical.failure_code
-    assert recorded.exception_type == "KnowledgeRetrievalError"
+    assert recorded.exception_type == HISTORICAL_EXCEPTION
     assert recorded.exception_message == "hybrid projection differs from source"
     with pytest.raises(ValidationError, match="identity_invalid"):
         AlternativeEvidenceUnitFailure.model_validate(
@@ -616,7 +618,7 @@ def test_a_stage_failure_names_the_owners_own_code(
         assert resources is not None
         first = resources.recorded_documents[0]
         bad = (
-            first.model_copy(update={"text": "# Good\nbody\n## \u00a0\nBroken excerpt.\n"})
+            first.model_copy(update={"text": "# Good\nbody\nBroken excerpt.\n"})
             if untyped == "citation"
             else first
         )
@@ -627,6 +629,22 @@ def test_a_stage_failure_names_the_owners_own_code(
             ),
         )
         monkeypatch.setattr(authority.evidence_runtime, "whole_delivery", lambda *_: False)
+        if untyped == "citation":
+            from alphalattice.capabilities.data.errors import DataError
+            from alphalattice.foundation.data_layer.knowledge import KnowledgeStore
+
+            index_chunks = KnowledgeStore.index_chunks
+
+            def refused_chunks(store: object, *, version_id: str, recipe_id: str, content: str):
+                if content == bad.text:
+                    raise DataError(
+                        "the source chunks differ", code="data_layer.knowledge_source_conflict"
+                    )
+                return index_chunks(
+                    store, version_id=version_id, recipe_id=recipe_id, content=content
+                )
+
+            monkeypatch.setattr(KnowledgeStore, "index_chunks", refused_chunks)
         if untyped == "need":
             from alphalattice.evidence.alternative_evidence.analysis.contracts import (
                 EvidenceNeedRecord,
@@ -634,6 +652,53 @@ def test_a_stage_failure_names_the_owners_own_code(
 
             def invalid_need(**kwargs: object) -> object:
                 reference = kwargs["document_set"].documents[0]
+                from alphalattice.evidence.alternative_evidence.runtime.failure_diagnostics import (
+                    failure_detail,
+                )
+
+                base = {
+                    "document_handle": reference.semantic_handle,
+                    "kind": "REGION_STATEMENT",
+                    "status": "PENDING_ALLOWANCE",
+                }
+                cases = (
+                    ({"status": "PROVIDED"}, "status_requires_span"),
+                    (
+                        {
+                            "kind": "LEAD",
+                            "matter_handle": "M-AAPL-1-001",
+                            "target_state": "LOCATED",
+                        },
+                        "target_only_reference",
+                    ),
+                    (
+                        {
+                            "kind": "REFERENCE",
+                            "status": "PROVIDED",
+                            "span_handle": "SPAN-M01-R0001",
+                            "target_state": "LOCATED",
+                        },
+                        "target_matches_status",
+                    ),
+                    (
+                        {"kind": "REFERENCE", "target_state": "DELIVERED"},
+                        "pending_target_located_or_partially_read",
+                    ),
+                    ({"character_start": 10}, "character_range_paired_and_ordered"),
+                    (
+                        {"character_start": 10, "character_end": 10},
+                        "character_range_paired_and_ordered",
+                    ),
+                    ({"kind": "LEAD"}, "matter_required"),
+                    ({"matter_handle": "M-AAPL-1-001"}, "region_statement_has_no_matter"),
+                )
+                for changes, invariant in cases:
+                    with pytest.raises(ValueError) as caught:
+                        EvidenceNeedRecord(**(base | changes))
+                    detail = failure_detail(
+                        caught.value, "select_evidence_spans", lambda: kwargs["document_set"]
+                    )
+                    assert f"invariant={invariant}" in detail
                 return EvidenceNeedRecord(
                     document_handle=reference.semantic_handle,
                     kind="REGION_STATEMENT",
@@ -641,10 +706,14 @@ def test_a_stage_failure_names_the_owners_own_code(
                 )
 
             monkeypatch.setattr(authority.evidence_runtime, "select_evidence", invalid_need)
-    base_error = RuntimeError if untyped else KnowledgeRetrievalError
-    long_error = type("KnowledgeRetrievalError" + "Long" * 40, (base_error,), {})
+    base_error = RuntimeError if untyped else AlphaLatticeError
+    long_error = type(HISTORICAL_EXCEPTION + "Long" * 40, (base_error,), {})
     message = "   index    mismatch\tfor\nsource  " * 40
-    raised = long_error(message) if untyped else long_error(message, code="retrieval.index_corrupt")
+    raised = (
+        long_error(message)
+        if untyped
+        else long_error(message, category="retrieval", code="retrieval.index_corrupt")
+    )
 
     def fail_canonicalization(*_args: object, **_kwargs: object) -> object:
         raise raised
@@ -666,12 +735,19 @@ def test_a_stage_failure_names_the_owners_own_code(
             assert state["failed_stage"] == (
                 "build_retrieval_generation" if untyped == "citation" else "select_evidence_spans"
             )
-            assert state.get("exception_type") == "ValidationError"
+            assert state.get("exception_type") == (
+                "DataError" if untyped == "citation" else "ValidationError"
+            )
             assert bad.entity_id in state["exception_message"]
             assert bad.revision in state["exception_message"]
-            field = "heading_path" if untyped == "citation" else "EvidenceNeedRecord"
+            field = (
+                "data_layer.knowledge_source_conflict"
+                if untyped == "citation"
+                else "EvidenceNeedRecord"
+            )
             assert field in state["exception_message"]
             if untyped == "need":
+                assert "invariant=status_requires_span" in state["exception_message"]
                 assert "status=PROVIDED" in state["exception_message"]
                 assert "span_handle=None" in state["exception_message"]
             completed = run_one(service, {"operation": "STATUS", "task_id": task.task_id})
@@ -684,7 +760,12 @@ def test_a_stage_failure_names_the_owners_own_code(
 
             answer = review_evidence_view({}, {}, completed, resuming=False)
             assert answer["failed_units"] == completed["failed_units"]
-            assert failure["next_action"] == "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            assert failure["next_action"] == (
+                # A coded store refusal is prepared again before it is reported.
+                "PREPARE_AGAIN_THEN_REPORT_THE_CODE"
+                if untyped == "citation"
+                else "REPORT_THE_CAUSE_AND_READ_COVERAGE"
+            )
             return
         assert state["failure_code"] == _failure_code(raised)
         assert state["failed_stage"] == "canonicalize_documents"

@@ -1,4 +1,4 @@
-"""Input retention mechanics; no synthetic file is claimed as numerical evidence."""
+"""Input storage and cleanup mechanics; no synthetic file is claimed as numerical evidence."""
 
 from __future__ import annotations
 
@@ -11,9 +11,12 @@ import threading
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
+from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -24,17 +27,14 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     FactorInputBundle,
     _copy_input,
+    factor_input_paths,
     file_digest,
+    legacy_bindings,
     read_factor_bundle,
 )
 from alphalattice.control.product_host.storage.input_references import ResearchInputStorage
-from alphalattice.control.task_control.contracts import (
-    ResearchGoal,
-    ResearchPlan,
-    TaskInputEnvelope,
-    WorkItemDefinition,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.foundation.data_layer import history
+from alphalattice.foundation.data_layer.log import uuid7
 from tests.portfolio_strategy_lab.local_web_support import _manifest
 
 if sys.platform == "win32":
@@ -44,7 +44,7 @@ if sys.platform == "win32":
 def test_observation_capacity_takes_a_fresh_sample_when_the_workspace_reopens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """V680: a retained sample from another session cannot set this session's allowance."""
+    """a retained sample from another session cannot set this session's allowance."""
 
     from alphalattice.control.workspace_runtime.storage import capacity
 
@@ -115,20 +115,20 @@ def _counting_reads(monkeypatch: pytest.MonkeyPatch, inject=None) -> list[int]:
 
     import alphalattice.control.product_host.research_authoring.factor_inputs as inputs
 
-    original = inputs._digest_stream
+    original = inputs.file_sha256
     reads = [0]
     # The objects are digested on a pool: the first read's inject holds the
     # others until it has run, or a second read also sees a count of zero.
     first_read = threading.Lock()
 
-    def counted(stream):
+    def counted(path, **keywords):
         with first_read:
             if reads[0] == 0 and inject is not None:
                 inject()
             reads[0] += 1
-        return original(stream)
+        return original(path, **keywords)
 
-    monkeypatch.setattr(inputs, "_digest_stream", counted)
+    monkeypatch.setattr(inputs, "file_sha256", counted)
     return reads
 
 
@@ -160,7 +160,7 @@ def test_file_digests_bind_every_path_to_the_object_whose_bytes_were_read(
     digests = file_digests([a, b, c, a])
     # One read per object: the two links once, the same-size other file itself.
     assert reads[0] == 2
-    # Nothing survives a call: the next call reads every object again.
+    # A file inside its racy tick is read again by the next call.
     assert file_digests([a, b, c]) == digests
     assert reads[0] == 4
     assert digests[a] == digests[b] == file_digest(a) and digests[c] == file_digest(c)
@@ -263,14 +263,93 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     from alphalattice.control.product_host.research_authoring.factor_inputs import (
+        compatible_factor_inputs,
         read_factor_bundle,
     )
     from alphalattice.protocols.research_authoring.contracts import AuthoringError
 
+    # Old file-bound identities remain readable; new bindings name the catalog artifact and digest.
+    digest = "c" * 64
+    artifact, other_artifact = uuid7(), uuid7()
+    chunk = f"artifacts/data-operations/execution-outcomes/development/chunks/{digest}.parquet"
+    common = {
+        "panel_snapshot_hash": "a" * 64,
+        "outcome_snapshot_hash": "b" * 64,
+        "sessions": (date(2024, 1, 2),),
+    }
+    old = FactorInputBundle.create(**common, files=((chunk, "d" * 64), ("panel", "e" * 64)))
+    new = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((artifact, digest),),
+    )
+    changed = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((other_artifact, "f" * 64),),
+    )
+    different_artifact = FactorInputBundle.create(
+        **common,
+        files=(("panel", "e" * 64),),
+        binding_version=2,
+        outcomes=((other_artifact, digest),),
+    )
+    with pytest.raises(ValueError, match="input_manifest_invalid"):
+        FactorInputBundle.create(
+            **common,
+            files=(("panel", "e" * 64),),
+            binding_version=2,
+            outcomes=(("sha256:" + digest, digest),),
+        )
+    import pyarrow as pa
+
+    rows = pa.table({"listing": ["one", "two"], "return": [None, 0.1]})
+    read_old = lambda _path: rows
+    read_new = lambda _artifact: rows
+    assert old.binding_hash != new.binding_hash
+    assert not compatible_factor_inputs(old, new)  # No row proof is no compatibility.
+    assert compatible_factor_inputs(old, new, read_legacy=read_old, read_catalog=read_new)
+    assert not compatible_factor_inputs(old, changed, read_legacy=read_old, read_catalog=read_new)
+    assert not compatible_factor_inputs(new, different_artifact)
+
+    def at_snapshot(
+        snapshot: int, index_hash: str = digest, content: str = "blake3:" + "c" * 64
+    ) -> FactorInputBundle:
+        return FactorInputBundle.create(
+            **common,
+            files=tuple(sorted((*new.files, ("market-data.duckdb", index_hash)))),
+            binding_version=3,
+            outcomes=new.outcomes,
+            market_selection_id=artifact,
+            market_catalog_snapshot=snapshot,
+            market_index_hash=content,
+        )
+
+    selected = at_snapshot(7)
+    assert "market_selection_id" not in new.model_dump()
+    assert FactorInputBundle.model_validate_json(selected.model_dump_json()) == selected
+    assert selected.binding_hash == at_snapshot(7, "a" * 64).binding_hash
+    assert compatible_factor_inputs(selected, at_snapshot(7, "a" * 64))
+    # The sealed index's rows bind it (its Feature values among them); its file's padding does not.
+    assert selected.binding_hash != at_snapshot(7, content="blake3:" + "d" * 64).binding_hash
+    assert not compatible_factor_inputs(selected, at_snapshot(7, content="blake3:" + "d" * 64))
+    assert selected.binding_hash != at_snapshot(8).binding_hash
+    assert not compatible_factor_inputs(selected, at_snapshot(8))
+    assert not compatible_factor_inputs(selected, new)
+    assert not compatible_factor_inputs(
+        old, new, read_legacy=read_old, read_catalog=lambda _: rows.slice(0, 1)
+    )
+    # A binding this data root does not keep is refused by name, never read from elsewhere.
+    with pytest.raises(DataError) as missing:
+        read_factor_bundle(tmp_path, "a" * 64, verify=False)
+    assert missing.value.failure.code == "data_layer.input_missing"
+
     (bundle,) = _inputs(tmp_path, count=1)
-    source = tmp_path / "research-inputs" / bundle.binding_hash / "source"
+    source = factor_input_paths(tmp_path, bundle.binding_hash)[0]
     alias = source / "market-data.duckdb"
-    pool = tmp_path / "research-inputs/databases" / bundle.database_snapshot_hash
+    pool = source.parent.parent / "databases" / bundle.database_snapshot_hash
     pool = pool / "market-data.duckdb"
     assert os.stat(alias).st_ino == os.stat(pool).st_ino
     reads = _counting_reads(monkeypatch)
@@ -278,7 +357,7 @@ def test_bundle_pool_alias_is_verified_as_one_object_and_still_refuses_tamper(
     # Three objects (the manifest copy, the Parquet object, the database
     # object named by its alias and its pool path), three reads.
     assert reads[0] == 3
-    forged = tmp_path / "forged.duckdb"
+    forged = pool.with_name("forged.duckdb")  # beside the view, on its volume
     forged.write_bytes(b"database-X")  # the same size as the pooled "database-0"
     saved = pool.read_bytes()
     os.replace(forged, pool)
@@ -337,6 +416,9 @@ def test_managed_inventory_preserves_file_identity_and_link_refusal(tmp_path):
 
 
 def _inputs(root: Path, *, count: int = 3):
+    """Bound inputs as 0.2.8 binds them: each staged beside the workspace as the writer stages
+    it, then kept once on the data root behind the door; the workspace holds its publication
+    records and manifest."""
     manifest = _manifest("input-storage")
     bundles = []
     source = root / "staging"
@@ -361,8 +443,9 @@ def _inputs(root: Path, *, count: int = 3):
             files=files,
             database_snapshot_hash=file_digest(database),
         )
-        folder = root / "research-inputs" / bundle.binding_hash
-        for name, digest in files:
+        bound = root.parent / f"{root.name}-bind"  # laid out as a copy, outside the workspace
+        staged = bound / "research-inputs" / bundle.binding_hash
+        for name, _digest in files:
             original = (
                 database
                 if name == "market-data.duckdb"
@@ -370,8 +453,10 @@ def _inputs(root: Path, *, count: int = 3):
                 if name == "data.parquet"
                 else panel_file
             )
-            _copy_input(root, original, folder / "source" / name, digest)
-        (folder / "manifest.json").write_text(bundle.model_dump_json(), encoding="utf-8")
+            _copy_input(root, original, staged / "source" / name)
+        (staged / "manifest.json").write_text(bundle.model_dump_json(), encoding="utf-8")
+        (kept,) = [files for h, files in legacy_bindings(bound) if h == bundle.binding_hash]
+        history.keep_research_input(bundle.binding_hash, kept)
         updated = manifest.with_bindings(
             experiment_inputs=(
                 ResearchWorkspaceExperimentInput(
@@ -387,9 +472,9 @@ def _inputs(root: Path, *, count: int = 3):
             "next_manifest_hash": updated.manifest_hash,
         }
         receipt = canonical_hash(values)
-        history = root / "research-inputs/publications"
-        history.mkdir(exist_ok=True)
-        (history / f"{receipt}.json").write_text(
+        records = root / "research-inputs/publications"
+        records.mkdir(parents=True, exist_ok=True)
+        (records / f"{receipt}.json").write_text(
             json.dumps({**values, "receipt_hash": receipt}), encoding="utf-8"
         )
         manifest = updated
@@ -405,9 +490,7 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         ResearchInputRevision,
         ResearchInputSource,
     )
-    from alphalattice.control.product_host.storage.retention import StorageRetentionError
     from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
-    from alphalattice.interface.local_application.cli_contract import worded_refusal
     from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 
     a, b, c, default = _inputs(tmp_path, count=4)
@@ -546,41 +629,19 @@ def test_revision_lineage_reuse_staleness_and_retention(tmp_path: Path, monkeypa
         finally:
             replacement.unlink()
             original_record.write_bytes(original_bytes)
+        # The inputs are kept on the data root, outside the cleanup: no input row, no input
+        # target, and after a confirmed cleanup every version is still selectable.
         storage = ResearchInputStorage(session)
-        rows = {v["binding_hash"]: v["roots"] for v in storage.readback()["inputs"]}
-        assert rows[a.binding_hash] == []
-        assert "PREVIOUS_ROLLBACK" in rows[b.binding_hash]
-        assert "CURRENT_RESEARCH_VERSION" in rows[c.binding_hash]
-        assert "CURRENT_ACTIVE" in rows[default.binding_hash]
-        # The installed binding and a succeeded historical publication both
-        # name their exact missing manifest, without discarding the references.
-        before = storage.readback()
-        for binding in (default.binding_hash, c.binding_hash):
-            folder = tmp_path / "research-inputs" / binding
-            aside = tmp_path / f"held-{binding}"
-            folder.rename(aside)
-            try:
-                with pytest.raises(StorageRetentionError) as refused:
-                    storage.readback()
-                subject = f"research-inputs/{binding}"
-                code = f"storage.input_binding_missing:{subject}"
-                assert refused.value.failure_code == code
-                answer = worded_refusal({"status": "REFUSED", "failure_code": code})
-                assert f"{subject}/manifest.json" in answer["detail"]
-                assert "backup restore" in answer["detail"]
-                assert answer["next_action"] == "RESTORE_THE_WORKSPACE_FROM_A_BACKUP"
-            finally:
-                aside.rename(folder)
-            restored = storage.readback()
-            assert restored["inputs"] == before["inputs"]
-            assert restored["references_hash"] == before["references_hash"]
+        assert storage.readback()["inputs"] == []
         plan = storage.plan()
-        assert plan["bindings"] == [a.binding_hash]
+        assert plan["bindings"] == []
+        assert not any(target.startswith("research-inputs/") for target in plan["targets"])
         storage.confirm(plan["plan_hash"], caller="HUMAN")
         assert app.revisions.versions()["status"] == "AVAILABLE"
-        with pytest.raises(RuntimeError, match="released"):
-            app.revisions.select("factor", a.binding_hash)
-        assert app.revisions.select("factor", b.binding_hash).binding_hash == b.binding_hash
+        for bundle in (a, b):
+            assert app.revisions.select("factor", bundle.binding_hash).binding_hash == (
+                bundle.binding_hash
+            )
 
 
 def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Path, monkeypatch):
@@ -606,7 +667,7 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         outcome_policy_hash="6" * 64,
         materializer_hash="7" * 64,
     )
-    sealed = tmp_path / "research-inputs" / bundle.binding_hash / "source" / "market-data.duckdb"
+    sealed = factor_input_paths(tmp_path, bundle.binding_hash)[0] / "market-data.duckdb"
     good = sealed.read_bytes()
     publications = tmp_path / "research-inputs/publications"
     before = sorted(path.name for path in publications.glob("*.json"))
@@ -663,43 +724,39 @@ def test_a_bundle_damaged_before_its_publication_leaves_no_receipt(tmp_path: Pat
         assert app.plan("factor")["status"] == "REUSED_EXACT"
 
 
-def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
+@pytest.mark.proves("product_host.storage_cleanup_takes_only_confirmed_eligible_targets")
+def test_a_cleanup_takes_only_its_eligible_targets_never_an_input(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    a, b, c = _inputs(tmp_path)
+    """A cleanup takes only a person's confirmation of its eligible targets, never a research input,
+    a forged target or a redirected path, and holds every other change while it is interrupted."""
+    # Its resume after an interruption is issue 1119-C2-7.
+    from alphalattice.foundation.feature_engine.panels.retention_residue import (
+        PanelRetentionResidueOwner,
+    )
+
+    a, b = _inputs(tmp_path, count=2)
+    chunk = _panel_generations(tmp_path, monkeypatch)
+    monkeypatch.setattr(PanelRetentionResidueOwner, "reconcile_physical_availability", len)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         storage = ResearchInputStorage(session)
-        publication = next((tmp_path / "research-inputs/publications").glob("*.json"))
-        saved = publication.read_bytes()
-        try:
-            value = json.loads(saved)
-            value["binding_hash"] = "f" * 64
-            publication.write_text(json.dumps(value), encoding="utf-8")
-            with pytest.raises(RuntimeError) as refused:
-                storage.plan()
-            assert refused.value.failure_code == "storage.retention_root_mismatch"
-        finally:
-            publication.write_bytes(saved)
+        with pytest.raises(ValueError, match=r"storage.input_pin_retired"):
+            storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
+        with pytest.raises(ValueError, match=r"storage.input_pin_unavailable"):
+            storage.pin("9" * 64, pinned=True, caller="HUMAN")
         plan = storage.plan()
-        assert plan["bindings"] == [a.binding_hash]
-        storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
+        assert plan["bindings"] == []
+        assert list(plan["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
         with pytest.raises(ValueError, match="human_confirmation"):
             storage.confirm(plan["plan_hash"], caller="INSTALLED_AGENT")
-        with pytest.raises(RuntimeError, match="changed"):
-            storage.confirm(plan["plan_hash"], caller="HUMAN")
-        assert storage.plan()["targets"] == {}
-        storage.pin(a.binding_hash, pinned=False, caller="HUMAN")
-        plan = storage.plan()
-        # A self-consistent forged plan still cannot include a protected input.
+        # A self-consistent forged plan still cannot include a protected chunk.
         forged = {k: v for k, v in plan.items() if k not in {"status", "plan_hash", "limitations"}}
-        forged["targets"] = {
-            f"research-inputs/{c.binding_hash}/source/market-data.duckdb": c.database_snapshot_hash
-        }
+        forged["targets"] = {chunk("c"): file_digest(tmp_path / chunk("c"))}
         forged_hash = storage.owner.publish_input_plan(forged)
         with pytest.raises(RuntimeError, match="not eligible"):
             storage.confirm(forged_hash, caller="HUMAN")
-        # A redirected alias must not turn an admitted input unlink into a
-        # deletion of another same-workspace file, even with identical bytes.
+        # A redirected path must not turn an admitted unlink into a deletion of another
+        # same-workspace file, even with identical bytes.
         victim = tmp_path / "market-data.duckdb"
         victim.write_bytes(b"must survive")
         redirected = next(iter(plan["targets"]))
@@ -721,7 +778,7 @@ def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
         removed = []
 
         def fail_after_one(path, *args, **kwargs):
-            if path.is_relative_to(tmp_path / "research-inputs"):
+            if path.is_relative_to(tmp_path / "artifacts/feature-panel/chunks"):
                 if removed:
                     raise OSError("simulated cleanup interruption")
                 removed.append(path)
@@ -733,20 +790,26 @@ def test_roots_pins_stale_cleanup_shared_objects_and_metadata_survive(
                 storage.confirm(plan["plan_hash"], caller="HUMAN")
         assert storage.readback()["status"] == "RECOVERY_REQUIRED"
         with pytest.raises(RuntimeError, match="Resume approved cleanup"):
-            storage.pin(c.binding_hash, pinned=True, caller="HUMAN")
+            storage.pin(a.binding_hash, pinned=True, caller="HUMAN")
         with pytest.raises(RuntimeError, match="Resume approved cleanup"):
             storage.plan()
-        result = storage.confirm(plan["plan_hash"], caller="HUMAN")
-        assert result["deleted_paths"] > 0
-        assert read_factor_bundle(tmp_path, b.binding_hash) == b
-        assert read_factor_bundle(tmp_path, c.binding_hash) == c
-        assert read_factor_bundle(tmp_path, a.binding_hash, verify=False) == a
-        with pytest.raises(RuntimeError, match="released"):
-            read_factor_bundle(tmp_path, a.binding_hash)
+        # The started cleanup resumes even after its references changed, as when a release
+        # retires a reference field the plan was journalled with; its targets stay checked.
+        assert plan["references_hash"] != canonical_hash({"retired": plan["references_hash"]})
+        resumed = storage.owner.apply_input_plan(
+            plan["plan_hash"],
+            references_hash=canonical_hash({"retired": plan["references_hash"]}),
+            eligible_targets=plan["targets"],
+        )
+        assert resumed > 0
         assert storage.confirm(plan["plan_hash"], caller="HUMAN")["deleted_paths"] == 0
+        for bundle in (a, b):  # the inputs are untouched by any cleanup
+            assert read_factor_bundle(tmp_path, bundle.binding_hash) == bundle
 
 
-def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
+def test_storage_readback_breaks_managed_bytes_down_by_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Storage readback breaks managed bytes down by root."""
 
     from alphalattice.control.product_host.storage.input_references import MANAGED_ROOTS
@@ -771,41 +834,280 @@ def test_storage_readback_breaks_managed_bytes_down_by_root(tmp_path: Path):
     assert roots["WORKING_DATABASE"] == {"physical_bytes": 0, "logical_bytes": 0, "files": 0}
     assert roots["STAGING"]["files"] == 3  # the fixture's staging copies
     assert roots["AUTHORITY"] == {"physical_bytes": 1024, "logical_bytes": 1024, "files": 1}
-
-
-def test_an_unfinished_task_protects_its_input_without_a_foundation(tmp_path: Path):
-    a, _b, _c = _inputs(tmp_path)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
-        envelope = TaskInputEnvelope.create(
-            task_kind="research_experiment",
-            input_schema_id="test-input",
-            payload={"plan": {"binding": {"binding_hash": a.binding_hash}}},
+        _check_storage_status_categories(tmp_path / "footprint", ResearchInputStorage(session))
+    _check_task_scratch(tmp_path / "scratch-workspace")
+    _check_reclaim_command(tmp_path, monkeypatch)
+
+
+def _check_storage_status_categories(root: Path, storage: ResearchInputStorage) -> None:
+    from alphalattice.control.product_host.composition import task_operations
+    from alphalattice.control.workspace_runtime.storage.footprint import files, owner_for
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument as Request,
+    )
+
+    for name, payload in (
+        ("blobs/body", b"body"),
+        ("staging/temporary", b"scratch"),
+        ("runtime/file-trust.jsonl", b"trust"),
+        ("runtime/verified-files.jsonl", b"proof"),
+    ):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    expected: dict[str, int] = {}
+    for path, (allocated, _length, _identity) in files(root):
+        relative = path.relative_to(root).as_posix()
+        owner = owner_for("data-root", relative)
+        assert owner is not None, relative
+        expected[owner[1]] = expected.get(owner[1], 0) + allocated
+    assert set(expected) == {"stores", "scratch", "caches"}
+    assert owner_for("data-root", "runtime/verified-files.jsonl") == (
+        "workspace_runtime.verified_facts",
+        "caches",
+    )
+    assert owner_for("data-root", "runtime/unknown.jsonl") is None
+    measured = []
+
+    def storage_status():
+        measured.append(True)
+        return storage.status()
+
+    operations = SimpleNamespace(
+        status=lambda *_a, **_kw: {},
+        storage=SimpleNamespace(status=storage_status),
+    )
+    task_id = uuid7()
+    with history.own_root(root):
+        for wait_seconds in (None, 20):
+            plain = Request(operation="STATUS", task_id=task_id, wait_seconds=wait_seconds)
+            assert (
+                task_operations.execute(
+                    SimpleNamespace(
+                        operations=operations, request=plain.to_operation_request(), caller="HUMAN"
+                    )
+                )
+                == {}
+            )
+        assert measured == []
+        explicit = Request(operation="STATUS", task_id=task_id, status_section="storage")
+        answer = task_operations.execute(
+            SimpleNamespace(
+                operations=operations, request=explicit.to_operation_request(), caller="HUMAN"
+            )
         )
-        goal = ResearchGoal.create(
-            goal_kind="TEST_RECOVERY",
-            input_hash=envelope.input_hash,
-            deliverable_kind="evidence",
-            summary="Keep input while work is owed.",
-        )
-        workflow = ResearchPlan.create(
-            goal_hash=goal.goal_hash,
-            workflow_definition_hash="c" * 64,
-            verifier_catalog_hash="d" * 64,
-            work_items=(
-                WorkItemDefinition.create(
-                    stage_id="check_input", dependency_ids=(), verifier_id="test.input"
+    assert measured == [True]
+    assert answer is not None and "storage" in answer
+    assert answer["storage"]["bytes_by_category"] == expected
+    assert answer["storage"]["reclaimable_bytes"] == storage.plan()["reclaimable_bytes"]
+
+
+def _check_task_scratch(workspace: Path) -> None:
+    import psutil
+
+    from alphalattice.control.task_control.scratch import (
+        own_task_scratch,
+        reclaim_task_scratch,
+        task_scratch_directory,
+    )
+
+    live = psutil.Process()
+    previous = str(uuid7())
+    root = workspace / "staging/task-scratch"
+    outside = workspace / "do-not-reclaim"
+    outside.mkdir(parents=True)
+    (outside / "retained").write_text("keep", encoding="utf-8")
+
+    def scratch(epoch: str | None, pid: int) -> Path:
+        path = root / str(uuid7())
+        path.mkdir(parents=True)
+        (path / "payload").write_bytes(b"tmp")
+        if epoch is not None:
+            identity = path.stat()
+            (path / "owner.json").write_text(
+                json.dumps(
+                    dict(
+                        task_id=path.name,
+                        host_epoch=epoch,
+                        pid=pid,
+                        created=live.create_time(),
+                        device=identity.st_dev,
+                        inode=identity.st_ino,
+                    )
                 ),
-            ),
+                encoding="utf-8",
+            )
+        return path
+
+    dead_pid = 2**31 - 1
+    paths = {
+        name: scratch(epoch, pid)
+        for name, epoch, pid in (
+            ("killed", previous, dead_pid),
+            ("previous", previous, live.pid),
+            ("unproved", None, live.pid),
+            ("outside-link", previous, live.pid),
         )
-        session.task_control_registry.admit(
-            input_envelope=envelope, goal=goal, plan=workflow, observed_at=datetime.now(UTC)
+    }
+    link = paths["outside-link"] / "alias"
+    if sys.platform == "win32":
+        _winapi.CreateJunction(str(outside), str(link))
+    else:
+        link.symlink_to(outside, target_is_directory=True)
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        for case in ("killed", "previous", "outside-link"):
+            assert not paths[case].exists(), case
+        assert paths["unproved"].exists()
+        assert (outside / "retained").read_text(encoding="utf-8") == "keep"
+        assert str(paths["unproved"].name) in session.scratch_cleanup["unproved"]
+        current = session.scratch_epoch
+        missing_process = scratch(current, dead_pid)
+        with own_task_scratch(workspace, uuid7(), current):
+            running = task_scratch_directory()
+            assert running is not None and running.is_dir()
+            read = reclaim_task_scratch(workspace, current)
+            assert read["removed"] == [missing_process.name]
+            assert not missing_process.exists()
+            assert running.is_dir()
+
+
+def _check_reclaim_command(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+
+    from alphalattice.control.product_host.composition.operation_route_families import host_door
+    from alphalattice.control.product_host.composition.portfolio_research_operations import (
+        PortfolioResearchOperations,
+    )
+    from alphalattice.control.product_host.composition.research_workspace import (
+        read_research_workspace_manifest,
+    )
+    from alphalattice.control.task_control.runner import TaskHeartbeatReader
+    from alphalattice.foundation.feature_engine.panels.retention_residue import (
+        PanelRetentionResidueOwner,
+    )
+    from alphalattice.interface.local_application import cli, client
+    from alphalattice.interface.local_application.cli_contract import (
+        REQUEST_PROVENANCE,
+        RequestProvenance,
+    )
+    from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
+    from alphalattice.interface.local_application.goals import GoalSession
+    from alphalattice.interface.local_application.portfolio_research import (
+        PortfolioResearchRequestDocument as Request,
+    )
+    from alphalattice.investment.alpha_research.publication.artifacts import (
+        AlphaCurrentArtifactStore,
+    )
+
+    parser = cli.command_parser(frozenset({"storage"}))
+    assert ("storage", "reclaim") in cli.CLIENT_COMMANDS
+    chunk = _panel_generations(workspace, monkeypatch)
+    monkeypatch.setattr(PanelRetentionResidueOwner, "reconcile_physical_availability", lambda _: 0)
+    pinned = (
+        workspace / "artifacts/alpha-research/current/workspace-observation-history/pinned.parquet"
+    )
+    pinned.parent.mkdir(parents=True)
+    pinned.write_bytes(b"pinned")
+    pin = "f" * 64
+    file = SimpleNamespace(path=pinned, sha256=file_digest(pinned), bytes=pinned.stat().st_size)
+
+    def retention(_self, referenced_heads=(), *, active_scope_hashes=None):
+        held = pin in referenced_heads
+        return SimpleNamespace(
+            head_hashes=(pin,),
+            roots=(file,) if held else (),
+            targets=() if held else (file,),
         )
-        view = ResearchInputStorage(session).readback()
-        assert (
-            "IN_FLIGHT_RECOVERY"
-            in next(v for v in view["inputs"] if v["binding_hash"] == a.binding_hash)["roots"]
+
+    monkeypatch.setattr(
+        AlphaCurrentArtifactStore, "workspace_observation_history_retention", retention
+    )
+    with WorkspaceApplicationSession.acquire(workspace) as session:
+        storage = ResearchInputStorage(session)
+        pins = {pin: 1}
+        receipt_hash = canonical_hash(pins)
+        storage.owner._publish("input-pin-receipts", receipt_hash, pins)
+        (storage.owner.governance_root / "input-pins.json").write_text(
+            json.dumps({"pins": pins, "receipt_hash": receipt_hash}), encoding="utf-8"
         )
-        assert ResearchInputStorage(session).plan()["targets"] == {}
+        host = PortfolioResearchOperations(
+            dispatcher=LocalBackgroundDispatcher(status_port=session.task_control_registry),
+            workspace_manifest=read_research_workspace_manifest(workspace),
+            workspace_session=session,
+            heartbeats=TaskHeartbeatReader(session.runtime_path),
+            door=host_door(),
+        )
+        opened = host.execute(
+            Request(
+                operation="GOAL_OPEN",
+                change_reason="Configure the storage fixture",
+                goal_declaration={
+                    "title": "Workspace care",
+                    "objective": "Reclaim eligible storage.",
+                    "kind": "RESEARCH",
+                    "criteria": [{"criterion_id": "storage", "text": "Keep pinned objects."}],
+                    "deliverables": [
+                        {
+                            "deliverable_id": "cleanup",
+                            "kind": "RESULT",
+                            "description": "Cleanup result.",
+                        },
+                    ],
+                },
+            ).to_operation_request()
+        )
+        goal_id = UUID(opened["goal_id"])
+        member = GoalSession(vendor="codex", session_id="storage-fixture")
+        host.goals.store.bind(member, goal_id)
+        provenance = RequestProvenance(
+            vendor=member.vendor, session=member.session_id, goal_id=str(goal_id)
+        )
+
+        def request(document):
+            token = REQUEST_PROVENANCE.set(provenance)
+            try:
+                return host.execute(
+                    Request.model_validate(document).to_operation_request(),
+                    caller="INSTALLED_AGENT",
+                )
+            finally:
+                REQUEST_PROVENANCE.reset(token)
+
+        class Terminal(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        connection = SimpleNamespace(request=request)
+        monkeypatch.setattr(sys, "stdin", io.StringIO())
+        preview = client.reclaim_storage(connection, None)
+        assert list(preview["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
+        hash_only = ["--confirm", preview["plan_hash"]]
+        with pytest.raises(SystemExit):
+            cli._client_fields(parser, parser.parse_args(["storage", "reclaim", *hash_only]))
+        words = "Yes, please apply that cleanup plan."
+        question = preview["ask_now"]
+        approval = (*hash_only, "--asked", question, "--person-said", words)
+        monkeypatch.setattr(sys, "stdin", Terminal("no\n"))
+        for case, flags, count in (
+            ("declined", (), 0),
+            ("pinned", approval, 3),
+            ("repeated", (), 0),
+        ):
+            args = parser.parse_args(["storage", "reclaim", *flags])
+            confirmation = cli._client_fields(parser, args)["storage_reclaim_confirmation"]
+            answer = client.reclaim_storage(connection, confirmation)
+            assert answer.get("deleted_paths") == count, (case, answer)
+            assert pinned.read_bytes() == b"pinned", case
+            approvals = [
+                event["relayed"]
+                for event in host.goals.store.attributed(goal_id)
+                if event.get("operation") == "STORAGE_CONFIRM"
+            ]
+            if case == "declined":
+                assert not approvals and all((workspace / p).exists() for p in preview["targets"])
+            else:
+                assert [(row["question"], row["words"]) for row in approvals] == [(question, words)]
 
 
 def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatch):
@@ -827,41 +1129,26 @@ def test_no_link_fallback_checks_capacity_before_copy(tmp_path: Path, monkeypatc
     monkeypatch.setattr(inputs, "require_storage_capacity", full)
     monkeypatch.setattr(inputs.shutil, "copy2", lambda *args: copied.append(args))
     with pytest.raises(StorageInventoryError):
-        _copy_input(tmp_path, source, target, file_digest(source))
+        _copy_input(tmp_path, source, target)
     assert copied == [] and not target.exists()
 
 
-def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_rest(
-    tmp_path, monkeypatch
-):
-    """Source snapshot roots keep current previous and rooted and release the rest."""
-
+def _panel_generations(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """Four Panel generations (`c` current, `b` before the last data update) and a chunk no
+    generation published (`e`); returns each chunk's workspace path by its letter."""
     from alphalattice.control.data_platform.maintenance.registry import (
         DuckDbWorkspaceMaintenanceRegistry,
     )
-    from alphalattice.control.product_host.storage.retention import file_content_hash
     from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
     from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 
-    panel_root = tmp_path / "artifacts/feature-panel"
+    panel_root = root / "artifacts/feature-panel"
     (panel_root / "manifests").mkdir(parents=True)
     (panel_root / "chunks").mkdir()
-    bundles = {}
     for name in "abcd":
-        panel_hash = name * 64
-        (panel_root / "manifests" / f"{panel_hash}.json").write_text("{}")
-        chunk = panel_root / "chunks" / f"{panel_hash}.parquet"
-        chunk.write_bytes(name.encode())
-        if name != "d":
-            bundle = FactorInputBundle.create(
-                panel_snapshot_hash=panel_hash,
-                outcome_snapshot_hash="f" * 64,
-                sessions=(date(2024, 1, 2),),
-                files=((chunk.relative_to(tmp_path).as_posix(), file_digest(chunk)),),
-            )
-            bundles[bundle.binding_hash] = bundle
-    orphan = panel_root / "chunks" / f"{'e' * 64}.parquet"  # a composition no one published
-    orphan.write_bytes(b"e")
+        (panel_root / "manifests" / f"{name * 64}.json").write_text("{}")
+        (panel_root / "chunks" / f"{name * 64}.parquet").write_bytes(name.encode())
+    (panel_root / "chunks" / f"{'e' * 64}.parquet").write_bytes(b"e")
     monkeypatch.setattr(
         PanelStateRepository,
         "feature_panel_snapshot_for_active",
@@ -881,23 +1168,30 @@ def test_source_snapshot_roots_keep_current_previous_and_rooted_and_release_the_
         "load_feature_panel_manifest",
         lambda _self, uri: {"chunks": [{"chunk_hash": uri.rsplit("/", 1)[-1]}]},
     )
+    return lambda name: f"artifacts/feature-panel/chunks/{name * 64}.parquet"
+
+
+@pytest.mark.proves("product_host.panel_cleanup_keeps_current_and_previous_generations")
+def test_source_snapshot_roots_keep_current_previous_and_release_the_rest(tmp_path, monkeypatch):
+    """The current generation and the one before the last data update are kept, every other
+    chunk released; a busy workspace releases none, and without a data update's receipt every
+    generation is kept and only a chunk no generation published is released."""
+    from alphalattice.control.data_platform.maintenance.registry import (
+        DuckDbWorkspaceMaintenanceRegistry,
+    )
+    from alphalattice.control.product_host.storage.retention import file_content_hash
+
+    chunk = _panel_generations(tmp_path, monkeypatch)
     with WorkspaceApplicationSession.acquire(tmp_path) as session:
         storage = ResearchInputStorage(session)
-        roots = {h: set() for h in bundles}
-        chunk = "artifacts/feature-panel/chunks/{}.parquet".format
-        view = storage._source_references(bundles, roots, busy=False)
-        assert list(view["targets"]) == [chunk("a" * 64), chunk("d" * 64), chunk("e" * 64)]
-        assert view["targets"][chunk("e" * 64)] == file_content_hash(orphan)
-        assert storage._source_references(bundles, roots, busy=True)["targets"] == {}
-        a = next(h for h, b in bundles.items() if b.panel_snapshot_hash == "a" * 64)
-        roots[a].add("USER_PINNED")
-        pinned = storage._source_references(bundles, roots, busy=False)["targets"]
-        assert list(pinned) == [chunk("d" * 64), chunk("e" * 64)]
+        view = storage._source_references(busy=False)
+        assert list(view["targets"]) == [chunk("a"), chunk("d"), chunk("e")]
+        assert view["targets"][chunk("e")] == file_content_hash(tmp_path / chunk("e"))
+        assert storage._source_references(busy=True)["targets"] == {}
         monkeypatch.setattr(
             DuckDbWorkspaceMaintenanceRegistry, "read_data_update_receipt", lambda *_: None
         )
-        unreceipted = storage._source_references(bundles, roots, busy=False)["targets"]
-        assert list(unreceipted) == [chunk("b" * 64), chunk("e" * 64)]
+        assert list(storage._source_references(busy=False)["targets"]) == [chunk("e")]
 
 
 def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
@@ -905,6 +1199,7 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
 ):
     """The plan links a retained retrieval model copy to the store."""
 
+    from alphalattice.capabilities.knowledge import model_store
     from alphalattice.control.product_host.composition.evidence_review_workspace import (
         EvidenceReviewArtifactBinding,
         EvidenceReviewWorkspaceManifest,
@@ -913,7 +1208,6 @@ def test_the_plan_links_a_retained_retrieval_model_copy_to_the_store(
         ResearchWorkspaceEvidenceReview,
         read_research_workspace_manifest,
     )
-    from alphalattice.kernel.knowledge import model_store
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -23,12 +23,11 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     available_work_memory_bytes,
@@ -42,6 +41,7 @@ from alphalattice.evidence.alternative_evidence.runtime.execution import (
     machine_load,
 )
 from alphalattice.interface.local_application.cli_contract import refusal_words
+from alphalattice.kernel.clock import utc_now
 
 MEMORY_INSUFFICIENT = "execution.memory_insufficient"
 _HOLDING_MEMORY = frozenset({TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED})
@@ -160,12 +160,13 @@ class ResourceGate:
         )
         estimated_units = units if units is not None else calibration.reference_units
         budget = CpuBudgetStore(self.workspace / "runtime").read()
-        load = machine_load()
+        # Only automatic sizing reads the load; sampling it waits a quarter second (budget_cores).
+        load = machine_load(sample_busy=budget.cpu_budget == "auto")
         cores, reason = budget_cores(budget, load)
         value = {
             "label": "ESTIMATE",
             "cpu_budget": budget.cpu_budget,
-            "cpu_sampled_at": datetime.now(UTC).isoformat(),
+            "cpu_sampled_at": utc_now().isoformat(),
             "cpu_basis": reason,
             "cpu_load": {"processors": load.processors, "busy_processors": load.busy_processors},
             "cpu_selection": "RUN_START",

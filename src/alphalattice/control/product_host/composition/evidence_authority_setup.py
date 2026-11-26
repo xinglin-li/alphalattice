@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import errno
-import hashlib
 import json
 import math
 import os
@@ -26,7 +25,19 @@ from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 from uuid import UUID
 
-from alphalattice.control.product_host.composition import portfolio_result_context
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.persistence import replace_with_retry
+from alphalattice.capabilities.domain_contracts.project_layout import (
+    command_prefix,
+    resolve_playpen_root,
+)
+from alphalattice.capabilities.knowledge import model_store
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
+    NEW_BUILD_RECIPE,
+    RECIPE_MINILM_CPU,
+    SUPPORTED_RECIPES,
+    setup_recipe,
+)
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -50,13 +61,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
     update_research_workspace_manifest,
 )
-from alphalattice.control.product_host.composition.retrieval_pack_setup import pack_command
-from alphalattice.control.product_host.research_authoring.factor_inputs import (
-    read_factor_bundle,
-)
-from alphalattice.control.product_host.research_authoring.input_revisions import (
-    ResearchInputRevisions,
-)
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -73,6 +77,7 @@ from alphalattice.control.task_control.contracts import (
 from alphalattice.control.task_control.runner import StageDisposition, StageExecutionResult
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.evidence.alternative_evidence.contracts import (
     DEFAULT_SOURCE_DOCUMENT_BYTES,
     INTEGRATED_FAMILY_SPELLING,
@@ -93,6 +98,7 @@ from alphalattice.evidence.alternative_evidence.documents.canonicalization impor
 from alphalattice.evidence.alternative_evidence.documents.workspace import (
     AlternativeEvidenceDocumentPublisher,
 )
+from alphalattice.evidence.alternative_evidence.retrieval.service import store_capability
 from alphalattice.evidence.alternative_evidence.runtime.coverage import index_quiet, sources_short
 from alphalattice.evidence.alternative_evidence.runtime.service import (
     AlternativeEvidenceDocumentIntelligenceRuntime,
@@ -127,26 +133,10 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
 from alphalattice.interface.local_application.cli_contract import join, refusal_words, shell, worded
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import setup_failure
-from alphalattice.interface.local_application.read_views import emit_owner
 from alphalattice.interface.local_application.retrieval_environment import (
-    fill_command,
     load,
 )
-from alphalattice.kernel.knowledge import model_store
-from alphalattice.kernel.knowledge.hybrid import (
-    probe_hybrid_retrieval_capabilities,
-)
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    RECIPE_MINILM_CPU,
-    SUPPORTED_RECIPES,
-    HybridIndexSpec,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import replace_with_retry
-from alphalattice.kernel.shared_kernel.project_layout import (
-    command_prefix,
-    resolve_playpen_root,
-)
+from alphalattice.kernel.clock import utc_now
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTicker,
     AdmittedListingTickerAuthority,
@@ -163,7 +153,7 @@ PLAYPEN_ROOT = resolve_playpen_root(Path(__file__))
 
 
 class SourceCoverageRefused(ValueError):
-    """A package whose issuers hold too few documents, or none, at its cutoff (V587).
+    """A package whose issuers hold too few documents, or none, at its cutoff.
 
     Its code names the issuers that hold a document, the count the floor needs, those that
     filed nothing and those that failed; the cutoff and the issuers ride beside it, so while
@@ -188,7 +178,7 @@ class SourceCoverageRefused(ValueError):
 
 
 class OptionRefused(ValueError):
-    """A setup refusal on what one option holds, which names that option (V591, V592).
+    """A setup refusal on what one option holds, which names that option.
 
     Its code is the owner's; the option rides beside it, and the setup's answer says what the
     option must hold from the one table its offer states (`SETUP_OPTIONS`).
@@ -206,11 +196,11 @@ class OptionRefused(ValueError):
 
 
 class SourceFileUnavailable(OptionRefused):
-    """A recorded import's file that cannot be read under the option naming its root (V590).
+    """A recorded import's file that cannot be read under the option naming its root.
 
     Its code names the option; the file relative to that root rides beside it, never an
     absolute path, and the OS error is its cause: one the read met, or the object a source set
-    names and its knowledge root lacks (V592).
+    names and its knowledge root lacks.
     """
 
     def __init__(self, option: str, root: Path, error: OSError) -> None:
@@ -251,7 +241,7 @@ def _read_source(root: Path, category: str, identity: str, model: type, field: s
 
 @contextmanager
 def _reading(option: str | None, root: Path) -> Iterator[None]:
-    """Refuse a file a recorded import cannot read under `option`'s root by that option (V590).
+    """Refuse a file a recorded import cannot read under `option`'s root by that option.
 
     An acquisition's own reads, under the workspace it has just written, keep the setup's file
     refusal (`option` None).
@@ -265,7 +255,7 @@ def _reading(option: str | None, root: Path) -> Iterator[None]:
 
 
 def _holding_root(given: Path, source_set_hash: str) -> Path | None:
-    """The one directory below `given` that holds the named source set, where one does (V590).
+    """The one directory below `given` that holds the named source set, where one does.
 
     A root named one level or more above the artifact store -- the workspace, its runtime or
     its artifacts -- is the mistake a recorded import meets; the set's own file decides.
@@ -313,7 +303,7 @@ def _source_documents(
 
     A recorded import names its knowledge root (`option`): a root that is not there, or an object
     the set names that the root lacks, is refused by that option with the object's place under
-    it (V592), before the store's owner is opened there and creates its folders.
+    it, before the store's owner is opened there and creates its folders.
     """
     if isinstance(source_set, AcquiredEvidenceDocumentSet):
         return tuple(source_set.documents)
@@ -337,7 +327,9 @@ def _source_documents(
     if missing == knowledge_root:
         raise ValueError("evidence_review.source_objects_root_missing")
     publisher = AlternativeEvidenceDocumentPublisher(knowledge_root)
-    return tuple(publisher.resolve_source_object(value) for value in source_set.documents)
+    return tuple(  # the imported source's own store, not this machine's documents
+        publisher.resolve_source_object(value, as_of=None) for value in source_set.documents
+    )
 
 
 def _publish(
@@ -352,7 +344,7 @@ def _publish(
             raise ValueError("evidence_review.immutable_package_conflict")
         return EvidenceReviewArtifactBinding(
             relative_path=path.relative_to(workspace).as_posix(),
-            file_sha256=hashlib.sha256(payload).hexdigest(),
+            file_sha256=file_sha256(path),
             content_hash=identity,
         )
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", delete=False) as handle:
@@ -365,9 +357,9 @@ def _publish(
     finally:
         if temporary.exists():
             temporary.unlink()
-    return EvidenceReviewArtifactBinding(
+    return EvidenceReviewArtifactBinding(  # its writer records the digest it holds on disk
         relative_path=path.relative_to(workspace).as_posix(),
-        file_sha256=hashlib.sha256(payload).hexdigest(),
+        file_sha256=file_sha256(path, written=True),
         content_hash=identity,
     )
 
@@ -686,7 +678,7 @@ class _Setup:
         session: WorkspaceApplicationSession,
         *,
         official_source: OfficialSourceAdmission | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         """Read the workspace, its research input, universe and recipe, and the model profile."""
         workspace = arguments.workspace.resolve()
@@ -697,6 +689,11 @@ class _Setup:
                 "evidence_review.research_input_id_and_hash_required_together", "research_input_id"
             )
         if input_id is not None:
+            # An explicitly selected input has its own revision authority.
+            from ..research_authoring.input_revisions import (  # lazy: on use
+                ResearchInputRevisions,
+            )
+
             selected = ResearchInputRevisions(session).select(input_id, input_hash)
             universe = _research_universe_listing_ids(workspace, selected.binding_hash)
         else:
@@ -704,8 +701,18 @@ class _Setup:
                 raise OptionRefused(
                     "evidence_review.research_input_selection_required", "research_input_id"
                 )
-            universe = portfolio_result_context.universe_listing_ids(workspace)
-        recipe = arguments.recipe or RECIPE_MINILM_CPU
+
+            # The installed-book setup reads its Portfolio universe.
+            from .portfolio_result_context import (  # lazy: on use
+                universe_listing_ids,
+            )
+
+            universe = universe_listing_ids(workspace)
+        recipe = setup_recipe(
+            arguments.recipe,
+            installed=_installed_recipe(workspace),
+            retained_layout=getattr(arguments, "semantic_model", None) is not None,
+        )
         if recipe not in SUPPORTED_RECIPES:
             raise ValueError("evidence_review.retrieval_recipe_unsupported")
 
@@ -729,8 +736,13 @@ class _Setup:
 
         A retrieval runtime filled after this process started is read first (`load`).
         """
-        load()
         arguments, workspace, recipe = self.arguments, self.workspace, self.recipe
+        if _model_store(arguments) != model_store.default_store_root().resolve():
+            # The Host's review verifies and searches with the application model store alone:
+            # packs sealed from another store would be refused at the review's first check.
+            raise OptionRefused("evidence_review.model_store_not_the_hosts", "model_store")
+        if not load():
+            raise RuntimeError("evidence_review.semantic_capability_not_ready")
         semantic_root = _semantic_root(arguments, workspace=workspace, recipe=recipe)
         try:
             semantic_relative = semantic_root.relative_to(workspace).as_posix()
@@ -738,9 +750,7 @@ class _Setup:
             raise OptionRefused(
                 "evidence_review.semantic_model_outside_workspace", "semantic_model"
             ) from error
-        capability = probe_hybrid_retrieval_capabilities(
-            semantic_root, HybridIndexSpec.for_recipe(recipe)
-        )
+        capability = store_capability(_model_store(arguments))  # the verifier's own check
         if capability.status != "READY":
             raise RuntimeError("evidence_review.semantic_capability_not_ready")
         return semantic_relative, str(capability.logical_hash)
@@ -792,6 +802,7 @@ class _Setup:
             source_root, source_hash, acquisition = _acquire_sec_sources(
                 arguments,
                 requested,
+                recipe=self.recipe,
                 official_source=self.official_source,
                 clock=self.clock,
                 cutoff=cutoff,
@@ -822,7 +833,7 @@ class _Setup:
         input_id, input_hash = self.research_input
         requested: tuple[str, ...] = ()
         # A recorded import names its roots, and a file it cannot read under one is refused naming
-        # the option, the file under it and what the option should hold (V590).
+        # the option, the file under it and what the option should hold.
         imported = acquisition["mode"] == "RECORDED_IMPORT"
         with _reading("source_artifact_root" if imported else None, source_root):
             source_set = _read_source(
@@ -881,7 +892,7 @@ class _Setup:
         admitted, rejected = canonicalize_source_documents(
             tuple(value for value in documents if value.entity_id in requested)
         )
-        # The floor as the coverage run judges it (V541, V587): an issuer whose filing index at
+        # The floor as the coverage run judges it: an issuer whose filing index at
         # the source's cutoff shows nothing filed in the window holds nothing to count and leaves
         # the share; a failed or unread acquisition stays in it. Said whether it installs or not.
         covered = {value.entity_id for value in admitted}
@@ -970,7 +981,7 @@ class _Setup:
             "failed": list(failed),
         }
         if getattr(arguments, "preflight", False):
-            # The recorded import's own check (V590): its records, scope, documents and floor read
+            # The recorded import's own check: its records, scope, documents and floor read
             # and judged as the install reads them, with no package sealed and no binding moved.
             return {
                 "status": "EVIDENCE_SOURCE_PREFLIGHT",
@@ -1012,6 +1023,7 @@ class _Setup:
         if package is None:
             return _rebind_installed(
                 self.arguments,
+                recipe=self.recipe,
                 workspace=self.workspace,
                 gate=self.session.mutation_gate,
                 universe=self.universe,
@@ -1022,6 +1034,7 @@ class _Setup:
             )
         return _seal_package(
             self.arguments,
+            recipe=self.recipe,
             workspace=self.workspace,
             gate=self.session.mutation_gate,
             semantic_relative=semantic_relative,
@@ -1038,7 +1051,7 @@ def run_setup(
     session: WorkspaceApplicationSession,
     *,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
 ) -> dict[str, object]:
     """Run the setup on a session the caller holds: its preflight answer or its installation."""
     setup, held = (
@@ -1178,38 +1191,52 @@ def within_delegation(arguments: argparse.Namespace, current: EvidenceSourceCons
     )
 
 
-def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: str) -> Path:
-    """Where the recipe's packs are read from, inside the workspace.
+def _installed_manifest(workspace: Path) -> EvidenceReviewWorkspaceManifest | None:
+    """The installed authority's manifest as written; its bytes are verified later."""
+    binding = read_research_workspace_manifest(workspace).evidence_review
+    if binding is None:
+        return None
+    manifest = (workspace / binding.relative_path).read_bytes()
+    return cast(
+        EvidenceReviewWorkspaceManifest,
+        EvidenceReviewWorkspaceManifest.model_validate_json(manifest),
+    )
 
-    Every recipe is bound from the application model store: a small directory
-    of links pointing at the store's verified packs, so one physical copy serves
-    every workspace and a pack not installed is a refusal naming it. The retained
-    recipe keeps its own layout under `evidence-cro-authority/semantic-model`
-    (the encoder at the root, V208), or an explicit `--semantic-model` directory;
-    a later recipe's is `semantic-model-<recipe>`. Packs are installed with
-    scripts/install_retrieval_pack.py, never here.
-    """
-    store = (
+
+def _installed_recipe(workspace: Path) -> str | None:
+    """The installed authority's recipe, read to choose the default; it is verified later."""
+    installed = _installed_manifest(workspace)
+    return None if installed is None else installed.retrieval_recipe
+
+
+def _model_store(arguments: argparse.Namespace) -> Path:
+    """The model store the setup reads packs from: `--model-store`, else the application's."""
+    return (
         Path(arguments.model_store).resolve()
         if arguments.model_store
         else model_store.default_store_root()
     )
-    if recipe == RECIPE_MINILM_CPU:
-        if arguments.semantic_model is not None:
-            return Path(arguments.semantic_model).resolve()
-        try:
-            return cast(
-                Path,
-                model_store.bind_retained_recipe(
-                    store, workspace / "evidence-cro-authority" / "semantic-model"
-                ),
-            )
-        except model_store.ModelStoreError as error:
-            raise ValueError(str(error)) from error
+
+
+def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: str) -> Path:
+    """Where the review's packs are read from, inside the workspace.
+
+    Every recipe binds the retrieval store's packs from the application model store, the packs
+    every review searches with: a small directory of links pointing at the store's verified
+    packs (`semantic-model-retrieval-store`), so one physical copy serves every workspace and a
+    pack not installed is a refusal naming it. The retained recipe's explicit `--semantic-model`
+    directory is kept as named. Packs are installed with scripts/install_retrieval_pack.py,
+    never here.
+    """
+    if recipe == RECIPE_MINILM_CPU and arguments.semantic_model is not None:
+        return Path(arguments.semantic_model).resolve()
+    name = model_store.RETRIEVAL_STORE
     try:
         return Path(
             model_store.bind_recipe(
-                store, recipe, workspace / "evidence-cro-authority" / f"semantic-model-{recipe}"
+                _model_store(arguments),
+                name,
+                workspace / "evidence-cro-authority" / f"semantic-model-{name}",
             )
         )
     except model_store.ModelStoreError as error:
@@ -1219,6 +1246,7 @@ def _semantic_root(arguments: argparse.Namespace, *, workspace: Path, recipe: st
 def _rebind_installed(
     arguments: argparse.Namespace,
     *,
+    recipe: str,
     workspace: Path,
     gate: WorkspaceMutationGate,
     universe: dict[str, str],
@@ -1239,15 +1267,15 @@ def _rebind_installed(
     binding = read_research_workspace_manifest(workspace).evidence_review
     if binding is None:
         raise ValueError("evidence_review.rebind_requires_installed_authority")
-    # The pack was probed once above; the installed manifest must declare
-    # that same capability, which is what the verifier checks with it -- unless
-    # a recipe is named, when the installed authority is verified with its
-    # own packs (a real probe) before its successor is sealed.
+    # The installed authority is read back as it was sealed (its own capability, which may be
+    # an earlier index's), every other child verified; its successor is sealed under the store
+    # capability probed above, the one a review's workspace is checked against.
+    sealed = _installed_manifest(workspace)
     verified = verify_evidence_review_workspace(
         workspace=workspace,
         binding=binding,
-        semantic_capability_reader=(
-            None if arguments.recipe else (lambda _runtime: capability_hash)
+        semantic_capability_reader=lambda _runtime: (
+            capability_hash if sealed is None else sealed.semantic_capability_hash
         ),
     )
     verified.runtime.close()
@@ -1262,17 +1290,20 @@ def _rebind_installed(
             "evidence_review.installed_matter_selection_retired:"
             "rebind with --matter-selection INTEGRATED_TOPIC_ROUTING"
         )
-    recipe = arguments.recipe or RECIPE_MINILM_CPU
-    if installed.semantic_model_relative_path != semantic_relative and (
-        recipe == installed.retrieval_recipe
+    if (
+        installed.semantic_model_relative_path != semantic_relative
+        and recipe == installed.retrieval_recipe
+        and installed.semantic_capability_hash == capability_hash
     ):
-        # The pack under an installed authority is never swapped silently; an
-        # explicit `--recipe` names a different recipe and its own packs.
+        # The pack under an installed authority is never swapped silently; an explicit
+        # `--recipe` names a different recipe and its own packs, and an authority sealed under
+        # an earlier capability moves to the store's packs with it.
         raise OptionRefused("evidence_review.rebind_semantic_model_mismatch", "semantic_model")
     entities = tuple(sorted({value.entity_id for value in verified.documents.documents}))
     listing = _listing_authority(universe, verified.registry, entities)
     return _seal_package(
         arguments,
+        recipe=recipe,
         workspace=workspace,
         gate=gate,
         registry=verified.registry,
@@ -1313,6 +1344,7 @@ def _rebind_installed(
 def _seal_package(
     arguments: argparse.Namespace,
     *,
+    recipe: str,
     workspace: Path,
     gate: WorkspaceMutationGate,
     registry: SecIssuerRegistrySnapshot,
@@ -1340,11 +1372,7 @@ def _seal_package(
                 "authority_id": authority_id,
                 "minimum_entity_coverage": minimum_entity_coverage,
                 # Absent for the retained recipe, so its package ids are unchanged.
-                **(
-                    {"retrieval_recipe": arguments.recipe}
-                    if arguments.recipe and arguments.recipe != RECIPE_MINILM_CPU
-                    else {}
-                ),
+                **({"retrieval_recipe": recipe} if recipe != RECIPE_MINILM_CPU else {}),
                 # Absent for the production plan, so every installed id is unchanged.
                 **({"matter_selection": selection.selection_id} if selection is not None else {}),
             }
@@ -1371,7 +1399,7 @@ def _seal_package(
         semantic_capability_hash=capability_hash,
         model_profile=profile,
         minimum_entity_coverage=minimum_entity_coverage,
-        retrieval_recipe=arguments.recipe or RECIPE_MINILM_CPU,
+        retrieval_recipe=recipe,
         matter_selection=selection,
     )
     manifest_path = destination / "evidence-review-authority.json"
@@ -1462,8 +1490,9 @@ def _acquire_sec_sources(
     arguments: argparse.Namespace,
     entities: tuple[str, ...],
     *,
+    recipe: str,
     official_source: OfficialSourceAdmission | None = None,
-    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    clock: Callable[[], datetime] = utc_now,
     cutoff: datetime | None = None,
     accession_scopes: dict[str, frozenset[str]] | None = None,
     cancelled: Callable[[], bool] | None = None,
@@ -1514,12 +1543,9 @@ def _acquire_sec_sources(
             mode=AlternativeEvidenceMode.LIVE_OFFICIAL,
         )
         admission = seal_live_setup_admission(request.request_hash, now)
-        recipe = arguments.recipe or RECIPE_MINILM_CPU
         runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
             artifact_root=workspace / "runtime" / "artifacts",
             workspace_root=workspace / "runtime" / "evidence-knowledge",
-            model_root=_semantic_root(arguments, workspace=workspace, recipe=recipe),
-            retrieval_recipe=recipe,
         )
         transport = getattr(source, "_transport", None)
         counters = {
@@ -1565,10 +1591,17 @@ def _acquire_sec_sources(
 
 
 def _research_universe_listing_ids(workspace: Path, binding_hash: str) -> dict[str, str]:
+
+    # A setup using a research input reads its Factor publication.
+    from ..research_authoring.factor_inputs import (  # lazy: on use
+        factor_input_paths,
+        read_factor_bundle,
+    )
+
     # The caller admitted and verified this input through ResearchInputRevisions.
     bundle = read_factor_bundle(workspace, binding_hash, verify=False)
-    source = workspace / "research-inputs" / binding_hash / "source"
-    resolver = ArtifactResolver(source / "artifacts")
+    source, artifacts = factor_input_paths(workspace, binding_hash)
+    resolver = ArtifactResolver(artifacts)
     panel = resolver.load_feature_panel_manifest(
         resolver.feature_panel_manifest_uri(bundle.panel_snapshot_hash)
     )
@@ -1671,13 +1704,15 @@ def _parser(
         "--semantic-model",
         type=Path,
         help="The retained recipe's pack directory inside the workspace; without it the "
-        "recipe is bound from the application model store (V208).",
+        "recipe is bound from the application model store.",
     )
     parser.add_argument(
         "--recipe",
         choices=SUPPORTED_RECIPES,
-        help=f"Retrieval recipe; defaults to {RECIPE_MINILM_CPU!r}. Other recipes are bound "
-        "from the application model store (install_retrieval_pack.py).",
+        help=f"Retrieval recipe; a new authority defaults to {NEW_BUILD_RECIPE!r} (with "
+        f"--semantic-model, {RECIPE_MINILM_CPU!r}), an installed one keeps its own. Recipes "
+        "other than the retained one are bound from the application model store "
+        "(install_retrieval_pack.py).",
     )
     parser.add_argument(
         "--model-store", type=Path, help="Application model store override for --recipe."
@@ -1740,7 +1775,7 @@ def _acquisition_command(
     """The official acquisition of these issuers at this cutoff, as the person types it.
 
     Bound to the workspace, the research input and the scope given: its read-only check, or
-    the acquisition itself with what shapes the package and its installation as asked (V587).
+    the acquisition itself with what shapes the package and its installation as asked.
     The person's consent is carried only where they gave it.
     """
     parts = ["--acquire-sec"]
@@ -1786,7 +1821,7 @@ def _acquisition_command(
 
 
 def _import_command(arguments: argparse.Namespace, root: Path, host: bool = False) -> str:
-    """The recorded import's own check at this root, as the person types it (V590).
+    """The recorded import's own check at this root, as the person types it.
 
     Bound to the workspace, the research input, the source set and the issuers given: it reads
     and judges what the install would read, offline, and installs nothing.
@@ -1824,13 +1859,6 @@ def _typed(arguments: argparse.Namespace, options: list[str], host: bool) -> str
     return join([*_setup_entry(), "--workspace", str(arguments.workspace), *options], shell())
 
 
-_RUNTIME_REFUSALS = (
-    "evidence_review.semantic_capability_not_ready",
-    "evidence_review.retrieval_environment_not_loaded",
-)
-"""The retrieval runtime or its packs are not ready: filling them is the way on."""
-
-
 def setup_refusal(
     arguments: argparse.Namespace, error: Exception, *, now: datetime, script: bool = False
 ) -> dict[str, Any]:
@@ -1855,10 +1883,15 @@ def setup_refusal(
     host = not script or str(error) == "workspace_runtime.writer_already_owned"
     if arguments.acquire_sec:
         payload["next_requests"] = {"network": {"operation": "NETWORK_ACCESS"}}
-    payload["next_commands"] = _ways_on(arguments, error, host)
+    from .retrieval_pack_setup import setup_guidance  # lazy: Evidence setup refusal
+
+    payload.update(
+        setup_guidance(str(error), store=arguments.model_store)
+        or {"next_commands": _ways_on(arguments, error, host)}
+    )
     if isinstance(error, OptionRefused):
-        # The option it refused on and what that option must hold, as the offer states it
-        # (V591, V592); a file under a root option, by its place there (V590).
+        # The option it refused on and what that option must hold, as the offer states it;
+        # a file under a root option, by its place there.
         payload["location"] = {
             "option": error.option,
             **({"file": error.file} if isinstance(error, SourceFileUnavailable) else {}),
@@ -1872,7 +1905,7 @@ def setup_refusal(
     ):
         # The way on: the same official acquisition of the package's issuers at the one
         # cutoff they were counted at -- what failed is fetched again and a quiet issuer
-        # stays uncounted -- checked first (V587).
+        # stays uncounted -- checked first.
         cutoff, entities = error.evidence_as_of.isoformat(), error.entities
         payload["next_commands"] = {
             "preflight": _acquisition_command(
@@ -1899,15 +1932,7 @@ def setup_refusal(
 
 
 def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dict[str, str]:
-    """A refusal's commands: what fills a retrieval runtime that is not ready, else the mode's
-    check (V590). An acquisition's read-only preflight keeps its exact binding, scope and
-    explicit consent; a recorded import's way on is its own check, offline."""
-    if str(error) in _RUNTIME_REFUSALS:
-        # Never the same check again: the runtime's fill and the packs' status come first.
-        return {
-            "environment": join(fill_command(), shell()),
-            "packs": join(pack_command("--status", "--view", "summary"), shell()),
-        }
+    """The source check an acquisition or recorded import can offer after a refusal."""
     if arguments.acquire_sec:
         cutoff, entities = arguments.evidence_as_of, arguments.entities or ()
         return {
@@ -1926,6 +1951,12 @@ def _ways_on(arguments: argparse.Namespace, error: Exception, host: bool) -> dic
 
 def main(argv: list[str] | None = None) -> int:
     """Run the declared command and return its exit status."""
+
+    # The standalone command alone renders its owner response to stdout.
+    from ....interface.local_application.read_views import (  # lazy: on use
+        emit_owner,
+    )
+
     parser = _parser()
     parser.add_argument(
         "--view", choices=("compact", "full", "summary"), help=worded("cli.read.view")
@@ -1940,7 +1971,7 @@ def main(argv: list[str] | None = None) -> int:
         result = materialize(arguments)
     except Exception as error:
         arguments.legacy_indent = None
-        result = setup_refusal(arguments, error, now=datetime.now(UTC), script=True)
+        result = setup_refusal(arguments, error, now=utc_now(), script=True)
     return emit_owner(arguments, result)
 
 

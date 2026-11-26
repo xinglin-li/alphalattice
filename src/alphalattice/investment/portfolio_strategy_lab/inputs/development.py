@@ -15,6 +15,7 @@ from alphalattice.capabilities.causal_inputs.schedules import (
     entry_session_by_formation,
     session_clocks_from_execution_rows,
 )
+from alphalattice.capabilities.data.enums import ExecutionSessionStatus
 from alphalattice.capabilities.portfolio_inputs.signed_score.contracts import (
     PortfolioExecutionEvents,
 )
@@ -33,7 +34,6 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
     CausalOutcomeDevelopmentRows,
 )
-from alphalattice.kernel.data.enums import ExecutionSessionStatus
 
 if TYPE_CHECKING:
     pass

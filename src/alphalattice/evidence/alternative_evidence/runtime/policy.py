@@ -3,7 +3,7 @@
 The policy decides the source families, the classes, the mode, the matter selection
 and the three consent flags; a route may not widen any of them. It seals each request
 and admission it asks for, and says whether a recorded request, or the one a coverage
-run is read from, is the one it asks for now (W1: moved from the Host).
+run is read from, is the one it asks for now (moved from the Host).
 """
 
 from __future__ import annotations

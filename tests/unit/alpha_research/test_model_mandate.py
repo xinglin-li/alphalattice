@@ -22,6 +22,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
     AlphaModelRecipeEnvelope,
     AlphaModelSearchDomainEnvelope,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.alpha_research.candidates.contracts import (
     AlphaCandidateRegistrySnapshot,
     AlphaExperimentBatch,
@@ -45,7 +46,6 @@ from alphalattice.investment.alpha_research.targets.execution_outcome import (
     AlphaTargetLane,
     build_alpha_target_policy,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 @dataclass(frozen=True, slots=True)

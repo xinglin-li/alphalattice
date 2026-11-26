@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from alphalattice.foundation.causal_outcomes.execution.methods import (
     ExecutionOutcomeMethodSeal,
@@ -30,7 +31,7 @@ from alphalattice.foundation.factor_research.inputs.execution_target import (
 )
 from alphalattice.foundation.factor_research.programs.program import (
     FactorResearchDeterministicEvidence,
-    FactorResearchDeterministicResult,
+    FactorResearchProgramSpec,
     build_factor_research_program_spec,
     execute_factor_research_program,
     seal_factor_research_deterministic_evidence,
@@ -43,6 +44,13 @@ from tests.factor_research_pipeline_correctness.walk_forward_source import (
     _manifest,
     _source_table,
 )
+
+
+def _rows_in(table: pa.Table, column: str, sessions: tuple[date, ...]) -> pa.Table:
+    """The rows whose `column` is one of `sessions`, filtered in Arrow: a row-wise Python
+    copy converted every zoned timestamp through an import, 15k imports per read under the
+    unit contract (1.15 s over the 1 s budget, 11-23)."""
+    return table.filter(pc.is_in(table[column], pa.array(sessions, type=table[column].type)))
 
 
 class _FeatureReader:
@@ -58,9 +66,9 @@ class _FeatureReader:
     def batches(self, request: FeaturePanelReadRequest) -> Iterator[pa.RecordBatch]:
         self.requests.append(request)
         assert request.exact_sessions is not None
-        requested = set(request.exact_sessions)
-        rows = [row for row in self._table.to_pylist() if row["session_date"] in requested]
-        yield from pa.Table.from_pylist(rows).to_batches(max_chunksize=512)
+        yield from _rows_in(self._table, "session_date", request.exact_sessions).to_batches(
+            max_chunksize=512
+        )
 
 
 class _OutcomeReader:
@@ -76,10 +84,7 @@ class _OutcomeReader:
     def read_development_sessions(self, manifest_ref: str, sessions: tuple[date, ...]) -> pa.Table:
         assert manifest_ref == "playpen://outcomes/manifest"
         self.requests.append(sessions)
-        requested = set(sessions)
-        return pa.Table.from_pylist(
-            [row for row in self._table.to_pylist() if row["formation_session"] in requested]
-        )
+        return _rows_in(self._table, "formation_session", sessions)
 
     def resolve_method_seal(self, snapshot_hash: str) -> ExecutionOutcomeMethodSeal:
         """Answer as a snapshot published before the outcome method seam existed.
@@ -104,10 +109,10 @@ CASE_REVIEW_BINDING_HASH = "b" * 64
 
 
 @dataclass(frozen=True, slots=True)
-class _CaseProgramRun:
-    """One executed deterministic program plus the readers that served it."""
+class _CaseProgramInputs:
+    """The deterministic program and fresh synthetic readers."""
 
-    result: FactorResearchDeterministicResult
+    program: FactorResearchProgramSpec
     feature_reader: _FeatureReader
     outcome_reader: _OutcomeReader
     sessions: tuple[date, ...]
@@ -115,15 +120,8 @@ class _CaseProgramRun:
     factor_ids: tuple[str, ...]
 
 
-@cache
-def _execute_case_program() -> _CaseProgramRun:
-    """Run the deterministic Factor program once over synthetic tables.
-
-    Cached because it is the expensive part of this directory and two cases now
-    need the same checkpoint. Building a second, hand-written checkpoint for the
-    curation case would let the two drift: the whole point of curating a
-    checkpoint is that the checkpoint is the authority.
-    """
+def _case_program_inputs() -> _CaseProgramInputs:
+    """Build the shared fixture without executing a Factor program."""
 
     sessions = tuple(date(2026, 1, 2) + timedelta(days=index) for index in range(14))
     listings = tuple(f"listing-{index:03d}" for index in range(120))
@@ -164,19 +162,8 @@ def _execute_case_program() -> _CaseProgramRun:
             distance_cut=0.1,
         ),
     )
-    panel_manifest = {
-        "snapshot_hash": "9" * 64,
-        "safe_summary": {"factor_catalog_summary": {factor_id: {} for factor_id in factor_ids}},
-    }
-
-    result = execute_factor_research_program(
+    return _CaseProgramInputs(
         program=program,
-        panel_manifest=panel_manifest,
-        feature_reader=feature_reader,
-        outcome_reader=outcome_reader,
-    )
-    return _CaseProgramRun(
-        result=result,
         feature_reader=feature_reader,
         outcome_reader=outcome_reader,
         sessions=sessions,
@@ -189,7 +176,18 @@ def _execute_case_program() -> _CaseProgramRun:
 def build_case_deterministic_checkpoint() -> FactorResearchDeterministicEvidence:
     """The sealed checkpoint the curation cases in this directory curate."""
 
+    case = _case_program_inputs()
+    panel_manifest = {
+        "snapshot_hash": case.program.feature_panel_snapshot_hash,
+        "safe_summary": {"factor_catalog_summary": {name: {} for name in case.factor_ids}},
+    }
+    result = execute_factor_research_program(
+        program=case.program,
+        panel_manifest=panel_manifest,
+        feature_reader=case.feature_reader,
+        outcome_reader=case.outcome_reader,
+    )
     return seal_factor_research_deterministic_evidence(
-        result=_execute_case_program().result,
+        result=result,
         execution_binding_hash="a" * 64,
     )

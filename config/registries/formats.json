@@ -1,5 +1,12 @@
 {
 "entries": {
+"schema:alphalattice.pytest-workers.v1": {
+"description": "An attempt-bound observation of pytest worker exits, running nodes and fault streams; absent evidence remains unknown.",
+"owner": "devtools.testing",
+"readers": ["src/devtools/testing/collection.py", "tests/integration/testing/test_collection.py"],
+"upgraders": [],
+"version": ["alphalattice.pytest-workers.v1"]
+},
 "schema:alphalattice.import-hygiene": {
 "owner": "schema:alphalattice",
 "description": "Records the non-growing count of retained function imports in config/import-hygiene.json by source path, scope and normalized import for the structural guard.",
@@ -334,7 +341,7 @@
 "schema:alphalattice.stage-spans.v1": {
 "owner": "schema:alphalattice",
 "readers": [
-"src/alphalattice/kernel/shared_kernel/spans.py",
+"src/alphalattice/capabilities/domain_contracts/spans.py",
 "src/alphalattice/control/task_control/timing.py",
 "src/alphalattice/control/observation_runtime/profile.py"
 ],
@@ -346,7 +353,7 @@
 "schema:alphalattice.clock-correlation.v1": {
 "owner": "schema:alphalattice",
 "readers": [
-"src/alphalattice/kernel/shared_kernel/clocks.py",
+"src/alphalattice/kernel/clock/__init__.py",
 "src/alphalattice/control/observation_runtime/policy.py",
 "src/alphalattice/control/observation_runtime/profile.py",
 "src/alphalattice/control/product_host/composition/workspace_activity.py"
@@ -417,8 +424,7 @@
 "owner": "devtools.testing",
 "readers": [
 "src/devtools/testing/requirements.py",
-"src/devtools/testing/collection.py",
-"src/devtools/testing/layout.py"
+"src/devtools/testing/collection.py"
 ],
 "upgraders": [],
 "version": [
@@ -443,8 +449,7 @@
 "description": "The private host facts record what the agent hosts were observed to do, so host-seam fakes match them; readers find them by this schema.",
 "owner": "schema:alphalattice",
 "readers": [
-"scripts/release/public_manifest.py",
-"src/devtools/testing/layout.py"
+"scripts/release/public_manifest.py"
 ],
 "upgraders": [],
 "version": [

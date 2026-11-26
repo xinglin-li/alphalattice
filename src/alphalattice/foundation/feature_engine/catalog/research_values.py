@@ -10,12 +10,12 @@ import numpy.typing as npt
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
     arrow_table_logical_hash,
 )
 from alphalattice.foundation.feature_engine.panels.closure_contracts import ClosureArtifactRef
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 _HASH = r"^[0-9a-f]{64}$"
 VALUE_CATEGORY = "research-formula-values"
@@ -193,8 +193,7 @@ class ResearchFormulaValues:
 
     def lookup(self, binding_hash: str) -> ResearchFormulaColumn | None:
         """Find a verified Formula column by binding hash, if present."""
-        path = self.store.root / INDEX_CATEGORY / f"{binding_hash}.json"
-        if not path.exists():
+        if not self.store.holds(INDEX_CATEGORY, binding_hash):
             return None
         index = self.store.load_json(category=INDEX_CATEGORY, content_hash=binding_hash)
         column = self.read(str(index["column_hash"]))

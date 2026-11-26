@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
@@ -121,10 +122,16 @@ RULES = [
             "config/evidence-roots.json",
             "config/performance-baselines.json",
             "config/store-structural-baseline.json",
+            "scripts/antipattern-" + "decisions.md",
+            "scripts/work_census.py",
+            "scripts/work_census_site/sitecustomize.py",
+            "src/alphalattice/capabilities/domain_contracts/work_census.*",
+            "config/registries/data-families-development.json",
+            "tests/*/shared_kernel/test_work_census.py",
         ],
         "reason": (
-            "OW8 keeps development campaigns, probes and private QA location declarations "
-            "outside the product snapshot."
+            "OW8 keeps development campaigns, measurement records, probes and private QA "
+            "location declarations outside the product snapshot."
         ),
     },
     {
@@ -135,6 +142,12 @@ RULES = [
             "tests/structural/test_reuse_spec.py",
         ],
         "reason": "the reuse audit's tool and its pin serve an internal release record",
+    },
+    {
+        "rule": "PRIVATE_ALLOWANCE",
+        "kind": "PRIVATE",
+        "patterns": ["config/*-baseline-private.json"],
+        "reason": "a commit rule's allowance for private files names them, so it stays with them",
     },
     {
         "rule": "PRIVATE_TEST",
@@ -390,6 +403,8 @@ RULES = [
             ".claude/agents/**",
             ".claude/skills/**",
             ".claude/settings.json",
+            ".claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json",
             "skills/**",
         ],
         "reason": (
@@ -433,6 +448,8 @@ RULES = [
             ".pre-commit-config.yaml",
             ".githooks/**",
             ".github/workflows/ci.yml",
+            ".github/workflows/supply-chain.yml",
+            ".github/gitleaks.toml",
             ".test_durations",
             "pyproject.toml",
             "uv.lock",
@@ -510,6 +527,12 @@ RULES = [
         "patterns": [
             "src/devtools/**",
             "scripts/check_*.py",
+            "scripts/test-shape-tools/package.json",
+            "scripts/test-shape-tools/package-lock.json",
+            "scripts/antipattern_rules.yml",
+            "scripts/antipattern_examples.py.txt",
+            "scripts/test_antipattern_rules.yml",
+            "scripts/test_antipattern_examples.py.txt",
             "scripts/tests_registry.py",
             "scripts/pipeline.py",
             "scripts/run_playpen_precommit.py",
@@ -859,13 +882,11 @@ def internal_id_ratchet(
     aliases = {}
     ordinal = 0
     for label in sorted(sensitive_labels):
-        while True:
+        ordinal += 1
+        while f"<NO_SECRET:{ordinal}>" in occupied:
             ordinal += 1
-            alias = f"<NO_SECRET:{ordinal}>"
-            if alias not in occupied:
-                aliases[label] = alias
-                occupied.add(alias)
-                break
+        aliases[label] = alias = f"<NO_SECRET:{ordinal}>"
+        occupied.add(alias)
     current_occurrences = {
         path: dict(sorted((aliases.get(label, label), count) for label, count in seen.items()))
         for path, seen in current_occurrences.items()
@@ -880,39 +901,143 @@ def internal_id_ratchet(
     }
 
 
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # windowless history-check children
+
+
+class _GitObjects:
+    """One `git cat-file --batch-command` for a whole history check: each `rev:path` is resolved
+    once and each blob read once, in flushed rounds of at most ROUND commands so neither pipe
+    can fill."""
+
+    ROUND = 32
+
+    def __init__(self, repo: Path, *, safe_directory: bool = False):
+        from alphalattice.capabilities.domain_contracts import spawn
+
+        self.session = spawn.InteractiveSession(timeout=300, stop_scope="tree")
+        git = ["git", "-c", "safe.directory=*"] if safe_directory else ["git"]
+        self.process = self.session.start(
+            [*git, "cat-file", "--batch-command", "--buffer", "-z"],
+            cwd=repo,
+            creationflags=_NO_WINDOW,
+            stdout=subprocess.PIPE,
+            stderr=None,
+        )
+        self.resolved: dict[str, str | None] = {}
+        self.contents: dict[str, bytes] = {}
+
+    def __enter__(self) -> _GitObjects:
+        return self
+
+    def __exit__(self, failure, *_) -> None:
+        try:
+            if failure is not None:
+                self.session.stop()
+                return
+            self.session.close_input()
+            trailing = self.process.stdout.read()
+            self.session.check()
+            self.process.wait(timeout=5)
+            if self.process.returncode:
+                raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
+            if trailing:
+                raise ValueError("unexpected trailing git object response; restore Git objects")
+        finally:
+            self.process.stdout.close()
+            self.session.__exit__(failure, None, None)
+
+    def _rounds(self, verb: str, items: list[str]):
+        for start in range(0, len(items), self.ROUND):
+            chunk = items[start : start + self.ROUND]
+            try:
+                self.session.send(
+                    b"".join(f"{verb} {item}\0".encode() for item in chunk) + b"flush\0"
+                )
+            except OSError:
+                self.session.check()  # A timeout is named; an ordinary missing reply refuses below.
+            yield from chunk
+
+    def acquire(self, specs: set[str]) -> None:
+        out = self.process.stdout
+        for spec in self._rounds("info", sorted(specs - self.resolved.keys())):
+            missing = (spec + " missing\n").encode()
+            line = out.readline()
+            self.session.check()
+            if missing.startswith(line):  # a path may hold a newline: its reply spans lines
+                line += out.read(len(missing) - len(line))
+                self.session.check()
+            if line == missing:
+                self.resolved[spec] = None
+                continue
+            fields = line.split()
+            if (
+                not line.endswith(b"\n")
+                or len(fields) != 3
+                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
+                or fields[1] != b"blob"
+                or not fields[2].isdigit()
+            ):
+                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
+            self.resolved[spec] = fields[0].decode("ascii")
+        wanted = {oid for oid in self.resolved.values() if oid} - self.contents.keys()
+        for oid in self._rounds("contents", sorted(wanted)):
+            header = out.readline().split()
+            self.session.check()
+            if len(header) != 3 or header[:2] != [oid.encode(), b"blob"] or not header[2].isdigit():
+                raise ValueError(f"unexpected git object response for {oid}; restore Git objects")
+            body = out.read(int(header[2]) + 1)
+            self.session.check()
+            if len(body) != int(header[2]) + 1 or body[-1:] != b"\n":
+                raise ValueError(f"incomplete git object response for {oid}; restore Git objects")
+            self.contents[oid] = body[:-1]
+
+
 def validate_internal_id_history(
     repo: Path, source: str, admissions_from: str | None = None
 ) -> None:
     """Validate the first landing against its source, then keep the policy lower-only."""
     if source.startswith("-"):
         raise ValueError("a revision cannot be an option")
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"],
+    with _GitObjects(repo) as objects:
+        _validate_internal_id_history(repo, source, admissions_from, objects)
+
+
+def _validate_internal_id_history(
+    repo: Path, source: str, admissions_from: str | None, objects: _GitObjects
+) -> None:
+    from alphalattice.capabilities.domain_contracts import spawn
+
+    found = spawn.run(  # one start: the history's depth, then the source's commit
+        ["git", "rev-parse", "--is-shallow-repository", "--verify", f"{source}^{{commit}}"],
         cwd=repo,
-        capture_output=True,
+        creationflags=_NO_WINDOW,
+        stdout=subprocess.PIPE,
         text=True,
         check=False,
     )
-    if shallow.returncode or shallow.stdout.strip() != "false":
+    shallow, _, resolved_source = found.stdout.partition("\n")
+    if shallow != "false":
         raise ValueError(
             "shallow or unreadable Git history; restore complete Git history and retry"
         )
-    source = subprocess.check_output(
-        ["git", "rev-parse", "--verify", f"{source}^{{commit}}"], cwd=repo, text=True
-    ).strip()
+    if found.returncode:
+        raise subprocess.CalledProcessError(found.returncode, found.args, found.stdout)
+    source = resolved_source.strip()
     later = ""
     if admissions_from is not None:
-        later = subprocess.run(
+        later = spawn.run(
             ["git", "rev-parse", "--verify", "-q", f"{admissions_from}^{{commit}}"],
             cwd=repo,
+            creationflags=_NO_WINDOW,
             capture_output=True,
             text=True,
             check=False,
         ).stdout.strip()
     graph = {}
-    for row in subprocess.check_output(
+    for row in spawn.check_output(
         ["git", "rev-list", "--parents", source],
         cwd=repo,
+        creationflags=_NO_WINDOW,
         text=True,
     ).splitlines():
         fields = row.split()
@@ -926,50 +1051,17 @@ def validate_internal_id_history(
         parent not in graph for parents in graph.values() for parent in parents
     ):
         raise ValueError("incomplete internal-label history graph; restore Git history")
-    commits = subprocess.check_output(
+    commits = spawn.check_output(
         ["git", "log", "--full-history", "--format=%H", source, "--", INTERNAL_ID_BASELINE],
         cwd=repo,
+        creationflags=_NO_WINDOW,
         text=True,
     ).splitlines()
     if any(commit not in graph for commit in commits):
         raise ValueError("incomplete internal-label history graph; restore Git history")
     policies = set(commits) | {source} | ({later} if later else set())
     policies.update(parent for commit in commits for parent in graph[commit])
-    resolved, contents = {}, {}
-
-    def acquire(specs: set[str]) -> None:
-        pending = sorted(specs - resolved.keys())
-        if not pending:
-            return
-        raw = subprocess.check_output(
-            ["git", "cat-file", "--batch-check", "-z"],
-            cwd=repo,
-            input="".join(spec + "\0" for spec in pending).encode(),
-        )
-        cursor = 0
-        for spec in pending:
-            missing = (spec + " missing\n").encode()
-            if raw.startswith(missing, cursor):
-                resolved[spec] = None
-                cursor += len(missing)
-                continue
-            end = raw.find(b"\n", cursor)
-            fields = raw[cursor:end].split() if end >= 0 else []
-            if (
-                len(fields) != 3
-                or not re.fullmatch(rb"[0-9a-f]{40}", fields[0])
-                or fields[1] != b"blob"
-                or not fields[2].isdigit()
-            ):
-                raise ValueError(f"unexpected git object response for {spec}; restore Git objects")
-            resolved[spec] = fields[0].decode("ascii")
-            cursor = end + 1
-        if cursor != len(raw):
-            raise ValueError("unexpected trailing git object response; restore Git objects")
-        contents.update(
-            _read_blob_batch(repo, {oid for oid in resolved.values() if oid} - contents.keys())
-        )
-
+    resolved, contents, acquire = objects.resolved, objects.contents, objects.acquire
     acquire({f"{commit}:{INTERNAL_ID_BASELINE}" for commit in policies})
     cache = {
         commit: json.loads(contents[oid])
@@ -1041,9 +1133,10 @@ def validate_internal_id_history(
             return True
         # Git remains authoritative at shallow boundaries or for unrelated anchors.
         return (
-            subprocess.run(
+            spawn.run(
                 ["git", "merge-base", "--is-ancestor", anchor, commit],
                 cwd=repo,
+                creationflags=_NO_WINDOW,
                 capture_output=True,
                 check=False,
             ).returncode
@@ -1063,6 +1156,36 @@ def validate_internal_id_history(
             except (AttributeError, KeyError, TypeError, ValueError):
                 raise ValueError(f"the test layout map is unreadable at {commit}") from None
         return moves[commit]
+
+    deltas: dict[tuple[str, str], dict[str, str]] = {}
+    carried: dict[tuple[str, str, str], str] = {}
+
+    def git_move(commit: str, parent: str, owner: str) -> dict[str, str]:
+        """A move Git's tree delta records byte for byte, as the staged moves pair exact blobs:
+        the owner is the one path the commit added with its blob, and the one path it deleted
+        with that blob is the old path."""
+        if (commit, parent) not in deltas:
+            fields = spawn.check_output(
+                ["git", "diff-tree", "-r", "-z", "--no-renames", parent, commit],
+                cwd=repo,
+                creationflags=_NO_WINDOW,
+                text=True,
+            ).split("\0")
+            gone: dict[str, list[str]] = {}
+            added: dict[str, list[str]] = {}
+            for status, path in zip(fields[0::2], fields[1::2], strict=False):
+                *_, old_blob, new_blob, kind = status.split()
+                if kind == "D":
+                    gone.setdefault(old_blob, []).append(path)
+                elif kind == "A":
+                    added.setdefault(new_blob, []).append(path)
+            deltas[commit, parent] = {
+                paths[0]: gone[blob][0]
+                for blob, paths in added.items()
+                if len(paths) == 1 and len(gone.get(blob, ())) == 1
+            }
+        old = deltas[commit, parent].get(owner)
+        return {} if old is None else {owner: old}
 
     for commit in commits:
         policy = policy_at(commit)
@@ -1123,7 +1246,17 @@ def validate_internal_id_history(
                         "occurrences", {}
                     ).get(owner, {}).get(label):
                         continue
-                    why = _carry_refusal(owner, labels, policy, previous, mapped(commit))
+                    moved = mapped(commit)
+                    if owner not in moved:
+                        moved = {**moved, **git_move(commit, parent, owner)}
+                    why = _carry_refusal(owner, labels, policy, previous, moved)
+                    # Each old allowance carries to one new path, whichever path paired it.
+                    if (
+                        not why
+                        and carried.setdefault(claim := (commit, parent, moved[owner]), owner)
+                        != owner
+                    ):
+                        why = f"{moved[owner]}'s allowance was already carried to {carried[claim]}"
                     if why:
                         raise ValueError(
                             f"the frozen internal-label allowance increased at {commit}: "
@@ -1165,10 +1298,12 @@ def validate_path(path: str) -> None:
 
 def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
     """Read each immutable blob once and refuse truncated or mismatched batch output."""
+    from alphalattice.capabilities.domain_contracts import spawn
+
     if not objects:
         return {}
     ordered = sorted(objects)
-    raw = subprocess.check_output(
+    raw = spawn.check_output(
         ["git", "cat-file", "--batch"],
         cwd=repo,
         input="".join(oid + "\n" for oid in ordered).encode(),
@@ -1192,12 +1327,14 @@ def _read_blob_batch(repo: Path, objects: set[str]) -> dict[str, bytes]:
 
 def read_tree(repo: Path, revision: str) -> tuple[str, dict[str, bytes], dict[str, str]]:
     """Read a commit's exact tracked blobs with one batch, without checking them out."""
+    from alphalattice.capabilities.domain_contracts import spawn
+
     if revision.startswith("-"):
         raise ValueError("a revision cannot be an option")
-    sha = subprocess.check_output(
+    sha = spawn.check_output(
         ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"], cwd=repo, text=True
     ).strip()
-    listing = subprocess.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
+    listing = spawn.check_output(["git", "ls-tree", "-rz", "--full-tree", sha], cwd=repo)
     objects = []
     modes = {}
     for record in listing.split(b"\0"):
@@ -1282,29 +1419,87 @@ def _import_names(path: str, raw: bytes) -> frozenset[str]:
     return known
 
 
-def import_closure(blobs: dict[str, bytes], roots: set[str]) -> set[str]:
-    """Follow absolute and relative Python imports by parsing, never importing product code."""
+_HOST_ROUTES = "src/alphalattice/control/product_host/composition/operation_route_families.py"
+
+
+def _host_route_names(raw: bytes) -> set[str]:
+    """Read the Host's package-relative FamilyRoute registrations without executing them."""
+    package = _HOST_ROUTES[4:].rpartition("/")[0].replace("/", ".")
+    tree = ast.parse(raw.decode("utf-8-sig"), filename=_HOST_ROUTES)
+    tables = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_ROUTES" for target in node.targets)
+    ]
+    if len(tables) != 1 or not isinstance(tables[0], ast.Tuple):
+        raise ValueError(
+            f"public_release.door_route_nonliteral: {_HOST_ROUTES} needs one _ROUTES tuple"
+        )
+    names = set()
+    for route in tables[0].elts:
+        location = f"{_HOST_ROUTES}:{route.lineno}"
+        if not (
+            isinstance(route, ast.Call)
+            and isinstance(route.func, ast.Name)
+            and route.func.id == "FamilyRoute"
+            and 2 <= len(route.args) <= 3
+            and not route.keywords
+            and isinstance(module := route.args[1], ast.Constant)
+            and isinstance(value := module.value, str)
+        ):
+            raise ValueError(f"public_release.door_route_nonliteral: {location}")
+        parts = value.split(".")
+        if parts[0] == "alphalattice" or not all(part.isidentifier() for part in parts):
+            raise ValueError(f"public_release.door_route_outside_package: {location}")
+        names.add(f"{package}.{value}")
+    return names
+
+
+def import_closure(
+    blobs: dict[str, bytes],
+    roots: set[str],
+    *,
+    runtime_modes: dict[str, str] | None = None,
+    declared: frozenset[str] = frozenset(),
+) -> set[str]:
+    """Follow parsed imports, including the registered Door targets in the runtime closure."""
     modules = {
         p[4:-3].replace("/", ".").removesuffix(".__init__"): p
         for p in blobs
         if p.startswith("src/") and p.endswith(".py")
     }
-    edges = {}
-    for path, raw in blobs.items():
-        if not path.endswith(".py"):
-            continue
-        # A module is reached when it is a dotted prefix of an imported name (or the name itself):
-        # each prefix is looked up, not every module tested against every name.
-        edges[path] = {
+
+    def imported_paths(names: Iterable[str]) -> set[str]:
+        # Lookup the imported name and its dotted prefixes without scanning every module.
+        return {
             modules[prefix]
-            for name in _import_names(path, raw)
+            for name in names
             for prefix in (".".join(name.split(".")[:end]) for end in range(1, name.count(".") + 2))
             if prefix in modules
         }
+
+    edges = {
+        path: imported_paths(_import_names(path, raw))
+        for path, raw in blobs.items()
+        if path.endswith(".py")
+    }
     reached = set(roots)
     todo = list(roots)
     while todo:
-        for target in edges.get(todo.pop(), set()) - reached:
+        path = todo.pop()
+        next_paths = edges.get(path, set())
+        if path == _HOST_ROUTES and runtime_modes is not None and path not in declared:
+            names = _host_route_names(blobs[path])
+            for name in sorted(names):
+                if runtime_modes.get(modules.get(name, "")) not in {"100644", "100755"}:
+                    raise ValueError(f"public_release.door_route_untracked: {name}")
+            routed = imported_paths(names)
+            for target in sorted(routed):
+                if classify(target, {target}, set(), set(), declared=declared)[0] != "PUBLIC":
+                    raise ValueError(f"public_release.door_route_private: {target}")
+            next_paths = next_paths | routed
+        for target in next_paths - reached:
             reached.add(target)
             todo.append(target)
     return reached
@@ -1316,6 +1511,7 @@ PRIVATE_SCHEMAS = frozenset(
         "alphalattice.tests-unregistered.v1",
         "alphalattice.test-layout.v1",
         "alphalattice.agent-eval.host-facts",
+        "alphalattice.source-ratchet.v1",
     }
 )
 """Private data by what it is: a tracked JSON document carrying one of these schemas is PRIVATE
@@ -1401,6 +1597,78 @@ def classify(
     )
 
 
+def published_test(path: str, docstring: str | None) -> bool:
+    """Whether the export publishes the test module at `path`, by `classify`'s rules for a test:
+    a private pattern, or a `PRIVATE_TEST:` docstring."""
+    declared = frozenset({path}) if "PRIVATE_TEST:" in (docstring or "") else frozenset()
+    return classify(path, set(), set(), set(), declared=declared)[0] == "PUBLIC"
+
+
+GITHUB_CANNOT_RUN = ("real_evidence", "paid_agent", "performance")
+"""A test's own mark that GitHub cannot run it: private evidence, money, or the performance run."""
+
+
+def declare_github(items: Iterable[Any], lane_contract: Callable[[Any], str | None]) -> None:
+    """Mark `github`, at collection (tests/conftest.py), each test GitHub's public Verify runs: one
+    in a module the export publishes, marked none of GITHUB_CANNOT_RUN, and not `nightly_only` by
+    its Large rule (`lane_contract`), which a run outside the nightly lane omits. The Verify
+    selects exactly these, and the nightly never runs them."""
+    published: dict[str, bool] = {}
+    for item in items:
+        path = item.nodeid.split("::", 1)[0]
+        if path not in published:
+            module = getattr(item, "module", None)
+            published[path] = module is not None and published_test(path, module.__doc__)
+        if (
+            published[path]
+            and lane_contract(item) != "nightly_only"
+            and not any(item.get_closest_marker(name) for name in GITHUB_CANNOT_RUN)
+        ):
+            item.add_marker("github")
+
+
+_REGISTRY_STRING = re.compile(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"')
+_DOTTED_NAME = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
+
+
+def _registry_private_modules(
+    blobs: dict[str, bytes], private_modules: dict[str, set[str]]
+) -> dict[str, set[str]]:
+    """Resolve physical module names and the registered logical aliases used by registries."""
+    raw = blobs.get("config/package-architecture.json", b"{}")
+    if not raw:
+        raise ValueError(
+            "public_release.registry_layout_missing: config/package-architecture.json; "
+            "load its pinned blob before scanning registry references"
+        )
+    layout = json.loads(raw)
+    owners = {
+        entry["physical_namespace_target"]: entry["package_id"]
+        for entry in layout.get("packages", ())
+    }
+    modules = {name: set(paths) for name, paths in private_modules.items()}
+    for name, paths in private_modules.items():
+        owner = name
+        while owner:
+            if owner in owners:
+                modules.setdefault(owners[owner] + name[len(owner) :], set()).update(paths)
+                break
+            owner = owner.rpartition(".")[0]
+    return modules
+
+
+def _registry_module_targets(line: str, modules: dict[str, set[str]]) -> set[str]:
+    """Private targets of module:attribute strings on a JSON registry line."""
+    targets: set[str] = set()
+    for token in _REGISTRY_STRING.findall(line):
+        if ":" not in token and "\\" not in token:
+            continue
+        module, _, attribute = json.loads(token).partition(":")
+        if module in modules and _DOTTED_NAME.fullmatch(attribute):
+            targets.update(modules[module])
+    return targets
+
+
 def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[dict], list[str]]:
     """Return location-only findings; never retain matched secrets, IDs or contact values."""
     private = {r["path"] for r in decisions if r["kind"] == "PRIVATE"}
@@ -1411,6 +1679,7 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
         for relative in {path, path.removeprefix("src/"), path.removeprefix("scripts/")}:
             module = relative[:-3].replace("/", ".").removesuffix(".__init__")
             private_modules.setdefault(module, set()).add(path)
+    registry_modules: dict[str, set[str]] | None = None
     findings = []
     binary = []
     for row in decisions:
@@ -1464,7 +1733,21 @@ def scan_public(blobs: dict[str, bytes], decisions: list[dict]) -> tuple[list[di
                     ),
                 }
             )
+        is_registry = row["path"].startswith("config/") and row["path"].endswith(".json")
+        if is_registry and registry_modules is None:
+            registry_modules = _registry_private_modules(blobs, private_modules)
         for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+            if is_registry and (targets := _registry_module_targets(line, registry_modules or {})):
+                findings.append(
+                    {
+                        "kind": "FINDING",
+                        "path": row["path"],
+                        "line": number,
+                        "rule": "NO_PRIVATE_REFERENCE",
+                        "assessment": "PRIVATE_REGISTRY_MODULE",
+                        "private_targets": sorted(targets),
+                    }
+                )
             refs = private_references(row["path"], line, private, blobs.keys())
             findings.extend(
                 {
@@ -1559,7 +1842,8 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
     """A PUBLIC registry as it is published: each row holding a private reference dropped.
 
     A row is an element of a top-level list or an entry of a top-level object; it is dropped when
-    any string in it, key or value, earns a private reference by the scan's own rule. Any other
+    any string in it, key or value, earns a private reference by the scan's own rule; a test-size
+    row loses only the private items of the path lists it reads (`size_row`). Any other
     file, an unreadable registry, or one with nothing to drop keeps its exact bytes; the private
     registry is never changed. Returns the bytes and each dropped row's place, such as
     `reach[3]` or `entries/<key>`."""
@@ -1609,6 +1893,32 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
 
     projected: object
     dropped: list[str] = []
+
+    def size_row(place: str, row: dict, node: object) -> dict | None:
+        """One test-size row as published, None when it goes. Its path lists (`inputs`, a reader's
+        `within`) are what it reads, not who it is: only their private items go, so a public
+        node keeps its row (a slow guard keeps its reader); an emptied `within` reads nothing."""
+        rest = {name: item for name, item in row.items() if name not in ("inputs", "within")}
+        if flagged(rest) or any(private_selector(n) for n in (node, row.get("pattern"))):
+            dropped.append(place)
+            return None
+        for field in ("inputs", "within"):
+            items = row.get(field)
+            if not isinstance(items, list):
+                if flagged(items) or private_selector(items):
+                    dropped.append(place)
+                    return None
+                continue
+            gone = [j for j, item in enumerate(items) if flagged(item) or private_selector(item)]
+            dropped.extend(f"{place}.{field}[{j}]" for j in gone)
+            public = [item for j, item in enumerate(items) if j not in gone]
+            if field == "within" and items and not public:
+                dropped.append(place)
+                return None
+            if len(public) != len(items):
+                row = {**row, field: public}
+        return row
+
     if isinstance(data, list):
         dropped = [f"[{i}]" for i, row in enumerate(data) if flagged(row)]
         projected = [row for row in data if not flagged(row)]
@@ -1620,37 +1930,29 @@ def project_public(path: str, raw: bytes, private: set[str], tracked) -> tuple[b
                 for i, row in enumerate(value):
                     place = f"{key}[{i}]"
                     if sizes and isinstance(row, dict):
-                        rest = {name: item for name, item in row.items() if name != "inputs"}
-                        if (
-                            flagged(rest)
-                            or private_selector(row.get("pattern"))
-                            or private_selector(row.get("node"))
-                        ):
-                            dropped.append(place)
+                        row = size_row(place, row, row.get("node"))
+                        if row is None:
                             continue
-                        inputs = row.get("inputs")
-                        if not isinstance(inputs, list) and (
-                            flagged(inputs) or private_selector(inputs)
-                        ):
-                            dropped.append(place)
-                            continue
-                        if isinstance(inputs, list):
-                            kept_inputs = []
-                            for j, item in enumerate(inputs):
-                                if flagged(item) or private_selector(item):
-                                    dropped.append(f"{place}.inputs[{j}]")
-                                else:
-                                    kept_inputs.append(item)
-                            if len(kept_inputs) != len(inputs):
-                                row = {**row, "inputs": kept_inputs}
                     elif flagged(row) or (sizes and private_selector(row)):
                         dropped.append(place)
                         continue
                     rows.append(row)
                 kept[key] = rows
             elif isinstance(value, dict):
-                dropped += [f"{key}/{name}" for name, row in value.items() if flagged(name, row)]
-                kept[key] = {n: row for n, row in value.items() if not flagged(n, row)}
+                members: dict[str, object] = {}
+                for name, row in value.items():
+                    if sizes and isinstance(row, list) and not flagged(name):
+                        # The policy's shape is public and its loader needs it: only nodes go.
+                        members[name] = [n for n in row if not (flagged(n) or private_selector(n))]
+                        dropped += [f"{key}/{name}/{n}" for n in row if n not in members[name]]
+                    elif sizes and isinstance(row, dict):
+                        if (published := size_row(f"{key}/{name}", row, name)) is not None:
+                            members[name] = published
+                    elif flagged(name, row):
+                        dropped.append(f"{key}/{name}")
+                    else:
+                        members[name] = row
+                kept[key] = members
             else:
                 kept[key] = value
         projected = kept
@@ -1724,7 +2026,10 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         raise ValueError("the source commit must contain the entry reachability census")
     er3 = json.loads(census_raw)
     runtime = import_closure(
-        blobs, {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs}
+        blobs,
+        {r["path"] for r in er3["modules"] if r["class"] == "LIVE" and r["path"] in blobs},
+        runtime_modes=modes,
+        declared=declared,
     )
     tests = import_closure(
         blobs,
@@ -1748,11 +2053,14 @@ def _generate(sha: str, blobs: dict[str, bytes], modes: dict[str, str]) -> tuple
         for path in blobs:
             if path.startswith("config/") and (path in text or path.rsplit("/", 1)[-1] in text):
                 config_dependencies.add(path)
-    # These files are named by environment setup and by the maintained gate.
+    # These files are named by environment setup and by the maintained gate; the identity
+    # successor sets are read as one directory by scripts/identity_readout.py, as the ledger is.
     config_dependencies.update(
         p
         for p in blobs
-        if p.startswith("config/requirements-") or p.startswith("config/registries/")
+        if p.startswith("config/requirements-")
+        or p.startswith("config/registries/")
+        or p.startswith("config/identity-successors/")
     )
     initial = [
         dict(path=p, kind=classify(p, runtime, tests, config_dependencies, declared=declared)[0])

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from argparse import Namespace
+from contextlib import suppress
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,19 +21,20 @@ from uuid import uuid4
 import psutil
 import pytest
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.client import (
     LocalResearchClient,
     LocalResearchConnection,
 )
 from alphalattice.interface.local_application.retrieval_environment import interpreter_path
 from tests.portfolio_strategy_lab.cli_support import _cli
-from tests.portfolio_strategy_lab.local_web_support import (
-    _json,
-    serve_conflict,
-)
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import serve_conflict
+from tests.pytest_environment import served_root
 
 
 def test_a_controls_template_is_saved_as_its_declaration(tmp_path, monkeypatch, capsys):
@@ -230,59 +232,69 @@ def test_cli_serve_starts_from_outside_the_repo_and_stale_discovery_is_replaced(
     workspace = tmp_path / "served-workspace"
     environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     environment["ALPHALATTICE_NETWORK_DISABLED"] = "1"
-    interpreter = interpreter_path()
-    output = (tmp_path / "startup.log").open("wb")
-    child = subprocess.Popen(
-        [
-            str(interpreter) if interpreter.is_file() else sys.executable,
-            str(root / "scripts/run_alphalattice.py"),
-            "--workspace",
-            str(workspace),
-            "serve",
-            "--no-browser",
-        ],
-        cwd=tmp_path,
-        env=environment,
-        stdout=output,
-        stderr=subprocess.STDOUT,
-    )
-    try:
-        started = time.monotonic()
-        deadline = started + 120
-        while not LocalResearchConnection.path(workspace).exists():
-            if child.poll() is not None or time.monotonic() >= deadline:
-                pytest.fail("CLI did not start its own Host")
-            time.sleep(0.05)
-        output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
-        output.flush()
-        client = LocalResearchClient(workspace)
-        assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
-        instance = client.connection.instance
-    finally:
-        family = psutil.Process(child.pid)
-        family = [*family.children(recursive=True), family]
-        for process in family:
-            process.terminate()
-        child.communicate(timeout=20)
-        assert not psutil.wait_procs(family, timeout=20)[1]
-        output.close()
-    from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
+    # Its Host is another process on a data root of its own, never one a module Host here holds;
+    # this process reads and later serves on that same root, so it finds the stopped Host's record.
+    environment["ALPHALATTICE_DATA_ROOT"] = str(served_root(workspace))
+    with history.own_root(served_root(workspace)):
+        interpreter = interpreter_path()
+        with (
+            (tmp_path / "startup.log").open("wb") as output,
+            spawn.InteractiveSession(timeout=180, stop_scope="tree") as session,
+        ):
+            child = session.start(
+                [
+                    str(interpreter) if interpreter.is_file() else sys.executable,
+                    str(root / "scripts/run_alphalattice.py"),
+                    "--workspace",
+                    str(workspace),
+                    "serve",
+                    "--no-browser",
+                ],
+                cwd=tmp_path,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+            try:
+                started = time.monotonic()
+                deadline = started + 120
+                while not LocalResearchConnection.path(workspace).exists():
+                    if child.poll() is not None or time.monotonic() >= deadline:
+                        log = (tmp_path / "startup.log").read_text("utf-8", errors="replace")
+                        pytest.fail(
+                            f"CLI did not start its own Host (exit {child.poll()}):\n{log[-4000:]}"
+                        )
+                    time.sleep(0.05)
+                output.write(f"Ready after {time.monotonic() - started:.3f}s\n".encode())
+                output.flush()
+                client = LocalResearchClient(workspace)
+                assert client.request()["caller"] == "EXTERNAL_AUTOMATION"
+                instance = client.connection.instance
+            finally:  # a child that already exited leaves no tree, and never masks the failure
+                family: list[psutil.Process] = []
+                with suppress(psutil.NoSuchProcess):
+                    parent = psutil.Process(child.pid)
+                    family = [*parent.children(recursive=True), parent]
+                session.stop()
+                assert not psutil.wait_procs(family, timeout=20)[1]
+        from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 
-    lease = WorkspaceWriterLease.acquire(workspace)
-    try:
-        descriptor = LocalResearchConnection.path(workspace).read_bytes()
-        assert serve_conflict(workspace, monkeypatch) == 2
-        assert (
-            json.loads(capsys.readouterr().out)["failure_code"]
-            == "local_web.serving_host_unverified"
-        )
-        assert LocalResearchConnection.path(workspace).read_bytes() == descriptor and lease.held
-    finally:
-        lease.close()
-    with LocalPortfolioWebSession.from_workspace(workspace) as reopened:
-        assert LocalResearchConnection.read(workspace).instance != instance
-        assert LocalResearchClient(workspace).request()["workspace_id"] == reopened.workspace_id
-    assert not LocalResearchConnection.path(workspace).exists()
+        lease = WorkspaceWriterLease.acquire(workspace)
+        try:
+            descriptor = LocalResearchConnection.path(workspace).read_bytes()
+            assert serve_conflict(workspace, monkeypatch) == 2
+            assert (
+                json.loads(capsys.readouterr().out)["failure_code"]
+                == "local_web.serving_host_unverified"
+            )
+            assert LocalResearchConnection.path(workspace).read_bytes() == descriptor and lease.held
+        finally:
+            lease.close()
+        with LocalPortfolioWebSession.from_workspace(workspace) as reopened:
+            assert LocalResearchConnection.read(workspace).instance != instance
+            assert LocalResearchClient(workspace).request()["workspace_id"] == reopened.workspace_id
+        assert not LocalResearchConnection.path(workspace).exists()
 
 
 def test_failed_output_keeps_compact_feedback_and_the_completed_operation(
@@ -352,6 +364,8 @@ def test_failed_output_keeps_compact_feedback_and_the_completed_operation(
     assert not (tmp_path / "unwritten.html").exists()
 
 
+@pytest.mark.proves("local_application.only_reconnects_named_host_failures")
+@pytest.mark.proves("local_application.a_disconnected_waiter_reports_the_task_continues")
 def test_a_wait_that_loses_its_host_keeps_the_admission_in_the_output(
     tmp_path, monkeypatch, capsys
 ):
@@ -401,6 +415,29 @@ def test_a_wait_that_loses_its_host_keeps_the_admission_in_the_output(
     assert saved["admission"] == admitted
     assert saved["wait_event"]["event"] == "MAX_WAIT_REACHED"
     assert result["output_file"] == str(receipt.resolve())
+
+    class RefusingClient:
+        workspace = tmp_path
+
+        def request(self, document, timeout=None):
+            raise client.LocalResearchClientError("fixture.not_a_restart")
+
+    with pytest.raises(client.LocalResearchClientError, match=r"fixture\.not_a_restart"):
+        client._read_through_restarts(RefusingClient(), {"operation": "STATUS"}, 0.0)
+
+    class DisconnectedClient(RefusingClient):
+        def request(self, document, timeout=None):
+            raise client.LocalResearchClientError("local_client.service_not_running")
+
+    waiting = client._follow(
+        DisconnectedClient(),
+        {"status": "TASK_ADMITTED", "task_id": "task-a", "lifecycle": "QUEUED"},
+        1,
+        deadline=0.0,
+        receipt=lambda *_: None,
+    )
+    assert waiting["wait_event"]["event"] == "MAX_WAIT_REACHED"
+    assert waiting["wait_status"] == "MAX_WAIT_TASK_CONTINUES"
 
 
 def test_a_chinese_request_is_sent_in_utf8_within_the_body_limit() -> None:

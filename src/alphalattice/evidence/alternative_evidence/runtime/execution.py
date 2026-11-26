@@ -1,9 +1,8 @@
 """Control CPU use for preparation, Task reads, and Alpha model fits.
 
 An execution parameter is the operator's, never identity (the final close-out, F1). A budget
-changes how fast a preparation runs and never what it prepares: each model session proves
-the retrieval canary when it loads (`knowledge_hybrid_contracts.EMBEDDING_CANARIES`), so no
-number depends on how the cores are split. The operator sets `auto` or a number of cores in
+changes how fast a preparation runs and never what it prepares: no number depends on how
+the cores are split. The operator sets `auto` or a number of cores in
 the workspace's typed configuration (`runtime/execution/cpu-budget.json`), by the CLI
 (`cpu-budget set --cores`) or in the Workbench's settings; `auto` takes the processors not
 in use when a preparation starts, never fewer than one session's safe threads
@@ -14,9 +13,9 @@ What each preparation used, and why, is appended to
 `runtime/execution/preparations.jsonl`: a receipt, never identity. An Alpha study fits
 one model at a time on the budget's cores, behind LightGBM's sealed canary
 (`alpha_modeling.runtime.lightgbm_threads`); what its fits used is appended to
-`runtime/execution/model-fits.jsonl` (binding plan, B3). Each Task the Host starts reads
+`runtime/execution/model-fits.jsonl`. Each Task the Host starts reads
 DuckDB and Arrow on the budget's cores (`workspace_runtime.reader_threads`); what it started
-with is appended to `runtime/execution/tasks.jsonl` (binding plan, B7); Tasks that run at once
+with is appended to `runtime/execution/tasks.jsonl`; Tasks that run at once
 share the budget's cores by lease (`TaskCpuLeases`). A Feature build in the
 Task spreads its listings' computation over the Host's kept workers on those cores, one of them
 left to the build's writer (`feature_engine.runtime.service`); the rows are the same at any count.
@@ -28,33 +27,50 @@ import importlib.metadata
 import os
 import platform
 import sys
-from collections.abc import Callable, Iterator
+import time
+from collections.abc import Callable, Hashable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from threading import Condition, Lock
 from typing import Annotated, Literal, TypeVar, cast
 from uuid import UUID
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
 from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    MAXIMUM_SESSION_THREADS,
-    safe_intra_op_threads,
+from alphalattice.kernel.execution import EVENTS, EventDeadline
+from alphalattice.kernel.resources import (
+    ResourceAmounts,
+    ResourceLeases,
+    current_resource_lease,
+    logical_cpu_count,
+    use_resource_lease,
 )
-from alphalattice.kernel.knowledge.runtime import VERIFIED_PACKS
+
+MAXIMUM_SESSION_THREADS = 16
+"""The most threads one unit is planned (S2 measured 1-16, identical)."""
+
+
+def safe_intra_op_threads(cpu_count: int | None = None) -> int:
+    """The desktop-safe threads of one unit when no CPU budget says otherwise: the processors,
+    up to four (`logical_cpu_count()` when `cpu_count` is None)."""
+    detected = logical_cpu_count() if cpu_count is None else cpu_count
+    return max(1, min(4, detected or 1))
+
 
 EXECUTION_DIRECTORY = "execution"
 """Under the workspace's `runtime/`, beside the Host's own state and outside the managed
 evidence roots: a setting and a log, not evidence."""
 CPU_BUDGET_FILE = "cpu-budget.json"
 PREPARATIONS_FILE = "preparations.jsonl"
+FIRST_UNIT_WAIT_SECONDS = 1800.0
+"""The longest a later unit waits for its book's first unit (162 s on the median book)."""
 MODEL_FITS_FILE = "model-fits.jsonl"
 TASKS_FILE = "tasks.jsonl"
 MAXIMUM_CPU_BUDGET = 1024
@@ -110,7 +126,7 @@ class PreparationExecution(_Record):
 class PlatformIdentity(_Record):
     """Describe the machine and libraries used by a Task.
 
-    This belongs to the realization record, not the Task identity (binding plan, N4).
+    This belongs to the realization record, not the Task identity.
     """
 
     system: str
@@ -190,14 +206,16 @@ def parse_cpu_budget(value: object) -> Literal["auto"] | int:
     return value
 
 
-def machine_load(*, preparations_running: int = 0) -> MachineLoad:
-    """Read machine capacity and current load for budget planning."""
+def machine_load(*, preparations_running: int = 0, sample_busy: bool = True) -> MachineLoad:
+    """Read capacity, sampling load only when the caller needs it for its policy."""
     capacity = runtime_machine_capacity()
     return MachineLoad(
         processors=len(capacity.allowed_logical_processor_ids),
         # The work on this process's own processors, not the machine's.
-        busy_processors=busy_logical_processors(
-            processor_ids=capacity.allowed_logical_processor_ids
+        busy_processors=(
+            busy_logical_processors(processor_ids=capacity.allowed_logical_processor_ids)
+            if sample_busy
+            else None
         ),
         total_memory_bytes=capacity.total_memory_bytes,
         available_memory_bytes=capacity.available_memory_bytes,
@@ -394,61 +412,55 @@ class CpuBudgetStore:
 
 
 class RunningPreparations:
-    """The book preparations of this process, and the threads their sessions load with.
-
-    A unit's own stages lease sessions of its share (`threads`: the first unit its plan's
-    `threads_first_unit`, a later unit `threads_per_session`), side by side (F2). Sessions
-    leased elsewhere -- a selection's reader -- load with the fewest threads any running
-    preparation allows (`VERIFIED_PACKS.use_threads`): the first unit's while it runs alone,
-    the later units' share once they begin their model work (`open`).
-    """
+    """The book preparations of this process, which a new plan shares the budget with."""
 
     def __init__(self) -> None:
-        """Track concurrent preparations and their model session widths."""
+        """Track the preparations running in this process."""
         self._lock = Lock()
-        self._threads: dict[UUID, int] = {}
         self._plans: dict[UUID, PreparationExecution] = {}
 
     def begin(self, task_id: UUID, plan: PreparationExecution) -> None:
-        """Register a preparation and apply its first-unit session width."""
+        """Register a preparation's plan."""
         with self._lock:
             self._plans[task_id] = plan
-            self._threads[task_id] = plan.threads_first_unit
-            VERIFIED_PACKS.hold_up_to(plan.units_at_once)
-            self._apply()
-
-    def open(self, task_id: UUID) -> None:
-        """Apply the session width for later units in a preparation."""
-        with self._lock:
-            plan = self._plans.get(task_id)
-            if plan is None or self._threads.get(task_id) == plan.threads_per_session:
-                return
-            self._threads[task_id] = plan.threads_per_session
-            self._apply()
-
-    def threads(self, task_id: UUID, *, first: bool) -> int | None:
-        """Return a unit's session width, if its Task was planned."""
-        with self._lock:
-            plan = self._plans.get(task_id)
-        if plan is None:
-            return None
-        return plan.threads_first_unit if first else plan.threads_per_session
 
     def running(self, alive: Callable[[UUID], bool]) -> int:
         """How many run, forgetting those `alive` says have ended."""
         with self._lock:
             for task_id in [value for value in self._plans if not alive(value)]:
                 del self._plans[task_id]
-                self._threads.pop(task_id, None)
-            self._apply()
             return len(self._plans)
-
-    def _apply(self) -> None:
-        VERIFIED_PACKS.use_threads(min(self._threads.values()) if self._threads else None)
 
 
 PREPARATIONS = RunningPreparations()
-"""This process's preparations (model sessions are the process's; `VERIFIED_PACKS`)."""
+"""This process's preparations."""
+
+
+def first_unit_settled(state: Callable[[], object], subject: Hashable) -> bool:
+    """Wait until `state()` reads a book's first unit as no longer ``PENDING``: True then; False
+    at once when `state()` reads None (the Task ended or failed). It reads again on each event for
+    `subject`, the Task's own (a Task Control row about it, or its Host's drain), never on a
+    poll. A first unit still pending at `FIRST_UNIT_WAIT_SECONDS` ends the wait by name, so a
+    stuck first unit holds no later unit without end and is seen.
+
+    Raises:
+        RuntimeError: ``alternative_evidence.first_unit_wait_expired``, the later unit's failure.
+    """
+    deadline = time.monotonic() + FIRST_UNIT_WAIT_SECONDS
+    with EVENTS.subscribed(subject) as moved:
+        heard = 0
+        while (left := deadline - time.monotonic()) > 0:
+            checkpoint()
+            now = state()
+            if now is None:
+                return False
+            if now != "PENDING":
+                return True
+            try:
+                heard = moved.wait(heard, timeout=left, what="the book's first unit")
+            except EventDeadline:
+                break
+    raise RuntimeError("alternative_evidence.first_unit_wait_expired")
 
 
 class TaskCpuLeases:
@@ -461,41 +473,45 @@ class TaskCpuLeases:
     """
 
     def __init__(self) -> None:
-        """Begin with no cores held."""
-        self._held: dict[UUID, int] = {}
+        """Begin with no cores held until the Host supplies its policy."""
+        self._leases = ResourceLeases(ResourceAmounts())
         self._turn = Condition()
-        self._current: ContextVar[int | None] = ContextVar("task_cpu_lease", default=None)
 
     @contextmanager
     def lease(self, task_id: UUID, cores: int, ceiling: int) -> Iterator[int]:
         """Hold the Task's cores while it runs; yield how many other Tasks hold cores."""
+        budget = ResourceAmounts(cpu=ceiling, workers=ceiling)
+        request = ResourceAmounts(cpu=cores, workers=cores)
         with self._turn:
-            fits = lambda: not self._held or sum(self._held.values()) + cores <= ceiling  # noqa: E731
-            self._turn.wait_for(fits)
-            self._held[task_id] = cores
-            others = len(self._held) - 1
-        token = self._current.set(cores)
+            if budget != self._leases.capacity:
+                self._leases.configure(budget)
+                self._turn.notify_all()
+            if cores > 0:
+                self._turn.wait_for(
+                    lambda: cores > self._leases.capacity.cpu or self._leases.available.cpu >= cores
+                )
+            others = len(self._leases)
+            granted = self._leases.grant(task_id, request)
         try:
-            yield others
+            with use_resource_lease(granted):
+                yield others
         finally:
-            self._current.reset(token)
             with self._turn:
-                self._held.pop(task_id, None)
+                self._leases.release(granted)
                 self._turn.notify_all()
 
     def current(self) -> int | None:
         """The cores the Task running here holds, if it holds a lease."""
-        return self._current.get()
+        lease = current_resource_lease()
+        return None if lease is None else lease.amounts.cpu
 
     def holders(self) -> tuple[UUID, ...]:
         """The Tasks holding cores now, the oldest lease first: the Tasks this process runs."""
-        with self._turn:
-            return tuple(self._held)
+        return tuple(task_id for task_id in self._leases.holders() if isinstance(task_id, UUID))
 
-    def widest(self) -> int:
-        """The most cores any running Task holds: the process-wide reader threads."""
-        with self._turn:
-            return max(self._held.values(), default=1)
+    def widest(self) -> int | None:
+        """The widest running Task grant, or no grant when the Host is idle."""
+        return self._leases.widest_cpu()
 
 
 TASK_LEASES = TaskCpuLeases()

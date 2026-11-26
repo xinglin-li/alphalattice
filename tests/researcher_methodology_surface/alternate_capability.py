@@ -33,6 +33,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.investment.risk_research.contracts import CovarianceDiagnostics
 from alphalattice.investment.risk_research.estimators.contracts import (
     SINGLE_THREAD_NUMERICAL_CAPABILITY,
@@ -47,7 +48,6 @@ from alphalattice.investment.risk_research.estimators.domains import (
     RiskParameterDomain,
 )
 from alphalattice.investment.risk_research.estimators.matrix_identity import matrix_content_hash
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 type FloatArray = NDArray[np.float64]
 

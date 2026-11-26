@@ -27,6 +27,7 @@ from alphalattice.capabilities.alpha_modeling.catalog import (
 from alphalattice.capabilities.alpha_modeling.contracts import (
     alpha_model_array_content_hash,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.factor_research.experiments.campaign import (
     CuratedFactorCheckpoint,
 )
@@ -71,7 +72,6 @@ from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     row_axis_hash,
     score_value_hash,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution import (
     ActorKind,
     AgentExecutionBinding,
@@ -815,6 +815,50 @@ def test_prediction_surface_is_durable_and_identity_bound(tmp_path: Path) -> Non
     loaded_rows, loaded_values = store.load_campaign_prediction_surface(evidence=evidence)
     assert loaded_rows == rows
     assert loaded_values == pytest.approx(values)
+    from alphalattice.investment.alpha_research.experiments.selected_scores import (
+        project_alpha_selected_rows,
+    )
+
+    class Document:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def model_dump(self, *, mode):
+            assert mode == "json"
+            return self.payload
+
+    dossier = Document(
+        {
+            "dossier_hash": "a" * 64,
+            "program": {"horizons": [{"horizon_sessions": 1}]},
+            "trial_evidence": [evidence.model_dump(mode="json")],
+            "inner_selection_records": [
+                {
+                    "horizon_sessions": 1,
+                    "fold_index": 0,
+                    "selected_method_id": "RIDGE",
+                    "record_hash": "6" * 64,
+                    "selected_trial_hash": "2" * 64,
+                }
+            ],
+        }
+    )
+    decision = Document(
+        {"submission": {"dossier_hash": "a" * 64, "selected_method_ids": ["RIDGE"]}}
+    )
+    resolved = project_alpha_selected_rows(
+        dossier=dossier,
+        decision=decision,
+        horizon_sessions=1,
+    )
+    assert tuple(resolved.predicted_z) == pytest.approx(values)
+    assert (
+        tuple(
+            f"{day.isoformat()}|{listing}"
+            for day, listing in zip(resolved.row_sessions, resolved.row_listing_ids, strict=True)
+        )
+        == rows
+    )
 
 
 """The superseded comparison used a privately declared artifact root."""
@@ -1385,6 +1429,12 @@ def test_aggregation_program_evidence_and_surface_have_durable_readback(
         ),
         parquet,
         compression="zstd",
+    )
+
+    from alphalattice.foundation.data_layer import history
+
+    history.keep_alpha_part(
+        surface.surface_hash, "development/score-aggregation/surfaces", parquet.read_bytes()
     )
 
     assert store.load_score_aggregation_program(program.program_hash) == program

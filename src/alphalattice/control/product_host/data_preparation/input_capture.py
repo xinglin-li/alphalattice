@@ -11,6 +11,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -56,11 +61,6 @@ from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 STAGE = "publish_input_version"
 
@@ -70,8 +70,8 @@ PLAN_FIELDS = ("data_update", "experiment_inputs")
 """The manifest fields a capture plan reads and writes: the data it captures and the
 inputs it adds a version to. A publication of other fields (a model's training inputs,
 a strategy installation) leaves the plan applicable."""
-"""The role a move of this implementation is recorded under in `config/identity-successors.json`,
-so a plan sealed under its predecessor stays current (binding plan R1, LAWS.md ID1)."""
+"""The role a move of this implementation is recorded under in `config/identity-successors/`,
+so a plan sealed under its predecessor stays current (LAWS.md ID1)."""
 
 
 def _implementation() -> str:

@@ -12,8 +12,8 @@ from alphalattice.capabilities.causal_inputs.contracts import (
     AnchoredInstantPolicy,
     CausalInputAuthority,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 
 Hash = str
 _HASH = r"^[0-9a-f]{64}$"

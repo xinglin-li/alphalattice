@@ -9,7 +9,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -118,7 +119,7 @@ class RecordedEvidenceSource:
         the rest newest first. Independent of any other issuer: what the
         packer counts and what the acquisition takes are the same list. A
         document an earlier analysis read (`read`, by revision) is passed
-        over, as live acquisition passes over a filing read earlier (W3).
+        over, as live acquisition passes over a filing read earlier.
         """
         capacity = min(policy_budget, ADMITTED_DOCUMENT_CAPACITY)
         items = [
@@ -163,7 +164,7 @@ class RecordedEvidenceSource:
 
         The library's cutoff-valid documents a current analysis did not read (`read_by`, revision
         to publication). An issuer whose every document one read is carried, its readings named,
-        as live acquisition carries an issuer with no new filing (W3); a library says nothing of
+        as live acquisition carries an issuer with no new filing; a library says nothing of
         what was filed, so no issuer is named as filing nothing. Without `carry` -- the view of a
         scope no run sealed -- nothing is passed over, so an analysis still finds its unit, as
         live mode packs such a view from its plans.
@@ -317,13 +318,15 @@ class RecordedEvidenceSource:
                     content=content,
                     immutable_source=document.immutable_source,
                     limitations=document.limitations,
-                    source_content_hash=canonical_hash(
+                    source_content_hash=seal_payload_digest(
+                        "source_content_hash",
                         {
                             "source_name": document.source_name,
                             "revision": document.revision,
                             "media_type": "text/markdown",
                             "content_hex": content.hex(),
-                        }
+                        },
+                        digest=canonical_hash,
                     ),
                 )
             )

@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 import pytest
 
-from alphalattice.foundation.feature_engine.storage.repositories import FeatureStateRepository
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+from alphalattice.foundation.feature_engine.storage.repositories import (
+    FeatureStateRepository,
+    projected_feature_rows,
+)
+from alphalattice.foundation.market_data_ops.publication import projection
+from alphalattice.foundation.market_data_ops.sources.contracts import CorporateActionEvent
+from alphalattice.foundation.market_data_ops.storage import duckdb as market_storage
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from tests._support.researcher_methodology_session_fixtures import (
     real_risk_workspace,
@@ -43,7 +51,9 @@ def _frozen_raw_evidence_hash(connection, listing, provider, start, end):
     return sha256(payload.encode("utf-8")).hexdigest()
 
 
-def test_one_read_for_every_listing_equals_each_listings_own_read(real_risk_workspace, tmp_path):
+def test_one_read_for_every_listing_equals_each_listings_own_read(
+    real_risk_workspace, tmp_path, monkeypatch
+):
     """requirement: one read per table, each listing from its own start, equals each
     listing's own read, revisions inside and outside its window included; a listing with no
     bars from its start is left to its own read, which refuses it as before."""
@@ -77,7 +87,19 @@ def test_one_read_for_every_listing_equals_each_listings_own_read(real_risk_work
                     listing,
                 ],
             )
-    with market.database.read_transaction() as connection:
+    hash_calls = []
+    stage_digest = market_storage.stage_digest
+
+    def counted(slot, inputs, digest):
+        def compute(values):
+            if slot[1] == "raw":
+                hash_calls.append(slot)
+            return digest(values)
+
+        return stage_digest(slot, inputs, compute)
+
+    monkeypatch.setattr(market_storage, "stage_digest", counted)
+    with stage_digests(), market.database.read_transaction() as connection:
         together = feature.feature_source_inputs_by_listing(
             starts, through=through, _connection=connection
         )
@@ -106,3 +128,61 @@ def test_one_read_for_every_listing_equals_each_listings_own_read(real_risk_work
             assert held.raw_hash == _frozen_raw_evidence_hash(
                 connection, listing, provider, first_session, through
             )
+
+        assert len(hash_calls) == len(together)
+        provider = together[first].bars.column("provider")[0].as_py()
+        first_session = together[first].bars.column("session_date")[0].as_py()
+        assert (
+            MarketDataRepository(workspace)._raw_evidence_hash(
+                connection,
+                listing_id=first,
+                provider=provider,
+                history_start=first_session,
+                history_end=through,
+            )
+            == together[first].raw_hash
+        )
+        assert len(hash_calls) == len(together)
+
+    with stage_digests(), market.database.transaction() as connection:
+        before = feature.feature_source_inputs_by_listing(
+            starts, through=through, _connection=connection
+        )
+        assert len(hash_calls) == 2 * len(together)
+        connection.execute(
+            "UPDATE raw_daily_bar_current SET payload_hash = ? "
+            "WHERE listing_id = ? AND provider = ? AND session_date = ?",
+            ["c" * 64, first, provider, first_session],
+        )
+        after = feature.feature_source_inputs_by_listing(
+            starts, through=through, _connection=connection
+        )
+        assert len(hash_calls) == 2 * len(together) + 1
+        assert after[first].raw_hash != before[first].raw_hash
+        assert after[first].raw_hash == _frozen_raw_evidence_hash(
+            connection, first, provider, first_session, through
+        )
+        assert all(after[key].raw_hash == before[key].raw_hash for key in before if key != first)
+
+    source = together[first]
+    in_window = CorporateActionEvent(
+        first, provider, first_session, "CASH_DIVIDEND", cash_amount=0.1
+    )
+    after_window = replace(in_window, effective_date=through + timedelta(days=1))
+    digest = projection.action_set_hash
+    projection_hashes = []
+
+    def count_projection(actions):
+        projection_hashes.append(actions)
+        return digest(actions)
+
+    monkeypatch.setattr(projection, "action_set_hash", count_projection)
+    for actions, scoped in (
+        ((), ()),
+        ((in_window,), (in_window,)),
+        ((in_window, after_window), (in_window,)),
+    ):
+        projection_hashes.clear()
+        rows = projected_feature_rows(replace(source, actions=actions, action_hash=digest(actions)))
+        assert {row["action_set_hash"] for row in rows} == {digest(scoped)}
+        assert projection_hashes == ([] if actions == scoped else [scoped])

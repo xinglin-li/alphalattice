@@ -45,6 +45,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import recorded_origin
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    IDENTITY_SWITCH_PATH,
+    current_module_name,
+    number_deciding_closure,
+    number_deciding_rule,
+    source_syntax_sha256,
+)
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
@@ -96,15 +106,6 @@ from alphalattice.foundation.feature_engine.producers.factors.session_observatio
 )
 from alphalattice.foundation.feature_engine.producers.factors.specifications import (
     admit_factor_development_capabilities,
-)
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import recorded_origin
-from alphalattice.kernel.shared_kernel.source_identity import (
-    IDENTITY_SWITCH_PATH,
-    number_deciding_closure,
-    number_deciding_rule,
-    source_syntax_sha256,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -216,7 +217,9 @@ def test_registry_mechanics_reach_every_family_and_composition_reaches_none() ->
 def test_a_comment_moves_no_identity_and_a_changed_rule_is_a_new_one(tmp_path: Path) -> None:
     """A comment moves no identity and a changed rule is a new one."""
 
-    spec = find_spec(SHARED_FACTOR_ARITHMETIC_OWNERS[1])
+    spec = find_spec(
+        current_module_name(SHARED_FACTOR_ARITHMETIC_OWNERS[1], number_deciding_rule(ROOT))
+    )
     assert spec is not None and spec.origin is not None
     formulas = Path(spec.origin)
     commented = tmp_path / "factor_formulas.py"
@@ -412,6 +415,9 @@ def test_installing_a_second_family_leaves_the_first_bit_identical() -> None:
     # And installation is not invisible: it moves the identity that is about the
     # installed set, and only that one.
     assert a_only.installed_capability_hash != a_plus_b.installed_capability_hash
+    # A worker holds its rebuilt kernels to the payload this identity seals, unhashed.
+    assert canonical_hash(a_only.capability_payload()) == a_only.installed_capability_hash
+    assert a_only.capability_payload() != a_plus_b.capability_payload()
     assert FeatureCatalog.load().binding.catalog_hash == base_catalog_hash
     assert len(a_plus_b.installed_capability_hash) == 64
     # Registration order is not identity: the same kernels compose to one build.
@@ -430,15 +436,30 @@ def test_installed_capability_identity_binds_measured_family_content(
 ) -> None:
     """regression: installed code changes even when its declaration does not."""
 
+    from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+
     installed = default_extension_kernel_registry()
-    before = installed.installed_capability_hash
-    with monkeypatch.context() as patched:  # a harness may run this body twice under one fixture
+    canonical = registry_module.canonical_hash
+    digests = []
+
+    def measure(payload):
+        identity = canonical(payload)
+        digests.append(identity)
+        return identity
+
+    with monkeypatch.context() as patched, stage_digests():
+        patched.setattr(registry_module, "canonical_hash", measure)
+        before = installed.installed_capability_hash
+        assert installed.installed_capability_hash == before
+        assert digests == [before]
         patched.setattr(
             registry_module,
             "method_family_content_hash",
             lambda _family, _owners: "f" * 64,
         )
-        assert installed.installed_capability_hash != before
+        changed = installed.installed_capability_hash
+        assert changed != before
+        assert digests == [before, changed]
 
 
 def test_previous_close_excursion_formulas_are_named_for_the_arithmetic_they_run() -> None:

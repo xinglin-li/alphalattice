@@ -16,8 +16,11 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model_validated
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_model_validated,
+)
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -148,7 +151,7 @@ class AlternativeEvidenceSourcePolicy(AlternativeEvidenceContract):
     """
 
     sec_recent_8k_days: Literal[30, 90] = 30
-    """The filing window, in days before the cutoff. 30 since W1 (2026-09-24):
+    """The filing window, in days before the cutoff. 30 since 2026-09-24:
     what each issuer filed recently, and nothing older is kept as a baseline.
     90, with the latest 10-K and 10-Q as fixed baselines, is the retired
     policy: a request sealed under it still reads back, and is prepared again
@@ -186,7 +189,7 @@ class AlternativeEvidenceSourcePolicy(AlternativeEvidenceContract):
 
     @property
     def retired(self) -> bool:
-        """The 90-day policy with fixed baselines, retired by W1."""
+        """The 90-day policy with fixed baselines, retired."""
         return self.sec_recent_8k_days == 90
 
 
@@ -865,7 +868,7 @@ def _aware(value: datetime, code: str) -> None:
 
 
 def _identity(value: AlternativeEvidenceContract, field: str) -> None:
-    expected = canonical_hash(value.model_dump(mode="json", exclude={field}))
+    expected = scoped_model_digest(value, field, digest=canonical_hash)
     if getattr(value, field) != expected:
         raise ValueError("alternative_evidence.identity_invalid")
 

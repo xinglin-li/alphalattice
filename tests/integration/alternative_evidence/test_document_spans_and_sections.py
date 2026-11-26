@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceClass,
     AlternativeEvidenceReadingDepth,
@@ -27,8 +28,10 @@ from alphalattice.evidence.alternative_evidence.retrieval.session import (
     _unit_declaration,
 )
 from alphalattice.evidence.alternative_evidence.sources.contracts import AcquiredEvidenceDocument
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from tests.alternative_evidence_desk import development_documents as development
 from tests.alternative_evidence_desk.document_intelligence_support import (
+    _built,
+    _counted_runtime,
     _open_recorded,
 )
 from tests.alternative_evidence_desk.planted_corpus import (
@@ -224,7 +227,7 @@ def test_a_bare_amount_carries_the_source_scale_statement_nearest_before_it() ->
 def test_a_one_cell_layout_table_keeps_its_amount_in_the_sentence() -> None:
     """A one cell layout table keeps its amount in the sentence."""
 
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
         extract_canonical_markdown,
     )
@@ -471,7 +474,7 @@ def test_tables_reach_the_canonical_text_as_self_describing_rows() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         TABLE_ROW_LIMIT,
         extract_canonical_markdown,
     )
@@ -645,7 +648,7 @@ def test_a_long_cell_is_never_cut_silently() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         _TABLE_CELL_LIMIT,
         extract_canonical_markdown,
     )
@@ -684,7 +687,7 @@ def test_a_spanning_cell_keeps_its_grid_position() -> None:
     from alphalattice.evidence.alternative_evidence.documents.canonicalization import (
         SecTableCarry,
     )
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     # FRT's dividends table, reduced to its shape: a blank corner cell and the
     # dividend heading span two heading rows; "High" and "Low" sit under
@@ -737,7 +740,7 @@ def test_a_spanning_cell_keeps_its_grid_position() -> None:
 def test_inline_text_beside_a_replaced_table_is_kept() -> None:
     """Inline text beside a replaced table is kept."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     narrative = "".join(
         f"<p>Paragraph {i} of ordinary narrative text that describes the business of the "
@@ -764,7 +767,7 @@ def test_inline_text_beside_a_replaced_table_is_kept() -> None:
 def test_a_div_paragraph_among_p_paragraphs_is_read() -> None:
     """A div paragraph among p paragraphs is read."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     conclusion = (
         "Under the supervision and with the participation of our management, we conducted "
@@ -811,7 +814,7 @@ def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
 
     from alphalattice.evidence.alternative_evidence.analysis.financing import financing_regions
     from alphalattice.evidence.alternative_evidence.documents.structure import DocumentStructure
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         _linked_paragraph_divs,
         extract_canonical_markdown,
     )
@@ -883,7 +886,7 @@ def test_a_linked_paragraph_set_as_a_div_closes_before_the_next_block() -> None:
 def test_inline_xbrl_is_unwrapped_and_its_hidden_header_is_never_prose() -> None:
     """Inline XBRL is unwrapped and its hidden header is never prose."""
 
-    from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
+    from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
 
     def amount(value: str, *, sign: str = "") -> str:
         return (
@@ -948,7 +951,8 @@ def test_a_malformed_character_range_refuses() -> None:
             )
 
 
-def test_document_quality_rejects_empty_and_duplicate_revisions() -> None:
+@pytest.mark.proves("alternative_evidence.recorded_documents_are_admitted_in_every_language")
+def test_document_quality_admits_every_language_and_rejects_empty_and_duplicate_revisions() -> None:
     def source(handle: str, content: bytes, *, revision: str) -> AcquiredEvidenceDocument:
         return AcquiredEvidenceDocument(
             semantic_handle=handle,
@@ -989,6 +993,18 @@ def test_document_quality_rejects_empty_and_duplicate_revisions() -> None:
         DocumentRejectionCode.EMPTY,
         DocumentRejectionCode.INVALID_ENCODING,
     )
+
+    # The development set: both languages admitted alike, a revision beside its original, and a
+    # retired document admitted only while its source still offers it.
+    for at, count in ((development.RETIRED_AT - timedelta(days=1), 21), (development.NOW, 20)):
+        admitted, rejected = canonicalize_source_documents(development.acquired(at))
+        labels = {value.revision for value in admitted}
+        assert not rejected and len(admitted) == count, rejected
+        assert {"aapl-en-03", development.REVISED.revision} <= labels
+        assert sum("-zh-" in label for label in labels) == (
+            10 if at < development.RETIRED_AT else 9
+        )
+        assert (development.RETIRED.revision in labels) == (at < development.RETIRED_AT)
 
 
 def _sec_source(handle: str, revision: str, content: bytes, *, document_type: str) -> Any:
@@ -1120,7 +1136,7 @@ def test_sec_material_sections_fail_closed_when_item_boundaries_are_ambiguous(
 def test_a_heading_longer_than_a_heading_can_be_is_carried_as_a_paragraph() -> None:
     """Text exceeding the heading-length bound is carried as a paragraph."""
 
-    from alphalattice.kernel.live_evidence.online_sources import (
+    from alphalattice.evidence.live_evidence.online_sources import (
         CANONICAL_EXTRACTION_RULES_ID,
         extract_canonical_markdown,
     )
@@ -1289,3 +1305,43 @@ def test_a_headingless_filing_s_cover_ends_before_its_body() -> None:
     )
     labelled = DocumentStructure(with_item, document_type="8-K")
     assert labelled.cover_end < with_item.index("Item 5.07")
+
+
+# What the old core's line chunks delivered for the development set (develop 3cd714b33): each
+# issuer's residual evidence in these six topics. The store chunks a short filing whole, so each
+# question's hit is cut to its matched lines, one candidate a line.
+_TOPICS_REACHED = (
+    "CAPITAL_DILUTION",
+    "COMMERCIAL_COUNTERPARTY",
+    "LEGAL_REGULATORY",
+    "LIQUIDITY_GOING_CONCERN",
+    "OPERATIONS_SUPPLY",
+    "PRODUCT_SAFETY_CYBER",
+)
+
+
+@pytest.mark.proves("alternative_evidence.store_hits_delivered_by_matched_line")
+def test_the_development_set_reaches_each_topic_with_sentence_sized_spans(tmp_path: Path) -> None:
+    """Over the development evidence set every issuer-topic cell the line chunks reached holds
+    evidence, and every delivered span is a sentence -- the matched one, or a no-match chunk's
+    leading one -- not the filing that holds it."""
+
+    runtime, _passes = _counted_runtime(tmp_path)
+    try:
+        request, document_set, generation = _built(
+            runtime, entities=development.ENTITIES, documents=development.DOCUMENTS
+        )
+        receipt, spans = runtime.select_evidence(
+            request=request, document_set=document_set, generation=generation
+        )
+    finally:
+        runtime.close()
+
+    cells = receipt.model_dump(mode="json")["routing"]["cells"]
+    reached = {(cell["entity_id"], cell["topic"]) for cell in cells if cell["residual_hits"]}
+    expected = {(entity, topic) for entity in development.ENTITIES for topic in _TOPICS_REACHED}
+    assert expected <= reached, sorted(expected - reached)
+    # A chunk with no matched line delivers its leading sentence, so every span is one.
+    long = [span.excerpt for span in spans if "\n" in span.excerpt.strip()]
+    assert spans and not long, long
+    assert max(len(span.excerpt) for span in spans) <= 200, "a sentence, not a filing"

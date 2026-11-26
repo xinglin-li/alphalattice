@@ -8,14 +8,20 @@ application back.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceModelTrainingInput,
+)
+from alphalattice.control.product_host.composition.task_kinds import (
+    RESEARCH_EXPERIMENT_TASK_KIND,
 )
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
@@ -35,18 +41,33 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
     PortfolioExperimentSource,
 )
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model
 from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
+    ResearchExecutionEvidence,
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
     SealedResearchProgram,
 )
 
-TASK_KIND = "research_experiment"
+TASK_KIND = RESEARCH_EXPERIMENT_TASK_KIND
 STAGES = ("execute_sealed_experiment", "verify_experiment_evidence")
+
+
+def review_requests(selector: Mapping[str, str]) -> dict[str, dict[str, str]]:
+    """The requests that take a book to its Evidence and CRO review, bound to the book.
+
+    Every answer that names a book for its review offers them -- a study book's readback, an
+    update's positions, a recorded choice of analysis -- so the agent continues the book it
+    read, never the workspace's default.
+    """
+    return {
+        "review": {"operation": "EVIDENCE_CRO", **selector},
+        # The book's Evidence begins at its preview.
+        "evidence_preview": {"operation": "EVIDENCE_PREVIEW", **selector},
+        # Read the current Evidence state before it offers CRO work: a generic
+        # book read cannot know whether its bounded continuation is settled.
+    }
 
 
 class AlphaExperimentSource(BaseModel):  # type: ignore[misc]
@@ -156,14 +177,15 @@ class ExperimentPlan(BaseModel):  # type: ignore[misc]
 
 
 def _task_contract(
-    plan: ExperimentPlan, actor: ActorSubmissionBinding
+    plan: ExperimentPlan, actor: ActorSubmissionBinding, hypothesis_id: str | None = None
 ) -> tuple[TaskInputEnvelope, ResearchGoal, ResearchPlan]:
     if actor.submission_hash != plan.program.program_hash:
         raise AuthoringError("research_experiment.actor_program_mismatch")
     envelope = TaskInputEnvelope.create(
         task_kind=TASK_KIND,
         input_schema_id="research-experiment-task-input",
-        payload={"plan": plan.model_dump(mode="json"), "actor": actor.model_dump(mode="json")},
+        payload={"plan": plan.model_dump(mode="json"), "actor": actor.model_dump(mode="json")}
+        | ({"hypothesis_id": hypothesis_id} if hypothesis_id is not None else {}),
     )
     # Each summary is bytes of every stored Task's goal, which `checked_task_plan` rebuilds and
     # compares by equality: rewriting a summary refused every stored Task of its kind and
@@ -203,7 +225,10 @@ def checked_task_plan(
         raise AuthoringError("research_experiment.task_kind_mismatch")
     plan = ExperimentPlan.model_validate(task.input.payload.get("plan"))
     actor = ActorSubmissionBinding.model_validate(task.input.payload.get("actor"))
-    envelope, goal, workflow = _task_contract(plan, actor)
+    hypothesis_id = task.input.payload.get("hypothesis_id")
+    if hypothesis_id is not None and not isinstance(hypothesis_id, str):
+        raise AuthoringError("research_experiment.hypothesis_invalid")
+    envelope, goal, workflow = _task_contract(plan, actor, hypothesis_id)
     if (
         task.input != envelope
         or task.goal != goal
@@ -215,3 +240,18 @@ def checked_task_plan(
 
 
 __all__ = ["STAGES", "TASK_KIND", "AlphaExperimentSource", "ExperimentPlan", "checked_task_plan"]
+
+
+def _check_evidence_window(plan: ExperimentPlan, evidence: ResearchExecutionEvidence) -> None:
+    """Refuse evidence whose sessions are not the window the plan previewed."""
+    if (
+        str(evidence.formation_sessions[0]) != plan.execution_preview["statistical_start"]
+        or str(evidence.formation_sessions[-1]) != plan.execution_preview["statistical_end"]
+        or len(evidence.formation_sessions) != plan.execution_preview["statistical_session_count"]
+        or (
+            plan.program.kind == FACTOR_EXPERIMENT_KIND
+            and plan.execution_preview["latest_outcome_session"]
+            > plan.document["experiment"]["sessions"]["as_of"]["session"]
+        )
+    ):
+        raise AuthoringError("research_experiment.evidence_window_mismatch")

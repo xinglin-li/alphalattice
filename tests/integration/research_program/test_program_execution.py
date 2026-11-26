@@ -238,8 +238,8 @@ def test_risk_recovery_reuses_verified_chunks_and_refuses_a_tampered_prefix(
     from alphalattice.investment.risk_research.experiments.observation import ObservingAdapter
 
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))
-    document["experiment"]["sessions"]["end"] = "2024-03-15"
-    document["experiment"]["sessions"]["as_of"]["session"] = "2024-03-20"
+    document["experiment"]["sessions"]["end"] = "2026-03-13"
+    document["experiment"]["sessions"]["as_of"]["session"] = "2026-03-18"
     workflow = _workflow(real_risk_workspace, tmp_path)
     arguments = {"actor_kind": ActorKind.HUMAN, "actor_id": "researcher"}
     calls = []
@@ -535,13 +535,13 @@ def test_a_run_is_held_offline_and_a_plan_over_budget_is_refused_at_plan(
 ) -> None:
     """A run is held offline and a plan over budget is refused at plan."""
 
+    from alphalattice.capabilities.domain_contracts.environment import offline
     from alphalattice.control.workspace_runtime.network_access import (
         CONTROL_PATH,
         NetworkAccess,
         network_access,
         set_network_access,
     )
-    from alphalattice.kernel.shared_kernel.environment import offline
 
     workspace = real_risk_workspace.workspace
     document = load_authoring_document(_FIXTURE.read_text(encoding="utf-8"))

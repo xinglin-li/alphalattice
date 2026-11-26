@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Mapping
 from datetime import date
-from pathlib import Path
 from typing import cast
 
 import pyarrow as pa
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
+from alphalattice.capabilities.quant.sector_history import SectorHistory, SectorReclassification
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
     arrow_table_logical_hash,
@@ -35,21 +36,15 @@ from alphalattice.foundation.feature_engine.panels.feature_closure_contracts imp
     PreparedFeatureBaseClosureTransition,
     SectorRevisionMapActivationReceipt,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory, SectorReclassification
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.persistence import (
-    DURABLE_REPLACE_DELAYS,
-    replace_with_retry,
-)
+from alphalattice.foundation.feature_engine.panels.sector_classification import classified
 
 
 class FeatureClosureLedger:
     """Own immutable ledger artifacts plus one CAS pointer per catalog."""
 
     def __init__(self, artifact_store: PanelClosureArtifactStore) -> None:
-        """Bind immutable closure storage and operational pointer paths."""
+        """Bind immutable closure storage and its operational pointers."""
         self._store = artifact_store
-        self._operational_root = artifact_store.root / "feature-ledger" / "operational"
 
     def admit_catalog_root(
         self,
@@ -140,10 +135,9 @@ class FeatureClosureLedger:
 
     def current_head(self, catalog_hash: str) -> FeatureBaseClosureHead | None:
         """Load the catalog's current closure head if one is published."""
-        pointer = self._pointer_path("heads", catalog_hash)
-        if not pointer.exists():
+        payload = self._pointer("heads", catalog_hash)
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         head_hash = str(payload["head_hash"])
         return self._store.load_model(
             category="feature-ledger/heads",
@@ -160,8 +154,7 @@ class FeatureClosureLedger:
 
     def is_genesis_root(self, root_hash: str) -> bool:
         """Discriminate by content-addressed category, never by lenient parsing."""
-        path = Path(self._store.root) / "feature-ledger" / "genesis-roots" / f"{root_hash}.json"
-        return bool(path.exists())
+        return self._store.holds("feature-ledger/genesis-roots", root_hash)
 
     def publish_genesis_root(self, root: FeatureBaseClosureGenesisRoot) -> None:
         """Write the immutable genesis root before any pointer can reach it."""
@@ -226,10 +219,9 @@ class FeatureClosureLedger:
 
     def pending_transition(self, catalog_hash: str) -> PreparedFeatureBaseClosureTransition | None:
         """Load the catalog's prepared transition if one is pending."""
-        pointer = self._pointer_path("pending", catalog_hash)
-        if not pointer.exists():
+        payload = self._pointer("pending", catalog_hash)
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         return self._store.load_model(
             category="feature-ledger/transitions/prepared",
             content_hash=str(payload["transition_hash"]),
@@ -241,7 +233,7 @@ class FeatureClosureLedger:
         head = self.require_head(transition.catalog_hash)
         if head.last_transition_hash != transition.transition_hash:
             return False
-        self._pointer_path("pending", transition.catalog_hash).unlink(missing_ok=True)
+        self._store.files.remove(self._pointer_name("pending", transition.catalog_hash))
         return True
 
     def prepare_first_load(self, first_load: FeatureClosureFirstLoad) -> None:
@@ -256,16 +248,15 @@ class FeatureClosureLedger:
             raise ValueError("feature_closure.pending_transition_conflict")
         self.publish_model("feature-ledger/first-loads", first_load.first_load_hash, first_load)
         self._write_pointer(
-            self._pointer_path("first-loads", first_load.catalog_hash),
+            self._pointer_name("first-loads", first_load.catalog_hash),
             {"first_load_hash": first_load.first_load_hash},
         )
 
     def pending_first_load(self, catalog_hash: str) -> FeatureClosureFirstLoad | None:
         """Load the part's first load if one is pending."""
-        pointer = self._pointer_path("first-loads", catalog_hash)
-        if not pointer.exists():
+        payload = self._pointer("first-loads", catalog_hash)
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         return self._store.load_model(
             category="feature-ledger/first-loads",
             content_hash=str(payload["first_load_hash"]),
@@ -295,7 +286,7 @@ class FeatureClosureLedger:
         self._cas_head(
             catalog_hash=current.catalog_hash, expected=current.head_hash, next_head=next_head
         )
-        self._pointer_path("first-loads", current.catalog_hash).unlink(missing_ok=True)
+        self._store.files.remove(self._pointer_name("first-loads", current.catalog_hash))
         return next_head
 
     def clear_first_load(self, first_load: FeatureClosureFirstLoad) -> None:
@@ -305,7 +296,7 @@ class FeatureClosureLedger:
             head.last_transition_hash != first_load.first_load_hash
         ):
             raise ValueError("feature_closure.recovery_required")
-        self._pointer_path("first-loads", first_load.catalog_hash).unlink(missing_ok=True)
+        self._store.files.remove(self._pointer_name("first-loads", first_load.catalog_hash))
 
     def load_transition(self, transition_hash: str) -> PreparedFeatureBaseClosureTransition:
         """Load a prepared transition by its content hash."""
@@ -373,7 +364,7 @@ class FeatureClosureLedger:
             "feature-ledger/transitions/prepared", transition.transition_hash, transition
         )
         self._write_pointer(
-            self._pointer_path("pending", transition.catalog_hash),
+            self._pointer_name("pending", transition.catalog_hash),
             {"transition_hash": transition.transition_hash},
         )
 
@@ -419,23 +410,22 @@ class FeatureClosureLedger:
             expected=current.head_hash,
             next_head=next_head,
         )
-        self._pointer_path("pending", current.catalog_hash).unlink(missing_ok=True)
+        self._store.files.remove(self._pointer_name("pending", current.catalog_hash))
         return next_head, marker
 
     def publish_panel_binding(self, binding: PanelRecoveryClosureBinding) -> None:
         """Publish a recovery binding and index it by snapshot."""
         self.publish_model("panel-recovery-bindings", binding.binding_hash, binding)
         self._write_pointer(
-            self._pointer_path("panel-bindings", binding.snapshot_hash),
+            self._pointer_name("panel-bindings", binding.snapshot_hash),
             {"binding_hash": binding.binding_hash},
         )
 
     def panel_binding(self, snapshot_hash: str) -> PanelRecoveryClosureBinding | None:
         """Load the recovery closure binding indexed by snapshot."""
-        pointer = self._pointer_path("panel-bindings", snapshot_hash)
-        if not pointer.exists():
+        payload = self._pointer("panel-bindings", snapshot_hash)
+        if payload is None:
             return None
-        payload = self._read_pointer(pointer)
         return self._store.load_model(
             category="panel-recovery-bindings",
             content_hash=str(payload["binding_hash"]),
@@ -469,7 +459,7 @@ class FeatureClosureLedger:
             },
         )
         self._write_pointer(
-            self._pointer_path("sector-maps", receipt.sector_revision),
+            self._pointer_name("sector-maps", receipt.sector_revision),
             {"sector_map_hash": receipt.sector_map_hash},
         )
 
@@ -477,9 +467,9 @@ class FeatureClosureLedger:
         self, *, head: FeatureBaseClosureHead, sector_revision: str
     ) -> SectorRevisionMap:
         """Resolve the captured sector map from the head or its root recipe."""
-        pointer = self._pointer_path("sector-maps", sector_revision)
-        if pointer.exists():
-            map_hash = str(self._read_pointer(pointer)["sector_map_hash"])
+        payload = self._pointer("sector-maps", sector_revision)
+        if payload is not None:
+            map_hash = str(payload["sector_map_hash"])
         else:
             root = self.closure_root_for_head(head)
             if isinstance(root, FeatureBaseClosureGenesisRoot):
@@ -523,51 +513,51 @@ class FeatureClosureLedger:
         expected: str | None,
         next_head: FeatureBaseClosureHead,
     ) -> None:
-        pointer = self._pointer_path("heads", catalog_hash)
-        current = self._read_pointer(pointer).get("head_hash") if pointer.exists() else None
+        pointer = self._pointer_name("heads", catalog_hash)
+        payload = self._pointer("heads", catalog_hash)
+        current = None if payload is None else payload.get("head_hash")
         if current != expected:
             if current == next_head.head_hash:
                 return
             raise ValueError("feature_closure.head_compare_and_swap_failed")
         self._write_pointer(pointer, {"head_hash": next_head.head_hash})
 
-    def _pointer_path(self, group: str, identity: str) -> Path:
+    @staticmethod
+    def _pointer_name(group: str, identity: str) -> str:
         if len(identity) != 64 or any(
             character not in "0123456789abcdef" for character in identity
         ):
             raise ValueError("Feature closure pointer identity is invalid")
-        return self._operational_root / group / f"{identity}.json"
+        return f"feature-ledger/operational/{group}/{identity}.json"
 
-    @staticmethod
-    def _read_pointer(path: Path) -> dict[str, object]:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("Feature closure pointer is invalid")
-        return payload
+    def _pointer(self, group: str, identity: str) -> dict[str, object] | None:
+        """The pointer's payload, or None when the ledger holds none."""
+        data = self._store.files.read(self._pointer_name(group, identity))
+        return None if data is None else _pointer_payload(data)
 
-    @classmethod
-    def _write_pointer(cls, path: Path, payload: Mapping[str, object]) -> None:
+    def _write_pointer(self, name: str, payload: Mapping[str, object]) -> None:
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         # A pointer republished with the bytes it already holds is left as it
         # is. The daily update rebinds the same sector evidence on every
         # one-listing cycle, and each needless replace is one more instant in
         # which a momentary Windows sharing violation can stop the Task.
-        if path.exists() and path.read_bytes() == serialized:
+        files = self._store.files
+        if files.read(name) == serialized:
             return
-        # A changed pointer is staged and replaced atomically; a momentary
-        # sharing violation is outlived within a bound, a persistent one is
-        # raised as a typed conflict with the previous pointer still in place.
-        # Remove this attempt's staged file even when replacement is refused.
-        path.parent.mkdir(parents=True, exist_ok=True)
-        staged = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        staged.write_bytes(serialized)
-        try:
-            replace_with_retry(staged, path, delays=DURABLE_REPLACE_DELAYS)
-        finally:
-            staged.unlink(missing_ok=True)
-        # Published only once the existing reader accepts what is on disk.
-        if cls._read_pointer(path) != dict(payload):
+        # A changed pointer replaces the old one whole (in a folder, staged and replaced within
+        # a bound, a persistent sharing violation raised with the previous pointer in place).
+        files.write(name, serialized)
+        # Published only once the existing reader accepts what it holds.
+        held = files.read(name)
+        if held is None or _pointer_payload(held) != dict(payload):
             raise ValueError("Feature closure pointer readback failed")
+
+
+def _pointer_payload(data: bytes) -> dict[str, object]:
+    payload = json.loads(data.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Feature closure pointer is invalid")
+    return payload
 
 
 def identified[Model: BaseModel](
@@ -582,7 +572,8 @@ def _identified[Model: BaseModel](
 ) -> Model:
     provisional = model.model_construct(**values, **{identity_field: "0" * 64})
     identity = durable_payload(provisional, exclude={identity_field})
-    return cast(Model, model.model_validate({**values, identity_field: canonical_hash(identity)}))
+    digest = seal_payload_digest(identity_field, identity, digest=canonical_hash)
+    return cast(Model, model.model_validate({**values, identity_field: digest}))
 
 
 def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str) -> SectorHistory:
@@ -618,7 +609,7 @@ def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str)
         ),
         key=lambda value: (value.observed_at, value.receipt_hash),
     )
-    current = {entry.listing_id: entry.sector_name for entry in target[0].entries}
+    current = {entry.listing_id: entry.sector_name for entry in classified(target[0])}
     if not any(value.sector_revision == sector_revision for value in receipts):
         if any(value.effective_session is not None for value in receipts):
             raise ValueError("feature_closure.sector_map_capture_failed")
@@ -629,7 +620,7 @@ def sector_history_as_of(store: PanelClosureArtifactStore, sector_revision: str)
         activated = by_hash.get(receipt.sector_map_hash)
         if activated is None:
             raise ValueError("feature_closure.sector_map_capture_failed")
-        entries = {entry.listing_id: entry.sector_name for entry in activated.entries}
+        entries = {entry.listing_id: entry.sector_name for entry in classified(activated)}
         if receipt.effective_session is not None:
             found.extend(
                 SectorReclassification(

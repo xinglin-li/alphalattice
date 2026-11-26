@@ -16,7 +16,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.reader_threads import connect_duckdb
+from alphalattice.control.workspace_runtime.database import open_workspace_database
 from alphalattice.foundation.feature_engine.contracts import (
     PANEL_ROW_IDENTITY_BY_BINDING,
     PANEL_ROW_IDENTITY_BY_CROSS_SECTION,
@@ -28,6 +28,8 @@ from alphalattice.foundation.feature_engine.panels.identity import (
     PANEL_IDENTITY_COLUMNS,
     panel_chunk_order,
 )
+from alphalattice.foundation.market_data_ops.storage import world, world_reads
+from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 
 
 @dataclass(frozen=True)
@@ -211,7 +213,7 @@ class PanelClosureSourceRepository:
         include members that have since left the manifest.
         """
         marks = ", ".join("?" for _ in listing_ids)
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             rows = connection.execute(
                 f"""
@@ -236,7 +238,7 @@ class PanelClosureSourceRepository:
         display-symbol order.  Reconstructing from Parquet would therefore
         preserve membership but lose the floating-point operation order.
         """
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             rows = connection.execute(
                 """
@@ -270,7 +272,7 @@ class PanelClosureSourceRepository:
             raise ValueError("base closure source scope cannot be empty")
         if required_keys.column_names != ["session_date", "listing_id"]:
             raise ValueError("base closure source keys have an invalid schema")
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             connection.register("panel_required_keys", required_keys)
             table = connection.execute(
@@ -301,20 +303,28 @@ class PanelClosureSourceRepository:
                 missing = table.filter(pa.array([not item for item in present])).select(
                     ["session_date", "listing_id"]
                 )
-                connection.register("panel_missing_base_keys", missing)
-                if connection.execute(
-                    """SELECT count(*) FROM panel_missing_base_keys k
-                    JOIN raw_daily_bar_current r USING (session_date, listing_id)"""
-                ).fetchone()[0]:
+                market = MarketDataRepository(self._database_path.parent)
+                with market.market_reads(listings=missing.column("listing_id").to_pylist()) as (
+                    reading,
+                    tables,
+                ):
+                    reading.register("panel_missing_base_keys", missing)
+                    observed = reading.execute(
+                        f"""SELECT count(*) FROM panel_missing_base_keys k
+                        JOIN {tables["bars"]} r USING (session_date, listing_id)"""
+                    ).fetchone()[0]
+                if observed:
                     raise ValueError("feature_panel.base_row_not_materialized")
         finally:
             connection.close()
         return table
 
-    def read_sector_rows(self, *, listing_ids: tuple[str, ...]) -> tuple[dict[str, object], ...]:
+    def read_sector_rows(
+        self, *, listing_ids: tuple[str, ...], cutoff_us: int | None = None
+    ) -> tuple[dict[str, object], ...]:
         """Read sector revision rows for the selected listings."""
         marks = ", ".join("?" for _ in listing_ids)
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             result = connection.execute(
                 f"""
@@ -332,11 +342,23 @@ class PanelClosureSourceRepository:
             connection.close()
         if len(rows) != len(listing_ids):
             raise ValueError("sector revision map source is incomplete")
+        with world_reads.reading(self._database_path) as cursor:
+            if cursor is not None:
+                names = world.sector_map(
+                    listing_ids,
+                    session=date.max,
+                    cutoff_us=world_reads.LATEST if cutoff_us is None else cutoff_us,
+                    cursor=cursor,
+                )
+                if names == {str(row["listing_id"]): str(row["sector_name"]) for row in rows}:
+                    rows = tuple(
+                        row | {"sector_name": names[str(row["listing_id"])]} for row in rows
+                    )
         return rows
 
     def sector_revision_ledger_counts(self) -> tuple[int, int]:
         """Count sector revision and membership rows in the source ledger."""
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             row = connection.execute(
                 """
@@ -352,7 +374,7 @@ class PanelClosureSourceRepository:
     def read_availability(self, *, snapshot: PanelSnapshotSource) -> pa.Table:
         """The snapshot's availability rows, under the key its rows were computed with."""
         lineage = snapshot.lineage
-        connection = connect_duckdb(self._database_path, read_only=True)
+        connection = open_workspace_database(self._database_path, read_only=True)
         try:
             if snapshot.row_identity_basis == PANEL_ROW_IDENTITY_BY_CROSS_SECTION:
                 ranges = snapshot.cross_sections

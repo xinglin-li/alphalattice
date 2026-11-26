@@ -16,6 +16,8 @@ than a helper buried in the registry that also owns installation.
 
 from __future__ import annotations
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import NUMERICAL_SPEC_FIELDS, FactorSpec
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     DesktopCoreFeatureBundle,
     desktop_core_feature_bundle,
@@ -23,8 +25,6 @@ from alphalattice.foundation.feature_engine.catalog.contracts import (
 from alphalattice.foundation.feature_engine.producers.arithmetic_identity import (
     control_arithmetic_content_hash,
 )
-from alphalattice.kernel.quant.factor_contracts import NUMERICAL_SPEC_FIELDS, FactorSpec
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 
 def numerical_spec_hash(specification: FactorSpec) -> str:

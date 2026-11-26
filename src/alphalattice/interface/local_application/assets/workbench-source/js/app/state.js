@@ -12,7 +12,7 @@ const ON_CHANGE = {};
 const THEMES = ['follow', 'light', 'dark'];
 const THEME_ALIASES = {silver: 'light', titanium: 'light', emerald: 'light', ruby: 'light', obsidian: 'dark'};
 
-/* page id → [primary section label, page title, primary navigation group] */
+/* Page id → [primary section label, page title, primary navigation group] */
 const ROUTES = {
   overview: ['Home', 'Home', 'overview'],
   data: ['Data & Workspace', 'Data maintenance', 'data'],
@@ -38,9 +38,9 @@ const ROUTES = {
   books: ['Evidence & CRO', 'Books', 'evidence'],
   evidence: ['Evidence & CRO', 'Overview', 'evidence'],
   'evidence-stream': ['Evidence & CRO', 'Sources', 'evidence'],
-  'evidence-reading': ['Evidence & CRO', 'Reading', 'evidence'], // round E3: the reading workbench
+  'evidence-reading': ['Evidence & CRO', 'Reading', 'evidence'], // the reading workbench
   report: ['Evidence & CRO', 'Report & delivery', 'evidence'],
-  handoff: ['Evidence & CRO', 'Review', 'evidence'], // round E4: the page's one word
+  handoff: ['Evidence & CRO', 'Review', 'evidence'], // the page's one word
   history: ['History', 'History', 'history'],
   team: ['Team', 'Conversation', 'team'],
   'team-committee': ['Team', 'Committee', 'team'],

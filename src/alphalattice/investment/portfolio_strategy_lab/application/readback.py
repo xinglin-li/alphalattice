@@ -35,6 +35,8 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_model_from_dump
 from alphalattice.capabilities.portfolio_backtesting.active_metrics import (
     ActiveMetricsError,
     active_path_metrics,
@@ -48,6 +50,7 @@ from alphalattice.capabilities.portfolio_backtesting.execution import (
     drift_holdings,
     execute_orders,
 )
+from alphalattice.control.workspace_runtime.content_store import at_the_edge
 from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
     PortfolioLedgerCoverage,
 )
@@ -77,8 +80,6 @@ from alphalattice.investment.portfolio_strategy_lab.publication.portfolio_ledger
     PortfolioLedgerStore,
     PortfolioLedgerStoreError,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model_from_dump
 
 ReadbackDisposition = Literal[
     "VERIFIED",
@@ -573,6 +574,7 @@ def _upstream_layer(
     return _layer(layer_id, "VERIFIED", proved_detail, identity)
 
 
+@at_the_edge  # readback reports VERIFIED, so it proves (LAWS.md EV2)
 def exact_readback(
     store: PortfolioLedgerStore,
     *,
@@ -600,9 +602,10 @@ def exact_readback(
     try:
         result = store.load_result(result_hash)
         program = store.load_program(result.program_hash)
-        ledger = store.load_execution(result.execution_ledger_hash)
+        ledger, report = store.load_execution_and_report(
+            result.execution_ledger_hash, result.report_hash
+        )
         economics = store.load_economics(result.economic_ledger_hash)
-        report = store.load_report(result.report_hash)
     except (PortfolioLedgerStoreError, PortfolioApplicationError, ValueError) as error:
         raise ReadbackError("portfolio_readback.result_not_reopenable:" + str(error)) from error
 

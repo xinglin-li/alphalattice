@@ -10,7 +10,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),asse
 const library=require('./workbench_library.cjs'); // the library's constants and the scripts' parameters, from the source (Q2)
 const finish=library.guard('workbench_follow_readers');
 const root=process.argv[2];
-const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes (round 72)');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
+const runShapes=(root)=>{const src=require('node:fs').readFileSync(require('node:path').join(root,'components.js'),'utf8');const a=src.indexOf('/* ---- run shapes:');const b=src.indexOf('/* ---- end of run shapes ---- */');return src.slice(a,b)+';globalThis.stepList=stepList;globalThis.runLog=runLog;globalThis.logLine=logLine;globalThis.observationLine=observationLine;globalThis.logMove=logMove;globalThis.logHeld=logHeld;globalThis.logRetain=logRetain;';};
 const toasts=[],dialogs=[],renders=[],requests=[],entries=[],urls=[],posts=[],dialogActions=[],dialogBodies=[];
 const gates={};const gate=(key)=>{let release;const promise=new Promise(r=>{release=r;});gates[key]={promise,release,entered:false};return gates[key];};
 const entered=async(held,label)=>{for(let i=0;i<50 && !held.entered;i++)await settled();assert.ok(held.entered,'the held request was entered: '+label);};
@@ -44,7 +44,7 @@ const responses={
   '/api/status':(q)=>TASKS[q.get('task_id')],
   '/api/tasks/recovery':(q)=>recoveryViews[q.get('task_id')],
   '/api/results':(q)=>{const task=q.get('task_id'),hit=results.find(r=>r.task_id===task || (r.reused_by || []).includes(task));return {results:hit?[{...hit,task_id:task}]:[]};}, // exact selected Task metadata, including a reused result
-  '/api/report':(q)=>{const hit=results.find(r=>r.result_hash===q.get('result_hash'));if(!hit)return {status:'REFUSED',failure_code:'local_web.result_unknown'};return {result_hash:hit.result_hash,report_hash:H('r'),originating_task_id:hit.task_id,used_by_task_ids:[hit.task_id,...(hit.reused_by || [])]};}, // U10: every Task that used the result, the first first
+  '/api/report':(q)=>{const hit=results.find(r=>r.result_hash===q.get('result_hash'));if(!hit)return {status:'REFUSED',failure_code:'local_web.result_unknown'};return {result_hash:hit.result_hash,report_hash:H('r'),originating_task_id:hit.task_id,used_by_task_ids:[hit.task_id,...(hit.reused_by || [])]};}, // every Task that used the result, the first first
 };
 async function fetchMock(url,init={}) {
   const [route,query]=url.split('?');requests.push(route);urls.push(url);if(init.method==='POST')posts.push([route,JSON.parse(init.body)]);
@@ -222,7 +222,7 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
   await T.refresh();painted=body.innerHTML;
   assert.ok(painted.includes('Heartbeat at 2026-09-15T10:00:57.000Z (runner heartbeat #5)'),'the newer runner signal is the source');
   assert.equal(body.writes(),bodyWrites+4,'each changed liveness line repainted the Task body once');
-  // V507: a deferred Task's stop box says why in its owner's words, from its status, and when it waits until; once
+  // a deferred Task's stop box says why in its owner's words, from its status, and when it waits until; once
   //    the time has passed (the view's own read) the state's way stands
   recoveryViews['task-b']={...recoveryView('task-b',liveness('NOT_RECENT','DURABLE_ONLY',60,null)),lifecycle:'DEFERRED',operation_running:false,stop:{code:'data.rate_limited',detail:'Deferred.'}};
   const statusOf=responses['/api/status'],owner='The market data provider limited the requests or did not answer.';
@@ -232,7 +232,7 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
   responses['/api/status']=(q)=>({task_id:q.get('task_id'),lifecycle:'DEFERRED',detail:owner,retry_after_at:'2026-09-15T10:00:00Z'});
   await T.refresh();painted=body.innerHTML;
   assert.ok(painted.includes('DEFER('+owner+')')&&!painted.includes('Waiting until'),'the time has passed: no wait is said');
-  // V629: the inspector reads the same owner sentence as Home, and the offered re-PLAN's effect.
+  // the inspector reads the same owner sentence as Home, and the offered re-PLAN's effect.
   const rebuiltDetail="The ledger rebuild could not recover this Task's execution or verified progress.",rebuiltNext="Re-PLAN keeps the request for a new plan or Task; its owner chooses reusable sealed evidence and work to redo.";
   const rebuilt=recoveryView('task-b',liveness('NOT_RECENT','DURABLE_ONLY',60,null));
   recoveryViews['task-b']={...rebuilt,lifecycle:'BLOCKED',operation_running:false,stop:{code:'task_control.ledger_rebuilt',detail:rebuiltDetail},actions:rebuilt.actions.map(a=>a.action==='REPLAN' ? {...a,expected_effect:rebuiltNext} : a)};
@@ -250,9 +250,9 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
   assert.ok(completedRows.includes('Verified stages · 2 / 2'));
   assert.ok(!completedRows.includes('role="progressbar"'));
   D.setTasks([{...TASKS['task-b'],lifecycle:'RUNNING',verified_stage_count:1,total_stage_count:2}]);
-  // round 72: a moving row says its verified count in words; no bar under a row
+  // a moving row says its verified count in words; no bar under a row
   assert.ok(T.page().includes('Verified stages · 1 / 2') && !T.page().includes('role="progressbar"'));
-  // U22, U38: on the Task Center an unfinished Task's progress is the guardian's one read (not the list's
+  // on the Task Center an unfinished Task's progress is the guardian's one read (not the list's
   // projection), a health other than HEALTHY is marked; the incidents are listed open first, each with its
   // attempts, and a Task with an open incident says so on its row.
   c.tile=(ic,tone)=>'<'+ic+':'+tone+'>';c.app.page='tasks';
@@ -282,7 +282,7 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
   assert.equal(toasts.length,sayings+1,'no second saying, nothing for a Task first seen or one that only moves');
   D.mergeTasks([{...TASKS['task-a'],lifecycle:'FAILED'}]);D.mergeTasks([{...TASKS['task-a'],lifecycle:'FAILED'}]);
   assert.equal(toasts.length,sayings+2);assert.equal(toasts.at(-1),'Task failed');
-  // V615 (U91): a Task's re-PLAN as its owner binds it (`next_requests.replan`) is previewed through the session's route
+  // a Task's re-PLAN as its owner binds it (`next_requests.replan`) is previewed through the session's route
   // for its operation, the declaration sent whole; the preview admits nothing, and the admission it offers is a separate
   // press -- its reads are no admission
   responses['/api/session']=()=>({session_token:'tok',workspace_id:'qa',research_context:{},routes:{RESEARCH_STRATEGY_PLAN:{method:'POST',path:'/api/research-strategy/plan'},RESEARCH_STRATEGY_PREPARE:{method:'POST',path:'/api/research-strategy/prepare'},EXPERIMENTS:{method:'GET',path:'/api/experiments'},DATA_UPDATE_PLAN:{method:'POST',path:'/api/data-update/plan'},DATA_CHANGE_CONFIRM:{method:'POST',path:'/api/data-update/confirm'},DATA_UPDATE_RUN:{method:'POST',path:'/api/data-update/run'},EXPERIMENT_VERIFY_ALL:{method:'POST',path:'/api/experiments/verify-all'}}});
@@ -305,7 +305,7 @@ const projection=(task,lifecycle)=>({[task]:{...TASKS[task],lifecycle}});
   assert.equal(toasts.at(-1),'Work admitted');
   await T.replanCommit('prepare');assert.equal(posts.length,sent+2,'a second press sends nothing');
   assert.equal(T.selected(),'task-a','the admitted Task opens');
-  // V627 (U96): a data change's re-PLAN -- the person's consent the first press, the run its answer then offers the
+  // a data change's re-PLAN -- the person's consent the first press, the run its answer then offers the
   // second, each request sent whole, its operation choosing the route; nothing runs until the run is pressed
   responses['/api/data-update/plan']=()=>({status:'PLANNED',update_plan_hash:H('u'),next_requests:{confirm:{operation:'DATA_CHANGE_CONFIRM',update_plan_hash:H('u')}}});
   responses['/api/data-update/confirm']=()=>({status:'APPROVED',update_plan_hash:H('u'),next_requests:{run:{operation:'DATA_UPDATE_RUN',update_plan_hash:H('u')}}});

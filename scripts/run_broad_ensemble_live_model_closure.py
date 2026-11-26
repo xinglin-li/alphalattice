@@ -63,6 +63,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import AlphaEstimatorCon
 from alphalattice.capabilities.alpha_modeling.runtime.service import (  # noqa: E402
     AlphaModelRuntimeService,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.investment.alpha_research.experiments.panel_methodology_models import (  # noqa: E402
     build_panel_model_catalog,
 )
@@ -70,7 +71,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_materialization
     materialize_panel_feature_projection,
     preflight_panel_feature_plan,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 
 VINTAGES = ("2025-10", "2026-01", "2026-04", "2026-07")
 SEEDS = (1729, 2718, 31415)

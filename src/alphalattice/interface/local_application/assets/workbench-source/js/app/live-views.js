@@ -7,10 +7,10 @@ const LiveViews = (() => {
   /* Governance & validation: the workspace's governing facts as the service states them, and
    * the bridge to the original product for what is not integrated here (freeze, finalization
    * and validation access). Read from the session envelope; nothing is fetched or changed. */
-  /* The governance facts and the governed actions, as the Settings page's Advanced section (round 62). */
+  /* The governance facts and the governed actions, as the Settings page's Advanced section. */
   function governanceBody() {
     const w = Data.workspaceFacts() || {}, rc = w.research_context || {}, strategies = w.installed_strategies || [];
-    // round 85: the rows are form rows (a title, its line, the state at the right, one pill); no glyph
+    // the rows are form rows (a title, its line, the state at the right, one pill); no glyph
     const row = (ic, name, desc, state, action = '') => formRow({title: name, line: desc, detail: state, control: action});
     const held = (words) => html`${icon('lock')} ${words}`;
     const facts = html`
@@ -37,7 +37,7 @@ const LiveViews = (() => {
     return link(html`${label}${icon('arrow')}`, 'history', cls, ref ? {q: short(ref, SHORT.hash)} : {});
   }
   function unwired() {
-    return html`${objectHead(t(ROUTES[app.page][1]), t('Not part of this build'))}<section class="panel pad">${emptyState(t('This page is not part of this build.'), link(t('Home'), 'overview', 'text-btn'), '', 'elsewhere')}</section>`; // round 93 (rule 4): the honest state in the product's words
+    return html`${objectHead(t(ROUTES[app.page][1]), t('Not part of this build'))}<section class="panel pad">${emptyState(t('This page is not part of this build.'), link(t('Home'), 'overview', 'text-btn'), '', 'elsewhere')}</section>`; // (rule 4): the honest state in the product's words
   }
   /* Reading labels from declared parameters only: method, target, size and interval. Never a
    * metric, ranking or winner. Machine identifiers stay untranslated; counts are localized.
@@ -53,11 +53,11 @@ const LiveViews = (() => {
       risk_capability_handle: d.risk?.estimator?.capability, risk_parameters: d.risk?.estimator?.parameters,
       factor_ids: d.factor?.factor_ids || d.alpha?.ordered_feature_ids || b?.execution_preview?.ordered_feature_ids || [], candidate_id: b?.portfolio_source?.candidate_id};
   }
-  /* A Portfolio book's name (N3, law 134): the policy it declared -- names per sleeve, sleeves, the
+  /* A Portfolio book's name (law 134): the policy it declared -- names per sleeve, sleeves, the
    * weight rule in words -- the same in its list, on its page, in Evidence and in every picker; a
    * listing without the policy names the book by its Alpha candidate. */
-  const weightWords = (rule) => methodWords(rule); // U41: the rules a study may declare, in the method table
-  /* A catalog policy in words (U42, U45): its family, then its fields as declared; where a study declares one,
+  const weightWords = (rule) => methodWords(rule); // the rules a study may declare, in the method table
+  /* A catalog policy in words: its family, then its fields as declared; where a study declares one,
    * it runs in place of the tranche book, whose fields its document leaves out. */
   const POLICY_FIELDS = {risk_aversion: 'risk aversion', turnover_regularization: 'turnover regularization', sector_deviation_penalty: 'sector deviation penalty'};
   const policyWords = (cp) => [METHOD_WORDS[cp.family] ? methodWords(cp.family) : codeWords(cp.family), cp.top_k != null ? t('{k} names', {k: cp.top_k}) : '', cp.maximum_weight != null ? t('at most {w} a name', {w: pctFraction(Number(cp.maximum_weight))}) : '', ...Object.keys(POLICY_FIELDS).filter((k) => cp[k] != null).map((k) => `${t(POLICY_FIELDS[k])} ${cp[k]}`)].filter(Boolean).join(' · ');
@@ -66,7 +66,7 @@ const LiveViews = (() => {
     const kind = declared?.kind || entry?.kind || '';
     const parts = [], brief = [], words = []; // brief: the short header form without long machine tokens; words: the same facts said for reading
     const named = (ids, n) => ids.slice(0, 3).join(', ') + (ids.length > 3 ? ' +' + (ids.length - 3) : '');
-    let wordsMarkup = null; // round 90: the same words with an identifier in the mono (a row's title); `words` stays plain for search and sort
+    let wordsMarkup = null; // the same words with an identifier in the mono (a row's title); `words` stays plain for search and sort
     if (kind === 'alpha.model-development') {
       const model=declared.model_parameters?.family || declared.model_adapter_id;
       parts.push(declared.component_recipe_id,model,declared.target_recipe_id);
@@ -117,7 +117,7 @@ const LiveViews = (() => {
   function existing(id) {
     const row = Data.history().find((x) => x.id === id);
     if (!row) return;
-    // N6 (the plan: an object opens in the pane or as its page, never a dialog): its facts in words,
+    // An object opens in the pane or as its page, never a dialog; its facts in words,
     // an absent fact no row, the exact reference behind its opener, its ways under them
     const words = (x) => /^[A-Z][A-Z0-9_]+$/.test(String(x || '')) ? codeWords(x) : x;
     const savedName = (current) => current.raw.kind === 'INSTALLED_RESULT' ? nameOf(current).name : current.summary ? `${t(current.name)} · ${words(current.summary)}` : t(current.name);
@@ -139,7 +139,7 @@ const LiveViews = (() => {
    * or an existing one, opened the same way. This service holds one workspace; nothing here
    * copies, migrates or switches one behind the reader's back. Facts come from the session. */
   const LAUNCH = 'python scripts/run_alphalattice.py --workspace <folder> serve --no-browser --stop-on-stdin';
-  /* The workspace popover (round 81, Codex's Environment and account menu in one): the head,
+  /* The workspace popover (Codex's Environment and account menu in one): the head,
    * the facts as rows -- short values only: the manifest by its hash; the installed strategies'
    * names are Settings' (the user, 2026-09-23: a name here overflowed the menu) -- the ways (create / open keep their dialogs: they take input), Settings.
    * One service holds one workspace; nothing here switches one behind the person's back. */
@@ -152,11 +152,11 @@ const LiveViews = (() => {
     if (view === 'choose') return Window.toggleWorkspace();
     const prep = Data.preparation();
     const unprepared = Boolean(prep) && !prep.inputs?.length;
-    // round 83: one box of rows — the command (with its Copy), what happens, what to keep open
+    // one box of rows — the command (with its Copy), what happens, what to keep open
     const how = (kind) => formGroup(t('Start the service'), html`${formRow({title: t('Command'), line: LAUNCH, control: btn(t('Copy command'), 'copy-text', LAUNCH, 'button compact'), cls: 'form-row-mono'})}${formRow({title: t('What happens'), line: t(kind === 'create' ? 'Choose an empty folder and start the product on it. The service writes the workspace manifest there, and its first page offers the preparation: sources are captured, a Panel is built and one input version is published, each step after your confirmation.' : 'Start the product on the folder that holds the workspace. The service verifies its manifest and opens it; nothing is migrated or rewritten.')})}${formRow({title: t('Then'), line: t('Run it from the checkout root. The printed loopback URL opens that workspace, and /workbench.html on it opens this workbench. Keep the terminal open; enter stop to end the service.')})}${unprepared && kind === 'create' ? formRow({title: t('This workspace itself is not prepared yet; its preparation is one page away.'), control: link(t('Prepare this workspace'), 'overview', 'button compact')}) : ''}`);
     openDialog(t('Workspace · local'), t(view === 'create' ? 'Create a workspace' : 'Open an existing workspace'), how(view), '', false, () => workspaceDialog(view));
   }
-  /* The object language (round 63): the one name of a thing wherever it appears -- its kind and
+  /* The object language: the one name of a thing wherever it appears -- its kind and
    * its subject -- and its truth (the owners' disclaimer) beside the name, never inside it. A
    * Task is named by the saved object it produced when the history has it, else by its kind; its
    * goal sentence is its truth. The evidence types read by the round-76 table (`EVIDENCE`). */
@@ -171,7 +171,7 @@ const LiveViews = (() => {
     }
     const kind = t(x.name || x.kind || ''), subject = x.words || x.summary || '';
     const typed = x.raw?.kind === 'INSTALLED_RESULT' && subject === kind;
-    return {kind, subject, name: subject && !typed ? `${kind} · ${subject}` : kind, markup: subject && x.wordsMarkup ? html`${kind} · ${x.wordsMarkup}` : null, truth: ''}; // `markup`: the same name with an identifier in the mono (round 90), for a row's title
+    return {kind, subject, name: subject && !typed ? `${kind} · ${subject}` : kind, markup: subject && x.wordsMarkup ? html`${kind} · ${x.wordsMarkup}` : null, truth: ''}; // `markup`: the same name with an identifier in the mono, for a row's title
   }
   const truthOf = (x) => nameOf(x).truth;
   const taskSuccessor = (x) => {
@@ -192,11 +192,11 @@ const LiveViews = (() => {
   function recordRow(x, extra = {}) {
     if (x.earlierStops?.length) return earlierStopRows(x, row => recordRow({...row, earlierStops: undefined}, extra));
     const {name, markup} = extra.name ? {name:extra.name} : nameOf(x);
-    const on = (key) => extra.show ? extra.show[key] !== false : key !== 'reference'; // round 57: the viewer's display properties; the id is a property, off unless chosen (round 63)
+    const on = (key) => extra.show ? extra.show[key] !== false : key !== 'reference'; // the viewer's display properties; the id is a property, off unless chosen
     // a lobby's row carries its reference in its own column (`extra.ref`, law 136); what it continues is a fact
     const reference = extra.ref ? (on('origin') && x.origin ? html`${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : '') : on('reference') ? html`<span class="mono">${x.reference}</span>${x.origin ? html` · ${t('continued from')} <span class="mono">${shortRef(x.origin)}</span>` : ''}` : '';
     const props = [reference, on('interval') ? x.interval || '' : '', on('input') && x.input ? ['', html`${x.input} · ${cutoffText(x)}`, 'drop'] : '', on('holdings') && x.holdingsSession ? html`${t('holdings')} ${x.holdingsSession}` : '', ...(extra.props || [])];
-    const a = stateOf(x.status), status = a.tone === 'neutral' ? '' : stateLine(x.status, {dot: true, next: '', live: Boolean(a.moving)}); // round 85: the kind's mark leads; a state that is not the plain record is the first fact
+    const a = stateOf(x.status), status = a.tone === 'neutral' ? '' : stateLine(x.status, {dot: true, next: '', live: Boolean(a.moving)}); // the kind's mark leads; a state that is not the plain record is the first fact
     return objectRow({lead: kindTile(x.raw?.kind, name), name: markup || name, ref: extra.ref || '', to: {action: 'history-open', value: x.id}, cls: 'object-row'}, {key: x.id, props: [status, ...props, taskAttentionFacts(x)], columns: ['state', 'reference', 'interval', 'input', 'holdings', ...(extra.columns || []), 'recovery'], time: on('recorded') && (x.raw?.recorded_at || x.recordedAt) ? when(x.raw?.recorded_at || x.recordedAt) : '', actions: extra.actions || ''});
   }
   /* One row for every saved study (N6; F2, law 136): the reference, the label, the interval, the
@@ -230,7 +230,7 @@ const LiveViews = (() => {
   function bookless() {
     const entries = new Set(Data.portfolioEntries().map((x) => x.entry_id));
     const books = Data.history().filter((x) => entries.has(x.id));
-    const list = books.map((x) => ({key: x.id, state: x.raw?.status, name: x.words || x.summary || t(x.name), words: x.words || x.summary || '', ref: x.ref, interval: x.interval, input: x.input ? html`${x.input} · ${cutoffText(x)}` : '', inputKey: x.raw?.input_binding_hash || '', inputText: x.input, at: x.raw?.recorded_at, to: {action: 'history-open', value: x.id}})); // N6: the kind is the page's, never the row's prefix
+    const list = books.map((x) => ({key: x.id, state: x.raw?.status, name: x.words || x.summary || t(x.name), words: x.words || x.summary || '', ref: x.ref, interval: x.interval, input: x.input ? html`${x.input} · ${cutoffText(x)}` : '', inputKey: x.raw?.input_binding_hash || '', inputText: x.input, at: x.raw?.recorded_at, to: {action: 'history-open', value: x.id}})); // the kind is the page's, never the row's prefix
     // Compare's list is the same list with Compare's sentence: the row opens the first study here
     // and the second is chosen on the page (2026-09-21, the Studies audit: the row led to Portfolio)
     const lede = `${app.page === 'compare' ? t('No studies are open to compare. Choose the first below; the second is chosen on the page.') : t('No Portfolio study is open. Choose a saved study below; opening one reads it and runs nothing.')} ${t('A Portfolio study in the Lab publishes one; History lists every saved object.')}`;
@@ -238,7 +238,7 @@ const LiveViews = (() => {
     const verb = app.page === 'portfolio' && books.length ? link(html`${icon('plus')}${t('New experiment')}`, 'lab', 'button primary', {experiment_kind: 'portfolio.policy-development'}) : '';
     return html`${objectHead(t(ROUTES[app.page][1]), lede, verb)}${books.length
       ? studyLobby('portfolio', list)
-      : emptyState(t('No experiment yet'), link(t('New experiment'), 'lab', 'button primary', {experiment_kind: 'portfolio.policy-development'}), 'page-empty')}`; // N3: the path names the list; the dock and ⌘K reach History
+      : emptyState(t('No experiment yet'), link(t('New experiment'), 'lab', 'button primary', {experiment_kind: 'portfolio.policy-development'}), 'page-empty')}`; // the path names the list; the dock and ⌘K reach History
   }
   /* ---- Home: the current goal, its outcome, the person's decisions and moving work.
    * Nothing here runs, plans or selects; the chart of a
@@ -261,7 +261,7 @@ const LiveViews = (() => {
     if (unprepared) {
       const run = prep.task_id ? Data.tasks().find((v) => v.task_id === prep.task_id) : null;
       const state = run ? stateLine(run, {word: stateMoving(run.lifecycle) ? t('Preparing the workspace') : undefined, until: prep.progress?.retry_after_at || null}) : stateLine('draft', {word: t('Not prepared')});
-      return {state, primary: '', secondary: ''}; // N6: the Needs-a-decision row is the way to prepare (one way)
+      return {state, primary: '', secondary: ''}; // the Needs-a-decision row is the way to prepare (one way)
     }
     const tasks = actionableTasks();
     const heldTask = tasks.find((v) => stateHeld(v.status)) || Data.tasks().find((v) => stateMoving(v.lifecycle));
@@ -291,7 +291,7 @@ const LiveViews = (() => {
   const reviewWay = (hash, otherwise = {page: 'upgrade'}) => { const r = Data.history().find((x) => x.raw?.review_publication_hash === hash); return r ? {action: 'history-open', value: r.id} : otherwise; };
   function decisionRow(d, list) {
     switch (d.kind) {
-      case 'FIRST_USE': // U70: it runs for the person, in Running -- not a decision that waits on them
+      case 'FIRST_USE': // it runs for the person, in Running -- not a decision that waits on them
         return null;
       case 'WORKSPACE_PREPARATION': // no preparation is offered while the owner cannot read the workspace: the first-use notice says why
         return LiveWorkspace.prepareRefused() ? null : {lead: 'cube', place: 'data', name: t('Prepare workspace'), why: t('No verified research input exists in this workspace; one explicit preparation makes it research-ready.'), to: {action: 'workspace-preview', value: 'prepare'}};
@@ -299,7 +299,7 @@ const LiveViews = (() => {
         return {lead: 'cube', place: 'data', name: t('Publish an input version'), why: html`${t('New data is not yet a research input')} · ${t('Data through')} <span class="numeric">${d.data_through}</span> · ${t('research input through')} <span class="numeric">${d.input_through}</span>`, to: {page: 'inputs'}, at: d.data_through};
       case 'TASK_RECORD_UNREADABLE':
         return {lead: 'task', name: html`${t('Task')} ${hashCell(d.task_id)}`, refusal: d, key: d.task_id};
-      case 'STOPPED_TASK': { // N6 (law 58): the stop said once, with its way on -- a data update's in the Data page's words
+      case 'STOPPED_TASK': { // law 58: the stop said once, with its way on -- a data update's in the Data page's words
         // Only the current owner's unresolved fact is a decision; retained lifecycles stay historical.
         if (Data.taskAttention(d)?.unresolved !== true) return null;
         const v = Data.tasks().find((x) => x.task_id === d.task_id) || {task_id: d.task_id, task_kind: d.task_kind, kind: d.task_kind, lifecycle: d.lifecycle, status: d.lifecycle};
@@ -372,13 +372,13 @@ const LiveViews = (() => {
   const group = (title, rows, cls = 'card-list lines slotted', total = rows.length, more = '', note = '', shown = rows.length) => {
     const rest = rows.slice(shown);
     const reveal = rest.length ? html`<details class="reveal-details home-more"><summary>${countText(rest.length, 'Show {n} more', 'Show {n} more')}</summary><div class="${cls}">${rest}</div></details>` : '';
-    return rows.length ? html`${groupHead(title, total)}${note}<div class="${cls}">${rows.slice(0, shown)}</div>${more}${reveal}` : ''; // N6 (law 81): an empty group is not drawn
+    return rows.length ? html`${groupHead(title, total)}${note}<div class="${cls}">${rows.slice(0, shown)}</div>${more}${reveal}` : ''; // law 81: an empty group is not drawn
   };
   const runningGroup=(tasksOnly=false)=>{
     const total=Data.tasks().filter(v=>tasksOnly ? stateMoving(v.lifecycle) : v.lifecycle==='RUNNING').length, rows=runningRows(tasksOnly);
     return group(t('Running'),rows,'card-list lines slotted',total,!tasksOnly || total>LOBBY.shown ? link(t('All Tasks'),'tasks','text-btn') : '');
   };
-  /* U74: Home keeps WD4's first screen at any count -- the first decisions in the Host's order, the rest folded behind
+  /* Home keeps WD4's first screen at any count -- the first decisions in the Host's order, the rest folded behind
    * one way that counts them (a person can pile up a dozen). */
   const HOME_DECISIONS = 5;
   const decisionGroup = (rows) => { const rest = rows.slice(HOME_DECISIONS), all = waiting(), shared = sharedWay(all), cause = sharedCause(all); return group(t('Needs a decision'), rows.slice(0, HOME_DECISIONS), 'card-list lines slotted', rows.length, rest.length ? html`<details class="reveal-details home-more"><summary>${countText(rest.length, '{n} more decision', '{n} more decisions')}</summary><div class="card-list lines slotted">${rest}</div></details>` : '', cause.words ? noteLine(t('{n} Tasks: {reason}', {n: cause.count, reason: t(cause.words)}), shared ? t('For each: {way}', {way: shared}) : '', 'warning') : shared ? html`<p class="caption group-note">${t('For each: {way}', {way: shared})}</p>` : ''); };
@@ -465,12 +465,12 @@ const LiveViews = (() => {
    * Foundation come with the display projection of the same verified readback; the origin is the
    * plan's recorded origin from the same verified readback as the other source references.
    * Dates are not interchangeable and are each named. */
-  /* The book's ··· (round 64): the comparison, the continuation and the two exports; one primary stays on the head. */
+  /* The book's ···: the comparison, the continuation and the two exports; one primary stays on the head. */
   const bookTools = (subject) => [{ic: 'grid', action: 'go', value: 'compare', word: t('Compare'), why: t('Set this book beside another saved one')}, {ic: 'branch', action: 'research-continue', value: subject.task_id, word: t('Continue as a new draft'), why: t('The same declaration, bound to the same source')}, {ic: 'file', action: 'export-html', word: t('Export HTML'), why: t('The owner-rendered report, exactly as saved')}, {ic: 'file', action: 'export-json', word: t('Export JSON'), why: t('The full readback')}].filter(v=>subject.source_kind!=='INSTALLED_RESULT'||v.action!=='research-continue');
-  /* U52 (V347): what a result's window can claim about time, in the Host's statements -- generated from the Panel's
+  /* what a result's window can claim about time, in the Host's statements -- generated from the Panel's
    * marks (T0, the initial cohort, survivorship, the Sector treatment, the price basis), shown as written, never
    * reworded: the first (the window against T0) beside the window, all of them in the Facts; none where not recorded. */
-  const temporalSaid = (scope) => (scope?.statements || []).filter(Boolean).map((x) => t(x)); // U61: the owner's sentences, worded by i18n's templates
+  const temporalSaid = (scope) => (scope?.statements || []).filter(Boolean).map((x) => t(x)); // the owner's sentences, worded by i18n's templates
   const temporalRow = (scope) => { const said = temporalSaid(scope); return said.length ? [[t('Time and survivorship'), html`<span class="owner-text">${said[0]}</span>`]] : []; };
   const temporalAll = (scope) => { const said = temporalSaid(scope); return said.length ? html`<h4>${t('Time and survivorship')}</h4>${said.map((x) => html`<p class="owner-text">${x}</p>`)}` : ''; };
   function researchTiming(value) {
@@ -533,7 +533,7 @@ const LiveViews = (() => {
       [t('Sector map'), raw.sectors?.status === 'BOOK_EXECUTION' ? html`${t('sealed with the book\'s Panel')} <span class="sub-cell">${t('revision')} <span class="mono">${short(raw.sectors.sector_revision || '', SHORT.hash)}</span></span>` : t('not resolved')],
       [t('Recorded limitations'), (raw.limitations || []).length ? html`${(raw.limitations || []).map((v, i) => html`${i ? ' · ' : ''}${typeof v === 'string' ? coded(v) : html`<span class="mono">${JSON.stringify(v)}</span>`}`)}` : ''],
     ])}`;
-    const risk = 'risk_task_id' in src; // U41 (V340): the Risk study the weights or covariance read; none for equal weight
+    const risk = 'risk_task_id' in src; // the Risk study the weights or covariance read; none for equal weight
     const sources = html`<p class="caption">${t('Recorded references only; nothing is looked up as the latest result.')}</p>${kv([
       [t('Alpha study'), src.alpha_task_id ? html`<span class="mono">${shortRef(src.alpha_task_id)}</span> ${link(html`${t('Open Alpha study')} ${icon('arrow')}`, 'alpha', 'button compact', {study: src.alpha_task_id})}` : ''],
       ...(risk ? [[t('Risk study'), src.risk_task_id ? html`<span class="mono">${shortRef(src.risk_task_id)}</span>${src.risk_surface_hash ? html` <span class="sub-cell">${t('surface')} <span class="mono" data-tip="${src.risk_surface_hash}">${short(src.risk_surface_hash, SHORT.hash)}</span></span>` : ''} ${link(html`${t('Open Risk study')} ${icon('arrow')}`, 'risk', 'button compact', {study: src.risk_task_id})}` : t('None · equal weight reads no Risk study')]] : []),
@@ -542,7 +542,7 @@ const LiveViews = (() => {
       [t('Exact input'), html`${s.input_id} · ${cutoffText(inputState(s.input_hash))} · <span class="mono">${short(s.input_hash || '', SHORT.hash)}</span>`],
       [t('Continued from'), src.origin_task_id ? html`<span class="mono">${shortRef(src.origin_task_id)}</span> ${link(html`${t('Open origin study')} ${icon('arrow')}`, 'portfolio', 'button compact', {book: src.origin_task_id, session: ''})}` : t('Not continued · authored directly')],
     ])}<p class="caption">${t('Compare another saved book, open the linked reports under Diagnostics, or continue this declaration as a new draft. Neither runs research.')}</p>`;
-    // Round 64: the sources as one kv (each value the way to its object), the team sessions that
+    // the sources as one kv (each value the way to its object), the team sessions that
     // name the book, the recorded limitations, the declared facts — sections of the inspector's
     // Facts mode; the page leads with the chart.
     const rows = [
@@ -555,7 +555,7 @@ const LiveViews = (() => {
       ...collaboration,
     ];
     const limits = (raw.limitations || []).length ? html`<div class="card-list">${(raw.limitations || []).map((v) => objectRow({lead: statusDot('metadata', t('Recorded limitation')), name: typeof v === 'string' ? coded(v) : html`<span class="mono">${JSON.stringify(v)}</span>`, cls: 'limit-row'}))}</div>` : '';
-    return [{title: t('Sources'), body: kv(sourceRows(rows))}, limits ? {title: t('Recorded limitations'), body: limits} : null, {title: t('This study'), body: facts}, {title: t('Sources and continuation'), body: sources}, {title: t('Documents'), body: codeRef(t('Read the exact declaration (JSON)'), doc)}].filter(Boolean); // round 92: the book's declaration as a document, as the studies' Facts carry theirs
+    return [{title: t('Sources'), body: kv(sourceRows(rows))}, limits ? {title: t('Recorded limitations'), body: limits} : null, {title: t('This study'), body: facts}, {title: t('Sources and continuation'), body: sources}, {title: t('Documents'), body: codeRef(t('Read the exact declaration (JSON)'), doc)}].filter(Boolean); // the book's declaration as a document, as the studies' Facts carry theirs
   }
   /* Reports already attached to, and reviews already published for, this exact book. Nothing is
    * attached, refreshed or reviewed from here; absence is stated, never filled in. */
@@ -574,7 +574,7 @@ const LiveViews = (() => {
     const reviewBody = html`${kv([[t('Book reference'), html`<span class="mono">${shortRef(s.task_id)}</span> · <span class="mono">${short(s.receipt_hash || '', SHORT.hash)}</span>`], [t('Holdings date'), selector?.portfolio_session || s.session]])}<div class="flow">${selector ? html`${link(html`${t('Working review')} ${icon('arrow')}`, 'evidence', 'button compact', {review_selector: JSON.stringify(selector), review_publication: ''})}${link(html`${t('Research report')} ${icon('arrow')}`, 'report', 'button compact', {review_selector: JSON.stringify(selector), review_publication: ''})}` : t('No review selector was published for this book.')}</div>${reviews.length ? html`<div>${reviews.map((r) => feature('review', html`${t('Saved review')} ${r.recordedAt || ''} · <span class="mono">${short(r.raw.review_publication_hash, SHORT.hash)}</span>`, html`${t('Reviewed holdings')} ${r.raw.book.portfolio_session || ''}`, link(html`${t('Open pinned review')} ${icon('arrow')}`, 'evidence', 'button compact', {review_selector: JSON.stringify(r.raw.book), review_publication: r.raw.review_publication_hash})))}</div><p class="caption">${t('A pinned review keeps its publication hash; the working review is the current eligibility state.')}</p>` : html`<p class="caption">${t('No saved CRO review for this book. Opening the working review runs no analysis, refresh or model work.')}</p>`}`;
     return html`${refusedLinks}<div class="grid-2 detail-section" data-stack-box="section">${panel(t('Linked Risk reports'), `${t('Discovered for this Portfolio task; not a sizing input.')} ${t('Report-only references; the covariance estimates did not size this book.')}`, riskBody, btn(t('Refresh'), 'portfolio-reports-refresh', '', 'text-btn'))}${panel(t('Reviews and reports'), t('Evidence/CRO for this exact book. Working eligibility and a pinned historical review stay distinct.'), reviewBody)}</div>`;
   }
-  /* V617 (U94): a whole-report metric the saved report does not record says so, the owner's reason on hover
+  /* a whole-report metric the saved report does not record says so, the owner's reason on hover
    * (`metricAbsences`, keyed by the report's own field); nothing is estimated here. */
   const METRIC_FIELDS = {total: 'cumulative_return', annual: 'annualized_return', vol: 'annualized_volatility', drawdown: 'maximum_drawdown', sharpe: 'sharpe', sortino: 'sortino', informationRatio: 'information_ratio', benchmarkRelative: 'benchmark_relative_return', beta: 'beta', trackingError: 'tracking_error', jensenAlpha: 'zero_cash_jensen_alpha'};
   const metricAbsence = (key) => (Data.metricAbsences ? Data.metricAbsences() : {})?.[METRIC_FIELDS[key]] || null;
@@ -654,7 +654,7 @@ const LiveViews = (() => {
     if (other && !candidates.some(([id]) => id === other)) candidates.push([other, optionLabel(other)]); // a routed member outside the discovered list stays visible, never replaced
     const a = panel(t('Study A'), t('The open book; the owner reports the exact comparison scope.'), html`<div class="doc-facts">${kv([[t('Study'), optionLabel(s.task_id)], [t('Task'), html`<span class="mono" data-tip="${s.task_id}">${shortRef(s.task_id)}</span>`], [t('Holdings date shown'), html`${s.session}${infoMark(t('change it on the Portfolio page; the pair is kept'))}`], [t('Declared interval'), `${s.support?.start || ''} — ${s.support?.end || ''}`]])}</div>`);
     const b = panel(t('Study B'), t('Choose explicitly; no nearest or best match is picked.'), other ? html`<div class="doc-facts">${kv([[t('Study'), optionLabel(other)], [t('Task'), html`<span class="mono" data-tip="${other}">${shortRef(other)}</span>`]])}</div>` : emptyState(t('No second study chosen.')));
-    const subject = subjectChoice(t('Compare with'), 'compareSelect', [['', t('Choose a saved study')], ...candidates], {selected: other}); // round 93: the header's subject line
+    const subject = subjectChoice(t('Compare with'), 'compareSelect', [['', t('Choose a saved study')], ...candidates], {selected: other}); // the header's subject line
     const body = Data.comparisonStatus === 'loading' ? skeleton('body')
       : Data.comparisonStatus === 'error' ? refusal({code: Data.comparisonError, reason: t('The owner decides compatibility; the selection is kept and nothing is re-aligned, truncated or refitted.')}, TONE.attention, {word: t('Comparison not admitted')})
       : value ? comparisonBody(value, s) : noteLine(t('Select a second study'), t('No comparison or winner is inferred.'));
@@ -717,7 +717,7 @@ const LiveViews = (() => {
     const provenance=Data.raw()?.metricProvenance || {};
     const provenanceRows=[['Status',provenance.status],['Report',provenance.report_hash],['Execution ledger',provenance.execution_ledger_hash],['Economic ledger',provenance.economic_ledger_hash],['Window proof',provenance.window_hash],['Selected window',provenance.selected_start || provenance.selected_end ? `${provenance.selected_start || ''} — ${provenance.selected_end || ''}` : null],['Observations',provenance.observation_count],['Return unit',provenance.return_unit],['Annualization sessions',provenance.annualization_sessions_per_year],['Volatility degrees of freedom',provenance.volatility_degrees_of_freedom],['Sharpe cash return per session',provenance.sharpe_cash_return_per_session],['Sortino downside threshold',provenance.sortino_downside_threshold]].filter(([,v])=>v!==undefined && v!==null && v!=='').map(([k,v])=>[t(k),/Report|ledger|proof/.test(k) ? hashCell(v) : v]);
     const rows = key === 'observation' && row ? Object.entries(row).map(([k, v]) => [OBSERVATION_WORDS[k] || k, v]) : key === 'knowledge' ? [[t('Holdings session'), viewSession()], [t('Declared as-of'), s?.input_date || ''], [t('Working data'), app.data], [t('Evidence knowledge date'), t('Not selected')]] : key in Data.metrics() || metricAbsence(key) ? [[t('Published metric'), key], [t('Value'), Number.isFinite(Data.metrics()[key]) ? fmt(Data.metrics()[key], 6) : absentMetric(key)], [t('Unit'), ['annual', 'vol', 'drawdown'].includes(key) ? '%' : 'ratio'],...provenanceRows] : [[t('Workspace'), Data.workspace()], [t('Task'), hashCell(s?.task_id, Infinity)], [t('Receipt'), hashCell(s?.receipt_hash)], [t('Input binding'), hashCell(s?.input_hash)], [t('Holdings session'), viewSession()]];
-    // round 90: the book's notice and the read-only line are said once, in the context section, not in every proof section
+    // the book's notice and the read-only line are said once, in the context section, not in every proof section
     return html`${key === 'context' ? html`<p class="proof-intro">${Data.notice() || t('No study selected')}</p>` : ''}${kv(rows.map(([k, v]) => [t(k), v ?? '']))}${key === 'context' ? html`<p class="proof-footnote">${t('Read-only · no authority or review is inferred.')}</p>` : ''}`;
   }
   function chartData() {
@@ -730,7 +730,7 @@ const LiveViews = (() => {
   }
   /* Quick Open names each page by what it holds, in the flyouts' own words where a flyout
    * lists it; the prototype-only routes are not offered. */
-  // round 93 (rule 4): every route in ROUTES has its one line; a route without one says nothing, never a placeholder
+  // (rule 4): every route in ROUTES has its one line; a route without one says nothing, never a placeholder
   const QUICK_WORDS = {overview: 'The workspace, its facts and saved objects', history: 'Every saved object, exact readback', tasks: 'Recorded Task states and the activity feed',
     data: 'The working store: update, membership, receipts', issues: 'The decisions the data owner asks for', inputs: 'Immutable input versions: publish and select', storage: 'Managed roots, retention and cleanup',
     lab: 'A new declaration, or saved work continued', factor: 'Saved Factor studies and curation', foundation: 'Sealed Foundations and their previews', alpha: 'Saved Alpha studies and candidates', 'alpha-compare': 'Two saved Alpha candidates, compared', risk: 'Saved Risk studies', cases: 'Research questions kept as records',

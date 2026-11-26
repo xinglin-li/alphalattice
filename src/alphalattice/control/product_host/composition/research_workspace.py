@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
@@ -20,6 +20,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.retired_spellings import (
+    PREPARED_BEFORE_RENAMES,
+    retired_spelling_in,
+)
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
 from alphalattice.control.data_platform.maintenance.contracts import WorkspaceDataUpdateBinding
 from alphalattice.control.product_host.composition.committee_materials import AGENDA_LIMIT
@@ -34,21 +39,6 @@ from alphalattice.interface.local_application.failure_codes import public_failur
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     ScoreSourceMode,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
-    InstalledFrozenStrategyCatalog,
-)
-from alphalattice.investment.portfolio_strategy_lab.policies.installed_strategies import (
-    STRATEGY_ARTIFACT_KEYS,
-    install_frozen_strategies,
-)
-from alphalattice.investment.portfolio_strategy_lab.policies.lifecycle_research import (
-    ARTIFACT_KEY as LIFECYCLE_RESEARCH_ARTIFACT_KEY,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.retired_spellings import (
-    PREPARED_BEFORE_RENAMES,
-    retired_spelling_in,
-)
 
 if TYPE_CHECKING:
     from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
@@ -57,6 +47,10 @@ if TYPE_CHECKING:
     )
     from alphalattice.investment.alpha_research.scores.model_renewal import (
         AlphaModelLifecycleAdmission,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.strategy_package import (
+        InstalledFrozenStrategyCatalog,
+        InstalledPackageBinding,
     )
 
 
@@ -350,13 +344,17 @@ class ResearchWorkspaceManifest(_Contract):
             ):
                 raise ResearchWorkspaceError("research_workspace.uninstalled_strategy_conflict")
         elif self.strategy_installation == "NON_DEFAULT_RESEARCH":
+            from ....investment.portfolio_strategy_lab.policies import (  # lazy: research mode
+                lifecycle_research,
+            )
+
             # A research installation has no default; its live bindings are a person's
             # activation of one of its books (LS1), so they may stand beside it.
             if (
                 self.default_strategy_package_id is not None
                 or self.default_score_source_mode is not None
                 or tuple(v.artifact_key for v in self.strategy_artifacts)
-                != (LIFECYCLE_RESEARCH_ARTIFACT_KEY,)
+                != (lifecycle_research.ARTIFACT_KEY,)
             ):
                 raise ResearchWorkspaceError("research_workspace.non_default_research_conflict")
         elif self.default_strategy_package_id is None or self.default_score_source_mode is None:
@@ -372,11 +370,16 @@ class ResearchWorkspaceManifest(_Contract):
         keys = tuple(value.artifact_key for value in self.strategy_artifacts)
         if keys != tuple(sorted(keys)) or len(set(keys)) != len(keys):
             raise ResearchWorkspaceError("research_workspace.artifact_keys_invalid")
-        unknown = tuple(sorted(set(keys) - set(STRATEGY_ARTIFACT_KEYS)))
-        if unknown:
-            raise ResearchWorkspaceError(
-                "research_workspace.artifact_key_unknown:" + ",".join(unknown)
+        if keys:
+            from ....investment.portfolio_strategy_lab.policies import (  # lazy: artifact keys
+                installed_strategies,
             )
+
+            unknown = tuple(sorted(set(keys) - set(installed_strategies.STRATEGY_ARTIFACT_KEYS)))
+            if unknown:
+                raise ResearchWorkspaceError(
+                    "research_workspace.artifact_key_unknown:" + ",".join(unknown)
+                )
         identity = self.model_dump(mode="json", exclude={"manifest_hash"}, exclude_none=True)
         if self.manifest_hash != canonical_hash(identity):
             raise ResearchWorkspaceError("research_workspace.manifest_identity_invalid")
@@ -601,6 +604,13 @@ def initialize_research_workspace(workspace: Path) -> None:
         lease.close()
 
 
+def named_workspace_id(workspace: Path) -> str | None:
+    """The id the workspace's manifest names it by; None for a folder that has no manifest."""
+    if not (workspace.resolve() / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file():
+        return None
+    return read_research_workspace_manifest(workspace).workspace_id
+
+
 def read_research_workspace_manifest(workspace: Path) -> ResearchWorkspaceManifest:
     """Open and recursively verify the manifest at the workspace boundary.
 
@@ -712,6 +722,17 @@ def resolve_workspace_model_lifecycle(
     return store, next(iter(matches.values()))
 
 
+def install_frozen_strategies(
+    *, artifacts: Mapping[str, Path]
+) -> tuple[InstalledPackageBinding, ...]:
+    """Resolve an installed catalog through the existing strategy admission owner."""
+    from ....investment.portfolio_strategy_lab.policies import (  # lazy: installed artifacts
+        installed_strategies,
+    )
+
+    return installed_strategies.install_frozen_strategies(artifacts=artifacts)
+
+
 def admit_research_workspace(workspace: Path) -> AdmittedResearchWorkspace:
     """Read the manifest, confine its paths and install its declared catalog."""
     root = workspace.resolve()
@@ -730,9 +751,13 @@ def admit_research_workspace(workspace: Path) -> AdmittedResearchWorkspace:
                 f"research_workspace.artifact_unreadable:{binding.artifact_key}"
             )
         artifacts[binding.artifact_key] = resolved
+    from ....investment.portfolio_strategy_lab.application import (  # lazy: installed catalog
+        strategy_package,
+    )
+
     try:
         bindings = install_frozen_strategies(artifacts=artifacts)
-        catalog = InstalledFrozenStrategyCatalog(
+        catalog = strategy_package.InstalledFrozenStrategyCatalog(
             bindings, default_strategy_id=manifest.default_strategy_package_id
         )
         if manifest.default_strategy_package_id is not None:

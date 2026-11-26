@@ -1,4 +1,4 @@
-"""Every operation's answer, typed (binding plan C2, CLI-16; V410).
+"""Every operation's answer, typed.
 
 Each model names the fields an owner's answer always carries, with their types, so an Agent or a
 script can read an answer without guessing and `alphalattice schema show` can print it. An answer
@@ -27,6 +27,7 @@ from pydantic import (
     create_model,
     model_validator,
 )
+from pydantic.main import BaseModel as _SchemaModel
 
 from .cli_contract import (
     STOPPED_STATES,
@@ -67,6 +68,30 @@ class _Answer(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="allow", frozen=True, use_attribute_docstrings=True)
     error_info: ErrorInfo | None = None
     """Optional registered error metadata, independent of Task state and exit code."""
+
+
+class TaskScratchCleanup(_SchemaModel):
+    """The workspace Host's startup read of proved Task scratch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
+    removed: list[str]
+    """Task ids whose ended scratch was removed."""
+    unproved: dict[str, str]
+    """Scratch names that need attention, with the reason removal could not be proved."""
+
+
+class TaskStorageStatus(_SchemaModel):
+    """The data root's physical usage and this workspace's current cleanup estimate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
+    bytes_by_category: dict[str, int] | None
+    """Allocated bytes by the footprint registry's category, including unclaimed files."""
+    reclaimable_bytes: int | None
+    """Estimated bytes the workspace's current cleanup plan can reclaim."""
+    scratch_cleanup: TaskScratchCleanup
+    """What this Host found in the workspace's Task scratch at startup."""
+    unavailable: dict[str, str] | None = None
+    """Named reasons for usage or reclaim estimates that could not be measured."""
 
 
 class TaskStatusAnswer(_Answer):
@@ -119,6 +144,9 @@ class TaskStatusAnswer(_Answer):
     its owner's readback."""
     timing: dict[str, Any] | None = None
     """Task Control's recorded queued/running spans and stage timings at this read."""
+
+    storage: TaskStorageStatus | None = None
+    """The allocated data-root bytes by category, workspace reclaim estimate and startup cleanup."""
 
 
 class TaskArtifact(_Answer):
@@ -267,7 +295,7 @@ class ExperimentReadbackAnswer(_Answer):
     task_id: str
     """The study, by its Task."""
     verification_basis: str | None = None
-    """How this read was proved: `FULL`, or `FILES_UNCHANGED ...` naming what it checked."""
+    """How this read was proved: `FULL`, or `SEALED <time>`, the full check it answered from."""
     document: dict[str, Any] | None = None
     """The study's normalized declaration."""
     next_requests: dict[str, Any] | None = None
@@ -388,6 +416,9 @@ class UpgradeOverviewAnswer(_Answer):
     """Each waiting Task with its standing."""
     next_requests: dict[str, Any]
     """The requests the overview offers, acknowledging it among them."""
+    first_start: dict[str, Any] | None = None
+    """While the Host owes its first 0.2.8 start: its plan (workspaces, families, backups with
+    their estimates), its state (PENDING, RUNNING, FAILED) and progress, and any refusal."""
 
 
 class ResearchInputRow(_Answer):
@@ -471,6 +502,107 @@ class ResearchHistoryAnswer(_Answer):
     names."""
 
 
+class ExperienceAnswer(_Answer):
+    """A bounded page of recorded trials and their attribution."""
+
+    trials: list[dict[str, Any]]
+    """Trials with their trial and trace IDs, selections, measures and conclusions."""
+    notes: list[dict[str, Any]]
+    """Bounded conclusions and lessons recorded about goals, including those without trials."""
+    unattributed_in_page: int
+    """Trials on this page that have no recorded hypothesis."""
+
+
+class ExperienceBriefAnswer(_Answer):
+    """What to know before new work on a goal, as known at a time, fitted to a token budget in
+    priority order."""
+
+    model_config = ConfigDict(extra="forbid")
+    goal: str
+    """The goal briefed."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    budget: int
+    """The budget, in tokens of about four characters."""
+    used: int
+    """The tokens the items taken use, never more than the budget."""
+    parts: list[dict[str, Any]]
+    """In priority order: decisions (the goal's current one of each kind), lessons (its own
+    first, then other goals' on its methods) and experiences (other goals' trials of its
+    method, with their conclusions); each with its items taken whole and how many were omitted."""
+
+
+class ExperienceClassAnswer(_Answer):
+    """Every trial of a trial's class as the history knew it at a time, with the class's spread
+    and the size of its search: what a recalled experience's statistics rest on."""
+
+    model_config = ConfigDict(extra="forbid")
+    trial: str
+    """The trial whose class was read."""
+    width: str
+    """The class's width: recipe, method_version or method."""
+    cutoff_us: int | None
+    """The known time read, in microseconds since the epoch; null for now."""
+    known_seq: int
+    """The last history event known at that time."""
+    members: list[dict[str, Any]]
+    """Each member: its goal, workspace, agent, recipe, method and its version, parameters,
+    selection, universe, state then and measures recorded by then; at most 200."""
+    spread: list[dict[str, Any]]
+    """Per metric, version and dimensions: count, mean, standard deviation, minimum, median and
+    maximum over every member measured by then."""
+    effective_n: dict[str, Any]
+    """The class's effective number of independent trials (Bailey and Lopez de Prado 2014) from
+    its members' kept monthly return series: how many members hold one, the pairs correlated,
+    their mean correlation and N; N is null below two series."""
+    by_condition: list[dict[str, Any]]
+    """Each headline effect's spread in each band (low, mid, high: the members' terciles) of each
+    market condition metric of the members' selections known then."""
+    search: dict[str, Any]
+    """The search's size: trials, candidates, recipes, goals, workspaces, agents, and how many
+    completed and failed."""
+
+
+class ExperienceRecallAnswer(_Answer):
+    """The experiences most like a query in a workspace as the history knew them at a time, each
+    with its text and the classes of the trials it is on: what a recalled experience rests on."""
+
+    model_config = ConfigDict(extra="forbid")
+    score_type: str
+    """How hits are scored: LINEAR_FUSION, the fused order of the full-text and vector channels;
+    recall calls no cross-encoder."""
+    hits: list[dict[str, Any]]
+    """Each hit, best first: its experience_id, version, score, text and classes, a mapping from
+    each trial the experience is on to that trial's class as known then (null when unknown)."""
+
+
+class ExperienceRecordAnswer(_Answer):
+    """A review's note as the Host recorded it, with the run it rests on; its experience is
+    rendered after this reply."""
+
+    model_config = ConfigDict(extra="forbid")
+    status: str
+    """RECORDED once the note is in the Host's history."""
+    note_id: str
+    """The note, by its event id."""
+    verdict: str
+    """The verdict recorded: success, failure or inconclusive."""
+    input_tokens: int
+    """Model input tokens the reviewed run's traces used."""
+    output_tokens: int
+    """Model output tokens the reviewed run's traces used."""
+    cost_usd: float
+    """The reviewed run's model cost, in US dollars."""
+    seconds: float
+    """The reviewed run's elapsed seconds, each trace's first start to its last end."""
+    place: list[dict[str, Any]]
+    """For a trial: each headline measure's z and count in its approach's spread; else empty."""
+    trials: list[str]
+    """For a review task: the trials its note reviewed, which its experience names; else empty."""
+
+
 class GuardianEntry(_Answer):
     """One unfinished Task as Guanyin sees it: its liveness, progress, work kept and next steps."""
 
@@ -513,7 +645,7 @@ class TaskGuardianAnswer(_Answer):
 
 
 _DECLARED: Final = Path(__file__).with_name("answers.json")
-"""Every operation's answer the models above leave out, a row each (V410)."""
+"""Every operation's answer the models above leave out, a row each."""
 _KINDS: Final[dict[str, Any]] = {
     "error_info": ErrorInfo,
     "string": str,
@@ -546,8 +678,15 @@ class FilteredOperationListAnswer(_Answer):
         return self
 
 
+class _DeclaredAnswer(_Answer):
+    # A declared answer's meanings are its row's (Field descriptions). Built by create_model, it
+    # has no class source, so the docstring search would only walk every frame's module, once per
+    # model, for no docstring.
+    model_config = ConfigDict(use_attribute_docstrings=False)
+
+
 def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseModel]:
-    """One operation's answer model from its row (V410): each field's kind (`string|null`),
+    """One operation's answer model from its row: each field's kind (`string|null`),
     whether every answer carries it, and its meaning, which `schema show` prints."""
     fields: dict[str, Any] = {}
     for field in row["fields"]:
@@ -566,7 +705,7 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
         )
     model: type[BaseModel] = create_model(
         "".join(part.capitalize() for part in operation.split("_")) + "Answer",
-        __base__=_Answer,
+        __base__=_DeclaredAnswer,
         __doc__=purpose,
         **fields,
     )
@@ -581,8 +720,7 @@ def _declared(operation: str, row: dict[str, Any], purpose: str) -> type[BaseMod
 
 def _declared_answers() -> dict[str, type[BaseModel]]:
     """Each row of `answers.json` as its operation's model, its purpose the registry's; a read's
-    model names, optional, the request the CLI's copy of its answer keeps (`named_read`, OP15,
-    V454)."""
+    model names, optional, the request the CLI's copy of its answer keeps (`named_read`, OP15)."""
     from .operations import table
 
     contract = table()
@@ -648,10 +786,15 @@ ANSWERS: Final[dict[str, type[BaseModel]]] = {
     "RESULTS": ResultsAnswer,
     "RESEARCH_INPUTS": ResearchInputsAnswer,
     "RESEARCH_HISTORY": ResearchHistoryAnswer,
+    "EXPERIENCE_READ": ExperienceAnswer,
+    "EXPERIENCE_BRIEF": ExperienceBriefAnswer,
+    "EXPERIENCE_CLASS": ExperienceClassAnswer,
+    "EXPERIENCE_RECALL": ExperienceRecallAnswer,
+    "EXPERIENCE_RECORD": ExperienceRecordAnswer,
     "UPGRADE_OVERVIEW": UpgradeOverviewAnswer,
     **_declared_answers(),
 }
-"""Each operation and the model of its answer: every operation the Host answers (V410)."""
+"""Each operation and the model of its answer: every operation the Host answers."""
 
 
 def collection_answer_fields(operation: str) -> tuple[str, ...]:
@@ -692,8 +835,8 @@ def answer_problem(
 ) -> str | None:
     """Whether one answer holds its published model and offers only acceptable requests.
 
-    The model is the one `schema show` publishes for its operation (V410); each request the
-    answer offers is one the Host accepts as it stands (`request_problem`, V449). A refusal
+    The model is the one `schema show` publishes for its operation; each request the
+    answer offers is one the Host accepts as it stands (`request_problem`). A refusal
     answers in the refusal's shape (`status` REFUSED, `refused`, a failure code), which no model
     describes: it holds when it carries words and a way on (OP4, `refusal_problem`). An
     operation with no model still holds its offered requests.
@@ -742,7 +885,7 @@ def answer_problem(
         return f"{operation}: {exited}"
     table = command_table()
     if operation in table["reads"]:
-        # As the CLI prints and saves it, which `--from` reads (V449).
+        # As the CLI prints and saves it, which `--from` reads.
         named = named_read({**(request or {}), "operation": operation}, body)
         return _rereads(operation, named, table)
     return None
@@ -839,7 +982,7 @@ def continuation_problem(body: dict[str, Any]) -> str | None:
 
 
 def _rereads(operation: str, body: dict[str, Any], table: dict[str, Any]) -> str | None:
-    """Whether a read's answer reads again from itself through `--from` (OP15, V449)."""
+    """Whether a read's answer reads again from itself through `--from` (OP15)."""
     from .client import LocalResearchClientError, continued
 
     allowed = frozenset(table["fields"][operation]["allowed"])
@@ -856,7 +999,7 @@ def _rereads(operation: str, body: dict[str, Any], table: dict[str, Any]) -> str
         ):
             # A read whose target is optional and whose file names none, a goal read with no
             # goal, is refused by `--from` rather than read the session's default (OP17); a
-            # readback whose Task is optional and that read none reads again as itself (V575).
+            # readback whose Task is optional and that read none reads again as itself.
             return None
         return f"{operation}'s answer does not read again from itself ({error})"
     if left := choices(again) or request_problem(again):
@@ -868,7 +1011,7 @@ def outline(model: type[BaseModel], depth: int = 3) -> Any:
     """A model's parts by name, ``depth`` levels deep: the paths ``--section`` can ask for.
 
     Each part is its type, or its own parts; a list holds its item's outline. The owner's JSON
-    schema is read, never restated, so the outline moves with the model (V112).
+    schema is read, never restated, so the outline moves with the model.
 
     Args:
         model: The owner's model of the part.

@@ -7,6 +7,7 @@ from typing import Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.control.task_control.contracts import (
     ResearchGoal,
     ResearchPlan,
@@ -35,7 +36,6 @@ from alphalattice.investment.portfolio_strategy_lab.application.executor import 
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
 
 PORTFOLIO_PUBLIC_TASK_KIND = "portfolio_public_development_replay"
 PORTFOLIO_PUBLIC_INPUT_SCHEMA = "portfolio-research-durable-request"

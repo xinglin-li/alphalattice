@@ -5,6 +5,7 @@ from struct import pack
 
 import pytest
 
+from alphalattice.capabilities.data.enums import ExecutionVenueStatus
 from alphalattice.foundation.causal_outcomes.execution.compile import (
     causal_execution_simple_return,
     derive_causal_execution_row,
@@ -13,7 +14,6 @@ from alphalattice.foundation.causal_outcomes.execution.contracts import (
     CausalExecutionSchedulePoint,
 )
 from alphalattice.foundation.market_data_ops.sources.contracts import RawDailyBar
-from alphalattice.kernel.data.enums import ExecutionVenueStatus
 
 
 def _bar(price: float, volume: int) -> RawDailyBar:

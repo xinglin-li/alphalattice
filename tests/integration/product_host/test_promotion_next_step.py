@@ -8,7 +8,7 @@ import pytest
 
 from alphalattice.control.product_host.composition import resource_estimates
 from run_alphalattice import main
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.researcher_methodology_surface.factor_web_support import (
     _session,
 )

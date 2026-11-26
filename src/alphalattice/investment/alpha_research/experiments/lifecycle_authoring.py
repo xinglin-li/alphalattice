@@ -15,6 +15,7 @@ from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_chronological im
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DYNAMIC_PANEL_LIGHTGBM_SEEDS,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import verified_model_read_scope
 from alphalattice.investment.alpha_research.experiments.development_artifacts import (
     AlphaDevelopmentArtifactStore,
@@ -47,7 +48,6 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     lifecycle_implementation_hash,
     resolve_alpha_refit_plan,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,
@@ -70,7 +70,7 @@ def lifecycle_method_binding(component_recipe_hash: str, lifecycle_hash: str) ->
     """What a lifecycle Program binds: the component recipe and the lifecycle rule.
 
     The code that runs them is bound by the study plan's implementation hash, whose moves
-    are recorded (binding plan, P), so an edit that leaves the numbers alone moves no
+    are recorded, so an edit that leaves the numbers alone moves no
     Program.
     """
 
@@ -259,11 +259,11 @@ class AlphaLifecycleExperiment:
             catalog_hash=canonical_hash([self.admission.content_hash, METHOD]),
             method_binding_hash=method,
             # The seeds the rule draws, not the installed seeds or the rule's schema: a
-            # contract docstring or an installed seed decides none of its numbers (V91).
+            # contract docstring or an installed seed decides none of its numbers.
             parameter_domain_hash=canonical_hash({"seeds": list(rule.seeds)}),
         )
 
-    @verified_model_read_scope(reuse_verified=True)
+    @verified_model_read_scope()
     @verified_lifecycle_admissions()
     def execute(
         self,
@@ -467,7 +467,7 @@ def lifecycle_program_scheme(
     return None
 
 
-@verified_model_read_scope(reuse_verified=True)
+@verified_model_read_scope()
 @verified_lifecycle_admissions()
 def verify_lifecycle_research(
     *,

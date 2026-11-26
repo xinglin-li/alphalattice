@@ -179,8 +179,8 @@ def sample_standing(document: Any, authority: ResolvedResearchAuthority) -> dict
     """Read historical exploration sample standing under the installed sampling rule.
 
     An exploration study whose names were sampled before a sample kept each Sector's
-    share reads back as recorded and is not current: the same size now samples other names
-    (binding plan, decision 4). Empty for every other study.
+    share reads back as recorded and is not current: the same size now samples other names.
+    Empty for every other study.
     """
     if research_lane(document) != "EXPLORATION" or authority.listing_sample is not None:
         return {}
@@ -190,7 +190,7 @@ def sample_standing(document: Any, authority: ResolvedResearchAuthority) -> dict
 def research_lane(document: Any) -> str:
     """Project the study's declared exploration or promotion lane.
 
-    A study's lane (binding plan, B17): EXPLORATION when it ran on a sample of its
+    A study's lane: EXPLORATION when it ran on a sample of its
     input's names, else PROMOTION. A Portfolio study carries its Alpha study's universe,
     so an exploration Alpha's Portfolio is exploration too.
     """
@@ -223,7 +223,7 @@ def realization(store: CpuBudgetStore, task_id: UUID, program_hash: str) -> dict
 
     Where and how a study's numbers were computed: the settings and machine its Task
     started with and, for an Alpha study, the threads its fits used. A record, never an
-    identity: the same numbers come from any of them (binding plan, N4).
+    identity: the same numbers come from any of them.
     """
     task = store.task_execution(task_id)
     fits = store.model_fit_execution(program_hash)

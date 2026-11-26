@@ -2,46 +2,26 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from heapq import heappop, heappush
 from itertools import count
 from pathlib import Path
 from threading import Condition, Lock, get_ident, local
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel
 
+from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.evidence.alternative_evidence.publication.usage import (
     record_provider_stage_usage,
 )
-from alphalattice.kernel.knowledge.hybrid import (
-    VectorBlockSource,
-    committed_database_relative,
-    committed_payload_slice,
-    verified_block_map,
-)
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    RECIPE_MINILM_CPU,
-    HybridGenerationAnchor,
-    HybridIndexSpec,
-    PairScoreAdmission,
-    reranker_context_hash,
-    vector_asset_key,
-)
-from alphalattice.kernel.knowledge.retrieval_errors import KnowledgeRetrievalError
-from alphalattice.kernel.knowledge.runtime import (
-    VERIFIED_PACKS,
-    observing_passages,
-    withhold_inference_yield,
-    yielding_during_inference,
-)
-from alphalattice.kernel.knowledge.runtime import build_chunks as _build_chunks
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
+from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
 from alphalattice.protocols.actor_execution.usage import ProviderStageUsage
@@ -52,7 +32,10 @@ from ..analysis.contracts import (
     AlternativeEvidenceAnalystBriefReceipt,
     AlternativeEvidenceResearchObligation,
     AlternativeEvidenceRetrievalAccessReceipt,
+    EvidenceQuerySupersession,
+    RetrievalSupersessionRecord,
     WholeFilingsRecord,
+    seal_retrieval_supersession,
 )
 from ..analysis.matters import TOPIC_LANES_ALLOCATION_ID
 from ..analysis.packet import (
@@ -95,16 +78,10 @@ from ..retrieval.contracts import (
     AlternativeEvidenceResolvedSpan,
     AlternativeEvidenceResolvedSpanSet,
     AlternativeEvidenceRetrievalGeneration,
-    PairScoreBlockRecord,
-    PairScoreCommitmentRecord,
     RetrievalGenerationRecord,
     WholeFilingsGeneration,
 )
-from ..retrieval.service import (
-    AlternativeEvidenceRetrievalService,
-    IndexFactory,
-    RetrieverFactory,
-)
+from ..retrieval.service import AlternativeEvidenceRetrievalService
 from ..retrieval.session import AlternativeEvidenceRetrievalSession
 from ..sources.acquisition import AlternativeEvidenceAcquisitionService
 from ..sources.contracts import (
@@ -121,6 +98,8 @@ from ..sources.contracts import (
 )
 from ..sources.recorded import RecordedEvidenceDocument
 from ..sources.sec_edgar import SecEdgarSource
+from ..storage import world as evidence_world
+from ..storage import world_reads
 from .execution import CpuBudgetStore
 from .history import require_current_selection
 from .identity import (
@@ -137,7 +116,6 @@ from .identity import (
 from .reuse import (
     ANALYSIS_PUBLICATION_CATEGORY,
     DOCUMENT_SET_CATEGORY,
-    PAIR_SCORE_COMMITMENT_CATEGORY,
     RECEIPT_CATEGORY,
     SNAPSHOT_CATEGORY,
     SOURCE_SET_CATEGORY,
@@ -169,6 +147,64 @@ class AlternativeEvidenceActorSubmission:
     protocol_repair_count: int = 0
     provider_usage: ProviderStageUsage | None = None
     """What the Provider reported for this stage, or nothing when it reported none."""
+
+
+SUPERSESSION_CATEGORY = "retrieval-supersessions"
+"""Where a workspace keeps its `RetrievalSupersessionRecord`s."""
+
+
+def _delivered_by_query(
+    queries: Sequence[Any],
+    spans: tuple[AlternativeEvidenceResolvedSpan, ...],
+    sealed: Mapping[str, str],
+) -> dict[str, tuple[str | None, frozenset[str]]]:
+    """Each question's score type and delivered passages. A passage is
+    `<document handle>/<document id>@<revision>#<body sha256>:<utf-8 start>-<utf-8 end>`: the
+    sealed revision and its body hash (`sealed`, by document handle), and the byte range in it."""
+    passages = {
+        span.span_handle: (
+            f"{span.document_handle}/{sealed[span.document_handle]}"
+            f":{span.utf8_byte_start}-{span.utf8_byte_end}"
+        )
+        for span in spans
+    }
+    return {
+        query.query_id: (
+            query.score_type,
+            frozenset(passages[handle] for handle in query.hit_span_handles if handle in passages),
+        )
+        for query in queries
+    }
+
+
+def _supersession(
+    request: AlternativeEvidenceRequest,
+    prior: AlternativeEvidenceRetrievalAccessReceipt,
+    receipt: AlternativeEvidenceRetrievalAccessReceipt,
+    before: Mapping[str, tuple[str | None, frozenset[str]]],
+    after: Mapping[str, tuple[str | None, frozenset[str]]],
+) -> RetrievalSupersessionRecord:
+    """The record of a selection beside `prior`: each question whose passages or score type
+    changed, with what it delivered before and now."""
+    empty: tuple[str | None, frozenset[str]] = (None, frozenset())
+    changes = tuple(
+        EvidenceQuerySupersession(
+            query_id=query_id,
+            prior_score_type=before.get(query_id, empty)[0],
+            score_type=after.get(query_id, empty)[0],
+            removed=tuple(sorted(before.get(query_id, empty)[1] - after.get(query_id, empty)[1])),
+            added=tuple(sorted(after.get(query_id, empty)[1] - before.get(query_id, empty)[1])),
+        )
+        for query_id in sorted(set(before) | set(after))
+        if before.get(query_id) != after.get(query_id)
+    )
+    return seal_retrieval_supersession(
+        request_hash=request.request_hash,
+        prior_receipt_hash=prior.receipt_hash,
+        receipt_hash=receipt.receipt_hash,
+        reason="review searches the Host's retrieval store: its chunking, fusion and rerank",
+        queries=changes,
+    )
 
 
 def _carried(
@@ -485,10 +521,10 @@ class VerifiedSourceLookup:
                     found[accession] = reference
         return tuple(found[key] for key in sorted(found))
 
-    def holds(self, entry: SecFilingInventoryEntry) -> bool:
-        """Check cheaply whether a reference names a present body.
+    def holds(self, entry: SecFilingInventoryEntry, *, as_of: datetime) -> bool:
+        """Check cheaply whether a reference names a body held at the selection's cutoff `as_of`.
 
-        Preflight uses this without verifying bytes. A damaged store raises
+        Preflight uses this before any transfer. A damaged store raises
         the same integrity refusal as ``find``.
         """
         self._require_intact(entry.accepted_at)
@@ -498,11 +534,15 @@ class VerifiedSourceLookup:
                 if value.source_cik is not None
                 else value.entity_id == entry.entity_id
             )
-            if matches and self._documents.holds_source_object(value.content_sha256):
+            if matches and self._documents.holds_source_object(value, as_of=as_of):
                 return True
         return False
 
-    def find(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceDocument | None:
+    def find(
+        self, entry: SecFilingInventoryEntry, *, as_of: datetime
+    ) -> AcquiredEvidenceDocument | None:
+        """The verified body a reference names for the entry, as held at the selection's cutoff
+        `as_of`; None when none is held, never a refusal for a body evicted."""
         self._require_intact(entry.accepted_at)
         candidates = [
             value
@@ -521,7 +561,7 @@ class VerifiedSourceLookup:
         candidates.sort(key=lambda value: value.source_document_name is None)
         for reference in candidates:
             try:
-                return self._documents.resolve_source_object(reference)
+                return self._documents.resolve_source_object(reference, as_of=as_of)
             except ValueError as error:
                 if "source_object_missing" in str(error):
                     continue  # bytes evicted: not held, never a refusal
@@ -564,6 +604,22 @@ class ChunkCount(Protocol):
     def expect(self, total: int) -> None: ...
 
     def advance(self, count: int = 1) -> None: ...
+
+
+class _StopAwareSession:
+    """Keep a session's search whole, then stop before the next query or receipt."""
+
+    def __init__(self, session: AlternativeEvidenceRetrievalSession) -> None:
+        self._session = session
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._session, name)
+
+    def search(self, **kwargs: Any) -> Any:
+        checkpoint()
+        result = self._session.search(**kwargs)
+        checkpoint()
+        return result
 
 
 class EvidenceWriter:
@@ -669,14 +725,9 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         *,
         artifact_root: Path,
         workspace_root: Path,
-        model_root: Path,
-        index_factory: IndexFactory | None = None,
-        retriever_factory: RetrieverFactory | None = None,
-        retrieval_recipe: str = RECIPE_MINILM_CPU,
     ) -> None:
         """Compose acquisition, documents, retrieval, and sealed reuse owners."""
         self.playpen_root = alternative_evidence_playpen_root(Path(__file__))
-        self.retrieval_recipe = retrieval_recipe
         self.acquisition = AlternativeEvidenceAcquisitionService(artifact_root=artifact_root)
         self.artifacts = self.acquisition.artifacts
         self.document_binding_hash = alternative_document_binding_hash(self.playpen_root)
@@ -700,13 +751,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         -- a source set, canonical blobs, a vector payload, an index -- is
         admitted through it before it is placed. Unbound, nothing is admitted
         and nothing is refused: a library use without a Host has no budget."""
-        self.block_source_refusals: list[dict[str, str]] = []
-        """Sealed generations the last block source refused to serve, by index
-        id, generation hash and the kernel's failure code: a composition that
-        did not prove as a whole, a sidecar whose keys the committed manifest
-        does not derive, or a manifest not on disk. Each is an explicit
-        fallback to embedding, never a silent one."""
         self.documents = AlternativeEvidenceDocumentPublisher(workspace_root)
+        self._world_port = world_reads.serving()  # this runtime borrows the Host's writer
         self.record_days = record_days(self.artifacts)
         """The day each record the reuse indexes and the analysis readers
         choose from was sealed, kept beside the records (Z2)."""
@@ -737,24 +783,10 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         self.sealed_comparisons = SealedComparisons(
             self.artifacts, admit=self.admit_storage, held=self.writer.held
         )
-        self.pair_score_facts: dict[str, int] = {}
-        """The last session's pair-score store counts (hits, misses, blocks,
-        unanchored, missing, sealed and unsealed pairs)."""
-        self.pair_score_commitments_refused = 0
-        """Commitments the storage admission refused: their blocks stay
-        unanchored and unserved."""
         self.retrieval = AlternativeEvidenceRetrievalService(
-            workspace_root=workspace_root,
-            model_root=model_root,
-            retrieval_binding_hash=self.retrieval_binding_hash,
-            index_factory=index_factory,
-            retriever_factory=retriever_factory,
-            index_spec=HybridIndexSpec.for_recipe(retrieval_recipe),
+            workspace_root=workspace_root, retrieval_binding_hash=self.retrieval_binding_hash
         )
         self.execution = CpuBudgetStore(artifact_root.parent)
-        self.foreground = VERIFIED_PACKS.foreground
-        """While a reader the lead waits on runs (an Analyst's bundle), this process's
-        model work waits at its next call or batch (F2)."""
         """The workspace's CPU budget and the log of what each preparation ran with:
         how many units of a book prepare at once and each session's threads
         (`runtime.execution`), the operator's and never identity."""
@@ -773,11 +805,10 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         )
         self.sealed_readings = SealedReadings(
             self.artifacts,
+            self.documents,
             expected_bindings=self.publications.expected_bindings,
             days=self.record_days[ANALYSIS_PUBLICATION_CATEGORY],
         )
-        self._set_revisions: dict[str, frozenset[tuple[str, str]]] = {}
-        """Each sealed document set's filings, by its hash: immutable, read once."""
 
     def _observed_bindings(self) -> tuple[ObservedEvidenceBindings, ...]:
         """The tuples this workspace's analyses record that no build lists (E2).
@@ -871,6 +902,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             source_snapshot_hash=snapshot.snapshot_hash,
             acquired=acquired,
             acquired_at=published_at,
+            recorded=True,
         )
         return snapshot, source_set
 
@@ -881,10 +913,16 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         source_snapshot_hash: str,
         acquired: tuple[AcquiredEvidenceDocument, ...],
         acquired_at: datetime,
+        recorded: bool = False,
     ) -> AcquiredEvidenceSourceReferenceSet:
         """Keep each document's bytes once and seal this request's references to them."""
+        port = self._world_port or world_reads.serving()
         references = tuple(
-            self.documents.publish_source_object(document, admit=self.storage_admission)
+            self.documents.publish_source_object(
+                document,
+                admit=self.storage_admission,
+                world_root=None if port is None else port.root,
+            )
             for document in acquired
         )
         source_set = seal_contract(
@@ -900,16 +938,34 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             admit=self.admit_storage,
         )
         self.record_days[SOURCE_SET_CATEGORY].note(source_set.source_set_hash, acquired_at)
+        opened = data_history.opened_log()
+        if recorded and port is not None and opened is not None:
+            evidence_world.admit_recorded(port, opened[1], source_set.source_set_hash, acquired)
+        else:
+            self.admit_to_world()
         return source_set
 
+    def admit_to_world(self) -> None:
+        """Admit this workspace's new documents into world, so a read through world at once finds
+        them; only in a Host whose history records, which holds world's StorePort."""
+        opened = data_history.opened_log()
+        if opened is not None:
+            evidence_world.admit(
+                self.artifacts.root.parent, self.documents.workspace.root, opened[1]
+            )
+
     def resolve_source_documents(
-        self, source_set: AcquiredEvidenceSourceSet
+        self, source_set: AcquiredEvidenceSourceSet, *, as_of: datetime | None
     ) -> tuple[AcquiredEvidenceDocument, ...]:
-        """Resolve either durable source-set form with verified bytes."""
-        if isinstance(source_set, AcquiredEvidenceDocumentSet):
+        """Resolve either durable source-set form with verified bytes, as held at its request's
+        cutoff `as_of`."""
+        if isinstance(source_set, AcquiredEvidenceDocumentSet):  # inline: its bytes at the cutoff
+            for document in source_set.documents:
+                self.documents.require_known(document.content, as_of=as_of)
             return source_set.documents
         return tuple(
-            self.documents.resolve_source_object(reference) for reference in source_set.documents
+            self.documents.resolve_source_object(reference, as_of=as_of)
+            for reference in source_set.documents
         )
 
     def acquire_live(
@@ -956,13 +1012,16 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 not self.artifacts.holds(SOURCE_COMMIT_CATEGORY, record.commit_hash, record)
             )
             additional = 0
-            if not self.documents.holds_source_object(reference.content_sha256):
+            if not self.documents.holds_source_object(reference, as_of=None):  # this store
                 additional += len(document.content)
             if needs_record:
                 additional += len(self.artifacts.serialized(record))
             if additional and self.storage_admission is not None:
                 self.storage_admission(additional)
-            self.documents.publish_source_object(document)
+            port = self._world_port or world_reads.serving()
+            self.documents.publish_source_object(
+                document, world_root=None if port is None else port.root
+            )
             if needs_record:
                 self.artifacts.publish(SOURCE_COMMIT_CATEGORY, record.commit_hash, record)
                 self.record_days[SOURCE_COMMIT_CATEGORY].note(
@@ -1047,12 +1106,14 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         *,
         source_set: AcquiredEvidenceSourceSet,
         published_at: datetime,
+        as_of: datetime,
         reading_depth: AlternativeEvidenceReadingDepth = (
             AlternativeEvidenceReadingDepth.FULL_FILING
         ),
         began: Callable[[int], None] | None = None,
     ) -> AlternativeEvidenceDocumentSet:
-        """Canonicalize a source set into a sealed document set.
+        """Canonicalize a source set into a sealed document set, its bodies as held at its
+        request's cutoff `as_of`.
 
         ``began(1)`` hears each document as its canonical text is taken up.
         """
@@ -1070,7 +1131,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             return self.sealed_canonicals.find(document, reading_depth=reading_depth)
 
         admitted, rejected = canonicalize_source_documents(
-            self.resolve_source_documents(source_set),
+            self.resolve_source_documents(source_set, as_of=as_of),
             reading_depth=reading_depth,
             known_canonical=known_canonical,
         )
@@ -1105,8 +1166,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         index is materialized or proved here: what the selection stands on
         is the receipt and the span set, proved as every reuse proves them,
         and the index it never opens is neither verified nor claimed to be.
-        `chunks` hears the chunks the index cuts, counted before the model
-        runs, and each batch as it is embedded.
+        `chunks` hears the chunks the generation searches once the store holds them.
         """
         value = (
             None
@@ -1116,52 +1176,16 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         if value is not None:
             self.generation_builds_avoided += 1
         else:
+            checkpoint()
+            # The store chunks and embeds through the Host's log, touching nothing this runtime
+            # shares: other units' stages run meanwhile.
+            with self.writer.released():
+                value = self.retrieval.build(document_set=document_set, built_at=built_at)
             if chunks is not None:
-                chunks.expect(self._chunk_count(document_set))
-
-            def anchor_for(index_id: str) -> HybridGenerationAnchor | None:
-                # A committed generation is materialized under the workspace's
-                # lock, its vectors embedded there only when its payload was
-                # lost: that build keeps the writer through the model call.
-                anchor = self.generation_anchor(index_id)
-                if anchor is not None:
-                    withhold_inference_yield()
-                return anchor
-
-            with (
-                yielding_during_inference(self.writer.released),
-                observing_passages(None if chunks is None else chunks.advance),
-            ):
-                value = self.retrieval.build(
-                    document_set=document_set,
-                    built_at=built_at,
-                    anchor_for=anchor_for,
-                    admit=self.storage_admission,
-                    block_for=self.vector_block_source(document_set),
-                )
-            # The commitment is re-read from the sealed records at the moment
-            # of sealing this one: a record sealed meanwhile that names other
-            # vectors for the same generation means two truths under one
-            # identity, and this record is not added as a third.
-            anchor = self.generation_anchor(value.index_id)
-            if anchor is not None and (
-                anchor.manifest_logical_hash != value.index_manifest_hash
-                or anchor.payload_sha256 != value.vector_payload_sha256
-            ):
-                self.retrieval.discard_pending(value.generation_hash)
-                raise ValueError("alternative_evidence.retrieval_generation_divergent")
+                chunks.expect(value.chunk_count)
+                chunks.advance(value.chunk_count)
         self.artifacts.publish("retrieval-generations", value.generation_hash, value)
         return value
-
-    def _chunk_count(self, document_set: AlternativeEvidenceDocumentSet) -> int:
-        """The chunks the index will cut from this document set, by the index's
-        own chunking (0.35 s for a unit of 3,607 chunks): the denominator of a
-        build's progress, never an input to it.
-        """
-
-        library = self.documents.library
-        snapshot = library.read_snapshot(UUID(document_set.workspace_snapshot_id))
-        return len(_build_chunks(snapshot, library, self.retrieval.index_spec.lexical_spec))
 
     @staticmethod
     def whole_delivery(
@@ -1286,113 +1310,6 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         self._publish_selection(span_set, receipt)
         return receipt, tuple(spans)
 
-    def vector_block_source(
-        self, document_set: AlternativeEvidenceDocumentSet
-    ) -> VectorBlockSource:
-        """One revision's committed vectors from a generation this runtime sealed.
-
-        Asked with the encoder context and the revision's exact encoder
-        inputs, the source looks through the sealed committed records: a
-        generation composed from blocks is proved as a whole (every block
-        read, the concatenation hashed back to the committed digest) and its
-        blocks are keyed by what the committed manifest derives for their
-        position -- the manifest's encoder context and ordered encoder inputs
-        -- never by what the sidecar says; a generation written as one
-        payload serves a slice cut by that same manifest where those inputs
-        appear contiguously under the same context. Nothing is served from a
-        database, a sidecar or a file that does not verify against a sealed
-        record, and a generation whose manifest is not on disk proves no
-        mapping. Every refusal is recorded in `block_source_refusals` with
-        its code; the revision is then embedded. Proofs are kept for the life
-        of one build.
-
-        Only a generation whose document set holds one of this set's filings
-        is looked through (X6): a revision's vectors are committed by a
-        generation that read its filing, and proving a generation reads every
-        block it holds. A first reading of new filings proves none, where it
-        read every earlier generation of the workspace whole.
-        """
-        root = self.retrieval.workspace.root
-        wanted = self._revisions(document_set.document_set_hash, document_set)
-        records = [
-            value
-            for value in self._committed_records()
-            if isinstance(value, AlternativeEvidenceRetrievalGeneration)
-            and wanted & self._revisions(value.document_set_hash)
-        ]
-        records.sort(key=lambda value: value.built_at, reverse=True)
-        proved: dict[tuple[str, str], dict[str, bytes] | None] = {}
-        self.block_source_refusals = []
-
-        def block_for(context_hash: str, inputs: tuple[str, ...]) -> bytes | None:
-            key = vector_asset_key(context_hash, inputs)
-            for record in records:
-                pair = (record.index_manifest_hash, record.vector_payload_sha256)
-                if pair not in proved:
-                    try:
-                        proved[pair] = verified_block_map(
-                            root,
-                            database_relative=committed_database_relative(
-                                record.corpus_hash, record.index_spec_hash
-                            ),
-                            manifest_logical_hash=record.index_manifest_hash,
-                            payload_sha256=record.vector_payload_sha256,
-                        )
-                    except KnowledgeRetrievalError as refused:
-                        proved[pair] = {}
-                        self.block_source_refusals.append(
-                            {
-                                "index_id": record.index_id,
-                                "generation_hash": record.generation_hash,
-                                "code": refused.failure.code,
-                            }
-                        )
-                block_map = proved[pair]
-                if block_map is not None:
-                    content = block_map.get(key)
-                    if content is not None:
-                        return content
-                    continue
-                try:
-                    content = committed_payload_slice(
-                        root,
-                        database_relative=committed_database_relative(
-                            record.corpus_hash, record.index_spec_hash
-                        ),
-                        manifest_logical_hash=record.index_manifest_hash,
-                        payload_sha256=record.vector_payload_sha256,
-                        context_hash=context_hash,
-                        embedding_input_hashes=inputs,
-                    )
-                except KnowledgeRetrievalError:
-                    content = None
-                if content is not None:
-                    return cast(bytes, content)
-            return None
-
-        return block_for
-
-    def _revisions(
-        self, document_set_hash: str, document_set: AlternativeEvidenceDocumentSet | None = None
-    ) -> frozenset[tuple[str, str]]:
-        """The filings a sealed document set holds, by issuer and revision
-        label (a workspace document id is the set's own); none for a set
-        that does not read back, which proves no vectors.
-        """
-        held = self._set_revisions.get(document_set_hash)
-        if held is None:
-            try:
-                value = document_set or self.artifacts.load(
-                    "document-sets", document_set_hash, AlternativeEvidenceDocumentSet
-                )
-            except (ValueError, FileNotFoundError):
-                return frozenset()
-            held = frozenset(
-                (reference.entity_id, reference.revision_label) for reference in value.documents
-            )
-            self._set_revisions[document_set_hash] = held
-        return held
-
     def _committed_records(self) -> tuple[RetrievalGenerationRecord, ...]:
         directory = self.artifacts.root / "retrieval-generations"
         if not directory.is_dir():
@@ -1409,131 +1326,73 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         *,
         built_at: datetime,
     ) -> AlternativeEvidenceRetrievalGeneration | None:
-        """The generation record a selection of this request would be reused
-        over without a session -- sealed here exactly as the build would seal
-        it, from the one commitment the sealed records hold for the corpus's
-        index -- or None when the normal build must run. Proved before it is
-        returned: committed records at the current retrieval binding and
-        index spec name this corpus's index and agree on one commitment
-        (`generation_anchor`, which refuses two truths as the build would);
-        the index is held on disk under its identity and not evicted
-        (presence only: an absent or evicted index is restored by the build
-        as before); a sealed receipt of this content under the current
-        policy names a span set that is the one it delivered
-        (`SealedSelections.find`, which refuses a named set that is not and
-        never treats it as a miss); and the document set's revisions and the
-        record's lineage verify (`verify_lineage`). The record claims what a
-        built one claims -- which commitment this document set resolves to
-        -- and not that the index on disk was proved: nothing opened it. A
-        request that asks for a retired policy is refused at the selection,
-        as ever; nothing here reinterprets a request or a policy.
+        """The generation record a selection of this request would be reused over without a
+        session, or None when the normal build must run.
+
+        Sealed here as the build would seal it, from a committed record of the same corpus under
+        the current binding and spec (newest first, one per chunk and vector set), when a sealed
+        receipt of this content under the current policy names a span set that is the one it
+        delivered (`SealedSelections.find`, which refuses a named set that is not), and the
+        document set's revisions and the record's lineage verify. Nothing is read from the
+        store: the record claims which chunks and vectors the corpus resolved to, not that a
+        search ran.
         """
-        index_id, held = self.retrieval.committed_index(document_set)
-        committed = [
-            value
-            for value in self._generation_records(index_id)
-            if isinstance(value, AlternativeEvidenceRetrievalGeneration)
-            and is_current(
-                RETRIEVAL_BINDING_ROLE, value.retrieval_binding_hash, self.retrieval_binding_hash
-            )
-            and value.index_spec_hash == self.retrieval.index_spec.logical_hash
-        ]
-        anchor = self.generation_anchor(index_id)
-        if not committed or anchor is None or not held:
-            return None
-        template = committed[0]
-        generation = seal_contract(
-            AlternativeEvidenceRetrievalGeneration,
-            "generation_hash",
-            document_set_hash=document_set.document_set_hash,
-            workspace_snapshot_id=document_set.workspace_snapshot_id,
-            workspace_snapshot_hash=document_set.workspace_snapshot_hash,
-            retrieval_binding_hash=self.retrieval_binding_hash,
-            reading_depth=document_set.reading_depth,
-            corpus_hash=template.corpus_hash,
-            index_id=template.index_id,
-            index_spec_hash=self.retrieval.index_spec.logical_hash,
-            index_manifest_hash=anchor.manifest_logical_hash,
-            vector_payload_sha256=anchor.payload_sha256,
-            document_count=template.document_count,
-            chunk_count=template.chunk_count,
-            built_at=built_at,
-        )
-        if (
-            self.sealed_selections.find(
-                document_set=document_set,
-                generation=generation,
-                matter_selection_id=request.matter_selection_id,
-            )
-            is None
+        index_id = self.retrieval.index_id(document_set)
+        templates: dict[tuple[str, str], AlternativeEvidenceRetrievalGeneration] = {}
+        for value in sorted(
+            self._generation_records(index_id), key=lambda item: item.built_at, reverse=True
         ):
-            return None
-        self.retrieval.verify_lineage(document_set, generation)
-        return generation
-
-    def generation_anchor(self, index_id: str) -> HybridGenerationAnchor | None:
-        """Return the durable commitment sealed for a generation.
-
-        Every committed record naming the index must commit to the same
-        manifest and payload; records that disagree are two truths under one
-        identity and refuse until resolved. None when no committed record
-        names the index -- a corpus never sealed, or sealed only in the legacy
-        format -- so the caller embeds under its own admission rather than
-        trusting anything on disk.
-        """
-        anchors = {
-            (value.index_manifest_hash, value.vector_payload_sha256)
-            for value in self._generation_records(index_id)
-            if isinstance(value, AlternativeEvidenceRetrievalGeneration)
-        }
-        if not anchors:
-            return None
-        if len(anchors) > 1:
-            raise ValueError("alternative_evidence.retrieval_generation_records_divergent")
-        ((manifest_hash, payload_sha256),) = anchors
-        return HybridGenerationAnchor(
-            manifest_logical_hash=manifest_hash, payload_sha256=payload_sha256
-        )
+            if (
+                isinstance(value, AlternativeEvidenceRetrievalGeneration)
+                and is_current(
+                    RETRIEVAL_BINDING_ROLE,
+                    value.retrieval_binding_hash,
+                    self.retrieval_binding_hash,
+                )
+                and value.index_spec_hash == self.retrieval.index_spec_hash
+            ):
+                templates.setdefault((value.chunk_set_hash, value.vector_set_hash), value)
+        for template in templates.values():
+            generation = seal_contract(
+                AlternativeEvidenceRetrievalGeneration,
+                "generation_hash",
+                document_set_hash=document_set.document_set_hash,
+                workspace_snapshot_id=document_set.workspace_snapshot_id,
+                workspace_snapshot_hash=document_set.workspace_snapshot_hash,
+                retrieval_binding_hash=self.retrieval_binding_hash,
+                reading_depth=document_set.reading_depth,
+                index_id=index_id,
+                index_spec_hash=self.retrieval.index_spec_hash,
+                chunk_set_hash=template.chunk_set_hash,
+                vector_set_hash=template.vector_set_hash,
+                document_count=template.document_count,
+                chunk_count=template.chunk_count,
+                built_at=built_at,
+            )
+            if (
+                self.sealed_selections.find(
+                    document_set=document_set,
+                    generation=generation,
+                    matter_selection_id=request.matter_selection_id,
+                )
+                is not None
+            ):
+                self.retrieval.verify_lineage(document_set, generation)
+                return generation
+        return None
 
     def _generation_records(self, index_id: str) -> tuple[RetrievalGenerationRecord, ...]:
         """Every sealed generation record naming one index, verified by identity."""
         return tuple(value for value in self._committed_records() if value.index_id == index_id)
 
-    def rebuild_retrieval(self, index_id: str) -> dict[str, object]:
-        """Restore or repair one index by the identity its sealed records carry.
-
-        The committed records naming the index must agree on one commitment,
-        which anchors the rebuild. A legacy record names a generation this
-        runtime never rebuilds: it refuses, and a new preparation is the way
-        forward.
-        """
-        records = self._generation_records(index_id)
-        if not records:
-            raise ValueError("alternative_evidence.retrieval_generation_unknown")
-        committed = [
-            value for value in records if isinstance(value, AlternativeEvidenceRetrievalGeneration)
-        ]
-        if not committed:
-            raise ValueError("alternative_evidence.retrieval_generation_legacy_not_rebuildable")
-        self.generation_anchor(index_id)
-        generation = max(committed, key=lambda value: value.built_at)
-        document_set = self.artifacts.load(
-            "document-sets", generation.document_set_hash, AlternativeEvidenceDocumentSet
-        )
-        return self.retrieval.rebuild_generation(
-            document_set=document_set,
-            generation=generation,
-            admit=self.storage_admission,
-            block_for=self.vector_block_source(document_set),
-        )
-
     def original_reader(
-        self, document_set: AlternativeEvidenceDocumentSet
+        self, document_set: AlternativeEvidenceDocumentSet, *, as_of: datetime | None
     ) -> Callable[[str], tuple[bytes, str, str] | None]:
         """Build a reader for verified original document bytes.
 
         Map workspace document IDs to original bytes, content SHA-256, and
-        media type through the sealed source set and verified object store.
+        media type through the sealed source set and verified object store, as
+        held at the selection's cutoff `as_of`.
         Table views render from those originals. Return ``None`` for a
         document without an original reference; refuse a referenced original
         that is missing or fails verification.
@@ -1556,7 +1415,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             reference = references.get(document_id)
             if reference is None:
                 return None
-            resolved = self.documents.resolve_source_object(reference)
+            resolved = self.documents.resolve_source_object(reference, as_of=as_of)
             return resolved.content, reference.content_sha256, reference.media_type
 
         return original_for
@@ -1587,98 +1446,13 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         generation: RetrievalGenerationRecord,
         evidence_as_of: datetime,
     ) -> AlternativeEvidenceRetrievalSession:
-        """Open a generation session with retained originals and pair scores.
-
-        The session renders table views from retained originals and serves
-        pair scores admitted by the workspace's sealed commitments. Selections
-        open one session for the generation.
-        """
+        """Open a generation session that renders table views from retained originals."""
         return self.retrieval.open_session(
             document_set=document_set,
             generation=generation,
             evidence_as_of=evidence_as_of,
-            original_for=self.original_reader(document_set),
-            pair_scores=self.pair_score_admission(
-                since=datetime.now(UTC)
-                - timedelta(
-                    days=self.artifacts.load(
-                        "requests", document_set.request_hash, AlternativeEvidenceRequest
-                    ).source_policy.sec_recent_8k_days
-                    + 1
-                )
-            ),
+            original_for=self.original_reader(document_set, as_of=evidence_as_of),
         )
-
-    def pair_score_admission(self, *, since: datetime) -> PairScoreAdmission:
-        """Return the pair-score blocks and admission a reader may use.
-
-        Read blocks named by workspace commitments under the current reranker
-        context (`PairScoreCommitmentRecord`, each named by the receipt of
-        the session that scored them), and the workspace's storage
-        admission for new blocks. A block under any other name is never
-        served; a commitment of another context admits nothing here.
-
-        Only a commitment sealed since `since` admits (X2): a reader loads
-        every block it admits, and a filing's pairs are committed as it is
-        read, in the window -- so a commitment older than the window's
-        length holds filings no reading now can take, and the blocks a
-        reader loads do not grow with the days a workspace holds.
-        """
-        context = reranker_context_hash(self.retrieval.index_spec)
-        admitted = {
-            block.name
-            for record in self.artifacts.values(
-                PAIR_SCORE_COMMITMENT_CATEGORY, PairScoreCommitmentRecord
-            )
-            if record.reranker_context_hash == context and record.sealed_at >= since
-            for block in record.blocks
-        }
-        return PairScoreAdmission(admitted=frozenset(admitted), admit=self.admit_storage)
-
-    def commit_pair_scores(
-        self,
-        session: AlternativeEvidenceRetrievalSession,
-        generation: RetrievalGenerationRecord,
-    ) -> str | None:
-        """Seal and commit pair-score blocks from a session.
-
-        Return the commitment hash for the receipt, or ``None`` when the session
-        sealed nothing (nothing scored, or the storage admission refused the
-        blocks or the commitment). Called before the session closes.
-        """
-        sealed = session.seal_pair_scores()
-        self.pair_score_facts = session.pair_score_facts()
-        if not sealed:
-            return None
-        record = seal_contract(
-            PairScoreCommitmentRecord,
-            "commitment_hash",
-            reranker_context_hash=reranker_context_hash(self.retrieval.index_spec),
-            index_spec_logical_hash=self.retrieval.index_spec.logical_hash,
-            retrieval_generation_hash=generation.generation_hash,
-            blocks=tuple(
-                PairScoreBlockRecord(
-                    name=block.name, pair_count=block.pair_count, byte_length=block.byte_length
-                )
-                for block in sealed
-            ),
-            sealed_at=datetime.now(UTC),
-        )
-        try:
-            self.artifacts.place(
-                [(PAIR_SCORE_COMMITMENT_CATEGORY, record.commitment_hash, record)],
-                admit=self.admit_storage,
-            )
-        except AlternativeEvidencePublicationError:
-            # A record under this commitment's name that is not this
-            # commitment: refused by name, never named by the receipt.
-            raise
-        except Exception:
-            # The blocks were placed under admission; without their
-            # commitment they stay unanchored and are never served.
-            self.pair_score_commitments_refused += 1
-            return None
-        return record.commitment_hash
 
     def select_evidence(
         self,
@@ -1706,6 +1480,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         before anything is found or opened (`matter_selection_retired`).
         """
         require_current_selection(request)
+        superseded: RetrievalSupersessionRecord | None = None
         found = self.sealed_selections.find(
             document_set=document_set,
             generation=generation,
@@ -1716,14 +1491,27 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             # What a session would have verified first, and the build's lease
             # closed: no session takes it, and a held lease is not evictable.
             self.retrieval.release_without_session(document_set=document_set, generation=generation)
-            if (prior.request_hash, prior.document_set_hash, prior.retrieval_generation_hash) == (
+            if (prior.request_hash, prior.document_set_hash) == (
                 request.request_hash,
                 document_set.document_set_hash,
-                generation.generation_hash,
             ):
-                # This request's own sealed receipt: a replay, the same identity.
+                # This request's own sealed receipt for this generation: a replay, the same
+                # identity. A change against an earlier binding's receipt that a stop left
+                # unrecorded is recorded now, from the sealed receipt, before the selection is
+                # used again; a receipt that names that one carries its evidence unchanged.
                 receipt = prior
                 span_set = None
+                history = self._history(request)
+                if history is not None and history[0].receipt_hash not in {
+                    receipt.receipt_hash,
+                    receipt.reused_from_receipt_hash,
+                }:
+                    before = _delivered_by_query(history[0].queries, history[1], history[2])
+                    after = _delivered_by_query(
+                        receipt.queries, spans, self._sealed_revisions(document_set)
+                    )
+                    if before != after:
+                        superseded = _supersession(request, history[0], receipt, before, after)
             else:
                 # The span set is sealed first so the receipt can name it: the
                 # binding the next reuse stands on. The prior's own records
@@ -1755,9 +1543,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 )
             self.selection_reuse_count += 1
         else:
-            # The integrated selection: one discovery, the topics routed, the
-            # units in topic lanes, the tables as views, the bank over the
-            # residual scope -- sealed as one receipt with its routing.
+            # The routed selection is sealed as one receipt.
             session = self.open_session(
                 document_set=document_set,
                 generation=generation,
@@ -1769,15 +1555,29 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 # the writer back to commit: other units' stages run meanwhile.
                 with self.writer.released():
                     routed = select_routed_evidence(
-                        session=session,
+                        session=cast(
+                            AlternativeEvidenceRetrievalSession, _StopAwareSession(session)
+                        ),
                         entity_ids=request.ordered_entity_ids,
                         comparisons=self.sealed_comparisons,
                     )
                 search_count, read_count = session.search_count, session.span_read_count
-                commitment_hash = self.commit_pair_scores(session, generation)
             finally:
                 session.close()
             spans = routed.spans
+            history = self._history(request)
+            if history is not None:
+                prior, prior_spans, prior_sealed = history
+                before = _delivered_by_query(prior.queries, prior_spans, prior_sealed)
+                after = _delivered_by_query(
+                    routed.queries, spans, self._sealed_revisions(document_set)
+                )
+            # The receipt is sealed under the current generation, the chain a packet is read
+            # from. The same passages, revisions and score types as this request's receipt
+            # under an earlier retrieval binding: it names that receipt as the one whose
+            # evidence it carries, and the earlier binding stays historical. Other passages:
+            # a change record names both receipts and each question's change.
+            same = history[0] if history is not None and before == after else None
             span_set = self._seal_span_set(request, generation, spans)
             receipt = seal_contract(
                 AlternativeEvidenceRetrievalAccessReceipt,
@@ -1795,12 +1595,97 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 litigation_matters=routed.matters,
                 routing=routed.routing,
                 selection_policy_hash=self.analysis_policy_hash,
+                reused_from_receipt_hash=None if same is None else same.receipt_hash,
                 span_set_hash=span_set.span_set_hash,
-                pair_score_commitment_hash=commitment_hash,
             )
-        self._publish_selection(span_set, receipt)
-        self.sealed_selections.add(receipt, document_set=document_set, generation=generation)
+            if history is not None and same is None:
+                superseded = _supersession(request, history[0], receipt, before, after)
+        # The record of a change is placed with the selection, after the receipt it names: no
+        # record names a receipt that is not held, and a stop before it is completed by the
+        # replay above from the receipt itself.
+        self._seal_selection(span_set, receipt, document_set, generation, superseded)
         return receipt, spans
+
+    def _history(
+        self, request: AlternativeEvidenceRequest
+    ) -> (
+        tuple[
+            AlternativeEvidenceRetrievalAccessReceipt,
+            tuple[AlternativeEvidenceResolvedSpan, ...],
+            dict[str, str],
+        ]
+        | None
+    ):
+        """This request's receipt under an earlier retrieval binding, its spans and its sealed
+        revisions; None without one, or when its span set does not read back."""
+        prior = self._historical_receipt(request)
+        prior_spans = None if prior is None else self.sealed_selections.spans_of(prior)
+        if prior is None or prior_spans is None:
+            return None
+        prior_set = self.artifacts.load(
+            DOCUMENT_SET_CATEGORY, prior.document_set_hash, AlternativeEvidenceDocumentSet
+        )
+        return prior, prior_spans, self._sealed_revisions(prior_set)
+
+    def _sealed_revisions(self, document_set: AlternativeEvidenceDocumentSet) -> dict[str, str]:
+        """Each document handle's sealed revision as `<document id>@<revision>#<body sha256>`,
+        the body hash the library published the revision with."""
+        snapshot = self.retrieval.publisher.library.read_snapshot(
+            UUID(document_set.workspace_snapshot_id)
+        )
+        bodies = {
+            (r.document.document_id, r.revision): r.content_sha256 for r in snapshot.revisions
+        }
+        return {
+            ref.semantic_handle: (
+                f"{ref.workspace_document_id}@{ref.workspace_revision}"
+                f"#{bodies[(ref.workspace_document_id, ref.workspace_revision)]}"
+            )
+            for ref in document_set.documents
+        }
+
+    def _historical_receipt(
+        self, request: AlternativeEvidenceRequest
+    ) -> AlternativeEvidenceRetrievalAccessReceipt | None:
+        """The newest receipt of this request over a generation of an earlier retrieval binding:
+        the one no other such receipt replaced, by reusing it or by a recorded change. A
+        generation's `built_at` is its document set's, alike under every binding, so it orders
+        none of them."""
+        found = {}
+        for value in self.artifacts.values(
+            RECEIPT_CATEGORY, AlternativeEvidenceRetrievalAccessReceipt
+        ):
+            if value.request_hash != request.request_hash:
+                continue
+            # A receipt's generation that does not read back refuses by name, as every
+            # sealed record does.
+            generation = self.artifacts.load_retrieval_generation(value.retrieval_generation_hash)
+            if not is_current(
+                RETRIEVAL_BINDING_ROLE,
+                generation.retrieval_binding_hash,
+                self.retrieval_binding_hash,
+            ):
+                found[value.receipt_hash] = value
+        replaced = {value.reused_from_receipt_hash for value in found.values()} | {
+            record.prior_receipt_hash
+            for record in self.artifacts.values(SUPERSESSION_CATEGORY, RetrievalSupersessionRecord)
+            if record.receipt_hash in found
+        }
+        newest = [value for key, value in found.items() if key not in replaced]
+        return max(newest, key=lambda value: value.receipt_hash) if newest else None
+
+    def _seal_selection(
+        self,
+        span_set: AlternativeEvidenceResolvedSpanSet | None,
+        receipt: AlternativeEvidenceRetrievalAccessReceipt,
+        document_set: AlternativeEvidenceDocumentSet,
+        generation: RetrievalGenerationRecord,
+        superseded: RetrievalSupersessionRecord | None = None,
+    ) -> None:
+        """Publish a selection, with the record of its change when it has one, and keep it for
+        reuse: the sealed receipt and span set are all a later use of this selection reads."""
+        self._publish_selection(span_set, receipt, superseded)
+        self.sealed_selections.add(receipt, document_set=document_set, generation=generation)
 
     def _seal_span_set(
         self,
@@ -1824,8 +1709,10 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         self,
         span_set: AlternativeEvidenceResolvedSpanSet | None,
         receipt: AlternativeEvidenceRetrievalAccessReceipt,
+        superseded: RetrievalSupersessionRecord | None = None,
     ) -> None:
-        """Place a session's span set and receipt under one storage admission
+        """Place a session's span set and receipt -- and the record of its change, after the
+        receipt it names -- under one storage admission
         of the bytes the workspace does not hold yet -- the same rule as every
         other durable write (review finding R4) -- the span set first, so the
         receipt never names a set that is not there. What is already there
@@ -1849,6 +1736,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
                 )
             members.append((SPAN_SET_CATEGORY, span_set.span_set_hash, span_set))
         members.append((RECEIPT_CATEGORY, receipt.receipt_hash, receipt))
+        if superseded is not None:
+            members.append((SUPERSESSION_CATEGORY, superseded.supersession_hash, superseded))
         self.artifacts.place(members, admit=self.admit_storage)
 
     def continue_evidence(

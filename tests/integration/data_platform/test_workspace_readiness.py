@@ -14,6 +14,8 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.preflight import (
     evaluate_universe_spy_divergence_preflight,
     resolve_trading_session_authority,
@@ -44,8 +46,6 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.storage.repository import (
     ResearchFoundationStateRepository,
 )
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from tests.workspace_maintenance.local_data_provider import flat_adjusted_close_history
 
 _SIMPLE_NAMESPACE = SimpleNamespace
@@ -935,17 +935,23 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
                 revision_sha256="r" * 64,
             )
 
-        def projected_feature_frame(self, manifest, *, listing_id, through, start):
+        def projected_feature_frames(self, manifest, listing_ids, *, through, start):
             del manifest, through, start
-            rows = [
-                {
-                    "session_date": session,
-                    "open_split_adjusted": open_paths[listing_id][index],
-                    "cash_dividend": 0.0,
-                }
-                for index, session in enumerate(axis)
-            ]
-            return rows, f"raw-{listing_id}", f"action-{listing_id}"
+            return {
+                listing_id: (
+                    [
+                        {
+                            "session_date": session,
+                            "open_split_adjusted": open_paths[listing_id][index],
+                            "cash_dividend": 0.0,
+                        }
+                        for index, session in enumerate(axis)
+                    ],
+                    f"raw-{listing_id}",
+                    f"action-{listing_id}",
+                )
+                for listing_id in listing_ids
+            }
 
     # Two seams, because preflight uses two owners: Market Data answers for the
     # frozen manifest, and the Feature state answers for the projected frame.
@@ -955,6 +961,11 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
     monkeypatch.setattr(readiness, "MarketDataRepository", lambda _root: store)
     monkeypatch.setattr(
         readiness, "FeatureStateRepository", lambda _root, *, market_data: market_data
+    )
+    monkeypatch.setattr(
+        readiness,
+        "projected_feature_frames",
+        lambda feature, *args, **named: feature.projected_feature_frames(*args, **named),
     )
 
     # listing-a: +1% then +2%; listing-b: +3% then +4% -> equal weight 2%, 3%.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +21,7 @@ from alphalattice.control.data_platform.preflight import (
 )
 from alphalattice.control.data_platform.runtime import PreFactorDataOperations
 from alphalattice.control.observation_runtime.telemetry.progress import WorkspaceProgressPublisher
+from alphalattice.control.product_host.composition.research_workspace import named_workspace_id
 from alphalattice.control.task_control.registry import (
     DuckDbTaskControlRegistry,
     resolve_task_control_database,
@@ -81,6 +82,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.foundation.research_foundation.runtime.delta_service import (
     PreResearchDeltaService,
 )
+from alphalattice.kernel.clock import utc_now
 
 
 class WorkspaceApplicationControls(Protocol):
@@ -90,6 +92,17 @@ class WorkspaceApplicationControls(Protocol):
     mutation_gate: WorkspaceMutationGate
     writer_lease: WorkspaceWriterLease
     task_control_registry: DuckDbTaskControlRegistry
+
+
+def _task_registry(
+    database: WorkspaceDatabase, gate: WorkspaceMutationGate
+) -> DuckDbTaskControlRegistry:
+    """The workspace's Task Control, under the id its manifest names it by."""
+    return DuckDbTaskControlRegistry(
+        resolve_task_control_database(database.workspace),
+        gate=gate,
+        workspace_id=named_workspace_id(database.workspace),
+    )
 
 
 @dataclass
@@ -245,9 +258,7 @@ class WorkspaceRuntime:
                 feature_catalog=catalog,
                 feature_kernels=kernels,
                 task_control_registry=(
-                    DuckDbTaskControlRegistry(
-                        resolve_task_control_database(database.workspace), gate=mutation_gate
-                    )
+                    _task_registry(database, mutation_gate)
                     if application_controls is None
                     else application_controls.task_control_registry
                 ),
@@ -290,7 +301,7 @@ class WorkspaceRuntime:
         readiness_gate: Any,
         diagnose: Any | None = None,
         agent_budget: AgentExecutionBudget | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = utc_now,
         recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None,
     ) -> WorkspaceMaintenanceCoordinator:
         """Compose the concrete task-plane coordinator without another graph."""

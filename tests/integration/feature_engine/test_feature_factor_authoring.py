@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.control.product_host.composition.research_authoring import (
     build_research_experiment_dispatcher,
     installed_desk_compilers,
@@ -35,7 +36,6 @@ from alphalattice.foundation.feature_engine.producers.factors.registry import (
     RegisteredFeatureKernel,
 )
 from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
 from alphalattice.protocols.actor_execution.contracts import ActorKind
 from alphalattice.protocols.research_authoring.contracts import AuthoringError
 from tests.researcher_methodology_surface.real_workspace import RealRiskWorkspace

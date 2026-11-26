@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskExecutionResult,

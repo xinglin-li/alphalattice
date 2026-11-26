@@ -5,7 +5,9 @@ import multiprocessing
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from threading import Event, Lock, get_ident
 from types import SimpleNamespace
@@ -14,12 +16,15 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import BaseModel, ValidationError, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import runtime_json
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
     build_task_recovery_view,
 )
+from alphalattice.control.task_control import child
 from alphalattice.control.task_control.contracts import (
     FAILURE_CODE_MAX_LENGTH,
     ResearchGoal,
@@ -35,7 +40,6 @@ from alphalattice.control.task_control.contracts import (
     WorkItemState,
     failure_code_from,
 )
-from alphalattice.control.task_control.ledger import SubmittingAgent, read_requests
 from alphalattice.control.task_control.queue import (
     read_queue_setting,
     waiting_places,
@@ -58,72 +62,25 @@ from alphalattice.control.task_control.runner import (
     TaskHeartbeatReadout,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
+from alphalattice.foundation.data_layer import history
 from alphalattice.interface.local_application.dispatcher import (
     CANCEL_REAIM_LIMIT,
     CommandAdmission,
     LocalBackgroundDispatcher,
     TaskVersionMovedError,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import runtime_json
+from alphalattice.kernel.resources import ResourceAmounts, ResourceLease, use_resource_lease
 from tests.workspace_task_runner.task_control_support import (
     FixtureTaskAdapter as _FixtureTaskAdapter,
 )
 from tests.workspace_task_runner.task_control_support import (
     compatibility,
+    complete_stage,
     digest,
     set_tasks_waiting,
     task_contract,
     work_item,
 )
-
-
-def _complete_stage(
-    registry: DuckDbTaskControlRegistry,
-    *,
-    task_id,
-    execution_id,
-    stage_id: str,
-    evidence_kind: str,
-    now: datetime,
-):
-    item = registry.begin_work_item(
-        task_id=task_id,
-        execution_id=execution_id,
-        stage_id=stage_id,
-        observed_at=now,
-    )
-    evidence = (
-        TaskEvidence(
-            evidence_kind=evidence_kind,
-            reference=f"playpen://task-evidence/{stage_id}",
-            content_hash=digest(stage_id),
-        ),
-    )
-    registry.mark_ready(
-        task_id=task_id,
-        execution_id=execution_id,
-        stage_id=stage_id,
-        evidence=evidence,
-        observed_at=now + timedelta(seconds=1),
-    )
-    definition = next(
-        value for value in registry.task(task_id).plan.work_items if value.stage_id == stage_id
-    )
-    return registry.verify_work_item(
-        TaskStageReceipt.from_identity(
-            receipt_id=uuid4(),
-            task_id=task_id,
-            execution_id=execution_id,
-            stage_id=stage_id,
-            work_item_definition_hash=item.definition_hash,
-            verifier_id=definition.verifier_id,
-            evidence=evidence,
-            status="VERIFIED",
-            failure_code=None,
-            observed_at=now + timedelta(seconds=2),
-        )
-    )
 
 
 def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) -> None:
@@ -173,7 +130,7 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
             observed_at=now + timedelta(seconds=2),
         )
 
-    task = _complete_stage(
+    task = complete_stage(
         registry,
         task_id=task.task_id,
         execution_id=execution.execution_id,
@@ -182,7 +139,7 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
         now=now + timedelta(seconds=3),
     )
     assert task.lifecycle is TaskLifecycle.RUNNING
-    task = _complete_stage(
+    task = complete_stage(
         registry,
         task_id=task.task_id,
         execution_id=execution.execution_id,
@@ -206,12 +163,15 @@ def test_registry_owns_queue_work_board_receipts_and_projection(tmp_path: Path) 
         )
 
 
+def _rows(connection, table: str) -> list[tuple[object, ...]]:
+    """Every row of a log table, in one order."""
+    return sorted((tuple(row) for row in connection.execute(f"SELECT * FROM {table}")), key=repr)
+
+
 def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_refusal(
     tmp_path: Path,
 ) -> None:
     """A broken queued head is an authority error, not the requested cache miss."""
-    import duckdb
-
     now = datetime(2026, 8, 5, 14, tzinfo=UTC)
     set_tasks_waiting(tmp_path, 2, now)
     registry = DuckDbTaskControlRegistry(
@@ -231,9 +191,9 @@ def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_re
         plan=peer_plan,
         observed_at=now + timedelta(seconds=1),
     ).record
-    with duckdb.connect(str(registry.database_path)) as connection:
+    with history.held().unit() as connection:  # a damaged row, written past its events
         connection.execute(
-            "UPDATE workspace_task SET record_json = '{' WHERE task_id = ?",
+            "UPDATE task SET record_json = '{}' WHERE task_id = ?",
             [str(head.task_id)],
         )
         connection.execute(
@@ -247,13 +207,11 @@ def test_projection_collection_keeps_queue_head_failure_out_of_requested_task_re
     assert raised.value.task_id == str(head.task_id)
 
 
-@pytest.mark.parametrize("damage", ["bad-json", "different-canonical-id"])
+@pytest.mark.parametrize("damage", ["not-a-record", "different-canonical-id"])
 def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
     tmp_path: Path, damage: str
 ) -> None:
-    """V661: damaged canonical authority is named, never discarded as an absent Task."""
-    import duckdb
-
+    """damaged canonical authority is named, never discarded as an absent Task."""
     now = datetime(2026, 10, 4, 6, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
@@ -278,10 +236,10 @@ def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
     alien = TaskRecord.from_identity(
         **{**damaged.model_dump(exclude={"record_hash"}), "task_id": uuid4()}
     )
-    replacement = "{" if damage == "bad-json" else alien.model_dump_json()
-    with duckdb.connect(str(registry.database_path)) as connection:
+    replacement = "{}" if damage == "not-a-record" else alien.model_dump_json()
+    with history.held().unit() as connection:  # a damaged row, written past its events
         connection.execute(
-            "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+            "UPDATE task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],
         )
         before = connection.execute(
@@ -313,7 +271,7 @@ def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
             observed_at=now + timedelta(minutes=1),
         )
     assert raised.value.refused_task_ids == (str(damaged.task_id),)
-    with duckdb.connect(str(registry.database_path), read_only=True) as connection:
+    with history.held().reading() as connection:
         assert (
             connection.execute(
                 "SELECT task_id, record_json FROM workspace_task ORDER BY admission_sequence"
@@ -322,13 +280,13 @@ def test_canonical_task_collection_keeps_peers_but_complete_authority_refuses(
         )
 
 
-@pytest.mark.parametrize("damage", ["bad-json", "different-canonical-id", "terminal-missing-hash"])
+@pytest.mark.parametrize(
+    "damage", ["not-a-record", "different-canonical-id", "terminal-missing-hash"]
+)
 def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation(
     tmp_path: Path, damage: str
 ) -> None:
-    """V661: filtered SQL consumers keep the same stored-identity authority boundary."""
-    import duckdb
-
+    """filtered SQL consumers keep the same stored-identity authority boundary."""
     now = datetime(2026, 10, 4, 6, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
@@ -355,7 +313,7 @@ def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation
         **{**damaged.model_dump(exclude={"record_hash"}), "task_id": uuid4()}
     )
     replacement = {
-        "bad-json": "{",
+        "not-a-record": "[]",
         "different-canonical-id": alien.model_dump_json(),
         "terminal-missing-hash": "{}",
     }[damage]
@@ -368,21 +326,20 @@ def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation
         "workspace_task_projection",
         "workspace_task_stage_receipt",
     )
-    with duckdb.connect(str(registry.database_path)) as connection:
+    with history.held().unit() as connection:  # a damaged row, written past its events
         if damage == "terminal-missing-hash":
             # An existing current projection must not hide a missing canonical hash.
-            assert connection.execute(
-                "SELECT task_record_hash FROM workspace_task_projection WHERE task_id = ?",
-                [str(damaged.task_id)],
-            ).fetchone() == (damaged.record_hash,)
+            assert tuple(
+                connection.execute(
+                    "SELECT task_record_hash FROM workspace_task_projection WHERE task_id = ?",
+                    [str(damaged.task_id)],
+                ).fetchone()
+            ) == (damaged.record_hash,)
         connection.execute(
-            "UPDATE workspace_task SET record_json = ? WHERE task_id = ?",
+            "UPDATE task SET record_json = ? WHERE task_id = ?",
             [replacement, str(damaged.task_id)],
         )
-        before = {
-            table: connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall()
-            for table in tables
-        }
+        before = {table: _rows(connection, table) for table in tables}
 
     # Duplicate admission, version-confirmed start and writer reconciliation all read
     # filtered canonical rows directly. The legacy start has the same identity obligation.
@@ -413,27 +370,22 @@ def test_canonical_task_damage_refuses_admission_start_and_writer_reconciliation
         assert raised.value.refused_task_ids == (str(damaged.task_id),)
         assert str(alien.task_id) not in raised.value.refused_task_ids
     assert registry.record_collection().records == (peer,)
-    with duckdb.connect(str(registry.database_path), read_only=True) as connection:
-        assert {
-            table: connection.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall()
-            for table in tables
-        } == before
+    with history.held().reading() as connection:
+        assert {table: _rows(connection, table) for table in tables} == before
 
 
 def test_canonical_task_collection_does_not_turn_a_store_failure_into_empty_rows(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """V661: row isolation does not make an unreadable whole store look empty."""
+    """row isolation does not make an unreadable whole store look empty."""
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
 
-    def unavailable(_path, *, read_only):
+    def unavailable(*_args):
         raise OSError("the Task store cannot be read")
 
-    monkeypatch.setattr(
-        "alphalattice.control.task_control.registry.open_workspace_database", unavailable
-    )
+    monkeypatch.setattr("alphalattice.control.task_control.registry.held", unavailable)
     with pytest.raises(OSError, match="Task store cannot be read"):
         registry.record_collection()
 
@@ -636,7 +588,7 @@ def test_board_snapshot_keeps_many_references_and_a_confirmed_version_binds_at_t
 def test_the_queue_keeps_the_operators_places_and_a_recovery_holds_no_running_place(
     tmp_path: Path,
 ) -> None:
-    """requirement (V100, LAWS PA2): how many Tasks wait is the operator's setting, a full queue
+    """requirement (LAWS PA2): how many Tasks wait is the operator's setting, a full queue
     is refused before a request's planning work, and a Task waiting for its recovery lets the
     queue's head run while a recovery asked for meanwhile is refused by name."""
 
@@ -702,181 +654,6 @@ def test_the_queue_keeps_the_operators_places_and_a_recovery_holds_no_running_pl
     registry.check_capacity()  # one Task waits in two places
 
 
-@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
-def test_a_lost_ledger_lists_its_tasks_again_from_their_frozen_requests(tmp_path: Path) -> None:
-    """requirement (V181, U33, LAWS DA2): each admission's request, with the session that
-    submitted it, is written before its row; a store lost and made again lists the Task from it,
-    blocked and not claimed done, and the same request is admitted anew."""
-
-    now = datetime(2026, 8, 5, 15, tzinfo=UTC)
-    agent = SubmittingAgent(vendor="claude-code", session="session-1", goal_id=None)
-    database = resolve_task_control_database(tmp_path)
-    registry = DuckDbTaskControlRegistry(
-        database, gate=WorkspaceMutationGate(), submitted_by=lambda: agent
-    )
-    envelope, goal, plan = task_contract(salt="frozen")
-    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now)
-    assert registry.submitted_by(admitted.record.task_id) == agent
-    (request,) = read_requests(tmp_path / "runtime")
-    assert (request.task_id, request.submitted_by, request.plan) == (
-        admitted.record.task_id,
-        agent,
-        plan,
-    )
-    assert registry.rebuild_from_requests(observed_at=now) == ()  # nothing was lost
-
-    for lost in database.parent.glob(f"{database.name}*"):
-        lost.unlink()
-    rebuilt_store = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
-    (rebuilt,) = rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=1))
-    assert rebuilt.task_id == admitted.record.task_id
-    assert rebuilt.lifecycle is TaskLifecycle.BLOCKED
-    assert rebuilt.failure_code == "task_control.ledger_rebuilt"
-    assert rebuilt_store.safe_projection(rebuilt.task_id).cancel_available is True
-    assert rebuilt_store.tasks() == (rebuilt,)
-    assert rebuilt_store.submitted_by(rebuilt.task_id) == agent
-    assert rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=2)) == ()
-    again = rebuilt_store.admit(
-        input_envelope=envelope, goal=goal, plan=plan, observed_at=now + timedelta(minutes=3)
-    )
-    assert not again.duplicate_active and again.record.task_id != rebuilt.task_id
-    cancelled, _command = rebuilt_store.request_cancel(
-        task_id=rebuilt.task_id,
-        expected_task_hash=rebuilt.record_hash,
-        observed_at=now + timedelta(minutes=3, seconds=1),
-    )
-    assert cancelled.lifecycle is TaskLifecycle.CANCELLED
-    assert cancelled.failure_code == "task_control.ledger_rebuilt"
-    assert rebuilt_store.safe_projection(rebuilt.task_id).cancel_available is False
-
-    # A request that does not read as written is refused by name, never listed.
-    moved = next((tmp_path / "runtime" / "task-requests").glob("*.json"))
-    moved.rename(moved.with_name("0" * 64 + ".json"))
-    with pytest.raises(ValueError, match="admission_request_unreadable"):
-        rebuilt_store.rebuild_from_requests(observed_at=now + timedelta(minutes=4))
-
-
-@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
-@pytest.mark.parametrize("failure_code", ["task_control.ledger_rebuilt", "fixture.blocked"])
-def test_only_a_ledger_rebuilt_block_can_close_without_discarding_its_history(
-    tmp_path: Path, failure_code: str
-) -> None:
-    """BADGE regression: version-confirmed closing keeps the blocked reason and all
-    stored work, evidence and events; an ordinary block still requires its recovery."""
-    import duckdb
-
-    now = datetime(2026, 10, 8, 5, tzinfo=UTC)
-    database = resolve_task_control_database(tmp_path)
-    registry = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
-    envelope, goal, plan = task_contract(salt="close-blocked")
-    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
-    started = registry.start_next(
-        compatibility=compatibility(plan),
-        worker_instance_id=uuid4(),
-        observed_at=now + timedelta(seconds=1),
-    )
-    assert started is not None
-    running, execution = started
-    _complete_stage(
-        registry,
-        task_id=running.task_id,
-        execution_id=execution.execution_id,
-        stage_id="resolve_inputs",
-        evidence_kind="input_binding",
-        now=now + timedelta(seconds=2),
-    )
-    registry.begin_work_item(
-        task_id=running.task_id,
-        execution_id=execution.execution_id,
-        stage_id="publish_result",
-        observed_at=now + timedelta(seconds=5),
-    )
-    blocked = registry.block_work_item(
-        task_id=running.task_id,
-        execution_id=execution.execution_id,
-        stage_id="publish_result",
-        failure_code=failure_code,
-        observed_at=now + timedelta(seconds=6),
-    )
-    board = registry.board(blocked.task_id)
-    receipts = registry.stage_receipts(blocked.task_id)
-    (request,) = read_requests(database.parent)
-    with duckdb.connect(str(database), read_only=True) as connection:
-        history = connection.execute(
-            "SELECT * FROM workspace_task_event WHERE task_id = ? ORDER BY sequence",
-            [str(blocked.task_id)],
-        ).fetchall()
-    can_close = failure_code == "task_control.ledger_rebuilt"
-    assert board.projection.cancel_available is can_close
-    assert board.projection.verified_stage_count == 1
-    with pytest.raises(TaskVersionStale, match="stale task version"):
-        registry.request_cancel(
-            task_id=blocked.task_id,
-            expected_task_hash=admitted.record_hash,
-            observed_at=now + timedelta(seconds=7),
-        )
-    assert registry.task(blocked.task_id) == blocked
-    if not can_close:
-        with pytest.raises(TaskTransitionRejected, match="terminal task cannot be cancelled"):
-            registry.request_cancel(
-                task_id=blocked.task_id,
-                expected_task_hash=blocked.record_hash,
-                observed_at=now + timedelta(seconds=8),
-            )
-        assert registry.board(blocked.task_id) == board
-        return
-
-    closed_at = now + timedelta(seconds=8)
-    cancelled, command = registry.request_cancel(
-        task_id=blocked.task_id,
-        expected_task_hash=blocked.record_hash,
-        observed_at=closed_at,
-    )
-    assert cancelled.lifecycle is TaskLifecycle.CANCELLED
-    assert cancelled.failure_code == failure_code
-    assert cancelled.active_work_item_id is None
-    assert command.expected_task_hash == blocked.record_hash
-    repeated, repeated_command = registry.request_cancel(
-        task_id=blocked.task_id,
-        expected_task_hash=blocked.record_hash,
-        observed_at=now + timedelta(seconds=9),
-    )
-    assert (repeated, repeated_command) == (cancelled, command)
-    after = registry.board(blocked.task_id)
-    assert after.task == cancelled
-    assert after.work_items == board.work_items
-    assert after.execution == board.execution
-    assert registry.stage_receipts(blocked.task_id) == receipts
-    assert read_requests(database.parent) == (request,)
-    assert after.projection.cancel_available is False
-    assert after.projection.cancel_pending is False
-    assert after.projection.verified_stage_count == 1
-    assert after.projection.artifact_refs == board.projection.artifact_refs
-    with pytest.raises(TaskTransitionRejected, match="does not require recovery"):
-        registry.restart_recovery(
-            task_id=blocked.task_id,
-            compatibility=compatibility(plan),
-            worker_instance_id=uuid4(),
-            observed_at=now + timedelta(seconds=10),
-        )
-    with duckdb.connect(str(database), read_only=True) as connection:
-        after_history = connection.execute(
-            "SELECT * FROM workspace_task_event WHERE task_id = ? ORDER BY sequence",
-            [str(blocked.task_id)],
-        ).fetchall()
-        commands = connection.execute(
-            "SELECT command_hash, resolution, resolved_at FROM workspace_task_command "
-            "WHERE task_id = ?",
-            [str(blocked.task_id)],
-        ).fetchall()
-    assert after_history[:-1] == history
-    assert after_history[-1][4] == "task.cancel_requested"
-    assert json.loads(after_history[-1][5]) == {
-        "command_hash": command.command_hash,
-    }
-    assert commands == [(command.command_hash, "CANCELLED", closed_at.replace(tzinfo=None))]
-
-
 def test_registry_enforces_one_active_one_queued_and_safe_cancel(tmp_path: Path) -> None:
     now = datetime(2026, 8, 5, 15, tzinfo=UTC)
     write_queue_setting(tmp_path / "runtime", 1, chosen_by="HUMAN", chosen_at=now)
@@ -899,7 +676,7 @@ def test_registry_enforces_one_active_one_queued_and_safe_cancel(tmp_path: Path)
         observed_at=now + timedelta(seconds=2),
     ).record
     third = task_contract(salt="third")
-    with pytest.raises(TaskQueueFull, match=r"queue_full: 1 Tasks wait in the queue's 1 places"):
+    with pytest.raises(TaskQueueFull, match=r"queue_full:.*wait.*finish"):
         registry.admit(
             input_envelope=third[0],
             goal=third[1],
@@ -1074,7 +851,7 @@ def test_registry_rejects_missing_required_evidence_and_stale_heartbeat(
 
 
 class _InterruptedBeforeReceiptAdapter(_FixtureTaskAdapter):
-    """The process stops between a stage's stored evidence and its receipt (V101)."""
+    """The process stops between a stage's stored evidence and its receipt."""
 
     def __init__(self, *, accepts_at_recovery: bool) -> None:
         super().__init__()
@@ -1155,6 +932,7 @@ def test_runner_preserves_typed_failure_class_from_verification(tmp_path: Path) 
 def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     tmp_path: Path,
     ready: bool,
+    monkeypatch,
 ) -> None:
     """Control: Checkpoints cancel."""
     now = datetime(2026, 8, 10, 17, tzinfo=UTC)
@@ -1171,12 +949,35 @@ def test_runner_applies_adapter_cancellation_at_internal_safe_checkpoint(
     adapter = _CancellingTaskAdapter(
         registry=registry, observed_at=now + timedelta(seconds=1), ready=ready
     )
+    settled = False
+
+    def join(**_options):
+        nonlocal settled
+        settled = True
+
+    @contextmanager
+    def resources(task):
+        with (
+            use_resource_lease(ResourceLease(task.task_id, ResourceAmounts(cpu=1, workers=1))),
+            child.warm_child_workers(0, modules=()),
+        ):
+            child._kept_workers()[0] = SimpleNamespace(shutdown=join, _processes={})
+            yield
+
+    apply_cancel = registry.apply_cancel
+
+    def checked_apply(**options):
+        assert settled, "cancellation became terminal before the kept worker joined"
+        return apply_cancel(**options)
+
+    monkeypatch.setattr(registry, "apply_cancel", checked_apply)
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
         runtime_path=str(tmp_path / "task-runtime.sqlite"),
         clock=lambda: now + timedelta(seconds=2),
         heartbeat_seconds=0.01,
+        task_scope=resources,
     )
     try:
         result = runner.run_next()
@@ -1230,48 +1031,61 @@ def test_a_cancel_between_the_runner_s_read_and_its_claim_is_applied_at_the_clai
     assert claims == ["resolve_inputs"] and adapter.executed == []
 
 
-def test_task_admission_order_survives_equal_clocks_and_reopen(tmp_path, monkeypatch):
+def _accepted_commands(task_id: UUID) -> int:
+    """How many cancel commands the log holds for one Task."""
+    with history.held().reading() as connection:
+        (count,) = connection.execute(
+            "SELECT count(*) FROM event WHERE type = 'command.accepted' AND subject_id = ?",
+            [str(task_id)],
+        ).fetchone()
+    return int(count)
 
-    import alphalattice.control.task_control.registry as owner
 
-    counter = iter(range(1000, 0, -1))
-    monkeypatch.setattr(owner, "uuid4", lambda: UUID(int=next(counter)))
-    now = datetime(2026, 8, 5, 23, tzinfo=UTC)
-    path = resolve_task_control_database(tmp_path)
-    registry = DuckDbTaskControlRegistry(path, gate=WorkspaceMutationGate())
-    expected = []
-    for i in range(3):
-        envelope, goal, plan = task_contract(salt="same-clock-" + str(i))
-        record = registry.admit(
-            input_envelope=envelope, goal=goal, plan=plan, observed_at=now
-        ).record
+@pytest.mark.proves("task_control.a_duplicated_cancel_never_reaches_a_newer_version")
+def test_a_duplicated_cancel_never_reaches_a_newer_task_version(tmp_path: Path) -> None:
+    """requirement: a cancel is one command on the log, for the Task version its caller confirmed;
+    sent again after the Task moved on it is refused as stale and writes nothing, and sent again
+    once accepted it returns the accepted command and writes nothing."""
+
+    now = datetime(2026, 8, 5, 15, tzinfo=UTC)
+    registry = DuckDbTaskControlRegistry(
+        resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
+    )
+    envelope, goal, plan = task_contract(salt="duplicated-cancel")
+    queued = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+    registry.start_next(
+        compatibility=compatibility(plan),
+        worker_instance_id=uuid4(),
+        observed_at=now + timedelta(seconds=1),
+    )
+    running = registry.task(queued.task_id)
+    assert running.lifecycle is TaskLifecycle.RUNNING
+    assert running.record_hash != queued.record_hash
+
+    # The cancel its caller confirmed against the queued version arrives once the Task runs.
+    with pytest.raises(TaskVersionStale):
         registry.request_cancel(
-            task_id=record.task_id, expected_task_hash=record.record_hash, observed_at=now
+            task_id=queued.task_id,
+            expected_task_hash=queued.record_hash,
+            observed_at=now + timedelta(seconds=2),
         )
-        expected.append(record.task_id)
-    assert [t.task_id for t in registry.tasks()] == expected
-    reopened = DuckDbTaskControlRegistry(path, gate=WorkspaceMutationGate())
-    assert [t.task_id for t in reopened.read_existing_tasks(path)] == expected
-    import duckdb
+    assert registry.task(queued.task_id) == running
+    assert _accepted_commands(queued.task_id) == 0
 
-    with duckdb.connect(str(path)) as connection:
-        originals = connection.execute(
-            "SELECT task_id, record_json FROM workspace_task ORDER BY task_id"
-        ).fetchall()
-        connection.execute("DROP INDEX workspace_task_admission_order")
-        connection.execute("ALTER TABLE workspace_task DROP COLUMN admission_sequence")
-    assert [t.task_id for t in reopened.read_existing_tasks(path)] == sorted(expected, key=str)
-    migrated = DuckDbTaskControlRegistry(path, gate=WorkspaceMutationGate())
-    with duckdb.connect(str(path), read_only=True) as connection:
-        assert (
-            connection.execute(
-                "SELECT task_id, record_json FROM workspace_task ORDER BY task_id"
-            ).fetchall()
-            == originals
+    requested, command = registry.request_cancel(
+        task_id=queued.task_id,
+        expected_task_hash=running.record_hash,
+        observed_at=now + timedelta(seconds=3),
+    )
+    assert requested.lifecycle is TaskLifecycle.CANCEL_REQUESTED
+    for expected, second in ((running.record_hash, 4), (queued.record_hash, 5)):
+        again, same = registry.request_cancel(
+            task_id=queued.task_id,
+            expected_task_hash=expected,
+            observed_at=now + timedelta(seconds=second),
         )
-    envelope, goal, plan = task_contract(salt="after-legacy-bootstrap")
-    added = migrated.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
-    assert migrated.tasks()[-1] == added
+        assert (again, same) == (requested, command)
+    assert _accepted_commands(queued.task_id) == 1
 
 
 def test_runner_checkpoints_stages_and_recovers_from_verified_prefix(
@@ -1295,6 +1109,7 @@ def test_runner_checkpoints_stages_and_recovers_from_verified_prefix(
             )
             """
         )
+    connection.close()  # SQLite's transaction context does not close its Windows file handle.
     runner = TaskControlRunner(
         registry=registry,
         adapters={adapter.task_kind: adapter},
@@ -1316,6 +1131,11 @@ def test_runner_checkpoints_stages_and_recovers_from_verified_prefix(
     assert heartbeats[-1].task_id == task.task_id
     assert heartbeats[-1].execution_id == completed.latest_execution_id
     assert runner.heartbeat_signal(completed.latest_execution_id) == heartbeats[-1]
+    assert not (tmp_path / "task-runtime-heartbeats.sqlite").exists()
+    assert history.held().read(
+        "SELECT 1 FROM wait WHERE task_id = ? AND purpose = 'task.heartbeat'",
+        (str(task.task_id),),
+    )
 
     second_envelope, second_goal, second_plan = task_contract(salt="recovery")
     recovering = registry.admit(
@@ -1388,7 +1208,7 @@ def test_a_stage_raising_on_every_attempt_is_blocked_with_its_type_not_resumed_a
     assert stopped.lifecycle is TaskLifecycle.BLOCKED
     assert stopped.failure_code == "TASK_STAGE_RAISED:KeyError"
     assert adapter.executed == ["resolve_inputs"] * REPEATED_STAGE_RAISES
-    # What was raised rides beside the code, as an owner's cause does (V444).
+    # What was raised rides beside the code, as an owner's cause does.
     (item,) = [
         state
         for state in registry.work_items(task.task_id)
@@ -1397,6 +1217,9 @@ def test_a_stage_raising_on_every_attempt_is_blocked_with_its_type_not_resumed_a
     assert item.failure_cause is not None
     assert item.failure_cause.exception_type == "KeyError"
     assert "a database error the owner does not classify" in item.failure_cause.detail
+    assert item.failure_cause.step is not None
+    file, _, line = item.failure_cause.step.rpartition(":")
+    assert file == Path(__file__).name and line.isdecimal()
 
 
 class _DeferringThenRaisingAdapter(_FixtureTaskAdapter):
@@ -1480,7 +1303,7 @@ def test_deferrals_spend_none_of_a_stages_raises_and_a_raised_block_reopens(
 def test_recovery_seals_stored_evidence_its_verifier_accepts_and_reruns_the_rest(
     tmp_path: Path, accepts: bool
 ) -> None:
-    """regression (V101, EV1): a stage that stored its evidence and was interrupted before its
+    """regression (EV1): a stage that stored its evidence and was interrupted before its
     receipt ran again on recovery; its verifier now decides, and only evidence it refuses runs
     again."""
 
@@ -1909,101 +1732,6 @@ def test_blocked_task_recovery_requires_explicit_matching_failure(tmp_path: Path
     assert registry.task(blocked.task_id) == reopened, "the stale loser changed nothing"
 
 
-@pytest.mark.proves("task_control.a_lost_ledger_rebuilds_only_admitted_work")
-@pytest.mark.parametrize("state", (*TaskLifecycle, "RECOVERY_WITH_CANCEL"))
-def test_new_writer_reconciles_only_orphan_execution_and_accepted_cancel(
-    tmp_path: Path, state
-) -> None:
-    now = datetime.now(UTC)
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
-        registry = session.task_control_registry
-        envelope, goal, plan = task_contract()
-        task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
-        if state not in {TaskLifecycle.QUEUED, TaskLifecycle.CANCELLED}:
-            task, execution = registry.start_next(
-                compatibility=compatibility(plan), worker_instance_id=uuid4(), observed_at=now
-            )
-            task = _complete_stage(
-                registry,
-                task_id=task.task_id,
-                execution_id=execution.execution_id,
-                stage_id="resolve_inputs",
-                evidence_kind="input_binding",
-                now=now,
-            )
-        if state in {
-            TaskLifecycle.CANCELLED,
-            TaskLifecycle.CANCEL_REQUESTED,
-            "RECOVERY_WITH_CANCEL",
-        }:
-            task, _ = registry.request_cancel(
-                task_id=task.task_id, expected_task_hash=task.record_hash, observed_at=now
-            )
-            if state == "RECOVERY_WITH_CANCEL":
-                task = registry.mark_recovery_required(
-                    task_id=task.task_id, failure_code="INTERRUPTED_AFTER_CANCEL", observed_at=now
-                )
-        elif state is TaskLifecycle.SUCCEEDED:
-            task = _complete_stage(
-                registry,
-                task_id=task.task_id,
-                execution_id=execution.execution_id,
-                stage_id="publish_result",
-                evidence_kind="screening_report",
-                now=now,
-            )
-        elif state in {TaskLifecycle.BLOCKED, TaskLifecycle.DEFERRED}:
-            registry.begin_work_item(
-                task_id=task.task_id,
-                execution_id=execution.execution_id,
-                stage_id="publish_result",
-                observed_at=now,
-            )
-            task = registry.block_work_item(
-                task_id=task.task_id,
-                execution_id=execution.execution_id,
-                stage_id="publish_result",
-                failure_code="WAITING_FOR_AUTHORITY",
-                observed_at=now,
-                deferred=state is TaskLifecycle.DEFERRED,
-            )
-        elif state is TaskLifecycle.RECOVERY_REQUIRED:
-            task = registry.mark_recovery_required(
-                task_id=task.task_id, failure_code="PRIOR_FAILURE", observed_at=now
-            )
-        elif state is TaskLifecycle.REVIEW_PENDING:
-            # Typed stored-state fixtures, including waiting states whose actor
-            # protocol is deliberately outside this Task-registry test.
-            task = registry._replace_task(task, lifecycle=state, observed_at=now)
-            registry._write(lambda connection: registry._save_task(connection, task))
-        receipts = registry.stage_receipts(task.task_id)
-        items = registry.work_items(task.task_id)
-        registry.safe_projection(task.task_id)
-    with WorkspaceApplicationSession.acquire(tmp_path) as session:
-        registry = session.task_control_registry
-        actual = registry.task(task.task_id)
-        if state is TaskLifecycle.RUNNING:
-            assert actual.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
-            with LocalBackgroundDispatcher(registry) as dispatcher:
-                assert dispatcher.resume({}) == ()
-                assert "recovery_command_not_installed" in dispatcher.failure(task.task_id)
-        elif state in {TaskLifecycle.CANCEL_REQUESTED, "RECOVERY_WITH_CANCEL"}:
-            assert actual.lifecycle is TaskLifecycle.CANCELLED
-            assert actual.failure_code == "TASK_CANCELLED_AFTER_WRITER_STOPPED"
-            assert all(
-                i.lifecycle in {WorkItemLifecycle.CANCELLED, WorkItemLifecycle.VERIFIED}
-                for i in registry.work_items(task.task_id)
-            )
-        else:
-            assert actual == task
-            assert registry.work_items(task.task_id) == items
-        assert actual.input == task.input and actual.latest_execution_id == task.latest_execution_id
-        assert registry.stage_receipts(task.task_id) == receipts
-        assert registry.latest_safe_projections()[0].lifecycle is actual.lifecycle
-        assert registry.reconcile_after_writer_acquisition(observed_at=now) == ()
-        assert registry.task(task.task_id) == actual
-
-
 def test_a_versionless_cancel_aims_again_at_a_moving_task() -> None:
     """A versionless cancel aims again at a moving task."""
 
@@ -2102,6 +1830,7 @@ class _ChainsAdapter:
         self.registry = registry
         self.width = width
         self.fail = fail
+        self.fail_verification = False
         self.block = block
         self.lock = Lock()
         self.running = 0
@@ -2135,7 +1864,7 @@ class _ChainsAdapter:
                 for item in self.registry.work_items(task.task_id)
                 if item.lifecycle is WorkItemLifecycle.VERIFIED
             }
-            if stage == self.fail:
+            if stage == self.fail and not self.fail_verification:
                 raise RuntimeError("simulated failure of one item")
             if stage == self.block:
                 return StageExecutionResult(
@@ -2157,7 +1886,9 @@ class _ChainsAdapter:
                 self.order.append(stage)
 
     def verify_stage(self, *, task, execution, work_item, evidence):
-        del task, execution, work_item
+        del task, execution
+        if work_item.stage_id == self.fail and self.fail_verification:
+            raise RuntimeError("simulated failure of one item")
         return evidence
 
 
@@ -2242,8 +1973,10 @@ def test_an_adapter_that_declares_no_width_runs_one_item_inline(tmp_path: Path) 
     ]
 
 
+@pytest.mark.parametrize("fail_verification", [False, True], ids=["execute", "verify"])
 def test_a_failing_item_waits_for_the_others_and_leaves_the_task_to_recovery(
     tmp_path: Path,
+    fail_verification: bool,
 ) -> None:
     """requirement: an item that raises stops the run only after every item
     running beside it finished -- no worker outlives the execution -- and the
@@ -2255,11 +1988,30 @@ def test_a_failing_item_waits_for_the_others_and_leaves_the_task_to_recovery(
         chains=2,
         salt="width-failure",
     )
+    adapter.fail_verification = fail_verification
     try:
         with pytest.raises(RuntimeError, match="simulated failure of one item"):
             runner.run_next()
         assert adapter.running == 0, "the item beside the failure finished first"
-        assert registry.task(task.task_id).lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        snapshot = registry.board(task.task_id)
+        assert snapshot.task.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
+        view = build_task_recovery_view(
+            snapshot=snapshot,
+            running=False,
+            worker_failure=None,
+            heartbeats=TaskHeartbeatReadout(signals=(), unreadable=()),
+            recoverable_kinds=(),
+            observed_at=snapshot.task.updated_at,
+            replans={},
+        )
+        assert view.stop is not None and view.stop.stage_id == "c0_first"
+        assert view.stop.cause is not None and view.stop.cause.exception_type == "RuntimeError"
+        assert (view.stop.cause.step or "").startswith(f"{Path(__file__).name}:")
+        assert {
+            item.stage_id: item.failure_cause
+            for item in snapshot.work_items
+            if item.failure_cause is not None
+        } == {"c0_first": view.stop.cause}
         adapter.fail = None
         recovered = runner.recover(task.task_id)
     finally:
@@ -2290,12 +2042,6 @@ def test_a_blocked_item_keeps_the_work_that_completed_beside_it(tmp_path: Path) 
     assert states["c0_second"] is WorkItemLifecycle.PENDING
 
 
-def end_child_for_start_check(*, cancelled):
-    import os
-
-    os._exit(7)
-
-
 @pytest.mark.parametrize(
     "task_kind",
     sorted(
@@ -2303,42 +2049,61 @@ def end_child_for_start_check(*, cancelled):
         for key in runtime_json("config/registries/formats.json")["entries"]
         if key.startswith("task_kind:")
     ),
+    ids=str,
 )
 def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     task_kind, tmp_path, monkeypatch
 ):
-    """V610/TE12: the shared runner holds the stop for the complete registered Task-kind class."""
+    """TE12: the shared runner holds the stop for the complete registered Task-kind class."""
 
-    from alphalattice.control.task_control.child import ChildInterrupted, run_in_child
+    from alphalattice.control.product_host.composition import application_session
+    from alphalattice.control.task_control import child
+    from alphalattice.control.task_control.child import run_in_child
 
-    with pytest.raises(ChildInterrupted):
-        run_in_child(f"{__name__}:end_child_for_start_check", {})
+    # The child's place starts empty, so the call below must start a worker: one a test before
+    # left kept is retired here, in this process, and no child imports anything to end it.
+    for worker, pool in list(child._WORKERS.items()):
+        child._retire_worker(worker, pool)
+    assert not child._WORKERS
     now = datetime(2026, 10, 3, 12, tzinfo=UTC)
-    original, _, original_plan = task_contract(salt=task_kind)
-    envelope = TaskInputEnvelope.create(
-        task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
-    )
-    goal = ResearchGoal.create(
-        goal_kind="RUN_FACTOR_RESEARCH",
-        input_hash=envelope.input_hash,
-        deliverable_kind="ResearchDeskFactorInput",
-        summary="Exercise the common child start seam.",
-    )
-    plan = ResearchPlan.create(
-        goal_hash=goal.goal_hash,
-        workflow_definition_hash=original_plan.workflow_definition_hash,
-        verifier_catalog_hash=original_plan.verifier_catalog_hash,
-        work_items=original_plan.work_items,
-    )
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
-    admitted = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
+
+    def admit(salt, observed_at):
+        original, _, original_plan = task_contract(salt=salt)
+        envelope = TaskInputEnvelope.create(
+            task_kind=task_kind, input_schema_id=original.input_schema_id, payload=original.payload
+        )
+        goal = ResearchGoal.create(
+            goal_kind="RUN_FACTOR_RESEARCH",
+            input_hash=envelope.input_hash,
+            deliverable_kind="ResearchDeskFactorInput",
+            summary="Exercise the common child start seam.",
+        )
+        plan = ResearchPlan.create(
+            goal_hash=goal.goal_hash,
+            workflow_definition_hash=original_plan.workflow_definition_hash,
+            verifier_catalog_hash=original_plan.verifier_catalog_hash,
+            work_items=original_plan.work_items,
+        )
+        return registry.admit(
+            input_envelope=envelope, goal=goal, plan=plan, observed_at=observed_at
+        ).record
+
+    # Preparation and the Daily start a worker before their first work item.
+    ahead = task_kind in {"workspace_preparation", "portfolio_public_watermark_advancement"}
+    if ahead:
+        set_tasks_waiting(tmp_path, 2, now)
+    admitted = admit(task_kind, now)
+    successor = admit("after-preparation", now + timedelta(seconds=1)) if ahead else None
 
     class ChildStartAdapter(_FixtureTaskAdapter):
         needs_child = True
+        entered = 0
 
         def execute_stage(self, **arguments):
+            self.entered += 1
             if self.needs_child:
                 run_in_child("builtins:str", {})
             return super().execute_stage(**arguments)
@@ -2346,11 +2111,24 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     adapter = ChildStartAdapter()
     adapter.task_kind = task_kind
     projections = []
+    runtime = tmp_path / "runtime.sqlite"
+    session = SimpleNamespace(
+        workspace=tmp_path,
+        task_control_registry=registry,
+        runtime_path=runtime,
+        processor="test",
+        scratch_epoch=str(uuid4()),
+    )
+    session.task_resources = partial(WorkspaceApplicationSession.task_resources, session)
+
+    def clock():
+        return now + timedelta(seconds=2)
+
     runner = TaskControlRunner(
         registry=registry,
         adapters={task_kind: adapter},
-        runtime_path=str(tmp_path / "runtime.sqlite"),
-        clock=lambda: now + timedelta(seconds=1),
+        runtime_path=str(runtime),
+        clock=clock,
         projection_sink=projections.append,
         heartbeat_seconds=0.01,
     )
@@ -2361,13 +2139,27 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
     try:
         with monkeypatch.context() as patch:
             patch.setattr(multiprocessing.get_context("spawn").Process, "start", cannot_start)
-            stopped = runner.run_next()
+            if ahead:
+                patch.setattr(
+                    application_session,
+                    "TaskControlRunner",
+                    partial(TaskControlRunner, projection_sink=projections.append),
+                )
+                stopped = WorkspaceApplicationSession.execute_admitted(
+                    session, admitted, adapter, clock
+                )
+            else:
+                stopped = runner.run_next()
         assert stopped is not None and stopped.task_id == admitted.task_id
         assert stopped.lifecycle is TaskLifecycle.RECOVERY_REQUIRED
         assert stopped.failure_code == "task_control.child_start_failed"
         assert registry.task(admitted.task_id) == stopped
         assert projections[-1].latest_failure_code == stopped.failure_code
         assert adapter.executed == []  # first attempt; no repeated untyped interruption
+        # A Task that starts its worker ahead stops at claim, before its first stage runs.
+        assert adapter.entered == (0 if ahead else 1)
+        if successor is not None:
+            assert registry.queued_task().task_id == successor.task_id
         adapter.needs_child = False
         recovered = runner.recover(admitted.task_id, expected_task_hash=stopped.record_hash)
         assert (
@@ -2379,7 +2171,7 @@ def test_every_registered_task_kind_retains_a_child_start_stop_and_can_recover(
 
 @pytest.mark.parametrize("phase", ["verify", "stored_recovery", "verified_prefix"])
 def test_a_child_start_stop_preserves_verification_evidence(phase, tmp_path):
-    """V610: unavailable verification is never evidence invalidation on either recovery path."""
+    """unavailable verification is never evidence invalidation on either recovery path."""
     from alphalattice.control.task_control.child import ChildStartFailed
 
     now = datetime(2026, 10, 3, 12, tzinfo=UTC)
@@ -2457,7 +2249,6 @@ def test_a_child_start_stop_preserves_verification_evidence(phase, tmp_path):
 def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journal(
     tmp_path: Path,
 ) -> None:
-    import duckdb
 
     from alphalattice.control.task_control.registry import TaskControlDatabaseAuthorityError
 
@@ -2585,11 +2376,16 @@ def test_recovery_links_seal_preview_and_confirmed_successor_in_the_event_journa
     # A fresh owner refuses a broken link seal.
     damaged = preview.model_dump(mode="json")
     damaged["link_hash"] = "f" * 64
-    with duckdb.connect(str(database)) as connection:
-        connection.execute(
-            "UPDATE workspace_task_event SET details_json = ? WHERE task_id = ? AND kind = ?",
-            [json.dumps(damaged), str(source.task_id), "task.recovery_link"],
-        )
+    with history.held().unit() as connection:  # a damaged note, appended past its sealed one
+        attrs, workspace = connection.execute(
+            "SELECT attrs, workspace_id FROM event WHERE type = 'task.noted' AND subject_id = ?"
+            " AND json_extract(attrs, '$.kind') = 'task.recovery_link'",
+            [str(source.task_id)],
+        ).fetchone()
+        noted = json.loads(attrs) | {"event_id": str(uuid4())}
+        noted["sequence"] += 100
+        subject, text = ("task", str(source.task_id)), json.dumps(damaged)
+        history.held().record("task.noted", subject, noted, workspace=workspace, text=text)
     fresh = DuckDbTaskControlRegistry(database, gate=WorkspaceMutationGate())
     with pytest.raises(
         TaskControlDatabaseAuthorityError, match=r"task_control\.recovery_link_invalid"

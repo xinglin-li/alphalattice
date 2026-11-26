@@ -816,7 +816,7 @@ def earlier_findings(
 ) -> tuple[tuple[str, str], ...]:
     """Write one line of context per earlier finding on a filing still in the window.
 
-    By issuer: what was found and when, never the filing again (W3).
+    By issuer: what was found and when, never the filing again.
 
     Args:
         readings: Each earlier analysis with the filings it read that are still in the window.

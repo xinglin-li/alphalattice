@@ -1,4 +1,4 @@
-/* A strategy's activation (U73; LS1, V459, OW12): a completed book of an installed research strategy, run over its
+/* A strategy's activation (U73; LS1, OW12): a completed book of an installed research strategy, run over its
  * whole support, runs the strategy forward by a person's press. The Host's CONTROLS answer for the book's package says
  * whether it runs forward (`activation`: ACTIVE with its book, first forward session and horizon; MOVED when the
  * package changed since; INACTIVE) and names what it offers (`activation.next_requests`: `activate` the newest book it
@@ -33,7 +33,7 @@ const LiveActivation = (() => {
     }
     finally { if (ticket === S.ticket) { S.reading = false; repaint(); } }
   }
-  // V676: the existing activity cadence observes owner changes even when no Task moved.
+  // the existing activity cadence observes owner changes even when no Task moved.
   // Slow reads join one observation; a changed book invalidates its Standing response.
   async function observe() {
     if (observing || S.reading || S.busy || app.page !== 'portfolio' || !Data.ready || !packageOf(Data.subject())) return;
@@ -45,7 +45,7 @@ const LiveActivation = (() => {
     } finally { observing = false; }
   }
   const STATES = {ACTIVE: ['verified', 'Runs forward'], MOVED: ['blocked', 'Package changed'], INACTIVE: ['metadata', 'Not running forward']};
-  /* V589, V594, V597: a strategy's dates as its owner states them (`strategy_dates`), each with its words on hover --
+  /* a strategy's dates as its owner states them (`strategy_dates`), each with its words on hover --
    * the information cutoff (an undetermined one names its missing sources and never shows its latest dated information
    * as the cutoff); the trading start, the first actionable session positions are held from (a conditional one says so);
    * a forward book decided before it, its sessions to then a causal replay in-sample, never out-of-sample; the next refit,
@@ -77,7 +77,7 @@ const LiveActivation = (() => {
     const cutoffValue = d.information_cutoff ? hint(d.information_cutoff, t(d.information_cutoff_detail || '')) : hint(t('Not determined'), why);
     return {replayRange, refit, refitEach, startValue, cutoffValue};
   }
-  /* V614 (U84; FIX1's `review_standing`): the book's Evidence and CRO review at the decision, as its owner states it
+  /* the book's Evidence and CRO review at the decision, as its owner states it
    * on the activation offer and its answer -- reviewed (its publication date and the CRO's route; on hover the
    * owner's words, the evidence's date and what the preparation coverage counts), not reviewed, or no book named;
    * a standing the owner does not state reads as not stated, never inferred. */

@@ -18,7 +18,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
@@ -30,13 +29,18 @@ from unittest import mock
 
 from packaging.version import Version
 
+from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.interface.local_application import cli
 from alphalattice.interface.local_application.answers import ANSWERS
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_SESSION_VARIABLES,
     SCHEMA_VERSION,
     Outcome,
+    client_refusal,
+    host_checked,
+    worded,
 )
+from alphalattice.kernel.config import Change, override
 from devtools.architecture import structural
 from devtools.architecture.neutral_changes import source_syntax_tree
 from devtools.architecture.registries import refusal_entries
@@ -252,10 +256,10 @@ def userspace_problems(root: Path) -> list[str]:
         return [f"USERSPACE {SURFACE}:1 missing manifest; restore the frozen registry"]
     manifest = json.loads(path.read_bytes())
     command = ["git", "show", f"HEAD:{SURFACE}"]
-    old = subprocess.run(command, cwd=root, capture_output=True)
+    old = spawn.run(command, cwd=root, capture_output=True)
     if old.stdout == path.read_bytes():
         command[-1] = f"HEAD^:{SURFACE}"
-        old = subprocess.run(command, cwd=root, capture_output=True)
+        old = spawn.run(command, cwd=root, capture_output=True)
     previous = json.loads(old.stdout) if old.returncode == 0 else None
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     manifest["release"] = project["version"]
@@ -530,7 +534,8 @@ def _provenance_aliases(tree: ast.Module) -> set[str]:
         for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
     ]
     raw: set[str] = set()
-    while True:
+    changed = True
+    while changed:
         expanded = raw | {
             ast.unparse(target)
             for target, value in assignments
@@ -540,9 +545,9 @@ def _provenance_aliases(tree: ast.Module) -> set[str]:
                 and any(ast.unparse(part) in raw for part in ast.walk(value))
             )
         }
-        if expanded == raw:
-            return raw
+        changed = expanded != raw
         raw = expanded
+    return raw
 
 
 def _raw_provenance_checks(name: str, tree: ast.Module) -> list[str]:
@@ -782,7 +787,7 @@ def _cli_options() -> dict[tuple[str, str], set[str]]:
 
 
 def named_commands(root: Path) -> list[str]:
-    """Each command or flag a product text names in backticks that the CLI does not have (V124).
+    """Each command or flag a product text names in backticks that the CLI does not have.
 
     A phrase is a command when it starts with a noun the CLI has, with the root command's
     prefix, or with a word and then a flag: refusal words named `capabilities --operation`
@@ -924,7 +929,7 @@ def _goal_records(tree: ast.AST) -> set[int]:
 
 
 def incomplete_offers(root: Path) -> list[str]:
-    """Each next request an owner offers without a field its operation requires (V136).
+    """Each next request an owner offers without a field its operation requires.
 
     A field the reader must choose is written as None, so the CLI shows the request as a
     template naming it; an absent one is a mistake. A request built with ``**`` takes fields
@@ -986,7 +991,7 @@ _TEXT_AS_CODE_ROOTS = (
 def text_served_as_code(root: Path) -> list[str]:
     """Each place an exception's text (``str(error)`` of an ``except ... as error``) is served
     as a failure code: a ``failure_code`` key or keyword, or the code of ``refused(...)``.
-    The owner's code is ``public_failure(error, fallback)`` (V31); a comparison of the text
+    The owner's code is ``public_failure(error, fallback)``; a comparison of the text
     with known codes is not serving it."""
 
     found: list[str] = []
@@ -1095,12 +1100,12 @@ def problems(root: Path) -> list[str]:
             flags = [n for n in named if n != "file"]
             if len(flags) != len(set(flags)):
                 out.append(f"{noun} {verb} ({op}): two fields share one flag")
-    # An exactly-one rule names only the request's own fields (V409).
+    # An exactly-one rule names only the request's own fields.
     for operation, groups in sorted(ALTERNATIVES.items()):
         allowed = PortfolioResearchOperationRequest.field_contract(operation)[1]  # type: ignore[arg-type]
         for name in sorted({name for group in groups for name in group} - set(allowed)):
             out.append(f"{operation}'s alternatives name {name}, which it does not take")
-    # The help lists each object the CLI has once, and its common path only commands (V401).
+    # The help lists each object the CLI has once, and its common path only commands.
     grouped = sorted(noun for _group, nouns in HELP_GROUPS for noun, _purpose in nouns)
     objects = {noun for noun, _verb in (*COMMANDS, *cli.CLIENT_COMMANDS)} | {"serve", "request"}
     if grouped != sorted(objects):
@@ -1177,7 +1182,7 @@ _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]
         ("no Host", ["STATUS"], 0, "OK"),
         ("a missing field", [], 1, "INVALID_INPUT"),
     ],
-    # It restores from the backup root alone (V328), a restore the entry composes as it does
+    # It restores from the backup root alone, a restore the entry composes as it does
     # `serve`; nothing under src imports the Host, so the walk composes neither and the client
     # refuses by name (the backup tests run the real restore).
     ("backup", "restore"): [
@@ -1199,12 +1204,12 @@ _OFFLINE_CASES: Final[dict[tuple[str, str], list[tuple[str, list[str], int, str]
         ("a missing field", [], 1, "INVALID_INPUT"),
     ],
     # The walk runs as a shell outside any agent session (`walk`): there is no session to bind,
-    # so the client refuses by name and writes nothing (V568).
+    # so the client refuses by name and writes nothing.
     ("session", "bind"): [
         ("no agent session", [], 1, "INVALID_INPUT"),
     ],
     # The person's own shell, in the walk's empty folder: no project up from it holds the
-    # product's declarations, so the client refuses by name and removes nothing (V586).
+    # product's declarations, so the client refuses by name and removes nothing.
     ("session", "unbind"): [
         ("no project", [], 2, "REFUSED"),
     ],
@@ -1216,20 +1221,41 @@ def walk(root: Path) -> list[str]:
     """Every command against a workspace no Host serves, and with a required field missing.
 
     It runs as a shell outside any agent session, whichever session runs the gate: a session
-    would bind (`session bind`) and print its bound workspace's commands clean (V568). It runs
+    would bind (`session bind`) and print its bound workspace's commands clean. It runs
     in its empty folder, never the checkout, whose binding the person's `session unbind` would
-    remove (V586).
+    remove.
     """
 
     with contextlib.ExitStack() as outside:
-        for _vendor, variable in AGENT_SESSION_VARIABLES:
-            if variable in os.environ:
-                value = os.environ.pop(variable)
-                outside.callback(os.environ.__setitem__, variable, value)
+        session_variables = dict.fromkeys(variable for _vendor, variable in AGENT_SESSION_VARIABLES)
+        outside.enter_context(override(Change("operation-registry-unbound", session_variables)))
         # Each answer prints its command prefix, found on PATH: one lookup per name for the
         # walk's whole run, not one PATH scan per answer (179 scans, 1.3 s of the guard).
         outside.enter_context(mock.patch("shutil.which", functools.cache(shutil.which)))
         return _walk(root, cli)
+
+
+def _unexpected_diagnostic_path(
+    text: str, answer: dict[str, Any], outcome: str, empty: str
+) -> bool:
+    """Allow only the owner's checked-workspace context and exact no-Host recovery words."""
+    checked = dict(answer)
+    context = answer.get("context")
+    if isinstance(context, dict) and context.get("workspace") == empty:
+        checked["context"] = {k: v for k, v in context.items() if k != "workspace"}
+    failure_code = answer.get("failure_code")
+    if outcome == "NO_HOST" and isinstance(failure_code, str):
+        detail = host_checked(str(worded(client_refusal(failure_code).detail)), Path(empty))
+        if answer.get("detail") == detail:
+            checked["detail"] = ""
+    remaining = json.dumps(checked)
+    previous = "\n".join(text.strip().splitlines()[:-1])
+    return (
+        "Traceback" in text
+        or empty in previous
+        or empty in remaining
+        or json.dumps(empty)[1:-1] in remaining
+    )
 
 
 def _walk(root: Path, cli: Any) -> list[str]:
@@ -1260,7 +1286,8 @@ def _walk(root: Path, cli: Any) -> list[str]:
             for op in ops
         ),
     ]
-    with tempfile.TemporaryDirectory() as empty, contextlib.chdir(empty):
+    with tempfile.TemporaryDirectory() as folder, contextlib.chdir(folder):
+        empty = os.getcwd()  # the physical spelling agrees with the CLI's resolved workspace
         for noun, verb, given in commands:
             cases = [("no Host", given, 4, "NO_HOST")]
             if given:
@@ -1291,7 +1318,7 @@ def _walk(root: Path, cli: Any) -> list[str]:
                     out.append(
                         f"{noun} {verb} ({label}): the envelope lacks {_ENVELOPE - answer.keys()}"
                     )
-                elif "Traceback" in text or empty in text:
+                elif _unexpected_diagnostic_path(text, answer, outcome, empty):
                     out.append(f"{noun} {verb} ({label}): the answer carries a traceback or a path")
     return out
 

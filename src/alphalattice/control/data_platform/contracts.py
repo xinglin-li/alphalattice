@@ -7,9 +7,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.foundation.market_data_ops.runtime.remediation import PolicyDecision
 from alphalattice.foundation.market_data_ops.sources.contracts import DataRemediationProposal
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,

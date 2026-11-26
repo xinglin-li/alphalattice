@@ -7,6 +7,7 @@ import math
 import pandas as pd
 import pytest
 
+from alphalattice.capabilities.quant.factor_contracts import FactorSpec
 from alphalattice.foundation.feature_engine.producers.factors.catalog import (
     default_extension_kernel_registry,
     extension_factor_specs,
@@ -17,7 +18,6 @@ from alphalattice.foundation.feature_engine.producers.factors.specifications imp
     build_installed_factor_formula_specifications,
     golden_example_frame,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorSpec
 
 
 @pytest.mark.parametrize("recipe", extension_factor_specs(), ids=lambda value: value.factor_id)
@@ -128,7 +128,7 @@ def test_the_corrected_amplitude_golden_rotates_only_the_validation_identity() -
         if value.factor_id == "intraday_amplitude"
     )
 
-    # Rotated on 2026-09-02 by the golden correction. docstrings in kernel/quant/
+    # Rotated on 2026-09-02 by the golden correction. docstrings in capabilities/quant/
     # factor_formulas.py moved these on 2026-09-27; that file's bytes were restored, since a
     # byte closure reads it, until W8 puts the factor identities on the rule.
     assert (

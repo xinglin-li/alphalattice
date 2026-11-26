@@ -14,10 +14,12 @@ the Universe's own forward history, the template, is `membership.py`'s.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from typing import TYPE_CHECKING
 
-import pandas as pd
+from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 
-from alphalattice.kernel.data.calendar import materialize_calendar_schedule
+if TYPE_CHECKING:
+    pass
 
 _EXCHANGE_ZONE = "America/New_York"
 
@@ -39,6 +41,8 @@ def sector_effective_session(observed_at: datetime, *, first_unpublished: date) 
         ValueError: `sector_history.effective_session_unavailable` for a naive clock or when the
             calendar names no session within two weeks.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise ValueError("sector_history.effective_session_unavailable")
     observed_day = pd.Timestamp(observed_at).tz_convert(_EXCHANGE_ZONE).date()

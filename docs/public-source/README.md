@@ -1,5 +1,5 @@
 # AlphaLattice research workstation
-Last checked: 2026-10-22 against 0.2.3
+Last checked: 2026-11-23 against 0.2.9
 
 Give your Claude Code or Codex agent one research intent and the repository link.
 It installs AlphaLattice and continues in the same session. You can follow Tasks,
@@ -23,6 +23,7 @@ claims and limits. AlphaLattice executes no trades and promises no future return
 | [Formula factors](formula-factors.md) | Formulas, recipes, trial, review |
 | [Data and care](data-and-care.md) | Updates, issues, backup, storage |
 | [Privacy](privacy.md) | Usage reader and controls |
+| [Telemetry conventions](telemetry.md) | Span, event, and attribute names |
 | [Third-party data](third-party-and-data.md) | Models, sources, terms |
 | [Temporal statements](temporal-statements.md) | Dates, membership, Sector, prices |
 | [Architecture](architecture.md) | Owners and boundaries |

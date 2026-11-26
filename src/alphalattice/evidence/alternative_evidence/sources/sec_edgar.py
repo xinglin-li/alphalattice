@@ -11,11 +11,13 @@ from email.utils import parsedate_to_datetime
 from typing import Protocol, Self, get_args
 from urllib.parse import urlsplit
 
-import httpx
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from alphalattice.kernel.live_evidence.online_sources import extract_canonical_markdown
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.waits import pause
+from alphalattice.evidence.live_evidence.online_sources import extract_canonical_markdown
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.egress import HttpEgress, HttpResponse, HttpSource
 
 from ..contracts import (
     ADMITTED_DOCUMENT_CAPACITY,
@@ -96,9 +98,11 @@ class LocalSourceLookup(Protocol):
     entry's exact resource, or None.
     """
 
-    def find(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceDocument | None: ...
+    def find(
+        self, entry: SecFilingInventoryEntry, *, as_of: datetime
+    ) -> AcquiredEvidenceDocument | None: ...
 
-    def holds(self, entry: SecFilingInventoryEntry) -> bool: ...
+    def holds(self, entry: SecFilingInventoryEntry, *, as_of: datetime) -> bool: ...
 
     def deferral(self, entry: SecFilingInventoryEntry) -> AcquiredEvidenceSourceDeferral | None: ...
 
@@ -212,10 +216,10 @@ class HttpxSecOfficialTransport:
         user_agent: str,
         timeout_seconds: float = 15.0,
         maximum_attempts: int = 3,
-        transport: httpx.BaseTransport | None = None,
+        transport: object | None = None,
         requests_per_second: float = 5.0,
         monotonic: Callable[[], float] = time.monotonic,
-        sleeper: Callable[[float], None] = time.sleep,
+        sleeper: Callable[[float], object] = pause,
         maximum_total_attempts: int | None = None,
         maximum_total_response_bytes: int | None = None,
         ledger: SecCampaignLedger | None = None,
@@ -257,9 +261,9 @@ class HttpxSecOfficialTransport:
         self.retry_count = 0
         self.rate_limited_count = 0
         self.response_bytes = 0
-        self._client = httpx.Client(
-            timeout=self._timeout_seconds,
-            follow_redirects=False,
+        self._client = HttpEgress(
+            HttpSource.SEC,
+            timeout_seconds=self._timeout_seconds,
             headers={"User-Agent": self._user_agent, "Accept-Encoding": "gzip"},
             transport=transport,
         )
@@ -298,7 +302,7 @@ class HttpxSecOfficialTransport:
         self._last_request_started = now
 
     @staticmethod
-    def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    def _retry_delay(response: HttpResponse, attempt: int) -> float:
         value = response.headers.get("retry-after")
         if value is not None:
             try:
@@ -308,7 +312,7 @@ class HttpxSecOfficialTransport:
                     parsed = parsedate_to_datetime(value)
                     if parsed.tzinfo is None:
                         parsed = parsed.replace(tzinfo=UTC)
-                    return min(max((parsed - datetime.now(UTC)).total_seconds(), 0.0), 30.0)
+                    return min(max((parsed - utc_now()).total_seconds(), 0.0), 30.0)
                 except (TypeError, ValueError, OverflowError):
                     pass
         return float(min(0.25 * (2**attempt), 1.0))
@@ -356,7 +360,7 @@ class HttpxSecOfficialTransport:
         error: Exception | None = None
         resource = "body" if url.startswith(_SEC_ARCHIVES) else "metadata"
         for attempt in range(self._maximum_attempts):
-            response: httpx.Response | None = None
+            response: HttpResponse | None = None
             reservation: int | None = None
             read = 0
             outcome = "failed"
@@ -370,7 +374,7 @@ class HttpxSecOfficialTransport:
                     )
                 self._throttle()
                 self.request_count += 1
-                with self._client.stream("GET", url) as response:
+                with self._client.stream(url) as response:
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
                     if response.status_code == 429 or 500 <= response.status_code < 600:
                         if response.status_code == 429:
@@ -407,9 +411,9 @@ class HttpxSecOfficialTransport:
                     status_code=response.status_code,
                     content_type=content_type,
                     content=content,
-                    retrieved_at=datetime.now(UTC),
+                    retrieved_at=utc_now(),
                 )
-            except (httpx.HTTPError, RuntimeError) as caught:
+            except RuntimeError as caught:
                 error = caught
                 if attempt + 1 < self._maximum_attempts:
                     self.retry_count += 1
@@ -418,7 +422,8 @@ class HttpxSecOfficialTransport:
                         if response is not None
                         else min(0.25 * (2**attempt), 1.0)
                     )
-                    self._sleeper(delay)
+                    if delay > 0.0:  # a Retry-After of 0 retries at once
+                        self._sleeper(delay)
             finally:
                 if reservation is not None and self._ledger is not None:
                     # Settled with what was actually read, complete or not.
@@ -790,7 +795,7 @@ class SecEdgarSource:
                     for value in entries
                     if local is None
                     or (
-                        not local.holds(value)
+                        not local.holds(value, as_of=request.evidence_as_of)
                         and _deferral_eligible(local.deferral(value), request, cap, explicit_retry)
                     )
                 )
@@ -820,7 +825,7 @@ class SecEdgarSource:
             record = _OutcomeRecorder(outcomes, entity_id=entity_id, filing=filing)
             if local is not None:
                 try:
-                    held = local.find(filing)
+                    held = local.find(filing, as_of=request.evidence_as_of)
                 except ValueError as error:
                     record("FAILED", detail=f"local integrity: {error}")
                     continue

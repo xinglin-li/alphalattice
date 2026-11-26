@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +38,8 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditScopeInsufficient,
     MarketDataRepository,
 )
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import worker_width
 
 _REFERENCE_NAMESPACE = UUID("15bf0e17-4d4f-4a5e-8aae-026a01aa7f0d")
 SPY_REFERENCE_ID = "SPY"
@@ -129,7 +132,7 @@ class MarketReferenceMaintainer:
         payload = None
         hydration = None
         last_error: ProviderFetchError | None = None
-        for _attempt in range(self.retry_budget):
+        for attempt in range(1, self.retry_budget + 1):
             try:
                 if hasattr(self.provider, "fetch_hydration"):
                     hydration = self.provider.fetch_hydration(
@@ -145,7 +148,7 @@ class MarketReferenceMaintainer:
                     )
                 break
             except ProviderFetchError as exc:
-                last_error = exc
+                last_error = exc.backed_off(attempt, self.retry_budget)
                 if not exc.retryable:
                     break
         if payload is None:
@@ -160,61 +163,66 @@ class MarketReferenceMaintainer:
             batch = sanitize_payload(
                 reference.manifest, self.provider.name, payload, (reference.symbol,)
             )
-            self.market_data.apply_validated_batch(
-                reference.manifest,
-                batch,
-                ingestion_id=canonical_hash(
-                    ["SPY", as_of_session.isoformat(), observed_at.isoformat(), "refresh"]
-                ),
-                observed_at=observed_at,
-            )
-            bars = self.market_data.raw_bars(reference.listing_id, through=as_of_session)
-            if not bars:
-                raise ValueError("SPY refresh persisted no bars")
-            receipt = self.market_data.reusable_action_audit_receipt(
-                reference.manifest,
-                listing_id=reference.listing_id,
-                provider=self.provider.name,
-                requested_as_of=as_of_session,
-                now=observed_at,
-            )
-            if receipt is None:
-                scoped_sessions = {
-                    item.session_date
-                    for item in bars
-                    if start <= item.session_date <= as_of_session
-                }
-                if (
-                    hydration is not None
-                    and {item.session_date for item in hydration.adjusted_closes} == scoped_sessions
-                ):
-                    actions = hydration.actions
-                    adjusted = hydration.adjusted_closes
-                else:
-                    actions = self.provider.fetch_action_history(
-                        listing_id=reference.listing_id,
-                        provider_symbol=reference.symbol,
-                        start=start,
-                        end=as_of_session,
-                    )
-                    adjusted = self.provider.fetch_adjusted_close_history(
-                        listing_id=reference.listing_id,
-                        provider_symbol=reference.symbol,
-                        start=start,
-                        end=as_of_session,
-                    )
-                receipt, _audit_summary = self.market_data.complete_action_audit(
+            # One market update: the bars and their audit reach world in one admission. Admitted
+            # between them, the bars would hold no adjusted close, and the closes, written at the
+            # same time, would be dropped as equal_time ever after.
+            with self.market_data.writing():
+                self.market_data.apply_validated_batch(
                     reference.manifest,
-                    ActionAuditObservation(
-                        listing_id=reference.listing_id,
-                        provider=self.provider.name,
-                        actions=actions,
-                        adjusted_closes=adjusted,
-                        history_start=start,
-                        history_end=as_of_session,
-                        observed_at=observed_at,
+                    batch,
+                    ingestion_id=canonical_hash(
+                        ["SPY", as_of_session.isoformat(), observed_at.isoformat(), "refresh"]
                     ),
-                )[0]
+                    observed_at=observed_at,
+                )
+                bars = self.market_data.raw_bars(reference.listing_id, through=as_of_session)
+                if not bars:
+                    raise ValueError("SPY refresh persisted no bars")
+                receipt = self.market_data.reusable_action_audit_receipt(
+                    reference.manifest,
+                    listing_id=reference.listing_id,
+                    provider=self.provider.name,
+                    requested_as_of=as_of_session,
+                    now=observed_at,
+                )
+                if receipt is None:
+                    scoped_sessions = {
+                        item.session_date
+                        for item in bars
+                        if start <= item.session_date <= as_of_session
+                    }
+                    if (
+                        hydration is not None
+                        and {item.session_date for item in hydration.adjusted_closes}
+                        == scoped_sessions
+                    ):
+                        actions = hydration.actions
+                        adjusted = hydration.adjusted_closes
+                    else:
+                        actions = self.provider.fetch_action_history(
+                            listing_id=reference.listing_id,
+                            provider_symbol=reference.symbol,
+                            start=start,
+                            end=as_of_session,
+                        )
+                        adjusted = self.provider.fetch_adjusted_close_history(
+                            listing_id=reference.listing_id,
+                            provider_symbol=reference.symbol,
+                            start=start,
+                            end=as_of_session,
+                        )
+                    receipt, _audit_summary = self.market_data.complete_action_audit(
+                        reference.manifest,
+                        ActionAuditObservation(
+                            listing_id=reference.listing_id,
+                            provider=self.provider.name,
+                            actions=actions,
+                            adjusted_closes=adjusted,
+                            history_start=start,
+                            history_end=as_of_session,
+                            observed_at=observed_at,
+                        ),
+                    )[0]
             revision = canonical_hash(
                 {
                     "reference": SPY_REFERENCE_ID,
@@ -365,11 +373,11 @@ def _classify_sector_results(
 class SectorRefreshStager:
     """Acquire current-sector evidence without touching DuckDB.
 
-    The JSON file is a private, run-resumable staging artifact (DA9, V268). It is never a
+    The JSON file is a private, run-resumable staging artifact (DA9). It is never a
     research authority: only a complete, revalidated document may be committed atomically
     into the workspace DuckDB by :meth:`commit`. It binds the provider, the manifest and what
     it stages, never the transport: a staging deferred under two workers resumes under one,
-    each chunk recording the workers that fetched it (PA2, PA3, V257).
+    each chunk recording the workers that fetched it (PA2, PA3).
     """
 
     manifest: UniverseManifest
@@ -543,6 +551,12 @@ class SectorRefreshStager:
             observations=tuple(payload["observations"]),
             observed_at=observed_at,
         )
+        # The admitted revision and receipt now own the evidence. The resumable
+        # transport body has no reader after successful activation.
+        try:
+            self.path.unlink(missing_ok=True)
+        except OSError as error:
+            logging.getLogger(__name__).warning("sector.staging_cleanup_held: %s", error)
         return SectorRefreshOutcome(
             "completed", revision, receipt, failure_code="sector.changed" if changed else None
         )
@@ -664,10 +678,14 @@ class SectorRefreshStager:
         return observations, failures, provider_wide
 
     def _fetch_chunk(self, chunk, *, workers: int):
+        workers = worker_width(workers)
         if workers == 1:
             return [(listing, self._fetch_one(listing.provider_symbol)) for listing in chunk]
         by_future = {}
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sector-fetch") as pool:
+        with execution_port().register_pool(
+            ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sector-fetch"),
+            name="sector-fetch",
+        ) as pool:
             for listing in chunk:
                 by_future[pool.submit(self._fetch_one, listing.provider_symbol)] = listing
             completed = {

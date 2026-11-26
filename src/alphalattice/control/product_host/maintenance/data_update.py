@@ -6,13 +6,15 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
-from hashlib import sha256
+from os.path import lexists
 from pathlib import Path
 from typing import Any, ClassVar, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import duckdb
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.maintenance.contracts import (
     ListingMarketDataChange,
@@ -102,6 +104,7 @@ from alphalattice.control.workspace_runtime.content_store import ContentAddresse
 from alphalattice.control.workspace_runtime.database import WorkspaceDatabase
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.paths import resolve_confined
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.foundation.factor_research.publication.artifacts import (
     FactorResearchArtifactStore,
@@ -119,6 +122,7 @@ from alphalattice.foundation.market_data_ops.runtime.universe_maintenance import
 from alphalattice.foundation.market_data_ops.runtime.universe_onboarding import (
     CurrentUniverseOnboardingStatus,
 )
+from alphalattice.foundation.market_data_ops.sources.local_file import LocalFileMarketDataProvider
 from alphalattice.foundation.market_data_ops.sources.manifest import read_market_profile
 from alphalattice.foundation.market_data_ops.sources.providers import (
     MarketDataProvider,
@@ -136,8 +140,7 @@ from alphalattice.foundation.research_foundation.contracts import (
 )
 from alphalattice.interface.local_application.dispatcher import CommandAdmission
 from alphalattice.interface.local_application.failure_codes import public_failure
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from alphalattice.kernel.identity import integrity_sha256
 
 PROFILE = (
     resolve_playpen_root(Path(__file__)) / "config/market-profiles/us-current-index-research.yaml"
@@ -145,7 +148,7 @@ PROFILE = (
 PLAN_FIELDS = ("data_update",)
 """The manifest fields a plan reads: the data update binding it runs under and writes. A plan binds
 them, never the whole manifest, so a publication of fields it does not read leaves it applicable
-(V223, OW10)."""
+(OW10)."""
 
 DATA_UPDATE_TASK_KIND = "workspace_data_update"
 _STAGES = ("validate_update_request", "maintain_data_feature", "publish_update_receipt")
@@ -161,7 +164,7 @@ _RECOVERABLE_BLOCKS = {
     "workspace_maintenance.feature_source_reconciliation_failed",
     "data.full_history_audit_approval_required",
     # Its way on is the plan run again once a person opens the network: the rerun resumes the
-    # stopped Task, refused while it stays closed (V600).
+    # stopped Task, refused while it stays closed.
     "workspace_data_update.source_access_not_admitted",
     # Its way on is the backup's cause resolved and the plan run again: the stopped Task resumes,
     # its first stage retaking the backup.
@@ -173,7 +176,7 @@ _RECOVERABLE_BLOCKS = {
 def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDataUpdateBinding:
     """Bind the profile, data policy and workspace's catalog, or the shipped catalog (EX)."""
     return WorkspaceDataUpdateBinding.seal(
-        profile_file_hash=sha256(PROFILE.read_bytes()).hexdigest(),
+        profile_file_hash=integrity_sha256(PROFILE.read_bytes()).hexdigest(),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
         feature_catalog_hash=workspace_feature_catalog(workspace).binding.catalog_hash,
     )
@@ -223,14 +226,15 @@ def read_workspace_inputs(
         raise ValueError("workspace_data_update.installed_binding_mismatch")
     market = MarketDataRepository(root)
     # Dozens of small reads over one database: one retained read-only instance serves them all;
-    # a write inside is refused, not upgraded.
-    with market.database.retain(read_only=True):
+    # a write inside is refused, not upgraded. Its byte proofs read the Panel's chunk files, never
+    # the store's, so it attaches to a kept writable instance and the update's writer reuses it.
+    with market.database.retain(read_only=True, proves_bytes=False):
         state = _read_workspace_inputs(root, binding, market, allow_transition=allow_transition)
         if through is not None:
-            with market.database.connect(read_only=True) as connection:
+            with market.market_reads() as (connection, tables):
                 physical = connection.execute(
-                    "SELECT max(d) FROM (SELECT session_date d FROM raw_daily_bar_current "
-                    "UNION ALL SELECT session_date FROM provider_adjusted_close_current)"
+                    f"SELECT max(d) FROM (SELECT session_date d FROM {tables['bars']} "
+                    f"UNION ALL SELECT session_date FROM {tables['adjusted']})"
                 ).fetchone()
             if not physical or physical[0] is None:
                 raise ValueError("workspace_preparation.qualified_local_inputs_required")
@@ -532,8 +536,7 @@ class WorkspaceDataUpdateApplication:
             task_kind=DATA_UPDATE_TASK_KIND, preview="DATA_UPDATE_PLAN", admitting="DATA_UPDATE_RUN"
         ),
     )
-    """The re-plan of the Task kind this owner admits, which the recovery view offers
-    (V188)."""
+    """The re-plan of the Task kind this owner admits, which the recovery view offers."""
     portfolio_obligations: Callable[[], BookObligations] | None = None
     recorded_data_confirmation: Callable[[DataRemediationExecutionReceipt], bool] | None = None
     data_rule: Callable[[UUID], Any] | None = None
@@ -541,7 +544,7 @@ class WorkspaceDataUpdateApplication:
 
     @property
     def manifest(self) -> ResearchWorkspaceManifest:
-        """The workspace manifest, read from the one holder the Host refreshes (V182)."""
+        """The workspace manifest, read from the one holder the Host refreshes."""
         return self._manifests.current
 
     @staticmethod
@@ -675,6 +678,10 @@ class WorkspaceDataUpdateApplication:
         self.session, self.clock = session, clock
         self._manifests = held(manifest)
         source = read_market_profile(PROFILE).provider if provider is None else ""
+        capture = session.workspace / "market-bars"
+        if provider is None and lexists(capture):
+            folder = resolve_confined(session.workspace, capture.name)
+            provider = LocalFileMarketDataProvider(folder, name=source)
         self.provider = market_provider(session.workspace, source, provider)
         self.source_loader = source_loader
         self.last_plan: WorkspaceDataUpdatePlan | None = None
@@ -727,8 +734,8 @@ class WorkspaceDataUpdateApplication:
 
         Raw candidate retries and Feature/Sector rechecks are planned apart; planning runs no
         Factor research and grants no source access. A data update that has not ended answers
-        its own plan: its run follows it, or resumes a deferred one once due (V601); planned
-        anew, the later update queued behind the deferral (V604). First, a cancelled update's
+        its own plan: its run follows it, or resumes a deferred one once due; planned
+        anew, the later update queued behind the deferral. First, a cancelled update's
         orphaned membership is restored (`restored_membership`), or an unproved one refused.
 
         Args:
@@ -840,7 +847,7 @@ class WorkspaceDataUpdateApplication:
             candidate_data_recheck=raw_recheck,
         )
         # The answer names this plan, never the owner's last one, which a concurrent plan
-        # may have replaced in between (V534).
+        # may have replaced in between.
         planned = WorkspaceDataUpdatePlan.seal(
             workspace_id=self.manifest.workspace_id,
             workspace_manifest_hash=manifest_fields_hash(self.manifest, PLAN_FIELDS),
@@ -852,7 +859,7 @@ class WorkspaceDataUpdateApplication:
         )
         self.last_plan = planned
         # A change plan is kept in the change store its person's confirm reads; a maintenance
-        # plan is a preview its run finds after a Host restart within its hour (V537).
+        # plan is a preview its run finds after a Host restart within its hour.
         if change is not None:
             self.changes.save_plan(planned)
         else:
@@ -901,7 +908,7 @@ class WorkspaceDataUpdateApplication:
         return True
 
     def _waiting(self) -> TaskRecord | None:
-        """The data update that has not ended, if one has not (V604)."""
+        """The data update that has not ended, if one has not."""
         return next(
             (
                 task
@@ -1066,7 +1073,7 @@ class WorkspaceDataUpdateApplication:
     def receipt_task(self, receipt: WorkspaceDataUpdateReceipt) -> UUID | None:
         """The update Task that sealed a receipt: the one whose plan the receipt names.
 
-        A reuse answers it, so a read follows the update it reused (V449).
+        A reuse answers it, so a read follows the update it reused.
 
         Args:
             receipt: A sealed update receipt.
@@ -1187,7 +1194,7 @@ class WorkspaceDataUpdateApplication:
                 )
             ]
             result["work_progress"] = self.telemetry.work_progress(task)
-            # What its stopped step saw beside the code, as Task Control keeps it (V444).
+            # What its stopped step saw beside the code, as Task Control keeps it.
             cause = next(
                 (
                     item.failure_cause
@@ -1563,7 +1570,7 @@ class WorkspaceDataUpdateApplication:
             ValueError: The plan is past its hour or was never planned in this workspace.
         """
         # A maintenance preview runs within its hour across a Host restart, and never past it
-        # from this Host's memory alone (V537, as V536).
+        # from this Host's memory alone.
         if (kept := self._previews.runnable(plan_hash)) is not None:
             return kept
         # An already admitted request remains recoverable after process loss.
@@ -1574,7 +1581,7 @@ class WorkspaceDataUpdateApplication:
                     self._require_plan(plan)
                     return plan
         # A change plan is kept until its person confirms it; one kept nowhere is planned again,
-        # never a tampered artifact (V537).
+        # never a tampered artifact.
         try:
             return self.changes.load_plan(plan_hash)
         except ContentAddressedStoreError as error:
@@ -1655,9 +1662,9 @@ class WorkspaceDataUpdateApplication:
         """The Task a rerun of its plan finds, resumed where its deferral or stop allows.
 
         The provider's deferral is reopened once its retry time has passed, and refused before
-        it (`workspace_data_update.retry_not_due`) (V601). The update's stop a person clears -- a
+        it (`workspace_data_update.retry_not_due`). The update's stop a person clears -- a
         data decision taken, the network allowed -- is reopened as owed a recovery, and refused by
-        its code while the network it names stays closed (V600). Either runs on from the stage it
+        its code while the network it names stays closed. Either runs on from the stage it
         stopped in, the stop kept in the Task's own record; any other Task is answered as it
         stands.
 
@@ -2009,7 +2016,14 @@ class WorkspaceDataUpdateApplication:
             if stage == _STAGES[0]
             else WorkspaceDatabase(self.session.workspace).retain(read_only=False)
         )
-        with scope:
+        # one market data update per writing step: its reads take the workspace, its buffer, and
+        # the Host publishes what it wrote once, through the step's retained instance, at its end
+        update = (
+            nullcontext()
+            if stage == _STAGES[0]
+            else MarketDataRepository(self.session.workspace).writing()
+        )
+        with scope, update:
             rule_task = decision_task or (bound_to[0].task_id if bound_to else None)
             diagnose = (
                 self.data_rule(rule_task)
@@ -2090,15 +2104,16 @@ class WorkspaceDataUpdateApplication:
                 if onboarding is not None:
                     # New members hydrate a chunk per run, as in first use; a cancel is honoured at
                     # the chunk boundary and each listing commits alone.
-                    while True:
+                    outcome = None
+                    while (
+                        outcome is None or outcome.status is CurrentUniverseOnboardingStatus.RUNNING
+                    ):
                         if cancelled():
                             return self._cancelled(plan)
                         outcome = onboarding.runner.run(
                             observed_at=self.clock(),
                             work_budget=onboarding.runner.hydration_chunk_size,
                         )
-                        if outcome.status is not CurrentUniverseOnboardingStatus.RUNNING:
-                            break
                     if outcome.status is not CurrentUniverseOnboardingStatus.COMPLETED:
                         return StageExecutionResult(
                             StageDisposition.DEFERRED
@@ -2179,7 +2194,8 @@ class WorkspaceDataUpdateApplication:
                     recorded_data_confirmation=self.recorded_data_confirmation,
                     diagnose=diagnose,
                 )
-                while True:
+                outcome = None
+                while outcome is None or outcome.status is MaintenanceStatus.RUNNING:
                     if cancelled():
                         return self._cancelled(plan)
                     require_storage_capacity(
@@ -2191,8 +2207,6 @@ class WorkspaceDataUpdateApplication:
                         observed_at=self.clock(),
                         maintenance_work_budget=_MAINTENANCE_CYCLE_LISTINGS,
                     )
-                    if outcome.status is not MaintenanceStatus.RUNNING:
-                        break
                 if outcome.status not in {MaintenanceStatus.COMPLETED, MaintenanceStatus.NOOP}:
                     return StageExecutionResult(
                         StageDisposition.DEFERRED
@@ -2299,7 +2313,18 @@ class WorkspaceDataUpdateApplication:
         Returns:
             Unchanged verified evidence.
         """
-        return self.verify_step(self._plan_of(task), work_item.stage_id, evidence)
+        from .daily_health import record_daily_health  # lazy: after verifying the update receipt
+
+        plan = self._plan_of(task)
+        verified = self.verify_step(plan, work_item.stage_id, evidence)
+        if work_item.stage_id == _STAGES[-1]:
+            record_daily_health(
+                self.session.task_control_registry,
+                task,
+                plan.request.target_market_session,
+                self.clock(),
+            )
+        return verified
 
     def verify_step(
         self,

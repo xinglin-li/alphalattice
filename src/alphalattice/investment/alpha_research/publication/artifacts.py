@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import zipfile
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
-from hashlib import sha256
+from functools import partial
 from io import BytesIO
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
@@ -19,19 +18,22 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import (
+    verified_array_read_scope,
     verified_npz_arrays,
-    verified_request_proof,
     verified_request_value,
+    verified_source_observations,
     verified_source_value,
 )
+from alphalattice.foundation.data_layer import history
 from alphalattice.investment.alpha_research.inputs.frozen_price_volume import (
     FrozenPriceVolumeInputs,
 )
 from alphalattice.investment.alpha_research.scores.product_replay import (
     HeterogeneousVintageFeatureSurface,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import integrity_sha256
 
 from ..experiments.contracts import AlphaCandidateRole, AlphaCandidateStatus
 from ..experiments.development_artifacts import (
@@ -71,6 +73,7 @@ from .contracts import (
     SectorHistoryRecord,
     StoredRebase,
     WorkspaceObservationHistoryHead,
+    array_blocks_digest,
     seal_current_contract,
 )
 from .workspace_history import (
@@ -118,10 +121,10 @@ class _Earlier:
 
 
 def _close(
-    path: Path, payload: Mapping[str, npt.NDArray[Any]], agreement: tuple[float, float]
+    content: bytes, payload: Mapping[str, npt.NDArray[Any]], agreement: tuple[float, float]
 ) -> bool:
     """Whether a stored block holds these columns, its floats within the rule's agreement."""
-    with np.load(path, allow_pickle=False) as stored:
+    with np.load(BytesIO(content), allow_pickle=False) as stored:
         if set(stored.files) != set(payload):
             return False
         for name, values in payload.items():
@@ -339,7 +342,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     if (record := SectorHistoryRecord.of(source.sector_by_listing_id)) is not None
                     else {}
                 ),
-                "array_content_hash": canonical_hash(blocks),
+                "array_content_hash": array_blocks_digest(blocks),
                 "array_blocks": blocks,
                 "source_binding_hash": source.source_binding_hash,
                 "reference_eligibility_recorded": source.reference_eligible is not None,
@@ -368,17 +371,17 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         values differ from it only by rounding, else these values' own."""
         packed = _packed_block(payload)
         category = "current/frozen-observation-arrays"
-        if (
-            earlier is not None
-            and not self._path(category, sha256(packed).hexdigest(), "bin").exists()
-        ):
+        digest = integrity_sha256(packed).hexdigest()
+        if earlier is not None and history.alpha_part_body_digest(digest, category) is None:
             block = earlier.block(index)
-            if block is not None and _close(
-                self._path(category, block, "bin"), payload, earlier.source.rebase_agreement
-            ):
-                earlier.kept.append(index)
-                return block
-        return self._publish_packed_bytes(category=category, payload=packed)
+            if block is not None:
+                content = self._frozen_payload("frozen-observation-arrays", block)
+                if _close(content, payload, earlier.source.rebase_agreement):
+                    earlier.kept.append(index)
+                    return self._publish_packed_bytes(
+                        category=category, payload=content, durable=False
+                    )
+        return self._publish_packed_bytes(category=category, payload=packed, durable=False)
 
     def load_frozen_observation_snapshot(self, content_hash: str) -> FrozenScoreObservationSnapshot:
         """Load and validate a frozen observation snapshot by its declared identity.
@@ -389,13 +392,17 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         Returns:
             Validated observation snapshot with declared packed-array and source commitments.
         """
-        snapshot, _ = self._load_identity_json_with_identity(
-            uri=self.uri("current/frozen-observation-snapshots", content_hash),
+        return self._observation_snapshot_fact(content_hash)[0]
+
+    def _observation_snapshot_fact(
+        self, content_hash: str
+    ) -> tuple[FrozenScoreObservationSnapshot, tuple[str, ...]]:
+        return self._read_identity_json_with_identity(
+            FrozenScoreObservationSnapshot,
             category="current/frozen-observation-snapshots",
+            content_hash=content_hash,
             identity_field="snapshot_hash",
-        )
-        return cast(
-            FrozenScoreObservationSnapshot, FrozenScoreObservationSnapshot.model_validate(snapshot)
+            copy_mutable=True,
         )
 
     def load_frozen_observations(self, content_hash: str) -> FrozenPriceVolumeInputs:
@@ -415,82 +422,82 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             AlphaCurrentArtifactReadbackError: Packed payload, expected archive columns or exact
                 dtypes differ.
         """
-        snapshot, arrays, _ = self._frozen_observation_source(content_hash)
-        arrays = rebased(arrays, snapshot.ordered_listing_ids, snapshot.rebases, prefix="")
-        return self._frozen_observation_values(snapshot, arrays)
+        return self.load_frozen_observation(content_hash)[1]
 
-    def verify_frozen_observations(self, content_hash: str) -> None:
-        """Verify unchanged observation bytes without retaining arrays only used for admission.
-
-        A cold or invalidated read fully hashes the snapshot and packed payload, and checks
-        every archive member, column, dtype and input axis. An opted-in read may retain only
-        that complete proof behind leases for both sources.
-        Ordinary execution revalidates; no input values or mutable mapping are retained here.
-        """
+    def load_frozen_observation(
+        self, content_hash: str
+    ) -> tuple[FrozenScoreObservationSnapshot, FrozenPriceVolumeInputs]:
+        """Read the verified snapshot and reconstruct the arrays it declares."""
         snapshot = self.load_frozen_observation_snapshot(content_hash)
+        arrays = self._frozen_blocks(snapshot, self._frozen_observation_block)
+        arrays = rebased(arrays, snapshot.ordered_listing_ids, snapshot.rebases, prefix="")
+        return snapshot, self._frozen_observation_values(snapshot, arrays)
+
+    def verify_frozen_observations(self, content_hash: str, *other_hashes: str) -> None:
+        """Verify an admission's observations and share their common packed inputs.
+
+        Each snapshot binds its ordered blocks in its own validated identity. Retain the
+        complete admission proof behind those snapshot reads and the packed file lifetimes.
+        """
+        self.frozen_observation_check(content_hash, *other_hashes)()
+
+    def frozen_observation_check(self, content_hash: str, *other_hashes: str) -> Callable[[], None]:
+        """Acquire the snapshot descriptors before handing their array checks to a worker.
+        Retain snapshot proofs across cohorts and share packed reads within a cohort.
+        """
+        snapshots = tuple(
+            self._observation_snapshot_fact(identity)
+            for identity in dict.fromkeys((content_hash, *other_hashes))
+        )
+        uses = Counter(block for snapshot, _ in snapshots for block in snapshot.array_files)
 
         def check() -> None:
-            current, arrays, identity = self._frozen_observation_source(content_hash)
+            batch = object()
 
-            def reconcile() -> None:
-                self._frozen_observation_values(current, arrays)
+            def read(block: str) -> dict[str, npt.NDArray[Any]]:
+                if uses[block] == 1:
+                    return self._frozen_observation_block(block)
+                kept = verified_request_value(
+                    ("alpha-observation-proof-block", batch, block),
+                    lambda: tuple(self._frozen_observation_block(block).items()),
+                    nbytes=lambda values: sum(array.nbytes for _, array in values),
+                    _request_only=True,
+                )
+                return dict(kept)
 
-            verified_request_proof(
-                ("FrozenPriceVolumeInputs.proof.v1", *identity),
-                reconcile,
-            )
+            def verify(snapshot: FrozenScoreObservationSnapshot) -> None:
+                self._frozen_observation_values(snapshot, self._frozen_blocks(snapshot, read))
 
-        verified_source_value(
-            ("alpha-current-observation-proof", str(self.root), content_hash),
-            (
-                self._path("current/frozen-observation-snapshots", content_hash, "json"),
-                *(
-                    self._path("current/frozen-observation-arrays", block, "bin")
-                    for block in snapshot.array_files
-                ),
-            ),
-            check,
-            nbytes=0,
-        )
+            with verified_array_read_scope(), verified_source_observations():
+                for snapshot, identity in snapshots:
+                    verified_source_value(
+                        ("alpha-current-observation-proof", str(self.root), *identity),
+                        tuple(
+                            self._packed_source_path("frozen-observation-arrays", block)
+                            for block in dict.fromkeys(snapshot.array_files)
+                        ),
+                        partial(verify, snapshot),
+                        nbytes=0,
+                    )
 
-    def _frozen_observation_source(
-        self, content_hash: str
-    ) -> tuple[FrozenScoreObservationSnapshot, dict[str, npt.NDArray[Any]], tuple[object, ...]]:
-        snapshot, snapshot_file_identity = self._read_identity_json_with_identity(
-            FrozenScoreObservationSnapshot,
-            category="current/frozen-observation-snapshots",
-            content_hash=content_hash,
-            identity_field="snapshot_hash",
-        )
-        arrays, file_identity = self._frozen_blocks(snapshot)
-        identity = (
-            "alpha-current",
-            str(self.root),
-            "frozen-observation-arrays",
-            snapshot.snapshot_hash,
-            "FrozenPriceVolumeInputs.npz_arrays.v1",
-            *snapshot_file_identity,
-            snapshot.array_content_hash,
-            *file_identity,
-        )
-        return snapshot, arrays, identity
+        return check
 
+    def _frozen_observation_block(self, content_hash: str) -> dict[str, npt.NDArray[Any]]:
+        arrays, _ = self._frozen_arrays_with_identity("frozen-observation-arrays", content_hash)
+        return arrays
+
+    @staticmethod
     def _frozen_blocks(
-        self, snapshot: FrozenScoreObservationSnapshot
-    ) -> tuple[dict[str, npt.NDArray[Any]], tuple[object, ...]]:
-        """The snapshot's arrays, its blocks copied in turn into one array each: one block and
-        the whole are held at once, never every block and a joined copy."""
+        snapshot: FrozenScoreObservationSnapshot,
+        read_block: Callable[[str], dict[str, npt.NDArray[Any]]],
+    ) -> dict[str, npt.NDArray[Any]]:
+        """Copy each block in session order into the snapshot's joined arrays."""
         if len(snapshot.array_files) == 1:
-            single, identity = self._frozen_arrays_with_identity(
-                "frozen-observation-arrays", snapshot.array_files[0]
-            )
-            return single, tuple(identity)
+            return read_block(snapshot.array_files[0])
         arrays: dict[str, npt.NDArray[Any]] = {}
-        identities: list[object] = []
         start, sessions = 0, len(snapshot.formation_sessions)
         for block in snapshot.array_files:
-            part, identity = self._frozen_arrays_with_identity("frozen-observation-arrays", block)
-            identities.extend(identity)
+            part = read_block(block)
             end = start + len(next(iter(part.values())))
             if (arrays and set(part) != set(arrays)) or end > sessions:
                 raise AlphaCurrentArtifactReadbackError(
@@ -512,7 +519,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             )
         for whole in arrays.values():
             whole.setflags(write=False)
-        return arrays, tuple(identities)
+        return arrays
 
     @staticmethod
     def _frozen_observation_values(
@@ -634,7 +641,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             AlphaCurrentArtifactReadbackError: Packed axes or reconstructed feature-value identities
                 disagree.
         """
-        result, _ = self._read_identity_json_with_identity(
+        result, result_file_identity = self._read_identity_json_with_identity(
             FrozenFeaturePreparation,
             category="current/frozen-feature-preparations",
             content_hash=content_hash,
@@ -642,40 +649,16 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         )
 
         def build_surfaces() -> tuple[HeterogeneousVintageFeatureSurface, ...]:
-            current, current_file_identity = self._read_identity_json_with_identity(
-                FrozenFeaturePreparation,
-                category="current/frozen-feature-preparations",
-                content_hash=content_hash,
-                identity_field="preparation_hash",
-            )
             payload, file_identity = self._frozen_payload_with_identity(
-                "frozen-feature-arrays", current.array_content_hash
+                "frozen-feature-arrays", result.array_content_hash
             )
-
-            def reconstruct() -> tuple[HeterogeneousVintageFeatureSurface, ...]:
-                return self._frozen_feature_surfaces(
-                    current, payload, current_file_identity, file_identity
-                )
-
-            return verified_request_value(
-                (
-                    "alpha-current-feature-surfaces",
-                    str(self.root),
-                    current.preparation_hash,
-                    *current_file_identity,
-                    current.array_content_hash,
-                    *file_identity,
-                ),
-                reconstruct,
-                nbytes=lambda values: sum(surface.features.nbytes for surface in values),
+            return self._frozen_feature_surfaces(
+                result, payload, result_file_identity, file_identity
             )
 
         surfaces = verified_source_value(
-            ("alpha-current-feature-surfaces", str(self.root), content_hash),
-            (
-                self._path("current/frozen-feature-preparations", content_hash, "json"),
-                self._path("current/frozen-feature-arrays", result.array_content_hash, "bin"),
-            ),
+            ("alpha-current-feature-surfaces", str(self.root), *result_file_identity),
+            (self._packed_source_path("frozen-feature-arrays", result.array_content_hash),),
             build_surfaces,
             nbytes=lambda values: sum(surface.features.nbytes for surface in values),
         )
@@ -865,18 +848,14 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             **provisional.model_dump(mode="python", exclude={"metadata_hash"}),
             metadata_hash=metadata_hash,
         )
-        target = self._path(f"current/{category}", content_hash, "parquet")
-        target.parent.mkdir(parents=True, exist_ok=True)
         metadata = {
             b"alphalattice.snapshot_kind": b"AlphaCurrentCandidateScoreChunk",
             b"alphalattice.content_hash": content_hash.encode(),
             b"alphalattice.metadata_hash": metadata_hash.encode(),
         }
-        staged = target.with_name(f".{content_hash}.{os.getpid()}.tmp")
-        if not target.exists():
-            pq.write_table(table.replace_schema_metadata(metadata), staged, compression="zstd")
-            os.replace(staged, target)
-        staged.unlink(missing_ok=True)
+        output = pa.BufferOutputStream()
+        pq.write_table(table.replace_schema_metadata(metadata), output, compression="zstd")
+        history.keep_alpha_part(content_hash, "current/" + category, output.getvalue().to_pybytes())
         self.resolve_current_candidate_score_chunk(reference)
         return reference
 
@@ -901,8 +880,12 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri(f"current/{category}", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("Alpha current candidate score URI changed")
-        target = self._path(f"current/{category}", value.content_hash, "parquet")
-        parquet = pq.ParquetFile(target)
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/" + category, "Alpha current candidate score"
+            )
+        )
+        parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}
         if (
             metadata.get(b"alphalattice.snapshot_kind") != b"AlphaCurrentCandidateScoreChunk"
@@ -912,7 +895,7 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
             raise AlphaCurrentArtifactReadbackError(
                 "Alpha current candidate score metadata changed"
             )
-        table = pq.read_table(target).replace_schema_metadata(None)
+        table = parquet.read().replace_schema_metadata(None)
         identity = {
             "request_hash": value.request_hash,
             "foundation_hash": value.foundation_hash,
@@ -991,15 +974,19 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
         expected_uri = self.uri("current/current-score-chunks", value.content_hash)
         if value.uri != expected_uri:
             raise AlphaCurrentArtifactReadbackError("current Alpha score URI is invalid")
-        target = self._path("current/current-score-chunks", value.content_hash, "parquet")
-        parquet = pq.ParquetFile(target)
+        source = pa.BufferReader(
+            self._score_body(
+                value.content_hash, "current/current-score-chunks", "current Alpha score"
+            )
+        )
+        parquet = pq.ParquetFile(source)
         metadata = parquet.schema_arrow.metadata or {}
         if (
             metadata.get(b"alphalattice.content_hash") != value.content_hash.encode()
             or metadata.get(b"alphalattice.metadata_hash") != value.metadata_hash.encode()
         ):
             raise AlphaCurrentArtifactReadbackError("current Alpha score metadata changed")
-        table = pq.read_table(target).replace_schema_metadata(None)
+        table = parquet.read().replace_schema_metadata(None)
         if (
             tuple(table.schema.names) != self._CURRENT_SCORE_COLUMNS
             or table.num_rows != value.row_count
@@ -1190,11 +1177,43 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 parent/child/decision/score lineage fails readback.
         """
         marker = self.load_marker(marker_hash)
-        fold_surfaces = tuple(
-            self.load_fold_surface(value) for value in marker.development_fold_surface_hashes
-        )
         candidate_reports = tuple(
             self.load_candidate_report(value) for value in marker.candidate_report_hashes
+        )
+        catalog_folds = catalog_numerical = None
+        named_evidence = {}
+        catalog_scores: dict[str, pa.Table] = {}
+        if self.catalog_development_reads():
+            named_evidence = {
+                key: self.load_candidate_fold_evidence(key, verify_score=False)
+                for key in dict.fromkeys(
+                    key for report in candidate_reports for key in report.fold_evidence_hashes
+                )
+            }
+            catalog_folds, catalog_numerical, catalog_scores = self.read_development_folds(
+                marker.development_fold_surface_hashes,
+                tuple(
+                    fold.numerical_result_hash
+                    for fold in named_evidence.values()
+                    if fold.numerical_result_hash is not None
+                ),
+                legacy_scores=tuple(
+                    fold.score_chunk
+                    for fold in named_evidence.values()
+                    if isinstance(fold, LegacyAlphaCandidateFoldEvidence)
+                    and fold.score_chunk is not None
+                ),
+            )
+            catalog_scores.update(
+                {
+                    result.score_chunk.content_hash: scores
+                    for result, scores in catalog_numerical.values()
+                    if result.score_chunk is not None and scores is not None
+                }
+            )
+        fold_surfaces = tuple(
+            self.load_fold_surface(value) if catalog_folds is None else catalog_folds[value][0]
+            for value in marker.development_fold_surface_hashes
         )
         candidate_inference_evidence = tuple(
             self.load_candidate_inference_evidence(value)
@@ -1317,7 +1336,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                 "current Alpha candidate report binding changed",
             )
             folds = tuple(
-                self.load_candidate_fold_evidence(value) for value in report.fold_evidence_hashes
+                self.load_candidate_fold_evidence(value)
+                if catalog_folds is None
+                else named_evidence[value]
+                for value in report.fold_evidence_hashes
             )
             score_hashes: list[str] = []
             estimator_hashes: list[str] = []
@@ -1339,8 +1361,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                     "current Alpha fold evidence binding changed",
                 )
                 if isinstance(fold, AlphaCandidateFoldEvidence):
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1357,8 +1381,10 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                         AlphaCandidateNumericalFoldResult | LegacyAlphaCandidateFoldEvidence
                     ) = numerical
                 elif fold.numerical_result_hash is not None:
-                    numerical = self.load_candidate_numerical_fold_result(
-                        fold.numerical_result_hash
+                    numerical = (
+                        self.load_candidate_numerical_fold_result(fold.numerical_result_hash)
+                        if catalog_numerical is None
+                        else catalog_numerical[fold.numerical_result_hash][0]
                     )
                     self._require_binding(
                         numerical.execution_binding_hash == fold.execution_binding_hash
@@ -1405,7 +1431,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha numerical score/validation surface rows changed",
                         )
-                        score_table = self.resolve_numerical_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_numerical_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     else:
                         self._require_binding(
                             authority.score_chunk.request_hash == marker.request_hash
@@ -1421,7 +1451,11 @@ class AlphaCurrentArtifactStore(AlphaDevelopmentArtifactStore):
                             == fold_surface.validation_chunk.row_count,
                             "current Alpha score/validation surface rows changed",
                         )
-                        score_table = self.resolve_candidate_score_chunk(authority.score_chunk)
+                        score_table = (
+                            self.resolve_candidate_score_chunk(authority.score_chunk)
+                            if catalog_folds is None
+                            else catalog_scores[authority.score_chunk.content_hash]
+                        )
                     scored_row_count += sum(
                         str(value) == "SCORED" for value in score_table["availability"].to_pylist()
                     )

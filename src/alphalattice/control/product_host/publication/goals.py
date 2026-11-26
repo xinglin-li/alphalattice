@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from pathlib import Path
 from secrets import token_hex
 from threading import RLock
@@ -21,15 +23,20 @@ from alphalattice.control.workspace_runtime.content_store import (
     ContentAddressedStore,
     ContentAddressedStoreError,
 )
+from alphalattice.foundation.data_layer.project import uuid7
 from alphalattice.interface.local_application.cli_contract import refusal_words
 from alphalattice.interface.local_application.failure_codes import public_failure
 from alphalattice.interface.local_application.goals import (
+    DECLARATION_ENCODING,
     Goal,
     GoalAcceptedAnswerContext,
     GoalDeclaration,
     GoalSession,
+    declaration_hash,
 )
 from alphalattice.interface.local_application.operations import GRAMMAR
+from alphalattice.kernel.door import DECISIONS_DATABASE, Decisions
+from alphalattice.kernel.execution import EVENTS
 
 EXPERIENCE_RECORD_WORDS = (
     "Start alphalattice_maintainer in RECORD mode with this goal (goal show {subject}), "
@@ -70,7 +77,7 @@ def session_work_declaration(operation: str, vendor: str) -> dict[str, object]:
 
 
 def _deliverables(goal: Goal) -> list[dict[str, object]] | None:
-    """A complete goal's deliverables, each with what its submission put in it (U54).
+    """A complete goal's deliverables, each with what its submission put in it.
 
     None before the Host saved a submission, which it does only once it found the record
     complete; each deliverable names its kind and the declaration's description.
@@ -181,6 +188,7 @@ class GoalStore:
             uri_prefix="playpen://product-host/goals",
         )
         self.workspace_id = workspace_id
+        self.decisions = Decisions(artifact_root.parent / DECISIONS_DATABASE, lambda: UUID(uuid7()))
         # HTTP handlers share this one store under the existing process writer lease.
         self.lock = RLock()
 
@@ -239,7 +247,8 @@ class GoalStore:
                 self.content.root / "heads" / f"{value.goal_id}.json",
                 json.dumps({"goal_hash": value.goal_hash}, sort_keys=True).encode(),
             )
-            return value
+        EVENTS.publish(("goal", str(value.goal_id)))
+        return value
 
     def _session_path(self, session: GoalSession) -> Path:
         return self.content.root / "sessions" / session.vendor / f"{session.session_id}.json"
@@ -264,10 +273,85 @@ class GoalStore:
         head = self.head(goal_id)
         return head if head is not None and head.state == "OPEN" else None
 
+    def _declarations(self) -> Path:
+        return self.content.root / "declarations" / f"v{DECLARATION_ENCODING}"
+
+    def declared(self, key: str) -> UUID | None:
+        """The goal opened under this `declaration_hash`, if any: one file per (encoding
+        version, hash), and the hash covers the opener, so each is unique on all three."""
+        path = self._declarations() / f"{key}.json"
+        if not path.is_file():
+            return None
+        try:
+            return UUID(json.loads(path.read_bytes())["goal_id"])
+        except (KeyError, TypeError, ValueError, OSError) as error:
+            raise ValueError("goal.declaration_index_invalid") from error
+
+    def declare(self, key: str, opener: object, goal_id: UUID) -> UUID:
+        """Index a new goal by its `declaration_hash` before its first revision is published, so
+        a retry after a crash between them opens the same id; the first goal indexed keeps it."""
+        with self.lock:
+            held = self.declared(key)
+            if held is not None:
+                return held
+            entry = {"goal_id": str(goal_id), "opener": opener, "encoding": DECLARATION_ENCODING}
+            path = self._declarations() / f"{key}.json"
+            self.content.atomic_write(path, json.dumps(entry, sort_keys=True).encode())
+            return goal_id
+
+    def declare_opened(self, opened_id: Callable[[GoalDeclaration, object], UUID]) -> int:
+        """The upgrade step, once per store: index each goal opened before the index by its
+        first declaration and its opener. The opener is the one candidate (its submitter, or a
+        session its record or a binding names) whose `opened_id` is the goal's id; a goal whose
+        id no candidate makes (a supplied id) stays unindexed. Returns how many it indexed."""
+        done = self._declarations() / "upgraded.json"
+        with self.lock:
+            if done.is_file():
+                return 0
+            indexed = 0
+            for goal_id in self.goal_ids():
+                first = self.head(goal_id)
+                while first is not None and first.parent_hash is not None:
+                    first = self.load(first.parent_hash)
+                if first is None:
+                    continue
+                for opener in self._openers(first):
+                    if opened_id(first.declaration, opener) == first.goal_id:
+                        key = declaration_hash(first.declaration, opener)
+                        indexed += self.declare(key, opener, first.goal_id) == first.goal_id
+                        break
+            self.content.atomic_write(done, json.dumps({"indexed": indexed}).encode())
+            return indexed
+
+    def _openers(self, first: Goal) -> list[object]:
+        """Who may have opened a goal: its submitter, then each agent session named by its
+        record or bound to it, as `GoalSession` dumps them."""
+        named = [
+            (entry.get("agent_vendor"), entry.get("agent_session"))
+            for entry in self.attributed(first.goal_id)
+        ]
+        sessions = self.content.root / "sessions"
+        try:  # an unreadable binding is refused, never read as no binding
+            with os.scandir(sessions) if sessions.is_dir() else nullcontext(()) as vendors:
+                for folder in vendors:
+                    with os.scandir(folder.path) as bindings:
+                        for binding in bindings:
+                            bound = json.loads(Path(binding.path).read_bytes()).get("goal_id")
+                            if bound == str(first.goal_id):
+                                named.append((folder.name, Path(binding.name).stem))
+        except (OSError, ValueError) as error:
+            raise ValueError("goal.declaration_index_invalid") from error
+        found: list[object] = [first.submitted_by]
+        for vendor, session_id in named:
+            if vendor in {"codex", "claude-code"} and isinstance(session_id, str):
+                session = {"vendor": vendor, "session_id": session_id}
+                found.append(GoalSession.model_validate(session).model_dump(mode="json"))
+        return found
+
     def event_goal(self, key: str, decide: Callable[[], UUID | None]) -> UUID | None:
         """The goal an external event was filed under at its first receipt, or none.
 
-        The event's row records this, and the activity ledger answers a replay of the same
+        The event's row records this, and the activity history answers a replay of the same
         producer sequence only with the same content, so a replay reads the first receipt's
         answer rather than deciding again after its session took another goal.
         """
@@ -284,27 +368,26 @@ class GoalStore:
             except (KeyError, TypeError, ValueError, OSError) as error:
                 raise ValueError("goal.event_filing_invalid") from error
 
-    def reserve_relay(self, key: str, record: Mapping[str, object]) -> dict[str, object] | None:
-        """Hold one relayed yes by its spend key before its decision runs, atomically.
-
-        Returns None when this request holds it now, else the record of the use that holds it,
-        whose `nonce` lets the person's next yes to the same decision be told apart.
-        """
+    def reserve_relay(
+        self, key: str, record: Mapping[str, object], *, operation: str
+    ) -> dict[str, object] | None:
+        """Read legacy reservations and reserve new relays through the Door."""
         path = self.content.root / "relays" / f"{key}.json"
-        with self.lock:
-            if path.is_file():
-                held: dict[str, object] = json.loads(path.read_bytes())
-                return held
-            self.content.atomic_write(path, json.dumps(dict(record), sort_keys=True).encode())
-            return None
+        if path.is_file():  # contract: retained relays still refuse reuse after upgrade
+            held: dict[str, object] = json.loads(path.read_bytes())
+            return held
+        return self.decisions.hold_relay(
+            key, operation, record, activation=operation.endswith(("_ACTIVATE", "_DEACTIVATE"))
+        )
 
     def release_relay(self, key: str) -> None:
-        """Give back a held yes whose decision was refused: it was not used."""
-        with self.lock:
-            (self.content.root / "relays" / f"{key}.json").unlink(missing_ok=True)
+        """Give back a held yes whose decision was refused."""
+        self.decisions.release_relay(key)
 
     def relay_nonce(self, nonce: str) -> dict[str, object] | None:
-        """The used yes that issued this nonce, if the Host issued it."""
+        """The used yes that issued this nonce, including retained pre-Door answers."""
+        if (held := self.decisions.relay_nonce(nonce)) is not None:
+            return held
         folder = self.content.root / "relays"
         for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
             record: dict[str, object] = json.loads(path.read_bytes())
@@ -346,6 +429,7 @@ class GoalStore:
             self.content.atomic_write(
                 folder / f"{place:08d}.json", json.dumps(dict(entry), sort_keys=True).encode()
             )
+        EVENTS.publish(("goal", str(goal_id)))
 
     def accepted_answer_context(
         self, key: str, decide: Callable[[], GoalAcceptedAnswerContext]
@@ -570,7 +654,7 @@ class GoalStore:
                 refused.append(_goal_item_refusal(str(goal_id), error, item="HEAD"))
                 continue
             if agent_session is not None:
-                # A session's goals: read once for every goal, kept for its row (U23, U54).
+                # A session's goals: read once for every goal, kept for its row.
                 try:
                     records[str(goal_id)] = self.attributed(goal_id)
                     named = sessions_of(records[str(goal_id)])
@@ -590,7 +674,7 @@ class GoalStore:
             if position is None:
                 raise ValueError("goal.cursor_moved_reload")
             rows = rows[position + 1 :]
-        # Each row's sessions (U23): read for the page alone, from the record that holds them.
+        # Each row's sessions: read for the page alone, from the record that holds them.
         # A bad attribution refuses only that goal item and does not assert an empty session list.
         page_candidates = rows[:limit]
         page = []

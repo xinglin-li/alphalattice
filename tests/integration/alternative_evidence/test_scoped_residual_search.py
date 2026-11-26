@@ -10,9 +10,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from alphalattice.evidence.alternative_evidence.retrieval.session import ScopedChunks
 from tests.alternative_evidence_desk.document_intelligence_support import (
+    _NOW,
     _document_with_text,
     _open_recorded,
+    _registry,
+    _request,
 )
 from tests.alternative_evidence_desk.litigation_support import BOILERPLATE, _filing, _matter
 
@@ -40,14 +46,29 @@ def _open_two_filings(tmp_path: Path) -> tuple[Any, ...]:
 def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Path) -> None:
     """Control: Scoped search scores and returns only scoped chunks."""
 
-    runtime, request, _registry, _snapshot, document_set, generation = _open_two_filings(tmp_path)
+    runtime, request, _held, _snapshot, document_set, generation = _open_two_filings(tmp_path)
     try:
+        # A previous review's filing in the same workspace, holding the same debt note.
+        debt = next(d for d in document_set.documents if d.entity_id == "MSFT")
+        _snapshot, earlier = runtime.acquire_recorded(
+            request=_request(("NVDA",)),
+            registry=_registry(("NVDA",)),
+            documents=(
+                _document_with_text(
+                    "NVDA", text=_DEBT * 3 + BOILERPLATE, form="10-Q", revision="nvda-10q"
+                ),
+            ),
+            published_at=_NOW,
+        )
+        earlier_set = runtime.canonicalize(source_set=earlier, published_at=_NOW, as_of=_NOW)
+        runtime.build_retrieval(document_set=earlier_set, built_at=_NOW)
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
         )
         try:
             documents = {d.entity_id: d for d in session.inspect_documents()}
             msft = documents["MSFT"]
+            assert msft.document_id == debt.workspace_document_id
             note_start = msft.text.index("NOTE 9. DEBT")
             note_end = msft.text.index("NOTE 8. SEGMENT INFORMATION")
             question = "Was there a revolving credit facility and were borrowings outstanding?"
@@ -55,6 +76,10 @@ def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Pat
             scope = session.scope_for({msft.document_id: [(note_start, note_end)]})
             assert scope and all(entry[0] == msft.document_id for entry in scope)
             scoped = session.search(query=question, top_k=5, reranker_depth=12, scope=scope)
+            # Unscoped, the search reads only the open set: the earlier filing is no candidate.
+            assert {hit.entity_id for hit in everywhere.hits} <= {"AAPL", "MSFT"}
+            outside = ScopedChunks(earlier_set.documents[0].workspace_document_id, 0, 10**6, ())
+            assert session.search(query=question, top_k=5, scope=(outside,)).status == "EMPTY"
             assert everywhere.reranked_pairs > scoped.reranked_pairs > 0
             assert session.reranked_pairs == everywhere.reranked_pairs + scoped.reranked_pairs
             assert scoped.hits and all(hit.entity_id == "MSFT" for hit in scoped.hits)
@@ -78,22 +103,43 @@ def test_a_scoped_search_scores_and_returns_only_the_scoped_chunks(tmp_path: Pat
         runtime.close()
 
 
-def test_scope_for_names_the_chunks_that_overlap_the_ranges(tmp_path: Path) -> None:
-    """Control: Scope for names chunks overlap ranges."""
-
-    runtime, request, _registry, _snapshot, document_set, generation = _open_two_filings(tmp_path)
+@pytest.mark.parametrize("case", ["ordinals", "vector-only", "out-of-window-lexical"])
+def test_scope_for_names_the_chunks_that_overlap_the_ranges(tmp_path: Path, case: str) -> None:
+    """Overlapping ordinals preserve the exact window of each passage lead."""
+    first_sentence = "Inventory fell early in the year."
+    second_sentence = "The company later refinanced its notes."
+    if case == "ordinals":
+        opened = _open_two_filings(tmp_path)
+    else:
+        filing = _document_with_text(text=f"{first_sentence}\n{second_sentence}")
+        opened = _open_recorded(tmp_path, documents=(filing,))
+    runtime, request, _registry, _snapshot, document_set, generation = opened
     try:
         session = runtime.retrieval.open_session(
             document_set=document_set, generation=generation, evidence_as_of=request.evidence_as_of
         )
         try:
+            if case != "ordinals":
+                (document,) = session.inspect_documents()
+                start = document.text.index(first_sentence)
+                end = start + len(first_sentence)
+                second = document.text.index(second_sentence)
+                first_scope = session.scope_for({document.document_id: [(start, end)]})
+                session.scope_for({document.document_id: [(second, second + len(second_sentence))]})
+                query = "balance" if case == "vector-only" else "refinanced"
+                result = session.search(query=query, top_k=1, scope=first_scope)
+                (hit,) = result.hits
+                assert session.span_range(hit.span_handle) == (document.document_id, start, end)
+                (resolved,) = session.read_spans(span_handles=(hit.span_handle,))
+                assert first_sentence in resolved.excerpt
+                return
             msft = next(d for d in session.inspect_documents() if d.entity_id == "MSFT")
             whole = session.scope_for({msft.document_id: [(0, len(msft.text))]})
             assert len(whole) == 1, "one merged entry for the whole filing"
             first = whole[0][1]
             assert first < whole[0][2], "the kernel's ordinals, first to last"
             first_chunk = session.scope_for({msft.document_id: [(0, 1)]})
-            assert first_chunk == ((msft.document_id, first, first),)
+            assert first_chunk == (ScopedChunks(msft.document_id, first, first, ((0, 1),)),)
             assert session.scope_for({"unknown-document": [(0, 10)]}) == ()
             assert session.scope_for({msft.document_id: []}) == ()
         finally:

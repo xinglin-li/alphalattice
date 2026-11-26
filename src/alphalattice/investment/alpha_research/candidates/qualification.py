@@ -18,10 +18,10 @@ from alphalattice.capabilities.alpha_modeling.adapters.regularized_linear import
 )
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
 from alphalattice.capabilities.alpha_modeling.extension import DeclaredModelAdapter
-from alphalattice.kernel.shared_kernel.identity import canonical_hash, schema_structure
-from alphalattice.kernel.shared_kernel.source_identity import switched_source_identity
-from alphalattice.kernel.validation.return_model_statistics import holm_adjust
-from alphalattice.kernel.validation.screening_statistics import newey_west_mean_test
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
+from alphalattice.capabilities.domain_contracts.source_identity import switched_source_identity
+from alphalattice.capabilities.validation.return_model_statistics import holm_adjust
+from alphalattice.capabilities.validation.screening_statistics import newey_west_mean_test
 
 from ..evaluation.contracts import AlphaMetricPolicy
 from ..evaluation.metrics import (
@@ -270,9 +270,10 @@ def _candidate_rows(
     surfaces = fold_surface_hashes or result.fold_surface_hashes
     if len(candidate_result_hashes) != len(surfaces):
         raise ValueError("alpha_research.development_surface_incomplete")
+    folds, numerical_results, _ = store.read_development_folds(surfaces, candidate_result_hashes)
     for fold_surface_hash, numerical_hash in zip(surfaces, candidate_result_hashes, strict=True):
-        surface, validation_table = store.read_fold_surface(fold_surface_hash)
-        numerical, score_table = store.read_candidate_numerical_fold_result(numerical_hash)
+        surface, validation_table = folds[fold_surface_hash]
+        numerical, score_table = numerical_results[numerical_hash]
         if (
             numerical.candidate_id != candidate_id
             or numerical.fold_index != surface.fold_index

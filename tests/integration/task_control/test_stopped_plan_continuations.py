@@ -1,4 +1,4 @@
-"""A stopped Task's durable declaration continues through the real CLI (V615)."""
+"""A stopped Task's durable declaration continues through the real CLI."""
 
 import gc
 import json
@@ -32,6 +32,7 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 )
 from alphalattice.interface.local_application.cli import main
 from tests.portfolio_strategy_lab.strategy_dates_support import date_host
+from tests.workspace_task_runner.task_control_support import lose_the_log_keeping_frozen_requests
 
 
 @pytest.mark.parametrize("view", ["compact"])
@@ -56,14 +57,13 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
                 implementation_hash=implementation_hash(),
             )
             admitted = owner.admit(plan, "HUMAN")
-            registry = live.session.task_control_registry
-            database = registry.database_path
-            for path in database.parent.glob(f"{database.name}*"):
-                path.unlink()
-            type(registry)(database, gate=live.session.mutation_gate)
-            (task,) = registry.rebuild_from_requests(
-                observed_at=datetime(2026, 10, 3, 13, tzinfo=UTC)
+            registry = lose_the_log_keeping_frozen_requests(
+                live.session.task_control_registry,
+                live.session.mutation_gate,
+                monkeypatch,
+                tmp_path / "data",
             )
+            (task,) = registry.tasks()
             assert task.task_id == admitted.task_id
             assert task.failure_code == "task_control.ledger_rebuilt"
             assert not list((workspace / "runtime/plan-previews/research-strategy").glob("*.json"))
@@ -190,7 +190,7 @@ def test_a_ledger_rebuilt_preparation_keeps_its_declaration_in_every_way_on(
 
 
 def test_an_evidence_task_without_its_book_selector_names_the_choice_before_replan(
-    tmp_path, capsys
+    tmp_path, capsys, monkeypatch
 ):
     """An evidence task without its book selector names the choice before replan."""
     workspace = tmp_path / "workspace"
@@ -226,11 +226,9 @@ def test_an_evidence_task_without_its_book_selector_names_the_choice_before_repl
                 plan=plan,
                 observed_at=datetime(2026, 10, 3, 12, tzinfo=UTC),
             ).record
-            database = registry.database_path
-            for path in database.parent.glob(f"{database.name}*"):
-                path.unlink()
-            type(registry)(database, gate=live.session.mutation_gate)
-            registry.rebuild_from_requests(observed_at=datetime(2026, 10, 3, 13, tzinfo=UTC))
+            lose_the_log_keeping_frozen_requests(
+                registry, live.session.mutation_gate, monkeypatch, tmp_path / "data"
+            )
             saved = tmp_path / "evidence-stop.json"
             assert (
                 main(

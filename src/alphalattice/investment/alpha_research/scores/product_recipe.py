@@ -31,7 +31,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.alpha_modeling.adapters.lightgbm_dynamic_panel import (
     DynamicPanelLightGBMParameters,
 )
-from alphalattice.kernel.shared_kernel.recipe_identity import recipe_identity, recipe_seal_holds
+from alphalattice.capabilities.domain_contracts.recipe_identity import (
+    recipe_identity,
+    recipe_seal_holds,
+)
 
 _SEAL: Final = frozenset({"recipe_hash"})
 

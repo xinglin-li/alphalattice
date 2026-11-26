@@ -9,15 +9,17 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime
-from typing import Any, NamedTuple, cast
+from functools import partial
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
-import pandas as pd
-
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
+from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
+from alphalattice.capabilities.domain_contracts.spans import span, spanned
 from alphalattice.control.observation_runtime.telemetry.process_metrics import worker_processes
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed, child_calls
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.control.workspace_runtime.reader_threads import reader_threads
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     MARKET_DEPENDENT_FACTOR_IDS,
     FeatureCatalog,
@@ -135,10 +137,17 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
 from alphalattice.foundation.market_data_ops.sources.price_integrity import TradingSessionAuthority
 from alphalattice.foundation.market_data_ops.sources.providers import MarketDataProvider
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
-from alphalattice.kernel.shared_kernel.bounded_memo import BoundedMemo
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.sector_treatment import sector_treatment
-from alphalattice.kernel.shared_kernel.spans import span, spanned
+from alphalattice.kernel.clock import observation_time
+from alphalattice.kernel.execution import execution_port
+from alphalattice.kernel.resources import (
+    carry_resource_lease,
+    cpu_width,
+    current_resource_lease,
+    worker_width,
+)
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 _PANEL_CONNECTION_SESSION_BUDGET = 630
 _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
@@ -146,7 +155,7 @@ _LISTING_ROWS = f"{__name__}:materialize_listing_rows"
 
 
 def catalog_reads_as_traded(catalog: FeatureCatalog) -> bool:
-    """Whether a catalog holds a formula reading the as-traded fields (V395).
+    """Whether a catalog holds a formula reading the as-traded fields.
 
     Only then does a listing's frame carry them, so a build whose catalog reads none projects
     exactly what it did before and keeps every source window and reuse record it wrote.
@@ -182,6 +191,8 @@ def feature_source_frame(
     Returns:
         One row per bar, or per calendar session when aligned.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     frame = pd.DataFrame(projected_feature_rows(source))
     if sessions is not None:
         frame = align_feature_source_sessions(frame, tuple(sessions))
@@ -193,6 +204,7 @@ def materialize_listing_rows(
     catalog: FeatureCatalog,
     kernel_registry: FeatureKernelRegistry | None,
     kernel_capability: str,
+    kernel_capability_payload: dict[str, object] | None,
     listing_id: str,
     source: FeatureSourceInputs,
     source_sessions: tuple[date, ...] | None,
@@ -203,13 +215,14 @@ def materialize_listing_rows(
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[FeatureRowIdentity, ...] | None, str]:
     """One listing's Feature rows for `sessions` and its ineligibility facts, in a Host worker.
 
-    The listing's computation, moved off the build's writer, which only reads, writes and
-    seals (W10): its input frame is projected here from the stored inputs the writer read
-    (V92), and the frame's values hash is answered for the write's source window. Given an
-    `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
-    -- the rows' identities are derived here as well, by the derivation the closure
-    coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
-    capability the build installed, unless the build sends its own.
+        The listing's computation, moved off the build's writer, which only reads, writes and
+        seals (W10): its input frame is projected here from the stored inputs the writer read
+    , and the frame's values hash is answered for the write's source window. Given an
+        `identity_axis` -- the catalog hash and factor axis, when the rows are written as computed
+        -- the rows' identities are derived here as well, by the derivation the closure
+        coordinator runs. The kernels are the shipped ones, rebuilt here and held to the
+        capability the build installed, unless the build sends its own. The build sends the
+        capability's payload with its hash: the rebuilt kernels match it exactly, unhashed.
     """
     projected_bars = feature_source_frame(source, sessions=source_sessions)
     with span("hash", "listing_inputs"):
@@ -219,7 +232,7 @@ def materialize_listing_rows(
         registry = _WORKER_KERNELS.get(kernel_capability)
         if registry is None:
             registry = default_extension_kernel_registry()
-            if registry.installed_capability_hash != kernel_capability:
+            if registry.capability_payload() != kernel_capability_payload:
                 raise ValueError("feature.worker_kernel_capability_mismatch")
             _WORKER_KERNELS[kernel_capability] = registry
     with span("features", "listing_rows"):
@@ -256,7 +269,7 @@ def configure_worker_memos(*, capacity: int | None = None) -> None:
 
 @dataclass
 class _PartWork:
-    """What one part of a listing's work computes and writes under its own catalog (V92).
+    """What one part of a listing's work computes and writes under its own catalog.
 
     An unlayered catalog is its own only part.
     """
@@ -331,7 +344,7 @@ class FeatureFoundationService:
     feature_persistence: FeatureMaterializationPersistence
     sector_activation: SectorRevisionMapActivationCoordinator
     sector_transport_policy: SectorTransportPolicy = field(
-        default_factory=lambda: SectorTransportPolicy(max_workers=2)
+        default_factory=lambda: SectorTransportPolicy(max_workers=worker_width(2))
     )
     progress_sink: Callable[[WorkProgressUpdate], object] | None = None
     installed_catalog: FeatureCatalog | None = None
@@ -414,9 +427,11 @@ class FeatureFoundationService:
         """Build Feature rows and their Panel under the admitted source identities.
 
         ``compose_panel=False`` stops once the base values are materialized and the Sector
-        revision is active, for a membership its baseline qualification will replace (V311).
+        revision is active, for a membership its baseline qualification will replace.
         """
-        now = observed_at or datetime.now(UTC)
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
+        now = observed_at or observation_time()
         if now.tzinfo is None:
             raise ValueError("feature build observed_at must be timezone-aware")
         if request.manifest_revision != self.manifest.revision_sha256:
@@ -521,13 +536,15 @@ class FeatureFoundationService:
                 transport_policy=self.sector_transport_policy,
                 activation_coordinator=self.sector_activation,
             )
-            sector_executor = ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="sector-refresh-coordinator",
+            sector_executor = execution_port().register_pool(
+                ThreadPoolExecutor(
+                    max_workers=worker_width(1),
+                    thread_name_prefix="sector-refresh-coordinator",
+                ),
+                name="feature-sector",
             )
             sector_future = sector_executor.submit(
-                sector_stager.acquire,
-                observed_at=now,
+                carry_resource_lease(partial(sector_stager.acquire, observed_at=now)),
             )
 
         def flush_feature_writes(base_connection, catalog_hash: str) -> None:
@@ -565,7 +582,7 @@ class FeatureFoundationService:
         current_listing_id: str | None = None
         current_target_sessions: tuple[date, ...] = ()
         # Each part of the layer plans from its own state: a part whose closure is complete
-        # keeps its rows through a catalog change (V92).
+        # keeps its rows through a catalog change.
         part_invalidations = self._part_invalidations(invalidation_items, axis_listings, request)
         part_listings = {
             catalog_hash: {
@@ -583,7 +600,7 @@ class FeatureFoundationService:
         axis_ids = tuple(item.listing_id for item in axis_listings)
         # The active Panel serves as the base of this catalog's composition when this catalog
         # only adds columns to the one it was built under: the catalog change then reaches the
-        # Panel for the added columns alone (V92).
+        # Panel for the added columns alone.
         held_columns = self._held_panel_columns()
         panel_invalidations = (
             tuple(
@@ -603,10 +620,11 @@ class FeatureFoundationService:
         completed_listing_count = 0
         # The Task's cores, as the Host applied its CPU budget when the Task started (B7);
         # outside a Task none is applied and the build takes one worker.
-        workers = (
+        lease = current_resource_lease()
+        workers = worker_width(
             self.feature_workers
             if self.feature_workers is not None
-            else worker_processes(reader_threads() or 1)
+            else worker_processes(cpu_width() if lease is not None else 1)
         )
         kernel_capability = self.base.kernel_registry.installed_capability_hash
         # The shipped kernels are rebuilt in the worker, since their functions do not
@@ -615,6 +633,9 @@ class FeatureFoundationService:
             None
             if kernel_capability == default_extension_kernel_registry().installed_capability_hash
             else self.base.kernel_registry
+        )
+        kernel_payload = (
+            self.base.kernel_registry.capability_payload() if shipped_kernels is None else None
         )
         try:
             self._publish_progress(
@@ -627,7 +648,12 @@ class FeatureFoundationService:
             with (
                 self.mutation_gate.hold(),
                 self.feature_state.feature_build_connection() as base_connection,
-                child_calls(_LISTING_ROWS, workers=workers) as calls,
+                child_calls(
+                    _LISTING_ROWS,
+                    workers=workers,
+                    preload_models=shipped_kernels is not None,
+                    opens=(),  # it computes on the inputs read here and opens no workspace file
+                ) as calls,
             ):
                 self.feature_persistence.reconcile_pending(
                     self.catalog.binding.catalog_hash,
@@ -637,7 +663,7 @@ class FeatureFoundationService:
                 # build could reuse, so its listings skip the read of their verified rows; and a
                 # column part that holds none under its genesis head is loaded whole, its rows
                 # written as computed with no per-key transition, its head attesting their
-                # digest once the stage has written them all (V92).
+                # digest once the stage has written them all.
                 parts_holding_rows = frozenset(
                     part.binding.catalog_hash
                     for part in self.layer.parts
@@ -780,7 +806,7 @@ class FeatureFoundationService:
                     try:
                         # The writer reads each window's stored inputs; the worker computing
                         # the listing projects them. Only a held part's reuse is verified here,
-                        # against the window's frame (V92).
+                        # against the window's frame.
                         sources = {
                             input_start: held.inputs
                             or self._base_source_inputs(
@@ -860,6 +886,7 @@ class FeatureFoundationService:
                                 {
                                     "kernel_registry": shipped_kernels,
                                     "kernel_capability": kernel_capability,
+                                    "kernel_capability_payload": kernel_payload,
                                     "listing_id": listing.listing_id,
                                     "source": source,
                                     "source_sessions": self._source_sessions(
@@ -892,10 +919,12 @@ class FeatureFoundationService:
                 listings = planned_in_chunks()
                 queue: deque[_ListingWork] = deque()
                 computing = 0
-                while True:
+
+                def read_ahead() -> None:
                     # Read ahead while a worker is free: listings compute while the
                     # writer writes and seals the ones before them, and are still
                     # written one by one, in listing order.
+                    nonlocal computing
                     while computing < workers:
                         entry = next(listings, None)
                         if entry is None:
@@ -905,8 +934,9 @@ class FeatureFoundationService:
                             planned_work if plan is None else read_listing(planned_work, plan, held)
                         )
                         computing += queue[-1].computed
-                    if not queue:
-                        break
+
+                read_ahead()
+                while queue:
                     work = queue.popleft()
                     computing -= work.computed
                     listing = work.listing
@@ -998,6 +1028,7 @@ class FeatureFoundationService:
                             counters={"materialization_receipts": len(receipts)},
                         )
                     completed_listing_count = work.index
+                    read_ahead()
                 for catalog_hash in pending_writes:
                     flush_feature_writes(base_connection, catalog_hash)
                 with span("write", "feature_finalize"):
@@ -1006,7 +1037,7 @@ class FeatureFoundationService:
                     )
                     self.feature_persistence.assert_ready(self.catalog.binding.catalog_hash)
                     # Every part now holds the axis; rows of a catalog outside the layer (one a
-                    # rotation replaced, a deactivated column) answer for nothing (V398, V92).
+                    # rotation replaced, a deactivated column) answer for nothing.
                     self.feature_state.retire_rows_outside_layer(_connection=base_connection)
                     # The closed years' seals, once each: a year the build closed, or one a
                     # correction reopened, so tomorrow's proofs read only the open year.
@@ -1208,7 +1239,7 @@ class FeatureFoundationService:
         # Raw/base preparation may already include a future-effective entrant;
         # the published Panel axis contains only members of its own history.
         axis_listing_ids = membership.listing_ids
-        # The Sector each session reads (V346): the backfill before a listing's first
+        # The Sector each session reads: the backfill before a listing's first
         # reclassification, then each from the session its update observed it.
         sector_history = self.feature_state.sector_history(
             self.manifest, listing_ids=axis_listing_ids
@@ -1255,7 +1286,7 @@ class FeatureFoundationService:
             membership=membership,
             sector_history=sector_history,
             # A Panel built under the catalog this one only adds columns to holds
-            # every other column: its partitions are merged with the added ones (V92).
+            # every other column: its partitions are merged with the added ones.
             extension=(
                 PanelColumnExtension(
                     catalog_hash=held_columns.binding.catalog_hash,
@@ -1356,8 +1387,10 @@ class FeatureFoundationService:
         # reads the next chunk's Feature rows; the writer then stages, publishes and
         # records them in chunk order, as it did one by one (W10). A chunk a Sector
         # reclassification falls inside is one call per run of sessions that read one
-        # map (V346).
-        with child_calls(_PANEL_CHUNK, workers=workers) as panel_calls:
+        # map.
+        with child_calls(  # it computes on the rows sent and opens no workspace file
+            _PANEL_CHUNK, workers=workers, preload_models=False, opens=()
+        ) as panel_calls:
             for factor_ids, grouped_sessions in panel_groups:
                 for connection_start in range(
                     0, len(grouped_sessions), _PANEL_CONNECTION_SESSION_BUDGET
@@ -1968,6 +2001,8 @@ class FeatureFoundationService:
         row before reusing it and the judgement after the build sees the
         recomputed ones.
         """
+        import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
         catalog_hash = self.catalog.binding.catalog_hash
         rows = self.feature_state.feature_rows(
             listing_ids=listing_ids,
@@ -2000,6 +2035,10 @@ class FeatureFoundationService:
         if not require_current_source or not qualification.exclusions:
             return qualification
         rows_by_listing = {str(row["listing_id"]): row for row in rows}
+        observed = self.market_data.raw_bar_sessions_by_listing(
+            [listing_id for listing_id, _reasons in qualification.exclusions],
+            through=as_of_session,
+        )
         market_frame: pd.DataFrame | None = None
         unproven: list[str] = []
         for listing_id, reasons in qualification.exclusions:
@@ -2017,6 +2056,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed[listing_id],
             ):
                 unproven.append(listing_id)
         if not unproven:
@@ -2033,13 +2073,15 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether a listing's unavailability at ``as_of_session`` is today's.
+        """Whether a listing's unavailability at ``as_of_session`` is today's, given its observed
+        sessions through it (read for every listing judged in one read).
 
         One bounded read of this listing (its window of source rows), only
         for a listing about to be excluded; the market frame is the caller's,
         read once per judgement. A layered catalog's row was verified part by
-        part, so each part holding a missing factor proves its own (V92).
+        part, so each part holding a missing factor proves its own.
         """
         if not self.layer.layered:
             return self._exclusion_proved(
@@ -2051,6 +2093,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             )
         owners = self.layer.factor_parts()
         for part_hash in sorted({owners[factor_id] for factor_id in missing_factor_ids}):
@@ -2075,6 +2118,7 @@ class FeatureFoundationService:
                 as_of_session=as_of_session,
                 observed_at=observed_at,
                 market_frame=market_frame,
+                observed=observed,
             ):
                 return False
         return True
@@ -2090,8 +2134,10 @@ class FeatureFoundationService:
         as_of_session: date,
         observed_at: datetime | None,
         market_frame: pd.DataFrame,
+        observed: tuple[date, ...],
     ) -> bool:
-        """Whether the materialization that computed one catalog's row still applies."""
+        """Whether the materialization that computed one catalog's row still applies, given the
+        listing's observed sessions through ``as_of_session``."""
         receipt = row.get("source_verification_receipt_hash")
         if receipt is None:
             return False
@@ -2117,7 +2163,6 @@ class FeatureFoundationService:
         window, start, end = windows[receipt_hash]
         if not start <= as_of_session <= end:
             return False
-        observed = self.market_data.raw_bar_sessions(listing_id, through=as_of_session)
         if not observed:
             return False
         if observed_at is None and allows_missing_source_rows(self.panel.policy_hash):
@@ -2129,7 +2174,7 @@ class FeatureFoundationService:
             calendar_id=self.manifest.profile.calendar_id,
             history_start=min(window.input_start, observed[0]),
             as_of_session=as_of_session,
-            observed_at=observed_at if observed_at is not None else datetime.now(UTC),
+            observed_at=observed_at if observed_at is not None else observation_time(),
             calendars={},
         )
         frame, _raw_hash, _action_hash = self._base_source_frame(
@@ -2172,7 +2217,7 @@ class FeatureFoundationService:
         """
         if not composition.base_compatible:
             return ()
-        # Under a column extension (V92) the added columns are computed on every
+        # Under a column extension the added columns are computed on every
         # session; the cells a year must already hold are the base's columns'.
         held_factors = frozenset(
             composition.extension.factor_ids
@@ -2540,7 +2585,7 @@ class FeatureFoundationService:
         It is this catalog restricted to the Panel's factors, and its hash must be the one the
         Panel's lineage records: then every value the Panel holds is the one this catalog
         computes for that column, and its partitions serve as the base of this catalog's
-        composition, merged with the added columns (V92).
+        composition, merged with the added columns.
         """
         snapshot = self.panel_state.feature_panel_snapshot_for_active(
             self.manifest.profile.market_profile_id
@@ -2578,7 +2623,7 @@ class FeatureFoundationService:
         axis_listings: tuple[ManifestListing, ...],
         request: FeatureBuildRequest,
     ) -> dict[str, tuple[FeatureInvalidation, ...]]:
-        """What each part of the layer recomputes (V92).
+        """What each part of the layer recomputes.
 
         An unlayered catalog is its own only part and plans from the build's invalidations as
         they are. A layered catalog's part plans from its own closure: a part complete for the

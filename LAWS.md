@@ -84,7 +84,7 @@ One helper records interpreter/libraries, dependencies/lock and threads beside r
 
 *Held by:*
 `test: tests/structural/test_source_identity.py::test_the_environment_is_read_by_one_helper_and_the_named_keys`,
-which admits `kernel/shared_kernel/environment.py` and names every other reader and why.
+which admits `capabilities/domain_contracts/environment.py` and names every other reader and why.
 
 **ID7. An agent's judgment is identified by its content.**
 
@@ -611,7 +611,6 @@ Check a sealed canary each session and refuse numerical mismatch by name; otherw
 
 *Held by:*
 `test: tests/integration/alpha_modeling/test_lightgbm_development_capability.py::test_lightgbm_fits_on_one_thread_unless_the_sealed_canary_holds`,
-`test: tests/integration/knowledge/test_retrieval_recipes.py::test_a_session_whose_canary_moved_is_refused_by_name_with_its_threads`,
 `test: tests/integration/task_control/test_task_child.py::test_a_fit_log_records_the_numerical_thread_counts`.
 
 **PA4. No ambient knobs.**
@@ -639,8 +638,7 @@ One operator cap, automatically sized from managed data/free space, governs capa
 *Held by:*
 `test: tests/integration/product_host/test_current_state_storage.py::test_storage_cap_counts_managed_models_panels_and_artifacts_and_follows_the_operator`,
 `test: tests/integration/product_host/test_current_state_storage.py::test_cleanup_plan_checks_old_cap_receipts_and_new_plans_exclude_execution_capacity`,
-`test: tests/integration/local_application/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/integration/product_host/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`,
-`test: tests/integration/observation_runtime/test_unified_observation.py::test_an_open_observation_ledger_follows_the_workspace_cap_without_reidentifying_records`.
+`test: tests/integration/local_application/test_cli_contract.py::test_storage_cap_is_one_operator_setting_through_the_real_cli`; `test: tests/integration/product_host/test_workspace_preparation.py::test_new_preparation_plan_and_exact_task_reuse_ignore_the_operator_cap`.
 
 
 ## DA. Data and formats
@@ -857,7 +855,7 @@ an answer's parts from the owner's own models;
 One helper seals canonical content excluding its hash field, and the contract self-validates at construction/read; DA6 permits optional-None hash compatibility or old-reading new versions, otherwise ID1 applies. Centralizing owner sealers remains unheld; compatible checking is centralized.
 
 *Held by:*
-`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_input_and_result_tamper_refuse_without_losing_historical_readback`.
+`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_input_tamper_refuses_a_replay_without_losing_historical_readback`.
 
 
 ## EV. Evidence and science
@@ -876,25 +874,26 @@ Recovery, resume and replay reuse sealed results, metrics, receipts and reports 
 `test: tests/integration/product_host/test_rolling_report_composition.py::test_publish_missing_heads_is_idempotent_and_reads_never_write`,
 `test: tests/integration/product_host/test_rolling_report_composition.py::test_read_refuses_corrupt_persisted_head_without_repairing_it`.
 
-**EV2. Tamper is refused before use, and history still reads.**
+**EV2. A sealed file is proved at its edges, and history still reads.**
 
 - *Source:* ours.
-- *Adapted:* Integrity, expiry and bounded proof reuse remain explicit.
-- *Why:* Neither metadata nor a later clock can stand in for current evidence integrity.
+- *Adapted:* Proof where evidence enters, where it leaves and by an idle scrub; integrity and expiry remain explicit.
+- *Why:* The Host is a sealed file's only writer and nothing rewrites a sealed name, so proving it again on every read costs time and proves nothing new; where evidence enters or leaves, neither metadata nor a later clock can stand in for its bytes.
 
-Refuse tampered inputs, chunks, receipts and results before use, by name, without losing earlier publication readback. Cross-request proof reuse needs a held OS change signal, exact file identity and read access, never size or timestamps alone; change, uncertainty, restart or missing proof requires full-byte verification. Every export, publication and admission needs fresh full-content proof or a valid lease; sweep saved studies weekly and after upgrades. Background verification binds actual read time, exact subject and policy, never a later run or clock; publication refuses expiry.
+Prove a sealed file from its bytes where it enters (a write, an import, a stage's check of what it wrote), where it leaves or is proved again (every export, publication, replay and exact readback, which reports a layer VERIFIED only from the bytes it just proved) and by the scrub, never on an ordinary read: a read takes the bytes at their content-addressed name, keeps its structural checks, and may answer from a study's last full check, saying so. Refuse tampered inputs, chunks, receipts and results by name where they are proved, without losing earlier publication readback. The scrub proves every saved study again a week after the last and after an upgrade, at idle, one study between checks for waiting work; a study it finds changed is a finding the Host acts on: the upgrade overview names it, and its reads prove it in full and refuse by name until it checks again. Background verification binds actual read time, exact subject and policy, never a later run or clock; publication refuses expiry.
 
-Not yet held: Panel chunks bind row hashes, not values; the legacy path/size/time/identity shortcut is separate from the opted-in Windows lease helper. Its checks do not cover every owner read or daily-chain composition. Review-clock holders cover delivery writers/callers; the expiry holder does not fail for a wrong background read time, which lacks a direct failing holder.
+Not yet held: Panel chunks bind row hashes, not values; the scrub covers saved studies, not every sealed file outside one. Review-clock holders cover delivery writers/callers; the expiry holder does not fail for a wrong background read time, which lacks a direct failing holder.
 
 *Held by:*
-`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_input_and_result_tamper_refuse_without_losing_historical_readback`,
-`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_pool`,
-`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_a_read_reuses_the_study_verification_while_its_files_are_unchanged`
-for that legacy shortcut;
-`test: tests/integration/workspace_runtime/test_verified_source_leases.py::test_os_changes_reverify_and_refuse_even_with_restored_size_and_time`,
-`test: tests/integration/workspace_runtime/test_verified_source_leases.py::test_missing_or_failed_os_signal_forces_full_verification`,
-`test: tests/integration/workspace_runtime/test_verified_source_leases.py::test_request_thread_exit_keeps_reuse_and_later_tampering_is_refused`
-for the immutable-source lease;
+`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_a_read_answers_from_the_full_check_and_the_scrub_finds_a_planted_change`,
+`test: tests/integration/portfolio_strategy_lab/test_public_portfolio_finalization.py::test_readback_reports_a_finalization_artifact_that_will_not_open`,
+`test: tests/integration/product_host/test_local_web_factor_experiments.py::test_input_tamper_refuses_a_replay_without_losing_historical_readback`,
+`test: tests/integration/product_host/test_local_web_service.py::test_binding_refuses_a_corrupt_copy_a_changed_source_and_a_tampered_kept_body`
+for the study edges;
+`test: tests/integration/workspace_runtime/test_content_store.py::test_a_changed_sealed_file_reads_at_its_name_and_full_proof_refuses_it`,
+`test: tests/integration/workspace_runtime/test_content_store.py::test_a_store_read_takes_sealed_bytes_at_their_name_and_full_proof_refuses_a_change`,
+`test: tests/integration/workspace_runtime/test_content_store.py::test_a_sealed_read_holds_no_file_open_and_starts_no_thread`
+for the store's reads;
 `private-test: test_review_continuation_clocks_bind_the_resolved_dossier_or_sealed_bundle`,
 `test: tests/integration/alternative_evidence/test_evidence_review_http_route.py::test_external_review_expiry_before_publication_keeps_the_assessment_but_not_a_publication`
 for review delivery clocks and genuine expiry, respectively.
@@ -934,12 +933,11 @@ Change scientific invariants, thresholds, identity, causal firewalls or fail-clo
 - *Source:* classic: memoization and measurement before optimization.
 - *Adapted:* Verified reuse and directly measured costs.
 
-Prove unchanged verified inputs once per request, time material costs directly, and fix overruns at their owner without weaker science or masked parallelism. The helper shares proof only within opted-in scopes and across requests under EV2, never size/time alone; its holder establishes neither daily-chain integration nor every owner's composition.
+Build a value from sealed sources once per process and answer later reads of the same name and content from it, outside full proof (EV2); time material costs directly, and fix overruns at their owner without weaker science or masked parallelism. The helper keeps only immutable values under byte bounds; its holder establishes neither daily-chain integration nor every owner's composition.
 
 *Held by:*
-`test: tests/integration/workspace_runtime/test_verified_source_leases.py::test_unchanged_sources_verify_once_and_disabled_reuse_reads_again`;
+`test: tests/integration/workspace_runtime/test_content_store.py::test_a_sealed_source_builds_once_per_process_and_full_proof_builds_again`;
 the remaining request compositions and measured-cost decisions by review.
-
 
 ## TE. Tests
 

@@ -28,6 +28,7 @@ from alphalattice.control.product_host.research_authoring.input_revisions import
     ResearchInputRevisions,
 )
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
+from alphalattice.foundation.data_layer.history import research_input_kept
 from alphalattice.foundation.feature_engine.panels.reader import (
     FeaturePanelReader,
     FeaturePanelReadRequest,
@@ -37,14 +38,17 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
-from tests.portfolio_strategy_lab.local_web_support import InstalledAgent, _json, _request
+from tests.portfolio_strategy_lab.host_requests import _json, _request
+from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
+from tests.pytest_environment import closure_on_log
 from tests.researcher_methodology_surface.session_workspace import (
     copy_workspace,
+    restore_seed,
     session_workspace,
 )
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
-    recording_provider,
+    HeldDataProvider,
     unchanged_membership_source,
 )
 from tests.workspace_readiness.storage_support import published_panel_chunks
@@ -58,16 +62,20 @@ def _finish(live, phase, *, timeout):
 
 def _build_revision_journey(root: Path, original_root: Path) -> dict:
     shutil.copytree(original_root, root)
+    closure_on_log(root)
     manifest_bytes = (root / "research-workspace.json").read_bytes()
     anchor = read_research_workspace_manifest(root).experiment_inputs[0]
     symbols = tuple(f"F{i:03d}" for i in range(120))
     clock_now = NOW
     effective_day = NOW + timedelta(days=1)
-    provider = recording_provider(symbols=symbols, now=effective_day, sector_size=6)
+    provider = HeldDataProvider(root, through=effective_day.date())
     first = LocalPortfolioWebSession.from_workspace(root, clock=lambda: clock_now)
     first.data_provider = provider
     first.data_source_loader = unchanged_membership_source(symbols)
     with first as live:
+        assert live.operations is not None, (
+            live.first_start.view() if live.first_start is not None else "Host did not compose"
+        )
         # The journey still runs every stage and session; only its CPU width is bounded.
         budget = live.operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
         assert budget["status"] == "CPU_BUDGET" and budget["cpu_budget"] == 2
@@ -139,7 +147,8 @@ def _build_revision_journey(root: Path, original_root: Path) -> dict:
             payload={"update_plan_hash": update["plan_hash"]},
         )
         _finish(live, "data-update", timeout=240)
-        assert _json(live, f"/api/status?task_id={sent['task_id']}")["lifecycle"] == "SUCCEEDED"
+        status = _json(live, f"/api/status?task_id={sent['task_id']}")
+        assert status["lifecycle"] == "SUCCEEDED", status
         # The transition update's own record: its members' market data came through the
         # transition itself (the candidate path), so its cycle recorded no maintenance run
         # of its own -- the readback says none, and never another update's units; its
@@ -196,13 +205,16 @@ def _build_revision_journey(root: Path, original_root: Path) -> dict:
         assert reuse["source"] == "RECEIPT_PANEL"
         assert reuse["panel_hash"] == effective["receipt"]["after"]["panel_hash"]
         assert all(
-            symbols[0] not in fetched
-            for fetched, _start, _end in provider.calls[calls_at_departure:]
+            symbol != symbols[0]
+            for _kind, symbol, _start, _end in provider.calls[calls_at_departure:]
         )
         overlap = normal_refresh_plan(
             date.fromisoformat(document["experiment"]["sessions"]["end"]), NOW.date()
         ).fetch_start
-        assert provider.calls and all(start >= overlap for _symbols, start, _end in provider.calls)
+        quote_requests = [
+            start for kind, _, start, _ in provider.calls if kind in {"daily", "adjusted"}
+        ]
+        assert quote_requests and min(quote_requests) >= overlap
         capture = _json(
             live,
             "/api/research-inputs/plan",
@@ -313,6 +325,9 @@ def _build_revision_journey(root: Path, original_root: Path) -> dict:
         "capture": capture,
         "capture_database_bytes": capture_database_bytes,
         "reuse": repeat,
+        "retained_panel_hashes": [
+            effective["receipt"][side]["panel_hash"] for side in ("before", "after")
+        ],
     }
 
 
@@ -328,6 +343,7 @@ def revision_seed(request, tmp_path_factory):
 @pytest.fixture
 def revision_journey(revision_seed, tmp_path):
     source, metadata = revision_seed
+    restore_seed(source)
     root = copy_workspace(source, tmp_path / "input-revision")
     return (
         root,
@@ -451,12 +467,15 @@ def test_update_capture_copy_and_recovery_leave_defaults_and_reports_unchanged(
             unavailable.unlink(missing_ok=True)
 
         storage = _json(live, "/api/workspace/storage")
-        roots = {v["binding_hash"]: v["roots"] for v in storage["inputs"]}
-        assert "CURRENT_ACTIVE" in roots[anchor.binding_hash]
-        assert "CURRENT_RESEARCH_VERSION" in roots[publication.binding_hash]
-        # Only chunks no generation published are offered; both inputs' stay.
-        targets = _json(live, "/api/workspace/storage/plan", method="POST", payload={})["targets"]
-        assert not set(targets) & published_panel_chunks(root)
+        assert storage["status"] == "AVAILABLE", storage
+        assert research_input_kept(anchor.binding_hash)
+        assert research_input_kept(publication.binding_hash)
+        plan = _json(live, "/api/workspace/storage/plan", method="POST", payload={})
+        assert plan["status"] == "CONFIRMATION_REQUIRED", plan
+        assert plan["bindings"] == []
+        assert not set(plan["targets"]) & published_panel_chunks(
+            root, metadata["retained_panel_hashes"]
+        )
 
 
 def test_a_saved_capture_continues_on_its_published_revision(revision_journey, capsys):
@@ -532,7 +551,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         )
         assert bad["status"] == "REFUSED" and "version_not_admitted" in bad["failure_code"]
         bundle = read_factor_bundle(root, publication.binding_hash)
-        path = root / "research-inputs" / bundle.binding_hash / "manifest.json"
+        path = factor_input_paths(root, bundle.binding_hash)[0].parent / "manifest.json"
         original = path.read_bytes()
         try:
             path.write_bytes(original.replace(bundle.binding_hash.encode(), b"0" * 64))
@@ -550,7 +569,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         assert len(registry.tasks()) == before
         manifest_bytes = (root / "research-workspace.json").read_bytes()
         for binding in (anchor.binding_hash, publication.binding_hash):
-            manifest = root / "research-inputs" / binding / "manifest.json"
+            manifest = factor_input_paths(root, binding)[0].parent / "manifest.json"
             held_manifest = manifest.with_suffix(".held")
             original_manifest = manifest.read_bytes()
             manifest.rename(held_manifest)
@@ -644,7 +663,7 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
         assert len(registry.tasks()) == before
         assert (root / "research-workspace.json").read_bytes() == manifest_bytes
         # Missing numerical input prevents execution, not reopening immutable evidence.
-        database = root / "research-inputs" / anchor.binding_hash / "source/market-data.duckdb"
+        database = factor_input_paths(root, anchor.binding_hash)[0] / "market-data.duckdb"
         held = database.with_suffix(".held")
         database.rename(held)
         try:

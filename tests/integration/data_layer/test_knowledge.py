@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
@@ -166,10 +167,32 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
         assert all(
             digest(body[chunk.start : chunk.end].encode()) == chunk.digest for chunk in chunks
         )
-        assert [
-            hit.source_id
-            for hit in store.lexical("市场风险", store.scope(workspace="w2", cutoff_us=123))
-        ] == [origin.source_id]
+        refresh = knowledge._LexicalView.refresh
+        with ThreadPoolExecutor(max_workers=1) as writer, monkeypatch.context() as patch:
+
+            def refresh_with_commit(view, con):
+                append = writer.submit(
+                    log.record,
+                    "workspace.created",
+                    ("workspace", "lexical-writer"),
+                    {"name": "concurrent"},
+                )
+                assert wait((append,), timeout=5).done, "the lexical read held the log writer"
+                append.result()
+                writer.submit(log.flush).result(timeout=5)
+                assert (
+                    con.execute(
+                        "SELECT 1 FROM workspace WHERE workspace_id = 'lexical-writer'"
+                    ).fetchone()
+                    is None
+                )
+                refresh(view, con)
+
+            patch.setattr(knowledge._LexicalView, "refresh", refresh_with_commit)
+            assert [
+                hit.source_id
+                for hit in store.lexical("市场风险", store.scope(workspace="w2", cutoff_us=123))
+            ] == [origin.source_id]
         assert [
             hit.source_id
             for hit in store.lexical("风险市场", store.scope(workspace="w2", cutoff_us=123))
@@ -335,9 +358,15 @@ def test_a_published_revision_and_snapshot_are_rebuilt_from_the_log(
                 ranges=((origin.source_id, first_hit.ordinal, first_hit.ordinal),),
             )
             outside = replace(inside, ranges=((origin.source_id, 999, 999),))
-            assert [hit.chunk for hit in index.search(query_vector, inside)] == [first_hit.chunk]
+            ranked_inside = index.search(query_vector, inside)
+            assert [hit.chunk for hit in ranked_inside] == [first_hit.chunk]
+            overlapping = replace(inside, ranges=inside.ranges * 2)
+            assert index.search(query_vector, overlapping) == ranked_inside
             assert index.search(query_vector, outside) == ()
-            assert [hit.chunk for hit in store.lexical("evidence", inside)] == [first_hit.chunk]
+            assert [hit.chunk for hit in store.lexical("evidence", overlapping)] == [
+                first_hit.chunk
+            ]
+            assert (root / "machine" / "knowledge-lexical-v1" / "meta.json").is_file()
             assert store.lexical("evidence", outside) == ()
             # A per-source window is each source's best, in one order.
             assert len(index.search(query_vector, inside, limit=1, per_source=True)) == 1

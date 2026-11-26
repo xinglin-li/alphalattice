@@ -7,6 +7,11 @@ seen one is marked seen again with the remedies offered now, and one whose condi
 resolved. A Task's read carries its open incident, so an agent following the Task wakes on it
 (WK).
 
+Two states nothing else can end are settled here. A Task whose command raised while it read
+RUNNING has no worker, and when its own failure write died with it the Task is marked as owed its
+recovery. A queued Task no command drives, seen on a second pass, is handed back through RECOVER:
+nothing of it has run, and at the queue's head it would hold every Task behind it.
+
 The Recovery Center performs one remedy the Host offered for an open incident, only through the
 existing operation (RECOVER or CANCEL, confirmed against the Task's version; REPLAN answers the
 owner's re-plan request, which admits nothing), and records the attempt with what the Task became
@@ -16,11 +21,13 @@ afterwards. It adds no power: what a person or an agent may do is what the recov
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.control.guanyin.tasks.supervision import (
     IncidentRecord,
     IncidentStore,
@@ -40,13 +47,19 @@ from alphalattice.control.product_host.composition.task_recovery import (
     task_attention,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord, WorkItemLifecycle
-from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry, TaskNotFoundError
+from alphalattice.control.task_control.registry import (
+    DuckDbTaskControlRegistry,
+    TaskNotFoundError,
+    TaskVersionStale,
+)
 from alphalattice.interface.local_application.activity import OperationObserver
 from alphalattice.interface.local_application.cli_contract import STOPPED_STATES
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
 )
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.execution import TIMERS, Timers
 
 
 class _Host(Protocol):
@@ -82,12 +95,23 @@ Remedy = Literal["CANCEL", "RECOVER", "REPLAN"]
 class TaskSupervisor:
     """Guanyin's Supervisor thread and Recovery Center for one Host's workspace."""
 
-    def __init__(self, operations: _Host, *, interval: float = SUPERVISION_SECONDS) -> None:
-        """Supervise the Tasks this Host's operations serve."""
+    def __init__(
+        self,
+        operations: _Host,
+        *,
+        interval: float = SUPERVISION_SECONDS,
+        timers: Timers = TIMERS,
+    ) -> None:
+        """Supervise the Tasks this Host's operations serve, woken by its Host's timer."""
         self.operations = operations
         self.store = IncidentStore(operations.workspace_session.workspace)
         self.interval = interval
         self._stop = Event()
+        self._wake = Event()
+        # Each pass is woken by the Host's one timer, armed `interval` after the last on the
+        # clock owner's time: a Host whose dispatcher clock is held (an as-of Host) is still
+        # supervised every `interval` that passes.
+        self._timer = timers.job("guanyin-supervisor", utc_now, self._wake.set)
         self._thread: Thread | None = None
         self._lock = Lock()
 
@@ -100,20 +124,31 @@ class TaskSupervisor:
         self._stop.clear()
         self._thread = Thread(target=self._run, name="guanyin-supervisor", daemon=True)
         self._thread.start()
+        self._arm()
 
     def stop(self) -> None:
         """Stop supervising and join the thread."""
         self._stop.set()
+        self._timer.arm(None)
+        self._wake.set()
         thread, self._thread = self._thread, None
         if thread is not None:
             thread.join(timeout=max(self.interval, 1.0) * 2)
 
+    def _arm(self) -> None:
+        self._timer.arm(utc_now() + timedelta(seconds=self.interval))
+
     def _run(self) -> None:
-        while not self._stop.wait(self.interval):
-            try:
-                self.supervise_once()
-            except Exception:
+        while not self._stop.is_set():
+            # The timer at the next pass, or `stop`; an hour with neither blocks again.
+            if not self._wake.wait(CEILING):
                 continue
+            self._wake.clear()
+            if self._stop.is_set():
+                return
+            with suppress(Exception):  # a failed pass is tried again at the next
+                self.supervise_once()
+            self._arm()
 
     # ------------------------------------------------------------------ the rules' pass
 
@@ -127,9 +162,11 @@ class TaskSupervisor:
             attention = self.attention(tasks)
             seen: set[str] = set()
             opened: list[IncidentRecord] = []
+            parked: list[IncidentRecord] = []
             for task in tasks:
                 if task.lifecycle in _FINISHED:
                     continue
+                self._settle_dead_worker(task, now)
                 view = self.operations.recovery_view(task.task_id)
                 observed_hash = view.get("task_record_hash")
                 if isinstance(observed_hash, str):
@@ -193,32 +230,67 @@ class TaskSupervisor:
                     opened.append(kept)
                 else:
                     kept = kept.changed(last_seen_at=now, remedies=remedies)
+                    if finding.code == "task_runtime.parked":
+                        parked.append(kept)
                 self.store.put(kept)
-            for kept in self.store.records():
-                if kept.state == "OPEN" and kept.key not in seen:
-                    try:
-                        resolved_task_id = UUID(kept.task_id)
-                    except ValueError:
-                        resolved_task = None
-                    else:
-                        try:
-                            resolved_task = registry.task(resolved_task_id)
-                        except TaskNotFoundError:
-                            resolved_task = None
-                    observed_hash = observed_hashes.get(kept.task_id)
-                    self.store.put(
-                        kept.changed(
-                            state="RESOLVED",
-                            resolved_at=now,
-                            resolved_task_record_hash=(
-                                None
-                                if resolved_task is None
-                                or resolved_task.record_hash != observed_hash
-                                else resolved_task.record_hash
-                            ),
-                        )
-                    )
+            self._resolve_cleared(seen, observed_hashes, now)
+            for kept in parked:
+                self.remediate(
+                    PortfolioResearchOperationRequest(
+                        operation="TASK_REMEDIATE",
+                        task_id=UUID(kept.task_id),
+                        incident_key=kept.key,
+                        remedy="RECOVER",
+                        expected_task_hash=observed_hashes[kept.task_id],
+                    ),
+                    selected_by="HOST_SUPERVISOR",
+                )
             return tuple(opened)
+
+    def _resolve_cleared(
+        self, seen: set[str], observed_hashes: Mapping[str, str], now: datetime
+    ) -> None:
+        """Resolve every open incident this pass did not find again."""
+        registry = self.operations.workspace_session.task_control_registry
+        for kept in self.store.records():
+            if kept.state == "OPEN" and kept.key not in seen:
+                try:
+                    resolved_task_id = UUID(kept.task_id)
+                except ValueError:
+                    resolved_task = None
+                else:
+                    try:
+                        resolved_task = registry.task(resolved_task_id)
+                    except TaskNotFoundError:
+                        resolved_task = None
+                observed_hash = observed_hashes.get(kept.task_id)
+                self.store.put(
+                    kept.changed(
+                        state="RESOLVED",
+                        resolved_at=now,
+                        resolved_task_record_hash=(
+                            None
+                            if resolved_task is None or resolved_task.record_hash != observed_hash
+                            else resolved_task.record_hash
+                        ),
+                    )
+                )
+
+    def _settle_dead_worker(self, task: TaskRecord, now: datetime) -> None:
+        """Owe a recovery to a RUNNING Task whose command has raised and returned."""
+        dispatcher = self.operations.dispatcher
+        if (
+            task.lifecycle is TaskLifecycle.RUNNING
+            and not dispatcher.command_running(task.task_id)
+            and dispatcher.failure(task.task_id) is not None
+        ):
+            with suppress(TaskVersionStale):  # it moved since this read: that stands
+                self.operations.workspace_session.task_control_registry.mark_recovery_required(
+                    task_id=task.task_id,
+                    failure_code="TASK_EXECUTION_INTERRUPTED",
+                    observed_at=now,
+                    expected_task_hash=task.record_hash,
+                )
 
     def attention(self, tasks: Iterable[TaskRecord]) -> dict[UUID, TaskAttentionFact]:
         """Resolve current attention from one link read, one incident read and canonical Tasks.
@@ -312,7 +384,7 @@ class TaskSupervisor:
         self,
         request: PortfolioResearchOperationRequest,
         *,
-        selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL"],
+        selected_by: Literal["USER_COMMAND", "AGENT_PROPOSAL", "HOST_SUPERVISOR"],
     ) -> dict[str, object]:
         """Perform one remedy the Host offers for an open incident, and record the attempt."""
         assert request.task_id is not None and request.incident_key is not None
@@ -363,7 +435,7 @@ class TaskSupervisor:
         self.store.put(record)
         # A recovery or a cancellation acted on the Task: the receipt's outcome is the Task's
         # and its owner's, so `--wait` follows a resumed Task and a refused remedy is refused,
-        # never read off the nested answer (V508). A re-plan leaves the Task as it was.
+        # never read off the nested answer. A re-plan leaves the Task as it was.
         acted = chosen.action != "REPLAN"
         code = answer.get("failure_code") if acted else None
         return {

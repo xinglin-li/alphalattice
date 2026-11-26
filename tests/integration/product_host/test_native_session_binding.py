@@ -31,7 +31,8 @@ from alphalattice.interface.local_application.native_setup import (
     files_unavailable,
 )
 from tests.portfolio_strategy_lab.cli_support import _agent_project, _session_cli
-from tests.portfolio_strategy_lab.local_web_support import _json, _manifest, _resolved, _Resolver
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import _manifest, _resolved, _Resolver
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -61,7 +62,7 @@ def _lead_usage_file(tmp_path, monkeypatch):
     return path
 
 
-@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_file"))
+@pytest.mark.parametrize("problem", ("counts", "path", "child", "missing_telemetry"))
 def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
     live,
     tmp_path,
@@ -84,21 +85,11 @@ def test_lead_usage_request_accepts_no_claims_and_keeps_missing_usage_visible(
         event["transcript_path"] = "SECRET-PATH"
     elif problem == "child":
         _session(monkeypatch, "claude-code", "synthetic-child")
-    elif problem == "missing_file":
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "absent-host"))
     answer = client.publish_native_event(project, event)
-    if problem == "missing_file":
+    if problem == "missing_telemetry":
         assert answer == {
             "status": "UNAVAILABLE",
-            "participants": [
-                {
-                    "agent_id": "fixture-parent",
-                    "role": "research_lead",
-                    "status": "UNAVAILABLE",
-                    "reason": "native_bridge.lead_usage_file_missing",
-                }
-            ],
-            "reason": "native_bridge.lead_usage_file_missing",
+            "reason": "native_bridge.lead_usage_not_observed",
         }
     else:
         assert answer["status"] == "REFUSED"
@@ -283,23 +274,37 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
         bind_session(project, host="codex", session_id="holder", workspace=live.workspace)
     _session(monkeypatch, "codex", "sandboxed")
     binding_path = project / ".codex" / BINDING_NAME
-    opening, denied = Path.open, [project / ".codex"]
-    read_blocked = False
+    root = native_setup.autobind_root(live.workspace)
+    read_blocked = block_workspace_read = False
+    project_sessions = {"sandboxed", "memo-other", "explicit", "nowhere"}
 
-    def unavailable(path, mode="r", *args, **kwargs):
-        if any(path.is_relative_to(place) for place in denied) and (
-            "x" in mode
-            or (read_blocked and (path == binding_path or len(denied) > 1) and "r" in mode)
-        ):
-            raise PermissionError(13, "secret fixture exception text", str(path))
-        return opening(path, mode, *args, **kwargs)
+    def deny_binding(candidate, *, host, session_id, workspace, **kwargs):
+        if host == "codex" and workspace == live.workspace:
+            if candidate == project and session_id in project_sessions:
+                path = (
+                    NativeResearchBinding.slot_path(project, (host, session_id))
+                    if held
+                    else binding_path
+                )
+                raise PermissionError(13, "secret fixture exception text", str(path))
+            if candidate == root and session_id == "nowhere":
+                path = NativeResearchBinding.slot_path(root, (host, session_id))
+                raise PermissionError(13, "secret fixture exception text", str(path))
+        return bind_session(
+            candidate, host=host, session_id=session_id, workspace=workspace, **kwargs
+        )
 
-    monkeypatch.setattr(Path, "open", unavailable)
+    monkeypatch.setattr(native_setup, "bind_session", deny_binding)
     read_binding, reads = native_setup.session_binding, []
 
-    def rehydrate(*arguments):
-        reads.append(arguments)
-        return read_binding(*arguments)
+    def rehydrate(candidate, workspace, session):
+        reads.append((candidate, workspace, session))
+        if read_blocked and session == ("codex", "sandboxed"):
+            if (candidate, workspace) == (project, None) and held:
+                raise NativeBridgeError("native_bridge.binding_unreadable")
+            if (candidate, workspace) == (None, live.workspace) and block_workspace_read:
+                raise NativeBridgeError("native_bridge.binding_unreadable")
+        return read_binding(candidate, workspace, session)
 
     monkeypatch.setattr(native_setup, "session_binding", rehydrate)
     native_setup.configure_binding_memo(capacity=1)
@@ -311,23 +316,25 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
                     reads.clear()
                 _session(monkeypatch, "codex", session)
                 cli.main(_research(live, tmp_path), serve=lambda _: 99)
-                notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
+                answer = json.loads(capsys.readouterr().out)
+                data = answer["data"]
+                assert isinstance(data, dict), answer
+                notice = data["session_binding"]
                 assert notice["status"] == "BOUND_IN_WORKSPACE", notice
                 assert notice["next_action"] == "NAME_THE_WORKSPACE_ON_EACH_COMMAND"
         key = ("codex", "sandboxed")
         assert reads == [(project, None, key), (None, live.workspace, key)]
         native_setup.configure_binding_memo(capacity=1)
-        denied.append(native_setup.autobind_root(live.workspace) / ".codex")
+        block_workspace_read = True
         for block_read in (True, False):
             read_blocked = block_read
             cli.main(_research(live, tmp_path), serve=lambda _: 99)
-            recovered = json.loads(capsys.readouterr().out)["data"]
-        denied.pop()
+            answer = json.loads(capsys.readouterr().out)
+            recovered = answer["data"]
+            assert isinstance(recovered, dict), answer
         assert recovered.get("session_binding", {}).get("status") == "BOUND_IN_WORKSPACE"
     finally:
         native_setup.configure_binding_memo()
-    read_blocked = False
-    root = native_setup.autobind_root(live.workspace)
     assert NativeResearchBinding.read(root, session=("codex", "sandboxed")) is not None
     # Compare an identified caller with a sessionless caller of the same bound workspace.
     client = LocalResearchClient(live.workspace)
@@ -382,6 +389,7 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     assert named_goal["goal_id"] in shown and anonymous_goal["goal_id"] not in shown
     _session(monkeypatch, "codex", "sandboxed")
     _usage_files(tmp_path, monkeypatch, "sandboxed")
+    _usage_observation(live, "codex", "sandboxed")
     reading = LocalResearchClient(live.workspace).publish_native_event(
         root, {"source": "native_usage_read"}
     )
@@ -396,7 +404,6 @@ def test_a_project_binding_a_sandbox_denies_is_kept_in_the_workspace_and_said(
     assert "secret fixture exception text" not in json.dumps(answer)
     assert binding_path.exists() == held
     _session(monkeypatch, "codex", "nowhere")  # neither folder writable: said, never silent
-    denied.append(root / ".codex")
     cli.main(_research(live, tmp_path), serve=lambda _: 99)  # its exit follows the first Task
     notice = json.loads(capsys.readouterr().out)["data"]["session_binding"]
     assert (notice["status"], notice["next_action"]) == (
@@ -439,6 +446,19 @@ def test_two_named_sessions_keep_their_own_workspace_and_detach_only_their_slot(
         second_before = second.record_path(project).read_bytes()
         assert second.workspace == second_workspace
         assert first.record_path(project).read_bytes() == first_before
+        _usage_observation(live, host, "fixture-first")
+        _session(monkeypatch, host, "fixture-first")
+        first_client = LocalResearchClient(live.workspace)
+        reading = first_client.publish_native_event(project, {"source": "native_usage_read"})
+        assert reading["status"] == "DELIVERED", reading
+        # Equal native ids in the other Host must never enter this workspace's activity.
+        _usage_observation(second_host, host, "fixture-first", output_tokens=999)
+        reading = first_client.publish_native_event(project, {"source": "native_usage_read"})
+        assert reading["status"] == "DELIVERED", reading
+        assert {
+            row["payload"]["subject"]["output_tokens"]
+            for row in first_client.read_external()["items"]
+        } == {"4" if host == "codex" else "3"}
         for session, workspace in (
             ("fixture-first", live.workspace),
             ("fixture-second", second_workspace),
@@ -482,6 +502,7 @@ def test_two_hosts_with_the_same_session_text_have_separate_sources_and_detach(
         binding = NativeResearchBinding.read(project, session=(host, session))
         bindings[host] = binding
         assert (binding.host, binding.session_id) == (host, session)
+        _usage_observation(live, host, session)
         reading = client.publish_native_event(project, {"source": "native_usage_read"})
         assert reading["status"] == "DELIVERED", reading
     rows = client.read_external()["items"]
@@ -551,7 +572,7 @@ def test_exact_session_retry_keeps_checkpoint_and_refuses_changed_scope(
 def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     live, tmp_path, monkeypatch, relation
 ):
-    """A Codex child's command works in its recorded parent's workspace (V568); it asks for no
+    """A Codex child's command works in its recorded parent's workspace; it asks for no
     reading, which is the bound Session's own milestone, and a foreign or OFF binding never
     adopts it."""
 
@@ -585,6 +606,46 @@ def test_a_child_is_served_by_its_ancestry_but_never_reads_its_leads_usage(
     )
     assert client.read_external()["items"] == []
     assert binding.record_path(project).read_bytes() == before
+
+
+def _usage_observation(live, host: str, session: str, *, output_tokens: int | None = None) -> None:
+    """Seed numerical exports through the held Host's catalog, independent of metadata files."""
+    from alphalattice.foundation.data_layer import history
+    from alphalattice.foundation.data_layer.telemetry import decode
+
+    codex = host == "codex"
+    service = "codex" if codex else "claude_code"
+    values = {
+        "conversation.id" if codex else "session.id": session,
+        "event.name": f"{service}.api_request",
+        "request_id": "fixture-response",
+        "model": "gpt-6-luna" if codex else "claude-sonnet-5-5",
+        "gen_ai.usage.input_tokens": 9 if codex else 7,
+        "gen_ai.usage.cache_read.input_tokens": 2,
+        "gen_ai.usage.cache_write.input_tokens": 0 if codex else 1,
+        "gen_ai.usage.output_tokens": output_tokens
+        if output_tokens is not None
+        else 4
+        if codex
+        else 3,
+    }
+    record = {
+        "timeUnixNano": str(int(datetime.now(UTC).timestamp() * 1e9)),
+        "attributes": [
+            {
+                "key": key,
+                "value": {"intValue": str(value)}
+                if isinstance(value, int)
+                else {"stringValue": value},
+            }
+            for key, value in values.items()
+        ],
+    }
+    payload = {"resourceLogs": [{"scopeLogs": [{"logRecords": [record]}]}]}
+    rows = decode(
+        "logs", json.dumps(payload).encode(), "application/json", workspace_id=live.workspace_id
+    )
+    history.receive_agent_telemetry(rows)
 
 
 def _usage_files(tmp_path, monkeypatch, session: str) -> None:
@@ -687,6 +748,7 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
     assert bound["attachment_preflight"]["status"] == "READY"
     binding = NativeResearchBinding.read(clone)
     assert binding.workspace == live.workspace and binding.host == host
+    _usage_observation(live, host, "fixture-parent")
     reading = client.publish_native_event(clone, {"source": "native_usage_read"})
     assert reading["status"] == "DELIVERED", reading
     (row,) = client.read_external()["items"]
@@ -709,7 +771,7 @@ def test_a_fresh_clone_binds_a_workspace_kept_outside_it_after_the_documented_co
 def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
     live: LocalPortfolioWebSession,
 ) -> None:
-    """requirement (privacy, FLOW-1): reading is on by default; a person's Settings switch
+    """requirement (privacy): reading is on by default; a person's Settings switch
     turns it off for every Session of the workspace, an agent can read the switch but never
     set it, and with it off a page's or a milestone's request reads no Session file."""
     from alphalattice.interface.local_application.portfolio_research import (
@@ -722,6 +784,12 @@ def test_only_a_person_turns_usage_reading_off_and_then_nothing_is_read(
     refused = client.request({"operation": "USAGE_READING_SET", "usage_reading_enabled": False})
     assert refused["failure_code"] == "native_bridge.usage_reading_human_only"
     assert client.request({"operation": "USAGE_READING"})["usage_reading"] == "READ"
+    # The review's Analyst reads are the person's setting too: an agent asks, never answers.
+    asked = client.request({"operation": "ANALYST_READS", "analyst_reads_bundles": 3})
+    assert asked["person_questions"][0]["code"] == "review.analyst_reads"
+    choice = {"analyst_reads_mode": "SUBAGENTS", "analyst_reads_bundles": 3}
+    refused = client.request({"operation": "ANALYST_READS_SET", **choice})
+    assert refused["failure_code"] == "evidence_review.analyst_reads_human_only"
 
     def person(enabled: bool) -> dict:
         return live.operations.execute(
@@ -841,7 +909,7 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
     assert [row["message_kind"] for row in requests] == ["session_bound", "RUN"]
     assert requests[1]["agent_session"] == "fixture-lead"
     assert bound[0]["payload"]["subject"]["goal_id"] == goals[0]["goal_id"]
-    # The fact names the goal the Session holds, as its Sessions row reads it (STOPS-1).
+    # The fact names the goal the Session holds, as its Sessions row reads it.
     held = client.request({"operation": "GOAL_SHOW", "goal_id": goals[0]["goal_id"]})
     assert bound[0]["payload"]["subject"]["reference"] == f"case:{held['goal']['goal_hash']}"
     record_bytes = binding.record_path(root).read_bytes()
@@ -855,7 +923,7 @@ def test_one_research_command_binds_the_session_and_opens_its_goal(
 def test_a_session_bound_by_a_read_names_the_goal_its_first_request_opens(
     live: LocalPortfolioWebSession, monkeypatch, capsys, tmp_path
 ) -> None:
-    """regression (STOPS-1, the Tech Lead's live check of 2026-10-08): a Session bound by its
+    """regression: a Session bound by its
     first read held no goal, and when its next request opened one its Sessions row still read
     "No research question is declared". The Host now names the goal once it is held."""
     _session(monkeypatch, "claude-code", "fixture-reader")

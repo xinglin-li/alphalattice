@@ -104,13 +104,14 @@ def test_a_planted_unlisted_writer_is_refused_and_a_listed_one_passes(tmp_path: 
     module = tmp_path / "src" / "alphalattice" / "control" / "demo" / "store.py"
     module.parent.mkdir(parents=True)
     module.write_text(
-        "import duckdb, os\n"
+        "import duckdb, os, tantivy\n"
         "class DemoStore:\n"
         "    def put(self, path, data):\n"
         "        path.write_bytes(data)\n"
+        "        return tantivy.Index(schema, path=path)\n"
         "def read(path):\n"
         "    with path.open('rb') as stream:\n"
-        "        return stream.read(), duckdb.connect(':memory:')\n"
+        "        return stream.read(), duckdb.connect(':memory:'), tantivy.Index(schema)\n"
         "def log(path):\n"
         "    with open(path, 'a') as stream:\n"
         "        stream.write('x')\n"
@@ -129,7 +130,7 @@ def test_a_planted_unlisted_writer_is_refused_and_a_listed_one_passes(tmp_path: 
     )
     sites = discover_persistence_sites((module,), source_root=tmp_path / "src")
     assert sites == {
-        "demo.store:DemoStore": ["write_bytes"],
+        "demo.store:DemoStore": ["tantivy.Index", "write_bytes"],
         "demo.store:chosen": ["open"],
         "demo.store:count": ["os.open"],
         "demo.store:log": ["open"],

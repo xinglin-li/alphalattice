@@ -45,6 +45,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (  # noqa: E402
 from alphalattice.capabilities.alpha_modeling.runtime.service import (  # noqa: E402
     AlphaModelRuntimeService,
 )
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash  # noqa: E402
 from alphalattice.control.product_host.research_authoring.authority import (  # noqa: E402
     InstalledResearchSnapshot,
     WorkspaceResearchAuthorityResolver,
@@ -65,7 +66,6 @@ from alphalattice.investment.alpha_research.inputs.panel_feature_materialization
 from alphalattice.investment.alpha_research.inputs.panel_feature_views import (  # noqa: E402
     InstalledPanelViewId,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash  # noqa: E402
 from alphalattice.protocols.research_authoring.contracts import (  # noqa: E402
     ResearchExperimentEnvelope,
 )

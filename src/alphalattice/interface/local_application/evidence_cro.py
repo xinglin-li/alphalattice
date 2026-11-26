@@ -168,10 +168,10 @@ class EvidenceCroIssueCard:
     """The reviewer's advice in words; empty for reviews sealed before it."""
     found_on: str | None = None
     """When the earliest finding it cites was found (ISO date): a reading carried
-    from an earlier day says so (W3)."""
+    from an earlier day says so."""
     open_since: str | None = None
     """The day an earlier review raised it, when it is an open issue of the
-    issuers' register (W3); with `carried_on` when the reviewer left it as last
+    issuers' register; with `carried_on` when the reviewer left it as last
     assessed."""
     carried_on: str | None = None
 
@@ -313,7 +313,7 @@ class EvidenceCroCoverageProgress:
     nothing_filed_weight: str | None = None
     issuers_carried: int = 0
     """Holdings with no new filing in the window, every filing read earlier:
-    not prepared again, reviewed by what those readings found (W3)."""
+    not prepared again, reviewed by what those readings found."""
     carried_weight: str | None = None
     preparation: tuple[EvidenceCroStageWork, ...] = ()
     """While the book's run continues: filings fetched, documents canonicalized,

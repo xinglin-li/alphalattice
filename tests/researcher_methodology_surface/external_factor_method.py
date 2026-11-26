@@ -27,6 +27,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
     desktop_core_feature_bundle,
@@ -50,8 +52,6 @@ from alphalattice.foundation.feature_engine.producers.factors.specifications imp
     FactorFormulaSpecificationCatalog,
     build_installed_factor_formula_specifications,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
 EXTERNAL_METHOD_FAMILY = "CASE_STUDY_SESSION_RANGE"
 EXTERNAL_METHOD_FAMILY_OWNERS = (__name__,)

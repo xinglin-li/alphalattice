@@ -23,16 +23,22 @@ import os
 import shutil
 import threading
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 import yaml  # type: ignore[import-untyped]
 
-from .saved_object_readback import probe
+from alphalattice.foundation.data_layer.history import own_root
+from alphalattice.kernel.clock import utc_now
+
+from .saved_object_readback import carry_copy, probe
 
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "BLOCKED", "RECOVERY_REQUIRED"})
+STUDY_SECONDS = 3600.0
+"""How long the sandbox waits for its study's Task to end: the cap of any wait. A research
+experiment Task ran 54 s at the median, 736 s at p90 and 2,090 s at most (the release workspace's
+ledger, 11 Tasks)."""
 
 
 def _copy(source: Path, target: Path) -> None:
@@ -185,13 +191,19 @@ def _run_study(copy: Path, model_id: str, study: Path | None) -> tuple[str, floa
                 session, {"operation": "EXPERIMENT_RUN", "experiment_plan_hash": plan["plan_hash"]}
             )
             task_id = str(sent.get("task_id") or sent.get("publication_task_id"))
-            while True:
-                lifecycle = _operate(session, {"operation": "STATUS", "task_id": task_id}).get(
-                    "lifecycle"
-                )
-                if lifecycle in _TERMINAL:
-                    break
-                time.sleep(1.0)
+
+            deadline, lifecycle = time.monotonic() + STUDY_SECONDS, None
+            while lifecycle not in _TERMINAL:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise ValueError(f"model_sandbox.study_timeout:{task_id}")
+                # The Host's status waits on the study Task's own events, for up to its 20 s.
+                request = {
+                    "operation": "STATUS",
+                    "task_id": task_id,
+                    "wait_seconds": min(20.0, left),
+                }
+                lifecycle = _operate(session, request).get("lifecycle")
         seconds = time.perf_counter() - started
         body = _operate(session, {"operation": "EXPERIMENT_READBACK", "task_id": task_id})
         if body.get("status") != "EXPERIMENT_PUBLISHED":
@@ -260,17 +272,19 @@ def run_sandbox(
         lease = WorkspaceWriterLease.acquire(workspace)
     except (OSError, RuntimeError) as error:  # the lease is held: a Host serves it
         raise ValueError("model_sandbox.host_serving") from error
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    stamp = utc_now().strftime("%Y%m%dT%H%M%S")
     folder = (root or workspace.parent / ".alphalattice-sandboxes") / f"{model_id}-{stamp}"
     copy = folder / "workspace"
     try:
         folder.mkdir(parents=True)
         _copy(workspace, copy)
-        before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
-        registry = ModelExtensionRegistry.read(copy)
-        registry.model_copy(update={"trial": (*registry.trial, model_id)}).write(copy)
-        task_id, seconds, peak, ran = _run_study(copy, model_id, study)
-        after = _probe(copy, folder / "u0-after", folder / "u0-after.json")
+        carry_copy(workspace, copy)  # the copy opens with what the catalog alone keeps for it
+        with own_root(folder / "data-root"):  # the copy's Tasks stay out of the machine's log
+            before = _probe(copy, folder / "u0-before", folder / "u0-before.json")
+            registry = ModelExtensionRegistry.read(copy)
+            registry.model_copy(update={"trial": (*registry.trial, model_id)}).write(copy)
+            task_id, seconds, peak, ran = _run_study(copy, model_id, study)
+            after = _probe(copy, folder / "u0-after", folder / "u0-after.json")
         changed = sum(1 for key, verdict in before.items() if after.get(key) != verdict)
         changed += sum(
             1
@@ -288,7 +302,7 @@ def run_sandbox(
             peak_memory_bytes=peak,
             u0_reads=len(before),
             u0_changed=changed,
-            recorded_at=datetime.now(UTC),
+            recorded_at=utc_now(),
         )
         held = ModelExtensionRegistry.read(workspace)
         held.model_copy(update={"sandboxes": (*held.sandboxes, record)}).write(workspace)

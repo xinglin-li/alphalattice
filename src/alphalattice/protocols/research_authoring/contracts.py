@@ -14,14 +14,15 @@ development-only value.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from enum import IntEnum
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Protocol, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 
 _HASH = r"^[0-9a-f]{64}$"
 _HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}$"
@@ -142,6 +143,12 @@ class DecisionCutoff(_Contract):
             except ValueError as error:
                 raise AuthoringError("research_authoring.decision_cutoff_invalid") from error
         raise AuthoringError("research_authoring.decision_cutoff_invalid")
+
+    @property
+    def selection_cutoff_us(self) -> int:
+        """The stored selection's knowledge cutoff: the end of its session date in UTC."""
+        end = datetime.combine(self.session + timedelta(days=1), datetime.min.time(), UTC)
+        return int(end.timestamp()) * 1_000_000
 
     @property
     def is_resolvable(self) -> bool:
@@ -348,7 +355,7 @@ class ResolvedResearchAuthority(_Contract):
         default=None, exclude_if=lambda v: v is None
     )
     """How ``ordered_listing_ids`` was sampled from the Panel's names, for an exploration
-    sample: each Sector's share (binding plan, decision 4). Absent for the whole Panel, and
+    sample: each Sector's share. Absent for the whole Panel, and
     from a sample drawn before samples kept each Sector's share."""
     authority_hash: str = Field(pattern=_HASH)
 
@@ -598,9 +605,7 @@ class ResearchExecutionEvidence(_Contract):
             and self.numerical_call_count != 0
         ):
             raise AuthoringError("research_authoring.reuse_claimed_with_numerical_calls")
-        if self.evidence_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"evidence_hash"})
-        ):
+        if self.evidence_hash != scoped_model_digest(self, "evidence_hash", digest=canonical_hash):
             raise AuthoringError("research_authoring.evidence_identity_invalid")
         return self
 

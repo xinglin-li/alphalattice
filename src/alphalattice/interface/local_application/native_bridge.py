@@ -1,11 +1,9 @@
 """Project-scoped native Session bindings and Host-read observations; never a research executor.
 
-A binding names the agent Session a workspace serves. The Host reads that Session's usage, and
-its children's, from the host's own session files at the moments research reaches -- a goal's
-take or submission, an answer's submission, a Goal or Team page opening -- through
-`native_usage` (AU, V300; LAWS OP13, OP14), unless the binding turned reading off
-(``"usage": "OFF"``). Each reading and each accepted answer is filed through the Host's own
-activity owner. No hook, message or always-running reader is involved.
+A binding names the agent Session a workspace serves. Native usage and explicit parent links
+come from its exact conversation in the Host's telemetry catalog. Milestones publish snapshots
+through the activity owner unless reading is OFF. The bounded Codex session-header reader
+remains only for binding authorization; neither transcripts nor telemetry invent member claims.
 """
 
 from __future__ import annotations
@@ -20,15 +18,16 @@ import sys
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
-from hashlib import sha256
+from datetime import datetime
 from itertools import islice
 from pathlib import Path
-from typing import Any, Final
-from uuid import UUID, uuid4
+from typing import Any, Final, cast
+from uuid import UUID
 
-from alphalattice.control.workspace_runtime.content_store import replace_shared_file
-from alphalattice.control.workspace_runtime.lock import WorkspaceLock
+from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.environment import package_versions
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.interface.local_application import cli_invocation
 from alphalattice.interface.local_application.cli_contract import (
     agent_session,
     client_refusal,
@@ -44,14 +43,7 @@ from alphalattice.interface.local_application.failure_codes import (
 )
 from alphalattice.interface.local_application.native_usage import (
     ModelUsage,
-    NativeUsageReadLimitError,
-    SessionUsage,
-    checkpoint_children,
-    claude_children,
-    claude_thread_spawn,
     codex_thread_spawn,
-    read_session,
-    session_file,
 )
 from alphalattice.interface.local_application.retrieval_environment import (
     LOCKED_SETUP_DISCLOSURE,
@@ -59,9 +51,8 @@ from alphalattice.interface.local_application.retrieval_environment import (
     fill_command,
     load,
 )
-from alphalattice.kernel.shared_kernel.domain.errors import WorkspaceConflictError
-from alphalattice.kernel.shared_kernel.environment import package_versions
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix, resolve_playpen_root
+from alphalattice.kernel.clock import utc_now
+from alphalattice.kernel.identity import identity_sha256
 from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
 from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
@@ -75,8 +66,12 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
     if executable is None:
         return {**result, "reason": "COMMAND_MISSING"}
     try:
-        completed = subprocess.run(
-            [executable, *command[1:]], capture_output=True, timeout=timeout, check=False
+        completed = spawn.run(
+            [executable, *command[1:]],
+            process_kind="dependency_command_probe",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return {**result, "reason": "COMMAND_TIMED_OUT"}
@@ -159,8 +154,9 @@ def codex_queue_reach(path: str | None = None) -> dict[str, Any]:
     if command is None:
         return {**result, "reason": "COMMAND_MISSING"}
     try:
-        done = subprocess.run(
+        done = spawn.run(
             [command, "queue", "--thread", CODEX_REACH_THREAD, "--message", "reach probe"],
+            process_kind="codex_queue_reach_probe",
             capture_output=True,
             timeout=30,
             check=False,
@@ -181,12 +177,10 @@ BINDING_RECORDS = 128
 """The bounded collection of exact host/Session bindings in one configured project."""
 # Every bound the bridge applies is the contract of what it carries, so it never refuses what
 # that contract admits nor passes what the Host then refuses under another word; the table
-# beside its tests pins each against its contract (V574).
+# beside its tests pins each against its contract.
 SUBJECT_VALUE_CHARACTERS = 200
 """The longest value the Host's activity event holds in its subject: each id, role, locator
 and reference the bridge carries is bounded by it where it enters."""
-MemberProof = Callable[[Sequence[Mapping[str, Any]]], Mapping[str, str] | None]
-"""The key owner's verifier of a session file's member claims: its card, and its thread."""
 SUBJECT_KEYS = 16
 """The most keys the Host's activity event holds in its subject."""
 CORRELATION_CHARACTERS = 128
@@ -203,21 +197,17 @@ PIN_CHARACTERS = 64
 """The longest model or effort a role card pins that the bridge carries."""
 SPAWN_HOPS = 4
 """The most threads a Codex specialist's spawn chain climbs to reach the bound session: a
-specialist's specialist and two more (V568)."""
+specialist's specialist and two more."""
 # One producer identity per foreground host; the Team page shows the host as source
 # information, never as authentication (the product philosophy, 2026-09-22).
 HOSTS = ("codex", "claude-code")
 USAGE_READINGS = ("READ", "OFF")
-"""Whether the Host reads this Session's usage from the host's session files (AU): the
+"""Whether the Host receives and reads this Session's numerical telemetry (AU): the
 binding's ``usage``, ``READ`` when it names none."""
-USAGE_READ_BYTES = 512 * 1024 * 1024
-"""One optional reading advances its checkpoint by at most 512 MiB."""
-USAGE_LINE_BYTES = 8 * 1024 * 1024
-"""The optional scan's 8 MiB line cap admits a measured valid native line larger than 2 MiB."""
 USAGE_MODEL_ROWS = 32
 """The most model rows a complete optional reading publishes; overflow publishes no rows."""
 PRODUCERS = {"codex": "codex-native", "claude-code": "claude-code-native"}
-USAGE_CHANNELS = {"codex": "CODEX_SESSION_FILE", "claude-code": "CLAUDE_CODE_SESSION_FILE"}
+USAGE_CHANNELS = {"codex": "CODEX_OTLP", "claude-code": "CLAUDE_CODE_OTLP"}
 LEAD_ROLE = "research_lead"
 _USAGE_COUNTS = (
     "responses",
@@ -266,7 +256,7 @@ def declares_product(folder: Path, host: str) -> bool:
 
 
 def session_project(start: Path, host: str | None) -> Path:
-    """The agent project a session binds in, found up from where the binding runs (V568).
+    """The agent project a session binds in, found up from where the binding runs.
 
     It is the nearest folder with this host's explicit configure-owned project declaration.
     Ordinary host settings and hook matchers do not identify a product project.
@@ -314,7 +304,7 @@ class NativeResearchBinding:
         if host not in HOSTS:
             raise NativeBridgeError("native_bridge.binding_invalid")
         _text(session_id, CORRELATION_CHARACTERS)
-        key = sha256(f"{host}\0{session_id}".encode()).hexdigest()
+        key = identity_sha256(f"{host}\0{session_id}".encode()).hexdigest()
         return project / ".codex" / BINDING_DIRECTORY / f"{key}.json"
 
     @classmethod
@@ -494,7 +484,7 @@ class NativeResearchBinding:
             if observed_at is not None and observed_at.utcoffset() is None:
                 raise ValueError
             # The session's id is every event's correlation id, and a role a card's name; a
-            # binding holding a longer one would deliver nothing (V574).
+            # binding holding a longer one would deliver nothing.
             session_id = _text(value["session_id"], CORRELATION_CHARACTERS)
             workspace = Path(_text(value["workspace"]))
             roles = value["roles"]
@@ -521,7 +511,7 @@ class NativeResearchBinding:
     def find(
         cls, start: Path, *, session: tuple[str, str] | None = None
     ) -> tuple[Path, NativeResearchBinding] | None:
-        """The nearest binding from a directory upward, as git finds its `.git` (V568).
+        """The nearest binding from a directory upward, as git finds its `.git`.
 
         A checkout is one such project; an installed agent project is another.
 
@@ -574,7 +564,7 @@ class NativeResearchBinding:
         return None
 
     def serves(self, session: tuple[str, str]) -> bool:
-        """Whether a command of this agent session works in this binding's workspace (V568).
+        """Whether a command of this agent session works in this binding's workspace.
 
         The bound session's own commands do, and its own specialists': a Claude Code subagent
         carries its lead's session id, and a Codex specialist runs in a thread of its own whose
@@ -674,7 +664,7 @@ def pin_differs(pins: dict[str, str], usage: ModelUsage) -> list[str]:
 
 def _digest(event: object) -> str:
     encoded = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return sha256(encoded.encode("utf-8")).hexdigest()
+    return identity_sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _subject_bounded(subject: dict[str, str]) -> dict[str, str]:
@@ -727,7 +717,7 @@ def _usage_content(
         f"{usage['role'] or usage['agent_id']}: {usage['model']}, {usage['responses']} responses, "
         f"{usage['input_tokens']} input, {usage['cache_read_tokens']} cache-read, "
         f"{usage['cache_write_tokens']} cache-write and {usage['output_tokens']} output tokens "
-        "so far, from the host's session file."
+        "so far, from the Host's native telemetry tables."
     )
     return "NATIVE_AGENT_USAGE", summary, _subject_bounded(subject)
 
@@ -906,7 +896,7 @@ def observation_request(
             event["usage"],
             None if usage_goal_id is None else str(UUID(usage_goal_id)),
         ]
-        occurred_at = _aware(event["usage"]["last_at"]) or datetime.now(UTC).isoformat()
+        occurred_at = _aware(event["usage"]["last_at"]) or utc_now().isoformat()
     else:
         raise NativeBridgeError("native_bridge.event_source_invalid")
     if len(binding.session_id) > CORRELATION_CHARACTERS:
@@ -989,7 +979,7 @@ def file_bound_fact(
     It names the Session in Team and the Goal's Conversation from the first call, whether or
     not its usage file can be read yet. Filed again, it is the same observation. With
     `goal_hash` it names the goal the Session holds, which its Sessions row reads as its
-    question (STOPS-1).
+    question.
     """
     event: dict[str, Any] = {"source": "product_bound", "occurred_at": at.isoformat()}
     if goal_hash is not None:
@@ -1127,140 +1117,14 @@ def _deliver_usage(
     return {"status": "DELIVERED", "models": len(rows)}
 
 
-def _usage_checkpoint(path: Path) -> dict[str, Any]:
-    """Read the owner's atomic checkpoint without treating corruption as source evidence."""
-    try:
-        state = json.loads(path.read_text(encoding="utf-8"))
-        return state if isinstance(state, dict) else {"invalid": True}
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError):
-        return {"invalid": True}
-
-
-def _reading(
-    project: Path,
-    binding: NativeResearchBinding,
-    *,
-    agent_id: str,
-    role: str | None,
-    path: Path | None,
-    publish: Callable[[dict[str, Any]], dict[str, Any]],
-    goal_id: str | None,
-    member_proof: MemberProof | None = None,
-) -> tuple[dict[str, object], SessionUsage | None]:
-    """One participant's latest reading, filed per model; unavailable rather than wrong.
-
-    A child whose own file holds a member key the key's owner verifies (``member_proof``) reads as
-    that member, whatever its spawn type; one without such proof keeps its spawn role.
-    """
-    child = agent_id != binding.session_id
-    prefix = "child" if child else "lead"
-    member = {
-        "agent_id": agent_id,
-        "role": role,
-        **({"specialist_verified": role in binding.roles} if child else {}),
-    }
-    checkpoint: dict[str, Any] = {}
-    try:
-        cache = (
-            binding.workspace
-            / "runtime/native-usage"
-            / (_digest([binding.host, binding.session_id, agent_id]) + ".json")
-        )
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        with WorkspaceLock(cache.with_suffix(".lock")):
-            checkpoint = _usage_checkpoint(cache)
-            if path is None:
-                return {
-                    **member,
-                    "status": "UNAVAILABLE",
-                    "reason": f"native_bridge.{prefix}_usage_file_missing",
-                }, SessionUsage((), 1, None, None, checkpoint_children(checkpoint))
-            reading = read_session(
-                path,
-                host=binding.host,
-                max_bytes=USAGE_READ_BYTES,
-                max_line_bytes=USAGE_LINE_BYTES,
-                checkpoint=checkpoint,
-                binding_key=_digest([binding.host, binding.session_id]),
-                members=child,
-            )
-            staged = cache.with_suffix(f".{uuid4().hex}.tmp")
-            try:
-                staged.write_text(json.dumps(checkpoint) + "\n", encoding="utf-8", newline="\n")
-                replace_shared_file(staged, cache)
-            finally:
-                staged.unlink(missing_ok=True)
-    except (NativeUsageReadLimitError, OSError, ValueError, WorkspaceConflictError) as error:
-        busy = isinstance(error, WorkspaceConflictError)
-        limited = isinstance(error, NativeUsageReadLimitError)
-        if busy:
-            checkpoint = _usage_checkpoint(cache)
-        children = (
-            tuple(checkpoint.get("children", ())) if limited else checkpoint_children(checkpoint)
-        )
-        return {
-            **member,
-            "status": "BUSY" if busy else "UNAVAILABLE",
-            "reason": "native_bridge.usage_reader_busy"
-            if busy
-            else f"native_bridge.{prefix}_usage_read_failed",
-            **({"read_limit": error.limit} if isinstance(error, NativeUsageReadLimitError) else {}),
-        }, SessionUsage((), 1, None, None, children)
-    proof = member_proof(reading.members) if child and member_proof and reading.members else None
-    if proof is not None:
-        member.update(proof, specialist_verified=True)
-    progress = {
-        name: getattr(reading, name)
-        for name in ("read_through", "total_bytes", "bytes_read", "rescan")
-    }
-    if reading.read_through < reading.total_bytes:
-        return {
-            **member,
-            **progress,
-            "status": "PARTIAL",
-            "reason": "native_bridge.usage_catching_up",
-        }, reading
-    rows = reading.by_model()
-    # An unknown or changed record shape is unavailable, never a partial or zero total.
-    if reading.incomplete:
-        return {
-            **member,
-            **progress,
-            "status": "UNAVAILABLE",
-            "reason": "native_bridge.usage_cumulative_mismatch"
-            if reading.cumulative_mismatch
-            else f"native_bridge.{prefix}_usage_incomplete",
-            "incomplete": reading.incomplete,
-        }, reading
-    if len(rows) > USAGE_MODEL_ROWS:
-        return {
-            **member,
-            "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_read_failed",
-            "read_limit": "models",
-        }, reading
-    if not rows:
-        return {
-            **member,
-            "status": "UNAVAILABLE",
-            "reason": f"native_bridge.{prefix}_usage_not_observed",
-        }, reading
-    filed = _deliver_usage(project, binding, member, rows, publish, goal_id)
-    if filed["status"] != "DELIVERED":
-        return {**member, **filed}, reading
-    return {**member, **progress, **filed}, reading
-
-
 # A person's workspace switch for reading the bound Sessions' usage, beside the network's.
 USAGE_CONTROL_PATH = Path("runtime") / "native-usage-reading.json"
 _USAGE_CONTROL_SCHEMA = "native-usage-reading"
 _USAGE_WORDS = {
-    True: "The Host reads the usage of agent Sessions bound to this workspace from their session "
-    "files when a goal is taken or submitted, an answer is submitted or Team or Goal opens. It "
-    "keeps models, efforts, tokens, times and member-key hashes, never conversation text.",
-    False: "Usage reading is off: the Host reads no agent Session's file. Earlier readings stay.",
+    True: "The Host receives native telemetry and reads the exact bound conversations from its "
+    "catalog at research milestones. It keeps attribution and numerical usage, never prompt or "
+    "tool text, opt-in attributes or member keys.",
+    False: "Usage reading is off: native ingest and reading are refused. Earlier readings stay.",
 }
 
 
@@ -1298,40 +1162,12 @@ def usage_reading_answer(workspace: Path) -> dict[str, object]:
     }
 
 
-def clear_usage_checkpoints(workspace: Path, binding: NativeResearchBinding | None = None) -> None:
-    """Remove ephemeral participant checkpoints, retaining the published observations."""
-    directory = workspace / "runtime/native-usage"
-    if not directory.is_dir():
-        return
-    owner = _digest([binding.host, binding.session_id]) if binding is not None else None
-    known: set[str] = set()
-    if binding is not None:
-        lead = _digest([binding.host, binding.session_id, binding.session_id])
-        known.add(lead)
-        children = checkpoint_children(_usage_checkpoint(directory / f"{lead}.json"))
-        if binding.host == "claude-code":
-            children = claude_children(binding.session_id)
-        known.update(_digest([binding.host, binding.session_id, child]) for child in children)
-    paths = set(directory.glob("*.json")) | {directory / f"{key}.json" for key in known}
-    if binding is None:
-        paths.update(path.with_suffix(".json") for path in directory.glob("*.lock"))
-    for path in paths:
-        try:
-            if (
-                binding is not None
-                and path.stem not in known
-                and _usage_checkpoint(path).get("binding_key") != owner
-            ):
-                continue
-            with WorkspaceLock(path.with_suffix(".lock")):
-                path.unlink(missing_ok=True)
-            path.with_suffix(".lock").unlink(missing_ok=True)
-        except (OSError, ValueError, WorkspaceConflictError):
-            continue
-
-
 def set_usage_reading(workspace: Path, *, enabled: bool) -> dict[str, object]:
     """Atomically write a person's setting, then read it back."""
+    from alphalattice.control.workspace_runtime.content_store import (  # lazy: usage write
+        replace_shared_file,
+    )
+
     path = workspace / USAGE_CONTROL_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     staged = path.with_suffix(".json.tmp")
@@ -1339,8 +1175,6 @@ def set_usage_reading(workspace: Path, *, enabled: bool) -> dict[str, object]:
         json.dumps({"schema": _USAGE_CONTROL_SCHEMA, "version": 1, "reading": enabled}), "utf-8"
     )
     replace_shared_file(staged, path)
-    if not enabled:
-        clear_usage_checkpoints(workspace)
     return usage_reading_answer(workspace)
 
 
@@ -1348,98 +1182,94 @@ def read_session_usage(
     project: Path,
     binding: NativeResearchBinding,
     *,
+    workspace_id: str,
     publish: Callable[[dict[str, Any]], dict[str, Any]],
     goal_id: str | None = None,
-    member_proof: MemberProof | None = None,
 ) -> dict[str, object]:
-    """Read bound participants independently through the Host's observation owner.
+    """File the exact bound conversation's numerical OTLP through the activity owner.
 
-    Only the bound Session's file and children named by its Codex ``SubAgentActivity``
-    or Claude ``subagents`` directory are read. Each child's metadata must name this
-    direct parent; specialist verification remains separate. Participant failures never
-    refuse research. ``project`` is admitted, ``binding`` fixes the host and workspace,
-    ``publish`` is the observation owner, ``goal_id`` is the Host-resolved Goal and ``member_proof``
-    the committee's verifier of a child's member keys.
-
-    Returns ``DELIVERED``, ``PARTIAL``, ``BUSY`` or ``UNAVAILABLE`` per participant.
+    Native events are observations, never member authority. No native file is opened;
+    absent exports and absent member-key evidence stay explicitly unmeasured. The
+    committee's member identity is never inferred from native telemetry.
+    The serving Host supplies its catalog workspace id explicitly on every read.
     """
+    from alphalattice.foundation.data_layer.history import agent_telemetry  # lazy: Host log only
+    from alphalattice.foundation.data_layer.telemetry import usage  # lazy: Host log only
+
     if binding.usage == "OFF" or not usage_reading(binding.workspace):
-        clear_usage_checkpoints(binding.workspace, binding if binding.usage == "OFF" else None)
         return {"status": "SKIPPED", "reason": "native_bridge.usage_disabled"}
-    members: list[dict[str, object]] = []
-    try:
-        lead_path = session_file(binding.host, binding.session_id)
-        lead, reading = _reading(
+    rows = agent_telemetry(binding.host, binding.session_id, workspace_id=workspace_id)
+    if not rows:
+        return {"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_not_observed"}
+
+    def identity(row: dict[str, Any]) -> str | None:
+        return cast(str | None, row["agent_id"] or row["conversation_id"] or row["session_id"])
+
+    agents = sorted({agent for row in rows if (agent := identity(row))})
+    if not agents:
+        return {"status": "UNAVAILABLE", "reason": CHILD_USAGE_BINDING_UNVERIFIED}
+    participants = []
+    for agent in agents:
+        own = [row for row in rows if identity(row) == agent]
+        reading = usage(own)
+        child = agent != binding.session_id
+        roles = {row["agent_role"] for row in own if row["agent_role"]}
+        role = next(iter(roles)) if len(roles) == 1 else None
+        member = {
+            "agent_id": agent,
+            "role": role if child else LEAD_ROLE,
+            "specialist_verified": False,
+        }
+        prefix = "child" if child else "lead"
+        if child and not any(row["parent_agent_id"] == binding.session_id for row in own):
+            participants.append(
+                {**member, "status": "UNAVAILABLE", "reason": CHILD_USAGE_BINDING_UNVERIFIED}
+            )
+            continue
+        if reading["incomplete"] or not reading["models"]:
+            participants.append(
+                {
+                    **member,
+                    "status": "UNAVAILABLE",
+                    "reason": f"native_bridge.{prefix}_usage_incomplete"
+                    if reading["incomplete"]
+                    else "native_bridge.lead_usage_not_observed",
+                }
+            )
+            continue
+        if len(reading["models"]) > USAGE_MODEL_ROWS:
+            participants.append(
+                {
+                    **member,
+                    "status": "UNAVAILABLE",
+                    "reason": f"native_bridge.{prefix}_usage_read_failed",
+                    "read_limit": "models",
+                }
+            )
+            continue
+        filed = _deliver_usage(
             project,
             binding,
-            agent_id=binding.session_id,
-            role=LEAD_ROLE,
-            path=lead_path,
-            publish=publish,
-            goal_id=goal_id,
+            member,
+            tuple(ModelUsage(**model) for model in reading["models"]),
+            publish,
+            goal_id,
         )
-        members.append(lead)
-        if binding.host == "codex":
-            children = reading.children if reading is not None else ()
-        else:
-            children = claude_children(binding.session_id)
-        for child in children:
-            spawn = (
-                codex_thread_spawn(child)
-                if binding.host == "codex"
-                else claude_thread_spawn(binding.session_id, child)
-            )
-            if spawn is None or spawn.parent_thread_id != binding.session_id:
-                members.append(
-                    {
-                        "agent_id": child,
-                        "status": "UNAVAILABLE",
-                        "reason": CHILD_USAGE_BINDING_UNVERIFIED,
-                    }
-                )
-                continue
-            member, _ = _reading(
-                project,
-                binding,
-                agent_id=child,
-                role=spawn.agent_role,
-                path=session_file(binding.host, binding.session_id, child),
-                publish=publish,
-                goal_id=goal_id,
-                member_proof=member_proof,
-            )
-            members.append(member)
-    except NativeUsageReadLimitError as error:
-        members.append(
-            {
-                "status": "UNAVAILABLE",
-                "reason": "native_bridge.child_usage_read_failed",
-                "read_limit": error.limit,
-            }
-        )
-    except Exception:
-        members.append({"status": "UNAVAILABLE", "reason": "native_bridge.lead_usage_read_failed"})
-    statuses = {member.get("status") for member in members}
-    status = (
-        "DELIVERED"
-        if statuses <= {"DELIVERED"}
-        else "PARTIAL"
-        if statuses & {"DELIVERED", "PARTIAL"}
-        else "BUSY"
-        if statuses == {"BUSY"}
-        else "UNAVAILABLE"
-    )
-    first = next((m for m in members if m.get("status") != "DELIVERED"), None)
-    progress = first or (members[0] if members else {})
+        participants.append({**member, **filed, "model_seconds": reading["model_seconds"]})
+    combined = usage(rows)
+    failures = [member for member in participants if member["status"] != "DELIVERED"]
     return {
-        "status": status,
-        "participants": members,
-        **({"reason": first["reason"]} if first is not None and "reason" in first else {}),
-        **{
-            name: progress[name]
-            for name in ("read_through", "total_bytes", "bytes_read", "rescan")
-            if name in progress
-        },
+        "status": "DELIVERED"
+        if not failures
+        else "PARTIAL"
+        if len(failures) < len(participants)
+        else "UNAVAILABLE",
+        "participants": participants,
+        "source": "DUCKLAKE_OTLP",
+        "model_seconds": combined["model_seconds"],
+        "lineage": combined["lineage"],
+        "member_claims": "UNMEASURED",
+        **({"reason": failures[0]["reason"]} if failures else {}),
     }
 
 
@@ -1493,19 +1323,26 @@ TOOL_INSTALL: Final = (
     WORKBENCH_BUILD,
     "uv export --locked --all-extras --no-dev --no-emit-project --no-hashes "
     "--output-file .venv/alphalattice-runtime-requirements.txt",
+    'uv run python -c "from pathlib import Path; '
+    "from scripts.release.wheel_build import runtime_overrides; "
+    "Path('.venv/alphalattice-runtime-overrides.txt').write_bytes(runtime_overrides().encode())\"",
     "uv tool install --python 3.12 --editable . --with-requirements "
     ".venv/alphalattice-runtime-requirements.txt --constraints "
-    ".venv/alphalattice-runtime-requirements.txt",
+    ".venv/alphalattice-runtime-requirements.txt "
+    "--overrides .venv/alphalattice-runtime-overrides.txt",
 )
 """The documented tool install (operating.md), run from the checkout root."""
 WHEEL_INSTALL: Final = (
     'python -c "from zipfile import ZipFile; from pathlib import Path; '
-    "Path('alphalattice-runtime-requirements.txt').write_bytes(ZipFile("
-    "'alphalattice-{version}-py3-none-any.whl').read("
-    "'alphalattice/_runtime/config/release/runtime-requirements.txt'))\"",
+    "wheel = ZipFile('alphalattice-{version}-py3-none-any.whl'); "
+    "Path('alphalattice-runtime-requirements.txt').write_bytes(wheel.read("
+    "'alphalattice/_runtime/config/release/runtime-requirements.txt')); "
+    "Path('alphalattice-runtime-overrides.txt').write_bytes(wheel.read("
+    "'alphalattice/_runtime/config/release/runtime-overrides.txt'))\"",
     "uv tool install --python 3.12 ./alphalattice-{version}-py3-none-any.whl "
     "--with-requirements alphalattice-runtime-requirements.txt "
-    "--constraints alphalattice-runtime-requirements.txt",
+    "--constraints alphalattice-runtime-requirements.txt "
+    "--overrides alphalattice-runtime-overrides.txt",
 )
 """The documented wheel install (operating.md), run where the release wheel is."""
 OFF_PATH: Final = "setup.tool.command"
@@ -1513,7 +1350,7 @@ OFF_PATH: Final = "setup.tool.command"
 
 def tool_setup() -> dict[str, Any]:
     """Only an absent launcher needs installation; an off-PATH launcher remains executable."""
-    prefix = command_prefix()
+    prefix = cli_invocation.command_prefix()
     if shutil.which(prefix[0], path=fresh_path()) is not None:
         return {
             "present": True,
@@ -1549,20 +1386,151 @@ def tool_setup() -> dict[str, Any]:
 
 
 def fresh_path() -> str | None:
-    """This shell's PATH as a fresh shell has it, for the bare-command check.
+    """The command's shell PATH as a fresh shell has it, for the bare-command check.
 
     `uv run` puts its environment's folder first, whose checkout command no specialist's own
-    shell reaches.
+    shell reaches. A forwarded command reads its caller's shell, never the Host's.
 
     Returns:
-        PATH without that folder under `uv run`; otherwise None, PATH as it is.
+        PATH without that folder under `uv run`; otherwise PATH as it is (None: this process's).
     """
-    venv = os.environ.get("VIRTUAL_ENV")
-    if venv is None or "UV_RUN_RECURSION_DEPTH" not in os.environ:
-        return None
+    caller = cli_invocation.environment()
+    venv = caller.get("VIRTUAL_ENV")
+    if venv is None or "UV_RUN_RECURSION_DEPTH" not in caller:
+        return cli_invocation.search_path()
     own = {Path(venv) / "Scripts", Path(venv) / "bin"}
-    parts = os.environ.get("PATH", "").split(os.pathsep)
+    parts = caller.get("PATH", "").split(os.pathsep)
     return os.pathsep.join(part for part in parts if part and Path(part) not in own)
+
+
+TRUST_STEP: Final = "native_bridge.codex_project_untrusted"
+MARKED_UNTRUSTED: Final = "native_bridge.codex_project_marked_untrusted"
+CONFIG_UNREADABLE: Final = "native_bridge.codex_config_unreadable"
+CodexLayer = tuple[Path, dict[str, Any]]
+
+
+def codex_system_config(environ: Mapping[str, str]) -> Path:
+    """Codex's system configuration file, the layer below the person's own.
+
+    Args:
+        environ: The environment; on Windows its `ProgramData` names the folder.
+
+    Returns:
+        `/etc/codex/config.toml`, or on Windows `OpenAI/Codex/config.toml` under `ProgramData`.
+    """
+    if os.name == "nt":
+        program_data = next(
+            (value for name, value in environ.items() if name.upper() == "PROGRAMDATA"), ""
+        )
+        return Path(program_data or "C:/ProgramData") / "OpenAI/Codex/config.toml"
+    return Path("/etc/codex/config.toml")
+
+
+def _codex_layers(environ: Mapping[str, str]) -> tuple[list[CodexLayer], Path, Path | None]:
+    """Codex's system then user configuration, each read as TOML; a missing file is no layer.
+
+    Returns:
+        Each layer with its path, lowest first; the user configuration's path; the first
+        unreadable one's.
+    """
+    user = Path(environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+    layers: list[CodexLayer] = []
+    for path in (p for p in (codex_system_config(environ), user) if p.exists()):
+        try:
+            with path.open("rb") as stream:
+                layers.append((path, tomllib.load(stream)))
+        except (OSError, tomllib.TOMLDecodeError):
+            return layers, user, path
+    return layers, user, None
+
+
+def _codex_root(project: Path, layers: list[CodexLayer]) -> tuple[Path | None, Path | None]:
+    """The nearest folder up holding a `project_root_markers` entry (`.git` unless set).
+
+    A malformed setting gives no root and the layer that holds it.
+    """
+    held, markers = next(
+        (
+            (p, c["project_root_markers"])
+            for p, c in reversed(layers)
+            if "project_root_markers" in c
+        ),
+        (None, [".git"]),
+    )
+    if not isinstance(markers, list) or not all(isinstance(m, str) for m in markers):
+        return None, held
+    here = project.resolve()
+    found = (c for c in (here, *here.parents) if any((c / m).exists() for m in markers))
+    return next(found, here), None
+
+
+def _codex_trust_level(layers: list[CodexLayer], root: Path) -> tuple[str | None, Path | None]:
+    """The highest layer's `trust_level` for the root, with the layer that holds it.
+
+    The key is the root's exact path, or on Windows its case-folded form.
+    """
+    folded = os.path.normcase(str(root))
+    for path, layer in reversed(layers):
+        projects = layer.get("projects")
+        for key, entry in projects.items() if isinstance(projects, dict) else ():
+            matches = key == str(root) or (
+                os.name == "nt" and os.path.normcase(os.path.realpath(key)) == folded
+            )
+            if matches and isinstance(entry, dict) and isinstance(entry.get("trust_level"), str):
+                return str(entry["trust_level"]), path
+    return None, None
+
+
+def _trust_words(message: str, **values: str) -> str:
+    """The message's words with each `{name}` replaced by its value."""
+    words = str(worded(message))
+    for name, value in values.items():
+        words = words.replace("{" + name + "}", value)
+    return words
+
+
+def codex_project_trust(project: Path, environ: Mapping[str, str]) -> dict[str, Any]:
+    """Whether Codex loads this project's own configuration, read as Codex documents it.
+
+    Codex loads a project's `.codex/config.toml`, and with it AlphaLattice's specialists, only
+    when its configuration marks the project root `trusted`. The setting is the person's; this
+    only reads it.
+
+    Args:
+        project: Where the Codex session runs.
+        environ: The environment naming `CODEX_HOME`, and on Windows `ProgramData`.
+
+    Returns:
+        `present` True when trusted; False with the person's one step; None (unknown) when a
+        configuration cannot be read, with words naming its path. A marked entry names the
+        layer that holds it; no entry names the user configuration, where the step records it.
+    """
+    layers, user, unreadable = _codex_layers(environ)
+    root, malformed = (None, unreadable) if unreadable else _codex_root(project, layers)
+    if root is None:
+        config = str(unreadable or malformed)
+        return {
+            "present": None,
+            "reason": "CODEX_CONFIG_UNREADABLE",
+            "config": config,
+            "words": _trust_words(CONFIG_UNREADABLE, config=config),
+        }
+    level, held = _codex_trust_level(layers, root)
+    if level == "trusted":
+        return {"present": True, "project_root": str(root)}
+    command = join(["codex", "exec", "--trust", "-C", str(root), "Reply OK."], shell())
+    marked = level == "untrusted"
+    config = str(held if marked and held else user)
+    message = MARKED_UNTRUSTED if marked else TRUST_STEP
+    return {
+        "present": False,
+        "who_decides": "PERSON",
+        "project_root": str(root),
+        "trust_level": level,
+        "config": config,
+        "commands": [] if marked else [command],
+        "words": _trust_words(message, root=str(root), config=config, command=command),
+    }
 
 
 def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, Any]:
@@ -1579,6 +1547,11 @@ def session_setup(project: Path, session: tuple[str, str] | None) -> dict[str, A
             binding = None
         answer = attachment_preflight(project, binding, session[0])
     answer.update({k: item for k, item in agent_setup().items() if item["present"] is False})
+    if session is not None and session[0] == "codex":
+        trust = codex_project_trust(
+            project, cli_invocation.environment()
+        )  # missing gates; unknown never does
+        answer.update({} if trust["present"] is True else {"project_trust": trust})
     return answer
 
 
@@ -1639,7 +1612,7 @@ def declaration_setup(project: Path, host: str) -> list[str]:
     python = python if (checkout / "pyproject.toml").is_file() else Path(sys.executable)
     module = "alphalattice.interface.local_application.native_setup"
     configure = [str(python), "-m", module, "--project", str(project), "configure", "--host", host]
-    bind = [*command_prefix(), "--workspace", "<dir>", "session", "bind"]
+    bind = [*cli_invocation.command_prefix(), "--workspace", "<dir>", "session", "bind"]
     return [join(configure, shell()), join(bind, shell())]
 
 
@@ -1698,8 +1671,9 @@ def session_binding(
     return None if held is None else (root, held)
 
 
-SETUP_GATE: Final = ("installed_leg", "retrieval_runtime")
-"""The setup a first use opens nothing without: the command its specialists run, the runtime."""
+SETUP_GATE: Final = ("installed_leg", "retrieval_runtime", "project_trust")
+"""The setup a first use opens nothing without: the command its specialists run, the runtime,
+and on Codex the project's trust, without which Codex loads none of its specialists."""
 
 
 def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -1708,7 +1682,8 @@ def first_use_setup(workspace: Path) -> tuple[dict[str, Any], dict[str, Any] | N
     Fail fast: each missing item is named with its commands, under `missing` only (never an
     offered command a walk would run), and nothing opens until the same command runs again.
     """
-    setup = setup_reading(Path.cwd(), workspace, agent_session(os.environ))
+    caller = cli_invocation.environment()  # a forwarded command's own, not the Host's
+    setup = setup_reading(cli_invocation.cwd(), workspace, agent_session(caller))
     missing = {k: setup[k] for k in SETUP_GATE if (setup.get(k) or {}).get("present") is False}
     if not missing:
         return setup, None

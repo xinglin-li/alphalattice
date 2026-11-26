@@ -28,7 +28,7 @@ from alphalattice.capabilities.alpha_modeling.contracts import (
 from alphalattice.capabilities.alpha_modeling.runtime.numerical_environment import (
     alpha_model_numerical_scope,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 from ..evaluation.stability import AlphaDevelopmentState, build_estimator_stability_checks
 from ..experiments.contracts import AlphaExperimentCard

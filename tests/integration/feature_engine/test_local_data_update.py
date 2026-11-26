@@ -19,37 +19,48 @@ from alphalattice.control.product_host.maintenance.data_update import (
     WorkspaceDataUpdateApplication,
     bind_existing_data_workspace,
 )
+from alphalattice.control.workspace_runtime.content_store import full_content_proof
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from tests._support import development_universe
+from tests.portfolio_strategy_lab.host_requests import _json
 from tests.portfolio_strategy_lab.local_web_support import (
     InstalledAgent,
-    _json,
     _resolved,
     _Resolver,
+    admit_market_fixture,
 )
 from tests.researcher_methodology_surface.real_workspace import (
     HISTORY_START,
     SYMBOLS,
     _bootstrap,
 )
-from tests.researcher_methodology_surface.session_workspace import copy_workspace, session_workspace
+from tests.researcher_methodology_surface.session_workspace import (
+    copy_workspace,
+    restore_seed,
+    session_workspace,
+)
 from tests.workspace_maintenance import data_update_support
-from tests.workspace_maintenance.data_update_support import _provider, one_sector_seed
+from tests.workspace_maintenance.data_update_support import _provider
 from tests.workspace_maintenance.local_data_provider import (
     NOW,
     recording_provider,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
+SHORT_HISTORY_FROM = (HISTORY_START + timedelta(days=183)).isoformat()
+"""A candidate whose bars start here holds less than the walk's two-year standard floor."""
+FULL_HISTORY = 400
+"""More sessions than any daily tail reads (the widest lookback is 274), fewer than the walk's two
+years: a computation over this many is the listing's whole history."""
 
 
 @pytest.fixture(scope="session")
 def entrant_seed(tmp_path_factory):
-    """The real five-member Sector floor, full history and full shipped catalog."""
-    members = SYMBOLS[:5]
-    return one_sector_seed(tmp_path_factory, "entrant", members), members
+    members = tuple(item.symbol for item in development_universe.MAINTENANCE_LISTINGS)
+    return data_update_support.prepared_update_seed(tmp_path_factory, "entrant", members)
 
 
 @pytest.fixture(scope="session")
@@ -59,6 +70,7 @@ def current_member_seed(qualified_seed, tmp_path_factory):
     def build(root):
         copy_workspace(qualified_seed, root)
         binding = bind_existing_data_workspace(root)
+        admit_market_fixture(root, binding.workspace_id)
 
         def unavailable_source(**_):
             raise RuntimeError("fixture candidate source unavailable")
@@ -174,6 +186,7 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
     workspace = tmp_path / "workspace"
     shutil.copytree(qualified, workspace)
     manifest = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, manifest.workspace_id)
     provider = _provider()
     bootstrap = _bootstrap((*SYMBOLS[1:], "NEW"))
     change_time = NOW + timedelta(days=7)
@@ -232,7 +245,8 @@ def test_verified_universe_proposal_requires_human_and_binds_book_head(qualified
         stored = owner.changes.content.root / "data-update-plans" / (plan["plan_hash"] + ".json")
         original = stored.read_bytes()
         stored.write_text(original.decode().replace('"UNIVERSE"', '"OTHER"'))
-        with pytest.raises(ValueError):
+        # The changed plan is refused where it is proved: in full proof (LAWS.md EV2).
+        with full_content_proof(), pytest.raises(ValueError):
             owner.confirm(plan["plan_hash"], caller="HUMAN")
         stored.write_bytes(original)
 
@@ -250,6 +264,7 @@ def test_a_partial_membership_update_reopens_its_exact_approved_task(
     workspace = tmp_path / "partial-membership"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     prior = market.load_universe_manifest(
         market.readiness.load("us-current-index-research").active_manifest_id
@@ -417,15 +432,20 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
     )
 
     workspace = tmp_path / "new-member"
-    seed, members = entrant_seed
-    copy_workspace(seed, workspace)
+    copy_workspace(entrant_seed, workspace)
     binding = bind_existing_data_workspace(workspace)
-    symbols = (*members, "NEW")
-    candidate = _bootstrap(symbols)
+    source_members = (
+        *development_universe.MAINTENANCE_LISTINGS,
+        development_universe.Listing("NEW", "SP500", "Technology"),
+    )
+    candidate = development_universe.bootstrap(listings=source_members)
     tomorrow = NOW + timedelta(days=1)
     clock_now = NOW
-    provider = recording_provider(symbols=symbols, now=tomorrow + timedelta(days=1))
-    provider.sectors["NEW"] = "Sector-0"
+    provider = development_universe.DevelopmentProvider(
+        clock=lambda: clock_now,
+        sessions=development_universe.calendar_sessions(end=development_universe.THROUGH),
+        listings=source_members,
+    )
     entrant = build_current_index_acquisition_manifest(
         ROOT / "config/market-profiles/us-current-index-research.yaml", candidate
     ).listing_for_symbol("NEW")
@@ -437,7 +457,7 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             result = fetch(symbols, **kwargs)
             if "NEW" in result and clock_now == NOW:
                 result["NEW"] = tuple(
-                    row for row in result["NEW"] if row["session_date"] >= "2020-01-01"
+                    row for row in result["NEW"] if row["session_date"] >= SHORT_HISTORY_FROM
                 )
             return result
 
@@ -472,11 +492,15 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
 
         monkeypatch.setattr(provider, "fetch_daily", with_zero_volume)
     market = MarketDataRepository(workspace)
+    held_manifest = market.current_quality_filtered_research_manifest(
+        market_profile_id="us-current-index-research"
+    )
+    incumbents = {item.listing_id for item in held_manifest.listings}
     calls = []
     made = ChildCalls.make
 
     # A listing's Feature computation, as the build hands it to a Host worker (W10), with the
-    # sessions of the input frame the worker projects from the stored inputs (V92).
+    # sessions of the input frame the worker projects from the stored inputs.
     def counted(self, arguments, **shipped):
         if "source" in arguments:
             calls.append(
@@ -508,26 +532,20 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             method="POST",
             payload={"update_plan_hash": plan["plan_hash"]},
         )
-        started = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": plan["plan_hash"]},
+        _, status = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": plan["plan_hash"]}, task_id=queued["task_id"]
         )
-        assert started["task_id"] == queued["task_id"]
-        live.dispatcher.drain_for_tests(timeout=300)
-        status = _json(live, "/api/status?task_id=" + queued["task_id"])
-        assert status["lifecycle"] == "SUCCEEDED", status.get("latest_failure_code", status)
+        assert status["lifecycle"] == "SUCCEEDED", json.dumps(status.get("failure_cause", status))
         current = market.current_quality_filtered_research_manifest(
             market_profile_id="us-current-index-research"
         )
-        assert current.listing_for_symbol("NEW") is None
+        assert {item.listing_id for item in current.listings} == incumbents
         assert not market.membership_events("us-current-index-research")
         own_calls = [item for item in calls if item[0] == entrant.listing_id]
         if candidate_features_available == "recoverable_history":
             assert own_calls == []
         else:
-            assert len(own_calls) == 1 and not own_calls[0][1] and own_calls[0][2] > 2000
+            assert len(own_calls) == 1 and not own_calls[0][1] and own_calls[0][2] > FULL_HISTORY
         snapshot = PanelStateRepository(
             market.database, market_data=market
         ).feature_panel_snapshot_for_active("us-current-index-research")
@@ -536,8 +554,8 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
             str(snapshot["manifest_uri"])
         )
-        assert payload["safe_summary"]["membership"]["as_of_member_count"] == len(members)
-        assert payload["active_listing_count"] == len(members)
+        assert payload["safe_summary"]["membership"]["as_of_member_count"] == len(incumbents)
+        assert payload["active_listing_count"] == len(incumbents)
         repeated = _json(
             live,
             "/api/data-update/run",
@@ -555,33 +573,29 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
             else "candidate_recheck"
         )
         assert recheck[scope_key]["listing_ids"] == [entrant.listing_id]
-        rerun = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": recheck["plan_hash"]},
+        _, result = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": recheck["plan_hash"]}
         )
-        live.dispatcher.drain_for_tests(timeout=300)
-        result = _json(live, "/api/status?task_id=" + rerun["task_id"])
         assert result["lifecycle"] == "SUCCEEDED", result
         events = market.membership_events("us-current-index-research")
         assert [(event.listing_id, event.kind) for event in events] == [
             (entrant.listing_id, "ENTRY")
         ]
         assert events[0].effective_session > tomorrow.date()
-        assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
+        daily_calls = [
+            (symbol, start)
+            for kind, symbol, start, _ in provider.calls[prices_before:]
+            if kind == "daily"
+        ]
+        assert all(start > HISTORY_START for _, start in daily_calls)
         if candidate_features_available == "recoverable_history":
-            assert all(
-                symbols == ("NEW",)
-                for symbols, start, _ in provider.calls[prices_before:]
-                if start < date(2026, 1, 1)
-            )
+            assert all(symbol == "NEW" for symbol, start in daily_calls if start < date(2026, 1, 1))
             raw_scope = market.latest_current_universe_onboarding_disclosure(
                 market_profile_id="us-current-index-research"
             )
             assert raw_scope["candidate_listing_count"] == 1
             assert raw_scope["state_counts"] == {"FEATURE_READY": 1}
-        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+        assert sum(item[0] == entrant.listing_id and item[2] > FULL_HISTORY for item in calls) == 1
         assert not [
             q
             for q in PanelStateRepository(
@@ -602,14 +616,9 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         clock_now = tomorrow + timedelta(days=1)
         next_plan = _json(live, "/api/data-update/plan", method="POST", payload={})
         assert next_plan["status"] != "CONFIRMATION_REQUIRED", next_plan
-        next_run = _json(
-            live,
-            "/api/data-update/run",
-            method="POST",
-            payload={"update_plan_hash": next_plan["plan_hash"]},
+        _, next_status = data_update_support.run_update_to_status(
+            live, {"update_plan_hash": next_plan["plan_hash"]}
         )
-        live.dispatcher.drain_for_tests(timeout=300)
-        next_status = _json(live, "/api/status?task_id=" + next_run["task_id"])
         assert next_status["lifecycle"] == "SUCCEEDED", next_status.get(
             "latest_failure_code", next_status
         )
@@ -619,11 +628,13 @@ def test_new_source_member_is_feature_qualified_before_entry_and_its_history_sta
         next_payload = ArtifactResolver(workspace / "artifacts").load_feature_panel_manifest(
             str(next_snapshot["manifest_uri"])
         )
-        assert next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(symbols)
+        assert (
+            next_payload["safe_summary"]["membership"]["as_of_member_count"] == len(incumbents) + 1
+        )
         assert next_payload["chunks"][:-1] == payload["chunks"][:-1]
         assert market.membership_events("us-current-index-research") == events
         # Only one preparation consumed the entrant's full history.
-        assert sum(item[0] == entrant.listing_id and item[2] > 2000 for item in calls) == 1
+        assert sum(item[0] == entrant.listing_id and item[2] > FULL_HISTORY for item in calls) == 1
 
 
 def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_feature_work(
@@ -641,6 +652,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
     workspace = tmp_path / "entrant-stale-member"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEW")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -742,7 +754,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         (issue,) = [item for item in issues["issues"] if item["status"] == "AWAITING_CHOICE"]
         case = issue["case"]
         # Every case named in a line beside the whole page, and the pending view offered
-        # first; one page holds them all, so none follows (V236, V237, V172).
+        # first; one page holds them all, so none follows.
         assert issues["case_count"] == len(issues["case_index"]) == len(issues["issues"])
         assert issues["case_index"][0]["case_token"] == case["case_token"]
         assert issues["next_requests"]["pending"] == {"operation": "PENDING_DECISIONS"}
@@ -789,7 +801,7 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
         assert status["latest_failure_code"] == "data.remediation_wait", status
         waiting = _json(live, "/api/data-update")
         assert waiting["retry_after_at"] is not None
-        # V375: the deferred update says why, that the published inputs stand, and which
+        # the deferred update says why, that the published inputs stand, and which
         # request resumes it: the same plan again once its time has passed.
         assert waiting["next_requests"]["resume"] == {
             "operation": "DATA_UPDATE_RUN",
@@ -867,6 +879,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     workspace = tmp_path / "two-rechecks"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEWH", "NEWS")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -886,7 +899,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
         result = fetch(symbols, **kwargs)
         if "NEWH" in result and (clock_now == NOW or not raw_admits):
             result["NEWH"] = tuple(
-                row for row in result["NEWH"] if row["session_date"] >= "2020-01-01"
+                row for row in result["NEWH"] if row["session_date"] >= SHORT_HISTORY_FROM
             )
         return result
 
@@ -1029,6 +1042,7 @@ def test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once(
     workspace = tmp_path / "sectorless-recheck"
     shutil.copytree(qualified, workspace)
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEWS")
     candidate = _bootstrap(symbols)
     tomorrow = NOW + timedelta(days=1)
@@ -1142,8 +1156,10 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
     from alphalattice.foundation.market_data_ops.sources.providers import ProviderFetchError
     from tests.workspace_maintenance.local_data_provider import RecordingProvider
 
+    restore_seed(current_member_seed)  # its market rows live in the machine it was built on
     workspace = copy_workspace(current_member_seed, tmp_path / "excluded-candidate")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     previous = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1157,7 +1173,7 @@ def test_an_excluded_new_candidate_keeps_every_current_member_and_its_audit(
         retained_ids, provider="yfinance", requested_as_of=NOW.date()
     )
     assert len(history) == len(anchors) == len(rolling) == len(SYMBOLS)
-    assert all(len(bars) > 2000 for bars in history.values())
+    assert all(len(bars) > FULL_HISTORY for bars in history.values())
     observed_at = NOW + timedelta(minutes=6)
     symbols = (*SYMBOLS, "NEW")
     template = recording_provider(symbols=symbols, now=observed_at)
@@ -1262,6 +1278,7 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
 
     workspace = copy_workspace(qualified_seed, tmp_path / "owed-exit-tail")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     market = MarketDataRepository(workspace)
     previous = market.current_quality_filtered_research_manifest(
         market_profile_id="us-current-index-research"
@@ -1352,6 +1369,7 @@ def test_a_removed_historical_member_still_receives_its_owed_pre_exit_tail(
 @pytest.mark.private_data  # its readiness gate opens the copy's market data for writing
 def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tmp_path):
     """behaviour: a saved request proves no authority for an unknown source name."""
+    from alphalattice.capabilities.domain_contracts.identity import canonical_hash
     from alphalattice.control.data_platform.maintenance.contracts import (
         ListingMarketDataChange,
         MaintenancePhase,
@@ -1362,8 +1380,8 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
     )
     from alphalattice.control.data_platform.readiness import WorkspaceReadinessGate
     from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
-    from alphalattice.kernel.shared_kernel.identity import canonical_hash
 
+    restore_seed(current_member_seed)  # its market rows live in the machine it was built on
     workspace = copy_workspace(current_member_seed, tmp_path / "unknown-source")
     binding = bind_existing_data_workspace(workspace).data_update
     assert binding is not None
@@ -1438,11 +1456,13 @@ def test_an_unknown_accumulated_listing_is_still_refused(current_member_seed, tm
 
 
 def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
-    """One injected root serves all five consumers while both write stages open once."""
+    """One injected root serves all five consumers while both write stages open no instance of
+    the store: the Host's storage session opened it once before them."""
     from alphalattice.foundation.market_data_ops.sources import providers
 
     workspace = copy_workspace(qualified, tmp_path / "daily")
     binding = bind_existing_data_workspace(workspace)
+    admit_market_fixture(workspace, binding.workspace_id)
     provider = _provider()
 
     cache = workspace / "yfinance-cache"
@@ -1463,7 +1483,7 @@ def test_the_data_stage_opens_the_market_store_once(qualified, tmp_path):
         assert owner.reusable(owner.prepare(plan["plan_hash"])) is not None
         assert providers.market_provider(workspace, "", provider) is provider
         assert build.called and all(c.args == (cache,) for c in build.call_args_list)
-    expected = {"maintain_data_feature": 1, "publish_update_receipt": 1}
+    expected = {"maintain_data_feature": 0, "publish_update_receipt": 0}
     assert {
         stage["stage_id"]: sum(
             row["count"]

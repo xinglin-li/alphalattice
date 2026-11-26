@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.portfolio_backtesting.clocks import EveryFormationClock
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
     PortfolioStateTransitionBinding,
@@ -102,8 +103,8 @@ from alphalattice.investment.risk_research.surfaces.decomposition import (
     FactorIdiosyncraticRiskSurface,
     RiskAttributionProjection,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from tests.portfolio_strategy_lab.local_web_support import _json
+from tests.portfolio_strategy_lab.host_requests import _json
+from tests.portfolio_strategy_lab.local_web_support import admit_market_fixture
 
 PACKAGE = REBOUND_RETURN_BOOK_RECIPE.strategy_id
 _HASH = str(canonical_hash("activation review synthetic QA support"))
@@ -660,6 +661,7 @@ def activation_review_host(
         )
         publish_research_workspace_manifest(root, manifest)
         _bootstrap_market(root, listings=listings, symbols=symbols)
+        admit_market_fixture(root, manifest.workspace_id)
         resolver = _ActivationReviewResolver(
             workspace=root,
             authority=authority,
@@ -687,21 +689,26 @@ def activation_review_host(
         from alphalattice.control.product_host.composition.research_workspace import (
             manifest_fields_hash,
         )
+        from alphalattice.foundation.data_layer import history
 
-        with WorkspaceApplicationSession.acquire(root) as application_session:
-            application = PortfolioResearchApplication(
-                workspace_id=manifest.workspace_id,
-                workspace=root,
-                manifest_binding=lambda: manifest_fields_hash(manifest, PLAN_FIELDS),
-                session=application_session,
-                resolver=resolver,
-                clock=lambda: _NOW,
-            )
-            planned = application.plan(spec)
-            completed = application.run(spec=spec, planned=planned)
-            task_id = completed.pipeline_manifest.task_id
-            result = completed.result
-            report = application.ledger.load_report(result.report_hash)
+        history.open_history(manifest.workspace_id, "portfolio", root)
+        try:
+            with WorkspaceApplicationSession.acquire(root) as application_session:
+                application = PortfolioResearchApplication(
+                    workspace_id=manifest.workspace_id,
+                    workspace=root,
+                    manifest_binding=lambda: manifest_fields_hash(manifest, PLAN_FIELDS),
+                    session=application_session,
+                    resolver=resolver,
+                    clock=lambda: _NOW,
+                )
+                planned = application.plan(spec)
+                completed = application.run(spec=spec, planned=planned)
+                task_id = completed.pipeline_manifest.task_id
+                result = completed.result
+                report = application.ledger.load_report(result.report_hash)
+        finally:
+            history.release_history()
         result_hash = result.result_hash
         review_authority = (
             None if review_authority_for_report is None else review_authority_for_report(report)

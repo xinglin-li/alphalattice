@@ -41,7 +41,6 @@ or QP use.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from datetime import date
 from typing import Final, Literal, Self
@@ -50,7 +49,12 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_payload_digest,
+    seal_payload_digest,
+)
+from alphalattice.kernel.identity import identity_sha256
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -81,7 +85,7 @@ class RiskDecompositionError(ValueError):
 
 
 def _array_hash(values: npt.NDArray[np.generic], *, dtype: npt.DTypeLike) -> str:
-    return hashlib.sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
+    return identity_sha256(np.ascontiguousarray(values, dtype=dtype).tobytes()).hexdigest()
 
 
 def _frozen(values: npt.ArrayLike) -> FloatArray:
@@ -263,7 +267,8 @@ class FactorIdiosyncraticRiskSurface:
             np.asarray(conditional_volatility, dtype=np.float64) / np.sqrt(base),
             dtype=np.float64,
         )
-        surface_hash = canonical_hash(
+        surface_hash = seal_payload_digest(
+            "surface_hash",
             {
                 "kind": "FactorIdiosyncraticRiskSurface",
                 "recipe_hash": recipe.recipe_hash,
@@ -276,7 +281,8 @@ class FactorIdiosyncraticRiskSurface:
                 "conditional_volatility": _array_hash(conditional_volatility, dtype="<f8"),
                 "rescaling": _array_hash(rescaling, dtype="<f8"),
                 "producer_identity": producer_identity,
-            }
+            },
+            digest=canonical_hash,
         )
         surface = cls(
             recipe_hash=recipe.recipe_hash,
@@ -362,7 +368,7 @@ class FactorIdiosyncraticRiskSurface:
         Freezing the arrays stops accidental mutation; this catches a surface
         that was assembled or restored with contents its hash does not describe.
         """
-        expected = canonical_hash(
+        expected = scoped_payload_digest(
             {
                 "kind": "FactorIdiosyncraticRiskSurface",
                 "recipe_hash": self.recipe_hash,
@@ -375,7 +381,10 @@ class FactorIdiosyncraticRiskSurface:
                 "conditional_volatility": _array_hash(self.conditional_volatility, dtype="<f8"),
                 "rescaling": _array_hash(self.rescaling, dtype="<f8"),
                 "producer_identity": self.producer_identity,
-            }
+            },
+            "surface_hash",
+            self.surface_hash,
+            digest=canonical_hash,
         )
         if expected != self.surface_hash:
             raise RiskDecompositionError("risk_research.decomposition_content_hash_mismatch")
@@ -534,14 +543,16 @@ class RiskAllocationProjection:
         # else. Including the surface hash would have made every exposure or
         # factor-covariance revision look like a new holdings input, which is the
         # coupling these two projections exist to break.
-        projection_hash = canonical_hash(
+        projection_hash = seal_payload_digest(
+            "projection_hash",
             {
                 "kind": "RiskAllocationProjection",
                 "recipe_hash": surface.recipe_hash,
                 "formation_session": surface.formation_session.isoformat(),
                 "ordered_listing_ids": list(surface.ordered_listing_ids),
                 "per_name_volatility": _array_hash(volatility, dtype="<f8"),
-            }
+            },
+            digest=canonical_hash,
         )
         projection = cls(
             surface_hash=surface.surface_hash,
@@ -570,14 +581,17 @@ class RiskAllocationProjection:
             raise RiskDecompositionError("risk_research.allocation_projection_shape_invalid")
         if not np.isfinite(volatility).all() or np.any(volatility <= 0.0):
             raise RiskDecompositionError("risk_research.allocation_projection_values_invalid")
-        expected = canonical_hash(
+        expected = scoped_payload_digest(
             {
                 "kind": "RiskAllocationProjection",
                 "recipe_hash": self.recipe_hash,
                 "formation_session": self.formation_session.isoformat(),
                 "ordered_listing_ids": list(self.ordered_listing_ids),
                 "per_name_volatility": _array_hash(volatility, dtype="<f8"),
-            }
+            },
+            "projection_hash",
+            self.projection_hash,
+            digest=canonical_hash,
         )
         if expected != self.projection_hash:
             raise RiskDecompositionError("risk_research.allocation_projection_content_mismatch")

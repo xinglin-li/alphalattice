@@ -23,9 +23,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.sealing import seal_model
-from alphalattice.kernel.shared_kernel.sector_treatment import SectorHistoryTreatment
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest, seal_model
+from alphalattice.capabilities.domain_contracts.sector_treatment import SectorHistoryTreatment
 
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -131,7 +131,7 @@ def seal_sector_context_contract[ContractT: SectorContextContract](
 
 
 def _validate_hash(value: SectorContextContract, field: str) -> None:
-    if getattr(value, field) != canonical_hash(value.model_dump(mode="json", exclude={field})):
+    if getattr(value, field) != scoped_model_digest(value, field, digest=canonical_hash):
         raise ValueError("alpha_research.sector_context_identity_invalid")
 
 

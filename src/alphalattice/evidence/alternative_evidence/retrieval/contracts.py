@@ -13,8 +13,10 @@ from ..contracts import (
     validate_contract_identity,
 )
 
-RETRIEVAL_GENERATION_FORMAT: Literal["knowledge-hybrid-v4"] = "knowledge-hybrid-v4"
-"""The kernel index schema the active generation record is sealed over."""
+RETRIEVAL_GENERATION_FORMAT: Literal["knowledge-store-v1"] = "knowledge-store-v1"
+"""The format the active generation record is sealed in: a search of the Host's retrieval store."""
+HYBRID_V4_FORMAT: Literal["knowledge-hybrid-v4"] = "knowledge-hybrid-v4"
+"""The kernel index schema the generations sealed before the store were built over."""
 
 
 class _RetrievalGenerationRecord(AlternativeEvidenceContract):
@@ -44,25 +46,47 @@ class _RetrievalGenerationRecord(AlternativeEvidenceContract):
 
 
 class AlternativeEvidenceRetrievalGeneration(_RetrievalGenerationRecord):
-    """One request's use of one physical index over its effective corpus.
+    """One request's search of the Host's retrieval store over its document set's revisions.
 
-    One index, deliberately: hits are ranked against every admitted document
-    together, so a query about one issuer's liquidity returns the passages that
-    match it best rather than the best passage of each document in turn.
+    The document set's canonical revisions are reference sources of the store, chunked by its one
+    recipe and embedded by its one model; requests over the same revisions share their chunks and
+    vectors, so only a revision the store has not seen is chunked or embedded. The record keeps
+    the request's own snapshot and cutoff (its question and provenance) and what a search of it
+    reads, each a SHA-256 of canonical JSON a reopen recomputes from the store and compares:
 
-    The index is the kernel's `knowledge-hybrid-v4` generation for the corpus
-    this request's document set resolves to; requests with different cutoffs
-    whose eligible documents are the same bytes share it. The record keeps the
-    request's own snapshot and cutoff (its question and provenance) and the
-    corpus, manifest and vector-payload commitments the kernel verified, which
-    anchor every later open: the database's own copy of its manifest is never
-    the authority for itself.
+    - `index_id`: the corpus under the spec, `{"revisions": [[document id, revision, content
+      SHA-256], ...] in document order, "spec": index_spec_hash}`, the same for every request
+      over the same revisions, so a sealed selection over it is found again;
+    - `index_spec_hash`: the recipe, the embedding model, the reranker and the search settings
+      (`recall.reference_spec`), so a change to any of them is a different generation;
+    - `chunk_set_hash`: `[[document id, [[character start, character end, chunk digest], ...]],
+      ...]` in document order, the passages a search can return;
+    - `vector_set_hash`: the BLAKE3 digest of their float32 vectors in that order, as the store
+      holds them, in the store's `blake3:` form.
     """
 
-    generation_format: Literal["knowledge-hybrid-v4"] = RETRIEVAL_GENERATION_FORMAT
+    generation_format: Literal["knowledge-store-v1"] = RETRIEVAL_GENERATION_FORMAT
+    chunk_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    vector_set_hash: str = Field(pattern=r"^blake3:[0-9a-f]{64}$")
+
+
+class HybridV4RetrievalGeneration(_RetrievalGenerationRecord):
+    """A generation record sealed over the kernel's `knowledge-hybrid-v4` index.
+
+    History since the store: read exactly, its receipts read back as sealed and labelled
+    historical, and never opened or written again. Its index files are storage the cleanup
+    accounts for until they are released.
+    """
+
+    generation_format: Literal["knowledge-hybrid-v4"] = HYBRID_V4_FORMAT
     corpus_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     index_manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     vector_payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    execution_class: str | None = Field(
+        default=None, max_length=200, exclude_if=lambda value: value is None
+    )
+    """The machine class its spec named, readable on the record itself; absent for a recipe whose
+    numbers a sealed canary fixed on every machine."""
 
 
 class HybridV3RetrievalGeneration(_RetrievalGenerationRecord):
@@ -93,7 +117,10 @@ class WholeFilingsGeneration(_RetrievalGenerationRecord):
 
 
 RetrievalGenerationRecord = (
-    AlternativeEvidenceRetrievalGeneration | HybridV3RetrievalGeneration | WholeFilingsGeneration
+    AlternativeEvidenceRetrievalGeneration
+    | HybridV4RetrievalGeneration
+    | HybridV3RetrievalGeneration
+    | WholeFilingsGeneration
 )
 CurrentRetrievalGeneration = AlternativeEvidenceRetrievalGeneration | WholeFilingsGeneration
 """The formats a new analysis stands on: an index, or a unit delivered whole."""
@@ -103,6 +130,10 @@ def parse_retrieval_generation(payload: dict[str, object]) -> RetrievalGeneratio
     """Bounded durable-format dispatch: the committed format names itself."""
     if payload.get("generation_format") == WHOLE_FILINGS_FORMAT:
         return cast(WholeFilingsGeneration, WholeFilingsGeneration.model_validate(payload))
+    if payload.get("generation_format") == HYBRID_V4_FORMAT:
+        return cast(
+            HybridV4RetrievalGeneration, HybridV4RetrievalGeneration.model_validate(payload)
+        )
     if "generation_format" in payload:
         return cast(
             AlternativeEvidenceRetrievalGeneration,
@@ -177,7 +208,13 @@ class AlternativeEvidenceSearchResult(AlternativeEvidenceContract):
     remaining_searches: int = Field(ge=0, le=24)
     reranked_pairs: int = Field(default=0, ge=0)
     """Pairs the cross-encoder scored for this search: what a pair budget
-    is charged; zero when the kernel reported none."""
+    is charged; a shortlist past its deadline included."""
+    rerank_fallback: Literal["DEADLINE_EXCEEDED"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    score_type: Literal["LINEAR_FUSION", "CROSS_ENCODER_LOGIT"]
+    """The common scale for all returned scores. If the result includes the fused tail,
+    every score stays on the fusion scale, including the reranked shortlist."""
 
 
 class SourceUnitDeclaration(AlternativeEvidenceContract):
@@ -409,6 +446,7 @@ class PairScoreCommitmentRecord(AlternativeEvidenceContract):
 
 
 __all__ = [
+    "HYBRID_V4_FORMAT",
     "RETRIEVAL_GENERATION_FORMAT",
     "SPAN_HANDLE_PATTERN",
     "WHOLE_FILINGS_FORMAT",
@@ -419,6 +457,7 @@ __all__ = [
     "AlternativeEvidenceSearchResult",
     "CurrentRetrievalGeneration",
     "HybridV3RetrievalGeneration",
+    "HybridV4RetrievalGeneration",
     "PairScoreBlockRecord",
     "PairScoreCommitmentRecord",
     "RetrievalGenerationRecord",

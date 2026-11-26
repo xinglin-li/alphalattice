@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from datetime import date, datetime
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -13,11 +12,12 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     _copy_input,
     confined,
     factor_input_paths,
-    file_digest,
     read_factor_bundle,
 )
 from alphalattice.control.product_host.research_authoring.portfolio_handoff import (
@@ -82,8 +82,7 @@ from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
     RiskReturnArtifactStore,
 )
-from alphalattice.kernel.quant.sector_history import SectorHistory
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.kernel.identity import identity_sha256
 
 
 class FrozenPortfolioPreparationRequest(BaseModel):  # type: ignore[misc]
@@ -215,7 +214,9 @@ def prepare_frozen_portfolio_authority(
     def lane(values: npt.ArrayLike, dtype: str) -> str:
         checkpoint()
         array = np.ascontiguousarray(values, dtype=dtype)
-        if not store.holds_array(category=LANES, content_hash=sha256(array.tobytes()).hexdigest()):
+        if not store.holds_array(
+            category=LANES, content_hash=identity_sha256(array.tobytes()).hexdigest()
+        ):
             require_storage_capacity(workspace, additional_bytes=array.nbytes)
         return store.publish_array(category=LANES, values=array)
 
@@ -287,7 +288,9 @@ def prepare_frozen_portfolio_authority(
         input_binding_hash=request.input_binding_hash,
         method_recipe_hash=build_one_session_recipe().recipe_hash,
         source_rows_hash=canonical_hash(qa_rows["row_hash"].to_pylist()),
-        returns_hash=sha256(np.ascontiguousarray(qa_returns, dtype="<f8").tobytes()).hexdigest(),
+        returns_hash=identity_sha256(
+            np.ascontiguousarray(qa_returns, dtype="<f8").tobytes()
+        ).hexdigest(),
         formation_sessions=sessions,
         listing_axis_hash=canonical_hash(listings),
         through=bundle.sessions[-1],
@@ -360,7 +363,7 @@ def prepare_frozen_portfolio_authority(
         origin = source_returns.resolve_chunk(chunk)
         destination = target_returns._chunk_path(chunk.content_hash)
         if not destination.exists():
-            _copy_input(workspace, origin, destination, file_digest(origin))
+            _copy_input(workspace, origin, destination)  # resolve_chunk verifies its rows
         target_returns.resolve_chunk(chunk)
     target_returns.publish_manifest(returns)
     expected_sector = panel["safe_summary"]["lineage"]["sector_revision"]

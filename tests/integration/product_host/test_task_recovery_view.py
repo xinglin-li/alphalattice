@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
 )
@@ -45,9 +46,9 @@ from alphalattice.control.task_control.runner import (
     TaskControlRunner,
     TaskHeartbeatReader,
     TaskHeartbeatReadout,
-    _SqliteHeartbeatStore,
     heartbeat_store_path,
 )
+from alphalattice.control.task_control.upgrade import write_heartbeat
 from alphalattice.interface.local_application.dispatcher import LocalBackgroundDispatcher
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchOperationRequest,
@@ -59,13 +60,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     EligiblePoolShort,
 )
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
+from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import (
     TEST_PACKAGE,
     _InterruptsOnce,
-    _json,
     _manifest,
-    _request,
     _resolved,
     _Resolver,
 )
@@ -83,7 +82,7 @@ def _view(live: LocalPortfolioWebSession, task_id: str) -> dict[str, Any]:
     body = _json(live, f"/api/tasks/recovery?task_id={task_id}")
     # The document is the typed contract, hash and all; the status block is the projection of
     # the same snapshot as the operation reader sees it (the dispatcher's mask), not a re-read,
-    # and the offered requests stand beside it as navigation (V443).
+    # and the offered requests stand beside it as navigation.
     TaskRecoveryView.model_validate(
         {k: v for k, v in body.items() if k not in {"status", "next_requests", "next_action"}}
     )
@@ -144,6 +143,8 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert code == expected_exit and not captured.err
         assert body["task_record_hash"] == expected["task_record_hash"]
         assert body["status"]["lifecycle"] == body["lifecycle"] == expected["lifecycle"]
+        if expected["stop"] is not None:
+            assert body["stop"]["cause"] == expected["stop"]["cause"]
 
     try:
         admitted = _json(live, "/api/run", method="POST", payload={})
@@ -166,6 +167,11 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert stopped["cancellation"] == "NOT_REQUESTED"
         # What stopped: Task Control's own code, explained, marked resumable by Task Control.
         assert stopped["stop"]["code"] == "TASK_EXECUTION_INTERRUPTED"
+        cause = stopped["stop"]["cause"]
+        assert cause["exception_type"] == "RuntimeError"
+        file, _, line = cause["step"].rpartition(":")
+        assert file == "local_web_support.py" and line.isdecimal()
+        assert cause["detail"] == ""
         status = _json(live, f"/api/status?task_id={task_id}")
         assert status["lifecycle"] == "RECOVERY_REQUIRED"
         assert status["attention"]["unresolved"] is True
@@ -203,7 +209,7 @@ def test_interrupted_run_is_explained_preserved_and_resumed_as_the_same_task(
         assert "no new Task and no new declaration" in actions["RECOVER"]["scope"]
         assert "An attempt" in actions["RECOVER"]["expected_effect"]
         assert "may stop again" in actions["RECOVER"]["expected_effect"]
-        # V443: each one taking a version is offered bound to the Task and the version this
+        # each one taking a version is offered bound to the Task and the version this
         # view read, so `recovery run --from` sends what was seen.
         bound = {"task_id": stopped["task_id"], "expected_task_hash": stopped["task_record_hash"]}
         version = stopped["task_record_hash"]
@@ -587,7 +593,7 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
         "task_id": task_id,
     }
     # A read of the blocked Task answers REFUSED, so it says why and where it goes on, as a
-    # refusal does (V424, AX14: it named neither).
+    # refusal does (AX14: it named neither).
     status = _json(live, f"/api/status?task_id={task_id}")
     assert outcome_of(status) == "REFUSED"
     assert status["failure_code"] == code
@@ -605,7 +611,7 @@ def test_an_owner_stop_remains_a_stop_and_admits_no_resume(
 def test_a_stage_the_memory_check_blocked_is_offered_and_takes_its_recovery(
     live, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """requirement (PERF-1): the runner's memory block, read through the recovery view, offers
+    """requirement: the runner's memory block, read through the recovery view, offers
     RECOVER bound to its version; once memory is free the same Task resumes and completes."""
 
     from alphalattice.control.product_host.composition import resource_estimates
@@ -707,6 +713,7 @@ class _Held:
 
 def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_liveness(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Stale unreadable or unbound telemetry never establishes current liveness."""
 
@@ -732,7 +739,7 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         assert execution is not None and snapshot.projection.lifecycle is TaskLifecycle.RUNNING
         now = base + timedelta(seconds=60)
         controlled = tmp_path / "controlled-checkpoints.sqlite"  # a sidecar the test writes
-        store = _SqliteHeartbeatStore(heartbeat_store_path(controlled))
+        store_path = heartbeat_store_path(controlled)
         reader = TaskHeartbeatReader(controlled)
         kinds = frozenset({"portfolio_public_development_replay"})
 
@@ -755,7 +762,30 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
 
         # No signal for this execution: the durable timestamp alone, 60 s old, says not recent.
         assert reader.read(execution.execution_id) == readout()
-        durable_only = build(readout())
+        from alphalattice.control.product_host.composition import task_recovery
+
+        canonical_hash = task_recovery.canonical_hash
+        hashes = 0
+        thread = threading.get_ident()
+
+        def count_view_hash(payload: object) -> str:
+            nonlocal hashes
+            if (
+                threading.get_ident() == thread
+                and isinstance(payload, dict)
+                and payload.get("kind") == "TaskRecoveryView"
+            ):
+                hashes += 1
+            return canonical_hash(payload)
+
+        with monkeypatch.context() as probe:
+            probe.setattr(task_recovery, "canonical_hash", count_view_hash)
+            durable_only = build(readout())
+        assert hashes == 1
+        edited = durable_only.model_dump(mode="json")
+        edited["operation_running"] = False
+        with pytest.raises(ValueError, match="task recovery view hash is invalid"):
+            TaskRecoveryView.model_validate(edited)
         assert durable_only.liveness.status == "NOT_RECENT"
         assert durable_only.liveness.telemetry == "DURABLE_ONLY"
         assert durable_only.liveness.last_heartbeat_source == "DURABLE_TIMESTAMP"
@@ -765,26 +795,28 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         assert durable_only.health.status == "LIVENESS_STALE"
         # A fresh signal of a previous execution of this Task is never this execution's.
         previous = uuid4()
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=previous,
                 worker_instance_id=execution.worker_instance_id,
                 sequence=9,
                 observed_at=now,
-            )
+            ),
         )
         assert reader.read(execution.execution_id) == readout(), "keyed by execution, not Task"
         assert build(reader.read(execution.execution_id)).liveness.telemetry == "DURABLE_ONLY"
         # A signal for this execution from another worker is unbound and not counted.
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=execution.execution_id,
                 worker_instance_id=uuid4(),
                 sequence=3,
                 observed_at=now,
-            )
+            ),
         )
         foreign = _only(reader.read(execution.execution_id))
         assert foreign is not None and foreign.worker_instance_id != execution.worker_instance_id
@@ -798,14 +830,15 @@ def test_stale_unreadable_or_unbound_telemetry_never_establishes_current_livenes
         hidden = build(readout(foreign, unreadable=1))
         assert hidden.liveness.telemetry == "UNREADABLE" and hidden.liveness.status == "NOT_RECENT"
         # Only the signal bound to this Task, execution and worker establishes liveness.
-        store.touch(
+        write_heartbeat(
+            store_path,
             TaskHeartbeatSignal.from_identity(
                 task_id=execution.task_id,
                 execution_id=execution.execution_id,
                 worker_instance_id=execution.worker_instance_id,
                 sequence=4,
                 observed_at=now - timedelta(seconds=3),
-            )
+            ),
         )
         bound_signal = _only(reader.read(execution.execution_id))
         assert bound_signal is not None and bound_signal.sequence == 4
@@ -957,7 +990,7 @@ def test_recovery_context_fields_follow_composed_replan_offers(
 
 
 # Its last request raises an inner KeyError on purpose, to prove it is not read as an
-# unknown Task (V449).
+# unknown Task.
 @pytest.mark.untyped_failure
 def test_the_view_refuses_an_unknown_task_and_a_missing_query_typed(
     live: LocalPortfolioWebSession,
@@ -1207,11 +1240,11 @@ def test_a_replan_preview_and_admission_link_a_distinct_successor_across_restart
 
 def test_every_declared_failure_keeps_its_owner_words_in_task_recovery():
     """Any declared refusal keeps its explanation when read as a Task stop."""
-    from alphalattice.control.product_host.composition.task_recovery import stop_detail
-    from alphalattice.kernel.shared_kernel.project_layout import (
+    from alphalattice.capabilities.domain_contracts.project_layout import (
         REFUSAL_WORDS_RESOURCE,
         runtime_json,
     )
+    from alphalattice.control.product_host.composition.task_recovery import stop_detail
 
     unknown = stop_detail("evidence_install", "owner.future_stop", "TASK_CONTROL")
     for code in runtime_json(REFUSAL_WORDS_RESOURCE):

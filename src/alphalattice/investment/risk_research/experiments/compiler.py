@@ -15,6 +15,8 @@ from typing import Any
 
 from pydantic import Field
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.investment.risk_research.estimators.capability import (
     RiskCapabilityError,
     RiskRecipeAdmission,
@@ -28,8 +30,6 @@ from alphalattice.investment.risk_research.experiments.contracts import (
     RiskDevelopmentProgramBinding,
 )
 from alphalattice.investment.risk_research.experiments.policy import enforce_execution_policy
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
     DeskProgramCompilation,
@@ -166,7 +166,7 @@ class RiskExperimentCompiler:
             recipe_hash=admission.recipe_hash,
             parameter_domain_hash=admission.parameter_domain_hash,
             # The code that runs is bound by the study plan's implementation hash
-            # (binding plan, P), not by the Program; the environment is provenance,
+            # , not by the Program; the environment is provenance,
             # recorded beside each estimate (LAWS.md ID6).
         )
         desk_program_hash = str(

@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.identity_successors import is_current
+from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
+from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -69,10 +73,6 @@ from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
 )
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.kernel.shared_kernel.identity_successors import is_current
-from alphalattice.kernel.shared_kernel.project_layout import resolve_playpen_root
-from alphalattice.kernel.shared_kernel.source_identity import source_rule_closure_hash
 
 TASK_KIND = "research_feature_materialization"
 STAGE = "materialize_local_formula_columns"
@@ -88,8 +88,8 @@ def _preparing(payload: dict[str, Any]) -> bool:
 def implementation_role(*, preparation: bool = False) -> str:
     """Name the identity role governing exact feature build or preparation closure changes.
 
-    The role a move of this closure is recorded under in `config/identity-successors.json`,
-    so a build sealed under its predecessor stays current (binding plan, B14).
+    The role a move of this closure is recorded under in `config/identity-successors/`,
+    so a build sealed under its predecessor stays current.
     """
     return "product_host.research_feature_materialization" + (".prepared" if preparation else "")
 

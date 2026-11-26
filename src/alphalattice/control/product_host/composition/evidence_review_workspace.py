@@ -10,7 +10,6 @@ SEC source is admitted into the same composition only by explicit consent
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -20,10 +19,19 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.knowledge.hybrid_contracts import (
+    RECIPE_MINILM_CPU,
+    SUPPORTED_RECIPES,
+)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceEvidenceReview,
 )
+from alphalattice.control.product_host.composition.task_kinds import (
+    EVIDENCE_INSTALL_TASK_KIND as EVIDENCE_INSTALL_TASK_KIND,
+)
+from alphalattice.control.workspace_runtime.verified_facts import file_sha256
 from alphalattice.evidence.alternative_evidence.contracts import (
     WHOLE_FILING_BYTES,
     AlternativeEvidenceClass,
@@ -42,11 +50,6 @@ from alphalattice.evidence.alternative_evidence.runtime.task_adapter import (
 from alphalattice.evidence.alternative_evidence.sources.recorded import (
     RecordedEvidenceDocument,
 )
-from alphalattice.kernel.knowledge.hybrid_contracts import (
-    RECIPE_MINILM_CPU,
-    SUPPORTED_RECIPES,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
 from alphalattice.oversight.chief_risk_officer.portfolio_evidence.contracts import (
     AdmittedListingTickerAuthority,
 )
@@ -60,7 +63,6 @@ from alphalattice.evidence.alternative_evidence.sources.admission import (
     OfficialSourceAdmission,
 )
 
-EVIDENCE_INSTALL_TASK_KIND = "evidence_install"
 EVIDENCE_REVIEW_MANIFEST_SCHEMA = "evidence-review-workspace-authority"
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -468,7 +470,7 @@ def verify_evidence_review_workspace(
     """Open and verify local authority children without claiming a Provider."""
     root = workspace.resolve()
     manifest_path = _confined(root, binding.relative_path)
-    if _file_sha256(manifest_path) != binding.file_sha256:
+    if _file_digest(manifest_path) != binding.file_sha256:
         raise ResearchWorkspaceError("evidence_review.manifest_file_identity_invalid")
     manifest = _read_model(manifest_path, EvidenceReviewWorkspaceManifest)
     registry = _read_bound(
@@ -480,12 +482,9 @@ def verify_evidence_review_workspace(
     documents = _read_bound(
         root, manifest.recorded_documents, RecordedEvidenceDocumentBundle, "bundle_hash"
     )
-    semantic_root = _confined(root, manifest.semantic_model_relative_path)
     runtime = AlternativeEvidenceDocumentIntelligenceRuntime(
         artifact_root=root / "runtime" / "artifacts",
         workspace_root=root / "runtime" / "evidence-knowledge",
-        model_root=semantic_root,
-        retrieval_recipe=manifest.retrieval_recipe,
     )
     try:
         capability_hash = (
@@ -514,7 +513,7 @@ def _read_bound[T: BaseModel](
     identity_field: str,
 ) -> T:
     path = _confined(root, binding.relative_path)
-    if _file_sha256(path) != binding.file_sha256:
+    if _file_digest(path) != binding.file_sha256:
         raise ResearchWorkspaceError("evidence_review.child_file_identity_invalid")
     value = _read_model(path, model)
     if getattr(value, identity_field, None) != binding.content_hash:
@@ -548,15 +547,12 @@ def _confined(root: Path, relative_path: str) -> Path:
     return path
 
 
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
+def _file_digest(path: Path) -> str:
+    """The file's digest through the file-trust owner: hashed only when its stamp changed."""
     try:
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(block)
+        return file_sha256(path)
     except OSError as error:
         raise ResearchWorkspaceError("evidence_review.artifact_unreadable") from error
-    return digest.hexdigest()
 
 
 def _normalize_deepseek_base_url(value: str) -> str:

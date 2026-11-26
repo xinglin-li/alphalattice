@@ -36,7 +36,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import closing, contextmanager, suppress
 from pathlib import Path
 from threading import RLock
 from typing import IO, Any, Final, cast
@@ -148,6 +148,8 @@ class HostLog:
         self._guard = RLock()
         con.create_function("uuid7", 0, uuid7)
         self.knowledge_cache_lock = threading.Lock()
+        self.knowledge_lexical: Any = None
+        self._lexical_guard = threading.Lock()
         # Claim an embedding miss before inference, outside the SQLite writer. Every cache
         # reader of this Host shares it, so two workspaces never encode the same miss at once.
         self._pending = 0
@@ -322,6 +324,17 @@ class HostLog:
         """The Host's connection for several reads that must see one state, open batch included."""
         with self._guard:
             yield self._con
+
+    @contextmanager
+    def lexical_reading(self) -> Iterator[sqlite3.Connection]:
+        """Refresh and read the held lexical view against one committed log snapshot."""
+        with self._lexical_guard:
+            with self.reading() as writer:
+                self._commit()
+                database = Path(writer.execute("PRAGMA database_list").fetchone()[2])
+            with closing(attach(database.parent.parent)) as con:
+                con.execute("BEGIN")
+                yield con
 
     def lineage(self, family: str, name: str) -> str | None:
         """The Host's id for a name, including one registered in its open batch."""
@@ -509,8 +522,9 @@ class HostLog:
 
     def close(self) -> None:
         """Commit the open batch and release the data root's lock."""
-        with self._guard:
+        with self._lexical_guard, self._guard:
             self._commit()
+            self.knowledge_lexical = None
             self._con.close()
             self._lock_file.close()
 

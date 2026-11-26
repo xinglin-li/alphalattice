@@ -1,4 +1,4 @@
-"""A follow learns when its Task moves on (binding plan N8): STATUS may wait on the Host for the
+"""A follow learns when its Task moves on: STATUS may wait on the Host for the
 Task's next stage or lifecycle, and the CLI's `--wait` asks it to instead of polling.
 
 For the UI line's suite: tests/integration/local_application/test_status_follow.py.
@@ -11,7 +11,6 @@ import json
 import os
 import shlex
 import shutil
-import time
 from contextlib import chdir, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,6 +21,12 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts import waits
+from alphalattice.capabilities.domain_contracts.project_layout import command_prefix
+from alphalattice.control.product_host.composition.evidence_review_bundles import (
+    analyst_reads_answer,
+    set_analyst_reads,
+)
 from alphalattice.control.product_host.composition.goals import GoalApplication
 from alphalattice.control.product_host.composition.portfolio_research_operations import (
     PortfolioResearchOperations,
@@ -42,45 +47,13 @@ from alphalattice.interface.local_application.portfolio_research import (
     LocalApplicationError,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.kernel.shared_kernel.project_layout import command_prefix
+from alphalattice.interface.local_application.review_evidence import REVIEW_DETAIL
 
 
 @pytest.mark.parametrize("wait", [0, -1, 20.5, True, "5"])
 def test_a_status_wait_outside_zero_to_twenty_seconds_is_refused(wait: Any) -> None:
     with pytest.raises(LocalApplicationError, match="wait_seconds_invalid"):
         PortfolioResearchOperationRequest(operation="STATUS", task_id=uuid4(), wait_seconds=wait)
-
-
-def _projection(lifecycle: TaskLifecycle, verified: int) -> SimpleNamespace:
-    return SimpleNamespace(lifecycle=lifecycle, verified_stage_count=verified)
-
-
-def _host(sequence: list[SimpleNamespace]) -> SimpleNamespace:
-    reads = iter(sequence)
-    last = {"value": sequence[0]}
-
-    def status(_task_id: object) -> SimpleNamespace:
-        last["value"] = next(reads, last["value"])
-        return last["value"]
-
-    return SimpleNamespace(dispatcher=SimpleNamespace(status=status))
-
-
-def test_a_waiting_status_answers_when_the_task_moves_on_or_its_wait_ends() -> None:
-    running = _projection(TaskLifecycle.RUNNING, 0)
-    host = _host([running, running, _projection(TaskLifecycle.RUNNING, 1)])
-    begun = time.monotonic()
-    moved = PortfolioResearchOperations._moved_on(host, uuid4(), running, 5.0)  # type: ignore[arg-type]
-    assert moved.verified_stage_count == 1 and time.monotonic() - begun < 1.0
-
-    begun = time.monotonic()
-    still = PortfolioResearchOperations._moved_on(_host([running]), uuid4(), running, 0.3)  # type: ignore[arg-type]
-    assert still is running and 0.3 <= time.monotonic() - begun < 1.0
-
-    done = _projection(TaskLifecycle.SUCCEEDED, 2)
-    begun = time.monotonic()
-    assert PortfolioResearchOperations._moved_on(_host([done]), uuid4(), done, 5.0) is done  # type: ignore[arg-type]
-    assert time.monotonic() - begun < 0.05
 
 
 def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch, tmp_path) -> None:
@@ -126,18 +99,20 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
     )
 
     class _Client:
-        workspace = Path("workspace")  # every client names one (V428)
+        workspace = Path("workspace")  # every client names one
 
         def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
             sent.append(document)
             return next(answers)
 
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    begun = time.monotonic()
+    paced: list[float] = []
+    monkeypatch.setattr(waits, "pause", lambda seconds, **_: paced.append(seconds))
     final = client_module._follow(_Client(), admitted, 60)  # type: ignore[arg-type]
     assert final["lifecycle"] == "SUCCEEDED" and final["admission"] == admitted
     assert all(d["operation"] == "STATUS" and 0 < d["wait_seconds"] <= 20 for d in sent)
-    assert len(sent) == 4 and time.monotonic() - begun < 0.2
+    # Only the unchanged read that came back at once waits, out to a second, before the next.
+    assert len(sent) == 4 and len(paced) == 1 and 0.9 < paced[0] <= 1.0
     # Its first line tells the agent this call is the wait, and its host's way to wait for it.
     first, *progress = map(json.loads, capsys.readouterr().err.splitlines())
     assert first["follow"]["operation"] == "STATUS" and "do not poll" in first["returns"]
@@ -175,7 +150,7 @@ def test_the_follow_asks_the_host_to_wait_instead_of_polling(capsys, monkeypatch
 def test_an_outcome_reads_the_task_state_wherever_the_answer_writes_it(
     body: dict[str, Any], expected: str
 ) -> None:
-    """requirement (V144, V138): work that waits, runs or awaits a decision is pending, in
+    """requirement: work that waits, runs or awaits a decision is pending, in
     ``lifecycle`` or in ``status`` as readbacks write it; a blocked or cancelled Task and a
     stopped trial are refused; nothing unfinished answers OK."""
 
@@ -183,7 +158,7 @@ def test_an_outcome_reads_the_task_state_wherever_the_answer_writes_it(
 
 
 def test_a_wait_follows_the_task_the_answer_started_and_stops_for_a_decision() -> None:
-    """requirement (V137): a Portfolio promotion names the new Alpha Task it started; the
+    """requirement: a Portfolio promotion names the new Alpha Task it started; the
     follow reads that Task, not the finished one the request was about, keeps the admission's
     next requests when the last read offers none, and stops at a review a wait cannot pass."""
 
@@ -197,7 +172,7 @@ def test_a_wait_follows_the_task_the_answer_started_and_stops_for_a_decision() -
     )
 
     class _Client:
-        workspace = Path("workspace")  # every client names one (V428)
+        workspace = Path("workspace")  # every client names one
 
         def request(self, document: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
             sent.append(document)
@@ -245,7 +220,7 @@ class _Stub:
 
 
 def test_the_waiter_never_ends_on_a_timer_and_waits_out_a_host_restart(monkeypatch) -> None:
-    """requirement (WK, V280): without --max-wait the follow waits until the Task ends, a
+    """requirement (WK): without --max-wait the follow waits until the Task ends, a
     Host that stopped or restarted included, and ends with one line: the event and its read."""
 
     task_id = str(uuid4())
@@ -265,7 +240,7 @@ def test_the_waiter_never_ends_on_a_timer_and_waits_out_a_host_restart(monkeypat
     event = final["wait_event"]
     assert event["event"] == "ENDED" and event["task_id"] == task_id
     assert "task show" in event["read"] and task_id in event["read"]
-    # The installed command and the workspace, as every printed command starts (V428, V429).
+    # The installed command and the workspace, as every printed command starts.
     assert event["read"].startswith("alphalattice ") and "--workspace" in event["read"]
     assert len(stub.sent) == 4
 
@@ -317,19 +292,63 @@ def test_a_wait_on_each_stage_returns_as_a_stage_is_verified(monkeypatch) -> Non
         client_module._wait(stub, SimpleNamespace(**vars(goal), each_stage=True))  # type: ignore[arg-type]
 
 
-def test_max_wait_is_the_waiters_only_timer(monkeypatch) -> None:
+def test_max_wait_is_the_waiters_only_timer(monkeypatch, tmp_path, capsys) -> None:
     """requirement (WK): --max-wait, set just under a command cap, ends the wait as pending;
     it is refused when not above zero."""
 
     task_id = str(uuid4())
     running = {"status": "RUNNING", "lifecycle": "RUNNING", "task_id": task_id}
-    stub = _Stub(itertools.repeat(running))  # type: ignore[arg-type]
+    storage = {"reclaimable_bytes": 7}
+    stub = _Admitting(
+        {},
+        [
+            running,
+            running,
+            dict(running, status="SUCCEEDED", lifecycle="SUCCEEDED", storage=storage),
+        ],
+        tmp_path,
+    )
+    now = 0.0
+    read = stub.request
+
+    def request(document, timeout=None):
+        nonlocal now
+        if document.get("wait_seconds"):
+            now += 1.0
+        return read(document, timeout)
+
+    monkeypatch.setattr(stub, "request", request)
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(client_module, "LocalResearchClient", lambda *a, **k: stub)
+    output = tmp_path / "answer.json"
+    command = ["--workspace", str(tmp_path), "task", "show", task_id, "--wait", "--max-wait", "1"]
+    exit_code = main(
+        [*command, "--section", "storage", "--output", str(output)],
+        serve=lambda _: pytest.fail("no serve"),
+    )
+    final = json.loads(output.read_text("utf-8"))
+    assert final.get("wait_status") == "MAX_WAIT_TASK_CONTINUES"
+    event = final["wait_event"]
+    assert event["event"] == "MAX_WAIT_REACHED" and task_id in event["read"]
+    assert final["lifecycle"] == "RUNNING" and outcome_of(final) == "PENDING"
+    assert final["storage"] == storage and exit_code == 3
+    assert json.loads(capsys.readouterr().out)["data"]["value"] == storage
+    assert [d.get("status_section") for d in stub.sent] == [None, None, "storage"]
+
     admitted = {"status": "TASK_ADMITTED", "task_id": task_id, "lifecycle": "QUEUED"}
-    final = client_module._follow(stub, admitted, 0.05)  # type: ignore[arg-type]
-    assert final["wait_event"]["event"] == "MAX_WAIT_REACHED"
-    assert final["wait_status"] == "MAX_WAIT_TASK_CONTINUES" and outcome_of(final) == "PENDING"
     with pytest.raises(client_module.LocalResearchClientError, match="max_wait_invalid"):
         client_module._follow(stub, admitted, 0)  # type: ignore[arg-type]
+    # A chain's omitted --max-wait is the hour. Read where its deadline less the clock rounds
+    # past that hour (an unmoved coarse clock), its follow takes the deadline, never a refusal.
+    now = 496.2857142857143
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now)
+    ended = {"status": "SUCCEEDED", "lifecycle": "SUCCEEDED", "task_id": task_id}
+    chain = client_module._Chain(_Stub([ended]), "book_review", now + 3600.0)  # type: ignore[arg-type]
+    try:
+        stopped = chain.followed("book", admitted)
+    except client_module.LocalResearchClientError as refused:  # it refused its own deadline
+        stopped = refused.args
+    assert stopped is None and chain.followed_answer["lifecycle"] == "SUCCEEDED"
 
 
 def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch) -> None:
@@ -341,6 +360,7 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
     def narrative(*tasks: tuple[str, str]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {
                 "tasks": [{"task_id": t, "state": s} for t, s in tasks],
@@ -359,7 +379,9 @@ def test_a_goal_wait_ends_on_the_next_task_end_it_did_not_see_begin(monkeypatch)
     final = client_module._wait_for_goal(stub, goal, None)  # type: ignore[arg-type]
     event = final["wait_event"]
     assert (event["event"], event["task_id"], event["goal_id"]) == ("NEEDS_DECISION", new, goal)
-    assert all(d == {"operation": "GOAL_NARRATIVE", "goal_id": goal} for d in stub.sent)
+    first = {"operation": "GOAL_NARRATIVE", "goal_id": goal}
+    moved = {**first, "wait_seconds": client_module.HOST_WAIT, "goal_seen": "0" * 16}
+    assert stub.sent == [first, moved, moved]  # each later read waits at the Host on the mark
 
 
 def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> None:
@@ -380,6 +402,7 @@ def test_a_goal_wait_ends_on_the_next_message_under_the_goal(monkeypatch) -> Non
     def narrative(*messages: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [], "conversation": list(messages)},
         }
@@ -429,6 +452,7 @@ def test_a_goal_wait_wakes_only_for_its_own_messages(monkeypatch) -> None:
     def narrative(*messages: dict[str, Any]) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [], "conversation": list(messages)},
         }
@@ -471,6 +495,7 @@ def test_every_waiter_ends_on_a_deferral_with_its_retry_time_and_resume(monkeypa
     def narrative(state: str) -> dict[str, Any]:
         return {
             "status": "GOAL_NARRATIVE",
+            "narrative_mark": "0" * 16,
             "state": "OPEN",
             "record": {"tasks": [{"task_id": task_id, "state": state}], "conversation": []},
         }
@@ -481,8 +506,8 @@ def test_every_waiter_ends_on_a_deferral_with_its_retry_time_and_resume(monkeypa
 
 
 def test_a_deferred_tasks_status_names_its_retry_time_and_resume() -> None:
-    """requirement (V507): the read a waiter ends on says when a deferred Task's plan may be
-    sent again and by which request, as its owner's readback words them (V375), and names that
+    """requirement: the read a waiter ends on says when a deferred Task's plan may be
+    sent again and by which request, as its owner's readback words them, and names that
     readback; a kind with no deferral readback goes on by its recovery view."""
 
     task_id = uuid4()
@@ -562,7 +587,7 @@ def test_a_deferred_tasks_clock_stops_while_it_waits() -> None:
 
 
 def test_a_remedy_that_resumed_its_task_is_followed_to_the_tasks_end(monkeypatch) -> None:
-    """regression (V508, the user's review at 244900d8): `incident remediate --remedy RECOVER
+    """regression (the user's review at 244900d8): `incident remediate --remedy RECOVER
     --wait` answered OK at once, the resumed Task's RUNNING nested in `answer`. The receipt
     names the Task and its lifecycle, so the wait follows the Task to its end."""
 
@@ -704,7 +729,7 @@ def _wait_with_output(tmp_path: Any, monkeypatch: Any, answers: list[Any]) -> tu
 
 
 def test_an_interrupted_wait_keeps_the_admitted_task_in_its_output(tmp_path, monkeypatch) -> None:
-    """regression (V273, OP3, OP12): `--wait --output` wrote the answer only after the wait, so
+    """regression (OP3, OP12): `--wait --output` wrote the answer only after the wait, so
     a Ctrl-C while waiting left no file and named the admitted Task nowhere. The admission is
     written first."""
 
@@ -718,7 +743,7 @@ def test_an_interrupted_wait_keeps_the_admitted_task_in_its_output(tmp_path, mon
 def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """requirement (V273): the final answer takes the admission's place in `--output`, and the
+    """requirement: the final answer takes the admission's place in `--output`, and the
     envelope names the file."""
 
     answers = [{"status": "SUCCEEDED", "lifecycle": "SUCCEEDED"}]
@@ -732,6 +757,7 @@ def test_a_finished_wait_replaces_the_admission_with_its_final_answer(
 def _goal_narrative(task: str, state: str) -> dict[str, Any]:
     return {
         "status": "GOAL_NARRATIVE",
+        "narrative_mark": "0" * 16,
         "state": "OPEN",
         "record": {"tasks": [{"task_id": task, "state": state}], "conversation": []},
     }
@@ -824,7 +850,7 @@ def test_a_wait_on_a_trial_ends_when_a_step_needs_its_recovery(monkeypatch) -> N
 
 
 def test_a_request_reads_a_completed_trial_once() -> None:
-    """requirement (V461): a goal resolves the trial its reference names and the review packet
+    """requirement: a goal resolves the trial its reference names and the review packet
     another names, which reads the same trial again; inside one request a completed trial is
     read once, a running one each time, and outside a request every read is new."""
 
@@ -855,7 +881,7 @@ def test_a_request_reads_a_completed_trial_once() -> None:
 
 
 def test_a_goal_wait_capped_before_its_first_read_is_pending(monkeypatch) -> None:
-    """regression (V563, the user's review at de555b07): `activity wait --goal G --max-wait 1`
+    """regression (the user's review at de555b07): `activity wait --goal G --max-wait 1`
     whose first goal read met a stopped Host answered `MAX_WAIT_REACHED` as OK, exit 0, where
     the Task waiter answers PENDING, exit 3. Both are pending."""
 
@@ -920,6 +946,7 @@ class _ScriptedHost:
         self.prerequisites = prerequisites
         self.previews = 0
         self.prepares = 0
+        self.second_pending = False
         self.prepared_request: dict[str, Any] | None = None
         self.failure: dict[str, Any] | None = None
         self.empty = False
@@ -1009,6 +1036,7 @@ class _ScriptedHost:
                     }
                 return {
                     "status": "EVIDENCE_PREPARATION_READY",
+                    "evidence_as_of": subject["evidence_as_of"],
                     "coverage": {"unit_count": 2},
                     **(
                         {
@@ -1037,6 +1065,15 @@ class _ScriptedHost:
                 self.prepares += 1
                 self.prepared_request = document
                 return {"status": "ADMITTED", "task_id": "t-evidence", "lifecycle": "QUEUED"}
+            case "EVIDENCE_PREPARE" if self.second_pending and self.prepares == 1:
+                assert document == self.prepared_request
+                self.second_pending = False
+                return {
+                    "status": "JOINED",
+                    "task_id": "t-evidence",
+                    "lifecycle": "RUNNING",
+                    "next_requests": {"resume": {"operation": "STATUS", "task_id": "t-evidence"}},
+                }
             case "EVIDENCE_PREPARE" | "EVIDENCE_CRO":
                 if document["operation"] == "EVIDENCE_PREPARE":
                     assert document == self.prepared_request
@@ -1056,6 +1093,8 @@ class _ScriptedHost:
                 return {"status": "REUSED_EXACT", "task_id": "t-evidence", "next_requests": units}
             case "WAKE_REGISTER":
                 return {"status": "WAKE_REGISTERED", "task_id": document["task_id"]}
+            case "ANALYST_READS":
+                return analyst_reads_answer(self.workspace, document["analyst_reads_bundles"])
             case "AGENT_BUNDLE_PREPARE":
                 return {
                     "status": "AGENT_BUNDLE_READY",
@@ -1078,8 +1117,9 @@ def _review_args(root: Path, update: str | None = None) -> SimpleNamespace:
     )
 
 
+@pytest.mark.parametrize("preparation", ["ready", "pending-again", "pending-at-cap"])
 def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_bundle(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preparation: str
 ) -> None:
     """requirement: one call sends the requests the
     answers offer, in their order, following each Task to its end, and returns every Analyst
@@ -1094,15 +1134,49 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
     marker.unlink()
     host = _ScriptedHost(tmp_path / "workspace")
+    host.second_pending = preparation != "ready"
+    if preparation == "pending-at-cap":
+        tick = 0.0
+        request = host.request
+
+        def running_at_cap(document, timeout=None):
+            nonlocal tick
+            body = request(document, timeout=timeout)
+            if document.get("task_id") == "t-evidence" and not host.second_pending:
+                tick = client_module.WAIT_CEILING
+                return {**body, "status": "RUNNING", "lifecycle": "RUNNING", "next_requests": {}}
+            return body
+
+        monkeypatch.setattr(client_module, "time", SimpleNamespace(monotonic=lambda: tick))
+        monkeypatch.setattr(host, "request", running_at_cap)
     host.failure = {
         "unit_id": "u2",
         "detail": "AAPL filing rejected heading_path",
         "next_action": "REPORT_THE_CAUSE_AND_READ_COVERAGE",
     }
     answer = client_module._review_steps(host, _review_args(tmp_path / "analysts"))  # type: ignore[arg-type]
+    if preparation == "pending-at-cap":
+        assert answer["wait_status"] == "MAX_WAIT_TASK_CONTINUES"
+        assert answer["wait_event"]["event"] == "MAX_WAIT_REACHED"
+        words = shlex.split(answer["wait_event"]["read"])
+        task = words.index("task")
+        assert words[task : task + 3] == ["task", "show", "t-evidence"]
+        assert answer["next_requests"] == {
+            "resume": {"operation": "STATUS", "task_id": "t-evidence"}
+        }
+        assert answer["book_review"]["stopped_at"] == "evidence_prepared"
+        assert not any(d["operation"] == "AGENT_BUNDLE_PREPARE" for d in host.sent)
+        return
     assert answer["evidence"].get("failed_units") == [host.failure]
+    if preparation == "pending-again":
+        assert answer["evidence"]["evidence_as_of"] == "2026-10-12T12:01:00+00:00"
+        assert answer["evidence"]["coverage"] is None
 
-    assert answer["status"] == "BOOK_REVIEW_READY" and answer["next_action"] == "DISPATCH_ANALYSTS"
+    # regression (a daily asked in its own words): two bundles ask the coded question first.
+    assert (answer["status"], answer["next_action"]) == ("BOOK_REVIEW_READY", "ASK_THE_PERSON_ONCE")
+    assert answer["person_questions"][0]["code"] == "review.analyst_reads"
+    assert "--bundles 2 " in answer["ask_now"][-1]
+    assert answer["detail"] == REVIEW_DETAIL["ASK_THE_PERSON_ONCE"]  # no Analyst starts yet
     assert [step["step"] for step in answer["steps"]] == [
         "controls",
         "book",
@@ -1113,11 +1187,18 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
         "evidence",
         "evidence_task",
         "evidence_prepared",
+        *(
+            ["evidence_prepared_task", "evidence_prepared"]
+            if preparation == "pending-again"
+            else []
+        ),
         "analyst_bundle",
         "analyst_bundle",
+        "analyst_reads",
     ]
-    # Its bundles are the prepared run's own; a later preview would pack other units.
-    assert host.previews == 1
+    # The second pending Task is read by its exact offers, without preparing a third time.
+    assert host.previews == (2 if preparation == "pending-again" else 1)
+    assert sum(d["operation"] == "EVIDENCE_PREPARE" for d in host.sent) == 2
     assert [bundle["unit"] for bundle in answer["analyst_bundles"]] == ["u1", "u2"]
     for bundle in answer["analyst_bundles"]:
         folder = Path(bundle["bundle_directory"])
@@ -1134,10 +1215,17 @@ def test_a_book_review_runs_the_book_prepares_evidence_and_writes_each_analyst_b
     assert answer["next_requests"] == {
         "review": {"operation": "EVIDENCE_CRO", "result_hash": "b" * 64}
     }
-    for _ in range(2):
+    set_analyst_reads(host.workspace, mode="SUBAGENTS", bundles=2, relayed_by=None)
+    for _ in range(2):  # the person's answer stands for later reviews within its count
         repeated = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+        assert "ask_now" not in repeated and repeated["analyst_reads"] == "SUBAGENTS"
+        assert repeated["next_action"] == "DISPATCH_ANALYSTS"
         assert repeated["evidence"]["prepared_task_id"] == "t-evidence"
         assert host.prepares == 1
+    set_analyst_reads(host.workspace, mode="IN_SESSION", bundles=2, relayed_by=None)
+    here = client_module._review_steps(host, _review_args(tmp_path / "analysts"))
+    assert here["detail"] == REVIEW_DETAIL[here["next_action"]]
+    assert here["next_action"] == "READ_EACH_BUNDLE_HERE"
     request, seen = host.request, []
 
     def moved(document, timeout=None):
@@ -1664,10 +1752,13 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Setup failures retry in this session; successful off-PATH discovery is read once."""
+    """Setup failures retry in this session; successful off-PATH discovery is read once; Codex's
+    trust of the project is the person's item, named with its one step."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
+    codex = Path(os.environ["CODEX_HOME"])  # this test's own Codex, which trusts no project yet
+    (tmp_path / ".git").mkdir()  # the project root Codex trusts
     monkeypatch.setattr(native_bridge, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
@@ -1683,6 +1774,12 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     words = client_refusal(code)
     assert (refused["failure_code"], refused["next_action"]) == (code, words.next_action)
     assert refused["detail"] == words.detail and host.goals.first_use() is None
+    assert set(refused["missing"]) == {"installed_leg", "retrieval_runtime", "project_trust"}
+    trust = refused["missing"]["project_trust"]
+    (step,) = trust["commands"]
+    assert trust["who_decides"] == "PERSON" and step.startswith("codex exec --trust")
+    key = json.dumps(trust["project_root"])  # the person runs the step; Codex records it so
+    (codex / "config.toml").write_text(f'[projects.{key}]\ntrust_level = "trusted"\n')
     tool, runtime = refused["missing"]["installed_leg"], refused["missing"]["retrieval_runtime"]
     assert (tool["who_decides"], runtime["who_decides"]) == ("AGENT", "AGENT")
     assert tool["commands"][0].endswith("install-tool") and "--bin" in tool["words"]

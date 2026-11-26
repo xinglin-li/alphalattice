@@ -143,12 +143,12 @@ const LiveFeatures = (() => {
       {object:true,id:p.plan_hash,facts:[[t('Input'),inputWords(p.input_binding_hash)]]});
     const rows=[[t('Definition revision'),mono(p.candidate_revision.revision_hash)],[t('Local definitions'),count(p.candidate_revision.features.length)],
       [t('Numerically changed columns'),w.base_compute_factor_ids.join(', ')||'0'],...(p.required_fields.length ? [[t('Required source fields'),p.required_fields.join(', ')]] : []),
-      ...(p.trial_baseline ? [[t('A trial runs against'),html`<span class="owner-text">${p.trial_baseline}</span>`]] : [])]; // V354: stated before any build
+      ...(p.trial_baseline ? [[t('A trial runs against'),html`<span class="owner-text">${p.trial_baseline}</span>`]] : [])]; // stated before any build
     return html`${head}${notice()}${panel(t('Properties'),t('Build reuses unchanged raw values and prepares only the local additions in one Task. The original input and global catalog stay unchanged; no Factor experiment or model training runs.'),
       html`${kv(rows,'kv-columns')}${codeRef(t('Exact change and impact'),{declaration:p.document,delta:p.delta,work:p.work})}`)}`;
   }
   /* ---- the values a build Task prepared: the Task's result, read as its page ---- */
-  // U52: the build's window against T0 beside its facts, every statement in the Facts (V347)
+  // the build's window against T0 beside its facts, every statement in the Facts
   const factsRefIf=(scope)=>LiveViews.temporalAll(scope) ? factsRef(t('Time and survivorship'),LiveViews.temporalAll(scope)) : '';
   function buildView() {
     const b=S.build, r=b.receipt, columns=b.columns || [], state=String(b.status || '').toLowerCase();

@@ -21,29 +21,20 @@ them.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import date, datetime
-from typing import Any, Final, Literal, Protocol, Self, get_args
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, Self, cast, get_args
 from uuid import UUID
 
-import numpy as np
-import numpy.typing as npt
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, create_model, model_validator
 
-from alphalattice.capabilities.portfolio_backtesting.metrics import (
-    evaluate_net_simple_return_path,
-)
-from alphalattice.evidence.alternative_evidence.analysis.contracts import (
-    AlternativeEvidenceAnalystAnswer,
-    EvidenceTopic,
-)
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.interface.local_application.portfolio_export import PortfolioExportManifest
+from alphalattice.interface.local_application.portfolio_research_fields import field_contract
 from alphalattice.interface.local_application.questions import (
     PersonConfirmation as PersonConfirmation,
-)
-from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
-    WatermarkAdvancementProgram,
-    WatermarkAdvancementReceipt,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     WORKSPACE_DEFAULT_STRATEGY_PACKAGE_ID,
@@ -60,20 +51,34 @@ from alphalattice.investment.portfolio_strategy_lab.application.contracts import
     PortfolioSupportCoverage,
     ScoreSourceMode,
 )
-from alphalattice.investment.portfolio_strategy_lab.application.controls import (
-    FULL_SUPPORT_SELECTION,
-    INSTALLED_PUBLIC_CONTROL_CATALOG,
-    PublicControlCatalog,
-    PublicControlDescriptor,
-)
-from alphalattice.investment.portfolio_strategy_lab.application.report_projection import (
-    project_dated_position,
-)
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
-from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
-    PortfolioReviewAnswer,
-)
 from alphalattice.protocols.actor_execution.bundles import AgentRole
+
+from .portfolio_request_fields import FIELD_OWNER, request_fields
+from .portfolio_request_fields.contracts import PortfolioResearchOperation, RequestFieldModel
+
+if TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
+
+    from alphalattice.investment.portfolio_strategy_lab.application.advancement import (
+        WatermarkAdvancementProgram,
+        WatermarkAdvancementReceipt,
+    )
+    from alphalattice.investment.portfolio_strategy_lab.application.controls import (
+        PublicControlCatalog,
+        PublicControlDescriptor,
+    )
+
+    from .portfolio_request_fields.goals import CommitteeMessage as CommitteeMessage
+    from .portfolio_request_fields.research import (
+        FactorCurationChoice as FactorCurationChoice,
+    )
+    from .portfolio_request_fields.research import (
+        FactorCurationRequest as FactorCurationRequest,
+    )
+    from .portfolio_request_fields.research import (
+        ResearchDeliveryCommentary as ResearchDeliveryCommentary,
+    )
 
 
 class LocalApplicationError(ValueError):
@@ -82,230 +87,7 @@ class LocalApplicationError(ValueError):
     allowed: list[str] | None = None  # the fields its operation takes
 
 
-class FactorCurationChoice(BaseModel):  # type: ignore[misc]
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    factor_id: str = Field(min_length=1)
-    role: Literal["CORE", "CONDITIONAL"]
-    rationale: str = Field(min_length=1, max_length=500)
-
-
-class FactorCurationRequest(BaseModel):  # type: ignore[misc]
-    """Actor intent and the report it answers, never caller-supplied authority."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    expected_receipt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    choices: tuple[FactorCurationChoice, ...]
-    limitations_acknowledged: tuple[str, ...]
-
-
-class ResearchDeliveryCommentary(BaseModel):  # type: ignore[misc]
-    """Attributed caller text, never a product-verified actor identity or decision."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    attribution: str = Field(min_length=1, max_length=160)
-    text: str = Field(min_length=1, max_length=20_000)
-
-
-class CommitteeMessage(BaseModel):  # type: ignore[misc]
-    """One message a committee member sends to its floor (`committee submit`)."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    kind: Literal["STANCE", "CHALLENGE", "REPLY", "PASS", "RULING", "VERDICT", "PERSON_ANSWER"]
-    """STANCE (blind first round), CHALLENGE, REPLY, PASS (a yielded turn); the PM's RULING,
-    VERDICT, the person's answer to what the PM handed them (PERSON_ANSWER)."""
-    text: str = Field(min_length=1, max_length=4000)
-    """Its words; a holding or point goes by its alias (H3, T2), never a number."""
-    targets: tuple[str, ...] = Field(default=(), max_length=16)
-    """The tension points (T1), holdings (H3) or messages (M4) it is about."""
-    reply_to: str | None = Field(default=None, pattern=r"^M[0-9]{1,4}$")
-    """The message it answers, which a REPLY (any message), a RULING (a challenge not yet
-    ruled) and a PERSON_ANSWER (an item the PM handed the person) name; no other kind."""
-    positions: dict[str, Literal["SUPPORT", "OBJECT", "RESERVE"]] = Field(
-        default_factory=dict, max_length=32
-    )
-    """A stance's position on each agenda point."""
-    outcome: (
-        Literal["ADOPT", "REJECT", "FOR_THE_PERSON", "PROCEED", "PROCEED_WITH_NOTES", "DECLINE"]
-        | None
-    ) = None
-    """Required of a RULING (ADOPT, REJECT, FOR_THE_PERSON) and the VERDICT (PROCEED,
-    PROCEED_WITH_NOTES, DECLINE, FOR_THE_PERSON); other kinds take none. A wrong shape is
-    refused with its correction."""
-
-
-type PortfolioResearchOperation = Literal[
-    "GOAL_SCHEMA",
-    "GOAL_LIST",
-    "GOAL_OPEN",
-    "GOAL_REVISE",
-    "GOAL_SHOW",
-    "GOAL_NARRATIVE",
-    "GOAL_PROFILE",
-    "GOAL_REFERENCE",
-    "GOAL_ATTACH",
-    "GOAL_NOTE",
-    "GOAL_EXPORT",
-    "GOAL_CONTINUE",
-    "GOAL_TAKE",
-    "GOAL_SUBMIT",
-    "GOAL_ABANDON",
-    "RESEARCH_HISTORY",
-    "EXPERIMENT_COMPARE",
-    "EXPERIMENT_ALPHA_COMPARE",
-    "EXPERIMENT_DELIVERY_EXPORT",
-    "RESEARCH_INPUTS",
-    "RESEARCH_INPUT_PLAN",
-    "RESEARCH_INPUT_CONFIRM",
-    "RESEARCH_INPUT_READBACK",
-    "MODEL_TRAINING_INPUT_PLAN",
-    "MODEL_TRAINING_INPUT_PREPARE",
-    "MODEL_TRAINING_INPUT_READBACK",
-    "FEATURE_CATALOG_CONTROLS",
-    "FEATURE_CATALOG_PLAN",
-    "FEATURE_CATALOG_READBACK",
-    "FEATURE_CATALOG_BUILD",
-    "FEATURE_CATALOG_BUILD_READBACK",
-    "FEATURE_TRIAL",
-    "FEATURE_REVIEW",
-    "FEATURE_ACTIVATE",
-    "FEATURE_DEACTIVATE",
-    "FEATURE_EXTENSIONS",
-    "FEATURE_TRIAL_READBACK",
-    "FEATURE_TRIALS",
-    "RESEARCH_STRATEGY_PLAN",
-    "RESEARCH_STRATEGY_CONTROLS",
-    "RESEARCH_STRATEGY_PREPARE",
-    "RESEARCH_STRATEGY_READBACK",
-    "RESEARCH_STRATEGY_INSTALL",
-    "EXPERIMENT_DRAFT",
-    "EXPERIMENT_PROMOTE",
-    "EXPERIMENT_CONTINUE",
-    "WORKSPACE_PREPARE_READBACK",
-    "WORKSPACE_PREPARE_PLAN",
-    "WORKSPACE_PREPARE_CONFIRM",
-    "STORAGE_CAP_SHOW",
-    "STORAGE_CAP_SET",
-    "STORAGE_READBACK",
-    "STORAGE_PLAN",
-    "STORAGE_CONFIRM",
-    "STORAGE_PIN",
-    "STORAGE_EVIDENCE_REBUILD",
-    "EXPERIMENT_CONTROLS",
-    "EXPERIMENT_DECLARATION_CONVERT",
-    "EXPERIMENT_LINK_RISK",
-    "EXPERIMENT_RISK_LINKS",
-    "EXPERIMENT_RISK_EXPORT",
-    "EXPERIMENT_PLAN",
-    "EXPERIMENT_PREVIEW_READBACK",
-    "EXPERIMENT_RUN",
-    "EXPERIMENTS",
-    "EXPERIMENT_READBACK",
-    "EXPERIMENT_SUMMARY",
-    "EXPERIMENT_REPLAY",
-    "EXPERIMENT_EXPORT",
-    "EXPERIMENT_CURATION",
-    "EXPERIMENT_CURATE",
-    "EXPERIMENT_HANDOFF_PREVIEW",
-    "EXPERIMENT_FOUNDATIONS",
-    "EXPERIMENT_FOUNDATION_PREVIEW",
-    "EXPERIMENT_FOUNDATION_SEAL",
-    "EXPERIMENT_FOUNDATION_READBACK",
-    "EXPERIMENT_FOUNDATION_SUMMARY",
-    "EXPERIMENT_FOUNDATION_EXPORT",
-    "EXPERIMENT_FOUNDATION_DRAFT",
-    "EXPERIMENT_PORTFOLIO_DRAFT",
-    "EXPERIMENT_VERIFY_ALL",
-    "CONTROLS",
-    "PLAN",
-    "RUN",
-    "STATUS",
-    "TASK_RECOVERY",
-    "TASK_GUARDIAN",
-    "TASK_INCIDENTS",
-    "TASK_REMEDIATE",
-    "RECOVER",
-    "TASKS",
-    "UPGRADE_OVERVIEW",
-    "UPGRADE_ACKNOWLEDGE",
-    "NETWORK_ACCESS",
-    "NETWORK_ACCESS_SET",
-    "EVIDENCE_CONSENT",
-    "EVIDENCE_CONSENT_SET",
-    "EVIDENCE_INSTALL",
-    "PENDING_DECISIONS",
-    "ACTIVITY_REFUSALS",
-    "CANCEL",
-    "RESULTS",
-    "REPORT",
-    "COMPARE",
-    "FREEZE",
-    "FINALIZATION",
-    "EXPORT",
-    "EVIDENCE_CRO",
-    "EVIDENCE_CRO_EXPORT",
-    "EVIDENCE_REFRESH",
-    "EVIDENCE_PREPARE",
-    "EVIDENCE_PREVIEW",
-    "EVIDENCE_PACKET",
-    "EVIDENCE_LEDGER",
-    "EVIDENCE_DOCUMENTS",
-    "EVIDENCE_CONTINUE",
-    "EVIDENCE_ANALYSIS_SUBMIT",
-    "EVIDENCE_SELECT",
-    "CRO_REVIEW",
-    "CRO_REVIEW_DOSSIER",
-    "CRO_REVIEW_FINDING",
-    "CRO_REVIEW_SUBMIT",
-    "AGENT_BUNDLE_PREPARE",
-    "AGENT_ANSWER_SUBMIT",
-    "DATA_UPDATE_PLAN",
-    "DATA_UPDATE_RUN",
-    "DATA_UPDATE_READBACK",
-    "DATA_CHANGE_CONFIRM",
-    "DATA_ISSUES",
-    "DATA_ISSUE_PREVIEW",
-    "DATA_ISSUE_CONFIRM",
-    "DATA_ISSUE_DELEGATE",
-    "DATA_ISSUE_REVOKE",
-    "STRATEGY_SCORE_PLAN",
-    "STRATEGY_SCORE_RUN",
-    "STRATEGY_SCORE_READBACK",
-    "STRATEGY_CALIBRATION_PLAN",
-    "STRATEGY_CALIBRATION_RUN",
-    "STRATEGY_CALIBRATION_READBACK",
-    "PORTFOLIO_UPDATE_PLAN",
-    "PORTFOLIO_UPDATE_RUN",
-    "PORTFOLIO_UPDATE_READBACK",
-    "PORTFOLIO_READBACK",
-    "RESEARCH_UPDATE_PLAN",
-    "RESEARCH_UPDATE_RUN",
-    "RESEARCH_UPDATE_READBACK",
-    "RESEARCH_UPDATE_AUTOMATION_READBACK",
-    "RESEARCH_UPDATE_AUTOMATION_CONFIGURE",
-    "WORKSPACE_SHOW",
-    "OPERATION_LIST",
-    "ACTIVITY_LIST",
-    "ACTIVITY_RECENT",
-    "EVENT_DECLARE",
-    "WAKE_REGISTER",
-    "SESSION_USAGE_READ",
-    "USAGE_READING",
-    "USAGE_READING_SET",
-    "CPU_BUDGET_SHOW",
-    "CPU_BUDGET_SET",
-    "HOST_STOP",
-    "WORKSPACE_BACKUP",
-    "WORKSPACE_BACKUPS",
-    "MODEL_EXTENSIONS",
-    "MODEL_ACTIVATE",
-    "MODEL_DEACTIVATE",
-    "STRATEGY_ACTIVATE",
-    "STRATEGY_DEACTIVATE",
-    "COMMITTEE_OPEN",
-    "COMMITTEE_SUBMIT",
-    "COMMITTEE_DAILY_SET",
-    "COMMITTEE_READ",
-]
+_REQUEST_OPERATIONS = frozenset(get_args(PortfolioResearchOperation.__value__))
 
 _RECOVERY_CONTEXT_OPERATIONS = frozenset(
     {
@@ -346,6 +128,7 @@ PERSON_ONLY: Final[frozenset[str]] = frozenset(
         "EVIDENCE_CONSENT_SET",
         "EVIDENCE_INSTALL",
         "USAGE_READING_SET",
+        "ANALYST_READS_SET",
         "COMMITTEE_DAILY_SET",
         "STORAGE_CONFIRM",
         "STORAGE_PIN",
@@ -415,6 +198,18 @@ class PortfolioResearchOperationRequest:
     history_cursor: str | None = None
     history_entry_id: str | None = None
     history_kind: str | None = None
+    experience_hypothesis: str | None = None
+    experience_method: str | None = None
+    experience_workspace: str | None = None
+    experience_trial: str | None = None
+    experience_width: str | None = None
+    experience_known_at: str | None = None
+    experience_budget: int | None = None
+    experience_query: str | None = None
+    experience_limit: int | None = None
+    review_subject: str | None = None
+    review_verdict: str | None = None
+    review_note: dict[str, Any] | None = None
     left_task_id: UUID | None = None
     right_task_id: UUID | None = None
     left_candidate_id: str | None = None
@@ -564,6 +359,8 @@ class PortfolioResearchOperationRequest:
     evidence_setup: str | None = None
     usage_reading_enabled: bool | None = None
     committee_daily_enabled: bool | None = None
+    analyst_reads_mode: Literal["SUBAGENTS", "IN_SESSION"] | None = None
+    analyst_reads_bundles: int | None = None
     automation_package_ids: tuple[str, ...] | None = None
     upgrade_set_hash: str | None = None
     """The installed identity set an upgrade overview showed, when acknowledging it."""
@@ -579,6 +376,8 @@ class PortfolioResearchOperationRequest:
     wait_seconds: float | None = None
     """How long a Task's status may wait for the Task to move on (a stage, a lifecycle)
     before it answers; at most 20 seconds. A follow asks with it instead of polling."""
+    status_section: Literal["storage"] | None = None
+    """The optional Task status section to compute on an explicit read."""
     after: str | None = None
     limit: int | None = None
     watch: tuple[UUID, ...] | None = None
@@ -598,6 +397,7 @@ class PortfolioResearchOperationRequest:
     committee_key: str | None = None
     committee_message: CommitteeMessage | None = None
     committee_seen: int | None = None
+    goal_seen: str | None = None
 
     def __post_init__(self) -> None:
         """Validate operation fields and normalize delivery commentary."""
@@ -615,6 +415,8 @@ class PortfolioResearchOperationRequest:
         ):
             raise LocalApplicationError("research_delivery.question_invalid")
         if self.delivery_commentary is not None:
+            from .portfolio_request_fields import research  # lazy: delivery commentary
+
             if len(self.delivery_commentary) > 16:
                 raise LocalApplicationError("research_delivery.commentary_limit_exceeded")
             object.__setattr__(
@@ -622,17 +424,20 @@ class PortfolioResearchOperationRequest:
                 "delivery_commentary",
                 tuple(
                     value
-                    if isinstance(value, ResearchDeliveryCommentary)
-                    else ResearchDeliveryCommentary.model_validate(value)
+                    if isinstance(value, research.ResearchDeliveryCommentary)
+                    else research.ResearchDeliveryCommentary.model_validate(value)
                     for value in self.delivery_commentary
                 ),
             )
-        if self.committee_message is not None and not isinstance(
-            self.committee_message, CommitteeMessage
-        ):
-            object.__setattr__(
-                self, "committee_message", CommitteeMessage.model_validate(self.committee_message)
-            )
+        if self.committee_message is not None:
+            from .portfolio_request_fields import goals  # lazy: committee message
+
+            if not isinstance(self.committee_message, goals.CommitteeMessage):
+                object.__setattr__(
+                    self,
+                    "committee_message",
+                    goals.CommitteeMessage.model_validate(self.committee_message),
+                )
         if self.person_confirmation is not None and not isinstance(
             self.person_confirmation, PersonConfirmation
         ):
@@ -739,10 +544,11 @@ class PortfolioResearchOperationRequest:
                     ) from error
                 if parsed.tzinfo is None:
                     raise LocalApplicationError("alternative_evidence.view_interval_invalid")
-        if self.view_topic is not None and self.view_topic not in {
-            value.value for value in EvidenceTopic
-        }:
-            raise LocalApplicationError("alternative_evidence.view_topic_unknown")
+        if self.view_topic is not None:
+            from ...evidence.alternative_evidence.analysis import contracts  # lazy: evidence topic
+
+            if self.view_topic not in {value.value for value in contracts.EvidenceTopic}:
+                raise LocalApplicationError("alternative_evidence.view_topic_unknown")
         if self.wait_seconds is not None and (
             isinstance(self.wait_seconds, bool)
             or not isinstance(self.wait_seconds, int | float)
@@ -760,6 +566,22 @@ class PortfolioResearchOperationRequest:
                 raise LocalApplicationError("alternative_evidence.cutoff_invalid") from error
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise LocalApplicationError("alternative_evidence.cutoff_invalid")
+        if self.experience_known_at is not None:
+            try:
+                parsed = datetime.fromisoformat(str(self.experience_known_at))
+            except ValueError as error:
+                raise LocalApplicationError("experience.known_at_invalid") from error
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise LocalApplicationError("experience.known_at_invalid")
+        if self.experience_query is not None and (
+            type(self.experience_query) is not str
+            or not 1 <= len(self.experience_query) <= 512
+            or (
+                self.experience_limit is not None
+                and (type(self.experience_limit) is not int or not 1 <= self.experience_limit <= 20)
+            )
+        ):
+            raise LocalApplicationError("experience.recall_query_invalid")
         if self.review_read_at is not None:
             try:
                 parsed = datetime.fromisoformat(str(self.review_read_at))
@@ -767,14 +589,15 @@ class PortfolioResearchOperationRequest:
                 raise LocalApplicationError("chief_risk_officer.review_read_at_invalid") from error
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise LocalApplicationError("chief_risk_officer.review_read_at_invalid")
-        if self.experiment_curation is not None and not isinstance(
-            self.experiment_curation, FactorCurationRequest
-        ):
-            object.__setattr__(
-                self,
-                "experiment_curation",
-                FactorCurationRequest.model_validate(self.experiment_curation),
-            )
+        if self.experiment_curation is not None:
+            from .portfolio_request_fields import research  # lazy: Factor curation
+
+            if not isinstance(self.experiment_curation, research.FactorCurationRequest):
+                object.__setattr__(
+                    self,
+                    "experiment_curation",
+                    research.FactorCurationRequest.model_validate(self.experiment_curation),
+                )
         if self.experiment_document is not None and not isinstance(self.experiment_document, dict):
             raise LocalApplicationError("research_experiment.document_not_a_mapping")
         if self.experiment_yaml is not None and not isinstance(self.experiment_yaml, str):
@@ -797,1036 +620,16 @@ class PortfolioResearchOperationRequest:
         operation: PortfolioResearchOperation,
     ) -> tuple[frozenset[str], frozenset[str]]:
         """The same required/allowed fields drive validation and discovery."""
-        data_issue_fields = frozenset(
-            {
-                "data_issue_case_token",
-                "data_issue_evidence_hash",
-                "data_issue_option_id",
-                "data_issue_option_hash",
-            }
-        )
-        requirements = {
-            "GOAL_LIST": (
-                frozenset(),
-                frozenset({"agent_session", "history_limit", "history_cursor", "task_id"}),
-            ),
-            "GOAL_OPEN": (
-                frozenset({"goal_declaration"}),
-                frozenset({"goal_id", "goal_declaration", "change_reason"}),
-            ),
-            # Bound sessions default to their Goal.
-            "GOAL_REVISE": (
-                frozenset({"goal_declaration", "change_reason"}),
-                frozenset({"goal_id", "goal_hash", "goal_declaration", "change_reason"}),
-            ),
-            **{
-                # A saved revision or the current head.
-                op: (frozenset(), frozenset({"goal_id", "goal_hash"}))
-                for op in ("GOAL_SHOW", "GOAL_NARRATIVE", "GOAL_PROFILE", "GOAL_EXPORT")
-            },
-            "GOAL_REFERENCE": (
-                frozenset({"goal_hash", "goal_reference_id"}),
-                frozenset({"goal_hash", "goal_reference_id"}),
-            ),
-            **{
-                op: (
-                    frozenset({field, "change_reason"}),
-                    frozenset({"goal_id", "goal_hash", field, "change_reason"}),
-                )
-                for op, field in (
-                    ("GOAL_ATTACH", "goal_reference"),
-                    ("GOAL_NOTE", "goal_statement"),
-                )
-            },
-            "GOAL_CONTINUE": (
-                frozenset({"goal_hash", "task_id"}),
-                frozenset({"goal_hash", "task_id", "research_input_id", "input_binding_hash"}),
-            ),
-            "GOAL_TAKE": (frozenset({"goal_id"}), frozenset({"goal_id"})),
-            "GOAL_SUBMIT": (
-                frozenset({"goal_submission"}),
-                frozenset({"goal_id", "goal_hash", "goal_submission"}),
-            ),
-            "GOAL_ABANDON": (
-                frozenset({"change_reason"}),
-                frozenset({"goal_id", "change_reason"}),
-            ),
-            "DATA_ISSUES": (frozenset(), frozenset({"history_limit", "history_cursor"})),
-            "DATA_ISSUE_PREVIEW": (data_issue_fields, data_issue_fields),
-            "DATA_ISSUE_CONFIRM": (
-                data_issue_fields,
-                data_issue_fields | {"data_issue_grant_hash"},
-            ),
-            "DATA_ISSUE_DELEGATE": (
-                data_issue_fields | {"task_id"},
-                data_issue_fields | {"task_id"},
-            ),
-            "DATA_ISSUE_REVOKE": (
-                frozenset({"data_issue_grant_hash"}),
-                frozenset({"data_issue_grant_hash"}),
-            ),
-            "RESEARCH_HISTORY": (
-                frozenset(),
-                frozenset(
-                    {
-                        "history_limit",
-                        "history_cursor",
-                        "history_entry_id",
-                        "history_kind",
-                        "strategy_package_id",
-                        "research_input_id",
-                        "input_binding_hash",
-                    }
-                ),
-            ),
-            "EXPERIMENT_COMPARE": (
-                frozenset({"left_task_id", "right_task_id"}),
-                frozenset({"left_task_id", "right_task_id", "portfolio_session"}),
-            ),
-            "EXPERIMENT_ALPHA_COMPARE": (
-                frozenset(
-                    {
-                        "left_task_id",
-                        "right_task_id",
-                        "left_candidate_id",
-                        "right_candidate_id",
-                    }
-                ),
-                frozenset(
-                    {
-                        "left_task_id",
-                        "right_task_id",
-                        "left_candidate_id",
-                        "right_candidate_id",
-                    }
-                ),
-            ),
-            "EXPERIMENT_DELIVERY_EXPORT": (
-                # A study's book or a date's published positions (`ALTERNATIVES`).
-                frozenset(),
-                frozenset(
-                    {
-                        "task_id",
-                        "experiment_receipt_hash",
-                        "portfolio_session",
-                        "update_task_id",
-                        "update_publication_hash",
-                        "position_basis",
-                        "left_task_id",
-                        "right_task_id",
-                        "risk_report_hash",
-                        "review_publication_hash",
-                        "delivery_question",
-                        "delivery_commentary",
-                    }
-                ),
-            ),
-            "EXPERIMENT_PORTFOLIO_DRAFT": (
-                frozenset({"task_id", "candidate_id"}),
-                frozenset({"task_id", "candidate_id"}),
-            ),
-            "EXPERIMENT_FOUNDATION_PREVIEW": (
-                frozenset(
-                    {"task_id", "curation_receipt_hash", "research_input_id", "input_binding_hash"}
-                ),
-                frozenset(
-                    {"task_id", "curation_receipt_hash", "research_input_id", "input_binding_hash"}
-                ),
-            ),
-            **{
-                op: (
-                    frozenset({"foundation_admission_hash"}),
-                    frozenset({"foundation_admission_hash"}),
-                )
-                for op in (
-                    "EXPERIMENT_FOUNDATION_SEAL",
-                    "EXPERIMENT_FOUNDATION_READBACK",
-                    "EXPERIMENT_FOUNDATION_SUMMARY",
-                    "EXPERIMENT_FOUNDATION_EXPORT",
-                    "EXPERIMENT_FOUNDATION_DRAFT",
-                )
-            },
-            "RESEARCH_INPUT_PLAN": (
-                frozenset({"research_input_id"}),
-                frozenset({"research_input_id"}),
-            ),
-            "RESEARCH_INPUT_CONFIRM": (
-                frozenset({"research_input_plan_hash"}),
-                frozenset({"research_input_plan_hash"}),
-            ),
-            "RESEARCH_INPUT_READBACK": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "EXPERIMENT_DRAFT": (
-                frozenset({"task_id"}),
-                frozenset({"task_id", "input_binding_hash", "research_input_id"}),
-            ),
-            "EXPERIMENT_PROMOTE": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "EXPERIMENT_CONTINUE": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "ACTIVITY_REFUSALS": (frozenset(), frozenset({"view_last_days"})),
-            "NETWORK_ACCESS_SET": (frozenset({"network_enabled"}), frozenset({"network_enabled"})),
-            "EVIDENCE_INSTALL": (frozenset({"evidence_setup"}), frozenset({"evidence_setup"})),
-            "EVIDENCE_CONSENT_SET": (
-                frozenset({"evidence_documents_per_issuer"}),
-                frozenset(
-                    {
-                        "evidence_documents_per_issuer",
-                        "evidence_total_documents",
-                        "evidence_total_bytes",
-                    }
-                ),
-            ),
-            "WORKSPACE_PREPARE_READBACK": (frozenset(), frozenset({"task_id"})),
-            "WORKSPACE_PREPARE_CONFIRM": (
-                frozenset({"preparation_plan_hash"}),
-                frozenset({"preparation_plan_hash", "data_issue_grant_hash"}),
-            ),
-            "STORAGE_CAP_SET": (frozenset({"storage_cap_bytes"}), frozenset({"storage_cap_bytes"})),
-            "STORAGE_CONFIRM": (frozenset({"storage_plan_hash"}), frozenset({"storage_plan_hash"})),
-            "STORAGE_PIN": (
-                frozenset({"input_binding_hash", "input_pinned"}),
-                frozenset({"input_binding_hash", "input_pinned"}),
-            ),
-            "STORAGE_EVIDENCE_REBUILD": (
-                frozenset({"evidence_index_id"}),
-                frozenset({"evidence_index_id"}),
-            ),
-            "EXPERIMENT_CONTROLS": (
-                frozenset(),
-                frozenset(
-                    {
-                        "research_input_id",
-                        "input_binding_hash",
-                        "experiment_kind",
-                        "component_id",
-                        "feature_preparation_hash",
-                        "model_lifecycle",
-                    }
-                ),
-            ),
-            "FEATURE_CATALOG_CONTROLS": (
-                frozenset({"input_binding_hash"}),
-                frozenset({"input_binding_hash", "feature_plan_hash"}),
-            ),
-            "FEATURE_CATALOG_BUILD": (
-                frozenset({"feature_plan_hash"}),
-                frozenset({"feature_plan_hash", "feature_output"}),
-            ),
-            "FEATURE_CATALOG_BUILD_READBACK": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "FEATURE_TRIAL": (
-                frozenset({"feature_plan_hash", "task_id"}),
-                frozenset({"feature_plan_hash", "task_id"}),
-            ),
-            "FEATURE_TRIAL_READBACK": (
-                frozenset({"feature_trial_id"}),
-                frozenset({"feature_trial_id"}),
-            ),
-            "FEATURE_REVIEW": (
-                frozenset({"feature_plan_hash", "feature_factor_id"}),
-                frozenset({"feature_plan_hash", "feature_factor_id"}),
-            ),
-            "FEATURE_ACTIVATE": (
-                frozenset({"feature_plan_hash", "feature_factor_id"}),
-                frozenset({"feature_plan_hash", "feature_factor_id"}),
-            ),
-            "FEATURE_DEACTIVATE": (
-                frozenset({"feature_factor_id"}),
-                frozenset({"feature_factor_id"}),
-            ),
-            # Every declared formula factor, a page at a time (U56).
-            "FEATURE_EXTENSIONS": (frozenset(), frozenset({"extensions_page"})),
-            "FEATURE_CATALOG_PLAN": (
-                frozenset({"feature_document"}),
-                frozenset({"feature_document"}),
-            ),
-            "FEATURE_CATALOG_READBACK": (
-                frozenset({"feature_plan_hash"}),
-                frozenset({"feature_plan_hash"}),
-            ),
-            "MODEL_TRAINING_INPUT_PLAN": (
-                frozenset({"research_input_id", "component_id"}),
-                frozenset(
-                    {"research_input_id", "input_binding_hash", "component_id", "model_lifecycle"}
-                ),
-            ),
-            "RESEARCH_STRATEGY_PLAN": (
-                frozenset({"experiment_document"}),
-                frozenset({"experiment_document"}),
-            ),
-            "RESEARCH_STRATEGY_PREPARE": (
-                frozenset({"experiment_plan_hash"}),
-                frozenset({"experiment_plan_hash"}),
-            ),
-            "RESEARCH_STRATEGY_READBACK": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "RESEARCH_STRATEGY_INSTALL": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "MODEL_TRAINING_INPUT_PREPARE": (
-                frozenset({"experiment_plan_hash"}),
-                frozenset({"experiment_plan_hash"}),
-            ),
-            "MODEL_TRAINING_INPUT_READBACK": (
-                frozenset({"task_id"}),
-                frozenset({"task_id"}),
-            ),
-            "EXPERIMENT_LINK_RISK": (
-                frozenset({"task_id", "risk_task_id"}),
-                frozenset({"task_id", "risk_task_id", "risk_report_scope"}),
-            ),
-            "EXPERIMENT_RISK_LINKS": (
-                frozenset({"task_id"}),
-                frozenset({"task_id"}),
-            ),
-            "EXPERIMENT_RISK_EXPORT": (
-                frozenset({"task_id", "risk_report_hash"}),
-                frozenset({"task_id", "risk_report_hash"}),
-            ),
-            "EXPERIMENT_PLAN": (
-                frozenset(),
-                frozenset(
-                    {
-                        "research_input_id",
-                        "input_binding_hash",
-                        "experiment_document",
-                        "experiment_yaml",
-                        "origin_task_id",
-                        "factor_task_id",
-                        "curation_receipt_hash",
-                    }
-                ),
-            ),
-            "EXPERIMENT_RUN": (
-                frozenset({"experiment_plan_hash"}),
-                frozenset({"experiment_plan_hash"}),
-            ),
-            "EXPERIMENT_PREVIEW_READBACK": (
-                frozenset({"experiment_plan_hash"}),
-                frozenset({"experiment_plan_hash"}),
-            ),
-            "EXPERIMENT_SUMMARY": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "EXPERIMENT_READBACK": (
-                frozenset({"task_id"}),
-                frozenset({"task_id", "portfolio_session"}),
-            ),
-            "EXPERIMENT_REPLAY": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "EXPERIMENT_EXPORT": (
-                frozenset({"task_id"}),
-                frozenset({"task_id", "portfolio_session"}),
-            ),
-            "EXPERIMENT_CURATION": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "EXPERIMENT_CURATE": (
-                frozenset({"task_id", "experiment_curation"}),
-                frozenset({"task_id", "experiment_curation"}),
-            ),
-            "EXPERIMENT_HANDOFF_PREVIEW": (
-                frozenset({"task_id", "curation_receipt_hash"}),
-                frozenset(
-                    {
-                        "task_id",
-                        "curation_receipt_hash",
-                        "input_binding_hash",
-                        "research_input_id",
-                        "experiment_document",
-                        "experiment_yaml",
-                    }
-                ),
-            ),
-            "DATA_CHANGE_CONFIRM": (
-                frozenset({"update_plan_hash"}),
-                frozenset({"update_plan_hash"}),
-            ),
-            "RESEARCH_UPDATE_AUTOMATION_CONFIGURE": (
-                frozenset({"automation_enabled", "automation_package_ids"}),
-                frozenset({"automation_enabled", "automation_package_ids"}),
-            ),
-            "RESEARCH_UPDATE_PLAN": (
-                frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id", "observed_through", "positions_date"}),
-            ),
-            "RESEARCH_UPDATE_RUN": (
-                frozenset({"update_plan_hash"}),
-                frozenset({"update_plan_hash"}),
-            ),
-            # A Task, or a strategy's latest update, never another strategy's (V595).
-            "RESEARCH_UPDATE_READBACK": (
-                frozenset(),
-                frozenset({"task_id", "strategy_package_id"}),
-            ),
-            # The client's own commands, operations like any other (V266, OP1).
-            "OPERATION_LIST": (frozenset(), frozenset({"strategy_package_id", "schema_operation"})),
-            "ACTIVITY_LIST": (frozenset(), frozenset({"after", "limit", "watch"})),
-            "ACTIVITY_RECENT": (frozenset(), frozenset({"limit"})),
-            "EVENT_DECLARE": (frozenset({"event"}), frozenset({"event"})),
-            "COMMITTEE_OPEN": (frozenset({"update_task_id"}), frozenset({"update_task_id"})),
-            "COMMITTEE_SUBMIT": (
-                frozenset(
-                    {"update_task_id", "committee_role", "committee_key", "committee_message"}
-                ),
-                frozenset(
-                    {"update_task_id", "committee_role", "committee_key", "committee_message"}
-                ),
-            ),
-            "COMMITTEE_READ": (
-                frozenset({"update_task_id"}),
-                frozenset({"update_task_id", "committee_role", "committee_key", "committee_seen"}),
-            ),
-            "WAKE_REGISTER": (
-                frozenset({"task_id", "wake_thread", "wake_read"}),
-                frozenset({"task_id", "wake_thread", "wake_read", "wake_codex_path"}),
-            ),
-            "USAGE_READING_SET": (frozenset({"usage_reading_enabled"}),) * 2,
-            "COMMITTEE_DAILY_SET": (frozenset({"committee_daily_enabled"}),) * 2,
-            # One of the three, which the owner holds to: a setting a request (V100).
-            "CPU_BUDGET_SET": (
-                frozenset(),
-                frozenset({"cpu_budget", "tasks_waiting", "tasks_running"}),
-            ),
-            # The held state's backup outside the workspace (V209); its restore is the
-            # client's own, with no Host (V328).
-            "WORKSPACE_BACKUP": (frozenset(), frozenset({"backup_generations_kept"})),
-            "MODEL_ACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
-            "MODEL_DEACTIVATE": (frozenset({"model_id"}), frozenset({"model_id"})),
-            # A person runs a reviewed research book's strategy forward, or stops it (LS1).
-            "STRATEGY_ACTIVATE": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "STRATEGY_DEACTIVATE": (
-                frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id"}),
-            ),
-            "PORTFOLIO_UPDATE_PLAN": (
-                frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id", "prepared_input_hash", "observed_through"}),
-            ),
-            "PORTFOLIO_UPDATE_RUN": (
-                frozenset({"update_plan_hash"}),
-                frozenset({"update_plan_hash"}),
-            ),
-            # A Task, or a strategy's latest update, never another strategy's (V595).
-            "PORTFOLIO_UPDATE_READBACK": (
-                frozenset(),
-                frozenset({"task_id", "strategy_package_id"}),
-            ),
-            "STRATEGY_CALIBRATION_PLAN": (
-                frozenset({"strategy_package_id", "score_snapshot_hash"}),
-                frozenset({"strategy_package_id", "score_snapshot_hash"}),
-            ),
-            "STRATEGY_CALIBRATION_RUN": (
-                frozenset({"calibration_plan_hash"}),
-                frozenset({"calibration_plan_hash"}),
-            ),
-            # A Task, or a strategy's latest, never another strategy's (V595).
-            "STRATEGY_CALIBRATION_READBACK": (
-                frozenset(),
-                frozenset({"task_id", "strategy_package_id"}),
-            ),
-            "STRATEGY_SCORE_PLAN": (
-                frozenset({"strategy_package_id"}),
-                frozenset({"strategy_package_id", "formation_session", "component_id"}),
-            ),
-            "STRATEGY_SCORE_RUN": (frozenset({"score_plan_hash"}), frozenset({"score_plan_hash"})),
-            # A Task, or a strategy's latest, never another strategy's (V595).
-            "STRATEGY_SCORE_READBACK": (frozenset(), frozenset({"task_id", "strategy_package_id"})),
-            "DATA_UPDATE_RUN": (frozenset({"update_plan_hash"}), frozenset({"update_plan_hash"})),
-            "DATA_UPDATE_READBACK": (frozenset(), frozenset({"task_id"})),
-            "CONTROLS": (frozenset(), frozenset({"strategy_package_id"})),
-            "PLAN": (frozenset({"spec"}), frozenset({"spec"})),
-            "RUN": (frozenset({"spec"}), frozenset({"spec"})),
-            "STATUS": (frozenset({"task_id"}), frozenset({"task_id", "wait_seconds"})),
-            "TASK_RECOVERY": (frozenset({"task_id"}), frozenset({"task_id"})),
-            "TASK_REMEDIATE": (
-                frozenset({"task_id", "incident_key", "remedy"}),
-                frozenset({"task_id", "incident_key", "remedy", "expected_task_hash"}),
-            ),
-            # A confirmation may carry the Task version it was made against; the owner
-            # refuses to act on any other version instead of acting on whatever the Task became.
-            "RECOVER": (frozenset({"task_id"}), frozenset({"task_id", "expected_task_hash"})),
-            "TASKS": (
-                frozenset(),
-                frozenset({"agent_session", "history_limit", "history_cursor"}),
-            ),
-            "UPGRADE_ACKNOWLEDGE": (
-                frozenset({"upgrade_set_hash"}),
-                frozenset({"upgrade_set_hash"}),
-            ),
-            "CANCEL": (frozenset({"task_id"}), frozenset({"task_id", "expected_task_hash"})),
-            "RESULTS": (frozenset(), frozenset({"task_id"})),
-            "REPORT": (frozenset({"result_hash"}), frozenset({"result_hash", "portfolio_session"})),
-            "PORTFOLIO_READBACK": (
-                frozenset({"task_id"}),
-                frozenset({"task_id", "portfolio_session", "performance", "portfolio_scope"}),
-            ),
-            "EXPERIMENT_DECLARATION_CONVERT": (
-                frozenset(),
-                frozenset({"experiment_document", "experiment_yaml"}),
-            ),
-            "COMPARE": (
-                frozenset({"left_result_hash", "right_result_hash"}),
-                frozenset({"left_result_hash", "right_result_hash"}),
-            ),
-            "FREEZE": (frozenset({"result_hash"}), frozenset({"result_hash"})),
-            "FINALIZATION": (
-                frozenset({"candidate_hash"}),
-                frozenset({"candidate_hash"}),
-            ),
-            "EXPORT": (frozenset({"result_hash"}), frozenset({"result_hash"})),
-            # The Evidence & CRO operations name at most one sealed book; with no
-            # book named the owner picks the workspace default.
-            "EVIDENCE_CRO": (
-                frozenset(),
-                frozenset(
-                    {
-                        "result_hash",
-                        "handoff_hash",
-                        "review_publication_hash",
-                        "citation_entity_id",
-                        "citation_unit_id",
-                        "citation_page",
-                        "evidence_detail",
-                        "view_entity_id",
-                        "view_topic",
-                        "view_last_days",
-                    }
-                ),
-            ),
-            "EVIDENCE_CRO_EXPORT": (
-                frozenset(),
-                frozenset(
-                    {
-                        "result_hash",
-                        "handoff_hash",
-                        "review_publication_hash",
-                        "prior_review_publication_hash",
-                        "citation_entity_id",
-                        "citation_unit_id",
-                        "citation_page",
-                    }
-                ),
-            ),
-            "EVIDENCE_REFRESH": (frozenset(), frozenset({"result_hash", "handoff_hash"})),
-            # A captured preparation intent carries its cutoff and binding; a
-            # request without them prepares as of now.
-            "EVIDENCE_PREPARE": (
-                frozenset(),
-                frozenset(
-                    {"result_hash", "handoff_hash", "evidence_as_of", "preparation_binding_hash"}
-                ),
-            ),
-            "EVIDENCE_PREVIEW": (frozenset(), frozenset({"result_hash", "handoff_hash"})),
-            # The book's ledger is read a page of groups at a time.
-            "EVIDENCE_LEDGER": (
-                frozenset(),
-                frozenset({"result_hash", "handoff_hash", "ledger_page"}),
-            ),
-            # The workspace's retained documents, every issuer's, a page at a time (A6).
-            "EVIDENCE_DOCUMENTS": (frozenset(), frozenset({"documents_page"})),
-            # A packet is one preparation's, or one unit's of a coverage run;
-            # the unit rides with the Task id, and the answer names it back.
-            # A part of a packet's delivery names its part, its budget and the
-            # context it continues; a continuation for another packet is stale.
-            "EVIDENCE_PACKET": (
-                frozenset({"task_id"}),
-                frozenset(
-                    {
-                        "task_id",
-                        "evidence_unit_id",
-                        "result_hash",
-                        "handoff_hash",
-                        "delivery_part",
-                        "delivery_budget_bytes",
-                        "analysis_context_hash",
-                        "evidence_detail",
-                        "view_entity_id",
-                        "view_topic",
-                        "view_last_days",
-                        "view_from",
-                        "view_to",
-                    }
-                ),
-            ),
-            # One more bounded source-reading session over a prepared packet:
-            # names the receipt and span set the packet sealed and the
-            # cumulative allowance; never a page, never a position.
-            "EVIDENCE_CONTINUE": (
-                frozenset(
-                    {
-                        "task_id",
-                        "continuation_of",
-                        "continuation_spans",
-                        "session_limit",
-                        "window_limit",
-                    }
-                ),
-                frozenset(
-                    {
-                        "task_id",
-                        "evidence_unit_id",
-                        "continuation_of",
-                        "continuation_spans",
-                        "session_limit",
-                        "window_limit",
-                        "result_hash",
-                        "handoff_hash",
-                    }
-                ),
-            ),
-            "EVIDENCE_ANALYSIS_SUBMIT": (
-                frozenset({"task_id", "analysis_context_hash", "analysis_answer"}),
-                frozenset(
-                    {
-                        "task_id",
-                        "evidence_unit_id",
-                        "analysis_context_hash",
-                        "analysis_answer",
-                        "result_hash",
-                        "handoff_hash",
-                    }
-                ),
-            ),
-            "CRO_REVIEW": (frozenset(), frozenset({"result_hash", "handoff_hash"})),
-            "CRO_REVIEW_DOSSIER": (
-                frozenset(),
-                frozenset(
-                    {
-                        "result_hash",
-                        "handoff_hash",
-                        "delivery_part",
-                        "delivery_budget_bytes",
-                        "review_dossier_hash",
-                        "review_read_at",
-                    }
-                ),
-            ),
-            "CRO_REVIEW_FINDING": (
-                frozenset({"finding_handle"}),
-                frozenset(
-                    {
-                        "finding_handle",
-                        "review_dossier_hash",
-                        "review_read_at",
-                        "review_publication_hash",
-                        "result_hash",
-                        "handoff_hash",
-                    }
-                ),
-            ),
-            "CRO_REVIEW_SUBMIT": (
-                frozenset(
-                    {
-                        "review_dossier_hash",
-                        "review_policy_hash",
-                        "review_schema_hash",
-                        "review_answer",
-                    }
-                ),
-                frozenset(
-                    {
-                        "review_dossier_hash",
-                        "review_policy_hash",
-                        "review_schema_hash",
-                        "review_read_at",
-                        "review_answer",
-                        "result_hash",
-                        "handoff_hash",
-                    }
-                ),
-            ),
-            # A bundle for one agent role: the Analyst's names its prepared
-            # packet (Task and unit), the CRO's the book; the other specialists
-            # name one retained Task. An answer names only the bundle's directory;
-            # the Host holds its assignment and exact permitted references.
-            "AGENT_BUNDLE_PREPARE": (
-                frozenset({"agent_role", "bundle_directory"}),
-                frozenset(
-                    {
-                        "agent_role",
-                        "bundle_directory",
-                        "task_id",
-                        "evidence_unit_id",
-                        "result_hash",
-                        "handoff_hash",
-                    }
-                ),
-            ),
-            "AGENT_ANSWER_SUBMIT": (
-                frozenset({"bundle_directory", "agent_answer"}),
-                frozenset({"bundle_directory", "agent_answer", "committee_key"}),
-            ),
-            # Choosing a review's analysis alone must name a publication; the book is optional.
-            "EVIDENCE_SELECT": (
-                frozenset({"analysis_publication_hash"}),
-                frozenset({"analysis_publication_hash", "result_hash", "handoff_hash"}),
-            ),
-        }
-        # An operation the table does not name takes no field.
-        required, allowed = requirements.get(operation, (frozenset(), frozenset()))
-        if operation in {
-            "EVIDENCE_CRO",
-            "EVIDENCE_PREPARE",
-            "EVIDENCE_PREVIEW",
-            "EVIDENCE_PACKET",
-            "EVIDENCE_LEDGER",
-            "EVIDENCE_CONTINUE",
-            "EVIDENCE_ANALYSIS_SUBMIT",
-            "EVIDENCE_REFRESH",
-            "EVIDENCE_SELECT",
-            "CRO_REVIEW",
-            "CRO_REVIEW_DOSSIER",
-            "CRO_REVIEW_FINDING",
-            "CRO_REVIEW_SUBMIT",
-            "EVIDENCE_CRO_EXPORT",
-            "AGENT_BUNDLE_PREPARE",
-        }:
-            allowed |= {
-                "update_task_id",
-                "update_publication_hash",
-                "position_basis",
-                "experiment_task_id",
-                "experiment_receipt_hash",
-                "portfolio_session",
-            }
-        if operation in _RECOVERY_CONTEXT_OPERATIONS:
-            allowed |= {"recovery_task_id", "recovery_task_hash"}
-        if operation in PERSON_DECISIONS:
-            allowed |= {"person_confirmation"}
-        return required, frozenset(allowed)
+        return field_contract(operation, _RECOVERY_CONTEXT_OPERATIONS, PERSON_DECISIONS)
 
 
-class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
+class _RequestDocument(RequestFieldModel):
     """Actor-neutral document; field docstrings feed `alphalattice schema show` (SC3)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, use_attribute_docstrings=True)
 
     operation: PortfolioResearchOperation
     """The operation asked for; `alphalattice schema show <name>` lists its fields."""
-    schema_operation: PortfolioResearchOperation | None = None
-    """Only this operation's request schema and fields."""
-    goal_id: UUID | None = None
-    """The goal, by the id its GOAL_OPEN answered with."""
-    goal_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The goal's version as last read; a goal that moved since refuses the change."""
-    goal_reference_id: str | None = Field(default=None, min_length=1, max_length=64)
-    """The reference ID saved in the exact goal revision; only that reference is verified."""
-    goal_declaration: dict[str, Any] | None = None
-    """The goal as written: its statement, scope and completion rule (`goal schema`)."""
-    goal_reference: dict[str, Any] | None = None
-    """What to attach to the goal: a Task, a study, a result or a publication, by reference."""
-    goal_statement: dict[str, Any] | None = None
-    """A note for the goal's record, written by the agent working for it."""
-    goal_submission: dict[str, Any] | None = None
-    """The completion document claiming the goal is met, naming its evidence."""
-    change_reason: str | None = None
-    """Why the goal changes, kept in its record beside the change."""
-    history_limit: int | None = Field(default=None, ge=1, le=50, strict=True)
-    """How many entries one page reads, 1 to 50."""
-    history_cursor: str | None = None
-    """Where a list reads on: the `next_cursor` its previous page answered."""
-    history_entry_id: str | None = Field(default=None, json_schema_extra={"reference": "issued"})
-    """One research history entry, by the id the history listed."""
-    history_kind: str | None = None
-    """Only the history entries of this kind."""
-    left_task_id: UUID | None = None
-    """The first of two studies to compare, by its Task."""
-    right_task_id: UUID | None = None
-    """The second of two studies to compare, by its Task."""
-    left_candidate_id: str | None = Field(default=None, min_length=1)
-    """The first of two Alpha candidates to compare."""
-    right_candidate_id: str | None = Field(default=None, min_length=1)
-    """The second of two Alpha candidates to compare."""
-    delivery_question: str | None = Field(default=None, min_length=1, max_length=2400)
-    """The research question a delivery answers, in the researcher's words."""
-    delivery_commentary: tuple[ResearchDeliveryCommentary, ...] | None = Field(
-        default=None, max_length=16
-    )
-    """The researcher's comments a delivery carries, each on the part it names."""
-    research_input_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research input plan to confirm, by the hash its PLAN answered."""
-    origin_task_id: UUID | None = None
-    """The study a new plan continues from, by its Task."""
-    factor_task_id: UUID | None = None
-    """The Factor study an Alpha or Foundation plan builds on, by its Task."""
-    preparation_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The workspace preparation plan to confirm, by the hash its PLAN answered."""
-    data_issue_case_token: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The data issue, by the case token the issue list gave."""
-    data_issue_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The evidence the issue was shown with; an issue that moved is refused."""
-    data_issue_option_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{2,119}$")
-    """The option chosen for the data issue, one of those it offered."""
-    data_issue_option_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The chosen option's hash as offered; a changed option is refused."""
-    data_issue_grant_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A person's recorded grant for a data decision, by its hash."""
-    storage_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The storage clean-up plan to confirm, by the hash its PLAN answered."""
-    evidence_index_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence retrieval index to rebuild, by the id the storage view listed."""
-    input_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research input's version, by its binding hash; with `research_input_id` it names the
-    data a study reads."""
-    input_pinned: bool | None = Field(default=None, strict=True)
-    """true keeps the research input's version from clean-up; false lets clean-up release it."""
-    research_input_id: str | None = None
-    """The research input, by its id (RESEARCH_INPUTS lists them)."""
-    experiment_document: dict[str, Any] | None = None
-    """The study's declaration as a document, as `study controls` or `study draft`
-    writes it."""
-    feature_document: dict[str, Any] | None = None
-    """A Feature definition as a document, for the Feature catalog to plan."""
-    feature_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A Feature catalog plan, by the hash its PLAN answered."""
-    feature_preparation_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared Feature input whose controls a study reads, by its hash."""
-    feature_output: Literal["RAW_VALUES", "PREPROCESSED_VALUES"] | None = None
-    """What a Feature build writes: `RAW_VALUES`, or `PREPROCESSED_VALUES` after the catalog's
-    preprocessing."""
-    experiment_kind: str | None = None
-    """The study kind whose controls to show, as `study controls` lists them; Factor when
-    omitted."""
-    risk_task_id: UUID | None = None
-    """The Risk study to link, by its Task."""
-    risk_report_hash: str | None = None
-    """A Risk report, by its hash, to export or deliver."""
-    experiment_yaml: str | None = None
-    """The study's declaration as YAML text; send it or `experiment_document`, not both."""
-    experiment_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A saved plan, by the hash its PLAN answered."""
-    risk_report_scope: Literal["POST_OBSERVED_PORTFOLIO_WINDOW"] | None = None
-    """`POST_OBSERVED_PORTFOLIO_WINDOW` links the Risk report over the Portfolio's observed
-    window."""
-    experiment_curation: FactorCurationRequest | None = None
-    """The Factor curation decision: which factors go on, and why."""
-    curation_receipt_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Factor curation decision, by its receipt hash."""
-    foundation_admission_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Foundation, by its admission hash."""
-    candidate_id: str | None = Field(default=None, min_length=1)
-    """The Alpha candidate a Portfolio draft is built from."""
-    portfolio_session: str | None = None
-    """The session a dated view reads, as YYYY-MM-DD; for a book, names the book with the other
-    book fields, as a book's offered requests fill them."""
-    performance: Literal["latest"] | None = None
-    """`latest` reads this exact book's latest retained Forward composite;
-    omitted reads its saved report."""
-    portfolio_scope: Literal["holdings"] | None = None
-    """`holdings` reads only this saved date's positions, without its Forward report."""
-    spec: dict[str, object] | None = None
-    """The Portfolio book's controls (`strategy-book controls` lists them); those left out keep
-    their defaults."""
-    strategy_package_id: str | None = Field(default=None, min_length=1)
-    """The installed strategy package, by its id."""
-    component_id: str | None = Field(default=None, min_length=1)
-    """The strategy component, by its id."""
-    model_lifecycle: Literal["LIGHT", "FULL"] | None = None
-    """A component's model lifecycle: `LIGHT`, the default, or `FULL` by name."""
-    model_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
-    """An Alpha model, by the id its declaration names (`model list` lists them)."""
-    task_id: UUID | None = None
-    """The Task, by its id."""
-    expected_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Task's version as last read; a Task that moved since refuses the request."""
-    recovery_task_id: UUID | None = None
-    """The stopped Task whose owner replan this existing planner/admission continues."""
-    recovery_task_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The exact stopped Task version named by `recovery_task_id`."""
-    incident_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Guanyin incident, by the key TASK_INCIDENTS listed."""
-    remedy: Literal["CANCEL", "RECOVER", "REPLAN"] | None = None
-    """The remedy to perform, one the incident offers: `CANCEL`, `RECOVER` or `REPLAN`."""
-    result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A Portfolio result, by its hash; for a book, names the book with the other book fields, as
-    a book's offered requests fill them."""
-    left_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The first of two Portfolio results to compare."""
-    right_result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The second of two Portfolio results to compare."""
-    candidate_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The frozen candidate to finalize, by its hash."""
-    handoff_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The research handoff a book comes from. Names the book with the other book fields, as a
-    book's offered requests fill them."""
-    update_task_id: UUID | None = None
-    """The Portfolio update Task a book comes from. Names the book with the other book fields, as
-    a book's offered requests fill them."""
-    experiment_task_id: UUID | None = None
-    """The Portfolio study Task a book comes from. Names the book with the other book fields, as
-    a book's offered requests fill them."""
-    experiment_receipt_hash: str | None = None
-    """The Portfolio study's result, by its receipt hash. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    update_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Portfolio update's publication a book comes from. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    position_basis: str | None = None
-    """The positions a book's update published them on. Names the book with the other book
-    fields, as a book's offered requests fill them."""
-    review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A published CRO review, by its hash."""
-    analysis_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A published Evidence analysis, by its hash."""
-    review_dossier_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The CRO dossier a review answers, by its hash."""
-    review_policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The review policy the CRO answers under, as the dossier named it."""
-    review_schema_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The review answer's schema, as the dossier named it."""
-    review_read_at: str | None = Field(default=None, min_length=1, max_length=64)
-    """When the review's dossier was read, as its bundle or first part sealed it."""
-    review_answer: PortfolioReviewAnswer | dict[str, Any] | None = None
-    """The schema is the answer's, so capabilities describe it; an answer the
-    schema would refuse is still carried, as written, for the Host to name
-    each problem by item."""
-    analysis_context_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence packet's context an analysis answers, by its hash."""
-    analysis_answer: AlternativeEvidenceAnalystAnswer | dict[str, Any] | None = None
-    """The Analyst's answer to an Evidence packet."""
-    agent_role: AgentRole | None = None
-    """Whose bundle to prepare: `ANALYST`, `CRO`, `ALPHA`, `DATA`, `FACTOR`,
-    `PORTFOLIO` or `RISK`. The five research specialists name a retained Task."""
-    bundle_directory: str | None = Field(default=None, min_length=1, max_length=1024)
-    """Where the agent's bundle is written, and its answer read back."""
-    agent_answer: dict[str, Any] | None = None
-    """An answer to the named bundle as written. Analyst and CRO retain their
-    domain schemas; the other specialists supply bounded `text` and exact
-    `references` listed in the bundle. The Host checks shape and bindings,
-    never scientific content, and names each problem."""
-    evidence_as_of: str | None = Field(default=None, min_length=1, max_length=64)
-    """The time Evidence is prepared as of, in ISO 8601."""
-    preparation_binding_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The Evidence preparation's binding, by its hash."""
-    evidence_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
-    """One Evidence unit, by its id (u01, u02 ...)."""
-    delivery_part: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which part of an answer delivered in parts to read, from 1."""
-    delivery_budget_bytes: int | None = Field(default=None, ge=1, strict=True)
-    """The most bytes one delivered part may hold."""
-    evidence_detail: str | None = Field(
-        default=None,
-        pattern=r"^(litigation_inventory|session_windows|topic_coverage|time_view)$",
-    )
-    """Which detail of the packet to read: `litigation_inventory`, `session_windows`,
-    `topic_coverage` or `time_view`; `EVIDENCE_CRO` also takes `time_view` for the
-    published reading."""
-    view_entity_id: str | None = Field(default=None, min_length=1, max_length=32)
-    """Only this entity's Evidence."""
-    view_topic: str | None = Field(default=None, pattern=r"^[A-Z_]{1,40}$")
-    """Only this topic's Evidence."""
-    view_last_days: int | None = Field(default=None, ge=1, le=3660, strict=True)
-    """Only the last this many days."""
-    view_from: str | None = Field(default=None, min_length=1, max_length=64)
-    """The first day read, as YYYY-MM-DD."""
-    view_to: str | None = Field(default=None, min_length=1, max_length=64)
-    """The last day read, as YYYY-MM-DD."""
-    ledger_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the Evidence ledger to read, from 1."""
-    documents_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the workspace's retained documents to read, from 1."""
-    citation_entity_id: str | None = Field(default=None, min_length=1, max_length=32)
-    """The entity whose citation to open."""
-    citation_unit_id: str | None = Field(default=None, pattern=r"^u[0-9]{2,3}$")
-    """The Evidence unit the citation belongs to."""
-    citation_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the cited source to read, from 1."""
-    continuation_of: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared packet a continuation reads on from, by the receipt it sealed."""
-    continuation_spans: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The packet's sealed span set, by its hash."""
-    session_limit: int | None = Field(default=None, ge=1, le=99, strict=True)
-    """The most reading sessions the continued chain may hold."""
-    window_limit: int | None = Field(default=None, ge=1, le=4096, strict=True)
-    """The most windows the continued chain may read."""
-    finding_handle: str | None = Field(default=None, pattern=r"^FIND-[A-Z0-9-]{1,80}$")
-    """A CRO finding, by its handle (FIND-...)."""
-    prior_review_publication_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """An earlier CRO review the export compares with."""
-    update_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """An update plan, by the hash its PLAN answered."""
-    score_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A score plan, by the hash its PLAN answered."""
-    score_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The scores a calibration reads, by their snapshot hash."""
-    calibration_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A calibration plan, by the hash its PLAN answered."""
-    prepared_input_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """The prepared input a Portfolio update reads, by its hash."""
-    observed_through: str | None = None
-    """The last session the update observes, as YYYY-MM-DD."""
-    positions_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
-    """The trade date whose positions the update is for, as YYYY-MM-DD; decided at the close
-    before it."""
-    formation_session: str | None = None
-    """The session the scores are formed on, as YYYY-MM-DD."""
-    automation_enabled: bool | None = Field(default=None, strict=True)
-    """true lets the daily research update run by itself; false stops it."""
-    network_enabled: bool | None = Field(default=None, strict=True)
-    """true lets this workspace reach the network; false keeps it offline."""
-    evidence_documents_per_issuer: int | None = Field(default=None, strict=True)
-    """The SEC filings official acquisition may take per issuer; the default budget is three."""
-    evidence_total_documents: int | None = Field(default=None, strict=True)
-    """The SEC filings official acquisition may take in all; the default budget's when absent."""
-    evidence_total_bytes: int | None = Field(default=None, strict=True)
-    """The bytes official acquisition may read in all; the default budget's when absent."""
-    evidence_setup: str | None = Field(default=None, min_length=1, max_length=4096)
-    """The Evidence setup's options, as its script takes them, for the running Host to install
-    (`--acquire-sec --entities AAPL --network-consent --install`)."""
-    usage_reading_enabled: bool | None = Field(default=None, strict=True)
-    """true lets the Host read the bound agent Sessions' own files for usage; false reads
-    nothing."""
-    committee_daily_enabled: bool | None = Field(default=None, strict=True)
-    """true: each daily update's review convenes the committee; false: the PM's view."""
-    automation_package_ids: tuple[str, ...] | None = None
-    """The strategy packages the automatic research update covers."""
-    upgrade_set_hash: str | None = None
-    """The installed identity set an upgrade overview showed, when acknowledging it."""
-    feature_trial_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    """A feature trial, by the ID its request answered with."""
-    feature_factor_id: str | None = Field(default=None, min_length=1, max_length=160)
-    """A formula factor a research plan declares, which its review and activation name."""
-    extensions_page: int | None = Field(default=None, ge=1, le=100_000, strict=True)
-    """Which page of the declared formula factors to read, from 1."""
-    agent_session: str | None = Field(default=None, min_length=1, max_length=200)
-    """An agent session: a Task listing shows the Tasks it submitted, 50 to a page, and a goal
-    listing the goals whose record names it."""
-    wait_seconds: float | None = Field(default=None, gt=0, le=20)
-    """How long a Task's status may wait for the Task to move on; at most 20 seconds."""
-    after: str | None = Field(default=None, min_length=1, max_length=256)
-    """Where the activity feed reads on: the cursor its previous page answered."""
-    limit: int | None = Field(default=None, ge=1, le=200, strict=True)
-    """The most a page reads: 1 to 200 rows of the activity feed, 1 to 50 recent groups."""
-    watch: tuple[UUID, ...] | None = Field(default=None, max_length=16)
-    """Tasks, by id, whose current projection the activity page joins; a short id the compact
-    display gave reads as its whole id."""
-    event: dict[str, Any] | None = None
-    """The event this client declares about its own work (`ExternalActivityEventDocument`)."""
-    wake_thread: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{8,128}$")
-    """The Codex thread to wake (`CODEX_THREAD_ID`)."""
-    wake_read: str | None = Field(
-        default=None, min_length=1, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
-    )
-    """The exact read or rerun command, with its next free output path."""
-    wake_codex_path: str | None = Field(
-        default=None, max_length=4096, pattern=r"^[^\x00-\x1f\x7f]+$"
-    )
-    """The client's Codex executable; the Host validates it or uses its PATH."""
-    storage_cap_bytes: str | None = Field(default=None, min_length=1, max_length=32)
-    """`auto`, or a positive whole byte cap for managed writes; changes no result identity."""
-    cpu_budget: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or a whole number of cores a book's preparation may use."""
-    tasks_waiting: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or how many Tasks may wait behind the running one."""
-    tasks_running: str | None = Field(default=None, min_length=1, max_length=16)
-    """`auto`, or how many Tasks that may run beside others run at once, within the budget."""
-    backup_generations_kept: int | None = Field(default=None, ge=1, le=100, strict=True)
-    """How many backup generations to keep: seven unless a request keeps another count."""
-    committee_role: Literal["PM", "ALPHA", "RISK", "CRO"] | None = None
-    """The committee member this request speaks or reads for: the PM (the lead), ALPHA, RISK
-    or CRO."""
-    committee_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
-    """That member's key: a specialist's is in its bundle, the PM's in its own open's answer."""
-    committee_message: CommitteeMessage | None = None
-    """One committee message, as its YAML or JSON file."""
-    committee_seen: int | None = Field(default=None, ge=0, le=9999, strict=True)
-    """The last floor message the reader has seen, by its number (M4 is 4)."""
-    person_confirmation: PersonConfirmation | None = None
-    """The person's yes to this decision, asked in one line and relayed whole: `--person-said`
-    their words and `--asked` your question, which the client binds to this request. Only a
-    person's decision takes it, once."""
-    # Deliberately no actor field. Who is choosing is decided by the bridge this envelope
-    # arrives at; a relayed yes is recorded as the person's, relayed by the agent's session.
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_operation_fields(self) -> Self:
@@ -1836,17 +639,83 @@ class PortfolioResearchRequestDocument(BaseModel):  # type: ignore[misc]
 
     def to_operation_request(self) -> PortfolioResearchOperationRequest:
         """Validate typed fields."""
-        return PortfolioResearchOperationRequest(
-            **{
-                field.name: getattr(self, field.name)
-                for field in fields(PortfolioResearchOperationRequest)
-            }
+        values: dict[str, Any] = {
+            field.name: getattr(self, field.name, None)
+            for field in fields(PortfolioResearchOperationRequest)
+            if field.name != "operation"
+        }
+        return PortfolioResearchOperationRequest(operation=self.operation, **values)
+
+
+_DOCUMENTS_HELD = 256
+"""Request document models kept: above one per operation's admitted fields plus the full set."""
+
+
+@lru_cache(maxsize=_DOCUMENTS_HELD)
+def _request_document(fields_to_read: frozenset[str]) -> type[_RequestDocument]:
+    definitions = {}
+    for name, family in FIELD_OWNER.items():
+        if name in fields_to_read:
+            field = request_fields(family)[name]
+            definitions[name] = (field.annotation, deepcopy(field))
+    return cast(
+        type[_RequestDocument],
+        create_model(
+            "PortfolioResearchRequestDocument",
+            __base__=_RequestDocument,
+            __doc__=_RequestDocument.__doc__,
+            __module__=__name__,
+            **definitions,
+        ),
+    )
+
+
+def full_request_document() -> type[_RequestDocument]:
+    """The complete, ordered request contract used for discovery."""
+    return _request_document(frozenset(FIELD_OWNER))
+
+
+def request_document_schema(fields_to_read: frozenset[str]) -> dict[str, Any]:
+    """Describe a selected operation using just its declared request fields."""
+    return _request_document(fields_to_read).model_json_schema()
+
+
+def validate_request_document(value: Mapping[str, Any]) -> _RequestDocument:
+    """Use a single operation's admitted fields for regular requests."""
+    operation = value.get("operation")
+    if isinstance(operation, str) and operation in _REQUEST_OPERATIONS:
+        _, allowed = PortfolioResearchOperationRequest.field_contract(
+            cast(PortfolioResearchOperation, operation)
         )
+        if allowed.union({"operation"}).issuperset(value):
+            model = _request_document(allowed)
+            return model.model_validate(value)
+    # Complete validation keeps the order and kinds of refusals across operations.
+    return full_request_document().model_validate(value)
+
+
+def __getattr__(name: str) -> object:
+    """Keep typed request and nested document imports available on demand."""
+    if name == "PortfolioResearchRequestDocument":
+        return full_request_document()
+    if name == "CommitteeMessage":
+        from .portfolio_request_fields import goals  # lazy: committee document
+
+        return goals.CommitteeMessage
+    if name in {"FactorCurationChoice", "FactorCurationRequest", "ResearchDeliveryCommentary"}:
+        from .portfolio_request_fields import research  # lazy: research document
+
+        return getattr(research, name)
+    raise AttributeError(name)
+
+
+if TYPE_CHECKING:
+    PortfolioResearchRequestDocument = _RequestDocument
 
 
 def decision_hash(request: Mapping[str, object]) -> str:
     """Hash the request a relayed yes binds."""
-    document = PortfolioResearchRequestDocument.model_validate(
+    document = validate_request_document(
         {
             name: value
             for name, value in request.items()
@@ -2183,7 +1052,11 @@ class LocalPortfolioResearchService:
     @property
     def controls(self) -> PublicControlCatalog:
         """The surface a UI renders. It is not built here, only handed on."""
-        return INSTALLED_PUBLIC_CONTROL_CATALOG
+        from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: catalog
+            controls,
+        )
+
+        return controls.INSTALLED_PUBLIC_CONTROL_CATALOG
 
     def plan(self, spec: PortfolioResearchSpec) -> PortfolioPlanPreview:
         """Return a portfolio study preview without running it."""
@@ -2273,6 +1146,12 @@ class LocalPortfolioResearchService:
         economics: PortfolioEconomicLedger | None = None,
     ) -> dict[str, object]:
         """A dated view of this saved report, never a new window or numerical RUN."""
+        import numpy as np  # lazy: only position readback constructs this array
+
+        from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: readback
+            report_projection,
+        )
+
         store = self.application.ledger
         ledger = execution or store.load_execution(report.execution_ledger_hash)
         day = portfolio_session or report.window_guard.selected_end
@@ -2290,7 +1169,7 @@ class LocalPortfolioResearchService:
         if economics.economic_ledger_hash != report.economic_ledger_hash:
             raise LocalApplicationError("portfolio_application.report_economic_binding_mismatch")
         row = ledger.formation_sessions.index(day)
-        position = project_dated_position(
+        position = report_projection.project_dated_position(
             ledger=ledger,
             economics=economics,
             formation_row=row,
@@ -2337,6 +1216,12 @@ class LocalPortfolioResearchService:
         The selected window is descriptive. This read changes no report, model,
         cost or benchmark and delegates all return arithmetic to Backtesting.
         """
+        import numpy as np  # lazy: only this performance read evaluates the selected return window
+
+        from alphalattice.capabilities.portfolio_backtesting import (  # lazy: performance metrics
+            metrics as backtest_metrics,
+        )
+
         if (
             execution.ledger_hash != report.execution_ledger_hash
             or execution.program_hash != report.program_hash
@@ -2376,7 +1261,9 @@ class LocalPortfolioResearchService:
                 for name in names
             }
         else:
-            values = evaluate_net_simple_return_path(net_simple_returns=net).model_dump()
+            values = backtest_metrics.evaluate_net_simple_return_path(
+                net_simple_returns=net
+            ).model_dump()
             for name in names:
                 value = float(values[name])
                 if np.isfinite(value):
@@ -2572,7 +1459,7 @@ class LocalPortfolioResearchService:
             originating_task_id=(None if originating_task is None else str(originating_task)),
             execution_mode=spec.execution_mode,
             controls=tuple(report.control_receipt.selected),
-            # The product's own command, the spec saved from `spec_document` (OP2, V401).
+            # The product's own command, the spec saved from `spec_document` (OP2).
             command="alphalattice --workspace <dir> strategy-book run --file <spec.json>",
             spec_document=_spec_document(spec),
         )
@@ -2783,9 +1670,13 @@ def spec_from_document(
     every control. Reading it here is what lets a document rebuilt from a
     published result land on the same spec as the one that produced it.
     """
+    from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: spec controls
+        controls,
+    )
+
     catalog_defaults = {
         control.control_id: control.default_display
-        for control in INSTALLED_PUBLIC_CONTROL_CATALOG.controls
+        for control in controls.INSTALLED_PUBLIC_CONTROL_CATALOG.controls
     }
 
     def _given(key: str) -> str | None:
@@ -2799,7 +1690,7 @@ def spec_from_document(
 
     def _date(key: str) -> date | None:
         value = _given(key)
-        if value is None or value == FULL_SUPPORT_SELECTION:
+        if value is None or value == controls.FULL_SUPPORT_SELECTION:
             return None
         return date.fromisoformat(value)
 

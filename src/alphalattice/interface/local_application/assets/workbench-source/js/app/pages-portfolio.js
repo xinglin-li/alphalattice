@@ -86,7 +86,7 @@ const Portfolio = (() => {
     const headers = HOLDINGS_HEADERS(weightLabel).filter((h) => !hidden.includes(h?.label ?? h));
     const values = holdingValues(), {shown, start, page, pages} = pageOf(values, app.holdingsPage) ;
     app.holdingsPage = page;
-    const foot = pages > 1 ? pager({total: values.length, one: '{n} entry', many: '{n} entries', page, pages, prev: ['holding-page-prev', ''], next: ['holding-page-next', '']}) : ''; // N6: one page of holdings needs no foot (the tab says how many)
+    const foot = pages > 1 ? pager({total: values.length, one: '{n} entry', many: '{n} entries', page, pages, prev: ['holding-page-prev', ''], next: ['holding-page-next', '']}) : ''; // one page of holdings needs no foot (the tab says how many)
     const completeWeights = values.length > 0 && values.every((x) => x.current_weight != null && Number.isFinite(Number(x.current_weight)));
     const total = ['', t('Total'), ...(sectorShown() ? [''] : []), ...(mappingShown() ? [''] : []), completeWeights ? num(values.reduce((sum,x)=>sum+Number(x.current_weight),0)*100, 'percent') : '', '',''];
     return html`${table(headers, holdingsRows(shown, start), '', {classes:uniformAbsence() ? 'compact holdings-compact' : 'compact', report:true, spread:true, countLine:false, count:values.length, foot:total})}${foot}`;

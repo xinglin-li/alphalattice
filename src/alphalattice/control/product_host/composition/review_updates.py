@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.product_host.composition import committee
 from alphalattice.control.product_host.composition.decision_advancement import (
     SCHEMA as DECISION_ADVANCEMENT_SCHEMA,
@@ -23,6 +28,49 @@ from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
     PortfolioUpdatePublication,
 )
+
+_BUNDLE_TASK: ContextVar[UUID | None] = ContextVar("review_bundle_task", default=None)
+
+
+type _UpdateRead = tuple[str, str, str, str]
+
+_UPDATE_READS: ContextVar[BoundedMemo[_UpdateRead, dict[str, object]] | None] = ContextVar(
+    "review_update_reads", default=None
+)
+
+
+@contextmanager
+def update_readbacks() -> Iterator[None]:
+    """Carry the current review request's exact verified updates to its readers."""
+    token = _UPDATE_READS.set(BoundedMemo())
+    try:
+        yield
+    finally:
+        _UPDATE_READS.reset(token)
+
+
+@contextmanager
+def bundle_update(task_id: UUID) -> Iterator[None]:
+    """Allow the bundle's nested reads to reuse its sealed book's input projection."""
+    token = _BUNDLE_TASK.set(task_id)
+    try:
+        yield
+    finally:
+        _BUNDLE_TASK.reset(token)
+
+
+def bundle_book_key(registry: Any, task_id: UUID) -> Hashable | None:
+    """Name the exact completed Task evidence that this bundle can reuse."""
+    if _BUNDLE_TASK.get() != task_id:
+        return None
+    task = registry.task(task_id)
+    if task.lifecycle is not TaskLifecycle.SUCCEEDED:
+        return None
+    stages = tuple(
+        (item.stage_id, item.lifecycle, tuple(v.content_hash for v in item.evidence))
+        for item in registry.work_items(task_id)
+    )
+    return task_id, task.record_hash, stages
 
 
 def read_review_update(
@@ -71,8 +119,19 @@ def read_review_update(
         body = dict(readback)
     elif task.lifecycle is TaskLifecycle.SUCCEEDED:
         key = (type(reader).__name__, str(task_id), task.record_hash, publication_hash)
-        verify = partial(reader.readback, task_id, publication_hash=publication_hash)
-        body = operations.readbacks.read(key, verify)
+        verify = (
+            partial(operations._advancement_readback, task_id, publication_hash=publication_hash)
+            if task.input.input_schema_id == DECISION_ADVANCEMENT_SCHEMA
+            else partial(reader.readback, task_id, publication_hash=publication_hash)
+        )
+        held = _UPDATE_READS.get()
+        if held is None:
+            body = operations.readbacks.read(key, verify)
+        else:
+            read = held.get(key)
+            if read is None:
+                read = held[key] = operations.readbacks.read(key, verify)
+            body = deepcopy(read)
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)
     plan = cast(dict[str, object], task.input.payload["plan"])

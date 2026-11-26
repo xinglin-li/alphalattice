@@ -29,11 +29,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
 
-from alphalattice.kernel.shared_kernel.environment import held_offline
-from alphalattice.kernel.shared_kernel.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.environment import held_offline
+from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -329,6 +329,31 @@ class _OutputStores:
     evidence: ResearchEvidenceStore
 
 
+class TrialRecorder(Protocol):
+    """Where a sealed run's trial is recorded: its start before the Desk runs, then its end."""
+
+    def started(self, sealed: SealedSubmission) -> object:
+        """Record the run's start; what it returns is handed to `ended`."""
+
+    def ended(
+        self, trial: object, evidence: ResearchExecutionEvidence | None, *, reused: bool = False
+    ) -> None:
+        """Record the run's end: its evidence, or None when the Desk raised; `reused` when the
+        evidence is an earlier run's, read back rather than produced by this one."""
+
+
+class _NoTrials:
+    """No history: a workflow composed outside a Host records nothing."""
+
+    def started(self, sealed: SealedSubmission) -> object:
+        return None
+
+    def ended(
+        self, trial: object, evidence: ResearchExecutionEvidence | None, *, reused: bool = False
+    ) -> None:
+        return None
+
+
 class ResearchProgramWorkflow:
     """Orchestrate the three commands over an injected dispatcher and executors."""
 
@@ -340,6 +365,7 @@ class ResearchProgramWorkflow:
         workspace_root: Path,
         source_workspace: Path,
         verifiers: tuple[DeskEvidenceVerifier, ...] = (),
+        trials: TrialRecorder | None = None,
     ) -> None:
         """Install Desk execution and verification owners for one workspace.
 
@@ -349,6 +375,7 @@ class ResearchProgramWorkflow:
             workspace_root: Root allowed to hold output workspaces.
             source_workspace: Source workspace that outputs must not overlap.
             verifiers: Explicitly installed Desk evidence verifiers.
+            trials: Where each sealed run's trial is recorded; nothing when absent.
 
         Raises:
             AuthoringError: If executor or verifier kinds are duplicated.
@@ -368,6 +395,7 @@ class ResearchProgramWorkflow:
         # baseline is caller input, so trusting it to describe the source would
         # let a document authorize writes into the workspace it reads.
         self._source_workspace = Path(source_workspace)
+        self._trials: TrialRecorder = trials or _NoTrials()
 
     def validate(self, document: Mapping[str, Any]) -> object:
         """Validate an authored document against the installed Desk kinds."""
@@ -748,14 +776,19 @@ class ResearchProgramWorkflow:
         it proved identical, which is the only difference the two ever had. Every Desk's
         call runs held offline, as its envelope declares, whatever the workspace allows.
         """
-        with held_offline():
-            result = executor.execute(
-                program=program,
-                document=sealed.document,
-                authority=sealed.authority,
-                output_workspace=outputs.root,
-                recorder=recorder,
-            )
+        trial = self._trials.started(sealed)
+        try:
+            with held_offline():
+                result = executor.execute(
+                    program=program,
+                    document=sealed.document,
+                    authority=sealed.authority,
+                    output_workspace=outputs.root,
+                    recorder=recorder,
+                )
+        except BaseException:
+            self._trials.ended(trial, None)
+            raise
         evidence = ResearchExecutionEvidence.create(
             kind=program.kind,
             program_hash=program.program_hash,
@@ -778,13 +811,13 @@ class ResearchProgramWorkflow:
                 exclude=observation_fields
             ):
                 raise AuthoringError("research_authoring.evidence_identity_conflict")
-            return (
-                self._verified_readback(
-                    program=program, stored=previous, authority=sealed.authority, outputs=outputs
-                ),
-                sealed.binding,
+            readback = self._verified_readback(
+                program=program, stored=previous, authority=sealed.authority, outputs=outputs
             )
+            self._trials.ended(trial, previous, reused=True)
+            return readback, sealed.binding
         outputs.evidence.publish(evidence)
+        self._trials.ended(trial, evidence)
         return evidence, sealed.binding
 
     def _verified_readback(
@@ -893,12 +926,16 @@ class ResearchProgramWorkflow:
         # resolve() follows symlinks and junctions and collapses "..", so an
         # escape shows up as a path that is no longer under the authorized root.
         output = (root / candidate).resolve()
-        if not self._contains(root, output) and output != root:
+        if not self._contains(root, output) and not self._same_path(root, output):
             raise AuthoringError("research_authoring.output_workspace_escapes_root")
+        # Each check errs toward refusal: an output is inside the root only by real identity, and it
+        # touches the source by any spelling the filesystem may fold (`folded`).
         source = self._source_workspace.resolve()
-        if self._same_path(output, source):
+        if self._same_path(output, source, folded=True):
             raise AuthoringError("research_authoring.output_workspace_is_source")
-        if self._contains(source, output) or self._contains(output, source):
+        if self._contains(source, output, folded=True) or self._contains(
+            output, source, folded=True
+        ):
             raise AuthoringError("research_authoring.output_workspace_overlaps_source")
         return output
 
@@ -907,24 +944,37 @@ class ResearchProgramWorkflow:
         # NTFS is case-insensitive, so "Out" and "out" are one directory. A
         # case-sensitive comparison would call them distinct and let an alias
         # of the source through.
-        return os.path.normcase(str(value))
+        path = os.path.normcase(str(value))
+        if os.name == "nt" and path.startswith("\\\\?\\unc\\"):
+            return "\\\\" + path[8:]
+        if os.name == "nt" and path.startswith("\\\\?\\"):
+            return path[4:]
+        return path
 
     @classmethod
-    def _same_path(cls, left: Path, right: Path) -> bool:
-        return cls._normalized(left) == cls._normalized(right)
+    def _same_path(cls, left: Path, right: Path, *, folded: bool = False) -> bool:
+        """Whether two paths name one directory. Existing paths compare by their identity, so an
+        alias the filesystem folds is one. Otherwise, `folded` (a refusal of the source) takes any
+        case-folded spelling as one; else an existing path and a missing one are never one, and
+        two missing paths compare by the platform's own spelling rule."""
+        try:
+            return os.path.samefile(left, right)
+        except (FileNotFoundError, NotADirectoryError):
+            if folded:
+                return cls._normalized(left).casefold() == cls._normalized(right).casefold()
+            if left.exists() or right.exists():
+                return False
+            return cls._normalized(left) == cls._normalized(right)
 
     @classmethod
-    def _contains(cls, parent: Path, child: Path) -> bool:
+    def _contains(cls, parent: Path, child: Path, *, folded: bool = False) -> bool:
         """Report whether ``child`` is strictly inside ``parent``.
 
         Compared component-wise rather than by string prefix, so a sibling named
         ``workspace-backup`` is not mistaken for a child of ``workspace``.
         """
-        parent_parts = Path(cls._normalized(parent)).parts
-        child_parts = Path(cls._normalized(child)).parts
-        return len(child_parts) > len(parent_parts) and (
-            child_parts[: len(parent_parts)] == parent_parts
-        )
+        ancestor = len(child.parts) - len(parent.parts) - 1
+        return ancestor >= 0 and cls._same_path(parent, child.parents[ancestor], folded=folded)
 
 
 __all__ = ["ResearchEvidenceStore", "ResearchProgramStore", "ResearchProgramWorkflow"]

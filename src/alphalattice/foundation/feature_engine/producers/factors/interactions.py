@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
-import pandas as pd
 
+from alphalattice.capabilities.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 from alphalattice.foundation.feature_engine.catalog.observation_clock import (
     NO_ECONOMIC_SKIP,
 )
-from alphalattice.kernel.quant.factor_contracts import FactorFamily, FactorSpec, FactorTrack
 
 from .series_math import ordered_frame
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 STATE_INTERACTION_METHOD_FAMILY: Final = "STATE_INTERACTION"
 MARKET_DRAWDOWN_X_MOMENTUM_ID: Final = "factor.desktop.experimental.market_drawdown_x_momentum.v1"
@@ -82,6 +84,8 @@ def interaction_factor_specs() -> tuple[FactorSpec, ...]:
 
 
 def _market_states(source: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered = ordered_frame(source)
     market_rows = ordered.loc[:, ["session_date", "market_provider_adjusted_close"]].copy()
     consistency = market_rows.groupby("session_date", sort=True)[
@@ -124,6 +128,8 @@ def market_drawdown_x_momentum_raw(source: pd.DataFrame, specification: FactorSp
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered = ordered_frame(source)
     prices = pd.to_numeric(ordered["provider_adjusted_close"], errors="coerce")
     groups = ordered["listing_id"]
@@ -152,6 +158,8 @@ def market_vol_ratio_x_reversal_raw(source: pd.DataFrame, specification: FactorS
     Raises:
         KeyError: A required listing, session, or source column is absent.
     """
+    import pandas as pd  # lazy: pandas loads where it is used, not at the Host's start
+
     ordered = ordered_frame(source)
     child = pd.to_numeric(ordered["rev_5"], errors="coerce").astype(float)
     source_row = ordered.groupby("listing_id", sort=False).cumcount()

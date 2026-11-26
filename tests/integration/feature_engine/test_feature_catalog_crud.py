@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from alphalattice.capabilities.quant.factor_enums import FactorFamily
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.catalog.service import (
     FeatureCatalogCrudError,
@@ -34,7 +35,6 @@ from alphalattice.foundation.feature_engine.producers.factors.open_intraday impo
 from alphalattice.foundation.feature_engine.producers.factors.registry import (
     FeatureKernelRegistry,
 )
-from alphalattice.kernel.quant.factor_enums import FactorFamily
 
 ROOT = Path(__file__).resolve().parents[3]
 EXTENSION_ID = "zz_mean_adjusted_return_10"

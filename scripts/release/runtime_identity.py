@@ -10,7 +10,7 @@ from typing import Any
 
 
 def main() -> None:
-    from alphalattice.kernel.shared_kernel import project_layout
+    from alphalattice.capabilities.domain_contracts import project_layout
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
