@@ -598,7 +598,8 @@ class LocalBackgroundDispatcher:
     @_admitted
     def resume(
         self,
-        commands: Mapping[str, LocalApplicationCommand],
+        commands: Mapping[str, LocalApplicationCommand]
+        | Callable[[], Mapping[str, LocalApplicationCommand]],
         *,
         only_task_id: UUID | None = None,
         expected_task_hash: str | None = None,
@@ -610,7 +611,8 @@ class LocalBackgroundDispatcher:
         A service that comes back up inherits whatever the last one left
         `RECOVERY_REQUIRED` or still `QUEUED`. Re-enqueuing is not re-admitting: the task, its
         identity and its verified stage prefix are already durable, and the
-        command supplied here only has to know how to drive it.
+        command supplied here only has to know how to drive it. A factory
+        loads the command registry only when there are Task records to own.
 
         `expected_task_hash` (with `only_task_id`) is the version a caller confirmed
         the resume against. It rides the queue item to the command, which hands it
@@ -631,6 +633,10 @@ class LocalBackgroundDispatcher:
             self.status_port.tasks(),
             key=lambda task: task.lifecycle is not TaskLifecycle.RECOVERY_REQUIRED,
         )
+        if not records:
+            return ()
+        if callable(commands):
+            commands = commands()
         for task in records:
             if stopping is not None and stopping():
                 break

@@ -32,14 +32,12 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.control.product_host.composition.evidence_review_application import (
-    EvidenceReviewApplication,
-)
+from alphalattice.capabilities.domain_contracts.source_identity import source_role_acquisition
 from alphalattice.control.product_host.composition.plain_refusals import (
     kind_words,
     task_record_refusal,
@@ -51,7 +49,6 @@ from alphalattice.control.product_host.composition.research_experiments import (
     plan_implementation_role,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
-from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 from alphalattice.evidence.alternative_evidence.publication.contracts import (
     AlternativeEvidenceAnalysisPublication,
 )
@@ -65,6 +62,12 @@ from alphalattice.oversight.chief_risk_officer.decision.book_evidence import rev
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.evidence_review_application import (
+        EvidenceReviewApplication,
+    )
+    from alphalattice.control.task_control.registry import DuckDbTaskControlRegistry
 
 ACKNOWLEDGEMENT_PATH = Path("runtime") / "upgrade-overview.json"
 _ACKNOWLEDGEMENT_SCHEMA = "upgrade-overview-acknowledgement"
@@ -85,7 +88,8 @@ def installed_study_identities(
     Computed from the source tree (about 0.6 s for the four kinds), so a Host asks once:
     the code it serves is the code it imported.
     """
-    return {f"study:{kind}": implementation(kind) for kind in _STUDY_KINDS}
+    with source_role_acquisition():
+        return {f"study:{kind}": implementation(kind) for kind in _STUDY_KINDS}
 
 
 def upgrade_overview(

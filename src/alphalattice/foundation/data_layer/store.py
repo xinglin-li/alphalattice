@@ -1181,7 +1181,7 @@ class StorePort:
             rewritten = int(fates.get(REWRITTEN, 0))
             excluded = ", ".join(("fate", "_held", *([carried] if carried else [])))
             rows = f"SELECT * EXCLUDE ({excluded}) FROM temp.admitting WHERE fate = 'admit'"
-            parts, count = self._parts(table, rows)
+            parts, count = self._parts(table, rows) if "admit" in fates else ([], 0)
             if count or staged.lag is not None:
                 self._in_order(table, target, same, staged.lag)
             retained = self._retain_observations(table, excluded) if dropped else False

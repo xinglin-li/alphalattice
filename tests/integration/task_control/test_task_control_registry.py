@@ -1477,8 +1477,14 @@ def test_tasks_admitted_behind_a_deferral_start_once_it_frees_in_admission_order
                     finished.append(self.salt)
 
         deferring = Command("deferred", _FixtureTaskAdapter(defer_once=True))
+
+        def recovery_commands():
+            assert registry.tasks(), "recovery commands opened without a Task to own"
+            return {"factor_research": deferring}
+
         dispatcher = LocalBackgroundDispatcher(registry, version_moved_error=TaskTransitionRejected)
         try:
+            assert dispatcher.resume(recovery_commands) == ()
             held = dispatcher.submit(deferring).task_id
             dispatcher.drain_for_tests()
             assert registry.task(held).lifecycle is TaskLifecycle.DEFERRED
@@ -1497,7 +1503,7 @@ def test_tasks_admitted_behind_a_deferral_start_once_it_frees_in_admission_order
                 registry.mark_recovery_required(
                     task_id=held, failure_code="RETRY_DUE", observed_at=now
                 )
-                assert dispatcher.resume({"factor_research": deferring}, only_task_id=held)
+                assert dispatcher.resume(recovery_commands, only_task_id=held) == (held,)
             else:
                 assert dispatcher.request_cancel(held)
                 assert registry.task(held).lifecycle is TaskLifecycle.CANCELLED

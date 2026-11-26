@@ -44,6 +44,7 @@ from alphalattice.control.product_host.composition.local_web_connection import (
 from alphalattice.control.product_host.composition.plain_refusals import refused
 from alphalattice.control.product_host.composition.reference_prefixes import ReferenceLedger
 from alphalattice.control.product_host.composition.research_workspace import (
+    ResearchWorkspaceDecisionUpdate,
     ResearchWorkspaceEvidenceReview,
     ResearchWorkspaceManifest,
     ResearchWorkspaceManifestHolder,
@@ -156,9 +157,6 @@ from alphalattice.interface.local_application.web import (
 )
 from alphalattice.interface.local_application.workbench_assets import serve_assets
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
-from alphalattice.investment.alpha_research.scores.model_renewal import (
-    verified_lifecycle_admissions,
-)
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
@@ -526,14 +524,24 @@ class PortfolioForwardPrewarm:
         return self._host.last_error_code
 
     @verified_model_read_scope()
-    @verified_lifecycle_admissions()
     def _read_once(self) -> None:
         if self._stopping.is_set():
             return
         manifests = self.operations.manifests
         assert manifests is not None
         bindings = manifests.current.decision_updates
-        if not bindings or (activations := self.operations.activations) is None:
+        if not bindings:
+            return
+        from alphalattice.investment.alpha_research.scores.model_renewal import (  # lazy: on use
+            verified_lifecycle_admissions,
+        )
+
+        with verified_lifecycle_admissions():
+            self._read_bound_book(bindings)
+
+    def _read_bound_book(self, bindings: tuple[ResearchWorkspaceDecisionUpdate, ...]) -> None:
+        activations = self.operations.activations
+        if activations is None:
             return
         candidates: list[tuple[datetime, str, UUID]] = []
         for binding in bindings:
@@ -1089,7 +1097,7 @@ class LocalPortfolioWebSession:
         if self.dispatcher is None:
             return ()
         return self.dispatcher.resume(
-            self._recovery_commands(),
+            self._recovery_commands,
             only_task_id=only_task_id,
             expected_task_hash=expected_task_hash,
             refusal=self.resume_refusal,
