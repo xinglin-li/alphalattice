@@ -137,3 +137,56 @@ def test_a_paid_agent_test_runs_only_when_the_run_asks_for_it(monkeypatch, marke
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
     with under_xdist():
         collection.deselect_on_request(config, list(items))
+
+
+@pytest.mark.proves("testing.shared_fixture_has_its_own_hang_guard")
+def test_a_wider_fixtures_fill_has_the_hang_guard_to_itself_and_its_case_has_it_after():
+    """The armed guard is armed afresh as a module fixture's fill starts and as it ends; a
+    function fixture leaves it, as does a unit case, and with no guard armed a fill arms none."""
+    events: list[str] = []
+
+    def through(wrapper, **arguments):  # pytest-timeout's own implementation, under the wrapper
+        hook = wrapper(**arguments)
+        next(hook)
+        with pytest.raises(StopIteration):
+            hook.send(True)
+
+    def cancel(item):
+        events.append("cancel")
+        through(collection.pytest_timeout_cancel_timer, item=item)
+
+    def arm(item, settings):
+        events.append(f"arm {settings}")
+        through(collection.pytest_timeout_set_timer, item=item, settings=settings)
+
+    hooks = SimpleNamespace(pytest_timeout_cancel_timer=cancel, pytest_timeout_set_timer=arm)
+    case = SimpleNamespace(config=SimpleNamespace(hook=hooks), stash={})
+    unit = SimpleNamespace(
+        config=SimpleNamespace(hook=hooks),
+        stash={collection.CONTRACT: SimpleNamespace(layer="unit")},
+    )
+
+    def fill(scope):
+        hook = collection.pytest_fixture_setup(
+            SimpleNamespace(argname="seed", scope=scope),
+            SimpleNamespace(config=SimpleNamespace(stash={}), node=SimpleNamespace(stash={})),
+        )
+        next(hook)
+        armed_during = list(events)
+        with pytest.raises(StopIteration):
+            hook.send("seed")
+        return armed_during
+
+    try:
+        assert fill("module") == [] and events == []  # no guard armed: none is armed for it
+        through(collection.pytest_timeout_set_timer, item=case, settings="900 s")
+        assert fill("module") == ["cancel", "arm 900 s"]
+        assert events == ["cancel", "arm 900 s", "cancel", "arm 900 s"]
+        events.clear()
+        assert fill("function") == [] and events == []
+        through(collection.pytest_timeout_cancel_timer, item=case)
+        assert collection.ARMED == {}
+        through(collection.pytest_timeout_set_timer, item=unit, settings="60 s")
+        assert fill("module") == [] and events == []  # a unit case's fixtures fill nothing
+    finally:
+        collection.ARMED.clear()

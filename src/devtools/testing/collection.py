@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from math import isfinite
 from pathlib import Path
@@ -223,6 +224,40 @@ def pytest_xdist_make_scheduler(config: Any, log: Any) -> Any:
     return ordered_requeue()(config, log)
 
 
+ARMED: dict[str, Any] = {}
+"""The running case's hang guard as pytest-timeout last armed it: its item and settings."""
+
+
+def _wraps_timer_hook(hook: Callable[..., Iterator[Any]]) -> Callable[..., Iterator[Any]]:
+    """pytest's marker, typed: wraps every implementation of a pytest-timeout hook."""
+    marked: Callable[..., Iterator[Any]] = pytest.hookimpl(optionalhook=True, wrapper=True)(hook)
+    return marked
+
+
+@_wraps_timer_hook
+def pytest_timeout_set_timer(item: Any, settings: Any) -> Iterator[Any]:
+    ARMED.update(item=item, settings=settings)
+    return (yield)
+
+
+@_wraps_timer_hook
+def pytest_timeout_cancel_timer(item: Any) -> Iterator[Any]:
+    ARMED.clear()
+    return (yield)
+
+
+def restart_hang_guard() -> None:
+    """Arm the running case's hang guard afresh at its own seconds, through pytest-timeout's
+    hooks; nothing when no guard is armed (a function-only guard, or no pytest-timeout). A unit
+    case's contract refuses I/O, so its wider fixtures fill nothing: its guard stays as armed,
+    where arming it would open the timer's own log under that contract."""
+    armed = dict(ARMED)
+    if armed and getattr(armed["item"].stash.get(CONTRACT, None), "layer", "") != "unit":
+        hook = armed["item"].config.hook
+        hook.pytest_timeout_cancel_timer(item=armed["item"])
+        hook.pytest_timeout_set_timer(item=armed["item"], settings=armed["settings"])
+
+
 @pytest.hookimpl(wrapper=True, trylast=True)  # type: ignore[untyped-decorator]
 def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
     clock = request.config.stash.get(SIZE_CLOCK, None)
@@ -236,6 +271,12 @@ def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
             snapshot = observer.before_fixture(fixturedef, request)
         except Exception as error:
             observer.errors.append("fixture setup observation unavailable: " + str(error))
+    # A wider fixture is shared work its first case only triggers (three nightlies, 11-23 to
+    # 11-26, lost a worker to a 900 s guard that killed a case's seed chain mid-fill): its
+    # setup has the case's guard to itself, and the case's own work has it afresh after.
+    shared = fixturedef.scope != "function"
+    if shared:
+        restart_hang_guard()
     before = time.perf_counter() - began if clock is not None else 0.0
     try:
         value = yield
@@ -246,6 +287,9 @@ def pytest_fixture_setup(fixturedef: Any, request: Any) -> Any:
             except Exception as failure:
                 observer.errors.append("failed fixture observation unavailable: " + str(failure))
         raise
+    finally:
+        if shared:
+            restart_hang_guard()
     began = time.perf_counter() if clock is not None else 0.0
     if observer is not None and snapshot is not None:
         try:
