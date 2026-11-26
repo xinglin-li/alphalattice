@@ -34,13 +34,12 @@ def scoped_model_digest(record: Any, field: str, *, digest: Callable[[object], s
 def scoped_payload_digest(
     payload: dict[str, object], field: str, expected: str, *, digest: Callable[[object], str]
 ) -> str:
-    """Reuse the canonical digest only when the complete payload matches in this stage. A payload
-    that proves its seal is held for a later seal of the same payload in the stage."""
+    """Reuse the canonical digest only when the complete payload matches in this stage; a payload
+    sealed in the stage shares its slot, so its proof hashes nothing."""
     wire = _PAYLOAD_WIRE.encode(payload)
-    identity = stage_digest((digest, field, expected), payload, digest, snapshot=lambda _: wire)
-    if identity == expected:
-        stage_digest((digest, field, wire), payload, lambda _: identity, snapshot=lambda _: wire)
-    return identity
+    # Keyed by the exact wire: one record read in two encodings holds a slot for each, never
+    # evicting the other.
+    return stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
 
 
 def _sealed_identity(model: Any, values: Mapping[str, object], field: str) -> dict[str, Any]:
@@ -71,9 +70,7 @@ def seal_payload_digest(
     """Carry the digest of the exact canonical payload to its validator in this stage. The same
     payload sealed again in the stage answers the identity it sealed, with no second hash."""
     wire = _PAYLOAD_WIRE.encode(payload)
-    identity = stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
-    stage_digest((digest, field, identity), payload, lambda _: identity, snapshot=lambda _: wire)
-    return identity
+    return stage_digest((digest, field, wire), payload, digest, snapshot=lambda _: wire)
 
 
 def seal_model[M](model: type[M], values: Mapping[str, object], *, field: str) -> M:

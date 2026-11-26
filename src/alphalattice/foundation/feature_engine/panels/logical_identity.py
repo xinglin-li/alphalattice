@@ -20,6 +20,7 @@ from alphalattice.capabilities.domain_contracts.environment import package_versi
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+from alphalattice.foundation.feature_engine.contracts import listing_set_digest
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
     ordered_key_hash,
@@ -368,7 +369,7 @@ class PanelLogicalIdentityPublisher:
         logical_manifest = seal_logical_identity(
             PanelLogicalContentManifest, logical_values, "logical_manifest_hash"
         )
-        listing_set_hash = canonical_hash(listing_ids)
+        listing_set_hash = listing_set_digest(listing_ids)
         if listing_set_hash != str(manifest["listing_set_hash"]):
             raise ValueError("feature_panel.logical_content_mismatch")
         revision = seal_logical_identity(

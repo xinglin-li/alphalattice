@@ -11,6 +11,7 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_model_digest,
+    scoped_payload_digest,
     seal_scoped_model,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
@@ -71,6 +72,12 @@ def test_a_sealed_record_is_encoded_once_and_checked_again_when_read():
         assert record.content_hash == canonical_hash({"values": [1.5, -0.0]})
         again = _Record.model_validate_json(record.model_dump_json())
         assert again == record and len(HASHED) == 1
+        # One record read alternately in two wire forms is hashed once per form.
+        HASHED.clear()
+        expected = record.content_hash
+        for form in ({"values": [1, -0.0]}, {"values": [1.0, -0.0]}) * 3:
+            scoped_payload_digest(form, "content_hash", expected, digest=_digest)
+        assert len(HASHED) == 2
         with pytest.raises(ValidationError, match="record_invalid"):
             _Record(values=(2.0,), content_hash=record.content_hash)
     # A record sealed from a mapping its model fills in (a defaulted field) is refused.

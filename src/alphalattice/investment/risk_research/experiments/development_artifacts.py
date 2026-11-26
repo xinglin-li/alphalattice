@@ -28,6 +28,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.foundation.data_layer import history, risk_history
 from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
 from alphalattice.foundation.market_data_ops.storage import world
@@ -122,7 +123,9 @@ class RiskDevelopmentDiagnostics(_Contract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"diagnostics_hash"}))
+        """Refuse diagnostics whose hash differs from their exact payload, answered once per
+        stage for the payload its writer or loader hashed."""
+        expected = scoped_model_digest(self, "diagnostics_hash", digest=canonical_hash)
         if self.diagnostics_hash != expected:
             raise ValueError("risk_research.development_diagnostics_identity_invalid")
         return self
@@ -323,7 +326,7 @@ class RiskDevelopmentCovarianceSurface(_Contract):
         # Order, not membership: the covariance axis is positional.
         if computed != tuple(self.formation_sessions):
             raise ValueError("risk_research.development_surface_session_axis_invalid")
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"surface_hash"}))
+        expected = scoped_model_digest(self, "surface_hash", digest=canonical_hash)
         if self.surface_hash != expected:
             raise ValueError("risk_research.development_surface_identity_invalid")
         return self

@@ -28,6 +28,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Final, ParamSpec, TypeVar
+from uuid import uuid4
 
 from alphalattice.kernel.clock import utc_now
 
@@ -160,8 +161,10 @@ class SpanLedger:
     def absorb(self, readout: Mapping[str, Any]) -> None:
         """Add a worker call's readout: its spans as the worker's, its resources as workers'."""
         if _CENSUS is not None:
+            call = uuid4().hex  # the census reads each worker call as its own entry
             for row in readout.get("census", ()):
                 row["attributes"]["alphalattice.work.origin"] = "worker"
+                row["attributes"]["alphalattice.work.call"] = call
                 self.census_rows.append(row)
         for row in readout.get("spans", ()):
             self.add(

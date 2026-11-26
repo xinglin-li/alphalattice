@@ -14,11 +14,16 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
 from alphalattice.capabilities.domain_contracts import spawn
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    open_source_role_acquisition,
+    source_role_acquisition,
+)
 from alphalattice.control.task_control import child
 from alphalattice.control.task_control.child import (
     ChildInterrupted,
@@ -287,6 +292,20 @@ def doubled(*, value: int, cancelled) -> dict[str, object]:  # type: ignore[no-u
     return {"value": value * 2, "pid": os.getpid(), "root": str(data_root())}
 
 
+_DIGESTED: list[str] = []
+_ACQUIRED: list[object] = []
+
+
+def digested(*, key: str, cancelled: Callable[[], bool]) -> tuple[int, bool]:
+    """Digest `key` in the worker's phase; answer how many times the worker hashed it, and
+    whether the call observes its sources in an acquisition no earlier call held."""
+    stage_digest(("phase-probe", key), key, lambda value: _DIGESTED.append(value) or value)
+    acquired = open_source_role_acquisition()
+    fresh = acquired is not None and all(acquired is not held for held in _ACQUIRED)
+    _ACQUIRED.append(acquired)
+    return _DIGESTED.count(key), fresh
+
+
 def thread_variables(*, cancelled) -> dict[str, str | None]:  # type: ignore[no-untyped-def]
     return {name: os.environ.get(name) for name in NATIVE_THREAD_VARIABLES}
 
@@ -401,6 +420,13 @@ def test_a_call_runs_in_one_kept_worker_and_answers_its_failures_by_kind(
     second = run_in_child(f"{HERE}:doubled", {"value": 1})
     assert (first["value"], second["value"]) == (42, 2)
     assert first["pid"] == second["pid"] != os.getpid()
+    # The calls of one caller phase share its digests and each observes its sources afresh; a
+    # call outside a phase holds its own digests.
+    key = uuid4().hex
+    with source_role_acquisition():
+        calls = [run_in_child(f"{HERE}:digested", {"key": key}) for _ in "ab"]
+    assert calls == [(1, True), (1, True)]
+    assert run_in_child(f"{HERE}:digested", {"key": key}) == (2, True)
     assert (first["root"], second["root"]) == (str(tmp_path / "first"), str(tmp_path / "second"))
     with pytest.raises(ChildRefused, match=r"^fixture.refused_by_name$") as refusal:
         run_in_child(f"{HERE}:refused", {})

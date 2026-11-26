@@ -599,6 +599,12 @@ class PanelCrossSectionRange:
         )
 
 
+def listing_set_digest(listing_ids: Sequence[str]) -> str:
+    """An ordered listing axis's canonical identity, once per stage for one axis."""
+    axis = tuple(listing_ids)
+    return stage_digest(("listing-set", axis), list(axis), canonical_hash)
+
+
 @dataclass(frozen=True)
 class PanelMembership:
     """Which listings each session's cross-section holds, over one calculation axis.
@@ -840,11 +846,11 @@ class PanelMembership:
         latest = self.epochs[-1].listing_ids
         payload: dict[str, object] = {
             "axis_listing_count": len(self.listing_ids),
-            "axis_listing_set_hash": canonical_hash(sorted(self.listing_ids)),
+            "axis_listing_set_hash": listing_set_digest(sorted(self.listing_ids)),
             # Members effective at the latest session, not the latest admitted
             # roster (which may already include future-effective entries).
             "as_of_member_count": len(latest),
-            "as_of_listing_set_hash": canonical_hash(sorted(latest)),
+            "as_of_listing_set_hash": listing_set_digest(sorted(latest)),
             "journal_sequence": self.journal_sequence,
             "bootstrap_record_hash": self.bootstrap_record_hash,
             "bootstrap_t0_session": (

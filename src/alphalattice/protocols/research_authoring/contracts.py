@@ -22,7 +22,10 @@ from typing import Any, Literal, Protocol, Self, cast
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_model_digest,
+    seal_payload_digest,
+)
 
 _HASH = r"^[0-9a-f]{64}$"
 _HANDLE = r"^[a-z0-9][a-z0-9._-]{0,95}$"
@@ -265,7 +268,10 @@ class ResearchExperimentEnvelope(_Contract):
             draft[field] = contract.model_validate(draft[field])
         provisional = cls.model_construct(**draft, envelope_hash="0" * 64)
         identity = provisional.model_dump(mode="json", exclude={"envelope_hash"})
-        return cls(**draft, envelope_hash=canonical_hash(identity))
+        return cls(
+            **draft,
+            envelope_hash=seal_payload_digest("envelope_hash", identity, digest=canonical_hash),
+        )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -279,9 +285,7 @@ class ResearchExperimentEnvelope(_Contract):
                 invalid.
         """
         _reject_overlapping_workspaces(self.output_workspace, self.baseline_workspace)
-        if self.envelope_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"envelope_hash"})
-        ):
+        if self.envelope_hash != scoped_model_digest(self, "envelope_hash", digest=canonical_hash):
             raise AuthoringError("research_authoring.envelope_identity_invalid")
         return self
 
@@ -379,7 +383,10 @@ class ResolvedResearchAuthority(_Contract):
             )
         provisional = cls.model_construct(**draft, authority_hash="0" * 64)
         identity = provisional.model_dump(mode="json", exclude={"authority_hash"})
-        return cls(**draft, authority_hash=canonical_hash(identity))
+        return cls(
+            **draft,
+            authority_hash=seal_payload_digest("authority_hash", identity, digest=canonical_hash),
+        )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -423,8 +430,8 @@ class ResolvedResearchAuthority(_Contract):
                 )
             if tuple(covered) != self.sessions:
                 raise AuthoringError("research_authoring.listing_scope_coverage_invalid")
-        if self.authority_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"authority_hash"})
+        if self.authority_hash != scoped_model_digest(
+            self, "authority_hash", digest=canonical_hash
         ):
             raise AuthoringError("research_authoring.authority_identity_invalid")
         return self
@@ -508,7 +515,10 @@ class SealedResearchProgram(_Contract):
         draft.pop("program_hash", None)
         provisional = cls.model_construct(**draft, program_hash="0" * 64)
         identity = provisional.model_dump(mode="json", exclude={"program_hash"})
-        return cls(**draft, program_hash=canonical_hash(identity))
+        return cls(
+            **draft,
+            program_hash=seal_payload_digest("program_hash", identity, digest=canonical_hash),
+        )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
@@ -522,9 +532,7 @@ class SealedResearchProgram(_Contract):
         """
         if self.resolved_sessions != tuple(sorted(set(self.resolved_sessions))):
             raise AuthoringError("research_authoring.resolved_sessions_unordered")
-        if self.program_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"program_hash"})
-        ):
+        if self.program_hash != scoped_model_digest(self, "program_hash", digest=canonical_hash):
             raise AuthoringError("research_authoring.program_identity_invalid")
         return self
 
@@ -587,7 +595,10 @@ class ResearchExecutionEvidence(_Contract):
         draft.pop("evidence_hash", None)
         provisional = cls.model_construct(**draft, evidence_hash="0" * 64)
         identity = provisional.model_dump(mode="json", exclude={"evidence_hash"})
-        return cls(**draft, evidence_hash=canonical_hash(identity))
+        return cls(
+            **draft,
+            evidence_hash=seal_payload_digest("evidence_hash", identity, digest=canonical_hash),
+        )
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:

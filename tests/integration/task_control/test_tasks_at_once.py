@@ -15,10 +15,12 @@ from uuid import uuid4
 import pytest
 from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import open_stage_digests
 from alphalattice.capabilities.domain_contracts.environment import (
     numerical_thread_limit,
     numerical_thread_pools,
 )
+from alphalattice.capabilities.domain_contracts.source_identity import open_source_role_acquisition
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
@@ -213,7 +215,9 @@ def test_the_host_runs_two_studies_at_once_within_the_budget(
     assert all(lowered) and bool(lowered) == (sys.platform == "win32")
 
 
-@pytest.mark.parametrize("refusal", [ValueError, TaskTransitionRejected])
+@pytest.mark.parametrize(
+    "refusal", [ValueError, TaskTransitionRejected], ids=["value_error", "transition_rejected"]
+)
 def test_a_command_that_read_the_head_before_another_start_is_driven_again(
     tmp_path: Path, refusal: type[Exception]
 ) -> None:
@@ -227,11 +231,13 @@ def test_a_command_that_read_the_head_before_another_start_is_driven_again(
         envelope, goal, plan = task_contract(salt="first")
         registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW)
         calls: list[object] = []
+        scoped: list[object] = []  # each run hashes and observes once outside its stages
 
         class Second:
             command_kind = "factor_research"
 
             def admit(self) -> CommandAdmission:
+                scoped.append(open_stage_digests() is not None)
                 envelope, goal, plan = task_contract(salt="second")
                 task = registry.admit(
                     input_envelope=envelope, goal=goal, plan=plan, observed_at=NOW
@@ -240,6 +246,7 @@ def test_a_command_that_read_the_head_before_another_start_is_driven_again(
 
             def execute(self, task_id, *, expected_task_hash=None):
                 calls.append(task_id)
+                scoped.append(None not in (open_stage_digests(), open_source_role_acquisition()))
                 if len(calls) == 1:  # the first Task's start lands after this read of the head
                     registry.start_next(
                         compatibility=compatibility(plan),
@@ -259,6 +266,7 @@ def test_a_command_that_read_the_head_before_another_start_is_driven_again(
             second = dispatcher.submit(Second()).task_id
             dispatcher.drain_for_tests()
             assert registry.task(second).lifecycle is TaskLifecycle.SUCCEEDED and len(calls) == 2
+            assert all(scoped) and len(scoped) == 3
             stopping = FixtureTaskAdapter(fail_once=True)
             Second.execute = lambda self, task_id, **_: session.execute_admitted(  # type: ignore[method-assign]
                 registry.task(task_id), stopping, lambda: NOW

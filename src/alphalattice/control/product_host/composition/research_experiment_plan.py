@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest, seal_model
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceExperimentInput,
     ResearchWorkspaceModelTrainingInput,
@@ -140,7 +140,7 @@ class ExperimentPlan(BaseModel):  # type: ignore[misc]
         """
         envelope = ResearchExperimentEnvelope.create(**self.document["experiment"])
         if (
-            self.plan_hash != canonical_hash(self.model_dump(mode="json", exclude={"plan_hash"}))
+            self.plan_hash != scoped_model_digest(self, "plan_hash", digest=canonical_hash)
             or envelope.envelope_hash != self.program.envelope_hash
             or self.authority.authority_hash != self.program.authority_hash
             or self.program.kind

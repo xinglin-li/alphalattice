@@ -27,6 +27,11 @@ from threading import Event, Lock, Thread
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    StageDigests,
+    stage_digests,
+)
 from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.control.guanyin.tasks.supervision import (
     IncidentRecord,
@@ -114,6 +119,9 @@ class TaskSupervisor:
         self._timer = timers.job("guanyin-supervisor", utc_now, self._wake.set)
         self._thread: Thread | None = None
         self._lock = Lock()
+        # The passes share one digest holder: a slot is keyed by its exact payload, so a Task
+        # record a later pass reads unchanged is not hashed again.
+        self._digests: StageDigests = BoundedMemo()
 
     # ------------------------------------------------------------------ the thread
 
@@ -154,7 +162,7 @@ class TaskSupervisor:
 
     def supervise_once(self) -> tuple[IncidentRecord, ...]:
         """Classify every unfinished Task once; answer the incidents that opened."""
-        with self._lock:
+        with self._lock, stage_digests(self._digests):
             now = self.operations.dispatcher.clock()
             registry = self.operations.workspace_session.task_control_registry
             tasks = registry.tasks()

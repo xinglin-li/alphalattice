@@ -18,7 +18,9 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import open_stage_digests
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.source_identity import open_source_role_acquisition
 from alphalattice.control.data_platform.maintenance.contracts import (
     ActionAuditChainReceipt,
     ActionAuditScope,
@@ -2919,7 +2921,8 @@ def _turn_signal() -> None:
     wake, called, calls = MaintenanceWakeController(), Event(), []
 
     def run_once() -> None:
-        calls.append(1)
+        # A cycle hashes each payload and observes each source once.
+        calls.append(bool(None not in (open_stage_digests(), open_source_role_acquisition())))
         called.set()
 
     host = MaintenanceBackgroundHost(wake=wake, run_once=run_once)
@@ -2929,7 +2932,7 @@ def _turn_signal() -> None:
         assert not wake.signal_due_work(NOW - timedelta(seconds=1))
         assert wake.signal_due_work(NOW)
         assert called.wait(1.0)
-        assert calls == [1]
+        assert calls == [True]
     finally:
         host.close()
 

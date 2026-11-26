@@ -12,6 +12,7 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from threading import Lock
 from typing import Any, cast
+from uuid import uuid4
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.capabilities.domain_contracts.project_layout import (
@@ -1180,6 +1181,7 @@ class _RoleSources:
     def __init__(self) -> None:
         self.opened: dict[Path, _FileVersion] = {}
         self.confirmed: dict[Path, _FileVersion] = {}
+        self.phase: str | None = None
 
 
 _ACQUIRED_ROLE_SOURCES: ContextVar[_RoleSources | None] = ContextVar(
@@ -1188,16 +1190,34 @@ _ACQUIRED_ROLE_SOURCES: ContextVar[_RoleSources | None] = ContextVar(
 
 
 @contextmanager
-def source_role_acquisition(*, fresh: bool = False) -> Iterator[None]:
-    """Share source observations among the roles in the current request or Task phase."""
-    if not fresh and _ACQUIRED_ROLE_SOURCES.get() is not None:
+def source_role_acquisition(
+    *, fresh: bool = False, shared: _RoleSources | None = None
+) -> Iterator[None]:
+    """Share source observations among the roles in the current request or Task phase; `shared`
+    carries an open acquisition to work the phase hands to another thread."""
+    if not fresh and shared is None and _ACQUIRED_ROLE_SOURCES.get() is not None:
         yield
         return
-    token = _ACQUIRED_ROLE_SOURCES.set(_RoleSources())
+    token = _ACQUIRED_ROLE_SOURCES.set(_RoleSources() if shared is None else shared)
     try:
         yield
     finally:
         _ACQUIRED_ROLE_SOURCES.reset(token)
+
+
+def open_source_role_acquisition() -> _RoleSources | None:
+    """The phase's open source acquisition, for work it hands to another thread."""
+    return _ACQUIRED_ROLE_SOURCES.get()
+
+
+def open_source_phase() -> str | None:
+    """The open acquisition's phase name, which a kept worker's calls in the phase share."""
+    acquired = _ACQUIRED_ROLE_SOURCES.get()
+    if acquired is None:
+        return None
+    if acquired.phase is None:
+        acquired.phase = uuid4().hex
+    return acquired.phase
 
 
 def _file_version(path: Path) -> _FileVersion:

@@ -1,0 +1,209 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "2fa765345ba69f09b4b2abf75c60661331dffefae47e00d2e02ccf674d5932ac",
+   "successor": "20444d8623e62d343353e0185c4142f496cb703dbfa6ef81059d81f9a21c0ab6",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "c58cd1e512c25a781f24f3c336e84f4ae42138b44da58076e0f5e1af588615b0",
+   "successor": "af80cd55a54823a349f4f5bdad7a5e8da189172b87efee8634380a412e7eecf0",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "cc4448f373bb9cd7ab30334f3777c12a665eadeca720b59ea230195f6f32ff6c",
+   "successor": "8516bb0c37c6b726e862fdebb209539096622665f8bb827654bf9bf42267d4af",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "987c1415b2696e65abd78fa7a38e458d22804911d55e13a6b024ca15590714d0",
+   "successor": "de4c4d1d6a8bb505ba8dba2e2f72bc3f60b619a7b5d91176fc735e1f23d65052",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "6c507420bdccc5d24f99ee66637454f0c3cb8bc94c82a3078584fe72922e2797",
+   "successor": "e77c2f447db6594b97bcbb05f74c701332c0c972e72fe0067af0f7b296d756c0",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "f29a595c04327c82a3662154d16979e64aef047eff02315e26ab261b90615de0",
+   "successor": "b022c26ec5cdd415f86a62c7b980b95cc90b66f3d357bbb247634b0b9d52fc43",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "daf890ee3478dfbeedf7e5e377df552c8b07268da3e6b69d1cd10802f5aec9da",
+   "successor": "aeec9246854e0f84d9e11bc832f8c8c35b48f73f57490551c585969479533af7",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "b3e8c9c00c5a4384ba3a595cc5c7129f8694161146d5e4cc78918f6315ab27cc",
+   "successor": "9960e678827a07ecfcde449792da580d86e22512c913278dc54c12e94da76c9a",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "1a4d8c15412499a853e94dd8304589ceb1e6b7f5b8c57b7e8a5ff979f1e0d247",
+   "successor": "eb702e44b8180d407a88ce4cf6c3882b5bb5c043e0af1aeb287af2ef2cdd5a2e",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "15174fac2369464fd933a51c1bbd319ddba266dac781f76b7290381055eb3d23",
+   "successor": "cd2d680d47d9390c4a04fef0c462114c0590862b46a84f89dfba82a7e5845ac0",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "fa369063f46d45514bfd4e11050553e16f52820fdaaca0a3643832d26755132f",
+   "successor": "90381bb9ccb49b55b19d3d076dd5bb64925680b5c4ff407423feac9119247b51",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "b4356a13724bbdfe7c0c0302d6455163f80c49390c67e5bdc9f5cd551f94bc52",
+   "successor": "865ff32cf00a92df3c3478f514101d23a586ca3f1b85a773a2a3fac1f8f18507",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "9b07d8dd97629eb053769ed5543a6c4dbfdb57cc19ad3049ed52fc75ea5c04a6",
+   "successor": "d337bbdfb6f077d9f8fcb04b2df2ba4cbd494c4c97a90c060d37836773fb1a34",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "fe0151fbf31079e80538a1dc62c7ccc8f386bb9923285fc67f395357187ccc17",
+   "successor": "8633ea892737c95c9df8bb0c304da089a3741606eab7f13527f5c5409a3f3abf",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "e8ca0d59542b5954ecbf850a1836f2569b62f214ee73dc528330cf8e784d0faa",
+   "successor": "36bf49458a14da2cac96cd5f312b3f8c7381936dfca6142589f29a0fe5408bac",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "02dac8d88907fca5e815bbe35c41dfe65a219b9f4755c971df83b5a773b57a30",
+   "successor": "1b8cab622334228a4e53d10efc92fb0e06181e64fbde23b134a152ea7c37d3fb",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "954c6a612900494fd82b54dc3b10b19da56d4ea4b4f3cb5d00f1aae37ce00c9c",
+   "successor": "5e9f30018549b24671f11b3b88bb4d8c60b56e72f2bf146508f1532c4e68e71b",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "27aa76c33637a0364e05d35e8150f7d9b10bf33ebc4b0a9da9405732605bb713",
+   "successor": "6f350224489896fbbd57ebf615a8562323a9044e176354d42dd82ef380154614",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "38495f79ac9c41624fba09f596381bf99afc9826d6f550ca13676a1c64cfa555",
+   "successor": "e55dd6a465e29e9ae737e4cc25770315b60c830cb4a74d6acf14686f7d29a5ef",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "2c67e0034f7d65b8aae7689796d937644153b08cc11928ac84b316765ed119ae",
+   "successor": "b3fb7a18737eecdc7fdc6ffb420c60efd0f6925831967d2e2d7cb41ff2573642",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "dbd66b59e000828a8528b898cf44eff856c51c84b527248242c118d36bbff184",
+   "successor": "b9137488a7899f8d2bce1d3674edc2676741be9374ac31d0b99d5e9f4f0c5ed7",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "08b57c742df408219c963b532f4e8f46669ab0d02eaa5312adc1d0942a395e16",
+   "successor": "65cb4793b682128f3c677793a17339cf822062be1a16e38e71cbb72c783aaec9",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "ad02c19eedbadea29bd2660d00ed90d44d48b665ef8b936820bf06c741bba36e",
+   "successor": "7c47e527779a548e71fcdd6d11c28eefc52af46f7c2e6d405a4b20acd230fa24",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "ad02c19eedbadea29bd2660d00ed90d44d48b665ef8b936820bf06c741bba36e",
+   "successor": "7c47e527779a548e71fcdd6d11c28eefc52af46f7c2e6d405a4b20acd230fa24",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "896590e03e8e1574f2808244f296f1661d3724b892c061e17e962606b08c1889",
+   "successor": "b4d00fff30262023ff580c1def7a4d845726738679467d90b269e9a5fed1e425",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "85f6c57f82cfe59a10ecab9abf641c0ab9d13c79fd5c96c0781e58353b27c9f9",
+   "successor": "fa1ad9342ab6a86e545b02149deb323ea2386ad8f860cf627b74ea41111284ef",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "cf11589d6d7ab2e3392677171bc81486054a175ff65c2bd06612862acb81a73b",
+   "successor": "6dde5e3bcb0c519aaf6c79e50630b93f027c51bde4fc6385346ab19e85d6b336",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "8ab1239d9c734721c6910440961a9e3f508e2a2f7fe4fc6480adaf23ea50d5dd",
+   "successor": "20a9f4fb351e147b78603bd6dd684698c147466afcc39afd0cc00ad867265088",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "73624e303060686339ad9acd703b2eb6f92e01cecaec2e29492b3404c630cfe9",
+   "successor": "6aeb7d75d758fc0761e34495feb8753b24e0a7d506110bb0cdd0f494df81776b",
+   "change": "A Daily run verifies each input once instead of repeating checks",
+   "reason": "The 29 roles move only through their source fingerprints: each fact is hashed once per stage and carried to its readers, and the development release replay reads ALL EQUAL over 185,251 records; the later commit adds only the successor record"
+  }
+ ]
+}

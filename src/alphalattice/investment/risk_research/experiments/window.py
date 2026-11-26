@@ -33,6 +33,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_model_digest
 from alphalattice.investment.risk_research.contracts import CausalRiskReturnSurface
 from alphalattice.investment.risk_research.experiments.formation_selection import (
     DEVELOPMENT_FORMATION_CAPACITY,
@@ -172,12 +173,14 @@ class RiskDevelopmentInputBinding(BaseModel):  # type: ignore[misc]
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_binding(self) -> Self:
+        """Refuse a binding whose session axis is not sorted and bounded, or whose hash differs
+        from its exact payload, answered once per stage for the payload already hashed."""
         sessions = self.formation_sessions
         if sessions != tuple(sorted(set(sessions))):
             raise ValueError("risk_research.development_input_session_axis_invalid")
         if len(sessions) > DEVELOPMENT_FORMATION_CAPACITY:
             raise ValueError("risk_research.development_input_window_too_wide")
-        expected = canonical_hash(self.model_dump(mode="json", exclude={"input_binding_hash"}))
+        expected = scoped_model_digest(self, "input_binding_hash", digest=canonical_hash)
         if self.input_binding_hash != expected:
             raise ValueError("risk_research.development_input_binding_identity_invalid")
         return self

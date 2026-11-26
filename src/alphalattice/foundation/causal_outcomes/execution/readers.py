@@ -14,6 +14,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.control.workspace_runtime.content_store import ContentAddressedStore
 from alphalattice.foundation.data_layer import history
@@ -372,6 +373,11 @@ def _local_qa_source_prefix_hash(
     return cast(str, canonical_hash(prefix.model_dump(mode="json")))
 
 
+def _axis_digest(axis: tuple[object, ...]) -> str:
+    """An ordered axis's canonical identity, once per stage: its check and its publication."""
+    return stage_digest(("local-qa-axis", axis), axis, canonical_hash)
+
+
 def _local_qa_snapshot_rows(
     *,
     sessions: tuple[date, ...],
@@ -425,10 +431,10 @@ def _local_qa_snapshot_rows(
             if (
                 through >= head.through
                 and head.recipe_hash == method.recipe_hash
-                and head.listing_axis_hash == canonical_hash(listing_ids)
+                and head.listing_axis_hash == _axis_digest(listing_ids)
                 and head.listing_count == len(listing_ids)
                 and len(sessions) >= head.requested_session_count
-                and canonical_hash(sessions[: head.requested_session_count])
+                and _axis_digest(sessions[: head.requested_session_count])
                 == head.requested_axis_hash
                 and len(points) >= head.matured_point_count
                 and _local_qa_points_hash(points[: head.matured_point_count])
@@ -493,10 +499,10 @@ def _local_qa_snapshot_rows(
             previous=durable_previous,
             values={
                 "recipe_hash": method.recipe_hash,
-                "listing_axis_hash": canonical_hash(listing_ids),
+                "listing_axis_hash": _axis_digest(listing_ids),
                 "listing_count": len(listing_ids),
                 "requested_session_count": len(sessions),
-                "requested_axis_hash": canonical_hash(sessions),
+                "requested_axis_hash": _axis_digest(sessions),
                 "matured_point_count": len(points),
                 "matured_points_hash": _local_qa_points_hash(points),
                 "source_prefix_hash": _local_qa_source_prefix_hash(

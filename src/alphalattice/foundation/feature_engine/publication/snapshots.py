@@ -23,6 +23,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PanelTemporalRisk,
     TemporalKnowledgeBoundary,
     canonical_hash,
+    listing_set_digest,
 )
 from alphalattice.foundation.feature_engine.panels.artifacts import (
     PanelArtifactCompositionOwner,
@@ -372,7 +373,7 @@ class FeaturePanelSnapshotPublisher:
         # session holds, as the composition recorded it. The latest manifest
         # may also admit future-effective members; ``membership`` records the
         # actual dated population rather than backdating those admissions.
-        listing_set_hash = canonical_hash(listing_ids)
+        listing_set_hash = listing_set_digest(listing_ids)
         preprocessing_lineage = resolve_panel_preprocessing_lineage(
             self.resolver, panel_content_hash=content.panel_content_hash
         )
@@ -807,7 +808,7 @@ class FeaturePanelSnapshotPublisher:
             if (
                 backed.membership is None
                 or backed.membership.get("axis_listing_count") != len(listing_ids)
-                or backed.membership.get("axis_listing_set_hash") != canonical_hash(listing_ids)
+                or backed.membership.get("axis_listing_set_hash") != listing_set_digest(listing_ids)
             ):
                 raise ValueError("feature panel calculation axis differs from recorded membership")
         else:

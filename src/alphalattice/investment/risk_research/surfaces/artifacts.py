@@ -15,7 +15,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from alphalattice.capabilities.data.errors import DataError
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor
 from alphalattice.foundation.data_layer import history, risk_history
 from alphalattice.foundation.market_data_ops.storage.world import world_listing
@@ -104,7 +106,10 @@ class RiskArtifactStore:
         self._require_hash(content_hash)
         identity = dict(payload)
         identity.pop(identity_field)
-        if canonical_hash(identity) != content_hash:
+        # Once per stage for these exact bytes; the record its reader builds answers the same slot.
+        if scoped_payload_digest(identity, identity_field, content_hash, digest=canonical_hash) != (
+            content_hash
+        ):
             raise RiskArtifactError("risk_research.json_identity_invalid")
         content = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
         target = self._path(category, content_hash, "json")
@@ -144,7 +149,10 @@ class RiskArtifactStore:
             raise RiskArtifactError("risk_research.json_requested_identity_invalid")
         identity = dict(payload)
         identity.pop(identity_field)
-        if canonical_hash(identity) != content_hash:
+        # Once per stage for these exact bytes; the record its reader builds answers the same slot.
+        if scoped_payload_digest(identity, identity_field, content_hash, digest=canonical_hash) != (
+            content_hash
+        ):
             raise RiskArtifactError("risk_research.json_tampered")
         return payload
 
@@ -262,8 +270,9 @@ class RiskArtifactStore:
 
     @staticmethod
     def coordinate_key(listings: tuple[str, ...]) -> str:
-        """Name the exact ordered listing axis used to resolve covariance profiles."""
-        return canonical_hash(listings)
+        """Name the exact ordered listing axis used to resolve covariance profiles: once per
+        stage for one axis, which every chunk of a covariance history shares."""
+        return stage_digest(("risk-coordinate-axis", listings), listings, canonical_hash)
 
     def admit_covariance(
         self,

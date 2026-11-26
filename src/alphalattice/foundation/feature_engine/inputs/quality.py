@@ -13,6 +13,7 @@ from math import isfinite
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import MaterializedFeatureQualification
 from alphalattice.foundation.feature_engine.inputs.gateway import (
@@ -153,6 +154,26 @@ class RawCloseSeries:
         return value
 
 
+def _series_bytes(raw_closes: RawCloseSeries) -> tuple[str, bytes, str, bytes]:
+    """The exact series: each array's dtype and bytes, so one stage hashes it once."""
+    sessions, closes = raw_closes.sessions, raw_closes.closes
+    return sessions.dtype.str, sessions.tobytes(), closes.dtype.str, closes.tobytes()
+
+
+def _raw_close_identity(raw_closes: RawCloseSeries) -> str:
+    """The series' canonical identity, its dates spelled as the encoder writes a date."""
+    # Spelled for the whole series at once, so the encoder stays in C over ~2,500 points.
+    return canonical_hash(
+        list(
+            zip(
+                np.datetime_as_string(raw_closes.sessions, unit="D").tolist(),
+                raw_closes.closes.tolist(),
+                strict=True,
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class FeatureInputQualityPolicy:
     """Thresholds for raw-input quality and anomaly evidence."""
@@ -254,6 +275,7 @@ class FeatureInputQualityEvaluator:
         if extreme.unexplained_sessions:
             reasons.add("UNEXPLAINED_RAW_MOVE")
         failure_code = self._failure_code(reasons)
+        series = _series_bytes(raw_closes)  # the exact arrays: the series' slot and its snapshot
         identity = {
             "listing_id": admission.listing_id,
             "provider": provider,
@@ -264,17 +286,11 @@ class FeatureInputQualityEvaluator:
                 "maximum_consecutive_gap": admission.maximum_consecutive_gap,
                 "reasons": admission.reasons,
             },
-            # ``str(date)`` is what the canonical encoder writes for a date;
-            # spelled here, for the whole series at once, so the encoder stays
-            # in C over ~2,500 points.
-            "raw_close_hash": canonical_hash(
-                list(
-                    zip(
-                        np.datetime_as_string(raw_closes.sessions, unit="D").tolist(),
-                        raw_closes.closes.tolist(),
-                        strict=True,
-                    )
-                )
+            "raw_close_hash": stage_digest(
+                ("raw-close-series", *series),
+                raw_closes,
+                _raw_close_identity,
+                snapshot=lambda _: series,
             ),
             "extreme_move_summary_hash": extreme.summary_hash,
             "action_audit_completed": action_audit_completed,

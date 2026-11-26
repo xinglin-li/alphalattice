@@ -11,6 +11,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+from alphalattice.capabilities.domain_contracts.source_identity import source_role_acquisition
 from alphalattice.capabilities.domain_contracts.waits import CEILING
 from alphalattice.kernel.execution import TIMERS, Timer, Timers
 
@@ -188,7 +190,9 @@ class MaintenanceBackgroundHost:
             due = self.clock is None or left == 0
             if due:
                 try:
-                    self.run_once()
+                    # A cycle hashes each payload and observes each source once.
+                    with stage_digests(), source_role_acquisition():
+                        self.run_once()
                     self._last_error_code, self._failures = None, 0
                 except Exception:
                     # The durable coordinator owns details; the chat surface gets

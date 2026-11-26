@@ -43,8 +43,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    open_stage_digests,
+    stage_digests,
+)
 from alphalattice.capabilities.domain_contracts.environment import recorded_environment
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    open_source_role_acquisition,
+    source_role_acquisition,
+)
 from alphalattice.capabilities.domain_contracts.spans import span
 from alphalattice.capabilities.domain_contracts.waits import pause
 from alphalattice.control.workspace_runtime.verified_facts import (
@@ -260,6 +268,8 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
     submitted check completes before return or refusal, with errors in input order.
     """
     full = _FULL_PROOF.get()
+    digests = open_stage_digests()  # each check joins the stage's digests and source reads
+    acquired = open_source_role_acquisition()
     source_build = _VERIFIED_SOURCE_BUILD.get()
     npz_read_view = _VERIFIED_SOURCE_CHECK_NPZ.get()
     scope = _VERIFIED_ARRAY_SCOPE.get()
@@ -275,6 +285,8 @@ def verify_source_checks(checks: Iterable[Callable[[], None]]) -> None:
         _VERIFIED_SOURCE_BUILD.set(source_build)
         _FULL_PROOF.set(full)
         with (
+            stage_digests(digests),
+            source_role_acquisition(shared=acquired),
             verified_array_read_scope(),
             verified_model_read_scope(),
             span("verify", "source_check"),

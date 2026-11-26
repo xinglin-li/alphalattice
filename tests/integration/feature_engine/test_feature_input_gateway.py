@@ -11,6 +11,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
 from alphalattice.control.data_platform.maintenance.contracts import (
     DataRemediationFailureReceipt,
 )
@@ -23,6 +24,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     TemporalKnowledgeBoundary,
     canonical_hash,
 )
+from alphalattice.foundation.feature_engine.inputs import quality
 from alphalattice.foundation.feature_engine.inputs.gateway import (
     FeatureInputAssessment,
     FeatureInputExecutionStatus,
@@ -851,7 +853,7 @@ def test_forged_stale_and_repeatedly_churning_agent_evidence_fails_closed() -> N
     assert deferred.retry_after_at == NOW + timedelta(minutes=5)  # type: ignore[union-attr]
 
 
-def test_quality_evaluator_flags_only_unexplained_raw_move_and_5bps_mismatch() -> None:
+def test_quality_evaluator_flags_only_unexplained_raw_move_and_5bps_mismatch(monkeypatch) -> None:
     admission = CurrentUniverseQualityAdmission(
         onboarding_id="onboarding-a",
         listing_id="listing-000",
@@ -864,13 +866,12 @@ def test_quality_evaluator_flags_only_unexplained_raw_move_and_5bps_mismatch() -
         reasons=(),
         evaluated_at=NOW,
     )
-    raw = RawCloseSeries.of(
-        (
-            (date(2026, 7, 29), 100.0),
-            (date(2026, 7, 30), 40.0),
-            (date(2026, 7, 31), 41.0),
-        )
+    points = (
+        (date(2026, 7, 29), 100.0),
+        (date(2026, 7, 30), 40.0),
+        (date(2026, 7, 31), 41.0),
     )
+    raw = RawCloseSeries.of(points)
     evaluator = FeatureInputQualityEvaluator()
     evaluation = dict(
         admission=admission,
@@ -891,6 +892,18 @@ def test_quality_evaluator_flags_only_unexplained_raw_move_and_5bps_mismatch() -
     action_after = evaluator.evaluate(**evaluation, action_evidence_hash="b" * 64)
     assert action_before.evidence_hash != action_after.evidence_hash
     assert action_before.reason_codes == action_after.reason_codes == explained.reason_codes
+    hashed: list[object] = []
+    real_hash = quality.canonical_hash
+    monkeypatch.setattr(
+        quality, "canonical_hash", lambda value: hashed.append(value) or real_hash(value)
+    )
+    with stage_digests():  # one stage hashes an equal series once, whichever object holds it
+        twice = [
+            evaluator.evaluate(**{**evaluation, "raw_closes": RawCloseSeries.of(points)})
+            for _ in "ab"
+        ]
+    assert twice[0] == twice[1] == explained
+    assert sum(value == [(str(day), close) for day, close in points] for value in hashed) == 1
 
     unexplained = evaluator.evaluate(
         admission=admission,

@@ -43,9 +43,18 @@ from typing import TYPE_CHECKING, Any
 
 from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    StageDigests,
+    stage_digests,
+)
 from alphalattice.capabilities.domain_contracts.environment import (
     held_offline,
     numerical_thread_limit,
+)
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    open_source_phase,
+    source_role_acquisition,
 )
 from alphalattice.capabilities.domain_contracts.spans import (
     SpanLedger,
@@ -394,6 +403,7 @@ def _submitted(
             process_config().get(DATA_ROOT_ENV),
             preload_models,
             worker_resource_lease(threads),
+            open_source_phase(),
         )
     except BrokenProcessPool:
         ended()
@@ -702,6 +712,22 @@ def _follow_root(root: str | None) -> None:
         _RECORDED.add(where)
 
 
+_PHASE: tuple[str, StageDigests] | None = None
+"""The caller phase whose digests this worker holds for its next call."""
+
+
+def _phase_digests(phase: str | None) -> StageDigests | None:
+    """The digests a call shares with the other calls of its caller's phase, each slot keyed by
+    its exact payload; a call outside a phase holds its own, and a new phase replaces the held
+    one."""
+    global _PHASE  # one kept worker runs one call at a time
+    if phase is None:
+        return None
+    if _PHASE is None or _PHASE[0] != phase:
+        _PHASE = phase, BoundedMemo()
+    return _PHASE[1]
+
+
 def _call(
     target: str,
     arguments: dict[str, Any],
@@ -712,6 +738,7 @@ def _call(
     root: str | None = None,
     preload_models: bool = True,
     grant: ResourceLease | None = None,
+    phase: str | None = None,
 ) -> dict[str, Any]:
     """One call in the worker, held offline: its result, or its failure's kind, type and text.
 
@@ -723,7 +750,8 @@ def _call(
     the parent's stage ledger (A4). With `trace`, the W3C context of the step that sent the call,
     the call is one `worker.call` span in that trace, handed back as its step event (`trace`).
     The call reads the data root its caller names (`root`, unset for the default): a kept worker
-    started under another root, before the caller's history opened, reads the caller's.
+    started under another root, before the caller's history opened, reads the caller's. The calls
+    of one caller phase (`phase`) share its digests; each call observes its sources afresh.
     """
     ledger: SpanLedger | None = None
     rows: list[dict[str, Any]] = []
@@ -734,9 +762,12 @@ def _call(
             arguments = _held(arguments)
             module_name, _, name = target.partition(":")
             function = getattr(importlib.import_module(module_name), name)
+            digests = _phase_digests(phase)
             with (
                 held_offline(),
                 _numerical_threads(threads, preload_models=preload_models),
+                stage_digests(digests),  # the phase hashes a payload once
+                source_role_acquisition(fresh=True),  # each call observes its sources
                 collect() as ledger,
                 _worker_span(target, trace, rows),
             ):

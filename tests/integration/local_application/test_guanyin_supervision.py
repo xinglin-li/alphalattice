@@ -8,13 +8,15 @@ from uuid import uuid4
 
 import pytest
 
+from alphalattice.control.task_control import contracts
 from alphalattice.control.task_control.contracts import TaskLifecycle
 
 
 def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_center_acts(
-    live,
+    live, monkeypatch
 ) -> None:
-    """The supervisor opens an incident the task read names and the recovery center acts."""
+    """The supervisor opens an incident the task read names and the recovery center acts; a
+    later pass hashes no unchanged Task record again."""
 
     from alphalattice.interface.local_application.portfolio_research import (
         PortfolioResearchOperationRequest,
@@ -35,7 +37,11 @@ def test_the_supervisor_opens_an_incident_the_task_read_names_and_the_recovery_c
     supervisor = live.operations.supervisor
     (opened,) = supervisor.supervise_once()
     assert opened.code == "task_runtime.recovery_required" and opened.state == "OPEN"
+    hashed: list[object] = []
+    monkeypatch.setattr(contracts, "canonical_hash", lambda value: hashed.append(value) or "0")
     assert supervisor.supervise_once() == ()  # the same incident is not opened twice
+    assert hashed == []
+    monkeypatch.undo()
     read = live.operations.status(task.task_id)
     assert read["incident"]["key"] == opened.key
     assert read["incident"]["code"] == "task_runtime.recovery_required"

@@ -34,6 +34,10 @@ import pyarrow.parquet as pq
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from alphalattice.capabilities.domain_contracts.source_identity import (
+    open_source_role_acquisition,
+    source_role_acquisition,
+)
 from alphalattice.capabilities.domain_contracts.spans import collect
 from alphalattice.control.workspace_runtime.content_store import (
     CommittedIndex,
@@ -1055,7 +1059,7 @@ def test_a_nested_read_of_the_same_source_key_does_not_wait_for_itself(tmp_path)
 @pytest.mark.proves("workspace_runtime.parallel_source_checks_are_bounded_and_isolated")
 def test_parallel_checks_have_fresh_contexts_and_inherit_full_proof(tmp_path):
     """requirement: parallel checks start in fresh contexts, answer from the process memory and
-    inherit their caller's full proof."""
+    inherit their caller's full proof and source observations."""
     marker = ContextVar("outside-check-context", default="unset")
     marker.set("caller")
     values, proofs = [], []
@@ -1067,10 +1071,12 @@ def test_parallel_checks_have_fresh_contexts_and_inherit_full_proof(tmp_path):
 
     def check():
         assert marker.get() == "unset"
+        assert open_source_role_acquisition() is acquired
         assert verified_request_value(identity, value, nbytes=6) == b"sealed"
         verified_request_proof(identity, lambda: proofs.append(True))
 
-    with verified_model_read_scope():
+    with verified_model_read_scope(), source_role_acquisition():
+        acquired = open_source_role_acquisition()
         verified_request_value(identity, value, nbytes=6)
         verified_request_proof(identity, lambda: proofs.append(True))
         verify_source_checks((check, check))

@@ -27,6 +27,7 @@ from itertools import pairwise
 from typing import Literal
 
 from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 
 INITIAL_COHORT_BACKFILL = "INITIAL_COHORT_BACKFILL_NOT_POINT_IN_TIME"
@@ -132,9 +133,12 @@ class UniverseSourceObservation:
 
 
 def membership_identity(listing_ids: Iterable[str]) -> str:
-    """Hash one member set independently of how it was selected."""
-    return str(
-        canonical_hash({"kind": "UniverseMembership", "listing_ids": sorted(set(listing_ids))})
+    """Hash one member set independently of how it was selected, once per stage or request."""
+    members = tuple(sorted(set(listing_ids)))
+    return stage_digest(
+        ("universe-membership", members),
+        {"kind": "UniverseMembership", "listing_ids": list(members)},
+        canonical_hash,
     )
 
 

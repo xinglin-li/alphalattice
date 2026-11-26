@@ -158,6 +158,11 @@ def stage_digests(digests: StageDigests | None = None) -> Iterator[None]:
         _STAGE_DIGESTS.reset(token)
 
 
+def open_stage_digests() -> StageDigests | None:
+    """The stage's open digest holder, for work it hands to another thread (`stage_digests`)."""
+    return _STAGE_DIGESTS.get()
+
+
 def stage_digest[T](
     slot: tuple[object, ...],
     inputs: T,

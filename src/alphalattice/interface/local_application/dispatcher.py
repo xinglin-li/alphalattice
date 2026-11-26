@@ -42,8 +42,12 @@ from time import monotonic
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digests
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    open_stage_digests,
+    stage_digests,
+)
 from alphalattice.capabilities.domain_contracts.host_stop import host_stop_scope
+from alphalattice.capabilities.domain_contracts.source_identity import source_role_acquisition
 from alphalattice.control.task_control.contracts import (
     TaskLifecycle,
     TaskRecord,
@@ -314,7 +318,9 @@ class LocalBackgroundDispatcher:
             self._generation += activity
         self._depth.value = depth + 1
         try:
-            return action()
+            # An admission hashes each payload once, sharing its caller's digests.
+            with stage_digests(open_stage_digests()):
+                return action()
         finally:
             self._depth.value = depth
             self._release_admission(activity)
@@ -883,6 +889,10 @@ class LocalBackgroundDispatcher:
                 gate_subject(command.command_kind, task_id),
                 host_stop_scope(self.stop_requested),
                 prefer_task(task_id if lane == "interactive" else None),
+                # Outside its stages a command hashes each payload and observes each source
+                # once, as a served request does.
+                stage_digests(),
+                source_role_acquisition(),
             ):
                 seen = self._stamp()
                 try:
