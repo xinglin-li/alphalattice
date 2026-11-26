@@ -159,6 +159,15 @@ class _Before(NamedTuple):
     audit_start: date
 
 
+class _Write(NamedTuple):
+    """A listing's bars to write, under its ingestion id, with the rebases they carry."""
+
+    batch: SanitizedBatch
+    ingestion_id: str
+    rebases: tuple[RawBarRebase, ...]
+    observed_at: datetime
+
+
 class _Audit(NamedTuple):
     """A listing's audit, and the session its adjusted closes are read from after it."""
 
@@ -175,9 +184,10 @@ class _Finished(NamedTuple):
     rebases: tuple[RawBarRebase, ...]
 
 
-_Steps = Generator[_Before | _Audit, Any, str]
+_Steps = Generator[_Before | _Write | _Audit, Any, str]
 """A listing's hydration: it asks for its reads (`_Before`), receiving actions and adjusted
-closes, then for its audit (`_Audit`), receiving receipt, counts and its reads after it."""
+closes, for its bar write when it has bars to write (`_Write`), receiving its counts, then for
+its audit (`_Audit`), receiving receipt, counts and its reads after it."""
 
 
 @dataclass
@@ -707,10 +717,12 @@ class CurrentUniverseMaintenance:
     def _driven(self, steps: list[_Steps], connection: DuckDBPyConnection | None) -> list[str]:
         """Run the listings' hydrations, each read and the audit one statement set for all.
 
-        Each listing asks for its reads before its writes, then for its audit; it receives its
-        receipt with the reads after the audit. On the caller's transaction the audit is one
-        call and an error refuses the whole set; on separate commits (`connection` None, one
-        listing) an audit's error goes back into the listing, which handles it.
+        Each listing asks for its reads before its writes, then for its bar write, then for its
+        audit; it receives its receipt with the reads after the audit. Every listing's bars are
+        one batch write and the audits one call, each listing's counts and receipt its own. On
+        the caller's transaction an error refuses the whole set; on separate commits
+        (`connection` None, one listing) an audit's error goes back into the listing, which
+        handles it.
         """
         results: dict[int, str] = {}
 
@@ -725,11 +737,26 @@ class CurrentUniverseMaintenance:
 
         before = {index: asked for index in range(len(steps)) if (asked := advance(index))}
         read = self._before_reads(before.values(), connection)
-        audits: dict[int, _Audit] = {
-            index: asked
-            for index, request in before.items()
-            if (asked := advance(index, read[request.listing_id]))
+        asked = {
+            index: request
+            for index, before_request in before.items()
+            if (request := advance(index, read[before_request.listing_id]))
         }
+        writes = {index: request for index, request in asked.items() if isinstance(request, _Write)}
+        if writes:
+            written = self._mutate(
+                self.store._apply_validated_batches,
+                self.manifest,
+                [(write.batch, write.ingestion_id, write.rebases) for write in writes.values()],
+                observed_at=next(iter(writes.values())).observed_at,
+                _connection=connection,
+            )
+            for index, counts in zip(writes, written, strict=True):
+                if request := advance(index, counts):
+                    asked[index] = request
+                else:
+                    del asked[index]
+        audits: dict[int, _Audit] = asked
         receipts: dict[int, tuple[ActionAuditReceipt, dict[str, int]]] = {}
         if connection is not None and audits:
             with span("verify", "listing_action_audit"):
@@ -906,10 +933,11 @@ class CurrentUniverseMaintenance:
                 connection=connection,
             )
             return "FAILED"
-        write_counts, waits = self._apply_bars(
-            batch, existing, hydration, before_actions, observed_at, connection,
+        write, waits = self._bars_to_write(
+            batch, existing, hydration, before_actions, observed_at,
             ingestion_id=f"{self.maintenance_id}:refresh:{listing.listing_id}",
         )  # fmt: skip
+        write_counts = (yield write) if write is not None else {}
         return (
             yield from self._audit_and_finish(
                 item,
@@ -930,18 +958,18 @@ class CurrentUniverseMaintenance:
             )
         )
 
-    def _apply_bars(
+    def _bars_to_write(
         self,
         batch: SanitizedBatch,
         stored: Sequence[object],
         hydration: HydrationEvidence,
         before: tuple[object, ...],
         observed_at: datetime,
-        connection: DuckDBPyConnection | None,
         *,
         ingestion_id: str,
-    ) -> tuple[dict[str, int], bool]:
-        """Write a refresh's bars: its counts, and whether a rebase waits for the full audit.
+    ) -> tuple[_Write | None, bool]:
+        """A refresh's bars to write, none when its new sessions are already stored, and whether
+        a rebase waits for the full audit.
 
         A newly reported split's rebase of the stored bars, within the rule's precision, is
         written whole, from the full history: a rolling refresh that sees one writes only its
@@ -965,17 +993,10 @@ class CurrentUniverseMaintenance:
             else batch.bars
         )
         if not written:  # a retry of a waiting rebase: its new sessions are already stored
-            return {}, waits
-        counts = self._mutate(
-            self.store.apply_validated_batch,
-            self.manifest,
-            replace(batch, bars=written),
-            ingestion_id=ingestion_id,
-            observed_at=observed_at,
-            _connection=connection,
-            rebases=rebases,
-        )
-        return counts, waits
+            return None, waits
+        return _Write(
+            replace(batch, bars=written), ingestion_id, tuple(rebases), observed_at
+        ), waits
 
     def _standing(
         self, batch: SanitizedBatch, stored: Sequence[object], actions: Sequence[object]
@@ -1140,11 +1161,23 @@ class CurrentUniverseMaintenance:
                         observed_at=observed_at,
                     )
                     return "FAILED"
-                full_counts, _ = self._apply_bars(
+                full, _ = self._bars_to_write(
                     self._standing(full_batch, bars, before_actions), bars, hydration,
-                    before_actions, observed_at, None,
+                    before_actions, observed_at,
                     ingestion_id=f"{self.maintenance_id}:full:{listing.listing_id}",
                 )  # fmt: skip
+                full_counts = (
+                    {}
+                    if full is None
+                    else self._mutate(
+                        self.store.apply_validated_batch,
+                        self.manifest,
+                        full.batch,
+                        ingestion_id=full.ingestion_id,
+                        observed_at=full.observed_at,
+                        rebases=full.rebases,
+                    )
+                )
                 keys = set(write_counts) | set(full_counts)
                 write_counts = {k: write_counts.get(k, 0) + full_counts.get(k, 0) for k in keys}
                 receipt, audit_counts = self._mutate(

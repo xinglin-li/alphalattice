@@ -34,8 +34,8 @@ from alphalattice.control.workspace_runtime.storage.readiness import (
 from alphalattice.control.workspace_runtime.verified_facts import (
     ensure_year_fact_schema,
     forget_year_facts,
-    record_year_facts,
-    year_facts,
+    record_year_facts_by_scope,
+    year_facts_by_scope,
 )
 from alphalattice.foundation.market_data_ops.publication.projection import (
     ADJUSTED_CLOSE_DIAGNOSTIC_POLICY_HASH,
@@ -76,7 +76,7 @@ from alphalattice.foundation.market_data_ops.storage.action_audit import (
     closed_years,
     mapping_in_force,
     receipt_payload,
-    record_revision,
+    record_series_revisions,
     standing,
 )
 from alphalattice.foundation.market_data_ops.storage.rebase import (
@@ -582,6 +582,22 @@ def _maintenance_retry_grant(
         wait_until=_utc_aware(wait_until),
         consumed_at=_utc_aware(consumed_at) if consumed_at is not None else None,
     )
+
+
+@dataclass(frozen=True)
+class _AdjustedRefresh:
+    """One listing's refresh of its adjusted series, as the action audit asks it."""
+
+    listing_id: str
+    provider: str
+    points: Sequence[ProviderAdjustedClosePoint]
+    scope_start: date
+    scope_end: date
+    full_history: bool
+    earliest_session: date | None
+    receipt: Callable[..., ActionAuditReceipt]
+    tolerance: float = 0.0
+    actions: Iterable[date] = ()
 
 
 ADJUSTED_YEAR = "adjusted_year"
@@ -4223,35 +4239,40 @@ class MarketDataRepository(WorkspaceRepository):
             connection, "actions", appended.fetchnumpy()["revision_id"].tolist(), observed_at
         )
 
-    def _upsert_actions(
+    def _upsert_actions_by_listing(
         self,
         connection: duckdb.DuckDBPyConnection,
         events: Sequence[CorporateActionEvent],
         *,
         observed_at: datetime,
-    ) -> tuple[int, int]:
-        """Upsert many events; the counts of INSERTED and of CORRECTED or RESTORED.
+    ) -> dict[str, tuple[int, int]]:
+        """Upsert many events; each listing's counts of INSERTED and of CORRECTED or RESTORED.
 
-        The outcome of every event is the one ``_upsert_action`` decides --
-        the current rows of the events' listings and providers are read
-        once, an event without a current row is inserted, the rest are
-        judged one by one -- and the inserts, the bulk of a first
+        The outcome of every event is the one ``_upsert_action`` decides -- the current rows of
+        the events' listings and providers are read in one statement, an event without a current
+        row is inserted, the rest are judged one by one -- and the inserts, the bulk of a first
         hydration, land as one relation instead of one statement each.
         """
         if not events:
-            return 0, 0
+            return {}
         scopes = sorted({(event.listing_id, event.provider) for event in events})
+        listing_ids, providers = map(list, zip(*scopes, strict=True))
         existing: dict[tuple[str, str, date, str], tuple[str, str]] = {}
-        for listing_id, provider in scopes:
-            for row in connection.execute(
-                """
-                SELECT effective_date, action_kind, payload_hash, status
-                FROM corporate_action_current WHERE listing_id = ? AND provider = ?
-                """,
-                [listing_id, provider],
-            ).fetchall():
-                existing[(listing_id, provider, row[0], str(row[1]))] = (str(row[2]), str(row[3]))
-        inserted = corrected = 0
+        for listing_id, provider, *row in connection.execute(
+            """
+            SELECT current.listing_id, current.provider, effective_date, action_kind,
+                   payload_hash, status
+            FROM corporate_action_current AS current
+            JOIN (SELECT unnest(?::VARCHAR[]) AS listing_id, unnest(?::VARCHAR[]) AS provider)
+              AS scope USING (listing_id, provider)
+            """,
+            [listing_ids, providers],
+        ).fetchall():
+            existing[(str(listing_id), str(provider), row[0], str(row[1]))] = (
+                str(row[2]),
+                str(row[3]),
+            )
+        tally: dict[str, list[int]] = {event.listing_id: [0, 0] for event in events}
         fresh: list[CorporateActionEvent] = []
         changed: list[CorporateActionEvent] = []
         seen: set[tuple[str, str, date, str]] = set()
@@ -4259,8 +4280,8 @@ class MarketDataRepository(WorkspaceRepository):
             key = (event.listing_id, event.provider, event.effective_date, event.action_kind)
             if key in existing or key in seen:
                 outcome = self._upsert_action(connection, event, observed_at=observed_at)
-                inserted += int(outcome == "INSERTED")
-                corrected += int(outcome in {"CORRECTED", "RESTORED"})
+                tally[event.listing_id][0] += int(outcome == "INSERTED")
+                tally[event.listing_id][1] += int(outcome in {"CORRECTED", "RESTORED"})
                 if outcome != "UNCHANGED":
                     changed.append(event)
                 continue
@@ -4302,8 +4323,9 @@ class MarketDataRepository(WorkspaceRepository):
                 record_delta(connection, "actions", f"FROM {stage}", "effective_date", observed_at)
             finally:
                 connection.unregister(stage)
-            inserted += len(fresh)
-        return inserted, corrected
+            for event in fresh:
+                tally[event.listing_id][0] += 1
+        return {listing: (inserted, corrected) for listing, (inserted, corrected) in tally.items()}
 
     def _upsert_action(
         self,
@@ -4361,49 +4383,64 @@ class MarketDataRepository(WorkspaceRepository):
     def _retract_absent_actions(
         self,
         connection: duckdb.DuckDBPyConnection,
-        *,
-        listing_id: str,
-        provider: str,
-        observed_natural_keys: set[tuple[date, str]],
-        history_start: date,
-        history_end: date,
-        observed_at: datetime,
-    ) -> int:
+        observations: Sequence[ActionAuditObservation],
+        observed_natural_keys: Sequence[set[tuple[date, str]]],
+    ) -> list[int]:
+        """Retract each observation's active actions in its window that it did not observe; its
+        count each, every listing's active actions read in one statement."""
         rows = connection.execute(
             """
-            SELECT listing_id, provider, effective_date, action_kind,
-                   new_shares_per_old_share, cash_amount, provisional, provenance, payload_hash
-            FROM corporate_action_current
-            WHERE listing_id = ? AND provider = ? AND status = 'ACTIVE'
-              AND effective_date BETWEEN ? AND ?
+            SELECT current.listing_id, current.provider, current.effective_date,
+                   current.action_kind, current.new_shares_per_old_share, current.cash_amount,
+                   current.provisional, current.provenance, current.payload_hash
+            FROM corporate_action_current AS current
+            JOIN (
+                SELECT unnest(?::VARCHAR[]) AS listing_id, unnest(?::VARCHAR[]) AS provider,
+                       unnest(?::DATE[]) AS history_start, unnest(?::DATE[]) AS history_end
+            ) AS bounds
+              ON current.listing_id = bounds.listing_id AND current.provider = bounds.provider
+             AND current.effective_date BETWEEN bounds.history_start AND bounds.history_end
+            WHERE current.status = 'ACTIVE'
+            ORDER BY current.listing_id, current.effective_date, current.action_kind
             """,
-            [listing_id, provider, history_start, history_end],
+            [
+                [item.listing_id for item in observations],
+                [item.provider for item in observations],
+                [item.history_start for item in observations],
+                [item.history_end for item in observations],
+            ],
         ).fetchall()
-        target = market_snapshots.pending_table(self.path, "corporate_action_current")
-        retracted: list[CorporateActionEvent] = []
+        active: dict[str, list[tuple[Any, ...]]] = {item.listing_id: [] for item in observations}
         for row in rows:
-            event = CorporateActionEvent(*row[:8])
-            if (event.effective_date, event.action_kind) in observed_natural_keys:
-                continue
-            prior_hash = str(row[8])
-            connection.execute(
-                f"""
-                INSERT OR REPLACE INTO {target}
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RETRACTED', ?)
-                """,
-                [*row, observed_at],
-            )
-            self._record_action_revision(
-                connection,
-                event,
-                revision_kind="RETRACTED",
-                prior_payload_hash=prior_hash,
-                next_payload_hash=None,
-                observed_at=observed_at,
-            )
-            retracted.append(event)
-        _record_events(connection, retracted, observed_at)
-        return len(retracted)
+            active[row[0]].append(row)
+        target = market_snapshots.pending_table(self.path, "corporate_action_current")
+        counts = []
+        for item, keys in zip(observations, observed_natural_keys, strict=True):
+            retracted: list[CorporateActionEvent] = []
+            for row in active[item.listing_id]:
+                event = CorporateActionEvent(*row[:8])
+                if (event.effective_date, event.action_kind) in keys:
+                    continue
+                prior_hash = str(row[8])
+                connection.execute(
+                    f"""
+                    INSERT OR REPLACE INTO {target}
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RETRACTED', ?)
+                    """,
+                    [*row, item.observed_at],
+                )
+                self._record_action_revision(
+                    connection,
+                    event,
+                    revision_kind="RETRACTED",
+                    prior_payload_hash=prior_hash,
+                    next_payload_hash=None,
+                    observed_at=item.observed_at,
+                )
+                retracted.append(event)
+            _record_events(connection, retracted, item.observed_at)
+            counts.append(len(retracted))
+        return counts
 
     def stage_onboarding_batch(
         self,
@@ -4541,12 +4578,38 @@ class MarketDataRepository(WorkspaceRepository):
         action simply absent from a partial refresh: only :meth:`complete_action_audit` may.
         ``_connection`` is the caller's open transaction, which the caller commits.
         """
+        return self._apply_validated_batches(
+            manifest,
+            [(batch, ingestion_id, tuple(rebases))],
+            observed_at=observed_at,
+            _connection=_connection,
+        )[0]
+
+    def _apply_validated_batches(
+        self,
+        manifest: UniverseManifest,
+        writes: Sequence[tuple[SanitizedBatch, str, Sequence[RawBarRebase]]],
+        *,
+        observed_at: datetime,
+        _connection: duckdb.DuckDBPyConnection | None = None,
+    ) -> list[dict[str, int]]:
+        """``apply_validated_batch`` of several batches, each of its own listings, in one
+        statement set: each batch's counts, ingestion id, rebases and provider attempt are the
+        ones it gets alone."""
         observed_at = _utc_naive(observed_at)
-        self._assert_manifest_scope(manifest, (i.listing_id for i in (*batch.bars, *batch.actions)))
-        if not batch.bars:
-            raise ValueError("validated batch must contain at least one raw bar")
+        owner: dict[str, int] = {}
+        for index, (batch, _ingestion_id, _rebases) in enumerate(writes):
+            self._assert_manifest_scope(
+                manifest, (i.listing_id for i in (*batch.bars, *batch.actions))
+            )
+            if not batch.bars:
+                raise ValueError("validated batch must contain at least one raw bar")
+            for item in (*batch.bars, *batch.actions):
+                if owner.setdefault(item.listing_id, index) != index:
+                    raise ValueError("batches written together must name distinct listings")
         bar_rows = [
             {
+                "item": index,
                 "listing_id": bar.listing_id,
                 "provider": bar.provider,
                 "session_date": bar.session_date,
@@ -4558,18 +4621,23 @@ class MarketDataRepository(WorkspaceRepository):
                 "payload_hash": _bar_hash(bar),
                 "observed_at": observed_at,
             }
+            for index, (batch, _ingestion_id, _rebases) in enumerate(writes)
             for bar in batch.bars
+        ]
+        counts = [
+            {"inserted": 0, "corrected": 0, "action_inserted": 0, "action_corrected": 0}
+            for _write in writes
         ]
         stage_name = "validated_raw_bar_stage"
         connection = _connection or self._connect()
-        inserted = corrected = action_inserted = action_corrected = 0
         try:
             if _connection is None:
                 connection.execute("BEGIN TRANSACTION")
             connection.register(stage_name, pa.Table.from_pylist(bar_rows))
-            inserted, corrected = connection.execute(
+            for index, inserted, corrected in connection.execute(
                 f"""
                 SELECT
+                    s.item,
                     count(*) FILTER (WHERE current.payload_hash IS NULL),
                     count(*) FILTER (
                         WHERE current.payload_hash IS NOT NULL
@@ -4580,14 +4648,18 @@ class MarketDataRepository(WorkspaceRepository):
                   ON current.listing_id = s.listing_id
                  AND current.provider = s.provider
                  AND current.session_date = s.session_date
+                GROUP BY s.item
                 """
-            ).fetchone()
-            inserted, corrected = int(inserted), int(corrected)
-            if corrected:
-                changed = connection.execute(
+            ).fetchall():
+                counts[index]["inserted"] = int(inserted)
+                counts[index]["corrected"] = int(corrected)
+            kept: list[tuple[Any, ...]] = []
+            if any(count["corrected"] for count in counts):
+                changed: dict[int, list[tuple[Any, ...]]] = {}
+                for index, *row in connection.execute(
                     f"""
                     SELECT
-                        s.listing_id, s.provider, s.session_date,
+                        s.item, s.listing_id, s.provider, s.session_date,
                         current.payload_hash AS prior_hash,
                         s.payload_hash AS next_hash
                     FROM {stage_name} AS s
@@ -4596,14 +4668,20 @@ class MarketDataRepository(WorkspaceRepository):
                      AND current.provider = s.provider
                      AND current.session_date = s.session_date
                     WHERE current.payload_hash <> s.payload_hash
-                    ORDER BY s.listing_id, s.provider, s.session_date
+                    ORDER BY s.item, s.listing_id, s.provider, s.session_date
                     """
-                ).fetchall()
-                changed, corrected = unrebased(connection, changed, rebases, ingestion_id)
-            if corrected:
+                ).fetchall():
+                    changed.setdefault(index, []).append(tuple(row))
+                for index, rows in changed.items():
+                    _batch, ingestion_id, rebases = writes[index]
+                    rows, counts[index]["corrected"] = unrebased(
+                        connection, rows, rebases, ingestion_id
+                    )
+                    kept.extend(rows)
+            if kept:
                 keys = [
                     (str(listing_id), str(provider), session_date, str(prior), str(following))
-                    for listing_id, provider, session_date, prior, following in changed
+                    for listing_id, provider, session_date, prior, following in kept
                 ]
                 ids = [_canonical_hash(list(key)) for key in keys]
                 listings, providers, days, priors, nexts = map(list, zip(*keys, strict=True))
@@ -4624,7 +4702,7 @@ class MarketDataRepository(WorkspaceRepository):
                 )
                 record_revisions(connection, "bars", appended, observed_at)
             changed_raw = (
-                f"SELECT s.* FROM {stage_name} AS s"
+                f"SELECT s.* EXCLUDE (item) FROM {stage_name} AS s"
                 " LEFT JOIN raw_daily_bar_current AS current"
                 " USING (listing_id, provider, session_date)"
                 " WHERE current.payload_hash IS DISTINCT FROM s.payload_hash"
@@ -4684,32 +4762,36 @@ class MarketDataRepository(WorkspaceRepository):
                     updated_at = excluded.updated_at
                 """
             )
-            batch_inserted, batch_corrected = self._upsert_actions(
-                connection, tuple(batch.actions), observed_at=observed_at
-            )
-            action_inserted += batch_inserted
-            action_corrected += batch_corrected
-            connection.execute(
-                """
-                INSERT INTO provider_attempt VALUES (?, ?, NULL, ?, ?, 'SUCCESS', ?)
-                ON CONFLICT (attempt_id) DO NOTHING
-                """,
-                [
+            actions = [
+                action for batch, _ingestion_id, _rebases in writes for action in batch.actions
+            ]
+            for listing, (inserted, corrected) in self._upsert_actions_by_listing(
+                connection, actions, observed_at=observed_at
+            ).items():
+                counts[owner[listing]]["action_inserted"] += inserted
+                counts[owner[listing]]["action_corrected"] += corrected
+            attempts = [
+                (
                     ingestion_id,
                     batch.bars[0].listing_id,
                     min(item.session_date for item in batch.bars),
                     max(item.session_date for item in batch.bars),
-                    observed_at,
-                ],
+                )
+                for batch, ingestion_id, _rebases in writes
+            ]
+            ids, listings, starts, ends = map(list, zip(*attempts, strict=True))
+            connection.execute(
+                """
+                INSERT INTO provider_attempt
+                SELECT unnest(?::VARCHAR[]), unnest(?::VARCHAR[]), NULL, unnest(?::DATE[]),
+                       unnest(?::DATE[]), 'SUCCESS', ?::TIMESTAMP
+                ON CONFLICT (attempt_id) DO NOTHING
+                """,
+                [ids, listings, starts, ends, observed_at],
             )
             if _connection is None:
                 connection.execute("COMMIT")
-            return {
-                "inserted": inserted,
-                "corrected": corrected,
-                "action_inserted": action_inserted,
-                "action_corrected": action_corrected,
-            }
+            return counts
         except Exception:
             if _connection is None:
                 connection.execute("ROLLBACK")
@@ -5013,114 +5095,200 @@ class MarketDataRepository(WorkspaceRepository):
     def _reconcile_provider_adjusted_series(
         self,
         connection: duckdb.DuckDBPyConnection,
+        refreshes: Sequence[_AdjustedRefresh],
         *,
-        listing_id: str,
-        provider: str,
-        points: Sequence[ProviderAdjustedClosePoint],
-        scope_start: date,
-        scope_end: date,
-        full_history: bool,
-        earliest_session: date | None,
-        receipt: Callable[..., ActionAuditReceipt],
         observed_at: datetime,
-        tolerance: float = 0.0,
-        actions: Iterable[date] = (),
-    ) -> tuple[ProviderAdjustedSeriesRevision, ActionAuditReceipt]:
-        """Write a refresh of the listing's adjusted series and record its revision.
+    ) -> list[tuple[ProviderAdjustedSeriesRevision, ActionAuditReceipt]]:
+        """Write refreshes of listings' adjusted series, observed at `observed_at`, and record
+        their revisions, in order.
 
         A rolling refresh reads the stored series from its scope's year: each earlier one is held
         by its fact (`ADJUSTED_YEAR`), or the whole series is read. Every closed year it read is
         recorded as it leaves it; a full refresh forgets every year of the series it replaces.
+        Each read and each write is one statement for all the refreshes; each refresh's revision
+        and receipt are the ones it alone gets, since no two share a listing's rows.
         """
-        ordered = tuple(sorted(points, key=lambda item: item.session_date))
-        if not ordered or len({item.session_date for item in ordered}) != len(ordered):
-            raise ValueError("provider adjusted series must be non-empty and session-unique")
-        if any(
-            item.listing_id != listing_id
-            or item.provider != provider
-            or not scope_start <= item.session_date <= scope_end
-            or not math.isfinite(item.adjusted_close)
-            or item.adjusted_close <= 0.0
-            for item in ordered
-        ):
-            raise ValueError("provider adjusted series is outside its declared scope")
-        scope = _adjusted_scope(listing_id, provider)
-        facts: dict[int, str] = {}
-        held: dict[int, str] = {}
-        if not full_history and earliest_session is not None:
-            # The written years too, so a fact this refresh does not renew can be ended.
-            facts = year_facts(
-                connection,
-                kind=ADJUSTED_YEAR,
-                scope=scope,
-                basis=_ADJUSTED_YEAR_BASIS,
-                epoch=self.database.seal_epoch(),
-                years=range(earliest_session.year, scope_end.year + 1),
-            )
-            closed = range(earliest_session.year, scope_start.year)
-            if all(year in facts for year in closed):
-                held = {year: facts[year] for year in closed}
-
-        def stored(start: date) -> dict[date, float]:
-            rows = connection.execute(
-                """
-                SELECT session_date, adjusted_close FROM provider_adjusted_close_current
-                WHERE listing_id = ? AND provider = ? AND session_date >= ? ORDER BY session_date
-                """,
-                [listing_id, provider, start],
-            ).fetchall()
-            return {row[0]: float(row[1]) for row in rows}
-
-        observed = {item.session_date: float(item.adjusted_close) for item in ordered}
-        prior = stored(date(scope_start.year, 1, 1) if held else date.min)
-        if held and not any(session < ordered[0].session_date for session in prior):
-            # The refresh's first return reads the session before it, in a closed year.
-            held, prior = {}, stored(date.min)
-        prior_in_scope = {
-            session: value
-            for session, value in prior.items()
-            if scope_start <= session <= scope_end
+        ordered = []
+        for refresh in refreshes:
+            points = tuple(sorted(refresh.points, key=lambda item: item.session_date))
+            if not points or len({item.session_date for item in points}) != len(points):
+                raise ValueError("provider adjusted series must be non-empty and session-unique")
+            if any(
+                item.listing_id != refresh.listing_id
+                or item.provider != refresh.provider
+                or not refresh.scope_start <= item.session_date <= refresh.scope_end
+                or not math.isfinite(item.adjusted_close)
+                or item.adjusted_close <= 0.0
+                for item in points
+            ):
+                raise ValueError("provider adjusted series is outside its declared scope")
+            ordered.append(points)
+        keys = [(refresh.listing_id, refresh.provider) for refresh in refreshes]
+        scopes = [_adjusted_scope(*key) for key in keys]
+        epoch = self.database.seal_epoch()
+        # A rolling refresh's years from its series' first, the written years too, so a fact
+        # this refresh does not renew can be ended.
+        rolling = {
+            scope: range(earliest.year, refresh.scope_end.year + 1)
+            for scope, refresh in zip(scopes, refreshes, strict=True)
+            if not refresh.full_history and (earliest := refresh.earliest_session) is not None
         }
-        if set(prior_in_scope) - set(observed):
-            raise ActionAuditScopeInsufficient(
-                "provider adjusted refresh omitted a canonical session"
-            )
-        added_sessions = set(observed) - set(prior)
-        adds_after_prior = bool(prior and added_sessions and min(added_sessions) > max(prior))
-        if full_history and prior and added_sessions and not adds_after_prior:
-            raise ValueError("full provider adjusted series changed its historical session set")
-        observed, next_values, disclosed = standing(
-            prior, observed, added_sessions, tolerance, replaces=full_history, actions=actions
+        facts = year_facts_by_scope(
+            connection, kind=ADJUSTED_YEAR, basis=_ADJUSTED_YEAR_BASIS, epoch=epoch, wanted=rolling
         )
-        prior_hash = self._provider_adjusted_series_hash(prior, held) if prior or held else None
-        next_hash = self._provider_adjusted_series_hash(next_values, held)
-        changed_values = sum(prior.get(session) != value for session, value in observed.items())
-        if full_history:
-            forget_year_facts(
-                connection, ADJUSTED_YEAR, pairs=[(scope, session.year) for session in prior]
-            )
-        session_set_changed = bool(prior or held) and set(prior) != set(next_values)
-        if (
-            adds_after_prior
-            and not disclosed
-            and changed_values == len(added_sessions)
-            and prior.keys() <= next_values.keys()
+        helds: list[dict[int, str]] = []
+        for scope, refresh in zip(scopes, refreshes, strict=True):
+            held: dict[int, str] = {}
+            if scope in rolling:
+                closed = range(rolling[scope].start, refresh.scope_start.year)
+                if all(year in facts[scope] for year in closed):
+                    held = {year: facts[scope][year] for year in closed}
+            helds.append(held)
+
+        def stored(
+            starts: Mapping[tuple[str, str], date],
+        ) -> dict[tuple[str, str], dict[date, float]]:
+            found: dict[tuple[str, str], dict[date, float]] = {key: {} for key in starts}
+            if starts:
+                rows = connection.execute(
+                    """
+                    SELECT current.listing_id, current.provider, current.session_date,
+                           current.adjusted_close
+                    FROM provider_adjusted_close_current AS current
+                    JOIN (
+                        SELECT unnest(?::VARCHAR[]) AS listing_id,
+                               unnest(?::VARCHAR[]) AS provider, unnest(?::DATE[]) AS start_date
+                    ) AS bounds
+                      ON current.listing_id = bounds.listing_id
+                     AND current.provider = bounds.provider
+                     AND current.session_date >= bounds.start_date
+                    ORDER BY current.listing_id, current.provider, current.session_date
+                    """,
+                    [[key[0] for key in starts], [key[1] for key in starts], list(starts.values())],
+                ).fetchall()
+                for listing_id, provider, session, value in rows:
+                    found[(listing_id, provider)][session] = float(value)
+            return found
+
+        priors = stored(
+            {
+                key: date(refresh.scope_start.year, 1, 1) if held else date.min
+                for key, refresh, held in zip(keys, refreshes, helds, strict=True)
+            }
+        )
+        # A refresh whose first return reads the session before it, in a closed year.
+        whole = [
+            index
+            for index, (key, points) in enumerate(zip(keys, ordered, strict=True))
+            if helds[index] and not any(session < points[0].session_date for session in priors[key])
+        ]
+        for index in whole:
+            helds[index] = {}
+        priors |= stored({keys[index]: date.min for index in whole})
+
+        made_all: list[tuple[ProviderAdjustedSeriesRevision, ActionAuditReceipt]] = []
+        forgotten: list[tuple[str, int]] = []
+        renewed_by_scope: dict[str, dict[int, str]] = {}
+        stages: list[pa.Table] = []
+        revisions: list[ProviderAdjustedSeriesRevision] = []
+        for refresh, points, scope, key, held in zip(
+            refreshes, ordered, scopes, keys, helds, strict=True
         ):
-            disclosed["tail_append"] = True
-        return_changes = (
-            adjusted_return_changes(
+            listing_id, provider = key
+            scope_start, scope_end = refresh.scope_start, refresh.scope_end
+            full_history = refresh.full_history
+            prior = priors[key]
+            observed = {item.session_date: float(item.adjusted_close) for item in points}
+            prior_in_scope = {
+                session: value
+                for session, value in prior.items()
+                if scope_start <= session <= scope_end
+            }
+            if set(prior_in_scope) - set(observed):
+                raise ActionAuditScopeInsufficient(
+                    "provider adjusted refresh omitted a canonical session"
+                )
+            added_sessions = set(observed) - set(prior)
+            adds_after_prior = bool(prior and added_sessions and min(added_sessions) > max(prior))
+            if full_history and prior and added_sessions and not adds_after_prior:
+                raise ValueError("full provider adjusted series changed its historical session set")
+            observed, next_values, disclosed = standing(
                 prior,
-                next_values,
-                tolerance,
-                refreshed_from=None if full_history else min(observed, default=None),
+                observed,
+                added_sessions,
+                refresh.tolerance,
+                replaces=full_history,
+                actions=refresh.actions,
             )
-            if prior
-            else ()
-        )
-        uniform_rescale = bool(changed_values) and not return_changes and not session_set_changed
-        if observed:
-            stage = adjusted_stage(listing_id, provider, observed, observed_at, _canonical_hash)
-            connection.register("provider_adjusted_close_stage", stage)
+            prior_hash = self._provider_adjusted_series_hash(prior, held) if prior or held else None
+            next_hash = self._provider_adjusted_series_hash(next_values, held)
+            changed_values = sum(prior.get(session) != value for session, value in observed.items())
+            if full_history:
+                forgotten += [(scope, session.year) for session in prior]
+            session_set_changed = bool(prior or held) and set(prior) != set(next_values)
+            if (
+                adds_after_prior
+                and not disclosed
+                and changed_values == len(added_sessions)
+                and prior.keys() <= next_values.keys()
+            ):
+                disclosed["tail_append"] = True
+            return_changes = (
+                adjusted_return_changes(
+                    prior,
+                    next_values,
+                    refresh.tolerance,
+                    refreshed_from=None if full_history else min(observed, default=None),
+                )
+                if prior
+                else ()
+            )
+            uniform_rescale = (
+                bool(changed_values) and not return_changes and not session_set_changed
+            )
+            if observed:
+                stages.append(
+                    adjusted_stage(listing_id, provider, observed, observed_at, _canonical_hash)
+                )
+            made = refresh.receipt(
+                adjusted=[
+                    ProviderAdjustedClosePoint(listing_id, provider, day, value)
+                    for day, value in sorted(next_values.items())
+                    if scope_start <= day <= scope_end
+                ]
+            )
+            # The closed years this refresh read, as it leaves them, are held for the next one; a
+            # written year's fact it does not renew ends.
+            renewed = closed_years(self._adjusted_year_digests(next_values), scope_end)
+            renewed_by_scope[scope] = renewed
+            forgotten += [
+                (scope, session.year)
+                for session in observed
+                if session.year in facts.get(scope, {}) and session.year not in renewed
+            ]
+            revision = ProviderAdjustedSeriesRevision(
+                receipt_hash="",
+                listing_id=listing_id,
+                provider=provider,
+                prior_series_hash=prior_hash,
+                next_series_hash=next_hash,
+                scope_start=scope_start,
+                scope_end=scope_end,
+                full_history=full_history,
+                changed_value_count=changed_values,
+                changed_return_sessions=return_changes,
+                session_set_changed=session_set_changed,
+                uniform_rescale=uniform_rescale,
+                source_receipt_hash=made.receipt_hash,
+                observed_at=_utc_aware(observed_at),
+                disclosed=disclosed,
+            )
+            revision = replace(revision, receipt_hash=revision.hashed())
+            if prior_hash != next_hash:
+                revisions.append(revision)
+            made_all.append((revision, made))
+        if stages:
+            connection.register("provider_adjusted_close_stage", pa.concat_tables(stages))
             # Only a changed or new close is written, and journaled: one the provider sent again
             # unchanged keeps the time it was first observed, as a raw bar does.
             changed = (
@@ -5140,54 +5308,18 @@ class MarketDataRepository(WorkspaceRepository):
                 )
             finally:
                 connection.unregister("provider_adjusted_close_stage")
-        made = receipt(
-            adjusted=[
-                ProviderAdjustedClosePoint(listing_id, provider, day, value)
-                for day, value in sorted(next_values.items())
-                if scope_start <= day <= scope_end
-            ]
-        )
-        # The closed years this refresh read, as it leaves them, are held for the next one; a
-        # written year's fact it does not renew ends.
-        renewed = closed_years(self._adjusted_year_digests(next_values), scope_end)
-        record_year_facts(
+        # A full refresh's replaced years and a rolling one's unrenewed years end before the
+        # renewed ones are recorded; no ended pair is one a rolling refresh renews.
+        forget_year_facts(connection, ADJUSTED_YEAR, pairs=forgotten)
+        record_year_facts_by_scope(
             connection,
             kind=ADJUSTED_YEAR,
-            scope=scope,
             basis=_ADJUSTED_YEAR_BASIS,
-            epoch=self.database.seal_epoch(),
-            values=renewed,
+            epoch=epoch,
+            values=renewed_by_scope,
         )
-        forget_year_facts(
-            connection,
-            ADJUSTED_YEAR,
-            pairs=[
-                (scope, session.year)
-                for session in observed
-                if session.year in facts and session.year not in renewed
-            ],
-        )
-        revision = ProviderAdjustedSeriesRevision(
-            receipt_hash="",
-            listing_id=listing_id,
-            provider=provider,
-            prior_series_hash=prior_hash,
-            next_series_hash=next_hash,
-            scope_start=scope_start,
-            scope_end=scope_end,
-            full_history=full_history,
-            changed_value_count=changed_values,
-            changed_return_sessions=return_changes,
-            session_set_changed=session_set_changed,
-            uniform_rescale=uniform_rescale,
-            source_receipt_hash=made.receipt_hash,
-            observed_at=_utc_aware(observed_at),
-            disclosed=disclosed,
-        )
-        revision = replace(revision, receipt_hash=revision.hashed())
-        if prior_hash != next_hash:
-            record_revision(connection, revision, observed_at)
-        return revision, made
+        record_series_revisions(connection, revisions, observed_at)
+        return made_all
 
     def provider_adjusted_closes(
         self,
@@ -5659,6 +5791,8 @@ class MarketDataRepository(WorkspaceRepository):
         self._assert_manifest_scope(manifest, [item.listing_id for item in observations])
         if len({item.listing_id for item in observations}) != len(observations):
             raise ValueError("action audit observations must name distinct listings")
+        if len({item.observed_at for item in observations}) != 1:
+            raise ValueError("action audit observations must share one observation time")
         observations = tuple(
             replace(
                 item,
@@ -5673,28 +5807,29 @@ class MarketDataRepository(WorkspaceRepository):
         try:
             if _connection is None:
                 connection.execute("BEGIN TRANSACTION")
-            counts = []
-            for item, keys in zip(observations, natural, strict=True):
-                inserted, corrected = self._upsert_actions(
-                    connection, item.actions, observed_at=item.observed_at
+            observed_at = observations[0].observed_at
+            upserted = self._upsert_actions_by_listing(
+                connection,
+                [action for item in observations for action in item.actions],
+                observed_at=observed_at,
+            )
+            counts = [
+                {
+                    "inserted": upserted.get(item.listing_id, (0, 0))[0],
+                    "corrected": upserted.get(item.listing_id, (0, 0))[1],
+                    "retracted": retracted,
+                }
+                for item, retracted in zip(
+                    observations,
+                    self._retract_absent_actions(connection, observations, natural),
+                    strict=True,
                 )
-                retracted = self._retract_absent_actions(
-                    connection,
-                    listing_id=item.listing_id,
-                    provider=item.provider,
-                    observed_natural_keys=keys,
-                    history_start=item.history_start,
-                    history_end=item.history_end,
-                    observed_at=item.observed_at,
-                )
-                counts.append(
-                    {"inserted": inserted, "corrected": corrected, "retracted": retracted}
-                )
+            ]
             actions, revisions, bars, earliest, mappings, raw_digests = self._audit_reads(
                 connection, observations
             )
-            receipts = []
-            for item, count in zip(observations, counts, strict=True):
+            refreshes = []
+            for item in observations:
                 listing = item.listing_id
                 active = tuple(
                     CorporateActionEvent(listing, item.provider, *row[:2], *row[4:])
@@ -5722,22 +5857,30 @@ class MarketDataRepository(WorkspaceRepository):
                         revisions[listing],
                     ),
                 )
-                revision, receipt = self._reconcile_provider_adjusted_series(
-                    connection,
-                    listing_id=listing,
-                    provider=item.provider,
-                    points=item.adjusted_closes,
-                    scope_start=item.history_start,
-                    scope_end=item.history_end,
-                    full_history=item.history_start == earliest[listing],
-                    earliest_session=earliest[listing],
-                    receipt=receipt_for,
-                    observed_at=item.observed_at,
-                    tolerance=item.adjusted_tolerance,
-                    actions={action.effective_date for action in item.actions},
+                refreshes.append(
+                    _AdjustedRefresh(
+                        listing_id=listing,
+                        provider=item.provider,
+                        points=item.adjusted_closes,
+                        scope_start=item.history_start,
+                        scope_end=item.history_end,
+                        full_history=item.history_start == earliest[listing],
+                        earliest_session=earliest[listing],
+                        receipt=receipt_for,
+                        tolerance=item.adjusted_tolerance,
+                        actions={action.effective_date for action in item.actions},
+                    )
                 )
-                count = {**count, **revision.disclosed}
-                receipts.append((receipt, count))
+            receipts = [
+                (receipt, {**count, **revision.disclosed})
+                for (revision, receipt), count in zip(
+                    self._reconcile_provider_adjusted_series(
+                        connection, refreshes, observed_at=observed_at
+                    ),
+                    counts,
+                    strict=True,
+                )
+            ]
             self._insert_receipts(connection, [receipt for receipt, _ in receipts])
             if _connection is None:
                 connection.execute("COMMIT")

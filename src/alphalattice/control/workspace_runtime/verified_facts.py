@@ -319,15 +319,33 @@ def year_facts(
     years: Iterable[int],
 ) -> dict[int, str]:
     """The recorded values of `scope`'s years that still vouch under `basis` and `epoch`."""
-    wanted = sorted(set(years))
-    if not wanted or not _year_facts_held(connection):
-        return {}
-    rows = connection.execute(
-        "SELECT year, value FROM verified_year_fact WHERE kind = ? AND scope = ? AND basis = ? "
-        "AND epoch = ? AND list_contains(?::INTEGER[], year)",
-        [kind, scope, basis, epoch, wanted],
-    ).fetchall()
-    return {int(year): str(value) for year, value in rows}
+    return year_facts_by_scope(
+        connection, kind=kind, basis=basis, epoch=epoch, wanted={scope: years}
+    )[scope]
+
+
+def year_facts_by_scope(
+    connection: duckdb.DuckDBPyConnection,
+    *,
+    kind: str,
+    basis: str,
+    epoch: str,
+    wanted: Mapping[str, Iterable[int]],
+) -> dict[str, dict[int, str]]:
+    """`year_facts` of many scopes, each its own years, in one read."""
+    years = {scope: sorted(set(each)) for scope, each in wanted.items()}
+    found: dict[str, dict[int, str]] = {scope: {} for scope in years}
+    scopes = [scope for scope, each in years.items() if each]
+    if not scopes or not _year_facts_held(connection):
+        return found
+    for scope, year, value in connection.execute(
+        "SELECT scope, year, value FROM verified_year_fact WHERE kind = ? AND basis = ? "
+        "AND epoch = ? AND list_contains(?::VARCHAR[], scope)",
+        [kind, basis, epoch, scopes],
+    ).fetchall():
+        if int(year) in years[str(scope)]:
+            found[str(scope)][int(year)] = str(value)
+    return found
 
 
 def record_year_facts(
@@ -340,15 +358,34 @@ def record_year_facts(
     values: Mapping[int, str],
 ) -> None:
     """Record `scope`'s year values, verified now, in the caller's transaction."""
-    if values:
+    record_year_facts_by_scope(
+        connection, kind=kind, basis=basis, epoch=epoch, values={scope: values}
+    )
+
+
+def record_year_facts_by_scope(
+    connection: duckdb.DuckDBPyConnection,
+    *,
+    kind: str,
+    basis: str,
+    epoch: str,
+    values: Mapping[str, Mapping[int, str]],
+) -> None:
+    """`record_year_facts` of many scopes in one statement."""
+    rows = [
+        (scope, int(year), value)
+        for scope, each in values.items()
+        for year, value in {int(year): value for year, value in each.items()}.items()
+    ]
+    if rows:
         if not _year_facts_held(connection):
             ensure_year_fact_schema(connection)
         # One statement for every year: a row-by-row executemany costs a statement per year.
-        years = {int(year): value for year, value in values.items()}
+        scopes, years, kept = map(list, zip(*rows, strict=True))
         connection.execute(
             "INSERT OR REPLACE INTO verified_year_fact"
-            " SELECT ?, ?, unnest(?::INTEGER[]), ?, ?, unnest(?::VARCHAR[])",
-            [kind, scope, list(years), basis, epoch, list(years.values())],
+            " SELECT ?, unnest(?::VARCHAR[]), unnest(?::INTEGER[]), ?, ?, unnest(?::VARCHAR[])",
+            [kind, scopes, years, basis, epoch, kept],
         )
 
 
@@ -374,9 +411,12 @@ def forget_year_facts(
             [kind, wanted],
         )
     if pairs is not None and (blocks := sorted(set(pairs))):
-        connection.executemany(
-            "DELETE FROM verified_year_fact WHERE kind = ? AND scope = ? AND year = ?",
-            [[kind, scope, year] for scope, year in blocks],
+        scopes, block_years = map(list, zip(*blocks, strict=True))
+        connection.execute(
+            "DELETE FROM verified_year_fact AS fact USING (SELECT unnest(?::VARCHAR[]) AS scope,"
+            " unnest(?::INTEGER[]) AS year) AS block"
+            " WHERE fact.kind = ? AND fact.scope = block.scope AND fact.year = block.year",
+            [scopes, block_years, kind],
         )
 
 

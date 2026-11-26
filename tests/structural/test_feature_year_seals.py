@@ -99,7 +99,7 @@ def test_the_adjusted_close_writer_keeps_its_years_facts() -> None:
     writers = _writers(
         "provider_adjusted_close_current",
         ADJUSTED_WRITE,
-        "record_year_facts(",
+        "record_year_facts_by_scope(",
         "forget_year_facts(",
     )
     market = "foundation/market_data_ops/storage/duckdb.py"

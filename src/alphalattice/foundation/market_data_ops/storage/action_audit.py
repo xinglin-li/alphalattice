@@ -313,34 +313,52 @@ def adjusted_stage(
     )
 
 
-def record_revision(connection: Any, revision: Any, observed_at: datetime) -> None:
-    """Keep a refresh's adjusted-series revision, once by its receipt."""
+def record_series_revisions(
+    connection: Any, revisions: Sequence[Any], observed_at: datetime
+) -> None:
+    """Keep refreshes' adjusted-series revisions, observed at `observed_at`, each once by its
+    receipt, in one statement."""
+    if not revisions:
+        return
+    columns = list(
+        zip(
+            *(
+                (
+                    revision.receipt_hash,
+                    revision.listing_id,
+                    revision.provider,
+                    revision.prior_series_hash,
+                    revision.next_series_hash,
+                    revision.scope_start,
+                    revision.scope_end,
+                    revision.full_history,
+                    revision.changed_value_count,
+                    json.dumps(
+                        [item.isoformat() for item in revision.changed_return_sessions],
+                        separators=(",", ":"),
+                    ),
+                    revision.session_set_changed,
+                    revision.uniform_rescale,
+                    revision.source_receipt_hash,
+                    observed_at,
+                    json.dumps(revision.disclosed, sort_keys=True) if revision.disclosed else None,
+                )
+                for revision in revisions
+            ),
+            strict=True,
+        )
+    )
     connection.execute(
         """
-        INSERT INTO provider_adjusted_series_revision VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        ) ON CONFLICT (receipt_hash) DO NOTHING
+        INSERT INTO provider_adjusted_series_revision
+        SELECT unnest(?::VARCHAR[]), unnest(?::VARCHAR[]), unnest(?::VARCHAR[]),
+               unnest(?::VARCHAR[]), unnest(?::VARCHAR[]), unnest(?::DATE[]), unnest(?::DATE[]),
+               unnest(?::BOOLEAN[]), unnest(?::BIGINT[]), unnest(?::VARCHAR[]),
+               unnest(?::BOOLEAN[]), unnest(?::BOOLEAN[]), unnest(?::VARCHAR[]),
+               unnest(?::TIMESTAMP[]), unnest(?::VARCHAR[])
+        ON CONFLICT (receipt_hash) DO NOTHING
         """,
-        [
-            revision.receipt_hash,
-            revision.listing_id,
-            revision.provider,
-            revision.prior_series_hash,
-            revision.next_series_hash,
-            revision.scope_start,
-            revision.scope_end,
-            revision.full_history,
-            revision.changed_value_count,
-            json.dumps(
-                [item.isoformat() for item in revision.changed_return_sessions],
-                separators=(",", ":"),
-            ),
-            revision.session_set_changed,
-            revision.uniform_rescale,
-            revision.source_receipt_hash,
-            observed_at,
-            json.dumps(revision.disclosed, sort_keys=True) if revision.disclosed else None,
-        ],
+        [list(column) for column in columns],
     )
 
 
