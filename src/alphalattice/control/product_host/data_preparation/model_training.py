@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -28,15 +28,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     factor_input_paths,
     read_factor_bundle,
-)
-from alphalattice.control.product_host.research_authoring.input_revisions import (
-    ResearchInputRevisions,
-)
-from alphalattice.control.product_host.research_authoring.model_training import (
-    FROZEN_TRAINING_FACTOR_AXIS_HASH,
-    ComponentTrainingPreparationReceipt,
-    model_lifecycle_disclosure,
-    prepare_component_training_inputs,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.plan_previews import (
@@ -76,6 +67,11 @@ from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     AlphaModelLifecycleRecipe,
     ModelLifecycle,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.research_authoring.model_training import (
+        ComponentTrainingPreparationReceipt,
+    )
 
 PLAN_FIELDS = ("experiment_inputs",)
 """The manifest fields a plan reads: the research input it selects its binding from; its own
@@ -286,6 +282,15 @@ class ModelTrainingInputApplication:
         Raises:
             ValueError: Component selection, cleanup state or admitted input is invalid.
         """
+
+        from ..research_authoring.input_revisions import (  # lazy: not at start
+            ResearchInputRevisions,
+        )
+        from ..research_authoring.model_training import (  # lazy: not at start
+            FROZEN_TRAINING_FACTOR_AXIS_HASH,
+            model_lifecycle_disclosure,
+        )
+
         if component_id not in {"G2_R0_TREND", "G6_R0_FAST_REBOUND"}:
             raise ValueError("model_training.component_selection_invalid")
         require_no_pending_cleanup(self.session.workspace)
@@ -370,6 +375,7 @@ class ModelTrainingInputApplication:
         }
 
     def _require(self, plan: ModelTrainingInputPlan) -> None:
+
         current = read_research_workspace_manifest(self.session.workspace)
         if plan.workspace_id != current.workspace_id or not is_current(
             IMPLEMENTATION_ROLE, plan.implementation_hash, _implementation()
@@ -552,6 +558,10 @@ class ModelTrainingInputApplication:
         Returns:
             Deterministic execution compatibility declaration.
         """
+        from ..research_authoring.model_training import (  # lazy: not at start
+            FROZEN_TRAINING_FACTOR_AXIS_HASH,
+        )
+
         plan = self._of(task)
         self._require(plan)
         return TaskExecutionCompatibility.create(
@@ -573,6 +583,10 @@ class ModelTrainingInputApplication:
         self.session.execute_admitted(task, self, self.clock, expected_task_hash)
 
     def _preparation(self, task: TaskRecord) -> ComponentTrainingPreparationReceipt:
+        from ..research_authoring.model_training import (  # lazy: not at start
+            ComponentTrainingPreparationReceipt,
+        )
+
         item = next(
             v
             for v in self.session.task_control_registry.work_items(task.task_id)
@@ -605,6 +619,10 @@ class ModelTrainingInputApplication:
             Ready exact receipt/publication evidence, safe-checkpoint cancellation or bounded named
             refusal.
         """
+        from ..research_authoring.model_training import (  # lazy: not at start
+            prepare_component_training_inputs,
+        )
+
         del execution
         plan = self._of(task)
         try:
@@ -702,6 +720,10 @@ class ModelTrainingInputApplication:
             ValueError: Stage, source/component receipt, publication identity or current manifest
                 binding differs.
         """
+        from ..research_authoring.model_training import (  # lazy: not at start
+            ComponentTrainingPreparationReceipt,
+        )
+
         del execution
         plan = self._of(task)
         if len(evidence) != 1:
@@ -758,6 +780,10 @@ class ModelTrainingInputApplication:
         Raises:
             ValueError: A succeeded task lacks its exact publication.
         """
+        from ..research_authoring.model_training import (  # lazy: not at start
+            ComponentTrainingPreparationReceipt,
+        )
+
         task = self.session.task_control_registry.task(task_id)
         plan = self._of(task)
         publication = self._publication(plan.plan_hash)

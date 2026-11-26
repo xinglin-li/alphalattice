@@ -88,7 +88,6 @@ from ..retrieval.contracts import (
     WholeFilingsGeneration,
 )
 from ..retrieval.session import MATTER_VIEW_BYTES
-from ..sources.acquisition import AlternativeEvidenceTaskCancelled
 from ..sources.contracts import (
     AcquiredEvidenceSourceReferenceSet,
     AcquiredEvidenceSourceSet,
@@ -487,6 +486,7 @@ def _verify_table_view(
     view that cannot be proved refuses the packet by the view's own name;
     nothing is re-read from a source and nothing is interpreted.
     """
+
     binding = span.table_view
     assert binding is not None
     structure = DocumentStructure(text, document_type=reference.document_type)
@@ -570,6 +570,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Bind the runtime, Task registry, Host resources, and clock."""
+
         self.runtime = runtime
         self.registry = registry
         self.resources = resources
@@ -687,6 +688,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         work_item: WorkItemDefinition,
     ) -> StageExecutionResult:
         """Execute one planned Task stage and return its evidence."""
+
         del execution
         rank = self._rank(task, work_item.stage_id)
         stage = split_unit_stage(work_item.stage_id)[1]
@@ -727,6 +729,8 @@ class AlternativeEvidenceDocumentTaskAdapter:
     def _execute_stage(
         self, task: TaskRecord, work_item: WorkItemDefinition
     ) -> StageExecutionResult:
+        from ..sources.acquisition import AlternativeEvidenceTaskCancelled  # lazy: not at start
+
         unit_id, stage = split_unit_stage(work_item.stage_id)
         authority = self.unit_authority(task, unit_id)
         request, admission = authority.request, authority.admission
@@ -1483,6 +1487,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         preparation is not this code's. Seen on a QA copy across two rotations
         in one stage: the reused unit blocked every later analysis by name.
         """
+
         try:
             observed = (
                 self._snapshot(task, unit_id).acquisition_binding_hash,
@@ -1669,6 +1674,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         and the expiry -- so every part of one packet binds the same answer,
         whatever budget it was delivered under.
         """
+
         packet = self.prepared_packet(task_id, now=now, unit_id=unit_id)
         schema = AlternativeEvidenceAnalystAnswer.model_json_schema()
         fields = schema["$defs"]["AlternativeEvidenceAnswerFinding"]["properties"]
@@ -2160,6 +2166,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         through the publications sealed over it, and the next step is to
         prepare again under the current contract.
         """
+
         task = self.registry.task(task_id)
         authority = self.unit_authority(task, unit_id)
         request = authority.request
@@ -2268,6 +2275,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         admitting request already verified; at execution it is opened
         and verified again.
         """
+
         answer = require_answer_format(submitted.answer)
         if packet is None:
             packet = self.prepared_packet(
@@ -2399,6 +2407,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
         unit's plan counts (the run's source counts) for its acquisition, one
         unit for its selection; the others learn theirs as they run.
         """
+
         if stage == SELECT:
             return 1
         if stage != ACQUIRE or unit_id is None or not self._is_run(task):
@@ -2813,6 +2822,7 @@ def _stops_the_run(code: str) -> bool:
 
 
 def _failure_code(error: Exception) -> str:
+
     if isinstance(error, HostStopping):
         raise error
     return _diagnostic_failure_code(error)

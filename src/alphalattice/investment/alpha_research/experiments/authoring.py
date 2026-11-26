@@ -18,7 +18,7 @@ The compiler produces identity, never scores.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alphalattice.capabilities.alpha_modeling.catalog import AlphaModelCatalog
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
@@ -26,10 +26,6 @@ from alphalattice.investment.alpha_research.experiments.mandate import (
     AlphaModelCapabilityAuthority,
     AlphaModelRecipeProposal,
     AlphaResearchModelRecipe,
-)
-from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
-    PanelResearchMethodologyCompiler,
-    methodology_section,
 )
 from alphalattice.investment.alpha_research.targets.authority import (
     AlphaTargetMethod,
@@ -43,6 +39,11 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResolvedResearchAuthority,
     refuse_unknown_section_keys,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.investment.alpha_research.experiments.panel_methodology_authoring import (
+        PanelResearchMethodologyCompiler,
+    )
 
 ALPHA_EXPERIMENT_KIND = "alpha.model-development"
 
@@ -317,6 +318,9 @@ class AlphaExperimentCompiler:
         document: Mapping[str, Any],
         authority: ResolvedResearchAuthority,
     ) -> DeskProgramCompilation:
+        """Compile an Alpha section and its methodology into a desk program."""
+        from .panel_methodology_authoring import methodology_section  # lazy: not at start
+
         section = document.get("alpha")
         if not isinstance(section, dict):
             raise AuthoringError("alpha_research.authoring_section_missing")

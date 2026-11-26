@@ -22,11 +22,6 @@ from alphalattice.investment.alpha_research.publication.contracts import (
 from alphalattice.investment.portfolio_strategy_lab.application.tranche_book_execution import (
     TrancheFormationInputs,
 )
-from alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_return import (
-    complete_matured_observation_indices,
-    complete_matured_rank_curve,
-    rank_bucket_observations,
-)
 from alphalattice.investment.portfolio_strategy_lab.policies.contracts import (
     CausalRankReturnCurveSlice,
 )
@@ -44,10 +39,12 @@ class _Contract(BaseModel):  # type: ignore[misc]
 
     @classmethod
     def create(cls, **values: object) -> Self:
+
         return seal_scoped_model(cls, values, field="content_hash", digest=canonical_hash)
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_identity(self) -> Self:
+
         if self.content_hash != scoped_model_digest(self, "content_hash", digest=canonical_hash):
             raise ValueError("portfolio_calibration.identity_invalid")
         return self
@@ -201,6 +198,11 @@ def publish_consumed_observations(
     complete history precedes slicing, so missing observations or calendar gaps
     cannot move the maturity rule. The current row binds today's eligibility.
     """
+    from ..policies.buffered_rank_return import (  # lazy: not at start
+        complete_matured_observation_indices,
+        rank_bucket_observations,
+    )
+
     observed = rank_bucket_observations(
         scores=scores,
         realized_simple_returns=returns,
@@ -617,6 +619,12 @@ def compile_portfolio_calibration(
             absent, matured calibration is insufficient or live selection support is below the
             installed minimum.
     """
+    from ..policies.buffered_rank_return import (  # lazy: not at start
+        complete_matured_observation_indices,
+        complete_matured_rank_curve,
+        rank_bucket_observations,
+    )
+
     _check_arrays(observations, scores, returns, eligible)
     if observations.array_hash not in {
         columns_digest({"scores": scores, "returns": returns, "eligible": eligible}),

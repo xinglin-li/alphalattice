@@ -37,10 +37,13 @@ from alphalattice.capabilities.domain_contracts.source_identity import (
 
 from ..contracts import SectorResearchError, grid_to_matrix, sector_array_identity
 from ..models.contracts import SectorForecastRecipe
-from ..targets.execution import SectorTargetEvidence
 
 if TYPE_CHECKING:
     from alphalattice.foundation.data_layer.upgrade import Family, UpgradeRunner
+
+    from ..targets.execution import (
+        SectorTargetEvidence,
+    )
 
 SECTOR_TARGET_EVIDENCE_CATEGORY = "development/sector-target-evidence"
 SECTOR_FORECAST_SURFACE_CATEGORY = "development/sector-forecast-surfaces"
@@ -733,6 +736,9 @@ class SectorDevelopmentArtifactStore:
 
     # -------------------------------------------------------------------- load
     def load_target_evidence(self, content_hash: str) -> SectorTargetEvidence:
+        """Read one sector target's evidence by its content hash."""
+        from ..targets.execution import SectorTargetEvidence  # lazy: not at start
+
         return cast(
             SectorTargetEvidence,
             SectorTargetEvidence.model_validate(

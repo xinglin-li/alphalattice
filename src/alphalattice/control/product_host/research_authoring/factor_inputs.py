@@ -14,7 +14,7 @@ from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Final, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Final, Literal, Self, cast
 from uuid import UUID
 
 import pyarrow.parquet as pq
@@ -35,12 +35,8 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
     update_research_workspace_manifest,
 )
-from alphalattice.control.product_host.research_authoring.authority import (
-    WorkspaceResearchAuthorityResolver,
-)
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.retention import require_available_input
-from alphalattice.control.research_program.authoring.workflow import ResearchProgramWorkflow
 from alphalattice.control.task_control.upgrade import RETIRED_DIRECTORY, set_aside
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.control.workspace_runtime.content_store import staging_directory
@@ -53,9 +49,6 @@ from alphalattice.foundation.causal_outcomes.execution.publication import (
 )
 from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
-)
-from alphalattice.foundation.causal_outcomes.selection.listing_set import (
-    resolve_published_execution_outcome,
 )
 from alphalattice.foundation.data_layer import history, inputs
 from alphalattice.foundation.data_layer.backup import (
@@ -73,24 +66,14 @@ from alphalattice.foundation.factor_research.experiments.authoring import (
     FactorExperimentCompiler,
     factor_inventory_from_panel_manifest,
 )
-from alphalattice.foundation.factor_research.experiments.execution import (
-    FactorExperimentExecutor,
-    factor_policies_at_scale,
-)
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
 from alphalattice.foundation.feature_engine.panels.closure_artifacts import (
     PanelClosureArtifactStore,
 )
 from alphalattice.foundation.feature_engine.panels.closure_files import FolderFiles
-from alphalattice.foundation.feature_engine.panels.development_input import (
-    ResolvedDevelopmentFeatureInput,
-)
 from alphalattice.foundation.feature_engine.panels.logical_identity import (
     PanelLogicalArtifactStore,
     PanelLogicalIdentityPublisher,
-)
-from alphalattice.foundation.feature_engine.panels.observation_clock_authority import (
-    FeaturePanelObservationClockVerifier,
 )
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.producers.factors.registry import FeatureKernelRegistry
@@ -109,6 +92,17 @@ from alphalattice.protocols.research_authoring.contracts import (
     ResearchExperimentEnvelope,
     ResolvedResearchAuthority,
 )
+
+if TYPE_CHECKING:
+    from alphalattice.control.research_program.authoring.workflow import (
+        ResearchProgramWorkflow,
+    )
+    from alphalattice.foundation.factor_research.experiments.execution import (
+        FactorExperimentExecutor,
+    )
+    from alphalattice.foundation.feature_engine.panels.development_input import (
+        ResolvedDevelopmentFeatureInput,
+    )
 
 PROFILE = "us-current-index-research"
 _NON_SELECTION_TABLES = frozenset({"onboarding_raw_stage", "onboarding_action_stage"})
@@ -398,6 +392,7 @@ class FactorInputBundle(BaseModel):  # type: ignore[misc]
 def input_absent(error: BaseException) -> bool:
     """Whether a read failed because the binding, or a file of it, is not there: absent from the
     workspace's copies, or not kept on this data root (`data_layer.input_missing`)."""
+
     return isinstance(error, FileNotFoundError) or (
         isinstance(error, DataError) and error.failure.code == "data_layer.input_missing"
     )
@@ -543,6 +538,7 @@ def _copy_input(workspace: Path, source: Path, target: Path) -> None:
     anything else (the mutable database first) copied, read outside the engine (`storage.outside`).
     The binding is then kept on the data root, which keeps equal bytes once
     (kernel.data_layer.inputs), so the workspace pools nothing."""
+
     target.parent.mkdir(parents=True, exist_ok=True)
     if source.suffix == ".parquet" and source.resolve().is_relative_to(workspace.resolve()):
         try:
@@ -590,6 +586,7 @@ def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:
     Returns:
         Panel logical identity owner with its deterministic artifact store.
     """
+
     resolver = ArtifactResolver(source / "artifacts")
     return PanelLogicalIdentityPublisher(
         resolver=resolver, store=PanelLogicalArtifactStore(PanelClosureArtifactStore(resolver))
@@ -598,6 +595,7 @@ def logical_panel_owner(source: Path) -> PanelLogicalIdentityPublisher:
 
 def _logical_files(source: Path, snapshot: str) -> tuple[Path, ...]:
     """Copy only this verified snapshot's closure, never its current pointer."""
+
     closure = PanelClosureArtifactStore(ArtifactResolver(source / "artifacts"))
     store = PanelLogicalArtifactStore(closure)
     marker = store.marker_for_snapshot(snapshot)
@@ -722,6 +720,7 @@ def publish_prepared_factor_inputs(
 ) -> ResearchWorkspaceExperimentInput:
     """One Outcome/logical-Panel/bundle handoff for first use and later capture; `claim` records
     the Host's ownership of the manifest that binds it, under the gate before it is written."""
+
     task = session.task_control_registry.task(task_id)
     expected_kind = "workspace_preparation" if bind_configuration else "research_input_capture"
     if not session.writer_lease.held or task.task_kind != expected_kind:
@@ -768,6 +767,14 @@ def _bind_factor_inputs(
     bind_configuration: bool = True,
     claim: Callable[[ResearchWorkspaceManifest], None] | None = None,
 ) -> ResearchWorkspaceExperimentInput:
+
+    from ....foundation.causal_outcomes.selection.listing_set import (  # lazy: not at start
+        resolve_published_execution_outcome,
+    )
+    from ....foundation.feature_engine.panels.observation_clock_authority import (  # lazy: on use
+        FeaturePanelObservationClockVerifier,
+    )
+
     manifest = read_research_workspace_manifest(workspace)
     if not confined(source, "market-data.duckdb").is_file():
         raise AuthoringError("research_experiment.source_database_absent")
@@ -923,6 +930,7 @@ def _seal_factor_inputs(
     claim: Callable[[ResearchWorkspaceManifest], None] | None,
 ) -> ResearchWorkspaceExperimentInput:
     """Verify and keep the selected input files, then publish one binding."""
+
     source_digests = file_digests(sources.values())
     files = tuple(sorted((name, source_digests[path]) for name, path in sources.items()))
     database_hash = dict(files)["market-data.duckdb"]
@@ -1360,6 +1368,9 @@ def factor_workflow(
     caller that has not read it leaves it unset and it is read here. It must
     be the bundle of ``binding_hash``.
     """
+
+    from .authority import WorkspaceResearchAuthorityResolver  # lazy: not at start
+
     if bundle is None:
         bundle = read_factor_bundle(workspace, binding_hash)
     elif bundle.binding_hash != binding_hash:
@@ -1444,6 +1455,15 @@ def build_factor_executor(
 ) -> FactorExperimentExecutor:
     """The Factor factory shared by legacy Desk installation and Local Web. A caller that
     states no policy gets the workspace standard's (`factor_scale_policies`)."""
+    from alphalattice.foundation.factor_research.experiments.execution import (  # lazy: Factor
+        FactorExperimentExecutor,
+    )
+
+    from ....foundation.causal_outcomes.selection.listing_set import (  # lazy: not at start
+        resolve_published_execution_outcome,
+    )
+    from .authority import WorkspaceResearchAuthorityResolver  # lazy: not at start
+
     if evidence_policy is None and redundancy_policy is None and walk_forward_policy is None:
         scale = factor_scale_policies(workspace, envelope.universe_handle)
         evidence_policy = scale.get("evidence_policy")
@@ -1497,6 +1517,10 @@ def factor_scale_policies(workspace: Path, market_profile_id: str) -> dict[str, 
     """The Factor policies of the workspace's active universe standard: its listing floor and
     history years (`factor_policies_at_scale`); none for a workspace with no active candidate set,
     or at the shipped scale."""
+    from alphalattice.foundation.factor_research.experiments.execution import (  # lazy: Factor
+        factor_policies_at_scale,
+    )
+
     record = MarketDataRepository(workspace).readiness.load(market_profile_id)
     document = record.active_candidate_manifest_document if record else None
     if document is None:

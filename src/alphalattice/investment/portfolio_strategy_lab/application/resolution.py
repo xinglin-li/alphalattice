@@ -30,14 +30,8 @@ from alphalattice.capabilities.portfolio_backtesting.contracts import (
 from alphalattice.capabilities.portfolio_inputs.benchmark import (
     build_portfolio_benchmark_surface,
 )
-from alphalattice.capabilities.portfolio_inputs.signed_score.execution_events import (
-    execution_events_from_schedule,
-)
 from alphalattice.capabilities.portfolio_inputs.tradability.publication import (
     CurrentTradabilityDataService,
-)
-from alphalattice.capabilities.portfolio_inputs.tradability.readback import (
-    read_tradability_matrices,
 )
 from alphalattice.capabilities.quant.sector_history import SectorHistory
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
@@ -90,17 +84,8 @@ from alphalattice.investment.portfolio_strategy_lab.inputs.shared_lanes import (
     outcome_returns,
     sector_exposure_lanes,
 )
-from alphalattice.investment.portfolio_strategy_lab.policies.buffered_rank_return import (
-    CAUSAL_RANK_MU_LOOKBACK,
-    causal_rank_mu_maturity_support,
-)
 from alphalattice.investment.risk_research.surfaces.decomposition import (
     INSTALLED_RISK_DECOMPOSITION_RECIPE,
-)
-from alphalattice.investment.risk_research.surfaces.factors import catalog_factor_surfaces
-from alphalattice.investment.risk_research.surfaces.producer import (
-    RiskDecompositionInputs,
-    RiskSurfaceProducer,
 )
 from alphalattice.investment.risk_research.surfaces.returns import (
     CausalRiskReturnReader,
@@ -186,6 +171,7 @@ class ResolvedPortfolioAuthorities:
             PortfolioResearchCompositionError: Session order/count/endpoints contradict common
                 coverage, listing/eligible population is invalid or source hash syntax differs.
         """
+
         sessions = self.candidate_sessions
         listings = self.ordered_listing_ids
         if (
@@ -256,6 +242,7 @@ class ResolvedPortfolioAuthorities:
         manifests moving between the two reads must stop before a Program or an
         index is published under the stale PLAN receipt.
         """
+
         expected = (
             self.alpha_recipe_hash,
             self.alpha_evidence_manifest_hash,
@@ -407,6 +394,7 @@ class PortfolioResearchCompiler:
         listings: tuple[str, ...],
         continued_from_state_hash: str | None,
     ) -> PortfolioExecutionProgram:
+
         eligible_count = len(listings)
         ceiling = min(spec.exit_rank_band()[1], eligible_count)
         if spec.exit_rank > ceiling:
@@ -497,6 +485,7 @@ def _public_path_source_hash(*, installed_source_hash: str | None = None) -> str
     move recorded as keeping the numbers leaves every Program sealed before it current, and the
     installed strategy owner's source identity is composed in when a selection is resolved.
     """
+
     generic = recorded_origin(PUBLIC_PATH_ROLE, public_path_rule_value())
     if installed_source_hash is None:
         return generic
@@ -511,6 +500,7 @@ def _public_path_source_hash(*, installed_source_hash: str | None = None) -> str
 
 
 def _risk_surface(artifact_root: Path):  # type: ignore[no-untyped-def]
+
     store = RiskReturnArtifactStore(artifact_root)
     manifests = tuple(sorted((store.root / "manifests").glob("*.json")))
     if not manifests:
@@ -524,6 +514,7 @@ def _risk_surface(artifact_root: Path):  # type: ignore[no-untyped-def]
 
 
 def _sector_map(artifact_root: Path, *, manifest_revision: str) -> SectorRevisionMap:
+
     store = PanelClosureArtifactStore(ArtifactResolver(artifact_root))
     matches: list[SectorRevisionMap] = []
     for path in sorted((store.root / "sector-maps").glob("*.json")):
@@ -545,6 +536,7 @@ def _sector_history(
     artifact_root: Path, classification: SectorRevisionMap, listings: tuple[str, ...]
 ) -> SectorHistory:
     """The Sector each formation reads over the book's listings, as of its revision."""
+
     try:
         history = sector_history_as_of(
             PanelClosureArtifactStore(ArtifactResolver(artifact_root)),
@@ -567,6 +559,7 @@ def _execution_authority(
     *,
     listings: tuple[str, ...],
 ) -> tuple[CausalExecutionOutcomeDevelopmentReader, str, CausalExecutionOutcomeManifest]:
+
     reader = CausalExecutionOutcomeDevelopmentReader(artifact_root)
     manifests: list[CausalExecutionOutcomeManifest] = []
     root = artifact_root / "data-operations" / "execution-outcomes" / "manifests"
@@ -596,6 +589,7 @@ def _sector_lanes(
     sessions: tuple[date, ...],
 ) -> tuple[FloatArray, FloatArray]:
     # A history with a reclassification is read per formation, by Sector name.
+
     if history.reclassifications:
         return sector_exposure_lanes(history, listings=listings, sessions=sessions)
     entries = {value.listing_id: value for value in classified(classification)}
@@ -631,6 +625,8 @@ def _common_axis(
     shared lanes agree, which is what stops one strategy's evidence window from
     silently bounding another's.
     """
+    from ..policies.buffered_rank_return import CAUSAL_RANK_MU_LOOKBACK  # lazy: not at start
+
     risk_session_set = set(risk_sessions)
     risk_listing_set = set(risk_listings)
     classified = {entry.listing_id for entry in classification.entries}
@@ -725,6 +721,14 @@ class SharedPortfolioInputResolver:
         owner cannot report, because each would be internally consistent. So
         there is one read, and both halves call it.
         """
+
+        from ....capabilities.portfolio_inputs.signed_score.execution_events import (  # lazy: use
+            execution_events_from_schedule,
+        )
+        from ..policies.buffered_rank_return import (  # lazy: not at start
+            causal_rank_mu_maturity_support,
+        )
+
         binding = support.shared_artifacts
         artifact_root = (
             self._artifact_root(workspace) if binding is None else binding.artifact_root.resolve()
@@ -856,6 +860,7 @@ class SharedPortfolioInputResolver:
         manifest and axis reads, which is what lets ``PLAN`` answer honestly
         before ``RUN`` is authorised.
         """
+
         axis = self._axis(workspace=workspace, support=support)
         tradability = axis.tradability
         common_sessions = axis.common_sessions
@@ -956,6 +961,18 @@ class SharedPortfolioInputResolver:
         self, *, workspace: Path, spec: PortfolioResearchSpec, support: ScoreSupport
     ) -> SharedPortfolioInputs:
         """Build every shared lane once, over the axis PLAN admitted."""
+        from alphalattice.investment.risk_research.surfaces.factors import (  # lazy: not at start
+            catalog_factor_surfaces,
+        )
+        from alphalattice.investment.risk_research.surfaces.producer import (  # lazy: not at start
+            RiskDecompositionInputs,
+            RiskSurfaceProducer,
+        )
+
+        from ....capabilities.portfolio_inputs.tradability.readback import (  # lazy: not at start
+            read_tradability_matrices,
+        )
+
         workspace_root = workspace.resolve()
         axis = self._axis(workspace=workspace_root, support=support)
         artifact_root = axis.artifact_root
@@ -1117,6 +1134,7 @@ class SharedPortfolioInputResolver:
         )
 
     def _artifact_root(self, workspace: Path) -> Path:
+
         artifact_root = workspace.resolve() / "runtime" / "artifacts"
         if not artifact_root.is_dir():
             raise PortfolioResearchCompositionError(
@@ -1125,6 +1143,7 @@ class SharedPortfolioInputResolver:
         return artifact_root
 
     def _tradability(self, artifact_root: Path):  # type: ignore[no-untyped-def]
+
         service = CurrentTradabilityDataService(artifact_root)
         current = service.read_current()
         if current is None or current.projection.status != "DATA_TRADABILITY_READY":
@@ -1149,6 +1168,7 @@ class SharedPortfolioInputResolver:
         to `anchor_only` -- a benchmark that quietly disappears is worse than one
         that refuses, because the report would still be labelled as comparing.
         """
+
         if spec.secondary_benchmark_view != "anchor_plus_spy":
             return None, None, "SECONDARY_BENCHMARK_NOT_REQUESTED"
         try:
@@ -1190,6 +1210,7 @@ class StrategyPortfolioResolver:
         self.catalog = catalog
 
     def _installed(self) -> InstalledFrozenStrategyCatalog:
+
         if self.catalog is None:
             raise PortfolioResearchCompositionError("portfolio_application.strategy_catalog_empty")
         return self.catalog
@@ -1258,6 +1279,7 @@ class StrategyPortfolioResolver:
             PortfolioResearchCompositionError: Package selection/required lanes, declared component
                 set or formation score-receipt coverage cannot be reconciled.
         """
+
         selected = self._selected(spec)
         source = self._source(selected=selected, spec=spec)
         policy = self._package(lambda: selected.policy_identity(spec=spec))
@@ -1330,6 +1352,7 @@ class StrategyPortfolioResolver:
 
     @staticmethod
     def _package[T](call: Callable[[], T]) -> T:
+
         try:
             return call()
         except StrategyPackageError as error:

@@ -32,9 +32,6 @@ from alphalattice.control.product_host.research_authoring.authority import (
     WorkspaceResearchAuthorityResolver,
     universe_profile,
 )
-from alphalattice.control.product_host.research_authoring.execution import (
-    build_installed_desk_executors,
-)
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     compatible_factor_inputs,
     factor_input_paths,
@@ -451,6 +448,8 @@ def prepare_factor_handoff(
     feature_input: ResolvedDevelopmentFeatureInput | None = None,
 ) -> PreparedFactorHandoff:
     """Revalidate independently named evidence, then use the shipped compiler."""
+    from .execution import build_installed_desk_executors  # lazy: the desk executors
+
     decisions = FactorDevelopmentCurationReader(evidence_root).submissions(
         checkpoint.checkpoint_hash
     )

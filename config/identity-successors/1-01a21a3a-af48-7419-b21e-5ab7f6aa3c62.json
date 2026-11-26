@@ -1,0 +1,111 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "54c597871061606ca4003048f7df766aa71d9430d4c3bce632b2eb2048442d8b",
+   "successor": "0e4033af9956d0ca76b90fd501d9683981c343b894feef1d52ae268b5b2c8243",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "3ba39d3d6d50fa8c65fff77a02ba706fe516e6909bf383d4e043457a9e7097f6",
+   "successor": "a36e8f46c17d441e979a0d2088259df4bc0016ad2f2d90c54168302ac593fbcd",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "18ba1601f773d6f07558b7e700530f1f071827670c038b77ef6e91977121a7e1",
+   "successor": "b9787c9e8636bdf77accbfe7661235dfdc4a862a8ea99083dee1e0df2c780a78",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "2f12fee768f0ac475749d5acc0c87db54fdb64c45d601ddfd07bb3ab2e03e746",
+   "successor": "5eed82a1f8a7b4dd25c7d86bf63dd5e370d8ad2a8881a6f927c753d6b8927017",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "218f3898da3e2ba61585d04c7b9646ed6f4e8d61d748bb2d930ff95045d7680c",
+   "successor": "f301032aac8d5a9a71f8031d73ffb2e42a939712e46c4609a86a71b1c22e902f",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "6c8560cf4f3a1c16d034c9413b981eeeadede4efc694ff139406bd9f787f2658",
+   "successor": "64ef65e706367794e1b2e964f8fe88ff698d211aca3d7fed6128282200e733ed",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "abc78e820f41a315012a5e0e8045e81756c5cd0b4fc14bbc0f5809dcc26dda7f",
+   "successor": "530fce8edef9fe0d904f03121eb4c4ab4fcda69fcf9746b8160d454c33d448cb",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "3ede83ea15bf3143c98622ec65107b59aa861dab056cd15699d5eb37577e475b",
+   "successor": "80c0c9e30b8c054a265a57b69e7ae625e29cb2dea925664c77a4bd1dd82c8429",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "a117023ccdf9c7093a96866e4ecd588ae944834b10b50ac68714db00d5841244",
+   "successor": "79b70952bc4334a25d6ab5ce535c2417bd369cb76bde7e2e8cf8928d0c4ca7fa",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "14b80927faba6157d49e20d91d1a34c066fc95dc41f38b1dc0cc6039397b1b44",
+   "successor": "7a0d1d67813f9f56f47b70f2a829b3d9c2b512a4e73574410a740646ec30f218",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "14b80927faba6157d49e20d91d1a34c066fc95dc41f38b1dc0cc6039397b1b44",
+   "successor": "7a0d1d67813f9f56f47b70f2a829b3d9c2b512a4e73574410a740646ec30f218",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "dd79f18e49ff809d934dc55d923a07a73f0309ec59b3c871c7e50dac05571c9b",
+   "successor": "3dd989318c797420d070759755ab331f4f3b09db40b9c5eefc37556ad40fc008",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "b3abd3e3adc90e4008eee5cf41ef97fba1139e324cb80d24f8e76f097b7e002f",
+   "successor": "3d277c3588dc53de09bd6ca3c7aa8102cf93ba4d580ab7bf3476db2eb9798c14",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "b956baad41aa6ee90294d86fff3af832243a5d46f8790b06f57da059d494287d",
+   "successor": "89dbd246f0952b7a11c4b4accc01850e34f4a1da792fe5b8fd77822ab0540235",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "2b4ec745d8d95f2b294e867ccd158f0f1ee6e49d308f2a1806f302b03f9b39c7",
+   "successor": "34a5b73e0fa8cc3f1c5d1c786e103144238d27f5d8ecc92918039a7c03e13577",
+   "change": "Load the Host's own modules when they are first used",
+   "reason": "The Host loads fewer modules before its first answer; moved source fingerprints have recorded successors, so plans recorded earlier stay current; results are unchanged"
+  }
+ ]
+}

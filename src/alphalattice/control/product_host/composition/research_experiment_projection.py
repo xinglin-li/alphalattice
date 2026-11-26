@@ -14,7 +14,7 @@ from alphalattice.control.product_host.research_authoring.authority import (
 )
 from alphalattice.control.task_control.contracts import TaskRecord
 from alphalattice.evidence.alternative_evidence.runtime.execution import CpuBudgetStore
-from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 from alphalattice.protocols.research_authoring.contracts import (
     ResearchExecutionEvidence,
     ResolvedResearchAuthority,

@@ -61,7 +61,6 @@ from ..contracts import (
 )
 from ..documents.canonicalization import canonicalize_source_documents
 from ..documents.contracts import AlternativeEvidenceDocumentSet
-from ..documents.workspace import AlternativeEvidenceDocumentPublisher
 from ..publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
@@ -78,9 +77,7 @@ from ..retrieval.contracts import (
     RetrievalGenerationRecord,
     WholeFilingsGeneration,
 )
-from ..retrieval.service import AlternativeEvidenceRetrievalService
 from ..retrieval.session import AlternativeEvidenceRetrievalSession
-from ..sources.acquisition import AlternativeEvidenceAcquisitionService
 from ..sources.contracts import (
     SOURCE_COMMIT_CATEGORY,
     SOURCE_DEFERRAL_CATEGORY,
@@ -128,6 +125,7 @@ from .reuse import (
 
 if TYPE_CHECKING:
     from ..analysis.submissions import AlternativeEvidenceHostPolicyBinding
+    from ..documents.workspace import AlternativeEvidenceDocumentPublisher
     from ..publication.analysis import AlternativeEvidenceAnalysisPublicationService
     from .execution import CpuBudgetStore
 
@@ -617,6 +615,7 @@ class _StopAwareSession:
         return getattr(self._session, name)
 
     def search(self, **kwargs: Any) -> Any:
+
         checkpoint()
         result = self._session.search(**kwargs)
         checkpoint()
@@ -728,6 +727,12 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         workspace_root: Path,
     ) -> None:
         """Compose acquisition, documents, retrieval, and sealed reuse owners."""
+        from ..documents.workspace import AlternativeEvidenceDocumentPublisher  # lazy: not at start
+        from ..retrieval.service import AlternativeEvidenceRetrievalService  # lazy: not at start
+        from ..sources.acquisition import (  # lazy: not at start
+            AlternativeEvidenceAcquisitionService,
+        )
+
         self.playpen_root = alternative_evidence_playpen_root(Path(__file__))
         self.acquisition = AlternativeEvidenceAcquisitionService(artifact_root=artifact_root)
         self.artifacts = self.acquisition.artifacts
@@ -836,6 +841,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         service as history, so those analyses and the reviews resting on them read
         back verified, labelled historical, and never as current authority.
         """
+
         current = (
             self.acquisition.acquisition_binding_hash,
             self.document_binding_hash,
@@ -864,6 +870,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
 
         Read each record's day from ``field`` (Z2); keep one index per category.
         """
+
         held = self.record_days.get(category)
         if held is None:
             held = self.record_days[category] = RecordDays(
@@ -908,6 +915,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         published_at: datetime,
     ) -> tuple[AlternativeEvidenceSnapshot, AcquiredEvidenceSourceReferenceSet]:
         """Acquire recorded documents and seal their source references."""
+
         self.recorded_acquisition_document_count += len(documents)
         snapshot, acquired = self.acquisition.build_recorded_evidence(
             request=request,
@@ -935,6 +943,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         recorded: bool = False,
     ) -> AcquiredEvidenceSourceReferenceSet:
         """Keep each document's bytes once and seal this request's references to them."""
+
         port = self._world_port or world_reads.serving()
         references = tuple(
             self.documents.publish_source_object(
@@ -1136,6 +1145,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
 
         ``began(1)`` hears each document as its canonical text is taken up.
         """
+
         self.canonicalization_document_count += len(source_set.documents)
 
         def known_canonical(document: AcquiredEvidenceDocument) -> bytes | None:
@@ -1187,6 +1197,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         and the index it never opens is neither verified nor claimed to be.
         `chunks` hears the chunks the generation searches once the store holds them.
         """
+
         value = (
             None
             if reuse_for is None
@@ -1275,6 +1286,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         Split each canonical text at line bounds in document-set order; the pieces form
         the text itself; no session, no question, no rerank.
         """
+
         require_current_selection(request)
         texts = self._whole_texts(document_set)
         spans: list[AlternativeEvidenceResolvedSpan] = []
@@ -1356,6 +1368,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         store: the record claims which chunks and vectors the corpus resolved to, not that a
         search ran.
         """
+
         index_id = self.retrieval.index_id(document_set)
         templates: dict[tuple[str, str], AlternativeEvidenceRetrievalGeneration] = {}
         for value in sorted(
@@ -1498,6 +1511,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         needs allocation, a retired residual policy -- is refused by name
         before anything is found or opened (`matter_selection_retired`).
         """
+
         require_current_selection(request)
         superseded: RetrievalSupersessionRecord | None = None
         found = self.sealed_selections.find(
@@ -1637,6 +1651,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
     ):
         """This request's receipt under an earlier retrieval binding, its spans and its sealed
         revisions; None without one, or when its span set does not read back."""
+
         prior = self._historical_receipt(request)
         prior_spans = None if prior is None else self.sealed_selections.spans_of(prior)
         if prior is None or prior_spans is None:
@@ -1670,6 +1685,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         the one no other such receipt replaced, by reusing it or by a recorded change. A
         generation's `built_at` is its document set's, alike under every binding, so it orders
         none of them."""
+
         found = {}
         for value in self.artifacts.values(
             RECEIPT_CATEGORY, AlternativeEvidenceRetrievalAccessReceipt
@@ -1744,6 +1760,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         receipt's own sealed selection replayed) the set the receipt names
         must be the one it delivered, proved the way a reuse proves it.
         """
+
         members: list[tuple[str, str, BaseModel]] = []
         if span_set is None:
             if self.sealed_selections.spans_of(receipt) is None:
@@ -1789,6 +1806,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         and `continue_routed_reads`, which prove the prior is of its very
         plan before reading.
         """
+
         require_current_selection(request)
         if (
             prior_receipt.request_hash != request.request_hash

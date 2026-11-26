@@ -6,14 +6,15 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
-from alphalattice.control.product_host.storage.contracts import (
-    PhysicalAvailability,
-    StorageEvictionPlan,
-)
 from alphalattice.control.workspace_runtime.verified_facts import file_sha256
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.storage.contracts import (
+        StorageEvictionPlan,
+    )
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 
@@ -249,6 +250,8 @@ class BoundedStorageRetentionOwner:
         return self._publish_availability(plan.evict_paths, plan.plan_hash)
 
     def _publish_availability(self, paths: tuple[str, ...], plan_hash: str) -> str:
+        from .contracts import PhysicalAvailability  # lazy: an eviction
+
         entries = [
             {
                 "relative_path": relative,

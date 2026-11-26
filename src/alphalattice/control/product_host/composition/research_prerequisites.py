@@ -21,7 +21,7 @@ from alphalattice.foundation.factor_research.experiments.development_evidence im
     FACTOR_DEVELOPMENT_CURATION_CATEGORY,
 )
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
-from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 
 Flow = Literal["FACTOR_STUDY", "ALPHA_STUDY", "RISK_STUDY", "BOOK", "FEATURE_TRIAL", "BOOK_REVIEW"]
 

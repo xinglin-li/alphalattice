@@ -18,9 +18,6 @@ from alphalattice.control.data_platform.maintenance.registry import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.evidence_review_workspace import (
-    EvidenceReviewWorkspaceManifest,
-)
 from alphalattice.control.product_host.composition.research_workspace import (
     ResearchWorkspaceError,
     ResearchWorkspaceManifest,
@@ -33,12 +30,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
     factor_input_paths,
     read_factor_bundle,
-)
-from alphalattice.control.product_host.research_authoring.input_revisions import (
-    ResearchInputRevisions,
-)
-from alphalattice.control.product_host.storage.contracts import (
-    storage_input_estimate,
 )
 from alphalattice.control.product_host.storage.inventory import (
     MANAGED_ROOTS,
@@ -70,9 +61,6 @@ from alphalattice.foundation.causal_outcomes.execution.readers import (
     CausalExecutionOutcomeDevelopmentReader,
 )
 from alphalattice.foundation.data_layer import history
-from alphalattice.foundation.feature_engine.panels.retention_residue import (
-    PanelRetentionResidueOwner,
-)
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.foundation.research_foundation.runtime.delta import VerifiedPreResearchHead
@@ -98,6 +86,7 @@ def bytes_by_root(files: tuple[tuple[str, int, str], ...]) -> dict[str, dict[str
     roots is counted physically under the first root that names it, so the roles sum to
     the managed total; a role's roots are summed.
     """
+
     seen: set[str] = set()
     values: dict[str, dict[str, int]] = {}
     for prefix, role in MANAGED_ROOTS:
@@ -197,6 +186,7 @@ class ResearchInputStorage:
         heads keep their parts. An unfinished Task protects all candidates,
         including parts whose marker has not yet been committed.
         """
+
         artifacts = self.workspace / "artifacts"
         store = AlphaCurrentArtifactStore(artifacts)
         scopes = tuple(
@@ -264,6 +254,7 @@ class ResearchInputStorage:
         names are released under the confirmed plan, a composition's that no generation
         published among them.
         """
+
         artifacts = self.workspace / "artifacts"
         panel_root = artifacts / "feature-panel"
         if not tuple((panel_root / "manifests").glob("*.json")):
@@ -339,6 +330,7 @@ class ResearchInputStorage:
             Input availability, protected evidence indexes, budget/capacity/free disk and
             recovery-required cleanup facts; no cleanup is applied.
         """
+
         evidence = self._references()
         files = managed_file_inventory(self.workspace)
         used = unique_managed_bytes(files)
@@ -382,6 +374,9 @@ class ResearchInputStorage:
         """Keep the current input owner's listing/session facts separate from execution capacity:
         each input the workspace makes current, and its newest published version, read through
         the door."""
+        from ..research_authoring.input_revisions import ResearchInputRevisions  # lazy: revisions
+        from .contracts import storage_input_estimate  # lazy: not at start
+
         manifest = read_research_workspace_manifest(self.workspace)
         revisions = ResearchInputRevisions(self.session)
         verified = revisions.publications() if manifest.experiment_inputs else ()
@@ -409,6 +404,7 @@ class ResearchInputStorage:
 
     def cap_readback(self) -> dict[str, Any]:
         """Read operator capacity without opening a research input or changing any record."""
+
         capacity = workspace_storage_capacity(self.workspace)
         return {
             "status": "AVAILABLE",
@@ -443,6 +439,7 @@ class ResearchInputStorage:
         # A new workspace session samples its own retained data even when this process
         # previously opened the same path. Later observation appends reuse the sample
         # refreshed by managed admissions and readbacks, without a whole-tree walk.
+
         capacity = workspace_storage_capacity(self.workspace, last_sample=self._capacity_sampled)
         self._capacity_sampled = True
         return int(capacity.cap_bytes)
@@ -457,6 +454,7 @@ class ResearchInputStorage:
         steps are the ones the storage readback already offers: a cleanup
         plan or a pin review. Nothing is evicted on the write's behalf.
         """
+
         require_storage_capacity(
             self.workspace,
             additional_bytes=max(0, int(additional_bytes)),
@@ -524,6 +522,7 @@ class ResearchInputStorage:
         }
 
     def _cleanup_values(self) -> dict[str, object]:
+
         evidence = self._references()
         files = managed_file_inventory(self.workspace)
         targets = {
@@ -547,6 +546,10 @@ class ResearchInputStorage:
         """The retained retrieval recipe's own model copy, when the machine's store holds its
         verified packs: offered to be linked to them, never deleted. Its bytes, which
         the capability hash binds, stay what sealed indexes read."""
+        from ..composition.evidence_review_workspace import (  # lazy: not at start
+            EvidenceReviewWorkspaceManifest,
+        )
+
         try:
             binding = read_research_workspace_manifest(self.workspace).evidence_review
         except ResearchWorkspaceError:
@@ -586,6 +589,11 @@ class ResearchInputStorage:
             StorageRetentionError: Retained model packs cannot be verified/relinked; the same plan
                 remains confirmable after repair.
         """
+
+        from ....foundation.feature_engine.panels.retention_residue import (  # lazy: a residue
+            PanelRetentionResidueOwner,
+        )
+
         if caller != "HUMAN":
             raise ValueError("storage.human_confirmation_required")
         with self.session.mutation_gate.hold():

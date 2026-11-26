@@ -15,7 +15,7 @@ from dataclasses import field as data_field
 from datetime import date
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -54,9 +54,6 @@ from alphalattice.foundation.data_layer.upgrade import Family
 from alphalattice.investment.alpha_research.calibration.return_unit import (
     RETURN_UNIT_CALIBRATION_CATEGORY,
     AlphaReturnUnitCalibrationEvidence,
-)
-from alphalattice.investment.alpha_research.scaling.contracts import (
-    CrossSectionalDispersionForecast,
 )
 from alphalattice.investment.alpha_research.scores.temporal_aggregation import (
     FIXED_ALPHA_ROW_AXIS_LANE_CATEGORY,
@@ -110,21 +107,7 @@ from alphalattice.kernel.identity import (
     integrity_sha256,
 )
 
-from .campaign import AlphaDevelopmentProgram
-from .campaign_evidence import (
-    AlphaCampaignDecisionReceipt,
-    AlphaDevelopmentDecisionDossier,
-    AlphaDevelopmentMethodEvidence,
-    AlphaDevelopmentTrialEvidence,
-    AlphaInnerSelectionRecord,
-    AlphaRecursiveReplayReceipt,
-)
-from .campaign_execution import (
-    AlphaCampaignPredictionSurface,
-    alpha_campaign_prediction_artifact_hash,
-)
 from .contracts import AlphaDevelopmentFitEvidence, AlphaExperimentBatchResult
-from .development_chunk_identity import _chunk_content_hash, _verified_content_hash
 from .development_contracts import (
     AlphaCandidateDevelopmentReport,
     AlphaCandidateDevelopmentScoreChunkRef,
@@ -147,13 +130,35 @@ from .development_contracts import (
     CanonicalAlphaScoreSurface,
     LegacyAlphaCandidateFoldEvidence,
 )
-from .fit_plan import AlphaModelFitPlan
-from .target_preprocessing import (
-    AlphaTargetClippingDetail,
-    AlphaTargetPreprocessingComparisonEvidence,
-    AlphaTargetPreprocessingComparisonProgram,
-    AlphaTargetPreprocessingReceipt,
-)
+
+if TYPE_CHECKING:
+    from alphalattice.investment.alpha_research.scaling.contracts import (
+        CrossSectionalDispersionForecast,
+    )
+
+    from .campaign import (
+        AlphaDevelopmentProgram,
+    )
+    from .campaign_evidence import (
+        AlphaCampaignDecisionReceipt,
+        AlphaDevelopmentDecisionDossier,
+        AlphaDevelopmentMethodEvidence,
+        AlphaDevelopmentTrialEvidence,
+        AlphaInnerSelectionRecord,
+        AlphaRecursiveReplayReceipt,
+    )
+    from .campaign_execution import (
+        AlphaCampaignPredictionSurface,
+    )
+    from .fit_plan import (
+        AlphaModelFitPlan,
+    )
+    from .target_preprocessing import (
+        AlphaTargetClippingDetail,
+        AlphaTargetPreprocessingComparisonEvidence,
+        AlphaTargetPreprocessingComparisonProgram,
+        AlphaTargetPreprocessingReceipt,
+    )
 
 CANONICAL_SCORE_SURFACE_CATEGORY = "canonical-score-surfaces"
 """Where the aggregated prediction surface lives, spelled once.
@@ -454,6 +459,7 @@ class AlphaDevelopmentArtifactStore:
         value: BaseModel,
         identity_field: str,
     ) -> str:
+
         history.flush()  # every array a sealed document can cite must already be committed
         with span("serialize", "alpha_json"):
             payload = value.model_dump(mode="json")
@@ -546,6 +552,7 @@ class AlphaDevelopmentArtifactStore:
         return cast(str, described.content_digest)
 
     def _load_lane(self, *, category: str, content_hash: str) -> bytes:
+
         self._lanes.require_hash(content_hash)
         try:
             layout = category + "/parquet"
@@ -570,6 +577,7 @@ class AlphaDevelopmentArtifactStore:
             raise ContentAddressedStoreError(f"{code}: {content_hash}") from error
 
     def _score_body(self, content_hash: str, layout: str, kind: str) -> bytes:
+
         try:
             return cast(bytes, history.read_alpha_part(content_hash, layout))
         except DataError as error:
@@ -579,6 +587,7 @@ class AlphaDevelopmentArtifactStore:
 
     def _packed_source_path(self, category: str, content_hash: str) -> Path:
         """The source whose identity invalidates an Alpha packed read."""
+
         path = self._path(f"current/{category}", content_hash, "bin")
         if not self._packed_is_door(category):
             return path
@@ -602,6 +611,7 @@ class AlphaDevelopmentArtifactStore:
         The bytes are taken at their content-addressed name; full proof (an export, a stage's
         check of what it wrote, the scrub) hashes them and refuses a mismatch (LAWS.md EV2).
         """
+
         path = self._packed_source_path(category, content_hash)
         if self._packed_is_door(category):
             try:
@@ -715,6 +725,7 @@ class AlphaDevelopmentArtifactStore:
         identity_field: str,
     ) -> tuple[bytes, tuple[str, ...]]:
         """The exact verified bytes of one JSON file snapshot and its descriptor identity."""
+
         content_hash = self._hash_from_uri(uri, category)
         target = self.root / category / f"{content_hash}.json"
         resolved = target.resolve()
@@ -1138,6 +1149,10 @@ class AlphaDevelopmentArtifactStore:
         surface: AlphaCampaignPredictionSurface,
     ) -> str:
         """Keep a campaign prediction under its evidence's semantic identity."""
+        from .campaign_execution import (  # lazy: not at start
+            alpha_campaign_prediction_artifact_hash,
+        )
+
         if surface.trial_evidence_hash != evidence.evidence_hash:
             raise ValueError("ALPHA_CAMPAIGN_PREDICTION_EVIDENCE_MISMATCH")
         values = np.asarray(surface.predictions, dtype=np.float64)
@@ -1178,6 +1193,10 @@ class AlphaDevelopmentArtifactStore:
         self, *, evidence: AlphaDevelopmentTrialEvidence
     ) -> tuple[tuple[str, ...], np.ndarray]:
         """Read the prediction surface bound to the trial's evidence."""
+        from .campaign_execution import (  # lazy: not at start
+            alpha_campaign_prediction_artifact_hash,
+        )
+
         table = pq.read_table(
             pa.BufferReader(
                 self._score_body(
@@ -1229,6 +1248,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_campaign_inner_selection_record(self, content_hash: str) -> AlphaInnerSelectionRecord:
+        """Read one campaign inner-selection record by its content hash."""
+        from .campaign_evidence import AlphaInnerSelectionRecord  # lazy: not at start
+
         return self._read_identity_json_text(
             AlphaInnerSelectionRecord,
             category="development/campaign/inner-selection-records",
@@ -1237,6 +1259,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_campaign_dossier(self, content_hash: str) -> AlphaDevelopmentDecisionDossier:
+        """Read one campaign decision dossier and prove the program it names."""
+        from .campaign_evidence import AlphaDevelopmentDecisionDossier  # lazy: not at start
+
         dossier = self._read_identity_json_text(
             AlphaDevelopmentDecisionDossier,
             category="development/campaign/dossiers",
@@ -1712,6 +1737,9 @@ class AlphaDevelopmentArtifactStore:
             ) from error
 
     def load_campaign_decision(self, content_hash: str) -> AlphaCampaignDecisionReceipt:
+        """Read one campaign decision receipt by its content hash."""
+        from .campaign_evidence import AlphaCampaignDecisionReceipt  # lazy: not at start
+
         return self._read_identity_json_text(
             AlphaCampaignDecisionReceipt,
             category="development/campaign/decisions",
@@ -1720,6 +1748,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_campaign_replay(self, content_hash: str) -> AlphaRecursiveReplayReceipt:
+        """Read one recursive replay receipt by its content hash."""
+        from .campaign_evidence import AlphaRecursiveReplayReceipt  # lazy: not at start
+
         return self._read_identity_json_text(
             AlphaRecursiveReplayReceipt,
             category="development/campaign/replays",
@@ -2099,6 +2130,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_target_preprocessing_detail(self, value: str) -> AlphaTargetClippingDetail:
+        """Read one target clipping detail by its hash."""
+        from .target_preprocessing import AlphaTargetClippingDetail  # lazy: not at start
+
         return self._load(
             "target-clipping-details",
             value,
@@ -2107,6 +2141,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_target_preprocessing_receipt(self, value: str) -> AlphaTargetPreprocessingReceipt:
+        """Read one target preprocessing receipt by its hash."""
+        from .target_preprocessing import AlphaTargetPreprocessingReceipt  # lazy: not at start
+
         return self._load(
             "target-preprocessing-receipts",
             value,
@@ -2115,6 +2152,11 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_comparison_program(self, value: str) -> AlphaTargetPreprocessingComparisonProgram:
+        """Read one target preprocessing comparison program by its hash."""
+        from .target_preprocessing import (  # lazy: not at start
+            AlphaTargetPreprocessingComparisonProgram,
+        )
+
         return self._load(
             "comparison-programs",
             value,
@@ -2145,6 +2187,11 @@ class AlphaDevelopmentArtifactStore:
         return tuple(sorted(path.stem for path in category.glob("*.json")))
 
     def load_comparison_evidence(self, value: str) -> AlphaTargetPreprocessingComparisonEvidence:
+        """Read one target preprocessing comparison's evidence by its hash."""
+        from .target_preprocessing import (  # lazy: not at start
+            AlphaTargetPreprocessingComparisonEvidence,
+        )
+
         return self._load(
             "comparison-evidence",
             value,
@@ -2167,6 +2214,9 @@ class AlphaDevelopmentArtifactStore:
         return self._publish("canonical-dispersion-forecasts", value, "forecast_hash")
 
     def load_canonical_dispersion_forecast(self, value: str) -> CrossSectionalDispersionForecast:
+        """Read one canonical cross-sectional dispersion forecast by its hash."""
+        from ..scaling.contracts import CrossSectionalDispersionForecast  # lazy: not at start
+
         return self._load(
             "canonical-dispersion-forecasts",
             value,
@@ -2572,6 +2622,8 @@ class AlphaDevelopmentArtifactStore:
         identity: dict[str, object],
         model: type[BaseModel],
     ) -> BaseModel:
+        from .development_chunk_identity import _chunk_content_hash  # lazy: not at start
+
         if tuple(table.schema.names) != columns or table.num_rows < 1:
             raise ValueError(f"{kind} schema is invalid")
         row_indices = tuple(int(value) for value in table["row_index"].to_pylist())
@@ -2633,6 +2685,11 @@ class AlphaDevelopmentArtifactStore:
         legacy_publication: bool = False,
         catalog_rows: pa.Table | None = None,
     ) -> pa.Table:
+        from .development_chunk_identity import (  # lazy: not at start
+            _chunk_content_hash,
+            _verified_content_hash,
+        )
+
         content_hash = str(reference.content_hash)
         metadata_hash = str(reference.metadata_hash)
         uri = str(reference.uri)
@@ -2722,6 +2779,9 @@ class AlphaDevelopmentArtifactStore:
         )
 
     def load_model_fit_plan(self, value: str) -> AlphaModelFitPlan:
+        """Read one model fit plan by its hash."""
+        from .fit_plan import AlphaModelFitPlan  # lazy: not at start
+
         return self._load(
             "model-fit-plans",
             value,

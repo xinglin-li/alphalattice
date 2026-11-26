@@ -1251,7 +1251,7 @@ class PortfolioResearchOperations:
 
     def verify_all(self) -> dict[str, object]:
         """Admit a whole sweep at once: every saved study verified in full."""
-        from .verification_sweep import (  # lazy: requested verification
+        from .verification_sweep import (  # lazy: verification is due
             StudyVerificationSweepCommand,
         )
 
@@ -2130,7 +2130,7 @@ class PortfolioResearchOperations:
         try:
             return run()
         except ValueError as error:
-            from ....oversight.chief_risk_officer.decision import (  # lazy: review refusal
+            from ....oversight.chief_risk_officer.decision import (  # lazy: invalid view filter
                 book_evidence,
             )
 
@@ -3537,7 +3537,7 @@ class PortfolioResearchOperations:
         # lazy: only this operation needs evidence review delivery.
 
         from . import committee  # lazy: this operation reads the committee
-        from .evidence_review_delivery import (  # lazy: this dependency belongs to the route.
+        from .evidence_review_delivery import (  # lazy: on use
             EvidenceReviewDelivery,
         )
         from .portfolio_result_context import (  # lazy: positions read
@@ -3654,13 +3654,13 @@ class PortfolioResearchOperations:
         """A deferred Task's way on: its owner's words, its retry time, the request that resumes
         it and the readback that says so. A kind without a deferral readback goes on by
         its recovery view; a readback that refuses leaves its read, which says why."""
-        from ..data_preparation.application import (  # lazy: owner of a deferred Task
+        from ..data_preparation.application import (  # lazy: preparation Task status
             TASK_KIND as PREPARATION_TASK_KIND,
         )
         from ..maintenance.data_update import (  # lazy: owner of a deferred Task
             DATA_UPDATE_TASK_KIND,
         )
-        from .decision_advancement import (  # lazy: owner of a deferred Task
+        from .decision_advancement import (  # lazy: input-readiness refusal
             DecisionAdvancementApplication,
         )
 
@@ -3999,7 +3999,7 @@ class PortfolioResearchOperations:
             else {}
         )
         context = self.review.task_subject(snapshot.task) if self.review else {}
-        from ..data_preparation.application import (  # lazy: first recovery view use
+        from ..data_preparation.application import (  # lazy: preparation Task status
             TASK_KIND as PREPARATION_TASK_KIND,
         )
 
@@ -4307,7 +4307,7 @@ class PortfolioResearchOperations:
         A data update and a research update stop in the data update's stages, whose owner says
         which stops a rerun resumes; each is offered through the door that reruns its kind.
         """
-        from ..maintenance.data_update import (  # lazy: blocked update readback
+        from ..maintenance.data_update import (  # lazy: owner of a deferred Task
             DATA_UPDATE_TASK_KIND,
         )
 
@@ -4775,7 +4775,7 @@ class PortfolioResearchOperations:
         from ..research_authoring.risk_reports import (  # lazy: on use
             RiskReportLinks,
         )
-        from .evidence_review_delivery import (  # lazy: this dependency belongs to the route.
+        from .evidence_review_delivery import (  # lazy: on use
             EvidenceReviewDelivery,
         )
         from .portfolio_result_context import (  # lazy: saved report context
@@ -4805,7 +4805,7 @@ class PortfolioResearchOperations:
         task = self.service.originating_task(result_hash)
         assert self.activations is not None and self.review is not None
         standing = self.activations.standing(task, result_hash=result_hash).model_dump(mode="json")
-        from ....oversight.chief_risk_officer.decision import (  # lazy: report's book selector
+        from ....oversight.chief_risk_officer.decision import (  # lazy: saved book selector
             book_evidence,
         )
 
@@ -5135,14 +5135,14 @@ class PortfolioResearchOperations:
         `chosen_by` has no default: the one caller that could forget to state it
         is the one that would silently record the wrong actor.
         """
-        from .research_experiment_plan import (  # lazy: study review selectors
+        from .research_experiment_plan import (  # lazy: saved report context
             review_requests,
         )
 
         assert self.review is not None
         if chosen_by == "SERVICE_AUTOMATION":
             raise ValueError("research_update.automation_operation_not_admitted")
-        from ....oversight.chief_risk_officer.decision import (  # lazy: select evidence
+        from ....oversight.chief_risk_officer.decision import (  # lazy: saved book selector
             book_evidence,
         )
 

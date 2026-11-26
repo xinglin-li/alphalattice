@@ -65,15 +65,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     update_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
-from alphalattice.control.product_host.data_preparation.host import (
-    PreFactorWorkspaceHost,
-    ProductWorkspacePaths,
-)
-from alphalattice.control.product_host.data_preparation.remediation import (
-    WorkspaceDataIssueApplication,
-    preparation_replan_refusal,
-    superseded_preparations,
-)
 from alphalattice.control.product_host.maintenance.data_update import (
     PROFILE,
     PreparationInputAfterDate,
@@ -86,13 +77,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     normalize_factor_document,
     publish_prepared_factor_inputs,
     read_factor_bundle,
-)
-from alphalattice.control.product_host.research_authoring.feature_activations import (
-    workspace_feature_catalog,
-)
-from alphalattice.control.product_host.storage.contracts import (
-    StorageBudgetResolution,
-    storage_input_estimate,
 )
 from alphalattice.control.product_host.storage.inventory import require_storage_capacity
 from alphalattice.control.product_host.storage.plan_previews import (
@@ -331,6 +315,7 @@ class _ListingActivityDelivery:
         # the counts by what this listing left and what it entered: a retained listing
         # whose audit fails while it is still PENDING adds a failure and revokes nothing;
         # one that fails after its quality admission gives that admission back.
+
         prior = self.states.get(observation.listing_id, observation.run_start_state)
         state = observation.state
         self.states[observation.listing_id] = state
@@ -389,6 +374,7 @@ class _ListingActivityDelivery:
     def _attempt(self, now: datetime) -> None:
         # The coalescing budget restarts at every attempt, refused or not: a refusal costs
         # one bounded wait per budget, never one per unit.
+
         self.pending = 0
         self.attempted_at = now
         data: dict[str, Any] = {
@@ -475,6 +461,7 @@ class WorkspacePreparationPlan(BaseModel):  # type: ignore[misc]
         Raises:
             pydantic.ValidationError: Fields or declared consistency violate the concrete model.
         """
+
         return seal_model(cls, values, field="plan_hash")
 
     def target_changed(self, latest: date) -> bool:
@@ -563,6 +550,7 @@ class WorkspacePreparationApplication:
         )
 
     def _gate(self) -> WorkspaceReadinessGate:
+
         return build_workspace_readiness(
             MarketDataRepository(self.session.workspace),
             profile_path=PROFILE,
@@ -594,6 +582,7 @@ class WorkspacePreparationApplication:
 
     def task_subject(self, task: TaskRecord) -> dict[str, object]:
         """Read the admitted date from this owner's canonical Task, without delegation IO."""
+
         try:
             if task.task_kind != TASK_KIND:
                 raise ValueError("workspace_preparation.task_not_admitted")
@@ -606,6 +595,8 @@ class WorkspacePreparationApplication:
         self, latest: TaskRecord | None, successor: TaskRecord | None, inputs: object
     ) -> tuple[dict[str, object], bool]:
         """Read data once when a prepared input discloses it or a stopped Task owes a choice."""
+        from .remediation import WorkspaceDataIssueApplication  # lazy: not at start
+
         stopped = bool(
             latest
             and successor is None
@@ -624,6 +615,7 @@ class WorkspacePreparationApplication:
 
     def binding_current(self, task: TaskRecord) -> bool:
         """The preparation owner alone decides whether a sealed implementation can continue."""
+
         return is_current(
             IMPLEMENTATION_ROLE, self._stored_plan(task).implementation_hash, _implementation()
         )
@@ -635,6 +627,7 @@ class WorkspacePreparationApplication:
         wrong-kind selections refuse by name. A bare read discovers the latest preparation,
         or the workspace's verified inputs when no preparation exists.
         """
+
         manifest = read_research_workspace_manifest(self.session.workspace)
         tasks = self.tasks()
         latest = tasks[-1] if tasks else None
@@ -812,6 +805,8 @@ class WorkspacePreparationApplication:
         Returns:
             The refusal code that names why, or None when a plan resumes it.
         """
+        from .remediation import preparation_replan_refusal  # lazy: not at start
+
         refused: str | None = preparation_replan_refusal(
             self.session.task_control_registry, self.session.workspace, task
         )
@@ -841,6 +836,7 @@ class WorkspacePreparationApplication:
     def _resume_progress(self, task: TaskRecord) -> dict[str, Any]:
         """A stopped preparation's progress, its confirm refused by name where no resume can make
         progress, by the rule its readback offers the confirm by."""
+
         if task.lifecycle is TaskLifecycle.BLOCKED and (refused := self.replan_refusal(task)):
             raise ValueError(refused)
         progress: dict[str, Any] = self._load(task.task_id, "progress", optional=True) or {}
@@ -855,6 +851,7 @@ class WorkspacePreparationApplication:
         now: datetime,
     ) -> WorkspacePreparationPlan | dict[str, Any]:
         """Admit exact local/predecessor coverage or bind new acquisition to the date's cutoff."""
+
         existing_inputs, predecessor = None, None
         if resume is not None:
             task = self.session.task_control_registry.task(resume)
@@ -916,6 +913,8 @@ class WorkspacePreparationApplication:
         requested_information_cutoff_at: datetime | None = None,
     ) -> dict[str, Any]:
         """Preview preparation or exact recovery within its retained date and authority."""
+        from .remediation import superseded_preparations  # lazy: not at start
+
         recovery = (
             self.session.task_control_registry.task(recovery_task_id)
             if recovery_task_id is not None
@@ -1252,6 +1251,7 @@ class WorkspacePreparationApplication:
         self, plan_hash: str, formation: date | None, cutoff: datetime | None
     ) -> None:
         """A retained Task or runnable preview cannot cross the workspace's dated boundary."""
+
         if formation is None:
             return
         retained = next(
@@ -1291,6 +1291,7 @@ class WorkspacePreparationApplication:
             ValueError: Caller, retry time, preview/source/predecessor scope is invalid or another
                 task must finish or recover.
         """
+
         with self.session.mutation_gate.hold():
             # Revocation and admission share the mutation gate: a check made before
             # acquiring it cannot authorize work after a concurrent revocation.
@@ -1385,6 +1386,7 @@ class WorkspacePreparationApplication:
             return CommandAdmission(task_id=task.task_id, lifecycle=task.lifecycle.value)
 
     def _require(self, plan: WorkspacePreparationPlan) -> None:
+
         through = cutoff.date() if (cutoff := plan.information_cutoff_at) else None
         current = read_research_workspace_manifest(self.session.workspace)
         restored = current.with_bindings(
@@ -1471,6 +1473,9 @@ class WorkspacePreparationApplication:
         return self.telemetry.path(task_id, name)
 
     def _load(self, task_id: UUID, name: str, *, optional: bool = False) -> dict[str, Any] | None:
+
+        from ..storage.contracts import StorageBudgetResolution  # lazy: not at start
+
         path = self._path(task_id, name)
         if not path.exists() and optional:
             return None
@@ -1512,6 +1517,7 @@ class WorkspacePreparationApplication:
     def _save(
         self, task: TaskRecord, name: str, values: dict[str, Any], *, progress: bool = False
     ) -> dict[str, Any]:
+
         data = {
             "task_id": str(task.task_id),
             "input_hash": task.input.input_hash,
@@ -1716,6 +1722,7 @@ class WorkspacePreparationApplication:
         Returns:
             Ready checkpoint evidence or a bounded named storage/runtime/validation refusal.
         """
+
         try:
             plan = self._of(task)
             stage = work_item.stage_id
@@ -1750,6 +1757,7 @@ class WorkspacePreparationApplication:
 
     @staticmethod
     def _blocked_preparation(error: ValueError | OSError | RuntimeError) -> StageExecutionResult:
+
         return StageExecutionResult(
             StageDisposition.BLOCKED,
             failure_code=(
@@ -1766,6 +1774,9 @@ class WorkspacePreparationApplication:
         stage: str,
         execution: TaskExecution,
     ) -> dict[str, Any] | StageExecutionResult:
+
+        from ..storage.contracts import storage_input_estimate  # lazy: not at start
+
         root = self.session.workspace
 
         def cancelled() -> bool:
@@ -1948,6 +1959,10 @@ class WorkspacePreparationApplication:
         gate: WorkspaceReadinessGate,
     ) -> tuple[WorkspaceRuntime, UniverseManifest]:
         """Bind Feature work to its active membership, catalog and retained progress sink."""
+        from ..research_authoring.feature_activations import (  # lazy: not at start
+            workspace_feature_catalog,
+        )
+
         root, stage = self.session.workspace, STAGES[2]
         data = self._load(task.task_id, STAGES[1])
         assert data is not None
@@ -1991,6 +2006,8 @@ class WorkspacePreparationApplication:
         cancelled: Callable[[], bool],
     ) -> dict[str, Any] | StageExecutionResult:
         """Qualify the bound Feature closure, then admit only its rechecked data truth."""
+        from .host import PreFactorWorkspaceHost, ProductWorkspacePaths  # lazy: not at start
+
         root, stage = self.session.workspace, STAGES[2]
         self._sources_allowed()
         runtime, manifest = self._feature_runtime(task, plan, execution, gate)
@@ -2127,6 +2144,7 @@ class WorkspacePreparationApplication:
         Raises:
             ValueError: Retained checkpoint input/content differs from the task or evidence.
         """
+
         self._of(task)
         record = self._load(task.task_id, work_item.stage_id)
         if (

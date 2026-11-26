@@ -88,7 +88,6 @@ from alphalattice.foundation.market_data_ops.sources.manifest import (
     ManifestListing,
     UniverseManifest,
 )
-from alphalattice.foundation.market_data_ops.sources.sector_forward import sector_effective_session
 from alphalattice.foundation.market_data_ops.storage import world, world_reads
 from alphalattice.foundation.market_data_ops.storage.duckdb import (
     ActionAuditReceipt,
@@ -481,12 +480,14 @@ class FeatureStateRepository(WorkspaceRepository):
         growth, and nothing outside this repository needs to ask it which catalog
         it was composed with -- the composer already knows.
         """
+
         if self._installed_catalog is None:
             self._installed_catalog = FeatureCatalog.load()
         return self._installed_catalog
 
     def _resolve_catalog_layer(self) -> FeatureCatalogLayer:
         """The parts whose rows compose the installed catalog's, derived once."""
+
         if self._catalog_layer is None:
             self._catalog_layer = FeatureCatalogLayer.over(self._resolve_installed_catalog())
         return self._catalog_layer
@@ -1798,6 +1799,7 @@ class FeatureStateRepository(WorkspaceRepository):
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> tuple[str, ...]:
         """Atomically persist a bounded batch while retaining listing receipts."""
+
         bounded = tuple(writes)
         if not bounded:
             raise ValueError("feature materialization batch is empty")
@@ -1935,6 +1937,7 @@ class FeatureStateRepository(WorkspaceRepository):
         end: date,
     ) -> tuple[FeatureIneligibilityRun, ...]:
         """Read physical intervals; internal engines must not expand the compatibility view."""
+
         listing_scope = tuple(sorted(set(listing_ids)))
         factor_scope = tuple(sorted(set(factor_ids)))
         if not listing_scope or not factor_scope:
@@ -2345,6 +2348,7 @@ class FeatureStateRepository(WorkspaceRepository):
         _connection: duckdb.DuckDBPyConnection | None = None,
     ) -> dict[str, tuple[FeatureSourceWindow, date, date]]:
         """Verify existing receipts before a caller compares their numerical inputs."""
+
         if not receipt_hashes:
             return {}
         connection = _connection or self._connect(read_only=True)
@@ -3023,6 +3027,10 @@ class FeatureStateRepository(WorkspaceRepository):
             The revision, whether a listing's payload changed, the store receipt and the
             effective session of this revision's reclassifications (None when it has none).
         """
+        from ...market_data_ops.sources.sector_forward import (  # lazy: not at start
+            sector_effective_session,
+        )
+
         expected = {item.listing_id: item for item in manifest.listings}
         if {str(item.get("listing_id")) for item in observations} != set(expected):
             raise ValueError("sector revision must be complete for the active manifest")
@@ -3214,6 +3222,7 @@ class FeatureStateRepository(WorkspaceRepository):
         second query would let the published map and the activated revision
         disagree while both looked well formed.
         """
+
         expected = {item.listing_id: item.provider_symbol for item in manifest.listings}
         connection = _connection or self._connect(read_only=True)
         try:
@@ -3394,6 +3403,7 @@ class FeatureStateRepository(WorkspaceRepository):
         cutoff_us: int | None = None,
     ) -> SectorReferenceState | None:
         """Return sector state only when every manifest listing shares one revision."""
+
         owns_connection = _connection is None
         connection = _connection or self._connect(read_only=True)
         try:
@@ -3883,6 +3893,7 @@ class PanelStateRepository(WorkspaceRepository):
         observed_at: datetime,
     ) -> None:
         """Register an available Feature Panel snapshot by content hash."""
+
         connection = self._connect()
         try:
             connection.execute(
@@ -4057,6 +4068,7 @@ class PanelStateRepository(WorkspaceRepository):
         observed_at: datetime,
     ) -> None:
         """Retire or quarantine one registered snapshot; reactivation is publication-owned."""
+
         if lifecycle not in {"SUPERSEDED", "QUARANTINED"}:
             raise ValueError("snapshot lifecycle maintenance cannot activate a snapshot")
         if not reason.strip():
@@ -4324,6 +4336,7 @@ class PanelStateRepository(WorkspaceRepository):
         observed_at: datetime,
     ) -> None:
         """Publish one complete panel binding, then and only then mark readiness."""
+
         observed = _utc_naive(observed_at)
         connection = self._connect()
         try:

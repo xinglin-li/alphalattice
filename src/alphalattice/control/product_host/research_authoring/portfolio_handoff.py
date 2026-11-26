@@ -36,7 +36,6 @@ from alphalattice.control.product_host.composition.research_authoring import (
 from alphalattice.control.product_host.research_authoring.authority import (
     WorkspaceResearchAuthorityResolver,
 )
-from alphalattice.control.product_host.research_authoring.execution import _sector_by_listing_id
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
     factor_input_paths,
@@ -712,6 +711,8 @@ def prepare_portfolio_market_inputs(
         PortfolioExperimentCancelled: Tradability preparation cancels at an immutable chunk
             boundary.
     """
+    from .execution import _sector_by_listing_id  # lazy: execution
+
     market = MarketDataRepository(source_workspace, cutoff_us=cutoff_us)
     manifest = market.load_universe_manifest_revision(source.universe_revision)
     sessions, listings = source.formation_sessions, source.ordered_listing_ids

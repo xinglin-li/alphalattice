@@ -27,10 +27,6 @@ from alphalattice.control.product_host.composition.answer_turns import ANSWER_FI
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.evidence_analysis_submit import (
-    answer_refusal_action,
-    submit_analyst_analysis,
-)
 from alphalattice.control.product_host.composition.evidence_review_resume import (
     CURRENT_WITHIN,
     answered_units,
@@ -45,10 +41,6 @@ from alphalattice.control.product_host.composition.evidence_review_resume import
     same_preparation,
     unanswered,
     units_short_of_sources,
-)
-from alphalattice.control.product_host.composition.evidence_review_workspace import (
-    EVIDENCE_INSTALL_TASK_KIND,
-    on_official_source,
 )
 from alphalattice.control.product_host.composition.evidence_source_ways import (
     PACKAGE_RULE,
@@ -66,7 +58,6 @@ from alphalattice.control.product_host.composition.evidence_source_ways import (
     offered_installs as source_offered_installs,
 )
 from alphalattice.control.product_host.composition.plain_refusals import refused
-from alphalattice.control.product_host.composition.retrieval_recipe import retrieval_recipe_view
 from alphalattice.control.product_host.composition.task_kinds import (
     EVIDENCE_REVIEW_RUNTIME_FILE,
 )
@@ -531,6 +522,8 @@ def agent_answer_result(
     accepted or finished with the answer -- the receipt it returns to its lead,
     which is all the lead receives, with the exact accepted record reference.
     """
+    from .evidence_analysis_submit import answer_refusal_action  # lazy: not at start
+
     answer = body.get("answer")
     if body.get("status") == "CORRECT" and isinstance(answer, dict):
         return {
@@ -700,6 +693,7 @@ class AlternativeEvidenceRefreshCommand:
         Raises:
             PortfolioEvidenceReviewError: Required adapter, contract or prepared review is absent.
         """
+
         envelope, goal, plan = self.contract()
         now = self.application.clock()
         admission = self.application.session.task_control_registry.admit(
@@ -894,6 +888,7 @@ class EvidenceTaskAdmission(AlternativeEvidenceContract):
 
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_admission(self) -> Self:
+
         if self.selector.keys() - BookSelector.__dataclass_fields__.keys():
             raise ValueError("alternative_evidence.artifact_tampered")
         TypeAdapter(BookSelector).validate_python(self.selector)
@@ -911,6 +906,7 @@ class EvidenceReviewApplication:
 
     def replan_request(self, task: TaskRecord) -> dict[str, object]:
         """Ask for the book selector the evidence-only Task does not retain."""
+
         return refused("evidence_review.replan_book_selection_required")
 
     def record_task_admission(
@@ -970,6 +966,7 @@ class EvidenceReviewApplication:
 
     def task_subject(self, task: TaskRecord) -> dict[str, object]:
         """Read admitted books and independent grouping from this Task's owner."""
+
         scope: dict[str, object] = {}
         context: dict[str, object] = {}
         subjects: list[dict[str, object]] = []
@@ -1142,6 +1139,8 @@ class EvidenceReviewApplication:
             self._use_source(admission)
 
     def _use_source(self, admission: OfficialSourceAdmission | None) -> None:
+        from .evidence_review_workspace import on_official_source  # lazy: not at start
+
         adapter = self.evidence_task_adapter
         if adapter is None or self.recorded_policy is None:
             return
@@ -1331,6 +1330,7 @@ class EvidenceReviewApplication:
         read once at the cutoff before packing (a preview, read on every page,
         packs from what is already known and requests nothing).
         """
+
         adapter = self.evidence_task_adapter
         if adapter is None:
             raise PortfolioEvidenceReviewError("product_host.evidence_task_adapter_absent")
@@ -1405,6 +1405,7 @@ class EvidenceReviewApplication:
 
         Delegation changes the offered control action; both effective permissions still hold.
         """
+
         if self.network_access is None:
             return None
         now = self.clock()
@@ -1548,6 +1549,7 @@ class EvidenceReviewApplication:
         What a person is choosing between. Expired analyses are left out because
         selecting one could not produce a review anyway.
         """
+
         service = self.evidence_publications
         if service is None:
             return ()
@@ -1581,6 +1583,7 @@ class EvidenceReviewApplication:
         The record is appended, never overwritten, so the previous answer and
         both publications remain readable.
         """
+
         resolved = self.resolve_book(selector)
         eligible = {
             view.publication.publication_hash: (question, view)
@@ -1736,6 +1739,7 @@ class EvidenceReviewApplication:
         self, *, question: ResolvedEvidenceQuestion
     ) -> AlternativeEvidenceAnalysisPublicationView | None:
         """The one current publication answering this exact obligation, or nothing."""
+
         now = self.clock()
         matches = current_answers(self, {question.obligation.obligation_hash}, now=now)
         if len(matches) > 1:
@@ -1871,6 +1875,7 @@ class EvidenceReviewApplication:
         closes the section over a current one. The reviewed publication itself
         still refuses by name when it is the orphan.
         """
+
         service = self._require_evidence_publications()
         now = self.clock()
         current = []
@@ -1917,6 +1922,8 @@ class EvidenceReviewApplication:
 
     def offered_installs(self) -> list[list[str]]:
         """Every exact install this book offers under the person's daily consent."""
+        from .evidence_review_workspace import EVIDENCE_INSTALL_TASK_KIND  # lazy: not at start
+
         book = self.default_selector(None)
         quiet = [
             task.input.payload["arguments"]
@@ -1942,6 +1949,7 @@ class EvidenceReviewApplication:
     def _resumable_preparation(
         self, selector: BookSelector, scope: PortfolioIssuerScope, *, now: datetime
     ) -> tuple[TaskRecord, AlternativeEvidenceCoverageRun] | None:
+
         return resumable_preparation(
             self,
             scope,
@@ -1955,6 +1963,8 @@ class EvidenceReviewApplication:
         self, selector: BookSelector | None = None, *, caller: str = "HUMAN"
     ) -> dict[str, object]:
         """Explain source preparation independently of optional managed inference."""
+        from .retrieval_recipe import retrieval_recipe_view  # lazy: not at start
+
         self.refresh_source()
         chosen = self._review_selector(selector)
         if isinstance(chosen, ReviewOutcome):
@@ -2491,6 +2501,7 @@ class EvidenceReviewApplication:
         the input is the identity. A delivery part of a packet is never this
         request.
         """
+
         if not self.refresh_source():
             return self._source_pending()
         chosen = self._review_selector(selector)
@@ -2667,6 +2678,7 @@ class EvidenceReviewApplication:
         The packet request(s) a preparation Task answers: one for a single
         preparation, one per unit for a coverage run that no current analysis answers yet.
         """
+
         chosen = self.default_selector(selector)
         if chosen is None:
             return {}
@@ -2749,6 +2761,8 @@ class EvidenceReviewApplication:
         Admit one answer to one prepared packet: screened item by item,
         refused with every problem in plain words, or its findings bound.
         """
+        from .evidence_analysis_submit import submit_analyst_analysis  # lazy: not at start
+
         return cast(
             ReviewOutcome | dict[str, object],
             submit_analyst_analysis(
@@ -4468,6 +4482,7 @@ class EvidenceReviewApplication:
 
     def _publication_days(self) -> RecordDays | None:
         """The analysis publications' dated index, where the Evidence runtime keeps one."""
+
         adapter = self.evidence_task_adapter
         return (
             None if adapter is None else adapter.runtime.record_days[ANALYSIS_PUBLICATION_CATEGORY]

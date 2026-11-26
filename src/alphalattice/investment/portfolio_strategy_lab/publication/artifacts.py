@@ -36,9 +36,6 @@ from alphalattice.investment.portfolio_strategy_lab.contracts import (
     PortfolioTrialEvidence,
     PortfolioTrialLedger,
 )
-from alphalattice.investment.portfolio_strategy_lab.evaluation.evidence import (
-    validate_terminal_evidence,
-)
 from alphalattice.investment.portfolio_strategy_lab.publication.current import (
     CurrentPortfolioStrategyResearchMarker,
     CurrentPortfolioStrategyResearchPointer,
@@ -74,9 +71,6 @@ from alphalattice.investment.portfolio_strategy_lab.regularization.recovery_cont
     PortfolioSharedConfigEvidenceDossier,
     PortfolioSharedConfigTrialEvidence,
     PortfolioStrategyRecoveryMandate,
-)
-from alphalattice.investment.portfolio_strategy_lab.research_loop.contracts import (
-    PortfolioResearchScientistReview,
 )
 from alphalattice.investment.risk_research.calibration.diagnostic_contracts import (
     CurrentPortfolioRiskCalibrationMarker,
@@ -317,6 +311,7 @@ class PortfolioResearchArtifactStore:
         """Keep numerical columns of one shape as one array through the data root's door, named
         by their digest; `category` names the lane for the legacy reader alone. Its profile is
         committed with the next document or model this store publishes, which may cite it."""
+
         try:
             return str(history.keep_array(columns, durable=False))
         except DataError as error:
@@ -356,6 +351,7 @@ class PortfolioResearchArtifactStore:
         return cast(bytes, self._lane(category, content_hash, packed=True))
 
     def _lane(self, category: str, content_hash: str, *, packed: bool) -> Any:
+
         if (workspace := _files(self.root)) is not None:
             return self._file_lane(workspace, category, content_hash, packed=packed)
         try:
@@ -370,6 +366,7 @@ class PortfolioResearchArtifactStore:
     def _file_lane(self, workspace: Path, category: str, content_hash: str, *, packed: bool) -> Any:
         """A lane from the workspace's own files: where this store wrote it, else among the lanes
         a copy carries (`history.carry_arrays`), read in place."""
+
         carried = [workspace / CARRIED / f"{content_hash}{s}" for s in (".parquet", ".bin")]
         found = next((path for path in carried if path.is_file()), None)
         written = self._content.holds_columns(category=category, content_hash=content_hash)
@@ -631,6 +628,8 @@ class PortfolioResearchArtifactStore:
             PortfolioPublicationError: Pointer/artifact validity, common lineage or terminal
                 evidence verification fails.
         """
+        from ..evaluation.evidence import validate_terminal_evidence  # lazy: not at start
+
         if not self.pointer_path.is_file():
             return None
         try:
@@ -956,6 +955,7 @@ class PortfolioResearchArtifactStore:
         PortfolioStrategyResearchMandate,
         PortfolioResearchAlphaRecipe,
     ]:
+
         try:
             prior_marker = self.load(
                 category="regularization/attribution-current-markers",
@@ -1296,6 +1296,8 @@ class PortfolioResearchArtifactStore:
         self,
         bundle: PortfolioStrategyResearchPublicationBundle,
     ) -> None:
+        from ..research_loop.contracts import PortfolioResearchScientistReview  # lazy: not at start
+
         try:
             mandate = self.load(
                 category="regularization/mandates",

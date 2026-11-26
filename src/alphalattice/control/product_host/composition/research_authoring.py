@@ -29,7 +29,6 @@ from alphalattice.foundation.factor_research.experiments.verification import (
 from alphalattice.foundation.feature_engine.storage.repositories import PanelStateRepository
 from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRepository
 from alphalattice.interface.local_application import trial_history
-from alphalattice.investment.risk_research.experiments.compiler import RiskExperimentCompiler
 from alphalattice.protocols.research_authoring.contracts import (
     DeskEvidenceVerifier,
     DeskExperimentCompiler,
@@ -58,6 +57,10 @@ def installed_desk_compilers(
     from artifacts, and the executor must validate against the same instance or
     the sealed Program and the run could disagree about what was installed.
     """
+    from alphalattice.investment.risk_research.experiments.compiler import (  # lazy: a Risk compile
+        RiskExperimentCompiler,
+    )
+
     compilers: list[DeskExperimentCompiler] = [RiskExperimentCompiler()]
     if factor_inventory:
         compilers.append(FactorExperimentCompiler(factor_inventory))

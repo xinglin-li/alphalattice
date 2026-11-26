@@ -636,18 +636,23 @@ def test_cache_dependencies_follow_build_imports_resources_and_identity_members(
 
 
 def test_a_cold_cache_build_refuses_an_unbound_source_read(tmp_path, monkeypatch):
+    """An unbound source read refuses the build, by the source's name when bytecode is written."""
     from tests.researcher_methodology_surface import real_workspace as cache
 
     source = tmp_path / "src/alphalattice/unbound.py"
-    source.parent.mkdir(parents=True)
+    (source.parent / "__pycache__").mkdir(parents=True)
     source.write_text("VALUE = 1\n", encoding="utf-8")
     monkeypatch.setattr(cache, "ROOT", tmp_path)
     monkeypatch.setattr(cache, "_source_files", lambda: ())
-    with (
-        pytest.raises(GoldenWorkspaceError, match="undeclared build source reads"),
-        cache._checked_build_sources(),
+    for read in (
+        source.read_bytes,
+        (source.parent / "__pycache__/unbound.cpython-312.pyc.1772932261296").touch,
     ):
-        source.read_bytes()
+        with (
+            pytest.raises(GoldenWorkspaceError, match=r"reads: src.alphalattice.unbound\.py$"),
+            cache._checked_build_sources(),
+        ):
+            read()
     assert cache._BUILD_SOURCE_READS is None
 
 

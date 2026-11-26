@@ -34,7 +34,6 @@ from alphalattice.evidence.alternative_evidence.analysis.contracts import (
     AnalysisCompletion,
     seal_research_obligation,
 )
-from alphalattice.evidence.alternative_evidence.analysis.read_model import finding_filings
 from alphalattice.evidence.alternative_evidence.contracts import (
     AlternativeEvidenceReadFiling,
     AlternativeEvidenceRequest,
@@ -1228,6 +1227,10 @@ def compile_portfolio_coverage_dossier(
         PortfolioEvidenceReviewError: The scope is empty or a child's scope,
             obligation, issuer axis, or evidence standing disagrees with the review.
     """
+    from ....evidence.alternative_evidence.analysis.read_model import (  # lazy: not at start
+        finding_filings,
+    )
+
     if (
         len(children) == 1
         and not unreviewed

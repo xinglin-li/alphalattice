@@ -951,6 +951,8 @@ def _source_read_audit(event, arguments):
     path = Path(os.fsdecode(arguments[0])).resolve()
     if not (path.is_relative_to(ROOT / "src") or path.is_relative_to(ROOT / "config")):
         return
+    if path.parent.name == "__pycache__" and re.fullmatch(r".+\.pyc\.\d+", path.name):
+        path = path.with_name(path.name.rpartition(".")[0])  # the temp file bytecode is written to
     if path.suffix == ".pyc":
         path = Path(importlib.util.source_from_cache(str(path)))
     _BUILD_SOURCE_READS.add(path)

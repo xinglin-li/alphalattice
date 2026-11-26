@@ -35,16 +35,10 @@ from alphalattice.capabilities.domain_contracts.source_identity import (
 from alphalattice.control.product_host.composition.application_session import (
     WorkspaceApplicationSession,
 )
-from alphalattice.control.product_host.composition.experience_read import (
-    run_with_hypothesis,
-)
 from alphalattice.control.product_host.composition.plain_refusals import (
     explain,
     refused,
     task_record_refusal,
-)
-from alphalattice.control.product_host.composition.research_authoring import (
-    build_research_program_workflow,
 )
 from alphalattice.control.product_host.composition.research_experiment_blocks import (
     CAPACITY_BLOCKS,
@@ -71,26 +65,6 @@ from alphalattice.control.product_host.composition.research_experiment_plan impo
 from alphalattice.control.product_host.composition.research_experiment_plan import (
     review_requests as review_requests,
 )
-from alphalattice.control.product_host.composition.research_experiment_projection import (
-    SAMPLE_SCHEME_SUPERSEDED,
-    lane_fields,
-    method_currency,
-    plan_impact,
-    published_result_header,
-    realization,
-    recorded_work,
-    research_lane,
-    reuse_words,
-    sample_standing,
-)
-from alphalattice.control.product_host.composition.research_prerequisites import (
-    FLOW_OF_KIND,
-    FLOW_OF_REFUSAL,
-    FLOWS,
-    Flow,
-    holdings,
-    prerequisites,
-)
 from alphalattice.control.product_host.composition.research_read_scopes import (
     _VERIFIED_EVIDENCE,
 )
@@ -104,30 +78,11 @@ from alphalattice.control.product_host.composition.research_workspace import (
     held,
     read_research_workspace_manifest,
 )
-from alphalattice.control.product_host.composition.result_standing import study_standing
 from alphalattice.control.product_host.composition.task_kinds import VERIFICATION_LEDGER_DIRECTORY
-from alphalattice.control.product_host.data_preparation.feature_research import (
-    ResearchFeatureBuildApplication,
-)
 from alphalattice.control.product_host.publication.goals import GoalStore
-from alphalattice.control.product_host.research_authoring.authority import (
-    universe_control,
-    universe_profile,
-)
 from alphalattice.control.product_host.research_authoring.comparison import (
     POSITION_UNITS,
     compare_experiment_reports,
-)
-from alphalattice.control.product_host.research_authoring.factor_authoring import (
-    describe_feature_input,
-)
-from alphalattice.control.product_host.research_authoring.factor_curation import (
-    submit_report_curation,
-)
-from alphalattice.control.product_host.research_authoring.factor_handoff import (
-    PreparedFactorHandoff,
-    prepare_factor_handoff,
-    preview_factor_handoff,
 )
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     confined,
@@ -137,29 +92,6 @@ from alphalattice.control.product_host.research_authoring.factor_inputs import (
     normalize_factor_document,
     read_factor_bundle,
 )
-from alphalattice.control.product_host.research_authoring.input_revisions import (
-    ResearchInputRevisions,
-)
-from alphalattice.control.product_host.research_authoring.lifecycle_handoff import (
-    lifecycle_controls,
-    lifecycle_workflow,
-)
-from alphalattice.control.product_host.research_authoring.portfolio_handoff import (
-    PortfolioRiskLink,
-    PreparedPortfolioHandoff,
-    portfolio_draft,
-    prepare_portfolio_handoff,
-)
-from alphalattice.control.product_host.research_authoring.qualification_handoff import (
-    qualification_document,
-    qualification_workflow,
-)
-from alphalattice.control.product_host.research_authoring.risk_handoff import (
-    risk_controls,
-    risk_workflow,
-)
-from alphalattice.control.product_host.research_authoring.risk_reports import RiskReportLinks
-from alphalattice.control.product_host.research_authoring.timing import research_timing
 from alphalattice.control.product_host.storage.inventory import (
     StorageInventoryError,
     require_storage_capacity,
@@ -171,16 +103,6 @@ from alphalattice.control.product_host.storage.plan_previews import (
     RetainedPreview,
 )
 from alphalattice.control.product_host.storage.retention import StorageRetentionError
-from alphalattice.control.research_program.authoring.dispatcher import SealedSubmission
-from alphalattice.control.research_program.authoring.document import (
-    convert_authoring_document,
-    load_authoring_document,
-    require_authoring_document,
-)
-from alphalattice.control.research_program.authoring.workflow import (
-    ResearchEvidenceStore,
-    ResearchProgramWorkflow,
-)
 from alphalattice.control.task_control.child import run_in_child
 from alphalattice.control.task_control.contracts import (
     StageFailureCause,
@@ -218,36 +140,11 @@ from alphalattice.foundation.factor_research.experiments.authoring import (
     INSTALLED_SCREENING_POLICIES,
     factor_inventory_from_panel_manifest,
 )
-from alphalattice.foundation.factor_research.experiments.development_evidence import (
-    FACTOR_DEVELOPMENT_CURATION_CATEGORY,
-    FactorDevelopmentReceipt,
-)
-from alphalattice.foundation.factor_research.programs.program import (
-    FactorResearchDeterministicEvidence,
-)
-from alphalattice.foundation.factor_research.research_loop.contracts import (
-    FactorResearchReviewDecisionReceipt,
-)
-from alphalattice.foundation.factor_research.research_loop.development_curation import (
-    curation_readback,
-)
-from alphalattice.foundation.feature_engine.panels.development_input import (
-    ResolvedDevelopmentFeatureInput,
-)
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.research_foundation.contracts import ResearchFoundationAdmission
-from alphalattice.foundation.research_foundation.publication.sponsorship import (
-    admit_selected_factor_foundation,
-    publish_foundation_admission,
-    read_foundation_admission,
-)
 from alphalattice.interface.local_application.dispatcher import (
     CommandAdmission,
     LocalBackgroundDispatcher,
-)
-from alphalattice.interface.local_application.experiment_report import (
-    render_experiment_report,
-    render_handoff_report,
 )
 from alphalattice.interface.local_application.failure_codes import (
     located_failure,
@@ -258,20 +155,9 @@ from alphalattice.interface.local_application.portfolio_research import (
     OperationCaller,
     PortfolioResearchOperationRequest,
 )
-from alphalattice.investment.alpha_research.candidates.qualification_task import (
-    verify_qualification,
-)
 from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.alpha_research.experiments.development_contracts import (
     AlphaDevelopmentExecutionReceipt,
-)
-from alphalattice.investment.alpha_research.experiments.development_evidence import (
-    AlphaDevelopmentReceiptReader,
-    AlphaDevelopmentVerifiedGraph,
-    alpha_development_receipt_handle,
-)
-from alphalattice.investment.alpha_research.experiments.development_execution import (
-    AlphaDevelopmentCancelled,
 )
 from alphalattice.investment.alpha_research.experiments.family_qualification import (
     METHOD as QUALIFICATION_METHOD,
@@ -285,18 +171,10 @@ from alphalattice.investment.alpha_research.experiments.family_qualification imp
     alpha_question_hash,
     qualification_section,
 )
-from alphalattice.investment.alpha_research.experiments.lifecycle_authoring import (
-    lifecycle_section,
-    read_lifecycle_research_receipt,
-)
 from alphalattice.investment.alpha_research.experiments.mandate import AlphaResearchModelRecipe
-from alphalattice.investment.alpha_research.experiments.verification import AlphaEvidenceVerifier
 from alphalattice.investment.alpha_research.scores.product_lifecycle import (
     ModelLifecycle,
     lifecycle_implementation_hash,
-)
-from alphalattice.investment.portfolio_strategy_lab.application.availability import (
-    NOT_AVAILABLE,
 )
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     KIND as PORTFOLIO_EXPERIMENT_KIND,
@@ -309,16 +187,11 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     implementation_hash as portfolio_implementation_hash,
 )
-from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
-from alphalattice.investment.risk_research.experiments.development import RiskDevelopmentCancelled
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 from alphalattice.investment.risk_research.experiments.identity import (
     risk_development_source_closure_hash,
     risk_numerical_source_closure_hash,
 )
-from alphalattice.investment.risk_research.experiments.replay_identity import (
-    replay_follows_recorded_moves,
-)
-from alphalattice.investment.risk_research.experiments.verification import RiskEvidenceVerifier
 from alphalattice.protocols.actor_execution.contracts import (
     ActorKind,
     ActorSubmissionBinding,
@@ -348,6 +221,10 @@ def _sealed_admission(workspace: Path, admission_hash: str) -> ResearchFoundatio
     """A sealed Foundation admission as its store reads it. A stored record that no longer
     matches its name (the store says so in a sentence, inside the Alpha study's closure) is
     refused by the admission's own code, never the sentence (OP4)."""
+
+    from ....foundation.research_foundation.publication.sponsorship import (  # lazy: not at start
+        read_foundation_admission,
+    )
 
     try:
         return read_foundation_admission(workspace / "artifacts", admission_hash)
@@ -611,6 +488,10 @@ class ResearchExperimentApplication:
         *,
         recorded_admission: ResearchFoundationAdmission | None = None,
     ) -> ResearchFoundationAdmission:
+        from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
+            prepare_factor_handoff,
+        )
+
         parent, receipt, checkpoint = self._factor_parent(
             task_id, recorded_readback=recorded_admission is not None
         )
@@ -663,6 +544,13 @@ class ResearchExperimentApplication:
         prepared on, the curation it selected and the Panel identities its
         executor resolved; the caller compares it with a stored admission.
         """
+
+        from ....foundation.factor_research.research_loop.contracts import (  # lazy: not at start
+            FactorResearchReviewDecisionReceipt,
+        )
+        from ....foundation.research_foundation.publication.sponsorship import (  # lazy: on use
+            admit_selected_factor_foundation,
+        )
 
         development = prepared.executor.foundation
         resolver = ArtifactResolver(prepared.source / "artifacts")
@@ -734,6 +622,7 @@ class ResearchExperimentApplication:
         self, admission_hash: str, error: ValueError | TaskNotFoundError
     ) -> dict[str, object]:
         """Keep one unreadable admission's refusal local, without claiming its graph verified."""
+
         code = (
             "task_control.task_not_found"
             if isinstance(error, TaskNotFoundError)
@@ -884,6 +773,13 @@ class ResearchExperimentApplication:
         caller: str,
         agent_execution: AgentExecutionBinding | None,
     ) -> dict[str, object]:
+        from ....foundation.research_foundation.publication.sponsorship import (  # lazy: on use
+            publish_foundation_admission,
+        )
+        from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
+            preview_factor_handoff,
+        )
+
         op = request.operation
         if op == "EXPERIMENT_FOUNDATIONS":
             root = (
@@ -983,6 +879,10 @@ class ResearchExperimentApplication:
     def _binding(
         self, input_id: str | None, binding_hash: str | None = None
     ) -> ResearchWorkspaceExperimentInput:
+        from ..research_authoring.input_revisions import (  # lazy: not at start
+            ResearchInputRevisions,
+        )
+
         if read_research_workspace_manifest(self.session.workspace) != self.manifest:
             raise AuthoringError("research_experiment.workspace_changed")
         values = self.manifest.experiment_inputs or ()
@@ -1007,6 +907,10 @@ class ResearchExperimentApplication:
         identity = handle.removeprefix("research-features@")
         if len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
             raise AuthoringError("research_experiment.prepared_features_handle_invalid")
+        from ..data_preparation.feature_research import (  # lazy: a prepared-features handle
+            ResearchFeatureBuildApplication,
+        )
+
         return ResearchFeatureBuildApplication(self.session, clock=self.clock).prepared_source(
             identity, input_binding_hash=binding_hash, current_policy=current_policy
         )
@@ -1036,6 +940,20 @@ class ResearchExperimentApplication:
         Raises:
             AuthoringError: Kind/input/prepared feature selection is not admitted.
         """
+
+        from ..research_authoring.authority import universe_control  # lazy: not at start
+        from ..research_authoring.factor_authoring import (  # lazy: not at start
+            describe_feature_input,
+        )
+        from ..research_authoring.input_revisions import (  # lazy: not at start
+            ResearchInputRevisions,
+        )
+        from ..research_authoring.lifecycle_handoff import (  # lazy: a lifecycle study
+            lifecycle_controls,
+        )
+        from ..research_authoring.risk_handoff import risk_controls  # lazy: a Risk study
+        from .research_prerequisites import FLOW_OF_KIND  # lazy: not at start
+
         inputs = [v.model_dump(mode="json") for v in self.manifest.experiment_inputs or ()]
         if not inputs:
             return {"status": "RESEARCH_INPUT_NOT_ADMITTED", "inputs": [], "actions": []}
@@ -1197,6 +1115,8 @@ class ResearchExperimentApplication:
         self, flow: Flow, binding: ResearchWorkspaceExperimentInput
     ) -> dict[str, Any]:
         """A flow's prerequisites on one input, from one read of the Tasks."""
+        from .research_prerequisites import holdings, prerequisites  # lazy: not at start
+
         succeeded = [
             task
             for task in self.session.task_control_registry.tasks()
@@ -1220,6 +1140,8 @@ class ResearchExperimentApplication:
         requests allowed next, each ready to send, from one read of the Tasks. An input whose
         revision does not resolve is named with its refusal and no flows.
         """
+        from .research_prerequisites import FLOWS, holdings, prerequisites  # lazy: not at start
+
         succeeded = [
             task
             for task in self.session.task_control_registry.tasks()
@@ -1299,6 +1221,8 @@ class ResearchExperimentApplication:
 
     def refusal_prerequisites(self, code: str, request: Any) -> dict[str, object]:
         """A refusal meaning a prerequisite result is missing names the flow's."""
+        from .research_prerequisites import FLOW_OF_REFUSAL  # lazy: not at start
+
         flow = FLOW_OF_REFUSAL.get(code)
         if flow is None:
             return {}
@@ -1312,6 +1236,10 @@ class ResearchExperimentApplication:
     def _revision(
         self, input_id: str, binding_hash: str
     ) -> ResearchWorkspaceExperimentInput | None:
+        from ..research_authoring.input_revisions import (  # lazy: not at start
+            ResearchInputRevisions,
+        )
+
         try:
             return ResearchInputRevisions(self.session).select(input_id, binding_hash, verify=False)
         except (AuthoringError, KeyError, ValueError, OSError):
@@ -1323,6 +1251,14 @@ class ResearchExperimentApplication:
         *,
         recorded_readback: bool = False,
     ) -> tuple[ExperimentPlan, FactorDevelopmentReceipt, FactorResearchDeterministicEvidence]:
+        from alphalattice.foundation.factor_research.programs.program import (  # lazy: not at start
+            FactorResearchDeterministicEvidence,
+        )
+
+        from ....foundation.factor_research.experiments.development_evidence import (  # lazy: use
+            FactorDevelopmentReceipt,
+        )
+
         task = self.session.task_control_registry.task(task_id)
         plan, _actor = self._of(task)
         if plan.program.kind != FACTOR_EXPERIMENT_KIND:
@@ -1392,6 +1328,10 @@ class ResearchExperimentApplication:
         unsettled, one cancelled before its result is named without evidence, and a recipe
         studied twice counts once, its first study standing.
         """
+        from ....investment.alpha_research.experiments.development_evidence import (  # lazy: on use
+            AlphaDevelopmentReceiptReader,
+        )
+
         section = qualification_section(document)
         if section is None:
             raise AuthoringError(
@@ -1478,6 +1418,11 @@ class ResearchExperimentApplication:
         family = alpha_family(
             studies=studies, question_hash=question, goal_id=str(goal_id), opened_at=opened_at
         )
+        from ..research_authoring.qualification_handoff import (  # lazy: a qualification
+            qualification_document,
+            qualification_workflow,
+        )
+
         normalized = qualification_document(document, anchor.document["experiment"], family)
         workflow, sealed, preview = qualification_workflow(
             workspace=self.session.workspace,
@@ -1496,6 +1441,10 @@ class ResearchExperimentApplication:
         factor_task_id: UUID,
         curation_receipt_hash: str,
     ) -> tuple[PreparedFactorHandoff, AlphaExperimentSource]:
+        from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
+            prepare_factor_handoff,
+        )
+
         parent, receipt, checkpoint = self._factor_parent(factor_task_id)
         prepared = prepare_factor_handoff(
             workspace=self.session.workspace,
@@ -1561,6 +1510,10 @@ class ResearchExperimentApplication:
         document: dict[str, Any] | None = None,
         task_id: UUID | None = None,
     ) -> tuple[PreparedPortfolioHandoff, ResearchWorkspaceExperimentInput]:
+        from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
+            prepare_portfolio_handoff,
+        )
+
         parent, _actor = self._of(self.session.task_control_registry.task(alpha_task_id))
         if parent.program.kind != ALPHA_EXPERIMENT_KIND:
             raise AuthoringError("portfolio_research.alpha_parent_required")
@@ -1620,6 +1573,10 @@ class ResearchExperimentApplication:
 
     def _portfolio_risk_link(self, document: dict[str, Any] | None) -> PortfolioRiskLink | None:
         """The completed Risk study a Portfolio declaration names, read as its readback shows it."""
+
+        from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
+            PortfolioRiskLink,
+        )
 
         section = (document or {}).get("portfolio")
         named = section.get("risk_task_id") if isinstance(section, dict) else None
@@ -1686,6 +1643,24 @@ class ResearchExperimentApplication:
             AuthoringError: Document, typed upstream selection, origin, input or authority is
                 inadmissible.
         """
+        from alphalattice.control.research_program.authoring.document import (  # lazy: not at start
+            load_authoring_document,
+            require_authoring_document,
+        )
+
+        from ....investment.alpha_research.experiments.lifecycle_authoring import (  # lazy: on use
+            lifecycle_section,
+        )
+        from ..research_authoring.lifecycle_handoff import (  # lazy: a lifecycle study
+            lifecycle_workflow,
+        )
+        from ..research_authoring.risk_handoff import risk_workflow  # lazy: a Risk study
+        from .research_experiment_projection import (  # lazy: not at start
+            lane_fields,
+            plan_impact,
+            research_lane,
+        )
+
         if (document is None) == (yaml_text is None):
             raise AuthoringError("research_experiment.one_document_required")
         # One check for both entries, the YAML text and the object.
@@ -1914,6 +1889,8 @@ class ResearchExperimentApplication:
         formations: tuple[str, ...] = (),
         selected_session: str | None = None,
     ) -> dict[str, Any]:
+        from ..research_authoring.timing import research_timing  # lazy: not at start
+
         value: dict[str, Any] = dict(
             research_timing(
                 workspace=self.session.workspace,
@@ -1973,6 +1950,8 @@ class ResearchExperimentApplication:
         (`ADMITTED` alone is the RUN disposition for work just sent, so a read
         never says it.)
         """
+        from .research_experiment_projection import plan_impact  # lazy: not at start
+
         entry = self._previews.get(plan_hash)
         task = self._task_for_plan_hash(plan_hash)
         body: dict[str, object] = {
@@ -2149,6 +2128,7 @@ class ResearchExperimentApplication:
         again -- is refused as stale with nothing applied, never reset to
         recovery from whatever it became.
         """
+
         registry = self.session.task_control_registry
         task = registry.task(task_id)
         if task.task_kind != TASK_KIND:
@@ -2272,6 +2252,18 @@ class ResearchExperimentApplication:
     def _current(  # type: ignore[no-untyped-def]
         self, plan: ExperimentPlan, *, task_id: UUID | None = None, replay: bool = False
     ):
+        from ....investment.risk_research.experiments.replay_identity import (  # lazy: not at start
+            replay_follows_recorded_moves,
+        )
+        from ..research_authoring.lifecycle_handoff import (  # lazy: a lifecycle study
+            lifecycle_workflow,
+        )
+        from ..research_authoring.risk_handoff import risk_workflow  # lazy: a Risk study
+        from .research_experiment_projection import (  # lazy: not at start
+            SAMPLE_SCHEME_SUPERSEDED,
+            sample_standing,
+        )
+
         if sample_standing(plan.document, plan.authority):
             raise AuthoringError(SAMPLE_SCHEME_SUPERSEDED)
         if self._binding(
@@ -2442,6 +2434,7 @@ class ResearchExperimentApplication:
         `moved`, which of its recorded identities differ from what is installed: the kind's
         implementation (successors consulted) and its research input's binding.
         """
+
         if task_id is None:
             return {}
         try:
@@ -2488,6 +2481,7 @@ class ResearchExperimentApplication:
     def _same_execution(left: ExperimentPlan, right: ExperimentPlan) -> bool:
         # Derivation metadata cannot force duplicate numerical work, and neither can
         # an implementation recorded as the predecessor of the other's.
+
         fields = {"plan_hash", "origin_task_id", "implementation_hash"}
         role = plan_implementation_role(left)
         return bool(
@@ -2627,6 +2621,9 @@ class ResearchExperimentApplication:
         request runs first when it has not run. Reuse answers as `run` does, so asking
         twice admits nothing twice.
         """
+        from ..research_authoring.authority import universe_profile  # lazy: not at start
+        from .research_experiment_projection import research_lane  # lazy: not at start
+
         plan, _actor = self._of(self.session.task_control_registry.task(task_id))
         if research_lane(plan.document) == "PROMOTION":
             return {
@@ -2760,6 +2757,10 @@ class ResearchExperimentApplication:
         that Alpha derives, and the same policy on it (its candidate, unless another is
         named). What a promotion and a feature trial plan.
         """
+        from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
+            portfolio_draft,
+        )
+
         candidate = candidate_id or str(spec["candidate_id"])
         prepared, binding = self._prepare_portfolio(alpha_task_id, candidate)
         document = {
@@ -2864,6 +2865,8 @@ class ResearchExperimentApplication:
     def _existing_task_answer(self, task: TaskRecord) -> dict[str, object]:
         """The one answer for a plan that already has a Task: reuse, join or report."""
 
+        from .research_experiment_projection import reuse_words  # lazy: not at start
+
         if task.lifecycle is TaskLifecycle.SUCCEEDED:
             reused = self.readback(task.task_id)
             recorded = cast(dict[str, Any], reused.get("realization") or {"recorded": False})
@@ -2955,6 +2958,12 @@ class ResearchExperimentApplication:
         """The Task's evidence read back through its Desk verifier, with the workflow
         that holds that verifier, so the request that had the graph walked can
         project what the walk proved instead of walking it a second time."""
+
+        from alphalattice.control.research_program.authoring.workflow import (  # lazy: not at start
+            ResearchProgramWorkflow,
+        )
+
+        from .research_authoring import build_research_program_workflow  # lazy: a program
 
         scope = _VERIFIED_EVIDENCE.get()
         key = (task.task_id, task.record_hash, recorded_readback)
@@ -3082,6 +3091,8 @@ class ResearchExperimentApplication:
         comparison), always verify in full.
         """
 
+        from .research_experiment_projection import method_currency  # lazy: not at start
+
         key = (task.task_id, recorded_readback)
         installed = self.installed_implementation(
             plan.program.kind, qualification=plan.qualification_family is not None
@@ -3133,6 +3144,10 @@ class ResearchExperimentApplication:
     ) -> object:
         """What a read shows of the kind's verified evidence, taken from its Desk verifier."""
 
+        from ....investment.risk_research.experiments.verification import (  # lazy: not at start
+            RiskEvidenceVerifier,
+        )
+
         if plan.program.kind == RISK_EXPERIMENT_KIND:
             risk_verifier = workflow.verifier(RISK_EXPERIMENT_KIND)
             if not isinstance(risk_verifier, RiskEvidenceVerifier):
@@ -3177,6 +3192,14 @@ class ResearchExperimentApplication:
         never a second walk.
         """
 
+        from ....investment.alpha_research.experiments.development_evidence import (  # lazy: on use
+            AlphaDevelopmentReceiptReader,
+            alpha_development_receipt_handle,
+        )
+        from ....investment.alpha_research.experiments.verification import (  # lazy: not at start
+            AlphaEvidenceVerifier,
+        )
+
         reader = AlphaDevelopmentReceiptReader(output / "alpha-development")
         handle = evidence.artifact_uris[0]
         verifier = workflow.verifier(ALPHA_EXPERIMENT_KIND)
@@ -3194,6 +3217,11 @@ class ResearchExperimentApplication:
         explored studies nobody has promoted. Read from the plans and the curation folders
         alone, among the request's one reading of the Tasks: nothing is verified.
         """
+        from ....foundation.factor_research.experiments.development_evidence import (  # lazy: use
+            FACTOR_DEVELOPMENT_CURATION_CATEGORY,
+        )
+        from .research_experiment_projection import research_lane  # lazy: not at start
+
         succeeded: list[tuple[TaskRecord, ExperimentPlan]] = []
         promoted: set[str] = set()
         admitted: list[str] = []
@@ -3250,6 +3278,8 @@ class ResearchExperimentApplication:
             Task lifecycle, input/program/source identities, research lane and declared
             factors/policy; descendant verification is separate.
         """
+        from .research_experiment_projection import research_lane  # lazy: not at start
+
         rows = []
         batch = self.session.task_control_registry.record_collection()
         refusals = [task_record_refusal(task_id) for task_id in batch.refused_task_ids]
@@ -3346,6 +3376,8 @@ class ResearchExperimentApplication:
 
     def risk_report_selection(self, task_id: UUID) -> dict[str, object]:
         """Read a selected report subject's kind without opening its numerical result."""
+        from ..research_authoring.risk_reports import RiskReportLinks  # lazy: not at start
+
         task = self.session.task_control_registry.task(task_id)
         completed_portfolio = False
         if task.task_kind == TASK_KIND and task.lifecycle is TaskLifecycle.SUCCEEDED:
@@ -3378,6 +3410,8 @@ class ResearchExperimentApplication:
             Task state or verified study publication and report projection, with the study's
             `standing`.
         """
+        from .result_standing import study_standing  # lazy: not at start
+
         body = self._readback(
             task_id,
             portfolio_session,
@@ -3402,6 +3436,17 @@ class ResearchExperimentApplication:
 
     def summary(self, task_id: UUID) -> dict[str, object]:
         """Read recorded Alpha facts without claiming a fresh bulk-evidence proof."""
+        from ....investment.alpha_research.candidates.qualification_task import (  # lazy: first use
+            verify_qualification,
+        )
+        from ....investment.alpha_research.experiments.development_evidence import (  # lazy: on use
+            AlphaDevelopmentReceiptReader,
+        )
+        from ....investment.alpha_research.experiments.lifecycle_authoring import (  # lazy: on use
+            read_lifecycle_research_receipt,
+        )
+        from .research_experiment_projection import recorded_work  # lazy: not at start
+
         task = self.session.task_control_registry.task(task_id)
         plan, _actor = self._of(task)
         if plan.program.kind != ALPHA_EXPERIMENT_KIND:
@@ -3491,6 +3536,22 @@ class ResearchExperimentApplication:
         include_alpha_projection: bool,
         graph_sink: list[AlphaDevelopmentVerifiedGraph] | None = None,
     ) -> dict[str, object]:
+        from ....investment.alpha_research.candidates.qualification_task import (  # lazy: first use
+            verify_qualification,
+        )
+        from ....investment.alpha_research.experiments.development_evidence import (  # lazy: on use
+            alpha_development_receipt_handle,
+        )
+        from ....investment.alpha_research.experiments.lifecycle_authoring import (  # lazy: on use
+            read_lifecycle_research_receipt,
+        )
+        from ..research_authoring.risk_reports import RiskReportLinks  # lazy: not at start
+        from .research_experiment_projection import (  # lazy: not at start
+            published_result_header,
+            realization,
+            sample_standing,
+        )
+
         task = self.session.task_control_registry.task(task_id)
         plan, actor = self._of(task)
         if portfolio_session is not None and plan.portfolio_source is None:
@@ -3717,6 +3778,10 @@ class ResearchExperimentApplication:
 
     def _stored_evidence(self, plan: ExperimentPlan) -> ResearchExecutionEvidence:
 
+        from alphalattice.control.research_program.authoring.workflow import (  # lazy: not at start
+            ResearchEvidenceStore,
+        )
+
         output = confined(self.session.workspace, plan.document["experiment"]["output_workspace"])
         stored = ResearchEvidenceStore(output).load_for_program(plan.program.program_hash)
         if stored is None:
@@ -3782,6 +3847,14 @@ class ResearchExperimentApplication:
             Stage result; typed numerical cancellation becomes CANCELLED and ValueError becomes
             BLOCKED with its public failure code.
         """
+
+        from ....investment.alpha_research.experiments.development_execution import (  # lazy: use
+            AlphaDevelopmentCancelled,
+        )
+        from ....investment.risk_research.experiments.development import (  # lazy: not at start
+            RiskDevelopmentCancelled,
+        )
+
         try:
             return self._execute_stage(task=task, work_item=work_item)
         except (AlphaDevelopmentCancelled, PortfolioExperimentCancelled, RiskDevelopmentCancelled):
@@ -3808,6 +3881,8 @@ class ResearchExperimentApplication:
     def _execute_stage(
         self, *, task: TaskRecord, work_item: WorkItemDefinition
     ) -> StageExecutionResult:
+        from ...research_program.authoring.dispatcher import SealedSubmission  # lazy: not at start
+
         plan, actor = self._of(task)
         if work_item.stage_id == STAGES[0]:
             workflow = self._admitted_workflows.pop(task.task_id, None)
@@ -3938,6 +4013,7 @@ class ResearchExperimentApplication:
         The readback re-hashes every sealed chunk the study wrote, seconds of Python that held
         the Host's GIL while its reads waited.
         """
+
         plan, actor = self._of(task)
         evidence = cast(
             ResearchExecutionEvidence,
@@ -4012,6 +4088,36 @@ class ResearchExperimentApplication:
             Controls, draft/preview, bounded execution, verified readback/comparison/export or exact
             curation/handoff result.
         """
+        from alphalattice.foundation.factor_research.programs.program import (  # lazy: not at start
+            FactorResearchDeterministicEvidence,
+        )
+        from alphalattice.interface.local_application.experiment_report import (  # lazy: a report
+            render_experiment_report,
+            render_handoff_report,
+        )
+
+        from ....foundation.factor_research.experiments.development_evidence import (  # lazy: use
+            FactorDevelopmentReceipt,
+        )
+        from ....foundation.factor_research.research_loop.development_curation import (  # lazy: use
+            curation_readback,
+        )
+        from ....investment.portfolio_strategy_lab.application.availability import (  # lazy: on use
+            NOT_AVAILABLE,
+        )
+        from ..research_authoring.factor_curation import submit_report_curation  # lazy: a curation
+        from ..research_authoring.factor_handoff import (  # lazy: a Factor handoff
+            preview_factor_handoff,
+        )
+        from ..research_authoring.input_revisions import (  # lazy: not at start
+            ResearchInputRevisions,
+        )
+        from ..research_authoring.portfolio_handoff import (  # lazy: a Portfolio study
+            portfolio_draft,
+        )
+        from ..research_authoring.risk_reports import RiskReportLinks  # lazy: not at start
+        from .experience_read import run_with_hypothesis  # lazy: not at start
+
         op = request.operation
         if op == "EXPERIMENT_ALPHA_COMPARE":
             from alphalattice.investment.alpha_research.experiments.comparison import (
@@ -4364,6 +4470,8 @@ def verify_task_evidence(
     Returns:
         The verified evidence.
     """
+    from .research_authoring import build_research_program_workflow  # lazy: a program
+
     del cancelled
     workflow = build_research_program_workflow(
         workspace=factor_input_paths(workspace, binding_hash)[0],
@@ -4386,6 +4494,10 @@ def verify_task_evidence(
 
 def _portfolio_source(request: PortfolioResearchOperationRequest) -> dict[str, str | None]:
     """The Alpha study and candidate a refused Portfolio declaration named."""
+    from alphalattice.control.research_program.authoring.document import (  # lazy: not at start
+        load_authoring_document,
+    )
+
     try:
         document = (
             load_authoring_document(request.experiment_yaml)
@@ -4452,6 +4564,10 @@ class _ExperimentHost(Protocol):
 
 def route(call: WorkspaceOperationCall[_ExperimentHost]) -> dict[str, object]:
     """Run an experiment request and keep the experiment owner's refusal fields."""
+
+    from alphalattice.control.research_program.authoring.document import (  # lazy: not at start
+        convert_authoring_document,
+    )
 
     operations, request, caller = call.operations, call.request, call.caller
     agent_execution = call.agent_execution
@@ -4542,4 +4658,33 @@ def route(call: WorkspaceOperationCall[_ExperimentHost]) -> dict[str, object]:
 
 
 if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.research_prerequisites import (
+        Flow,
+    )
+    from alphalattice.control.product_host.research_authoring.factor_handoff import (
+        PreparedFactorHandoff,
+    )
+    from alphalattice.control.product_host.research_authoring.portfolio_handoff import (
+        PortfolioRiskLink,
+        PreparedPortfolioHandoff,
+    )
+    from alphalattice.control.research_program.authoring.dispatcher import (
+        SealedSubmission,
+    )
+    from alphalattice.control.research_program.authoring.workflow import (
+        ResearchProgramWorkflow,
+    )
+    from alphalattice.foundation.factor_research.experiments.development_evidence import (
+        FactorDevelopmentReceipt,
+    )
+    from alphalattice.foundation.factor_research.programs.program import (
+        FactorResearchDeterministicEvidence,
+    )
+    from alphalattice.foundation.feature_engine.panels.development_input import (
+        ResolvedDevelopmentFeatureInput,
+    )
+    from alphalattice.investment.alpha_research.experiments.development_evidence import (
+        AlphaDevelopmentVerifiedGraph,
+    )
+
     from .operation_route_families import WorkspaceOperationCall

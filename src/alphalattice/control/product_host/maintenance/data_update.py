@@ -32,10 +32,6 @@ from alphalattice.control.data_platform.maintenance.data_changes import (
     BookObligations,
     WorkspaceDataChanges,
 )
-from alphalattice.control.data_platform.maintenance.orphaned_bind import restore_orphaned_membership
-from alphalattice.control.data_platform.maintenance.reconciliation import (
-    capture_verified_maintenance_completion,
-)
 from alphalattice.control.data_platform.maintenance.registry import (
     DuckDbWorkspaceMaintenanceRegistry,
 )
@@ -64,10 +60,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
     update_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.workspace import WorkspaceRuntime
-from alphalattice.control.product_host.research_authoring.feature_activations import (
-    feature_catalog_for,
-    workspace_feature_catalog,
-)
 from alphalattice.control.product_host.storage.backup import (
     defer_automatic_backup,
     settle_automatic_backup,
@@ -175,6 +167,10 @@ _RECOVERABLE_BLOCKS = {
 
 def installed_data_update_binding(workspace: Path | None = None) -> WorkspaceDataUpdateBinding:
     """Bind the profile, data policy and workspace's catalog, or the shipped catalog (EX)."""
+    from ..research_authoring.feature_activations import (  # lazy: not at start
+        workspace_feature_catalog,
+    )
+
     return WorkspaceDataUpdateBinding.seal(
         profile_file_hash=integrity_sha256(PROFILE.read_bytes()).hexdigest(),
         data_policy_hash=workspace_maintenance_data_policy_hash(),
@@ -251,6 +247,9 @@ def _read_workspace_inputs(
     *,
     allow_transition: bool,
 ) -> WorkspaceInputStatus:
+
+    from ..research_authoring.feature_activations import feature_catalog_for  # lazy: not at start
+
     readiness = market.readiness.load(binding.market_profile_id)
     if readiness is None or readiness.active_manifest_id is None:
         raise ValueError("workspace_data_update.initialization_required")
@@ -575,6 +574,7 @@ class WorkspaceDataUpdateApplication:
 
     def _reference_covers(self, plan: WorkspaceDataUpdatePlan) -> bool:
         """Read the Feature owner's verified SPY coverage before local Panel work."""
+
         market = MarketDataRepository(self.session.workspace)
         manifest = market.current_quality_filtered_research_manifest(
             market_profile_id=plan.binding.market_profile_id
@@ -605,6 +605,7 @@ class WorkspaceDataUpdateApplication:
 
     def network_work(self, plan: WorkspaceDataUpdatePlan) -> dict[str, str]:
         """Name the planned provider work, apart from local Feature/Panel completion."""
+
         target = plan.request.target_market_session
         data, adjusted, panel = self._held_lanes(plan)
         work = {}
@@ -675,6 +676,7 @@ class WorkspaceDataUpdateApplication:
             provider: Optional admitted market data provider.
             source_loader: Optional admitted source capture loader.
         """
+
         self.session, self.clock = session, clock
         self._manifests = held(manifest)
         source = read_market_profile(PROFILE).provider if provider is None else ""
@@ -702,6 +704,7 @@ class WorkspaceDataUpdateApplication:
         return {} if self.portfolio_obligations is None else self.portfolio_obligations()
 
     def _readiness(self, market: MarketDataRepository) -> WorkspaceReadinessGate:
+
         return build_workspace_readiness(
             market, profile_path=PROFILE, provider=self.provider, source_loader=self.source_loader
         )
@@ -755,10 +758,15 @@ class WorkspaceDataUpdateApplication:
 
         A plan proves an unnamed bind's owner by `derived`; a cancel restores named ones only.
         """
+        from ...data_platform.maintenance.orphaned_bind import (  # lazy: not at start
+            restore_orphaned_membership,
+        )
+
         tasks = self.session.task_control_registry
         return restore_orphaned_membership(self._registry(), tasks, self.clock(), derived)
 
     def _planned(self, fresh: bool, recovery_task_id: UUID | None) -> dict[str, object]:
+
         waiting = None if fresh or recovery_task_id is not None else self._waiting()
         if waiting is not None:
             planned = self._plan_of(waiting)
@@ -930,6 +938,7 @@ class WorkspaceDataUpdateApplication:
     ) -> dict[str, object]:
         """A plan's answer: a change waits for its person's approval unless its Task was
         admitted, which its run follows or resumes."""
+
         state, request, change = planned.before, planned.request, planned.change
         target = request.target_market_session
         confirm = change is not None and not admitted
@@ -993,6 +1002,7 @@ class WorkspaceDataUpdateApplication:
         Membership changes need human consent; the agent's declared full-history audit default
         may confirm and resume a stopped change (person-stops row 49).
         """
+
         plan = self.changes.load_plan(plan_hash)
         change = plan.change
         if caller != "HUMAN" and (change is None or change.action != "FULL_HISTORY_AUDIT"):
@@ -1066,6 +1076,7 @@ class WorkspaceDataUpdateApplication:
         return cast(CommandAdmission, self.session.mutation_gate.run(approve))
 
     def _receipt(self, plan_hash: str | None = None) -> WorkspaceDataUpdateReceipt | None:
+
         return DuckDbWorkspaceMaintenanceRegistry.read_data_update_receipt(
             self.session.workspace / "market-data.duckdb", plan_hash
         )
@@ -1098,6 +1109,7 @@ class WorkspaceDataUpdateApplication:
         or a Task of another kind, is a typed refusal that names the latest, never a
         fall-back to it. `selected` says whether a Task was asked for by id.
         """
+
         binding = self._binding()
         registry = self.session.task_control_registry
         latest = next(
@@ -1507,6 +1519,7 @@ class WorkspaceDataUpdateApplication:
             Verified reusable receipt or None when work, valuation coverage or freshness remains
             owed.
         """
+
         self._require_plan(plan)
         try:
             current = read_workspace_inputs(self.session.workspace, plan.binding)
@@ -1799,6 +1812,7 @@ class WorkspaceDataUpdateApplication:
         return cast(WorkspaceDataUpdatePlan, plan)
 
     def _registry(self) -> DuckDbWorkspaceMaintenanceRegistry:
+
         return DuckDbWorkspaceMaintenanceRegistry(
             self.session.workspace / "market-data.duckdb", gate=self.session.mutation_gate
         )
@@ -1920,6 +1934,7 @@ class WorkspaceDataUpdateApplication:
         Returns:
             The provider's retry time, or None where nothing names one.
         """
+
         market = MarketDataRepository(self.session.workspace)
         state = market.readiness.load(plan.binding.market_profile_id)
         if (
@@ -1958,6 +1973,11 @@ class WorkspaceDataUpdateApplication:
         )
 
     def _completion(self, plan: WorkspaceDataUpdatePlan):  # type: ignore[no-untyped-def]
+
+        from ...data_platform.maintenance.reconciliation import (  # lazy: not at start
+            capture_verified_maintenance_completion,
+        )
+
         market = MarketDataRepository(self.session.workspace)
         snapshot = PanelStateRepository(
             market.database, market_data=market
@@ -2041,6 +2061,11 @@ class WorkspaceDataUpdateApplication:
         diagnose: Any,
         owner: UUID | None,
     ) -> StageExecutionResult:
+
+        from ..research_authoring.feature_activations import (  # lazy: not at start
+            workspace_feature_catalog,
+        )
+
         if stage == _STAGES[0]:
             # The last update's backup, never taken or failed, is taken first.
             if settle_automatic_backup(

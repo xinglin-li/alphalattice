@@ -57,7 +57,7 @@ from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_E
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     KIND as PORTFOLIO_EXPERIMENT_KIND,
 )
-from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 from alphalattice.oversight.chief_risk_officer.decision.book_evidence import review_book_key
 from alphalattice.oversight.chief_risk_officer.decision.portfolio_review import (
     PortfolioReviewPublication,
@@ -360,6 +360,7 @@ def _review_row(
     next_requests: dict[str, object],
     person_action: dict[str, object] | None,
 ) -> dict[str, object]:
+
     return {
         "review_publication_hash": handle,
         "review_key": None if publication is None else publication.review_key,

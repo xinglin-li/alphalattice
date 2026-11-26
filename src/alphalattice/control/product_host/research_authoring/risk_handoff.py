@@ -26,10 +26,6 @@ from alphalattice.control.product_host.composition.research_workspace import (
 from alphalattice.control.product_host.research_authoring.authority import (
     WorkspaceResearchAuthorityResolver,
 )
-from alphalattice.control.product_host.research_authoring.execution import (
-    WorkspaceReturnSurfaceProvider,
-    _sector_by_listing_id,
-)
 from alphalattice.control.product_host.research_authoring.factor_inputs import (
     PROFILE,
     PreparedInputAuthority,
@@ -52,12 +48,8 @@ from alphalattice.investment.risk_research.estimators.catalog import (
     build_installed_risk_estimator_catalog,
 )
 from alphalattice.investment.risk_research.estimators.domains import COVARIANCE_RECIPE_SCHEMA_ID
-from alphalattice.investment.risk_research.experiments.compiler import (
-    RISK_EXPERIMENT_KIND,
-    RiskExperimentCompiler,
-)
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 from alphalattice.investment.risk_research.experiments.development import RiskDevelopmentCancelled
-from alphalattice.investment.risk_research.experiments.execution import RiskExperimentExecutor
 from alphalattice.investment.risk_research.experiments.formation_selection import (
     FormationSelectionPolicy,
     eligible_formation_sessions,
@@ -143,6 +135,8 @@ class _ReturnInputs:
     def _publish(
         self, required_sessions: tuple[date, ...], listing_ids: tuple[str, ...]
     ) -> tuple[CausalRiskReturnSurface, ...]:
+        from .execution import WorkspaceReturnSurfaceProvider  # lazy: execution
+
         provider = WorkspaceReturnSurfaceProvider(self.artifact_root)
         try:
             surfaces = provider.published_surfaces()
@@ -321,6 +315,15 @@ def risk_workflow(
         AuthoringError: Official-close kind, realized cutoff, universe epoch, listing support or
             execution budget is inadmissible.
     """
+    from alphalattice.investment.risk_research.experiments.compiler import (  # lazy: a Risk compile
+        RiskExperimentCompiler,
+    )
+    from alphalattice.investment.risk_research.experiments.execution import (  # lazy: a Risk run
+        RiskExperimentExecutor,
+    )
+
+    from .execution import _sector_by_listing_id  # lazy: execution
+
     bundle = read_factor_bundle(session.workspace, binding.binding_hash)
     source, _ = factor_input_paths(session.workspace, binding.binding_hash)
     normalized = normalize_input_document(document, binding, bundle, section_name="risk")

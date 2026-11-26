@@ -40,7 +40,7 @@ from alphalattice.investment.portfolio_strategy_lab.application.research_experim
 from alphalattice.investment.portfolio_strategy_lab.application.research_experiment import (
     PortfolioExperimentSource,
 )
-from alphalattice.investment.risk_research.experiments.compiler import RISK_EXPERIMENT_KIND
+from alphalattice.investment.risk_research.experiments.contracts import RISK_EXPERIMENT_KIND
 from alphalattice.protocols.actor_execution.contracts import ActorSubmissionBinding
 from alphalattice.protocols.research_authoring.contracts import (
     AuthoringError,
