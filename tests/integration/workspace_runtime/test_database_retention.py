@@ -621,6 +621,13 @@ def _kept_for_the_session(
             with database.hold():
                 seen = [_rows(database)]
             seen.append(_rows(database))
+        elif case == "session-a-held-unit-folds-at-its-end":
+            log = Path(f"{database.path}.wal")
+            with database.hold():  # a unit's writes stay in the durable log until its end
+                with database.transaction() as connection:
+                    connection.execute("INSERT INTO unit VALUES (2, 'written')")
+                logged = log.stat().st_size > 0
+            seen = (logged, not log.exists() or not log.stat().st_size, _rows(database))
         elif case == "session-a-narrower-grant-on-a-kept-instance":
             seen = _session_grant(database)
         elif case == "session-a-declared-write-on-a-read-only-file":
@@ -872,6 +879,10 @@ SESSION_CASES = {
     ),
     "session-a-thread-pools-readers": ({"first": 1, "second": 0}, (4, 4, True)),
     "session-a-unit-hold-ends": ({"first": 1, "second": 0}, [[(1, "seed")]] * 2),
+    "session-a-held-unit-folds-at-its-end": (
+        {"first": 1, "second": 0},
+        (True, True, [(1, "seed"), (2, "written")]),
+    ),
     "session-a-narrower-grant-on-a-kept-instance": ({"first": 1, "second": 0}, 1),
     "session-a-pinned-reader-keeps-its-catalog": (
         {"first": 1, "second": 0},
@@ -946,6 +957,7 @@ DECLARED = frozenset(
         "session-a-schema-change-by-the-writer",
         "session-a-thread-pools-readers",
         "session-a-unit-hold-ends",
+        "session-a-held-unit-folds-at-its-end",
         "session-a-narrower-grant-on-a-kept-instance",
         "session-a-pinned-reader-keeps-its-catalog",
         "session-a-writers-own-catalog",
@@ -970,6 +982,11 @@ DECLARED = frozenset(
         ),
         "host-ended-with-its-workers-running",
         "a-worker-still-writing-its-record",
+        # each place a held unit's write checkpointed at once, before the unit's one fold
+        "killed-after-a-transaction-closes",
+        "killed-after-a-retained-unit-ends",
+        "killed-after-a-direct-open-closes",
+        "killed-after-an-explicit-checkpoint",
     ],
 )
 def test_a_held_file_is_released_where_another_reader_needs_it(
@@ -985,6 +1002,9 @@ def test_a_held_file_is_released_where_another_reader_needs_it(
         _host_start_meets_a_record_being_written(tmp_path)
         return
     database = _prepared(tmp_path)
+    if scenario.startswith("killed-after-"):
+        _killed_inside_a_held_unit(database, scenario.removeprefix("killed-after-"))
+        return
     if scenario == "device-path":
         _device_path_refused(database, monkeypatch)
     elif scenario.startswith("session-"):
@@ -1046,6 +1066,71 @@ def _device_path_refused(database: WorkspaceDatabase, monkeypatch: pytest.Monkey
     with pytest.raises(RuntimeError, match=r"workspace_database\.device_path_unsupported"):
         open_workspace_database(device, read_only=False)
     assert list(relative.iterdir()) == []
+
+
+_KILLED_IN_A_HELD_UNIT = textwrap.dedent(
+    f"""
+    import sys, threading
+    sys.path.insert(0, {str(Path("src").resolve())!r})
+    from pathlib import Path
+    from alphalattice.control.workspace_runtime.database import (
+        WorkspaceDatabase, checkpoint_workspace_database, keep_workspace_databases,
+        open_workspace_database,
+    )
+    database, ready, boundary = WorkspaceDatabase(Path(sys.argv[1])), Path(sys.argv[2]), sys.argv[3]
+    keep_workspace_databases(writes=(database.path,))
+    statement = f"INSERT INTO unit VALUES (2, '{{boundary}}')"
+    with database.hold():  # the one write, at a boundary that checkpointed at once before
+        if boundary == "a-transaction-closes":
+            with database.transaction() as connection:
+                connection.execute(statement)
+        elif boundary == "a-retained-unit-ends":
+            with database.retain(read_only=False), database.transaction() as connection:
+                connection.execute(statement)
+        else:
+            connection = open_workspace_database(database.path, read_only=False)
+            connection.execute(statement)
+            if boundary == "an-explicit-checkpoint":  # killed with the connection still open
+                assert checkpoint_workspace_database(connection) is False
+            else:
+                connection.close()
+        ready.write_text(str(Path(f"{{database.path}}.wal").stat().st_size))
+        threading.Event().wait()  # killed inside the unit
+    """
+)
+
+
+def _killed_inside_a_held_unit(database: WorkspaceDatabase, boundary: str) -> None:
+    """A Host killed inside a held unit right after a write at `boundary` leaves that committed
+    write in the engine's durable log, and the next open recovers it."""
+    import psutil
+
+    ready = database.workspace / "ready"
+    host = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _KILLED_IN_A_HELD_UNIT,
+            str(database.workspace),
+            str(ready),
+            boundary,
+        ],
+        stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    tree: list[psutil.Process] = []
+    try:
+        _until(lambda: ready.is_file() and bool(ready.read_text()), seconds=60.0)
+        # each child behind its launcher where the interpreter has one (a Windows venv's)
+        tree = psutil.Process(host.pid).children(recursive=True)
+        logged = int(ready.read_text())
+    finally:
+        for process in (*tree, host):
+            with suppress(psutil.Error, OSError):
+                process.kill()
+        host.wait(timeout=30)
+        psutil.wait_procs(tree, timeout=30)
+    assert (logged > 0, _rows(database)) == (True, [(1, "seed"), (2, boundary)])
 
 
 _ENDED_HOST = textwrap.dedent(

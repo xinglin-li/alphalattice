@@ -1008,9 +1008,11 @@ def _closed(path: Path, kept: _Instance | None = None) -> None:
     opener took the file meanwhile, else its root closes now, as this close's last step. Then the
     close is counted down, and the openers waiting on the file are woken when no close is in
     flight any more. A writable instance is kept only once its writes are checkpointed into the
-    file, so the file at rest holds them as a close would leave it."""
+    file, so the file at rest holds them as a close would leave it; inside a held unit they are
+    checkpointed once, at the unit's end (`hold_workspace_database`), and stay in the engine's
+    durable log until then."""
     root = None if kept is None else kept.root
-    folded = root is None or cast(_Instance, kept).read_only or _folded(root)
+    folded = root is None or cast(_Instance, kept).read_only or _unit_holds(path) or _folded(root)
     with _STATE:
         idle = (
             root is not None
@@ -1027,6 +1029,26 @@ def _closed(path: Path, kept: _Instance | None = None) -> None:
             root.close()
     finally:
         _counted_down(path)
+
+
+def _unit_holds(path: Path) -> bool:
+    """Whether a unit holds the file now (`hold_workspace_database`): its writes are checkpointed
+    at its end, not at each close or explicit checkpoint within it."""
+    with _STATE:
+        return bool(_HOLDS.get(path))
+
+
+def _fold(path: Path) -> None:
+    """Checkpoint the file's kept instance once a held unit ends while the session still keeps
+    it: the instance leaves the books as for a close (`_let_go`), and `_closed` folds its writes
+    and keeps it idle again. A close of the file still in flight is waited for first."""
+    with _STATE:
+        _STATE.wait_for(lambda: not _CLOSING.get(path))
+        idle = _IDLE.pop(path, None)
+        if idle is None or idle.root is None:
+            return
+        _CLOSING[path] = _CLOSING.get(path, 0) + 1
+    _closed(path, idle)
 
 
 def _folded(root: duckdb.DuckDBPyConnection) -> bool:
@@ -1308,7 +1330,7 @@ def hold_workspace_database(path: Path) -> Iterator[None]:
     this process attaches the file (`release_workspace_database`); while a call runs in another
     process (`hand_off`); and when a writer meets a kept read-only instance. While a Host's
     session keeps every file (`keep_workspace_databases`), the last scope's end leaves the
-    instance kept."""
+    instance kept, its writes then checkpointed into the file."""
     resolved = _book_key(path)
     with _STATE:
         _HOLDS[resolved] = _HOLDS.get(resolved, 0) + 1
@@ -1324,6 +1346,8 @@ def hold_workspace_database(path: Path) -> Iterator[None]:
             let_go = last and not _KEEPS[0]
         if let_go:
             _let_go(resolved)
+        elif last:
+            _fold(resolved)
 
 
 def release_workspace_database(path: Path) -> None:
@@ -1638,8 +1662,11 @@ def checkpoint_workspace_database(connection: duckdb.DuckDBPyConnection) -> bool
     forcing it would abort the reader. The log is durable as written and the
     engine folds it at the next unblocked checkpoint or when the instance
     closes, so the writer's unit goes on; False says the fold was deferred.
-    Any other refusal is the writer's own and is raised.
+    Inside a held unit the fold is the unit's, once at its end (`hold_workspace_database`), and
+    this one is deferred to it. Any other refusal is the writer's own and is raised.
     """
+    if isinstance(connection, WorkspaceConnection) and _unit_holds(connection._path):
+        return False
     try:
         connection.execute("CHECKPOINT")
     except duckdb.TransactionException as error:
