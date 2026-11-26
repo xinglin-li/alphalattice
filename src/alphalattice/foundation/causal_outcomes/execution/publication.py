@@ -15,13 +15,17 @@ import pyarrow as pa
 
 from alphalattice.capabilities.data.calendar import materialize_calendar_schedule
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import seal_scoped_model
 from alphalattice.capabilities.validation.enums import RebalanceFrequency
 from alphalattice.capabilities.validation.schedule_contracts import cadence_threshold_profile
 from alphalattice.control.observation_runtime.telemetry.progress import WorkProgressUpdate
 from alphalattice.control.task_control.child import ChildStartFailed
 from alphalattice.control.workspace_runtime.artifacts import ArtifactDescriptor, ArtifactResolver
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.foundation.feature_engine.contracts import panel_source_manifest_revision
+from alphalattice.foundation.feature_engine.contracts import (
+    listing_set_digest,
+    panel_source_manifest_revision,
+)
 from alphalattice.foundation.feature_engine.panels.reader import FeaturePanelReader
 from alphalattice.foundation.feature_engine.panels.semantic_index import (
     FeaturePanelSemanticIndexService,
@@ -326,7 +330,7 @@ class CausalExecutionOutcomePublisher:
         listings = self.store.listing_scope(manifest, listing_ids=listing_ids)
         # Outcomes are observations over the coverage axis. The paired Panel's
         # per-session rows decide which observations are research samples.
-        listing_set_hash = canonical_hash(listing_ids)
+        listing_set_hash = listing_set_digest(listing_ids)
         summary = panel.get("safe_summary")
         membership = summary.get("membership") if isinstance(summary, dict) else None
         universe_limits = (
@@ -640,11 +644,11 @@ class CausalExecutionOutcomePublisher:
                     "DEVELOPMENT_ONLY_NO_SEALED_HOLDOUT_EXISTS",
                 ),
             }
-            identity = DevelopmentOnlyExecutionOutcomeManifest.model_construct(
-                **values, snapshot_hash=""
-            ).model_dump(mode="json", exclude={"snapshot_hash"})
-            outcome = DevelopmentOnlyExecutionOutcomeManifest(
-                **values, snapshot_hash=canonical_hash(identity)
+            outcome = seal_scoped_model(
+                DevelopmentOnlyExecutionOutcomeManifest,
+                values,
+                field="snapshot_hash",
+                digest=canonical_hash,
             )
         else:
             values = {
@@ -660,11 +664,11 @@ class CausalExecutionOutcomePublisher:
                     "SEALED_HOLDOUT_RELEASE_AUTHORITY_UNAVAILABLE",
                 ),
             }
-            identity = CausalExecutionOutcomeManifest.model_construct(
-                **values, snapshot_hash=""
-            ).model_dump(mode="json", exclude={"snapshot_hash"})
-            outcome = CausalExecutionOutcomeManifest(
-                **values, snapshot_hash=canonical_hash(identity)
+            outcome = seal_scoped_model(
+                CausalExecutionOutcomeManifest,
+                values,
+                field="snapshot_hash",
+                digest=canonical_hash,
             )
         derived_binding = build_execution_outcome_method_binding(
             recipe=recipe,

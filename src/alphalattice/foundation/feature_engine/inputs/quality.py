@@ -14,6 +14,7 @@ from math import isfinite
 import numpy as np
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
+from alphalattice.capabilities.domain_contracts.sealing import seal_payload_digest
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.inputs.contracts import MaterializedFeatureQualification
 from alphalattice.foundation.feature_engine.inputs.gateway import (
@@ -94,7 +95,8 @@ def qualify_materialized_features(
         tuple(eligible),
         tuple(pending),
         tuple(exclusions),
-        canonical_hash(
+        seal_payload_digest(
+            "materialized-feature-qualification",
             {
                 "session": session,
                 "catalog_hash": catalog_hash,
@@ -104,7 +106,8 @@ def qualify_materialized_features(
                     for listing in listings
                 ],
                 "exclusions": exclusions,
-            }
+            },
+            digest=canonical_hash,
         ),
     )
 

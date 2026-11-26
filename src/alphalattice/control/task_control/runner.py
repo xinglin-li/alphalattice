@@ -143,7 +143,7 @@ class TaskDomainAdapter(Protocol):
         execution: TaskExecution,
         work_item: WorkItemDefinition,
         evidence: tuple[TaskEvidence, ...],
-    ) -> tuple[TaskEvidence, ...]:
+    ) -> tuple[TaskEvidence, ...] | StageExecutionResult:
         """Verify stage evidence under the declared deterministic domain verifier.
 
         Args:
@@ -153,7 +153,7 @@ class TaskDomainAdapter(Protocol):
             evidence: Exact stage evidence references to retain or verify.
 
         Returns:
-            The evidence references accepted by the domain verifier.
+            The accepted evidence references or an explicit domain block.
         """
         ...
 
@@ -866,39 +866,45 @@ class TaskControlRunner:
             worker_instance_id=execution.worker_instance_id,
             observed_at=self._now(),
         )
-        if result.disposition is not StageDisposition.READY:
-            # The items still running finish first: a cancelled Task keeps
-            # none of their work (the cancel covers them), a blocked one keeps
-            # what completed -- a later run carries a completed item, and one
-            # that did not complete is left as it stood.
-            if result.disposition is StageDisposition.CANCELLED:
-                current_task = registry.task(task_id)
-                if current_task.lifecycle is not TaskLifecycle.CANCEL_REQUESTED:
-                    raise RuntimeError(
-                        "stage reported cancellation without a pending task cancellation"
-                    )
-                raise ExecutionStopped(CANCELLED)
-            for other, value in pool.drain():
-                if value.disposition is StageDisposition.READY:
-                    self._complete(context, task_id, execution, other, value)
-            # A domain adapter's refusal is recorded as the refusal it is,
-            # whatever its length: a code longer than the record accepts
-            # would fail this write and turn a block into an interruption.
-            registry.block_work_item(
-                task_id=task_id,
-                execution_id=execution_id,
-                stage_id=definition.stage_id,
-                failure_code=(result.failure_code or "TASK_STAGE_DID_NOT_COMPLETE")[
-                    :FAILURE_CODE_MAX_LENGTH
-                ],
-                failure_cause=result.failure_cause,
-                observed_at=self._now(),
-                deferred=result.disposition is StageDisposition.DEFERRED,
-            )
-            self._publish_projection(task_id)
-            return False
-        task = self._complete(context, task_id, execution, definition, result)
-        return task.lifecycle in {TaskLifecycle.RUNNING, TaskLifecycle.CANCEL_REQUESTED}
+        if result.disposition is StageDisposition.READY:
+            completed = self._complete(context, task_id, execution, definition, result)
+            if isinstance(completed, TaskRecord):
+                return completed.lifecycle in {
+                    TaskLifecycle.RUNNING,
+                    TaskLifecycle.CANCEL_REQUESTED,
+                }
+            result = completed
+        # A cancelled Task keeps none of the other items' work. A blocked
+        # Task keeps work that completed beside the block.
+        if result.disposition is StageDisposition.CANCELLED:
+            current_task = registry.task(task_id)
+            if current_task.lifecycle is not TaskLifecycle.CANCEL_REQUESTED:
+                raise RuntimeError(
+                    "stage reported cancellation without a pending task cancellation"
+                )
+            raise ExecutionStopped(CANCELLED)
+        for other, value in pool.drain():
+            if value.disposition is StageDisposition.READY:
+                self._complete(context, task_id, execution, other, value)
+        self._block_stage(task_id, execution_id, definition.stage_id, result)
+        return False
+
+    def _block_stage(
+        self, task_id: UUID, execution_id: UUID, stage_id: str, result: StageExecutionResult
+    ) -> None:
+        # Bound the code before writing so an overlong refusal remains a block.
+        self.registry.block_work_item(
+            task_id=task_id,
+            execution_id=execution_id,
+            stage_id=stage_id,
+            failure_code=(result.failure_code or "TASK_STAGE_DID_NOT_COMPLETE")[
+                :FAILURE_CODE_MAX_LENGTH
+            ],
+            failure_cause=result.failure_cause,
+            observed_at=self._now(),
+            deferred=result.disposition is StageDisposition.DEFERRED,
+        )
+        self._publish_projection(task_id)
 
     def _keep_stored_evidence(
         self,
@@ -936,7 +942,12 @@ class TaskControlRunner:
                 raise
             except Exception:
                 verified = None
-            if verified != item.evidence:
+            if isinstance(verified, StageExecutionResult) and (
+                verified.disposition is StageDisposition.BLOCKED
+            ):
+                self._block_stage(task.task_id, execution.execution_id, item.stage_id, verified)
+                return
+            if not isinstance(verified, tuple) or verified != item.evidence:
                 self.registry.return_to_pending(
                     task_id=task.task_id, stage_id=item.stage_id, observed_at=self._now()
                 )
@@ -964,7 +975,7 @@ class TaskControlRunner:
         execution: TaskExecution,
         definition: WorkItemDefinition,
         result: StageExecutionResult,
-    ) -> TaskRecord:
+    ) -> TaskRecord | StageExecutionResult:
         registry = context.registry
         context.pool.failed_stage_id = definition.stage_id
         registry.mark_ready(
@@ -989,7 +1000,12 @@ class TaskControlRunner:
             ),
             context.pool.digests.pop(definition.stage_id),
         )
-        if verified != result.evidence:
+        if isinstance(verified, StageExecutionResult) and (
+            verified.disposition is StageDisposition.BLOCKED
+        ):
+            context.pool.failed_stage_id = None
+            return verified
+        if not isinstance(verified, tuple) or verified != result.evidence:
             raise RuntimeError("stage verifier changed the proposed evidence identity")
         task = registry.verify_work_item(
             TaskStageReceipt.from_identity(

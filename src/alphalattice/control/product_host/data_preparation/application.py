@@ -23,7 +23,11 @@ from alphalattice.capabilities.domain_contracts.domain.errors import (
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
-from alphalattice.capabilities.domain_contracts.sealing import seal_model
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_payload_digest,
+    seal_model,
+    seal_payload_digest,
+)
 from alphalattice.capabilities.domain_contracts.source_identity import source_rule_closure_hash
 from alphalattice.control.data_platform.contracts import DataRemediationExecutionReceipt
 from alphalattice.control.data_platform.data_decision_rule import DataDecisionRule
@@ -652,7 +656,12 @@ class WorkspacePreparationApplication:
                 }
             latest = selected
         workspace_inputs = [v.model_dump(mode="json") for v in manifest.experiment_inputs or ()]
-        published = self._load(latest.task_id, STAGES[4], optional=True) if latest else None
+        # Task Control records success with the final verification receipt.
+        published = (
+            self._load(latest.task_id, STAGES[4], optional=True)
+            if latest is not None and latest.lifecycle is TaskLifecycle.SUCCEEDED
+            else None
+        )
         inputs = (
             [v for v in workspace_inputs if v["binding_hash"] == published["binding_hash"]]
             if published is not None
@@ -1468,8 +1477,10 @@ class WorkspacePreparationApplication:
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("workspace_preparation.stage_tampered")
-        if data["content_hash"] != canonical_hash(
-            {k: v for k, v in data.items() if k != "content_hash"}
+        content_hash = data["content_hash"]
+        content = {key: value for key, value in data.items() if key != "content_hash"}
+        if content_hash != scoped_payload_digest(
+            content, "content_hash", content_hash, digest=canonical_hash
         ):
             raise ValueError("workspace_preparation.stage_tampered")
         if data["task_id"] != str(task_id) or data["stage"] != name:
@@ -1507,7 +1518,7 @@ class WorkspacePreparationApplication:
             "stage": name,
             **values,
         }
-        data["content_hash"] = canonical_hash(data)
+        data["content_hash"] = seal_payload_digest("content_hash", data, digest=canonical_hash)
         existing = self._load(task.task_id, name, optional=True)
         if existing is not None and not progress:
             if existing != data:
@@ -1735,14 +1746,18 @@ class WorkspacePreparationApplication:
         except ChildStartFailed:
             raise
         except (ValueError, OSError, RuntimeError) as error:
-            return StageExecutionResult(
-                StageDisposition.BLOCKED,
-                failure_code=(
-                    error.failure.code
-                    if isinstance(error, WorkspaceConflictError)
-                    else str(getattr(error, "failure_code", str(error)))[:120]
-                ),
-            )
+            return self._blocked_preparation(error)
+
+    @staticmethod
+    def _blocked_preparation(error: ValueError | OSError | RuntimeError) -> StageExecutionResult:
+        return StageExecutionResult(
+            StageDisposition.BLOCKED,
+            failure_code=(
+                error.failure.code
+                if isinstance(error, WorkspaceConflictError)
+                else str(getattr(error, "failure_code", str(error)))[:120]
+            ),
+        )
 
     def _perform(
         self,
@@ -1922,18 +1937,6 @@ class WorkspacePreparationApplication:
         if stage == STAGES[4]:
             inputs = self._load(task.task_id, STAGES[3])
             assert inputs is not None
-            bundle = read_factor_bundle(root, inputs["binding_hash"])
-            binding = next(
-                v
-                for v in read_research_workspace_manifest(root).experiment_inputs or ()
-                if v.binding_hash == bundle.binding_hash
-            )
-            factor_workflow(
-                workspace=root,
-                binding_hash=bundle.binding_hash,
-                document=normalize_factor_document(factor_template(bundle), binding, bundle),
-                bundle=bundle,
-            )
             return {"binding_hash": inputs["binding_hash"], "status": "RESEARCH_INPUTS_READY"}
         raise ValueError("workspace_preparation.stage_unknown")
 
@@ -2109,8 +2112,8 @@ class WorkspacePreparationApplication:
         execution: TaskExecution,
         work_item: WorkItemDefinition,
         evidence: tuple[TaskEvidence, ...],
-    ) -> tuple[TaskEvidence, ...]:
-        """Require task-bound checkpoint evidence and verify the final factor bundle.
+    ) -> tuple[TaskEvidence, ...] | StageExecutionResult:
+        """Require task-bound checkpoint evidence and verify the final Factor workflow.
 
         Args:
             task: Exact retained preparation task.
@@ -2119,7 +2122,7 @@ class WorkspacePreparationApplication:
             evidence: Declared single-content stage evidence.
 
         Returns:
-            Unchanged verified evidence.
+            Unchanged verified evidence, or the domain block if Factor inputs cannot run.
 
         Raises:
             ValueError: Retained checkpoint input/content differs from the task or evidence.
@@ -2134,7 +2137,27 @@ class WorkspacePreparationApplication:
         ):
             raise ValueError("workspace_preparation.evidence_mismatch")
         if work_item.stage_id == STAGES[-1]:
-            read_factor_bundle(self.session.workspace, record["binding_hash"])
+            root = self.session.workspace
+            try:
+                with WorkspaceDatabase(root).hold():
+                    bundle = read_factor_bundle(root, record["binding_hash"])
+                    binding = next(
+                        v
+                        for v in read_research_workspace_manifest(root).experiment_inputs or ()
+                        if v.binding_hash == bundle.binding_hash
+                    )
+                    factor_workflow(
+                        workspace=root,
+                        binding_hash=bundle.binding_hash,
+                        document=normalize_factor_document(
+                            factor_template(bundle), binding, bundle
+                        ),
+                        bundle=bundle,
+                    )
+            except ChildStartFailed:
+                raise
+            except (ValueError, OSError, RuntimeError) as error:
+                return self._blocked_preparation(error)
         return evidence
 
 

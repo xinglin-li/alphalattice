@@ -12,7 +12,11 @@ from datetime import UTC, date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
-from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
+from alphalattice.capabilities.domain_contracts.bounded_memo import (
+    BoundedMemo,
+    open_stage_digests,
+    stage_digests,
+)
 from alphalattice.capabilities.domain_contracts.domain.errors import WorkspaceConflictError
 from alphalattice.capabilities.domain_contracts.sector_treatment import sector_treatment
 from alphalattice.capabilities.domain_contracts.spans import span, spanned
@@ -43,6 +47,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     PanelTemporalRisk,
     TemporalKnowledgeBoundary,
     canonical_hash,
+    listing_set_digest,
 )
 from alphalattice.foundation.feature_engine.inputs.contracts import MaterializedFeatureQualification
 from alphalattice.foundation.feature_engine.inputs.quality import (
@@ -543,9 +548,14 @@ class FeatureFoundationService:
                 ),
                 name="feature-sector",
             )
-            sector_future = sector_executor.submit(
-                carry_resource_lease(partial(sector_stager.acquire, observed_at=now)),
-            )
+            sector_digests = open_stage_digests()
+            acquire = partial(sector_stager.acquire, observed_at=now)
+
+            def acquire_sector() -> SectorRefreshOutcome:
+                with stage_digests(sector_digests):
+                    return acquire()
+
+            sector_future = sector_executor.submit(carry_resource_lease(acquire_sector))
 
         def flush_feature_writes(base_connection, catalog_hash: str) -> None:
             writes = pending_writes[catalog_hash]
@@ -1383,6 +1393,7 @@ class FeatureFoundationService:
             unit_name="chunks",
         )
         implementation = self.panel.implementation.implementation_binding_hash
+        axis_listing_ids_hash = listing_set_digest(axis_listing_ids) if panel_groups else None
         # A connection block's chunks compute in the Host's kept workers while the writer
         # reads the next chunk's Feature rows; the writer then stages, publishes and
         # records them in chunk order, as it did one by one (W10). A chunk a Sector
@@ -1426,6 +1437,7 @@ class FeatureFoundationService:
                                         _connection=panel_connection,
                                     ),
                                     "active_listing_ids": axis_listing_ids,
+                                    "active_listing_ids_hash": axis_listing_ids_hash,
                                     "manifest_revision": self.manifest.revision_sha256,
                                     "sector_revision": sector_revision,
                                     "sector_by_listing_id": {

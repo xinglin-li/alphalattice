@@ -1,0 +1,209 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "20444d8623e62d343353e0185c4142f496cb703dbfa6ef81059d81f9a21c0ab6",
+   "successor": "681eed7b231ab42417ea44aacde1b2c46fc43d0103269772be0ec54edb3ea0d4",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "af80cd55a54823a349f4f5bdad7a5e8da189172b87efee8634380a412e7eecf0",
+   "successor": "54c597871061606ca4003048f7df766aa71d9430d4c3bce632b2eb2048442d8b",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "8516bb0c37c6b726e862fdebb209539096622665f8bb827654bf9bf42267d4af",
+   "successor": "36fa373d7ddb45fae4f631ce140deb01ebf626f8735c6c115bcba2376ef2638f",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_catalog",
+   "predecessor": "de4c4d1d6a8bb505ba8dba2e2f72bc3f60b619a7b5d91176fc735e1f23d65052",
+   "successor": "5ec819eabead25a034df3cde74ab42d918f5f8a419b1112affb3f1f4e012acf8",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_RELATIVE_FACTOR_STD_Z",
+   "predecessor": "e77c2f447db6594b97bcbb05f74c701332c0c972e72fe0067af0f7b296d756c0",
+   "successor": "52db5c3a725a0ba5535b97010a5837059a8187624d990da37201d7dd136ff496",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.JOINT_PRIMARY_STATE_INTERACTION_BLOCK",
+   "predecessor": "b022c26ec5cdd415f86a62c7b980b95cc90b66f3d357bbb247634b0b9d52fc43",
+   "successor": "872cd9c2143c826a1461bddc0a01554eac4391e3224c98df0ed8576c75080fee",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_SECTOR_NEUTRAL_Z",
+   "predecessor": "aeec9246854e0f84d9e11bc832f8c8c35b48f73f57490551c585969479533af7",
+   "successor": "a63f89846a748480b4f17a2bce8609898d7b83d83ee81f0a032b8b7f49996986",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.ROBUST_UNIVERSE_Z",
+   "predecessor": "9960e678827a07ecfcde449792da580d86e22512c913278dc54c12e94da76c9a",
+   "successor": "82ae9cf5f90083f426e6c1df2ef5a0f67326893215c504c20d3821bd4c1a79eb",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.STATE_INTERACTION_BLOCK",
+   "predecessor": "eb702e44b8180d407a88ce4cf6c3882b5bb5c043e0af1aeb287af2ef2cdd5a2e",
+   "successor": "f5a22b9f160638adaacf4ef267f45f9ed9b914b7471c631a9fe408f3c2487ec9",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "feature_engine.preprocessing_implementation.TIME_SERIES_ABSOLUTE_STATE_ROBUST",
+   "predecessor": "cd2d680d47d9390c4a04fef0c462114c0590862b46a84f89dfba82a7e5845ac0",
+   "successor": "32eecdbff0a04f1f2cd19e8effb12e10dc578611db472d5887ba4ec3fc688ef2",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "90381bb9ccb49b55b19d3d076dd5bb64925680b5c4ff407423feac9119247b51",
+   "successor": "0c661271bca4174c3b662f423959a3dfd6d74a072efd501129ead199ed1ef618",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "865ff32cf00a92df3c3478f514101d23a586ca3f1b85a773a2a3fac1f8f18507",
+   "successor": "3ba39d3d6d50fa8c65fff77a02ba706fe516e6909bf383d4e043457a9e7097f6",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "d337bbdfb6f077d9f8fcb04b2df2ba4cbd494c4c97a90c060d37836773fb1a34",
+   "successor": "68505c572d31f6c51952ce3654de6344e099b5f6a91d54574260fa29ae0b892c",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "8633ea892737c95c9df8bb0c304da089a3741606eab7f13527f5c5409a3f3abf",
+   "successor": "18ba1601f773d6f07558b7e700530f1f071827670c038b77ef6e91977121a7e1",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "36bf49458a14da2cac96cd5f312b3f8c7381936dfca6142589f29a0fe5408bac",
+   "successor": "84e135a843304346039385b6042ec3c92a03a809a2c1c8fe5093db044f12f96d",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "1b8cab622334228a4e53d10efc92fb0e06181e64fbde23b134a152ea7c37d3fb",
+   "successor": "2f12fee768f0ac475749d5acc0c87db54fdb64c45d601ddfd07bb3ab2e03e746",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "5e9f30018549b24671f11b3b88bb4d8c60b56e72f2bf146508f1532c4e68e71b",
+   "successor": "2778228d2cbb5212d4f4a2523c1d6f34bfc6b6539574d4e5ffd5a9592b7f63c2",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "6f350224489896fbbd57ebf615a8562323a9044e176354d42dd82ef380154614",
+   "successor": "218f3898da3e2ba61585d04c7b9646ed6f4e8d61d748bb2d930ff95045d7680c",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "e55dd6a465e29e9ae737e4cc25770315b60c830cb4a74d6acf14686f7d29a5ef",
+   "successor": "6c8560cf4f3a1c16d034c9413b981eeeadede4efc694ff139406bd9f787f2658",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "b3fb7a18737eecdc7fdc6ffb420c60efd0f6925831967d2e2d7cb41ff2573642",
+   "successor": "abc78e820f41a315012a5e0e8045e81756c5cd0b4fc14bbc0f5809dcc26dda7f",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "b9137488a7899f8d2bce1d3674edc2676741be9374ac31d0b99d5e9f4f0c5ed7",
+   "successor": "3ede83ea15bf3143c98622ec65107b59aa861dab056cd15699d5eb37577e475b",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "65cb4793b682128f3c677793a17339cf822062be1a16e38e71cbb72c783aaec9",
+   "successor": "a117023ccdf9c7093a96866e4ecd588ae944834b10b50ac68714db00d5841244",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "7c47e527779a548e71fcdd6d11c28eefc52af46f7c2e6d405a4b20acd230fa24",
+   "successor": "14b80927faba6157d49e20d91d1a34c066fc95dc41f38b1dc0cc6039397b1b44",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "7c47e527779a548e71fcdd6d11c28eefc52af46f7c2e6d405a4b20acd230fa24",
+   "successor": "14b80927faba6157d49e20d91d1a34c066fc95dc41f38b1dc0cc6039397b1b44",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "b4d00fff30262023ff580c1def7a4d845726738679467d90b269e9a5fed1e425",
+   "successor": "dd79f18e49ff809d934dc55d923a07a73f0309ec59b3c871c7e50dac05571c9b",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "fa1ad9342ab6a86e545b02149deb323ea2386ad8f860cf627b74ea41111284ef",
+   "successor": "4cbf8b3f59793e9cd662dbafe0d0eba2f0a3817fa5a4891056d68931757c0def",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "6dde5e3bcb0c519aaf6c79e50630b93f027c51bde4fc6385346ab19e85d6b336",
+   "successor": "b3abd3e3adc90e4008eee5cf41ef97fba1139e324cb80d24f8e76f097b7e002f",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "20a9f4fb351e147b78603bd6dd684698c147466afcc39afd0cc00ad867265088",
+   "successor": "b956baad41aa6ee90294d86fff3af832243a5d46f8790b06f57da059d494287d",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  },
+  {
+   "role": "sector_research.development_execution",
+   "predecessor": "6aeb7d75d758fc0761e34495feb8753b24e0a7d506110bb0cdd0f494df81776b",
+   "successor": "2b4ec745d8d95f2b294e867ccd158f0f1ee6e49d308f2a1806f302b03f9b39c7",
+   "change": "Reuse verified inputs during First Use and Daily",
+   "reason": "The 29 roles move only through their source fingerprints; the repair withholds readback until the preparation Task succeeded, and its development replay reads ALL EQUAL over 185,251 records across 11 listings with the same changed source bytes as the head"
+  }
+ ]
+}

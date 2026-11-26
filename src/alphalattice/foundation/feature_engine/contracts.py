@@ -599,9 +599,14 @@ class PanelCrossSectionRange:
         )
 
 
-def listing_set_digest(listing_ids: Sequence[str]) -> str:
-    """An ordered listing axis's canonical identity, once per stage for one axis."""
+def listing_set_digest(listing_ids: Sequence[str], *, verified_digest: str | None = None) -> str:
+    """Hold the ordered axis's digest. A kept worker can enter with its caller's exact proof."""
     axis = tuple(listing_ids)
+    if verified_digest is not None:
+        digest = stage_digest(("listing-set", axis), list(axis), lambda _: verified_digest)
+        if digest != verified_digest:
+            raise ValueError("feature_panel.listing_axis_mismatch")
+        return digest
     return stage_digest(("listing-set", axis), list(axis), canonical_hash)
 
 

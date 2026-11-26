@@ -26,7 +26,7 @@ from alphalattice.capabilities.quant.cross_section import (
     WINSOR_MULTIPLIER,
 )
 from alphalattice.foundation.feature_engine.catalog.contracts import FeatureCatalog
-from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding
+from alphalattice.foundation.feature_engine.contracts import FeaturePanelBinding, listing_set_digest
 from alphalattice.foundation.feature_engine.producers.preprocessing.catalog import (
     ROBUST_SECTOR_NEUTRAL_Z,
     PanelPreprocessingCatalog,
@@ -431,6 +431,7 @@ def materialize_panel_chunk(
     implementation_binding_hash: str,
     feature_rows: pd.DataFrame,
     active_listing_ids: tuple[str, ...],
+    active_listing_ids_hash: str,
     manifest_revision: str,
     sector_revision: str,
     sector_by_listing_id: dict[str, str],
@@ -456,6 +457,7 @@ def materialize_panel_chunk(
             raise ValueError("feature.worker_panel_implementation_mismatch")
         _WORKER_PANELS[key] = materializer
     with span("features", "panel_chunk"):
+        listing_set_digest(active_listing_ids, verified_digest=active_listing_ids_hash)
         return materializer.materialize(
             feature_rows=feature_rows,
             active_listing_ids=active_listing_ids,

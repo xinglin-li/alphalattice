@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
+from alphalattice.capabilities.domain_contracts.sealing import scoped_payload_digest
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
 from alphalattice.foundation.feature_engine.catalog.contracts import (
     FeatureCatalog,
@@ -283,7 +284,10 @@ class FeaturePanelObservationClockVerifier:
             )
         index_payload, _uri = found
         index_identity = {key: value for key, value in index_payload.items() if key != "index_hash"}
-        if canonical_hash(index_identity) != str(index_payload["index_hash"]):
+        index_hash = str(index_payload["index_hash"])
+        if scoped_payload_digest(
+            index_identity, "index_hash", index_hash, digest=canonical_hash
+        ) != (index_hash):
             return refuse(
                 "feature_panel.semantic_index_identity_invalid",
                 "semantic index hash does not recompute from its own content",

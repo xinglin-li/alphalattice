@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import stage_digest
 from alphalattice.capabilities.quant.cross_section import (
     MAD_SCALE,
     MIN_COVERAGE,
@@ -22,6 +23,7 @@ from alphalattice.foundation.feature_engine.contracts import (
     FeaturePanelBinding,
     PanelAdmissionSummary,
     canonical_hash,
+    listing_set_digest,
 )
 from alphalattice.kernel.identity import identity_sha256
 
@@ -531,25 +533,21 @@ def panel_ordered_members_identity(
     uniform: bool,
 ) -> str:
     """The batch's existing ordered-axis identity, shared by writer and replay."""
-    identity = (
-        canonical_hash(list(axis))
-        if uniform
-        else canonical_hash(
-            {
-                "kind": "PanelOrderedMembers",
-                "axis": list(axis),
-                "epochs": [
-                    [
-                        sessions[start].isoformat(),
-                        sessions[stop - 1].isoformat(),
-                        [int(position) for position in positions],
-                    ]
-                    for start, stop, positions in epochs
-                ],
-            }
+    if uniform:
+        return cast(str, listing_set_digest(axis))
+    ranges = tuple(
+        (
+            sessions[start].isoformat(),
+            sessions[stop - 1].isoformat(),
+            tuple(int(position) for position in positions),
         )
+        for start, stop, positions in epochs
     )
-    return cast(str, identity)
+    return stage_digest(
+        ("panel-ordered-members", axis, ranges),
+        {"kind": "PanelOrderedMembers", "axis": axis, "epochs": ranges},
+        canonical_hash,
+    )
 
 
 def _sector_positions(

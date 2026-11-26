@@ -1074,8 +1074,15 @@ def _seal_factor_inputs(
                 )
             if (source / "market-data.duckdb.wal").exists():
                 raise AuthoringError("research_experiment.source_changed_during_binding")
-            final_digests = file_digests(sources.values())
-            if any(final_digests[sources[name]] != expected for name, expected in files):
+            # The selection index was made in this binding's private staging
+            # directory. Its copied bytes have already proved their digest.
+            live_sources = tuple(
+                (sources[name], expected)
+                for name, expected in files
+                if snapshot is None or name != "market-data.duckdb"
+            )
+            final_digests = file_digests(path for path, _ in live_sources)
+            if any(final_digests[path] != expected for path, expected in live_sources):
                 raise AuthoringError("research_experiment.source_changed_during_binding")
             require_storage_capacity(workspace, additional_bytes=0)
             (staged / "manifest.json").write_text(

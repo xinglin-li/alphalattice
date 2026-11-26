@@ -12,6 +12,10 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid5
 
+from alphalattice.capabilities.domain_contracts.sealing import (
+    scoped_payload_digest,
+    seal_payload_digest,
+)
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
 from alphalattice.foundation.feature_engine.contracts import canonical_hash
 from alphalattice.foundation.feature_engine.publication.sector_map_activation import (
@@ -403,15 +407,15 @@ class SectorRefreshStager:
             raise ValueError("sector staging observed_at must be timezone-aware")
         if self.provider.name != self.manifest.profile.provider:
             raise ValueError("sector provider is not bound to the active manifest")
-        payload = self._load_or_create(observed_at)
+        payload, content_hash = self._load_or_create(observed_at)
         if payload["status"] == "COMPLETED":
-            return self._outcome(payload)
+            return self._outcome(payload, content_hash)
         if payload["status"] == "BLOCKED":
-            return self._outcome(payload)
+            return self._outcome(payload, content_hash)
         if payload["status"] == "DEFERRED":
             retry_after = self._datetime(payload.get("retry_after_at"))
             if retry_after is not None and observed_at < retry_after:
-                return self._outcome(payload)
+                return self._outcome(payload, content_hash)
 
         observations = {str(item["listing_id"]): item for item in payload.get("observations", [])}
         failures = {str(item["listing_id"]): item for item in payload.get("failures", [])}
@@ -475,8 +479,7 @@ class SectorRefreshStager:
             cursor_listing_id=None,
             next_workers=None,
         )
-        self._write(payload)
-        return self._outcome(payload)
+        return self._outcome(payload, self._write(payload))
 
     def commit(
         self,
@@ -486,8 +489,8 @@ class SectorRefreshStager:
         observed_at: datetime,
     ) -> SectorRefreshOutcome:
         """Import one validated staging artifact at the fan-in boundary."""
-        payload = self._load()
-        outcome = self._outcome(payload)
+        payload, content_hash = self._load()
+        outcome = self._outcome(payload, content_hash)
         if outcome.status != "completed":
             if outcome.status == "blocked" and outcome.failure_code == (
                 "sector.partial_current_sector"
@@ -561,7 +564,7 @@ class SectorRefreshStager:
             "completed", revision, receipt, failure_code="sector.changed" if changed else None
         )
 
-    def _load_or_create(self, observed_at: datetime) -> dict[str, object]:
+    def _load_or_create(self, observed_at: datetime) -> tuple[dict[str, object], str]:
         if self.path.exists():
             return self._load()
         payload: dict[str, object] = {
@@ -581,15 +584,16 @@ class SectorRefreshStager:
             "observations": [],
             "failures": [],
         }
-        self._write(payload)
-        return payload
+        return payload, self._write(payload)
 
-    def _load(self) -> dict[str, object]:
+    def _load(self) -> tuple[dict[str, object], str]:
         loaded = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(loaded, dict):
             raise ValueError("sector staging artifact must be a JSON mapping")
         content_hash = loaded.pop("content_hash", None)
-        if content_hash != canonical_hash(loaded):
+        if not isinstance(content_hash, str) or content_hash != scoped_payload_digest(
+            loaded, "content_hash", content_hash, digest=canonical_hash
+        ):
             raise ValueError("sector staging artifact content hash mismatch")
         expected = {
             "schema": "alphalattice-sector-refresh-staging",
@@ -638,11 +642,11 @@ class SectorRefreshStager:
             raise ValueError("sector staging status is invalid")
         if loaded.get("status") == "COMPLETED" and observation_ids != allowed_ids:
             raise ValueError("completed sector staging must cover the active manifest")
-        return loaded
+        return loaded, content_hash
 
     def _write(self, payload: dict[str, object]) -> str:
         document = dict(payload)
-        content_hash = canonical_hash(document)
+        content_hash = seal_payload_digest("content_hash", document, digest=canonical_hash)
         document["content_hash"] = content_hash
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".json.tmp")
@@ -737,8 +741,7 @@ class SectorRefreshStager:
             observed_workers=workers,
             next_workers=1,
         )
-        self._write(payload)
-        return self._outcome(payload)
+        return self._outcome(payload, self._write(payload))
 
     @staticmethod
     def _datetime(value: object) -> datetime | None:
@@ -749,11 +752,11 @@ class SectorRefreshStager:
             raise ValueError("sector staging timestamp must be timezone-aware")
         return parsed.astimezone(UTC)
 
-    def _outcome(self, payload: dict[str, object]) -> SectorRefreshOutcome:
+    def _outcome(self, payload: dict[str, object], content_hash: str) -> SectorRefreshOutcome:
         return SectorRefreshOutcome(
             str(payload["status"]).casefold(),
             None,
-            canonical_hash(payload),
+            content_hash,
             (str(payload["deferred_retry_id"]) if payload.get("deferred_retry_id") else None),
             self._datetime(payload.get("retry_after_at")),
             str(payload["failure_code"]) if payload.get("failure_code") else None,

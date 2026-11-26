@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.foundation.feature_engine.contracts import canonical_hash
+from alphalattice.foundation.feature_engine.contracts import canonical_hash, listing_set_digest
 from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_rows_match_their_hashes,
@@ -244,7 +244,7 @@ class FeaturePanelReader:
             )
         result = tuple(sorted(observed))
         manifest = self.resolver.load_feature_panel_manifest(manifest_ref)
-        if not result or canonical_hash(result) != manifest.get("listing_set_hash"):
+        if not result or listing_set_digest(result) != manifest.get("listing_set_hash"):
             raise ValueError("feature_panel.listing_axis_mismatch")
         return result
 
@@ -294,7 +294,7 @@ class FeaturePanelReader:
             column = parquet.read(columns=["listing_id"]).column("listing_id")
             observed.update(str(value) for value in column.unique().to_pylist())
         result = tuple(sorted(observed))
-        if not result or canonical_hash(result) != manifest.get("listing_set_hash"):
+        if not result or listing_set_digest(result) != manifest.get("listing_set_hash"):
             raise ValueError("feature_panel.listing_axis_mismatch")
         return result
 

@@ -373,11 +373,16 @@ def test_an_agent_resumes_a_granted_preparation_from_its_own_answer(
 
 
 @pytest.mark.parametrize(
-    ("failure_code", "decisions_ready"),
+    ("failure_code", "decisions_ready", "stop_at_verification"),
     [
-        ("data.truth_review_required", False),
-        ("data.truth_review_required", True),
-        ("catalog.replace_blocked", False),
+        pytest.param(
+            "data.truth_review_required", False, False, id="data.truth_review_required-False"
+        ),
+        pytest.param(
+            "data.truth_review_required", True, False, id="data.truth_review_required-True"
+        ),
+        pytest.param("catalog.replace_blocked", False, False, id="catalog.replace_blocked-False"),
+        pytest.param("catalog.replace_blocked", False, True, id="final-verification"),
     ],
 )
 def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirmation(
@@ -385,8 +390,13 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
     monkeypatch: pytest.MonkeyPatch,
     failure_code: str,
     decisions_ready: bool,
+    stop_at_verification: bool,
 ) -> None:
     """A preparation with pending truth decisions offers issues before confirmation."""
+    from alphalattice.control.product_host.composition.research_workspace import (
+        ResearchWorkspaceExperimentInput,
+    )
+    from alphalattice.control.product_host.data_preparation import application as preparation_owner
     from alphalattice.control.product_host.data_preparation.remediation import (
         WorkspaceDataIssueApplication,
     )
@@ -416,27 +426,52 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
         )
         plan = app.plan()
         admitted = app.confirm(plan["plan_hash"], caller="HUMAN")
-        monkeypatch.setattr(
-            app,
-            "execute_stage",
-            lambda **_kwargs: StageExecutionResult(
-                StageDisposition.BLOCKED, failure_code=failure_code
-            ),
-        )
+        manifest_expected = manifest_before
+        bundle_reads = []
+        if stop_at_verification:
+            binding = ResearchWorkspaceExperimentInput(
+                input_id="factor-development", binding_hash="a" * 64
+            )
+            manifest_expected = manifest_before.with_bindings(experiment_inputs=(binding,))
+            publish_research_workspace_manifest(tmp_path, manifest_expected)
+            # Retain the earlier checkpoints so the real runner reaches the final Factor verifier.
+            task = session.task_control_registry.task(admitted.task_id)
+            for stage in preparation_owner.STAGES[:-1]:
+                app._save(task, stage, {"binding_hash": binding.binding_hash})
+
+            def refuse_bundle(_workspace, binding_hash):
+                bundle_reads.append(binding_hash)
+                raise ValueError(failure_code)
+
+            monkeypatch.setattr(preparation_owner, "read_factor_bundle", refuse_bundle)
+        else:
+            monkeypatch.setattr(
+                app,
+                "execute_stage",
+                lambda **_kwargs: StageExecutionResult(
+                    StageDisposition.BLOCKED, failure_code=failure_code
+                ),
+            )
         app.execute(admitted.task_id)
         blocked = session.task_control_registry.task(admitted.task_id)
         assert blocked.lifecycle is TaskLifecycle.BLOCKED
+        if stop_at_verification:
+            assert bundle_reads == [binding.binding_hash]
+            assert app._path(admitted.task_id, preparation_owner.STAGES[-1]).is_file()
         view = app.readback(admitted.task_id)
         pending = failure_code == "data.truth_review_required" and not decisions_ready
         assert view["status"] == "BLOCKED"
         assert view["task_id"] == str(admitted.task_id)
         assert view["plan_hash"] == plan["plan_hash"]
         assert view["failure_code"] == failure_code
+        assert view["inputs"] == [] and view["published_binding_hash"] is None
         assert view["execution_binding_changed"] is False
         assert view["next_action"] == ("DATA_ISSUES" if pending else None)
         assert view["next_requests"] == (
             {"issues": {"operation": "DATA_ISSUES"}}
             if pending
+            else {}
+            if stop_at_verification
             else {
                 "confirm": {
                     "operation": "WORKSPACE_PREPARE_CONFIRM",
@@ -452,7 +487,7 @@ def test_a_preparation_with_pending_truth_decisions_offers_issues_before_confirm
             session.task_control_registry.task(admitted.task_id).record_hash == blocked.record_hash
         )
         assert app.tasks() == (blocked,)
-        assert read_research_workspace_manifest(tmp_path) == manifest_before
+        assert read_research_workspace_manifest(tmp_path) == manifest_expected
         assert provider.calls == []
         assert not (tmp_path / "market-data.duckdb").exists()
 

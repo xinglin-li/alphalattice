@@ -1542,20 +1542,37 @@ class _RefusingTaskAdapter(_FixtureTaskAdapter):
 
     refusal = "risk_research.covariance_chunk_identity_invalid:" + "checkpoint " * 24
 
+    def __init__(self, refusal_phase: str) -> None:
+        super().__init__()
+        self.refusal_phase = refusal_phase
+        self.interrupted = False
+
     def execute_stage(self, *, task, execution, work_item):
+        if self.refusal_phase != "execute":
+            return super().execute_stage(task=task, execution=execution, work_item=work_item)
         del task, execution
         self.executed.append(work_item.stage_id)
         return StageExecutionResult(StageDisposition.BLOCKED, failure_code=self.refusal)
 
+    def verify_stage(self, *, task, execution, work_item, evidence):
+        del task, execution, work_item, evidence
+        if self.refusal_phase == "recovery" and not self.interrupted:
+            self.interrupted = True
+            raise RuntimeError("simulated process interruption")
+        return StageExecutionResult(StageDisposition.BLOCKED, failure_code=self.refusal)
 
-def test_runner_records_an_overlong_stage_refusal_as_a_block(tmp_path: Path) -> None:
+
+@pytest.mark.parametrize("refusal_phase", ["execute", "verify", "recovery"])
+def test_runner_records_an_overlong_stage_refusal_as_a_block(
+    tmp_path: Path, refusal_phase: str
+) -> None:
     now = datetime(2026, 9, 16, 9, tzinfo=UTC)
     registry = DuckDbTaskControlRegistry(
         resolve_task_control_database(tmp_path), gate=WorkspaceMutationGate()
     )
     envelope, goal, plan = task_contract(salt="overlong-refusal")
     task = registry.admit(input_envelope=envelope, goal=goal, plan=plan, observed_at=now).record
-    adapter = _RefusingTaskAdapter()
+    adapter = _RefusingTaskAdapter(refusal_phase)
     assert len(adapter.refusal) > FAILURE_CODE_MAX_LENGTH
     runner = TaskControlRunner(
         registry=registry,
@@ -1565,7 +1582,12 @@ def test_runner_records_an_overlong_stage_refusal_as_a_block(tmp_path: Path) -> 
         heartbeat_seconds=0.01,
     )
     try:
-        result = runner.run_next()
+        if refusal_phase == "recovery":
+            with pytest.raises(RuntimeError, match="simulated process interruption"):
+                runner.run_next()
+            result = runner.recover(task.task_id)
+        else:
+            result = runner.run_next()
     finally:
         runner.close()
 

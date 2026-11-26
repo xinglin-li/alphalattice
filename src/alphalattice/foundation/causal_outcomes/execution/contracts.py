@@ -317,9 +317,7 @@ class CausalExecutionOutcomeManifest(_Contract):
             value.split != "SEALED_HOLDOUT" for value in self.sealed_holdout_chunks
         ):
             raise ValueError("causal execution chunk split is invalid")
-        if self.snapshot_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"snapshot_hash"})
-        ):
+        if self.snapshot_hash != scoped_model_digest(self, "snapshot_hash", digest=canonical_hash):
             raise ValueError("causal execution outcome snapshot hash is invalid")
         return self
 
@@ -402,9 +400,7 @@ class DevelopmentOnlyExecutionOutcomeManifest(_Contract):
             # A sealed chunk reaching this contract would be a Holdout row
             # published under a scope that says it holds none.
             raise ValueError("development-only execution outcome carries a sealed chunk")
-        if self.snapshot_hash != canonical_hash(
-            self.model_dump(mode="json", exclude={"snapshot_hash"})
-        ):
+        if self.snapshot_hash != scoped_model_digest(self, "snapshot_hash", digest=canonical_hash):
             raise ValueError("development-only execution outcome snapshot hash is invalid")
         return self
 
