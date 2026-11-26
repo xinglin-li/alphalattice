@@ -130,6 +130,10 @@ def _own_process_pool(pool: ProcessPoolExecutor, name: str) -> None:
             if release is not None:
                 release()
         child_process.close_pool_trees(pool)
+        # Each wrapper closes over the pool: once it is shut down they go, so its semaphores and
+        # pipes close when its last holder lets go, not at a later cycle collection.
+        for wrapper in ("shutdown", "submit", "_spawn_process"):
+            vars(native).pop(wrapper, None)
 
     if name == "causal-derivation":
         native.submit = submit_owned

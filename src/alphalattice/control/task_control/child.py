@@ -108,6 +108,17 @@ _BUSY: dict[ProcessPoolExecutor, int] = {}
 _BELLS: weakref.WeakKeyDictionary[ProcessPoolExecutor, Bell] = weakref.WeakKeyDictionary()
 """Each kept worker's doorbell: the parent rings it once a call's cancel flag is set, and the
 worker's call looks at its flag (`worker_cancellation`)."""
+_IDLE: dict[ProcessPoolExecutor, threading.Timer] = {}
+"""Each idle kept worker's one pending retirement. A new call or the worker's retirement cancels
+it: a pending timer holds its executor, whose semaphores and pipes stay open while it waits."""
+
+
+def _cancel_idle(pool: ProcessPoolExecutor) -> None:
+    """Cancel the pool's pending idle retirement, with `_WORKER_LOCK` held."""
+    if (timer := _IDLE.pop(pool, None)) is not None:
+        timer.cancel()
+
+
 _BELL: Bell | None = None
 """In a kept worker, its doorbell."""
 _SHARED: dict[str, dict[str, Any]] = {}
@@ -407,17 +418,21 @@ def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
         if _WORKERS.get(worker) is not pool:
             return  # The Task owns its ahead workers through the end of its grant.
         _BUSY[pool] = _BUSY.get(pool, 0) + 1
+        _cancel_idle(pool)
 
     def ended(_done: Future[Any]) -> None:
         with _WORKER_LOCK:
             if pool not in _BUSY:
                 return
             _BUSY[pool] -= 1
-            idle = not _BUSY[pool]
-        if idle:
-            timer = threading.Timer(KEPT_WORKER_IDLE_SECONDS, _retire_idle, (worker, pool))
+            if _BUSY[pool]:
+                return
+            _cancel_idle(pool)
+            timer = _IDLE[pool] = threading.Timer(
+                KEPT_WORKER_IDLE_SECONDS, _retire_idle, (worker, pool)
+            )
             timer.daemon = True
-            timer.start()
+        timer.start()
 
     future.add_done_callback(ended)
 
@@ -425,6 +440,9 @@ def _hold(worker: int, pool: ProcessPoolExecutor, future: Future[Any]) -> None:
 def _retire_idle(worker: int, pool: ProcessPoolExecutor) -> None:
     """Retire a kept worker that took no call since its idle wait began."""
     with _WORKER_LOCK:
+        if _IDLE.get(pool) is not threading.current_thread():
+            return  # Cancelled while it waited for the lock: a call took the pool, or it retired.
+        del _IDLE[pool]
         if _BUSY.get(pool) or _WORKERS.get(worker) is not pool:
             return
         del _WORKERS[worker]
@@ -464,7 +482,10 @@ def _waited(
             if time.monotonic() - progress[1] > WEDGED_SECONDS:
                 raise _ended_wedged(submitted) from None
         return answer
-    except BrokenProcessPool:
+    except BrokenProcessPool as broken:
+        # The future keeps this exception; its traceback holds these frames, which hold the
+        # future and its retired pool, a cycle only a collection would end.
+        broken.__traceback__ = None
         raise _ended(submitted.worker, submitted.pool) from None
     finally:
         release()
@@ -605,10 +626,14 @@ type _WarmImports = tuple[tuple[str, ...], str | None, ResourceLease | None]
 def _worker(
     worker: int, *, threads: int | None, warm: _WarmImports | None = None
 ) -> ProcessPoolExecutor:
+    """The kept worker at `worker`, started if none; a kept one leaves its idle wait, so it is not
+    retired between its selection and the call `_hold` counts."""
     with _WORKER_LOCK:
         workers = _kept_workers()
         kept = workers.get(worker)
-        if kept is None:
+        if kept is not None:
+            _cancel_idle(kept)
+        else:
             context = multiprocessing.get_context("spawn")
             bell = context.Event()
             kept = workers[worker] = execution_port().register_pool(
@@ -635,6 +660,7 @@ def _retire_worker(worker: int, pool: ProcessPoolExecutor, *, wait_for_exit: boo
         if workers.get(worker) is pool:
             del workers[worker]
         _BUSY.pop(pool, None)
+        _cancel_idle(pool)
     if not wait_for_exit:
         pool.shutdown(wait=False, cancel_futures=False)
 

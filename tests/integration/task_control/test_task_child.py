@@ -237,6 +237,8 @@ def _no_kept_workers():
     retire()
     yield
     retire()
+    # A retired worker leaves no pending idle retirement holding its executor's descriptors.
+    assert not child._IDLE, child._IDLE
 
 
 @pytest.mark.parametrize("spread", [False, True])
@@ -249,10 +251,9 @@ def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
     # Retire even a warm worker through the public boundary before injecting at its next start.
     with pytest.raises(ChildInterrupted):
         run_in_child(f"{HERE}:ended", {})
-    error = error_type("fixture child start refused")
 
     def fail(*args, **kwargs):
-        raise error
+        raise error_type("fixture child start refused")
 
     with monkeypatch.context() as patch:
         if at == "constructor":
@@ -267,8 +268,12 @@ def test_child_creation_refuses_by_name_and_the_next_call_replaces_it(
                     calls.make({"value": 21})
             else:
                 run_in_child(f"{HERE}:doubled", {"value": 21})
-        assert stopped.value.__cause__ is error
-        assert stopped.value.type_name == error_type.__name__
+        # The refusal and its cause hold tracebacks back to this frame; held here, either keeps its
+        # call's pool alive until a collection, so only plain values stay.
+        cause = stopped.value.__cause__
+        refusal = (type(cause), cause.args, stopped.value.type_name)
+        del stopped, cause
+        assert refusal == (error_type, ("fixture child start refused",), error_type.__name__)
     assert run_in_child(f"{HERE}:doubled", {"value": 21})["value"] == 42
 
 
@@ -765,6 +770,21 @@ def _check_idle_worker_retirement(monkeypatch) -> None:
     )
 
     assert worker_processes(64) <= RuntimeCapacityRequest().maximum_kept_workers
+    with child_calls(f"{HERE}:doubled", workers=1) as calls:
+        calls.make({"value": 1})
+        assert calls.answer()["value"] == 2
+    pool = child._WORKERS[1]  # a call set's first place; 0 is the Task's own
+    deadline = time.monotonic() + 30
+    while pool not in child._IDLE and time.monotonic() < deadline:
+        time.sleep(0.01)
+    waiting = child._IDLE[pool]
+    # A replaced wait's callback, already past its cancel, leaves the pool and the wait in place.
+    child._retire_idle(1, pool)
+    assert child._WORKERS[1] is pool and child._IDLE[pool] is waiting
+    # A call that takes the pool takes it out of its wait before it is counted busy.
+    assert child._worker(1, threads=1) is pool and pool not in child._IDLE
+    child._retire_idle(1, pool)
+    assert child._WORKERS[1] is pool
     monkeypatch.setattr(child, "KEPT_WORKER_IDLE_SECONDS", 0.5)
     with child_calls(f"{HERE}:doubled", workers=2) as calls:
         calls.make({"value": 2})
@@ -864,6 +884,9 @@ def test_an_idle_kept_worker_retires_and_the_next_call_starts_it_again(tmp_path,
                     assert len(pools) == (4 if replacement else 3)
         assert all(pool.joined and not pool._processes for pool in pools)
         assert all(pool.stopped for pool in pools[1:])
+    # The fake's class closes over this list, a cycle that would keep each fake and its real
+    # doorbell (five semaphores) until a collection.
+    pools.clear()
 
 
 def test_a_shared_argument_ships_once_to_each_worker_of_a_call_set() -> None:
