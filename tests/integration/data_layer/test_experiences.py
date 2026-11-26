@@ -17,6 +17,7 @@ from alphalattice.foundation.data_layer.chain import digest
 from alphalattice.foundation.data_layer.log import HostLog, replay, uuid7
 from alphalattice.foundation.data_layer.project import differences, recipe_key
 from alphalattice.foundation.data_layer.reading import reading_session
+from alphalattice.kernel.clock import wall_time_ns
 
 TEST_SOURCE = "src/alphalattice/foundation/data_layer/experiences.py"
 T0 = 1_794_700_000_000_000  # 2026-11-14, UTC
@@ -502,7 +503,7 @@ def test_recall_finds_each_experience_as_known_with_its_trials(world, monkeypatc
     english = experiences.note_text("Momentum pays", "12-1 momentum", "It paid after costs", [])
     _note(log, "trial", "t0", text=english)
     (first,) = experiences.render_pending(log, root / "blobs")
-    later = T0 + 10**12
+    later = wall_time_ns() // 1000 + 10**12  # after every note: the log stamps each on this clock
     try:
         found, trials = recall.recall(
             log, root, query="momentum costs", workspace="w1", cutoff_us=later
