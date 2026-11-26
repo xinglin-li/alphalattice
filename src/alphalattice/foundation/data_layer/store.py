@@ -1349,17 +1349,22 @@ class StorePort:
                 " IS DISTINCT FROM n.lag_rule OR t.lag_rule_version IS DISTINCT FROM"
                 " n.lag_rule_version))"
             )
-        eligible = (  # a version that never wins, retained or carried, orders nothing
-            " AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
-            f" WHERE s.table_id = world_table_id('{table}') AND s.version_id = t.version_id"
-            f" AND s.superseded_asof = {NEVER_CURRENT})"
+        counted = (
+            "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
+            f" {moved} FROM {target} t, temp.admitting n WHERE {same}"
         )
-        late, other = storage.first(
-            self.lake.execute(
-                "SELECT count(*) FILTER (WHERE n.fate = 'admit' AND n.known_asof < t.known_asof),"
-                f" {moved} FROM {target} t, temp.admitting n WHERE {same}{eligible}"
+        late, other = storage.first(self.lake.execute(counted))
+        if late or other:
+            # A version that never wins, retained or carried, orders nothing. Leaving it out
+            # only lowers both counts, so the read of every held supersession, the read's
+            # largest cost, is paid only when a count would refuse.
+            late, other = storage.first(
+                self.lake.execute(
+                    f"{counted} AND NOT EXISTS (SELECT 1 FROM lake.world.superseded s"
+                    f" WHERE s.table_id = world_table_id('{table}')"
+                    f" AND s.superseded_asof = {NEVER_CURRENT} AND s.version_id = t.version_id)"
+                )
             )
-        )
         if other:
             raise DataError(
                 f"{other} {table} rows' keys are held under another lag rule or version than"

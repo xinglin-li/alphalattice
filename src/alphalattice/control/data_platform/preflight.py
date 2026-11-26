@@ -362,8 +362,10 @@ def evaluate_universe_spy_divergence_preflight(
     members = sorted(listing.listing_id for listing in manifest.listings)
     # One database instance and one read per table for every listing: a read per
     # listing opens a connection and binds the market relations each time, and
-    # that was most of this preflight's time.
-    with market.database.retain(read_only=True):
+    # that was most of this preflight's time. Its byte proofs read the Panel's chunk files, never
+    # the store's, so it attaches to a Host's kept writable instance and the writer after it
+    # opens nothing.
+    with market.database.retain(read_only=True, proves_bytes=False):
         frames = projected_feature_frames(
             store,
             manifest,

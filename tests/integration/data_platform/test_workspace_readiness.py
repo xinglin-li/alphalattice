@@ -923,7 +923,7 @@ def test_universe_spy_divergence_preflight_composes_qualified_inputs(
     class StubStore:
         # Preflight holds one read-only database instance across every
         # listing's frame; the stubbed reads need no instance behind it.
-        database = SimpleNamespace(retain=lambda *, read_only: nullcontext())
+        database = SimpleNamespace(retain=lambda *, read_only, proves_bytes=True: nullcontext())
 
         def current_quality_filtered_research_manifest(self, *, market_profile_id: str):
             assert market_profile_id == "us-current-index-research"

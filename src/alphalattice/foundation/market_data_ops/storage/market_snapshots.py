@@ -12,6 +12,7 @@ from typing import Any, Final
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.workspace_runtime.database import bind_each_connection
 from alphalattice.foundation.data_layer import history
 from alphalattice.foundation.data_layer.root import sql_path
@@ -25,6 +26,12 @@ CACHE = "market_selection"
 """Each database instance's in-memory copy of the published selection's bodies: a read of the
 shared catalog costs about ten times one of a native table, in every statement
 (`bind_pending_reads`)."""
+_READ: BoundedMemo[tuple[str, str], tuple[object, dict[str, pa.Table]]] = BoundedMemo(capacity=4)
+"""Each workspace file's published selection as this process last read it from a catalog root,
+with what it was read at (the anchor and the version index's rows): an instance's copy ends with
+the instance, and a Host reopens one around each byte proof of the store, so a fresh instance of
+the same file and selection fills its copy from here and the Host reads the committed selection
+once. A moved anchor or index refills from the catalog."""
 DATES = {
     "raw_bar": "session_date",
     "corporate_action": "effective_date",
@@ -405,14 +412,49 @@ def _require_held(connection: Any, relation: Callable[[str], str]) -> None:
         raise ValueError("market_data_ops.catalog_selection_unavailable")
 
 
-def _copy_selection(connection: Any) -> None:
-    """Fill the instance's copy of the selection, refused when the catalog lacks part of it."""
-    for name, sql in version_relations(VERSIONS, "workspace_market").items():
+def _read_of(database: Path, root: Path, selected: object) -> dict[str, pa.Table] | None:
+    """This process's read of the workspace `database`'s selection from the catalog at `root`,
+    when it was read at `selected`."""
+    read = _READ.get((str(database), str(root)))
+    return read[1] if read is not None and read[0] == selected else None
+
+
+def _copy_selection(connection: Any, database: Path, root: Path) -> None:
+    """Fill the instance's copy of the selection: from this process's read of the same
+    selection (`_read_of`), else from the catalog, refused when the catalog lacks part of it."""
+    # The anchor and every row of the version index (UUIDv7 versions): what the copy is of,
+    # whichever instance or catalog of this root read it.
+    selected = (
+        _published(connection),
+        storage.first(
+            connection.execute(f"SELECT count(*), sum(hash(v)::HUGEINT) FROM {VERSIONS} v")
+        ),
+    )
+    bodies = _read_of(database, root, selected)
+    if bodies is not None:
+        for name, body in bodies.items():
+            connection.register("selection_body", body)
+            try:
+                connection.execute(
+                    f"CREATE OR REPLACE TABLE {CACHE}.main.{name} AS SELECT * FROM selection_body"
+                )
+            finally:
+                connection.unregister("selection_body")
+        return
+    relations = version_relations(VERSIONS, "workspace_market")
+    for name, sql in relations.items():
         connection.execute(
             f"CREATE OR REPLACE TABLE {CACHE}.main.{name} AS"
             f" SELECT * FROM ({sql}) ORDER BY listing_id"
         )
     _require_held(connection, lambda view: f"{CACHE}.main.{view}")
+    _READ[(str(database), str(root))] = (
+        selected,
+        {
+            name: connection.execute(f"SELECT * FROM {CACHE}.main.{name}").to_arrow_table()
+            for name in relations
+        },
+    )
 
 
 def write_back(connection: Any, database: Path) -> int:
@@ -507,7 +549,9 @@ def bind_pending_reads(
     def bound(table: str) -> None:
         connection.attach_market_catalog(root)  # a connection that reads no market row needs none
         if not held:
-            copied = connection.hold_market_selection(CACHE, _published, _copy_selection)
+            copied = connection.hold_market_selection(
+                CACHE, _published, partial(_copy_selection, database=database, root=root)
+            )
             if not copied:  # read live inside a transaction: refused as the copy's fill refuses
                 _require_held(connection, lambda body: f"({committed[body]})")
             held.append(copied)

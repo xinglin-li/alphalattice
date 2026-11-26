@@ -2055,6 +2055,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.a_host_reads_its_committed_selection_once": {
+      "description": "If each fresh database instance read the published selection from the shared catalog again, a Host reopening its workspace would repeat that read.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.a_membership_transition_is_its_exits_then_entries": {
       "description": "A move from one member set to the next is recorded as its exits and then its entries, numbered on from the given sequence.",
       "owner": "alphalattice.foundation.market_data_ops",

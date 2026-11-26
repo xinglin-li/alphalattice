@@ -367,7 +367,9 @@ class WorkspaceDataIssueApplication:
         if manifest is None:
             return False
         now = self.clock()
-        with self.market.database.retain(read_only=True):
+        # Its byte proofs read the Panel's files, never the store's: it keeps a Host's writable
+        # instance (`proves_bytes`), so preparation's next write opens nothing.
+        with self.market.database.retain(read_only=True, proves_bytes=False):
             cases = (
                 cases
                 if cases is not None

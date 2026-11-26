@@ -1580,6 +1580,8 @@ ACTION = {
 } | WRITTEN
 RULE, MOVED_RULE = ("yf-close", 1), ("yf-close", 2)
 SAME = (None, 0, 0, {}, 1, 0)
+NEVER_WINS = "never wins"
+"""`added`: the held version is retained or carried, never current, before the staged one."""
 
 
 @pytest.mark.proves("data_layer.a_correction_is_known_from_its_admission")
@@ -1688,6 +1690,14 @@ SAME = (None, 0, 0, {}, 1, 0)
             id="known before the held version",
         ),
         pytest.param(
+            "raw_bar",
+            ([FUTURE], RULE),
+            ([FUTURE | {"close": 6.0} | LATER], None),
+            NEVER_WINS,
+            (None, 1, 0, {}, 2, 1),
+            id="known before a held version that never wins",
+        ),
+        pytest.param(
             "provider_symbol",
             ([SYMBOL | {"valid_to": "2024-01-05"}], RULE),
             ([SYMBOL | {"valid_to": "2024-01-08"}], RULE),
@@ -1724,7 +1734,12 @@ def test_one_fact_is_one_version_however_it_is_staged(
             root, table, log.require_lineage("provider", "yf"), arrow(held[0]), lag=held[1]
         ) as first:
             port.commit(first)
-        if added:  # a nullable column the table gains after the held version
+        if added == NEVER_WINS:  # the held version made never current, as a carry leaves it
+            port.lake.execute(
+                f"INSERT INTO lake.world.superseded SELECT world_table_id('{table}'), version_id,"
+                f" TIMESTAMPTZ '-infinity', admission_id FROM lake.world.{table}"
+            )
+        elif added:  # a nullable column the table gains after the held version
             port.lake.execute(f"ALTER TABLE lake.world.{table} ADD COLUMN {added} DOUBLE")
         refused, done, admission = None, None, None
         try:

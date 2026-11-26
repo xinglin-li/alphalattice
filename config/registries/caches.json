@@ -3975,6 +3975,26 @@
         "path_expression": "In-memory _VERIFIED_RECORDS in its module, instance, or call namespace"
       },
       "description": "Keeps each stored Task document this process has verified, validating it again after an eviction at capacity."
+    },
+    "src/alphalattice/foundation/market_data_ops/storage/market_snapshots.py::_READ::market-selection-read": {
+      "owner": "alphalattice.foundation.market_data_ops",
+      "defined_by": [
+        "src/alphalattice/foundation/market_data_ops/storage/market_snapshots.py::_READ"
+      ],
+      "definition_line": 29,
+      "key": "workspace database path, catalog data root; the entry holds the anchor and version-index digest it was read at",
+      "dependency_coverage": "Yes: the published anchor and every version-index row (UUIDv7 versions) the bodies are read by",
+      "invalidation_rule": "a moved anchor or version index refills from the catalog; LRU eviction or process restart",
+      "size_bound": "4 entries",
+      "bound_scope": "4 entries",
+      "eviction": "LRU",
+      "safe_to_drop": "Yes: the next fresh instance reads the selection from the catalog again",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory _READ in its module, instance, or call namespace"
+      },
+      "source_commit": "469ee7d0f13fd56f1e7151dc97f0c69e0158fba7",
+      "description": "Keeps each workspace file's published market selection bodies as this process read them from the catalog, so a fresh database instance of the same file and selection fills its in-memory copy without reading the catalog again."
     }
   }
 }
