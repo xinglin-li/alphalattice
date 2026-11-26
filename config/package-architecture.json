@@ -706,10 +706,12 @@
   },
   "deferred_imports": {
     "alphalattice.control.observation_runtime.telemetry.process_metrics": "Read the Host's effective processor allowance when preparing native startup.",
-    "alphalattice.evidence.alternative_evidence.runtime.execution": "Read the workspace's CPU setting at Host startup, before numerical imports.",
+    "alphalattice.evidence.alternative_evidence.runtime.execution": "Read the workspace's CPU setting before numerical imports or open Evidence execution on first use.",
     "alphalattice.control.workspace_runtime.content_store": "Load the file writer when native usage settings are written.",
     "alphalattice.kernel.egress.http -> httpx": "Load the outbound HTTP backend only when a source opens or reads its session.",
     "alphalattice.evidence.alternative_evidence.analysis.contracts": "Read the Evidence topic declaration only when a view request names a topic.",
+    "alphalattice.evidence.alternative_evidence.publication.analysis": "Compose the Evidence publication owner on its first read or write.",
+    "alphalattice.evidence.alternative_evidence.publication.usage": "Record provider usage when Evidence analysis runs.",
     "alphalattice.interface.local_application.portfolio_request_fields.data": "Validate Data and preparation requests using their declared fields.",
     "alphalattice.interface.local_application.portfolio_request_fields.feature": "Validate Feature and trial requests using their declared fields.",
     "alphalattice.interface.local_application.portfolio_request_fields.goals": "Validate Goal and committee requests and their nested message.",

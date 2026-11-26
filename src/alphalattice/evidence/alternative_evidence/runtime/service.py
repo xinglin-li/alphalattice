@@ -6,11 +6,12 @@ from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from functools import cached_property
 from heapq import heappop, heappush
 from itertools import count
 from pathlib import Path
 from threading import Condition, Lock, get_ident, local
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -18,9 +19,6 @@ from pydantic import BaseModel
 from alphalattice.capabilities.domain_contracts.host_stop import checkpoint
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash, schema_structure
 from alphalattice.capabilities.domain_contracts.identity_successors import is_current
-from alphalattice.evidence.alternative_evidence.publication.usage import (
-    record_provider_stage_usage,
-)
 from alphalattice.foundation.data_layer import history as data_history
 from alphalattice.protocols.actor_execution import ActorKind, AgentExecutionBinding
 from alphalattice.protocols.actor_execution.answers import AnswerProblem
@@ -64,7 +62,6 @@ from ..contracts import (
 from ..documents.canonicalization import canonicalize_source_documents
 from ..documents.contracts import AlternativeEvidenceDocumentSet
 from ..documents.workspace import AlternativeEvidenceDocumentPublisher
-from ..publication.analysis import AlternativeEvidenceAnalysisPublicationService
 from ..publication.artifacts import (
     AlternativeEvidenceArtifactStore,
     AlternativeEvidencePublicationError,
@@ -100,7 +97,6 @@ from ..sources.recorded import RecordedEvidenceDocument
 from ..sources.sec_edgar import SecEdgarSource
 from ..storage import world as evidence_world
 from ..storage import world_reads
-from .execution import CpuBudgetStore
 from .history import require_current_selection
 from .identity import (
     SUPPORTED_HISTORICAL_BINDINGS,
@@ -129,6 +125,11 @@ from .reuse import (
     record_days,
     sealed_field,
 )
+
+if TYPE_CHECKING:
+    from ..analysis.submissions import AlternativeEvidenceHostPolicyBinding
+    from ..publication.analysis import AlternativeEvidenceAnalysisPublicationService
+    from .execution import CpuBudgetStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -733,11 +734,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         self.document_binding_hash = alternative_document_binding_hash(self.playpen_root)
         self.retrieval_binding_hash = alternative_retrieval_binding_hash(self.playpen_root)
         self.analysis_policy = build_alternative_analysis_policy_binding(self.playpen_root)
-        self.decision_policy = build_alternative_evidence_decision_policy_binding(self.playpen_root)
         self.analysis_policy_hash = self.analysis_policy.binding_hash
-        self.publication_binding_hash = alternative_document_publication_binding_hash(
-            self.playpen_root
-        )
+        self._runtime_root = artifact_root.parent
         self.recorded_acquisition_document_count = 0
         self.canonicalization_document_count = 0
         self.selection_reuse_count = 0
@@ -786,34 +784,55 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         self.retrieval = AlternativeEvidenceRetrievalService(
             workspace_root=workspace_root, retrieval_binding_hash=self.retrieval_binding_hash
         )
-        self.execution = CpuBudgetStore(artifact_root.parent)
-        """The workspace's CPU budget and the log of what each preparation ran with:
-        how many units of a book prepare at once and each session's threads
-        (`runtime.execution`), the operator's and never identity."""
-        self.publications = AlternativeEvidenceAnalysisPublicationService(
+
+    @cached_property
+    def execution(self) -> CpuBudgetStore:
+        """Open the workspace's budget and execution log when running a Task."""
+        from .execution import CpuBudgetStore  # lazy: the budget store is needed on execution.
+
+        return CpuBudgetStore(self._runtime_root)
+
+    @cached_property
+    def decision_policy(self) -> AlternativeEvidenceHostPolicyBinding:
+        """Hold the installed Host policy once a decision uses it."""
+        return build_alternative_evidence_decision_policy_binding(self.playpen_root)
+
+    @cached_property
+    def publications(self) -> AlternativeEvidenceAnalysisPublicationService:
+        """Compose the publication owner when an analysis is written or read."""
+        from ..publication.analysis import (  # lazy: first publication use
+            AlternativeEvidenceAnalysisPublicationService,
+        )
+
+        publication_binding = alternative_document_publication_binding_hash(self.playpen_root)
+        return AlternativeEvidenceAnalysisPublicationService(
             self.artifacts,
             acquisition_binding_hash=self.acquisition.acquisition_binding_hash,
             canonicalization_binding_hash=self.document_binding_hash,
             retrieval_binding_hash=self.retrieval_binding_hash,
             analysis_policy_hash=self.analysis_policy_hash,
             decision_policy_hash=self.decision_policy.binding_hash,
-            publication_binding_hash=self.publication_binding_hash,
+            publication_binding_hash=publication_binding,
             supported_historical_bindings=(
                 *SUPPORTED_HISTORICAL_BINDINGS,
-                *self._observed_bindings(),
+                *self._observed_bindings(publication_binding),
             ),
         )
-        self.sealed_readings = SealedReadings(
+
+    @cached_property
+    def sealed_readings(self) -> SealedReadings:
+        """Open the sealed analysis lookup when a caller needs published readings."""
+        return SealedReadings(
             self.artifacts,
             self.documents,
             expected_bindings=self.publications.expected_bindings,
             days=self.record_days[ANALYSIS_PUBLICATION_CATEGORY],
         )
 
-    def _observed_bindings(self) -> tuple[ObservedEvidenceBindings, ...]:
+    def _observed_bindings(self, publication_binding: str) -> tuple[ObservedEvidenceBindings, ...]:
         """The tuples this workspace's analyses record that no build lists (E2).
 
-        Read once, when the runtime is composed; each is handed to the publication
+        Read once, when publications are first used; each is handed to the publication
         service as history, so those analyses and the reviews resting on them read
         back verified, labelled historical, and never as current authority.
         """
@@ -823,7 +842,7 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
             self.retrieval_binding_hash,
             self.analysis_policy_hash,
             self.decision_policy.binding_hash,
-            self.publication_binding_hash,
+            publication_binding,
         )
         recorded = (
             (
@@ -1948,6 +1967,8 @@ class AlternativeEvidenceDocumentIntelligenceRuntime:
         completed_at: datetime,
     ) -> AlternativeEvidenceAnalysisResult:
         """Screen an actor submission and seal its analysis result."""
+        from ..publication.usage import record_provider_stage_usage  # lazy: analysis only
+
         packet = AlternativeEvidencePacket(
             request=request,
             obligation=obligation,
