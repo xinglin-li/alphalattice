@@ -28,7 +28,6 @@ from alphalattice.capabilities.domain_contracts.bounded_memo import (
 from alphalattice.capabilities.domain_contracts.host_stop import HostStopping, checkpoint
 from alphalattice.capabilities.domain_contracts.source_identity import source_role_acquisition
 from alphalattice.capabilities.domain_contracts.spans import SpanLedger, collect
-from alphalattice.control.workspace_runtime.content_store import verified_array_read_scope
 from alphalattice.control.workspace_runtime.mutation_gate import carry_background
 from alphalattice.foundation.data_layer.history import held
 from alphalattice.kernel.clock import carry_observation, task_observation, utc_now
@@ -222,7 +221,6 @@ def _spanned[T](
         with (
             stage_digests(digests),
             source_role_acquisition(fresh=True),
-            verified_array_read_scope(),
             collect((str(task_id), stage_id, phase)) as ledger,
         ):
             return call()
