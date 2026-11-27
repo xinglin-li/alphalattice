@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -109,14 +109,16 @@ def readback() -> dict[str, Any]:
     return {
         "task_id": TASK,
         "strategy_package_id": n.checkpoint.package.strategy_id,
-        "labels": Label(
-            kind="strategy",
-            id=n.checkpoint.package.strategy_id,
-            title="Synthetic test book",
-            summary="Synthetic committee presentation fixture.",
-            title_zh="合成测试组合",
-            summary_zh="委员会展示使用的合成测试样例。",
-        ).model_dump(),
+        "labels": asdict(
+            Label(
+                kind="strategy",
+                id=n.checkpoint.package.strategy_id,
+                title="Synthetic test book",
+                summary="Synthetic committee presentation fixture.",
+                title_zh="合成测试组合",
+                summary_zh="委员会展示使用的合成测试样例。",
+            )
+        ),
         "publication": value.model_dump(mode="json"),
         "history": [],
         "listing_labels": {listing: f"N{i}" for i, listing in enumerate(listings)},

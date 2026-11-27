@@ -261,9 +261,6 @@ from alphalattice.interface.local_application.portfolio_research import (
     spec_from_document,
     validate_request_document,
 )
-from alphalattice.investment.alpha_research.scores.model_renewal import (
-    verified_lifecycle_admissions,
-)
 from alphalattice.investment.portfolio_strategy_lab.application.contracts import (
     PortfolioResearchResult,
     PortfolioResearchSpec,
@@ -1707,6 +1704,10 @@ class PortfolioResearchOperations:
             if isinstance(recovery, dict):
                 body = recovery
             else:
+                from alphalattice.investment.alpha_research.scores import (  # lazy: first call
+                    model_renewal,
+                )
+
                 execution_request = (
                     request
                     if recovery is None
@@ -1718,7 +1719,7 @@ class PortfolioResearchOperations:
                     source_role_acquisition(fresh=True),
                     update_readbacks(),
                     verified_model_read_scope(),
-                    verified_lifecycle_admissions(),
+                    model_renewal.verified_lifecycle_admissions(),
                     verified_study_evidence(),
                     verified_evidence_records(),
                     trial_reads_once(),

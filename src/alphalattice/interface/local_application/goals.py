@@ -11,6 +11,7 @@ import re
 import struct
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, tzinfo
+from functools import cache
 from importlib import import_module
 from typing import Any, Final, Literal, Self, cast
 from uuid import UUID
@@ -78,8 +79,17 @@ _DAILY_REQUESTS: Final = (
         {"operation": "EVIDENCE_CONSENT_SET", "evidence_documents_per_issuer": 3},
     ),
 )
-DAILY_NETWORK_DECISIONS: Final = frozenset(decision_hash(r) for _words, r in _DAILY_REQUESTS)
-"""The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other."""
+
+
+@cache
+def daily_network_decisions() -> frozenset[str]:
+    """The two requests a yes to `DAILY_NETWORK_ASK` answers, each once; the Host takes no other.
+
+    Hashed on the first relay rather than at import: validating them loads request families a
+    Host start never reads.
+    """
+    return frozenset(decision_hash(r) for _words, r in _DAILY_REQUESTS)
+
 
 DAILY_NETWORK_RELAY: Final = tuple(
     (
@@ -109,7 +119,7 @@ Narrow on purpose: a person's own yes is never refused for its phrasing."""
 def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirmation) -> str:
     """The decision a relayed yes answers: the one it was bound to.
 
-    For the daily question it is only one of its two (`DAILY_NETWORK_DECISIONS`).
+    For the daily question it is only one of its two (`daily_network_decisions`).
 
     Raises:
         ValueError: `person_confirmation.not_the_persons_words`, `.decision_mismatch`,
@@ -125,7 +135,7 @@ def relayed_decision(request: Mapping[str, object], confirmation: PersonConfirma
     if (
         confirmation.question == DAILY_NETWORK_ASK
         or confirmation.question_code == "network.daily_updates"
-    ) and decision not in DAILY_NETWORK_DECISIONS:
+    ) and decision not in daily_network_decisions():
         raise ValueError("person_confirmation.beyond_its_question")
     return decision
 

@@ -348,11 +348,14 @@ class StorePort:
                 enable_catalog_wal(root)
             attach_catalog(lake, root)
         lake.execute("SET TimeZone = 'UTC'").complete()
-        try:
-            catalog_matches(lake)  # before the views, which name its columns
-        except DataError:
-            lake.close()
-            raise
+        # A Host's owner checked this catalog through its reading session when the history
+        # opened (history_startup), or this open just made it from catalog.sql: once per process.
+        if owner is None:
+            try:
+                catalog_matches(lake)  # before the views, which name its columns
+            except DataError:
+                lake.close()
+                raise
         port = cls(root, log, lake)
         for sql in view_statements(port.table_ids):
             if "log." not in sql:

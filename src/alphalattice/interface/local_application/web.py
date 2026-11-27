@@ -93,7 +93,6 @@ from alphalattice.kernel.door import (
     refusal_fields,
 )
 from alphalattice.kernel.identity import integrity_sha256_browser_style
-from alphalattice.protocols.research_authoring.selection import rewrite_in_declaration_dialect
 
 if TYPE_CHECKING:
     from socket import socket
@@ -739,6 +738,10 @@ class LocalWebApplication:
         if isinstance(answer, dict) and isinstance(answer.get("yaml"), str):
             # An exported declaration must read back as it was written. Until W12 moves
             # each exporter onto `dump_declaration`, the answer is rewritten here, once.
+            from alphalattice.protocols.research_authoring.selection import (  # lazy: exports
+                rewrite_in_declaration_dialect,
+            )
+
             answer = {**answer, "yaml": rewrite_in_declaration_dialect(answer["yaml"])}
         return LocalWebResponse(
             HTTPStatus.OK,

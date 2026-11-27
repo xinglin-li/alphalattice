@@ -3638,12 +3638,31 @@
       },
       "source_commit": "050bc399d899c7c5112a7720eda3d34e82dd0d97"
     },
+    "src/alphalattice/interface/local_application/goals.py::daily_network_decisions::daily-network-decisions": {
+      "owner": "alphalattice.interface.local_application",
+      "defined_by": [
+        "src/alphalattice/interface/local_application/goals.py::daily_network_decisions"
+      ],
+      "definition_line": 85,
+      "key": "unit key; the two fixed requests a yes to the daily network question answers",
+      "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
+      "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",
+      "size_bound": "1 entry",
+      "bound_scope": "1 entry",
+      "eviction": "none; process/closure end",
+      "safe_to_drop": "Yes: recompute from identical retained inputs",
+      "location": {
+        "scope": "process",
+        "path_expression": "In-memory daily_network_decisions in its module namespace"
+      },
+      "description": "Caches the decision hashes of the two requests the daily network question answers until process restart."
+    },
     "src/alphalattice/interface/local_application/labels.py::_installed::module-label-table": {
       "owner": "alphalattice.interface.local_application",
       "defined_by": [
         "src/alphalattice/interface/local_application/labels.py::_installed"
       ],
-      "definition_line": 62,
+      "definition_line": 99,
       "key": "unit key; installed module namespace; the table and its index by id",
       "dependency_coverage": "No external resource digest in key; fixed-install/process assumption",
       "invalidation_rule": "none; restart or explicit cache_clear (no production cache_clear caller found)",

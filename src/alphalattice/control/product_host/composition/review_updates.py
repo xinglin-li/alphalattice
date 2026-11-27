@@ -7,27 +7,23 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from functools import partial
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
-from alphalattice.control.product_host.composition import committee
-from alphalattice.control.product_host.composition.decision_advancement import (
-    SCHEMA as DECISION_ADVANCEMENT_SCHEMA,
-)
-from alphalattice.control.product_host.composition.decision_advancement import (
-    DecisionAdvancementApplication,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    TASK_KIND as PORTFOLIO_UPDATE_TASK_KIND,
-)
-from alphalattice.control.product_host.composition.portfolio_updates import (
-    PortfolioUpdateApplication,
+from alphalattice.control.product_host.composition.task_kinds import (
+    DECISION_ADVANCEMENT_SCHEMA,
+    PORTFOLIO_UPDATE_TASK_KIND,
 )
 from alphalattice.control.task_control.contracts import TaskLifecycle
-from alphalattice.investment.portfolio_strategy_lab.application.decision_updates import (
-    PortfolioUpdatePublication,
-)
+
+if TYPE_CHECKING:
+    from alphalattice.control.product_host.composition.decision_advancement import (
+        DecisionAdvancementApplication,
+    )
+    from alphalattice.control.product_host.composition.portfolio_updates import (
+        PortfolioUpdateApplication,
+    )
 
 _BUNDLE_TASK: ContextVar[UUID | None] = ContextVar("review_bundle_task", default=None)
 
@@ -136,7 +132,11 @@ def read_review_update(
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)
     plan = cast(dict[str, object], task.input.payload["plan"])
-    value = PortfolioUpdatePublication.model_validate(body["publication"])
+    from alphalattice.investment.portfolio_strategy_lab.application import (  # lazy: review read
+        decision_updates,
+    )
+
+    value = decision_updates.PortfolioUpdatePublication.model_validate(body["publication"])
     if value.content_hash == plan.get("parent_hash"):
         producers = [operations.updates.publication_task(value)]
         if operations.research_updates is not None:
@@ -146,6 +146,8 @@ def read_review_update(
             raise ValueError("product_host.evidence_review_publication_origin_unavailable")
         # A displayed parent keeps its original review identity and exact reuse.
         return read_review_update(operations, found[0], value.review_name)
+    from alphalattice.control.product_host.composition import committee  # lazy: review reads
+
     # Bound above by either name: downstream it is the name its reviews and floor use.
     floor = committee.published_floor(operations.goals.store, str(task_id), value.review_name)
     committee.contextualize(body, floor, operations.dispatcher.clock())

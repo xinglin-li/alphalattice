@@ -8,11 +8,11 @@ identity reads it, so renaming a title moves neither.
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass, fields
 from functools import cache
 from pathlib import Path
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Literal, cast, get_args
 
 _TABLE = Path(__file__).with_name("labels.json")
 
@@ -34,34 +34,76 @@ LabelKind = Literal[
 ]
 
 
-class Label(BaseModel):  # type: ignore[misc]
+@dataclass(frozen=True, slots=True)
+class Label:
     """One installed thing's name: its kind, the id it is stored by, and its words."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-
     kind: LabelKind
-    id: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    summary: str = Field(min_length=1)
-    title_zh: str = Field(min_length=1)
-    summary_zh: str = Field(min_length=1)
+    id: str
+    title: str
+    summary: str
+    title_zh: str
+    summary_zh: str
 
 
-class LabelTable(BaseModel):  # type: ignore[misc]
+@dataclass(frozen=True, slots=True)
+class LabelTable:
     """The whole table, one label per id."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, populate_by_name=True)
-
-    table_schema: Literal["alphalattice.labels"] = Field(alias="schema")
+    table_schema: Literal["alphalattice.labels"]
     version: Literal[1]
-    note: str = Field(min_length=1)
-    labels: tuple[Label, ...] = Field(min_length=1)
+    note: str
+    labels: tuple[Label, ...]
+
+
+_LABEL_FIELDS = tuple(value.name for value in fields(Label))
+
+
+def _words(value: Any, where: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: {where} is not words")
+    return value
+
+
+def _label(value: Any, index: int) -> Label:
+    if not isinstance(value, dict) or set(value) != set(_LABEL_FIELDS):
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: label {index} has other fields")
+    kind = value["kind"]
+    if kind not in get_args(LabelKind):
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: label {index} has an unknown kind")
+    words = {name: _words(value[name], f"label {index} {name}") for name in _LABEL_FIELDS[1:]}
+    return Label(kind=cast(LabelKind, kind), **words)
+
+
+def _read(text: str) -> LabelTable:
+    """The table as labels.json holds it: exactly its fields, each label's words non-empty.
+
+    A decoded table of another shape is refused by name (`labels.table_unreadable`); text that is
+    not JSON raises the decoder's own error, and an unreadable file the reader's."""
+    value = json.loads(text)
+    if not isinstance(value, dict) or set(value) != {"schema", "version", "note", "labels"}:
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: the table has other fields")
+    if (
+        value["schema"] != "alphalattice.labels"
+        or type(value["version"]) is not int
+        or value["version"] != 1
+    ):
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: not version 1 of alphalattice.labels")
+    rows = value["labels"]
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"labels.table_unreadable: {_TABLE}: the table has no labels")
+    return LabelTable(
+        table_schema="alphalattice.labels",
+        version=1,
+        note=_words(value["note"], "the note"),
+        labels=tuple(_label(row, index) for index, row in enumerate(rows)),
+    )
 
 
 @cache
 def _installed() -> tuple[LabelTable, dict[str, Label]]:
     """The installed label table and its labels by id, read and indexed once."""
-    table: LabelTable = LabelTable.model_validate_json(_TABLE.read_text(encoding="utf-8"))
+    table = _read(_TABLE.read_text(encoding="utf-8"))
     return table, {value.id: value for value in table.labels}
 
 

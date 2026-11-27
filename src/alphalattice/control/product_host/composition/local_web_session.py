@@ -163,7 +163,6 @@ from alphalattice.interface.local_application.web import (
     report_policy,
 )
 from alphalattice.interface.local_application.workbench_assets import serve_assets
-from alphalattice.investment.alpha_research.experiments.authoring import ALPHA_EXPERIMENT_KIND
 from alphalattice.investment.portfolio_strategy_lab.application.advancement_task import (
     ADVANCEMENT_TASK_KIND,
 )
@@ -1504,6 +1503,10 @@ def runs_beside_others(task: TaskRecord) -> bool:
     """
     if task.task_kind == EVIDENCE_INSTALL_TASK_KIND:
         return True
+    from alphalattice.investment.alpha_research.experiments.authoring import (  # lazy: admission
+        ALPHA_EXPERIMENT_KIND,
+    )
+
     plan = task.input.payload.get("plan") if task.task_kind == STUDY_TASK_KIND else None
     return (
         isinstance(plan, dict)

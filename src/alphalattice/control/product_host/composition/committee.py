@@ -17,7 +17,7 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from time import monotonic
@@ -714,7 +714,7 @@ def open_floor(
         if (standing := readback.get("review_standing") or {}).get("status") == "REVIEWED"
         else {},
         "strategy_package_id": readback.get("strategy_package_id"),
-        "labels": readback.get("labels") or (label.model_dump() if label else {}),
+        "labels": readback.get("labels") or (asdict(label) if label else {}),
         "schedule": proposal.get("schedule"),
         "stances_close_at": (now + timedelta(minutes=STANCE_MINUTES)).isoformat(),
         "discussion_minutes": DISCUSSION_MINUTES,
