@@ -1435,7 +1435,7 @@ def test_an_instance_of_this_process_still_letting_go_is_waited_for(
         assert reader.execute("SELECT count(*) FROM unit").fetchone()[0] == 2
     finally:
         reader.close()
-    assert attempts[0] == "ro" and attempts[-1] == "ro" and len(attempts) >= 2
+    assert attempts == ["ro"]
     assert not broker._CLOSING
     monkeypatch.undo()
     # Refused by name, at once, with no wait consumed: a lock named with another pid is
@@ -1583,7 +1583,9 @@ def test_a_closing_instance_is_untracked_first_and_openers_wait_for_the_close(
         target=lambda: opened.append(database.connect(read_only=True)), daemon=True
     )
     opener.start()
-    _until(lambda: len(attempts) >= 3)
+    with pytest.raises(RuntimeError, match="access_mode_held_by_another_thread"):
+        open_workspace_database(database.path, read_only=True, wait_seconds=0.0)
+    assert attempts == [], "no second owner may open the closing engine"
     assert opened == [] and opener.is_alive()
     owner._closed(resolved)
     opener.join(timeout=10.0)
@@ -1628,19 +1630,12 @@ def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
         def __getattr__(self, name: str) -> object:
             return getattr(self._raw, name)
 
-    locked = duckdb.IOException(
-        f'IO Error: Cannot open file "{database.path}": The process cannot access the file '
-        "because it is being used by another process."
-    )
-    attempts: list[int] = []
+    openings: list[Path] = []
 
     def fresh(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
-        if not read_only:
-            return _Blocking(real_fresh(path, read_only=read_only))
-        attempts.append(1)
-        if owner._CLOSING.get(path):
-            raise locked
-        return real_fresh(path, read_only=read_only)
+        raw = real_fresh(path, read_only=read_only)
+        openings.append(path)
+        return _Blocking(raw) if len(openings) == 1 else raw
 
     monkeypatch.setattr(owner, "_fresh_connection", fresh)
     last = database.connect(read_only=False)
@@ -1653,12 +1648,14 @@ def test_the_handle_leaves_the_books_and_the_file_is_marked_closing_in_one_step(
     opened: list[duckdb.DuckDBPyConnection] = []
     opener = threading.Thread(
         target=lambda: opened.append(
-            open_workspace_database(database.path, read_only=True, wait_seconds=5.0)
+            open_workspace_database(database.path, read_only=False, wait_seconds=5.0)
         ),
         daemon=True,
     )
     opener.start()
-    _until(lambda: len(attempts) >= 2)
+    with pytest.raises(RuntimeError, match="access_mode_held_by_another_thread"):
+        open_workspace_database(database.path, read_only=False, wait_seconds=0.0)
+    assert openings == [resolved], "no second owner may open the closing engine"
     assert opened == [] and opener.is_alive(), "the opener waits on the close in flight"
     release_close.set()
     closer.join(timeout=10)
@@ -1735,7 +1732,9 @@ def test_two_handles_closing_at_once_keep_the_file_marked_until_the_last_close_r
 
     opener = threading.Thread(target=open_reader, daemon=True)
     opener.start()
-    _until(lambda: len(attempts) >= 2)
+    with pytest.raises(RuntimeError, match="access_mode_held_by_another_thread"):
+        open_workspace_database(database.path, read_only=True, wait_seconds=0.0)
+    assert attempts == [], "no second owner may open the closing engine"
     assert opened == [] and failures == [] and opener.is_alive(), (
         "the opener waits on the close still in flight instead of refusing an unknown holder"
     )

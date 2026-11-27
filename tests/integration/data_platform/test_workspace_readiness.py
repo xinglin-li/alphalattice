@@ -840,7 +840,7 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
         )
     )
     now = STARTED_AT + timedelta(days=8)
-    source = _bootstrap(("AAPL", "NEW"), observed_at=now)
+    source = _bootstrap(("AAPL", "LATER", "NEW"), observed_at=now)
     acquisition = build_current_index_acquisition_manifest(PROFILE, source)
     new = acquisition.listing_for_symbol("NEW")
     raw_qualified = build_quality_filtered_research_manifest(
@@ -867,7 +867,7 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
         market_profile_id=profile,
         prior_manifest_revision=original.revision_sha256,
         membership_fingerprint=acquisition.membership_fingerprint,
-        additions=("NEW",),
+        additions=("LATER", "NEW"),
         removals=("MSFT",),
         lifecycle="ONBOARDING_IN_PROGRESS",
         approved_at=now,
@@ -889,6 +889,45 @@ def test_activated_source_preserves_existing_unusable_members_but_not_index_leav
     )
     assert tuple(item.symbol for item in result.manifest.listings) == ("AAPL", "NEW")
     assert market.membership_events(profile) == ()  # Admission/clock still belongs to the caller.
+    assert (
+        market.current_quality_filtered_research_manifest(market_profile_id=profile)
+        == result.manifest
+    )
+
+    # A retry admits one more candidate's raw data. Cancelling its preparation
+    # restores the preceding Panel; its lineage survives this additive source revision.
+    recovered = build_quality_filtered_research_manifest(
+        acquisition,
+        eligible_listing_ids=tuple(item.listing_id for item in acquisition.listings),
+        qualification_obligations=(),
+    )
+    retried = now + timedelta(days=1)
+    market.record_manifest_transition(
+        transition_id="candidate-retry",
+        market_profile_id=profile,
+        prior_manifest_revision=result.manifest.revision_sha256,
+        membership_fingerprint=acquisition.membership_fingerprint,
+        additions=("LATER",),
+        removals=(),
+        lifecycle="ONBOARDING_IN_PROGRESS",
+        approved_at=retried,
+        created_at=retried,
+    )
+    market.activate_workspace_manifest(
+        transition_id="candidate-retry",
+        manifest=recovered,
+        membership_fingerprint=acquisition.membership_fingerprint,
+        candidate_manifest_document=candidate_manifest_document(source.source_manifest),
+        checked_at=now,
+        changed_at=retried,
+        within_activation=ResearchFoundationStateRepository.require_rebuild,
+    )
+    with market._connect() as connection:
+        connection.execute(
+            "UPDATE workspace_readiness SET active_manifest_id=?, active_manifest_revision=?",
+            [result.manifest.manifest_id, result.manifest.revision_sha256],
+        )
+    assert market.source_admission_manifest(market_profile_id=profile) == recovered
     assert (
         market.current_quality_filtered_research_manifest(market_profile_id=profile)
         == result.manifest

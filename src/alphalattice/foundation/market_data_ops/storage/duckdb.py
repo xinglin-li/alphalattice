@@ -2648,7 +2648,8 @@ class MarketDataRepository(WorkspaceRepository):
         An activated source transition owns the nominal candidate roster. Raw
         requalification may omit an existing member that still belongs to the
         observed source; that omission is usability, not a membership exit.
-        Feature admissions refine the activated root, never an arbitrary pointer.
+        Feature admissions refine the activated root. An approved addition to the same
+        candidate roster preserves the prior raw root's qualified Panel for recovery.
         Legacy onboarding-only workspaces retain their original admission root.
         """
         if not self.path.exists():
@@ -2663,8 +2664,20 @@ class MarketDataRepository(WorkspaceRepository):
                 SELECT candidate_manifest_revision, research_manifest_id,
                        research_manifest_revision, created_at, admission_hash
                 FROM feature_input_admission
+                UNION ALL
+                SELECT t.next_manifest_revision, u.manifest_id, t.prior_manifest_revision,
+                       t.created_at, t.transition_id
+                FROM manifest_transition t
+                JOIN workspace_readiness r USING (market_profile_id)
+                JOIN universe_manifest u ON u.revision_sha256 = t.prior_manifest_revision
+                WHERE t.market_profile_id = ? AND t.lifecycle = 'ACTIVATED'
+                  AND t.membership_fingerprint = r.active_membership_fingerprint
+                  AND t.approved_at IS NOT NULL AND t.removals_json = '[]'
+                  AND t.additions_json <> '[]'
+                  AND t.next_manifest_revision <> t.prior_manifest_revision
                 ORDER BY created_at DESC, admission_hash DESC
                 """,
+                [market_profile_id],
             ).fetchall()
             readiness_row = connection.execute(
                 """

@@ -1,7 +1,4 @@
-"""An installed strategy activated on a workspace copy and served offline: the Host, the real CLI
-on it and its Tasks' readings, shared by the strategy-activation journeys whatever copy they serve
-(the QA store's in the public module, the strategy-book road's in the private one).
-"""
+"""Serve the current product's prepared strategy book through an offline activation journey."""
 
 from __future__ import annotations
 
@@ -33,7 +30,21 @@ from devtools.evaluation.golden_workspaces import remove_tree
 from tests.portfolio_strategy_lab.local_web_support import _json
 
 PACKAGE = "RETURN_G6_MU_ONLY"
-"""The installed book both copies hold (the Rebound Return Book)."""
+"""The installed Rebound Return Book."""
+
+
+def end_preparation_goal(live: LocalPortfolioWebSession) -> None:
+    """End the builder's dated first-use delegation before exercising a person's forward path."""
+    first = live.operations.goals.first_use()
+    if first is None or first.state != "OPEN":
+        return
+    answer = _json(
+        live,
+        "/api/goals/abandon",
+        method="POST",
+        payload={"goal_id": str(first.goal_id), "change_reason": "Prepared the test book"},
+    )
+    assert answer["state"] == "ABANDONED", answer
 
 
 @contextmanager
@@ -42,7 +53,7 @@ def forward_copy(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     *,
-    copy: Callable[[Path], Path],
+    workspace: Path,
     provider: MarketDataProvider | None = None,
     provider_from: Callable[[Path], MarketDataProvider] | None = None,
     clock: Callable[[], datetime],
@@ -75,7 +86,6 @@ def forward_copy(
     monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
     backup_root = tmp_path / "backups"
     monkeypatch.setenv("ALPHALATTICE_BACKUP_ROOT", str(backup_root))
-    workspace = copy(tmp_path / "workspace")
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     if provider_from is not None:
         provider = provider_from(workspace)
@@ -84,6 +94,7 @@ def forward_copy(
     live.data_source_loader = no_membership_source
     live.start()
     try:
+        end_preparation_goal(live)
         registry = live.session.task_control_registry
         offered = live.operations.execute(
             PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)

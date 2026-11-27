@@ -1123,6 +1123,11 @@ def _acquire(
             connection: WorkspaceConnection | None = None
             while connection is None:
                 instance = _INSTANCES.get(path)
+                # DuckDB can join the same engine even after the last handle left our
+                # books. It still owns its attached catalogs until that close returns.
+                if instance is None and _CLOSING.get(path):
+                    wait(_HELD)
+                    continue
                 idle = _IDLE.get(path)
                 if instance is None and idle is not None:
                     if idle.read_only and not read_only:  # a writer: the file reopens writable

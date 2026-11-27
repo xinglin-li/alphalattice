@@ -579,6 +579,7 @@ class DecisionAdvancementApplication:
         checkpoint = self.updates._checkpoint(package_id)
         now = self.clock()
         latest = _latest_common_us_session(on_or_before=now.date(), observed_at=now)
+        reuse_completed = target is not None or latest == now.date()
         target = target or latest
         if target > latest:
             raise ValueError("research_update.target_not_completed")
@@ -592,7 +593,8 @@ class DecisionAdvancementApplication:
             if task.input.input_schema_id == SCHEMA
             and task.lifecycle is not TaskLifecycle.CANCELLED
         ]
-        for task in tasks:
+        # An undated request between sessions looks for work still due.
+        for task in tasks if reuse_completed else ():
             prior = self._plan_of(task, current=False)
             if prior.package_id == package_id and prior.target == target:
                 if (

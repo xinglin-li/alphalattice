@@ -317,6 +317,9 @@ def test_an_action_audit_receipt_changed_in_place_is_refused_when_read(tmp_path:
     )
     full = full_action_audit_anchor(observed_at=NOW)
     assert registry.record_action_audit(full)
+    replay = full_action_audit_anchor(observed_at=NOW + timedelta(minutes=1))
+    assert replay.receipt_hash == full.receipt_hash
+    assert not registry.record_action_audit(replay)
     assert registry.latest_action_audit("listing-aapl", "fixture") == full
     with pytest.raises(ValueError, match="receipt hash is invalid"):
         replace(full, covered_through_session=date(2026, 9, 30))
@@ -333,6 +336,8 @@ def test_an_action_audit_receipt_changed_in_place_is_refused_when_read(tmp_path:
         connection.close()
     with pytest.raises(ValueError, match="receipt hash is invalid"):
         registry.latest_action_audit("listing-aapl", "fixture")
+    with pytest.raises(ValueError, match="receipt hash was reused with new content"):
+        registry.record_action_audit(replay)
 
 
 def test_domain_topology_coalesces_changes_without_a_general_dag() -> None:

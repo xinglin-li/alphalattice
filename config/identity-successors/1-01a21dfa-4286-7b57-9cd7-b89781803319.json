@@ -1,0 +1,34 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:501805d3165f4a6fb43f6165a03f80317eb2edc02cd740b611fcec84b1964a46",
+   "successor": "blake3:e954cefbad4a1ae0685833de442d16944f6e6dd44cdca079ac91f0b69febc389",
+   "change": "Keep deferred research updates resumable on newly prepared workspaces",
+   "reason": "The market store keeps a sealed input's hard link when its copy is torn down on Windows, and a refusal names its cause; four owners' source fingerprints rotate and no stored identity changes"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "blake3:1a31c473ccfbd20ce9f2456c9ad7b9c018feec7ca86dbf698d46ee5f286a15ea",
+   "successor": "blake3:70b83e3033ded6999e87db1cc372b928a69f0b3c160ae5d1eec2f61c43667245",
+   "change": "Keep deferred research updates resumable on newly prepared workspaces",
+   "reason": "The market store keeps a sealed input's hard link when its copy is torn down on Windows, and a refusal names its cause; four owners' source fingerprints rotate and no stored identity changes"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:277db4eedfcb7f90f3757d50cf9df5882f36456c38ccadae28d92c3edd39d85b",
+   "successor": "blake3:e7985a2dfa6852e54439dc4a222a04496e11c27697b6da96333e6cbfd1872ed9",
+   "change": "Keep deferred research updates resumable on newly prepared workspaces",
+   "reason": "The market store keeps a sealed input's hard link when its copy is torn down on Windows, and a refusal names its cause; four owners' source fingerprints rotate and no stored identity changes"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:62b14eefc2931be1ca23ab7aac17e9ae0c3d47ab6765010c9ca9fcfae1955cc8",
+   "successor": "blake3:ad035e295b918bdf324b717b63d0c99d27e670b679d6632ac3f7315f7b11a2a3",
+   "change": "Keep deferred research updates resumable on newly prepared workspaces",
+   "reason": "The market store keeps a sealed input's hard link when its copy is torn down on Windows, and a refusal names its cause; four owners' source fingerprints rotate and no stored identity changes"
+  }
+ ]
+}

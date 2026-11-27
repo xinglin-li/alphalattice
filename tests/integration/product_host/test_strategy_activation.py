@@ -1,8 +1,6 @@
 """Activation runs an installed reviewed strategy forward (LS1; OW12).
 
-On a copy of the registered QA installation built by the product
-(`ls1-daily`: G6/G2 training inputs and lifecycle studies, a Risk study,
-strategy preparation and installation, the Rebound Return Book over its whole support).
+The current product prepares its installed Rebound Return Book on the sufficient data set.
 Offline: the research update decides the sessions the workspace's data already covers, and its
 data step needs no source for them, which a provider refusing every fetch proves.
 """
@@ -11,7 +9,6 @@ from __future__ import annotations
 
 import gc
 import json
-import shutil
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -45,12 +42,14 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     portfolio_research_task_input,
 )
 from alphalattice.kernel.identity import blake3_filename
+from devtools.evaluation.golden_workspaces import remove_tree
 from tests._support.alternative_evidence_desk_fixtures import (
     review_on_the_store as review_on_the_store,
 )
 from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.activated_copy import (
     PACKAGE,
+    end_preparation_goal,
     forward_copy,
     lifecycle_settled,
     with_lifecycle,
@@ -60,27 +59,12 @@ from tests.portfolio_strategy_lab.activation_review_support import (
     publish_activation_review,
 )
 from tests.portfolio_strategy_lab.host_requests import _json, _request
-from tests.pytest_environment import upgraded
-from tests.workspace_maintenance.local_data_provider import HeldDataProvider, recording_provider
-from u0_probe import _copy
-
-pytestmark = pytest.mark.usefixtures("review_on_the_store")  # its review runs on the Host's store
+from tests.workspace_maintenance.local_data_provider import HeldDataProvider
 
 HELD_DATA_CLOCK = datetime(2026, 9, 11, tzinfo=UTC)
 
 
-def _qa_copy(root: Path) -> Callable[[Path], Path]:
-    """The QA store's research installation copied to a path, its lanes moved as its first start
-    moves them."""
-
-    def copy(workspace: Path) -> Path:
-        _copy(root, workspace)
-        upgraded(workspace)  # the lanes its first start moves
-        return workspace
-
-    return copy
-
-
+@pytest.mark.usefixtures("review_on_the_store")
 def test_history_retains_readable_cro_metadata_beside_a_corrupt_peer(tmp_path, monkeypatch):
     """OP4/EV: one bad publication cannot hide peers or become a claim of no review."""
     from alphalattice.control.product_host.composition.evidence_review_projection import (
@@ -151,27 +135,25 @@ class _NoFetch:
 @pytest.mark.real_evidence
 @pytest.mark.untyped_failure
 def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
+    tmp_path: Path, book_under_review: Path, monkeypatch, capsys
 ) -> None:
     """Activation reuses sealed studies and publishes their held sessions through a real update."""
     from alphalattice.capabilities.domain_contracts.spans import absorb, collect, readout
     from alphalattice.interface.local_application.client import LocalResearchClient
 
-    root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
 
     def no_fit(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("an activation and the sessions its studies scored fit no model")
 
     monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
-    workspace = tmp_path / "workspace"
-    _copy(root, workspace)
-    upgraded(workspace)  # the lanes its first start moves
+    workspace = book_under_review
     (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
     live = LocalPortfolioWebSession.from_workspace(workspace, clock=lambda: HELD_DATA_CLOCK)
     live.data_provider = _NoFetch()
     live.start()
     try:
+        end_preparation_goal(live)
         operations = live.operations
         books = [
             task
@@ -180,7 +162,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
             and task.lifecycle.value == "SUCCEEDED"
             and portfolio_research_task_input(task).selected_strategy_package_id == PACKAGE
         ]
-        assert books, "the QA root holds no completed Rebound Return Book"
+        assert books, "the prepared workspace holds no completed Rebound Return Book"
         book = str(max(books, key=lambda task: task.admitted_at).task_id)
         controls = operations.execute(
             PortfolioResearchOperationRequest(operation="CONTROLS", strategy_package_id=PACKAGE)
@@ -551,8 +533,7 @@ def test_a_reviewed_research_book_runs_forward_when_a_person_activates_it(
         operations = None
         del live
         gc.collect()
-        assert workspace.resolve().is_relative_to(tmp_path.resolve())
-        shutil.rmtree(workspace)
+        assert not (left := remove_tree(workspace, tmp_path)), left
 
 
 @pytest.mark.parametrize("active", (False, True))
@@ -950,26 +931,29 @@ def test_conditional_actionable_readback_changes_at_the_entry_boundary(
 @pytest.mark.real_evidence
 @pytest.mark.parametrize("writer", ["own", "another", "later"])
 def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys, writer: str
+    tmp_path: Path,
+    book_under_review: Path,
+    working_membership_provider,
+    monkeypatch,
+    capsys,
+    writer: str,
 ) -> None:
     """An update the provider defers resumes once due on the universe its own data stage moved;
     another writer's bind, before or after that move is recorded, leaves its binding changed.
     Long (about 2 min each): a copy of the real research installation, activated, deferred."""
 
-    clock = [datetime(2026, 9, 14, 23, tzinfo=UTC)]
-    provider = recording_provider(now=clock[0])
-    provider.unavailable = True
-    # A recorded signal that the day's bars are not final yet: the provider asks to wait.
-    provider.unavailable_code = "data.daily_bar_not_final"
-    root = evidence_roots.require("ls1_daily_flows")
+    clock = [datetime(2026, 9, 11, 23, 5, tzinfo=UTC)]
+    provider = working_membership_provider(book_under_review)
     with forward_copy(
         tmp_path,
         monkeypatch,
         capsys,
-        copy=_qa_copy(root),
+        workspace=book_under_review,
         provider=provider,
         clock=lambda: clock[0],
     ) as (live, cli, attempts):
+        # Activation admits this same update; let that attempt reach its provider stop.
+        live.dispatcher.drain_for_tests()
         registry = live.session.task_control_registry
         plan, deferred_at = tmp_path / "plan.json", tmp_path / "deferred.json"
         code, planned = cli(
@@ -977,14 +961,17 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
             "--output", str(plan),
         )  # fmt: skip
         assert code == 0, planned
+        task = planned["data"]["in_flight"]["task_id"]
         code, deferred = cli(
-            "research-update", "run", "--from", str(plan), "--wait", "--output", str(deferred_at)
+            "research-update", "show", "--task", task, "--output", str(deferred_at)
         )
         # It waits with the provider: deferred, with its data stage's retry time, its read
         # saying so and offering the resume bound to its own plan.
-        task, retry = deferred["data"]["task_id"], deferred["data"]["retry_after_at"]
+        retry = deferred["data"].get("retry_after_at")
         seen = with_lifecycle(deferred, registry, task)
-        assert (code, deferred["data"]["lifecycle"]) == (3, "DEFERRED"), seen
+        assert deferred["task_id"] == task
+        assert registry.task(UUID(task)).lifecycle.value == "DEFERRED", seen
+        assert (code, deferred["data"]["status"]) == (3, "DEFERRED"), seen
         assert retry is not None, seen
         assert deferred["data"]["next_requests"]["resume"] == {
             "operation": "RESEARCH_UPDATE_RUN",
@@ -1001,7 +988,13 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
             live.workspace / "market-data.duckdb", gate=live.session.mutation_gate
         )
         own, second = binds.working_binds()[-1], tmp_path / "second.json"
-        assert own.owner_task == task
+        input_plan = registry.task(UUID(task)).input.payload["plan"]["data_plan"]["request"]
+        assert own.owner_task == task, {
+            "candidate_recheck": input_plan.get("candidate_recheck") is not None,
+            "candidate_data_recheck": input_plan.get("candidate_data_recheck") is not None,
+            "authority": own.authority,
+            "provider_calls": provider.calls[:8],
+        }
 
         def bind_another() -> None:
             binds.owned_by("another-task").record_working_manifest(
@@ -1027,7 +1020,10 @@ def test_an_update_the_provider_defers_waits_with_it_and_resumes_once_due(
         assert moved["plan_hash"] == planned["data"]["update_plan_hash"], seen
         assert (moved["cycle_id"], moved["owner_task"]) == (own.cycle_id, task), seen
         assert resumed["data"]["admission"]["task_id"] == task, seen
-        assert (code, resumed["data"]["task_id"]) == (3, task), seen
+        assert (code, resumed["data"]["task_id"]) == (3, task), (
+            registry.task(UUID(task)).failure_code,
+            seen,
+        )
         assert resumed["data"]["lifecycle"] == "DEFERRED", seen
         assert len(provider.calls) > asked
         assert attempts(task) == {"verify_request": 1, "update_inputs": 2}
@@ -1074,7 +1070,7 @@ def _until(found: Callable[[], object], what: str, live: LocalPortfolioWebSessio
 
 @pytest.mark.real_evidence
 def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
+    tmp_path: Path, book_under_review: Path, monkeypatch, capsys
 ) -> None:
     """the real Host's daily automation resumes Friday's deferral at its retry time,
     publishes Friday once the provider's bars are final, and plans Monday on that publication.
@@ -1082,12 +1078,11 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
 
     clock = [datetime(2026, 9, 11, 22, tzinfo=UTC)]  # Friday's bars are due
     held: list[HeldDataProvider] = []
-    root = evidence_roots.require("ls1_daily_flows")
     with forward_copy(
         tmp_path,
         monkeypatch,
         capsys,
-        copy=_qa_copy(root),
+        workspace=book_under_review,
         provider_from=_held_data(held),
         clock=lambda: clock[0],
     ) as (live, cli, attempts):
@@ -1174,35 +1169,35 @@ def test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session(
 
 @pytest.mark.real_evidence
 def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_on(
-    tmp_path: Path, evidence_roots, monkeypatch, capsys
+    tmp_path: Path, book_under_review: Path, working_membership_provider, monkeypatch, capsys
 ) -> None:
     """A plan answers the update that waits, and a cancelled one leaves a way on, never a stranded
     workspace. Long (about 3 min): a real installation's deferral, cancel and data update."""
 
     clock = [datetime(2026, 9, 14, 23, tzinfo=UTC)]
-    held: list[HeldDataProvider] = []
-    root = evidence_roots.require("ls1_daily_flows")
+    provider = working_membership_provider(book_under_review)
     with forward_copy(
         tmp_path,
         monkeypatch,
         capsys,
-        copy=_qa_copy(root),
-        provider_from=_held_data(held),
+        workspace=book_under_review,
+        provider=provider,
         clock=lambda: clock[0],
     ) as (live, cli, _attempts):
-        provider, registry = held[0], live.session.task_control_registry
-        plan, deferred_at = tmp_path / "plan.json", tmp_path / "deferred.json"
+        # Activation admits this same update; let that attempt reach its provider stop.
+        live.dispatcher.drain_for_tests()
+        registry = live.session.task_control_registry
+        plan = tmp_path / "plan.json"
         # Activation admitted Monday's update, the latest settled close: its plan, run, waits.
         code, planned = cli("research-update", "plan", "--package", PACKAGE, "--output", str(plan))
         assert code == 0, planned
-        code, deferred = cli(
-            "research-update", "run", "--from", str(plan), "--wait", "--output", str(deferred_at)
-        )
-        task, retry = deferred["data"]["task_id"], deferred["data"]["retry_after_at"]
+        task = planned["data"]["in_flight"]["task_id"]
+        code, deferred = cli("research-update", "show", "--task", task)
+        retry = deferred["data"].get("retry_after_at")
         seen = with_lifecycle(deferred, registry, task)
-        assert (code, deferred["data"]["lifecycle"], retry is not None) == (3, "DEFERRED", True), (
-            seen
-        )
+        assert deferred["task_id"] == task
+        assert registry.task(UUID(task)).lifecycle.value == "DEFERRED", seen
+        assert (code, deferred["data"]["status"], retry is not None) == (3, "DEFERRED", True), seen
         # A plan of the strategy for another session answers the update that waits.
         later = tmp_path / "later.json"
         code, again = cli(
@@ -1231,6 +1226,14 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         # bound its candidate list: the cancel returns it to its Panel's own and says so.
         code, cancelled = cli("task", "cancel", task)
         assert registry.task(UUID(task)).lifecycle.value == "CANCELLED", cancelled
+        assert "restored_membership" in cancelled["data"], {
+            "status": cancelled["data"].get("status"),
+            "authorities": [
+                (bind.authority, bind.owner_task == task)
+                for bind in live.operations.data_update._registry().working_binds()
+            ],
+            "provider_calls": provider.calls[:8],
+        }
         assert cancelled["data"]["restored_membership"]["owner_task"] == task, cancelled
         _until(
             lambda: registry.task(UUID(verifying)).lifecycle.value == "SUCCEEDED",
@@ -1252,8 +1255,8 @@ def test_a_plan_answers_the_update_that_waits_and_a_cancelled_one_leaves_a_way_o
         resumed_plan = tmp_path / "data-again.json"
         code, again = cli("data-update", "plan", "--output", str(resumed_plan))
         assert again["data"]["plan_hash"] == planned_data["data"]["plan_hash"], again
-        # By its retry time the same Task resumes; its due candidate recheck asks for names this
-        # fixture holds no bars for, so it stops for that data decision, its way on offered.
+        # When the bars are final, one member's unexplained move still needs a data decision.
+        provider.leave_unexplained_move("SAA", date(2026, 9, 14))
         provider.unavailable = False
         clock[0] = datetime.fromisoformat(data_retry) + timedelta(minutes=1)
         code, settled = cli("data-update", "run", "--from", str(resumed_plan), "--wait")

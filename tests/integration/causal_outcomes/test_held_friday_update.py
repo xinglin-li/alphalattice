@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gc
 import json
-import shutil
 import socket
 import sys
 from datetime import UTC, date, datetime
@@ -27,17 +26,17 @@ from alphalattice.investment.portfolio_strategy_lab.application.task import (
     PORTFOLIO_PUBLIC_TASK_KIND,
     portfolio_research_task_input,
 )
+from devtools.evaluation.golden_workspaces import remove_tree
+from tests.portfolio_strategy_lab.activated_copy import end_preparation_goal
 from tests.portfolio_strategy_lab.held_friday_provider import (
     append_friday,
     prepare_friday_parent,
     prepare_friday_sector,
 )
 from tests.portfolio_strategy_lab.host_requests import _json
-from tests.pytest_environment import upgraded
 from tests.workspace_maintenance.local_data_provider import (
     recording_provider,
 )
-from u0_probe import _copy
 
 
 @pytest.mark.parametrize("status", ("BLOCKED", "DEFERRED", "PROPOSAL_PUBLISHED"))
@@ -135,11 +134,10 @@ def test_prior_positions_keep_the_updates_own_next_requests(
 
 @pytest.mark.real_evidence
 def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_need(
-    tmp_path, evidence_roots, monkeypatch, capsys, record_property
+    tmp_path, fresh_strategy_book, monkeypatch, capsys, record_property
 ):
     """A held Friday runs offline on Saturday and a missing Monday names its need. Long (about
     9-17 min): a real installation's Friday preparation rounds, activation and a weekend."""
-    root = evidence_roots.require("ls1_daily_flows")
     monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
     # Native HTTP clients do not necessarily use Python's socket.connect.
     # No default-provider import is possible in this entirely offline fixture.
@@ -159,11 +157,9 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         raise AssertionError("the September continuation must reuse the admitted fits")
 
     monkeypatch.setattr(AlphaModelRuntimeService, "fit", no_fit)
-    workspace = tmp_path / "workspace"
+    workspace = fresh_strategy_book
     live = None
     try:
-        _copy(root, workspace)
-        upgraded(workspace)  # the lanes its first start moves
         (workspace / "runtime/local-research-connection.json").unlink(missing_ok=True)
         package = "RETURN_G6_MU_ONLY"
         # Finish all due retained candidate retries through their real owner too.
@@ -254,6 +250,7 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
             )
         # A person's activation is fixture setup, through its human route;
         # the agent CLI must never claim that consent on the person's behalf.
+        end_preparation_goal(live)
         activated = _json(
             live, "/api/strategy/activate", method="POST", payload={"task_id": book}, timeout=300.0
         )
@@ -261,6 +258,10 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         # Activation admits Friday's update in the same act; Friday's data is final, so it runs.
         first = activated["update"]
         assert first["plan"]["target_session"] == "2026-09-11", first
+        live.dispatcher.drain_for_tests()
+        code, result = cli("research-update", "show", "--task", first["run"]["task_id"])
+        assert code == 0, result
+        assert result["data"]["status"] == "PROPOSAL_PUBLISHED", result
         # Qualification binds the reference to its child. Finish the complete
         # parent's own Friday Sector receipt too: a Saturday candidate recheck
         # must not mistake that child's receipt for the parent's publication.
@@ -283,9 +284,11 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         }
         code, held_sent = cli("data-update", "run", "--plan", held_data["data"]["plan_hash"])
         assert code in {0, 3}, held_sent
+        read = held_sent["next_requests"]["read"]
+        assert read == {"operation": "DATA_UPDATE_READBACK", "task_id": held_sent["task_id"]}
         live.dispatcher.drain_for_tests()
-        code, held_result = cli("data-update", "show", "--task", held_sent["data"]["task_id"])
-        held_record = live.session.task_control_registry.task(UUID(held_sent["data"]["task_id"]))
+        code, held_result = cli("data-update", "show", "--task", read["task_id"])
+        held_record = live.session.task_control_registry.task(UUID(read["task_id"]))
         formation = live.operations.data_update.changes.formation_scope(
             live.operations.data_update.last_plan.before,
             live.operations.data_update.last_plan.change,
@@ -299,11 +302,15 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
         }
         # Friday's proposal is published; Saturday's plan has nothing new until Monday.
         code, planned = cli("research-update", "plan", "--package", package)
-        assert (code, planned["data"]["status"]) == (0, "OBSERVATIONS_PENDING"), planned
-        live.dispatcher.drain_for_tests()
-        code, result = cli("research-update", "show", "--task", first["run"]["task_id"])
-        assert code == 0, result
-        assert result["data"]["status"] == "PROPOSAL_PUBLISHED", result
+        assert (code, planned["data"]["status"]) == (0, "OBSERVATIONS_PENDING"), {
+            key: planned["data"].get(key)
+            for key in ("status", "cached", "target_session", "decision_sessions", "source_access")
+        }
+        code, friday = cli(
+            "research-update", "plan", "--package", package, "--through", "2026-09-11"
+        )
+        assert code == 0 and friday["data"]["cached"] is True
+        assert friday["data"]["target_session"] == "2026-09-11"
         proposal = result["data"]["publication"]["pending_proposal"]
         assert proposal["schedule"]["formation_session"] == "2026-09-11"
         assert proposal["schedule"]["entry_session"] == "2026-09-14"
@@ -347,8 +354,6 @@ def test_a_held_friday_runs_offline_on_saturday_and_a_missing_monday_names_its_n
             live.stop()
         del live
         gc.collect()
-        assert workspace.resolve().is_relative_to(tmp_path.resolve())
-        shutil.rmtree(workspace)
+        assert not (left := remove_tree(workspace, tmp_path)), left
         if backup_root.exists():
-            assert backup_root.resolve().is_relative_to(tmp_path.resolve())
-            shutil.rmtree(backup_root)
+            assert not (left := remove_tree(backup_root, tmp_path)), left

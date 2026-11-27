@@ -605,6 +605,8 @@ class DuckDbWorkspaceMaintenanceRegistry:
     def record_action_audit(self, receipt: ActionAuditChainReceipt) -> bool:
         """Persist an immutable audit receipt once with its required predecessor.
 
+        A repeated observation of the same evidence keeps the first observation time.
+
         Args:
             receipt: Immutable receipt to persist.
 
@@ -620,9 +622,12 @@ class DuckDbWorkspaceMaintenanceRegistry:
                 "SELECT receipt_json FROM action_audit_chain_receipt WHERE receipt_hash = ?",
                 [receipt.receipt_hash],
             ).fetchone()
-            document = _json(asdict(receipt))
+            document = asdict(receipt)
             if prior is not None:
-                if str(prior[0]) != document:
+                stored = str(prior[0])
+                observed_at = datetime.fromisoformat(json.loads(stored).get("observed_at", ""))
+                document["observed_at"] = observed_at
+                if observed_at.tzinfo is None or stored != _json(document):
                     raise ValueError("action audit receipt hash was reused with new content")
                 return False
             if receipt.previous_receipt_hash is not None:
@@ -642,7 +647,7 @@ class DuckDbWorkspaceMaintenanceRegistry:
                     receipt.previous_receipt_hash,
                     receipt.full_anchor_receipt_hash,
                     receipt.covered_through_session,
-                    document,
+                    _json(document),
                     receipt.observed_at.astimezone(UTC).replace(tzinfo=None),
                 ],
             )
