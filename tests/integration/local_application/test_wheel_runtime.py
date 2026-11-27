@@ -335,18 +335,21 @@ def _resident(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> Non
 
 AGENT_SESSIONS = {
     "claude-code": {"CLAUDE_CODE_SESSION_ID": "claude-1"},
+    "claude-code-under-uv": {"CLAUDE_CODE_SESSION_ID": "claude-1", "UV_RUN_RECURSION_DEPTH": "1"},
     "codex": {"CODEX_THREAD_ID": "codex-1"},
     "both": {"CLAUDE_CODE_SESSION_ID": "claude-1", "CODEX_THREAD_ID": "codex-1"},
     "neither": {},
     "malformed": {"CLAUDE_CODE_SESSION_ID": "not one token"},
 }
-"""Each case's session variables; both at once, or a value not one token, names no session."""
+"""Each case's session variables; both at once, or a value not one token, names no session; under
+`uv run`, both sides name the command in uv's tool folder."""
 
 
 def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_path) -> None:
     """An agent's CLI call, named or left to its binding, takes the thin path to its running Host,
     which counts the launch in the folder the caller's `tempfile` chose (TMPDIR=. here), anchored
-    in the caller, and answers as the full CLI does; a call no binding names is the full CLI's."""
+    in the caller, and answers as the full CLI does; a call no binding names is the full CLI's.
+    A `uv run` call takes the same path, and neither side starts uv to find its command."""
     live, capsys = request.getfixturevalue("live"), request.getfixturevalue("capsys")
     caller, hosts, console = _agent_project(tmp_path), tmp_path / "host-temp", tmp_path / "bin"
     for folder in (hosts, console):
@@ -356,6 +359,16 @@ def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_p
         (console / name).chmod(0o755)
     monkeypatch.setenv("PATH", str(console) + os.pathsep + os.environ.get("PATH", ""))
     monkeypatch.delenv("UV_RUN_RECURSION_DEPTH", raising=False)
+    uv = tmp_path / "uv-bin"  # a uv that records any start; its tool folder holds the command
+    uv.mkdir()
+    for name, text in (
+        ("uv", f'#!/bin/sh\necho p >>"{uv}/starts"\n'),
+        ("uv.cmd", f'@>>"{uv}/starts" echo p\n'),
+    ):
+        (uv / name).write_text(text, encoding="utf-8")
+        (uv / name).chmod(0o755)
+    monkeypatch.setenv("PATH", str(uv) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", os.path.relpath(console, caller))  # uv takes it from cwd
     monkeypatch.chdir(caller)
     monkeypatch.setenv("TMPDIR", ".")
     for _, variable in thin_cli.AGENT_SESSION_VARIABLES:
@@ -384,7 +397,11 @@ def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_p
         body.pop("timing")
         return body
 
-    named = {"claude-code": "claude-code--claude-1", "codex": "codex--codex-1"}.get(case)
+    named = {
+        "claude-code": "claude-code--claude-1",
+        "claude-code-under-uv": "claude-code--claude-1",
+        "codex": "codex--codex-1",
+    }.get(case)
     launches, workspace = 1, ["--workspace", str(live.workspace)]
     cli.main([*workspace, "task", "list"], serve=lambda _: 99)
     capsys.readouterr()  # a session's first answer alone carries the Workbench step
@@ -401,6 +418,7 @@ def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_p
         if named is None and argv[0] != "--workspace":
             assert thin_code is None  # no session's binding names it: the full CLI answers
             continue
+        assert thin_code is not None  # the running Host answered it on the thin path
         launches += 2
         thin = answer(capsys.readouterr().out)
         assert (thin_code, thin.pop("session_launches", None)) == (
@@ -411,6 +429,20 @@ def _agent_session(case: str, request: pytest.FixtureRequest, monkeypatch, tmp_p
     counts = {path.name: path.read_bytes() for path in caller.rglob("*.count")}
     assert list(hosts.iterdir()) == [] and all(anchored) and (named is None or anchored)
     assert counts == ({} if named is None else {f"{named}.count": b"1\n" * launches})
+    if case == "claude-code-under-uv":  # the Host names it from the settings and cwd it is sent
+        tool = (shutil.which("alphalattice", path=str(console)),)
+        assert cli_invocation.command_prefix() == tool
+        sent = {key: os.environ[key] for key in thin_cli.CLI_ENVIRONMENT if key in os.environ}
+        (own := tmp_path / "host" / "cwd").mkdir(parents=True)
+        monkeypatch.chdir(own)  # the Host's own directory, where the relative folder is not
+        scope = cli_invocation.CLI_CALL.set(
+            cli_invocation.Call(caller, sent, sys.stdout, sys.stderr)
+        )
+        try:
+            assert cli_invocation.command_prefix() == tool
+        finally:
+            cli_invocation.CLI_CALL.reset(scope)
+    assert not (uv / "starts").exists()
 
 
 @pytest.mark.parametrize(

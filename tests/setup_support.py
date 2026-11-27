@@ -29,7 +29,6 @@ def setup_done(root: Path) -> Iterator[dict[str, str]]:
     }
     with ExitStack() as stack:
         for target in (
-            "alphalattice.interface.local_application.native_bridge.load",
             "alphalattice.control.product_host.composition.evidence_authority_setup.load",
             "alphalattice.interface.local_application.retrieval_environment.load",
         ):

@@ -34,7 +34,7 @@ from alphalattice.control.product_host.composition.portfolio_research_operations
 from alphalattice.control.product_host.publication.goals import GoalStore
 from alphalattice.control.task_control.contracts import TaskLifecycle
 from alphalattice.interface.local_application import client as client_module
-from alphalattice.interface.local_application import native_bridge
+from alphalattice.interface.local_application import native_bridge, retrieval_environment
 from alphalattice.interface.local_application.cli import main
 from alphalattice.interface.local_application.cli_contract import (
     AGENT_HOST_WAITS,
@@ -1752,14 +1752,15 @@ def test_a_first_use_answer_lays_out_the_whole_first_use_and_what_it_did_not_rec
 def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Setup failures retry in this session; successful off-PATH discovery is read once; Codex's
-    trust of the project is the person's item, named with its one step."""
+    """Setup failures retry in this session; the off-PATH command is found in uv's tool folder,
+    read from its settings without starting uv; Codex's trust of the project is the person's
+    item, named with its one step."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CODEX_THREAD_ID", "off-path-first-use")
     codex = Path(os.environ["CODEX_HOME"])  # this test's own Codex, which trusts no project yet
     (tmp_path / ".git").mkdir()  # the project root Codex trusts
-    monkeypatch.setattr(native_bridge, "load", lambda: False)
+    monkeypatch.setattr(retrieval_environment, "load", lambda: False)
     host, bare, held = _FirstUseHost(tmp_path / "w"), tmp_path / "a", tmp_path / "b"
     bare.mkdir()
     venv = tmp_path / "venv"  # under `uv run`, whose own command no specialist's shell has
@@ -1787,26 +1788,25 @@ def test_a_first_use_opens_nothing_while_its_agent_setup_is_missing(
     assert "--offline" not in runtime["commands"][0]
     assert runtime["network_commands"] and host.sent == []
     held.mkdir()  # uv holds the command where this PATH does not reach
-    probe = bare / ("uv.cmd" if os.name == "nt" else "uv")
-    probe.write_text("@exit /b 1\n" if os.name == "nt" else "#!/bin/sh\nexit 1\n")
-    probe.chmod(0o755)
-    assert native_bridge.tool_setup()["present"] is False
-    for name, text in (
-        ("uv", f'#!/bin/sh\necho p >>"{held}/queries"\necho {held}\n'),
-        ("uv.cmd", f'@>>"{held}/queries" echo p\n@echo {held}\n'),
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(held))
+    for name, text in (  # a uv that records any start: finding its folder starts none
+        ("uv", f'#!/bin/sh\necho p >>"{held}/queries"\nexit 1\n'),
+        ("uv.cmd", f'@>>"{held}/queries" echo p\n@exit /b 1\n'),
     ):
         (bare / name).write_text(text, encoding="utf-8")
         (bare / name).chmod(0o755)
-        (held / name.replace("uv", "alphalattice")).write_text("", encoding="utf-8")
-        (held / name.replace("uv", "alphalattice")).chmod(0o755)
-    monkeypatch.setattr(native_bridge, "load", lambda: True)
+    assert native_bridge.tool_setup()["present"] is False
+    for name in ("alphalattice", "alphalattice.cmd"):
+        (held / name).write_text("", encoding="utf-8")
+        (held / name).chmod(0o755)
+    monkeypatch.setattr(retrieval_environment, "load", lambda: True)
     continued = _first_use(host, setup_ready=False)
     assert "installed_leg" not in continued.get("missing", {})
     assert host.goals.first_use() is not None and continued["first_use"]["road"]
     assert command_prefix() == (shutil.which("alphalattice", path=str(held)),)
     posix = command({"operation": "STORAGE_CAP_SHOW"}, quoting="posix")
     assert posix and shlex.split(posix)[0] == Path(command_prefix()[0]).as_posix()
-    assert (held / "queries").read_text().splitlines() == ["p"]
+    assert not (held / "queries").exists()
 
 
 @pytest.mark.parametrize(

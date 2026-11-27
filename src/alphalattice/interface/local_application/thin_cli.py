@@ -16,7 +16,6 @@ import base64
 import http.client
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -65,15 +64,20 @@ CLI_ENVIRONMENT: Final = (
     "PATH",
     "VIRTUAL_ENV",
     "UV_RUN_RECURSION_DEPTH",
+    "UV_TOOL_BIN_DIR",
+    "XDG_BIN_HOME",
+    "XDG_DATA_HOME",
+    "HOME",
+    "USERPROFILE",
     "CLAUDE_CONFIG_DIR",
     "CODEX_HOME",
     "PROGRAMDATA",
     "TMPDIR",
 )
 """The caller's settings a forwarded command reads, so the Host answers as the full CLI would in
-the caller's shell: its agent session, the shell's command path and each vendor's configuration
-folders, sent unchanged; and as TMPDIR, the temporary folder the caller's `tempfile` chose, where
-the Host counts the session's launch."""
+the caller's shell: its agent session, the shell's command path, the folders where uv puts a
+tool's command and each vendor's configuration folders, sent unchanged; and as TMPDIR, the
+temporary folder the caller's `tempfile` chose, where the Host counts the session's launch."""
 MAXIMUM_REQUEST_BODY_BYTES: Final = 128 * 1024
 DEFAULT_HTTP_WAIT_SECONDS: Final = 120.0
 _DELIVERY_LOST: Final = "local_client.connection_lost_task_may_still_run"
@@ -422,13 +426,9 @@ def _refused_before_dispatch(status: int, response: dict[str, object]) -> bool:
 
 
 def invoke(argv: list[str]) -> int | None:
-    """Print the Host's bytes and return its exit code, or select the full CLI."""
-    # The portable launcher is the caller's existing prefix in this case. Probing
-    # an off-PATH tool can start uv, so that caller-side action stays on the full path.
-    if (
-        "UV_RUN_RECURSION_DEPTH" in process_config().public or shutil.which("alphalattice") is None
-    ) and shutil.which("uv") is not None:
-        return None
+    """Print the Host's bytes and return its exit code, or select the full CLI. A uv-launched
+    command is sent too: the Host names its command from the settings it carries
+    (`project_layout.command_prefix`), as the full CLI would in the caller's shell."""
     try:
         cwd = Path.cwd()
         selected = select(argv, cwd)

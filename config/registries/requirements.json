@@ -459,6 +459,13 @@
       "seconds": 5,
       "lower_layer": "The mapping runs in a live Host's composition, and only its history's SQLite file shows what a reader reads."
     },
+    "composition.recovery_catalog_loads_only_the_resumed_kind": {
+      "description": "The Task recovery catalog names the Host's own kinds without importing their command modules; a command's module, and what it imports, loads only when that kind is resumed.",
+      "lower_layer": "The proof reads which modules the catalog's imports reach through the real import system, which the unit layer's contract refuses.",
+      "owner": "alphalattice.control.product_host.composition",
+      "layer": "integration",
+      "seconds": 2
+    },
     "composition.replay_refuses_a_tampered_input": {
       "description": "If a replay ran from a tampered input bundle, it would claim to reproduce a result from bytes that were never bound.",
       "owner": "alphalattice.control.product_host.composition",
@@ -1442,6 +1449,12 @@
     },
     "domain_contracts.source_identity_survives_relocation": {
       "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
+    },
+    "domain_contracts.uv_tool_folder_read_as_uv_reads_it": {
+      "description": "The command prefix reads uv's tool folder from the caller's settings as uv does, without starting uv: a nonempty UV_TOOL_BIN_DIR, relative to the caller's directory, then an absolute XDG_BIN_HOME, the bin beside an absolute XDG_DATA_HOME, and the home's .local/bin.",
       "owner": "alphalattice.capabilities.domain_contracts",
       "layer": "unit",
       "seconds": 1

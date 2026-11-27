@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -28,6 +30,10 @@ import pytest
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.control.product_host.composition.local_web_session import (
     LocalPortfolioWebSession,
+)
+from alphalattice.control.product_host.composition.task_kinds import (
+    CAPTURE_TASK_KIND,
+    WORKSPACE_DATA_UPDATE_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.task_recovery import (
     CANCELLATION_REPLAN,
@@ -1250,3 +1256,31 @@ def test_every_declared_failure_keeps_its_owner_words_in_task_recovery():
     unknown = stop_detail("evidence_install", "owner.future_stop", "TASK_CONTROL")
     for code in runtime_json(REFUSAL_WORDS_RESOURCE):
         assert stop_detail("evidence_install", code, "TASK_CONTROL") != unknown, code
+
+
+class _Unloaded(ModuleType):
+    """A command module that must not load: any name read from it fails the test."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"{self.__name__} was loaded for {name}")
+
+
+@pytest.mark.proves("composition.recovery_catalog_loads_only_the_resumed_kind")
+def test_the_recovery_catalog_keys_capture_and_data_update_without_their_modules(monkeypatch):
+    """Recovery names the Host's own kinds and loads a command's module only when that kind is
+    built, so an unrelated recovery reads neither input capture nor the data update."""
+    for name in (
+        "alphalattice.control.product_host.maintenance.data_update",
+        "alphalattice.control.product_host.research_authoring.input_revisions",
+        "alphalattice.control.product_host.data_preparation.input_capture",
+    ):
+        monkeypatch.setitem(sys.modules, name, _Unloaded(name))
+    operations = SimpleNamespace(has_portfolio=False, has_data_update=True, manifests=None)
+    owner = SimpleNamespace(
+        operations=operations,
+        workspace_manifest=SimpleNamespace(data_update=object()),
+        session=SimpleNamespace(task_control_registry=SimpleNamespace(tasks=list)),
+        review=None,
+    )
+    commands = LocalPortfolioWebSession._recovery_commands(cast(Any, owner))
+    assert CAPTURE_TASK_KIND in commands and WORKSPACE_DATA_UPDATE_TASK_KIND in commands

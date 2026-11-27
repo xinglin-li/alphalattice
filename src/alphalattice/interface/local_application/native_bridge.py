@@ -21,10 +21,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from itertools import islice
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 from uuid import UUID
 
-from alphalattice.capabilities.domain_contracts import spawn
 from alphalattice.capabilities.domain_contracts.environment import package_versions
 from alphalattice.capabilities.domain_contracts.project_layout import resolve_playpen_root
 from alphalattice.interface.local_application import cli_invocation
@@ -45,12 +44,6 @@ from alphalattice.interface.local_application.native_usage import (
     ModelUsage,
     codex_thread_spawn,
 )
-from alphalattice.interface.local_application.retrieval_environment import (
-    LOCKED_SETUP_DISCLOSURE,
-    LOCKED_SETUP_WORDS,
-    fill_command,
-    load,
-)
 from alphalattice.kernel.clock import utc_now
 from alphalattice.kernel.identity import (
     blake3_filename,
@@ -59,8 +52,10 @@ from alphalattice.kernel.identity import (
     identity_blake3,
     tagged_blake3,
 )
-from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord, AnswerVerdict
-from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
+
+if TYPE_CHECKING:
+    from alphalattice.protocols.actor_execution.answers import AgentAnswerRecord
+    from alphalattice.protocols.actor_execution.bundles import AgentBundleRecord
 
 CHILD_USAGE_BINDING_UNVERIFIED = "native_bridge.child_usage_binding_unverified"
 
@@ -71,6 +66,8 @@ def command_readiness(command: list[str], *, timeout: int = 30) -> dict[str, Any
     result: dict[str, Any] = {"present": False, "command": executable, "reason": None}
     if executable is None:
         return {**result, "reason": "COMMAND_MISSING"}
+    from alphalattice.capabilities.domain_contracts import spawn  # lazy: a probe starts a process
+
     try:
         completed = spawn.run(
             [executable, *command[1:]],
@@ -159,6 +156,8 @@ def codex_queue_reach(path: str | None = None) -> dict[str, Any]:
     }
     if command is None:
         return {**result, "reason": "COMMAND_MISSING"}
+    from alphalattice.capabilities.domain_contracts import spawn  # lazy: a probe starts a process
+
     try:
         done = spawn.run(
             [command, "queue", "--thread", CODEX_REACH_THREAD, "--message", "reach probe"],
@@ -1013,6 +1012,10 @@ def deliver_accepted_answer(
     says so. This is a product record, never a native transcript; a failure to file it
     leaves the acceptance as it is.
     """
+    from alphalattice.protocols.actor_execution.answers import (  # lazy: an accepted answer only
+        AnswerVerdict,
+    )
+
     if answer.verdict not in {AnswerVerdict.ACCEPTED, AnswerVerdict.DONE}:
         return None
     references: dict[str, object] = {
@@ -1571,6 +1574,13 @@ def agent_setup() -> dict[str, dict[str, Any]]:
     `alphalattice` command its specialists run (`tool_setup`) and the retrieval runtime.
     """
     retrieval: dict[str, Any] = {"present": True}
+    from alphalattice.interface.local_application.retrieval_environment import (  # lazy: setup
+        LOCKED_SETUP_DISCLOSURE,
+        LOCKED_SETUP_WORDS,
+        fill_command,
+        load,
+    )
+
     if not load():
         retrieval = {
             "present": False,

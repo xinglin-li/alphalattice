@@ -37,6 +37,7 @@ _PUBLIC_NAMES = frozenset(
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "CODEX_THREAD_ID",
+        "HOME",
         "LOCALAPPDATA",
         "MSYSTEM",
         "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT",
@@ -45,8 +46,11 @@ _PUBLIC_NAMES = frozenset(
         "SEC_USER_AGENT",
         "TRACEPARENT",
         "UV",
+        "USERPROFILE",
         "UV_RUN_RECURSION_DEPTH",
+        "UV_TOOL_BIN_DIR",
         "VIRTUAL_ENV",
+        "XDG_BIN_HOME",
         "XDG_DATA_HOME",
     }
 )

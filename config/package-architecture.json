@@ -779,6 +779,7 @@
     "alphalattice.oversight.chief_risk_officer.decision.portfolio_review": "Decode a sealed CRO review when history includes the publication.",
     "alphalattice.oversight.chief_risk_officer.publication.portfolio_review": "Open the CRO publication owner when Evidence review is admitted.",
     "alphalattice.oversight.chief_risk_officer.runtime.portfolio_review_task": "Recover a retained CRO review Task.",
+    "alphalattice.protocols.actor_execution.answers": "Loaded to file an accepted answer; a CLI call that reads a Session binding runs none of it.",
     "alphalattice.control.workspace_runtime.artifacts": "Resolve the workspace artifact store in the Sector publication command.",
     "alphalattice.control.workspace_runtime.database": "Hand a held market database off to a child process only when a call goes to one; task control imports no DuckDB otherwise.",
     "alphalattice.control.workspace_runtime.storage.footprint": "Load the file-ownership registry when a storage status read needs its categories.",

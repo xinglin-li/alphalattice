@@ -39,8 +39,12 @@ def environment() -> Mapping[str, str]:
 
 
 def command_prefix(*, portable: bool = False) -> tuple[str, ...]:
-    """Keep the proven portable launcher of a forwarded command."""
-    return layout_command_prefix(portable=portable or CLI_CALL.get() is not None)
+    """Name the command as the full CLI would in the command's shell: a forwarded command's from
+    the settings and directory it carried."""
+    call = CLI_CALL.get()
+    if call is None:
+        return layout_command_prefix(portable=portable)
+    return layout_command_prefix(portable=portable, environment=call.environment, cwd=call.cwd)
 
 
 def cwd() -> Path:

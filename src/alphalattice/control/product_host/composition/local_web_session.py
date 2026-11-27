@@ -55,12 +55,18 @@ from alphalattice.control.product_host.composition.research_workspace import (
     read_research_workspace_manifest,
 )
 from alphalattice.control.product_host.composition.task_kinds import (
+    CAPTURE_TASK_KIND,
     EVIDENCE_INSTALL_TASK_KIND,
     EVIDENCE_REVIEW_RUNTIME_FILE,
+    FEATURE_BUILD_TASK_KIND,
+    MODEL_TRAINING_INPUT_TASK_KIND,
     PORTFOLIO_UPDATE_TASK_KIND,
+    RESEARCH_STRATEGY_TASK_KIND,
     STRATEGY_CALIBRATION_TASK_KIND,
     STRATEGY_SCORE_TASK_KIND,
     STUDY_VERIFICATION_TASK_KIND,
+    WORKSPACE_DATA_UPDATE_TASK_KIND,
+    WORKSPACE_PREPARATION_TASK_KIND,
 )
 from alphalattice.control.product_host.composition.task_kinds import (
     RESEARCH_EXPERIMENT_TASK_KIND as STUDY_TASK_KIND,
@@ -604,6 +610,52 @@ def _recovery_command[Owner](
 ) -> LocalApplicationCommand:
     assert owner is not None
     return constructor(owner)
+
+
+def _host_command_recovery(
+    operations: PortfolioResearchOperations, kind: str
+) -> LocalApplicationCommand:
+    """The Host's own command for an owed Task of `kind`; only that kind's module is imported,
+    and the command it builds must own that kind."""
+    command: LocalApplicationCommand
+    if kind == WORKSPACE_PREPARATION_TASK_KIND:
+        from ..data_preparation.application import (  # lazy: this kind's recovery
+            WorkspacePreparationCommand,
+        )
+
+        command = WorkspacePreparationCommand(operations.preparation)
+    elif kind == FEATURE_BUILD_TASK_KIND:
+        from ..data_preparation.feature_research import (  # lazy: this kind's recovery
+            ResearchFeatureBuildCommand,
+        )
+
+        command = ResearchFeatureBuildCommand(operations.feature_builds)
+    elif kind == MODEL_TRAINING_INPUT_TASK_KIND:
+        from ..data_preparation.model_training import (  # lazy: this kind's recovery
+            ModelTrainingInputCommand,
+        )
+
+        command = ModelTrainingInputCommand(operations.model_training_inputs)
+    elif kind == RESEARCH_STRATEGY_TASK_KIND:
+        from ..data_preparation.research_strategy import (  # lazy: this kind's recovery
+            ResearchStrategyCommand,
+        )
+
+        command = ResearchStrategyCommand(operations.research_strategies)
+    elif kind == WORKSPACE_DATA_UPDATE_TASK_KIND:
+        from ..maintenance.data_update import (  # lazy: this kind's recovery
+            WorkspaceDataUpdateCommand,
+        )
+
+        command = _recovery_command(WorkspaceDataUpdateCommand, operations.data_update)
+    else:
+        from ..data_preparation.input_capture import (  # lazy: this kind's recovery
+            ResearchInputCaptureCommand,
+        )
+
+        command = ResearchInputCaptureCommand(operations.input_capture)
+    assert command.command_kind == kind  # task_kinds names the kind its command owns
+    return command
 
 
 def _portfolio_recovery(
@@ -1236,51 +1288,23 @@ class LocalPortfolioWebSession:
         self, *, owed_only: bool = True
     ) -> Mapping[str, LocalApplicationCommand]:
 
-        # Recovery builds its commands once a queued or recovery-required Task needs them.
-        from ..data_preparation.application import (  # lazy: on use
-            WorkspacePreparationCommand,
-        )
-        from ..data_preparation.feature_research import (  # lazy: Task recovery catalog
-            ResearchFeatureBuildCommand,
-        )
-        from ..data_preparation.input_capture import (  # lazy: Task recovery catalog
-            ResearchInputCaptureCommand,
-        )
-        from ..data_preparation.model_training import (  # lazy: Task recovery catalog
-            ModelTrainingInputCommand,
-        )
-        from ..data_preparation.research_strategy import (  # lazy: Task recovery catalog
-            ResearchStrategyCommand,
-        )
-        from ..maintenance.data_update import (  # lazy: Task recovery catalog
-            WorkspaceDataUpdateCommand,
-        )
-        from .portfolio_research_operations import (  # lazy: Task recovery catalog
-            PORTFOLIO_RUN_COMMAND,
-            PortfolioRunCommand,
-        )
-
+        # Recovery names its commands by Task kind; a command's module loads when it is built.
         factories: dict[str, Callable[[], LocalApplicationCommand]] = {}
         operations = self.operations
         if operations is not None:
             factories.update(
                 {
                     STUDY_TASK_KIND: partial(_experiment_recovery, operations),
-                    WorkspacePreparationCommand.command_kind: lambda: WorkspacePreparationCommand(
-                        operations.preparation
-                    ),
-                    ResearchInputCaptureCommand.command_kind: lambda: ResearchInputCaptureCommand(
-                        operations.input_capture
-                    ),
-                    ModelTrainingInputCommand.command_kind: lambda: ModelTrainingInputCommand(
-                        operations.model_training_inputs
-                    ),
-                    ResearchStrategyCommand.command_kind: lambda: ResearchStrategyCommand(
-                        operations.research_strategies
-                    ),
-                    ResearchFeatureBuildCommand.command_kind: lambda: ResearchFeatureBuildCommand(
-                        operations.feature_builds
-                    ),
+                    **{
+                        kind: partial(_host_command_recovery, operations, kind)
+                        for kind in (
+                            WORKSPACE_PREPARATION_TASK_KIND,
+                            CAPTURE_TASK_KIND,
+                            MODEL_TRAINING_INPUT_TASK_KIND,
+                            RESEARCH_STRATEGY_TASK_KIND,
+                            FEATURE_BUILD_TASK_KIND,
+                        )
+                    },
                     STUDY_VERIFICATION_TASK_KIND: partial(_sweep_recovery, operations),
                     EVIDENCE_INSTALL_TASK_KIND: partial(_evidence_install_recovery, operations),
                 }
@@ -1309,8 +1333,8 @@ class LocalPortfolioWebSession:
                         _portfolio_recovery, operations, STRATEGY_SCORE_TASK_KIND
                     )
             if operations.has_data_update and manifest.data_update is not None:
-                factories[WorkspaceDataUpdateCommand.command_kind] = lambda: _recovery_command(
-                    WorkspaceDataUpdateCommand, operations.data_update
+                factories[WORKSPACE_DATA_UPDATE_TASK_KIND] = partial(
+                    _host_command_recovery, operations, WORKSPACE_DATA_UPDATE_TASK_KIND
                 )
         assert self.session is not None
         registry = self.session.task_control_registry
@@ -1327,11 +1351,15 @@ class LocalPortfolioWebSession:
         ):
 
             def open_run() -> LocalApplicationCommand:
+                from .portfolio_research_operations import (  # lazy: this kind's recovery
+                    PortfolioRunCommand,
+                )
+
                 application = operations.application
                 assert application is not None
                 return PortfolioRunCommand.recover(application=application)
 
-            factories[PORTFOLIO_RUN_COMMAND] = open_run
+            factories[PORTFOLIO_PUBLIC_TASK_KIND] = open_run
         verified: dict[str, LocalApplicationCommand] = {}
         if owed_kinds:
             # Only owed Evidence or CRO work needs the review runtime.
