@@ -15,7 +15,13 @@ from stat import S_ISREG
 from threading import Lock
 from typing import BinaryIO, Protocol
 
-from ._digests import integrity_blake3, integrity_blake3_stream, is_blake3, tagged_blake3
+from ._digests import (
+    blake3_hex,
+    integrity_blake3,
+    integrity_blake3_stream,
+    is_blake3,
+    tagged_blake3,
+)
 
 if os.name == "nt":
     import ctypes
@@ -242,6 +248,16 @@ class FileDigestTrust:
     def fresh_digest(path: Path, *, handle: BinaryIO | None = None) -> str:
         """Prove bytes from the file itself instead of answering a stored digest."""
         return integrity_blake3_path(path) if handle is None else whole_digest(handle)
+
+    @staticmethod
+    def proven_bytes(path: Path, digest: str) -> bytes | None:
+        """The file's bytes when, read once, they hash to this BLAKE3 (tagged or its hex), else
+        None: the bytes returned are the very bytes hashed, so a change in place cannot pass."""
+        kept: list[bytes] = []
+        with path.open("rb") as handle:
+            if blake3_hex(whole_digest(handle, kept)) != digest.removeprefix("blake3:"):
+                return None
+        return kept[0]
 
     def _settled(self, stamp: Stamp) -> bool:
         return self._time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9

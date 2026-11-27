@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import re
+import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from threading import Lock
+from threading import Lock, get_ident
 from typing import Any, cast
 from uuid import uuid4
 
@@ -21,10 +24,12 @@ from alphalattice.capabilities.domain_contracts.project_layout import (
     tracked_path,
 )
 from alphalattice.kernel.clock import wall_time_ns
+from alphalattice.kernel.config import cache_root
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
     FileDigestTrust,
     Stamp,
+    blake3_hex,
     change_xxh3_128_hex,
     identity_blake3,
     is_blake3,
@@ -754,8 +759,152 @@ def _canonical(path: Path, package: str) -> _Canonical:
     key, payload = _keyed(path, package)
     kept = _CANONICAL.get(key)
     if kept is None:
-        kept = _CANONICAL[key] = _canonical_tree(_tree(payload, path.name), key)
+        kept = _CANONICAL[key] = _cached_canonical(payload, key, path.name)
     return kept
+
+
+def _cached_canonical(payload: bytes, key: tuple[str, str], filename: str) -> _Canonical:
+    """The module's canonical form as the user's cache keeps it, else parsed and kept there.
+
+    An entry is keyed by everything that decides the form: the BLAKE3 of the module's bytes, its
+    package, the BLAKE3 of this module (the canonicaliser) and the interpreter's cache tag; the
+    folder names the last two, the file `<bytes>-<package>.<the entry's own BLAKE3>.json` the rest.
+    A hit needs the file's bytes to hash to the digest its name holds, the whole key to match and
+    the form to be one the walk can read (`_shaped`). Anything else is a miss, parsed as before and
+    written again beside it: the cache is never an error and never trusted beyond what it proves.
+    """
+    place = _cache_place()
+    if place is None:
+        return _canonical_tree(_tree(payload, filename), key)
+    folder, canonicaliser, tag = place
+    named = {
+        "bytes": tagged_blake3(identity_blake3(payload)),
+        "package": key[1],
+        "canonicaliser": canonicaliser,
+        "cache_tag": tag,
+    }
+    stem = f"{blake3_hex(named['bytes'])}-{key[1]}"
+    for entry, digest in _entries(folder, stem):
+        held = _proved(entry, digest)
+        if held is not None and held.get("key") == named and (form := _shaped(held, key)):
+            return form
+    canonical = _canonical_tree(_tree(payload, filename), key)
+    _keep(folder, stem, named, canonical)
+    return canonical
+
+
+def _entries(folder: Path, stem: str) -> list[tuple[Path, str]]:
+    """The folder's entries for this stem with the digest each name holds; none when the folder
+    is missing or cannot be listed, which the caller reads as a miss."""
+    found = []
+    try:
+        with os.scandir(folder) as listing:
+            for item in listing:
+                named = _NAMED.fullmatch(item.name)
+                if named is not None and named["stem"] == stem:
+                    found.append((Path(item.path), named["digest"]))
+    except OSError:
+        return []
+    return found
+
+
+def _proved(entry: Path, digest: str) -> dict[str, Any] | None:
+    """The entry's JSON when its bytes, read once, hash to the digest its name holds: the bytes
+    decoded are the very bytes hashed, so a file changed in place cannot pass between the two."""
+    try:
+        data = FileDigestTrust.proven_bytes(entry, digest)
+        if data is None:
+            return None
+        held = json.loads(data)
+    except (OSError, ValueError):
+        return None
+    return held if isinstance(held, dict) else None
+
+
+def _shaped(held: dict[str, Any], key: tuple[str, str]) -> _Canonical | None:
+    """The stored form when the walk can read it: lists of strings, each reference and import a
+    `("module", dotted)` or `("from", module, name)`, and the template's text alternating with
+    the placeholder numbers 0, 1, ..., one per reference in order; else None."""
+
+    def strings(value: object) -> tuple[str, ...] | None:
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return tuple(value)
+        return None
+
+    def bindings(value: object) -> tuple[_Reference, ...] | None:
+        if not isinstance(value, list):
+            return None
+        found: list[_Reference] = []
+        for item in value:
+            match item:
+                case ["module", str()] | ["from", str(), str()]:
+                    found.append(cast(_Reference, tuple(item)))
+                case _:
+                    return None
+        return tuple(found)
+
+    walked, template = strings(held.get("walked")), strings(held.get("template"))
+    references, imports = bindings(held.get("references")), bindings(held.get("imports"))
+    if walked is None or template is None or references is None or imports is None:
+        return None
+    rest = iter(template)
+    if next(rest, None) is None:
+        return None
+    try:  # after the first text, each placeholder number with the text that follows it
+        numbers = [number for number, _text in zip(rest, rest, strict=True)]
+    except ValueError:
+        return None
+    if numbers != [str(index) for index in range(len(references))]:
+        return None
+    return _Canonical(
+        key=key, walked=walked, template=template, references=references, imports=imports
+    )
+
+
+def _own_digest() -> str | None:
+    try:
+        return FileDigestTrust.fresh_digest(Path(__file__))
+    except OSError:
+        return None
+
+
+_CANONICALISER = _own_digest()
+"""The BLAKE3 of this module's bytes, which key every cache entry; None when they cannot be read."""
+
+
+def _cache_place() -> tuple[Path, str, str] | None:
+    """`<cache root>/source-identity/<cache tag>-<canonicaliser digest>`, or None when the
+    interpreter keeps no bytecode cache tag or this module's bytes cannot be read."""
+    tag = sys.implementation.cache_tag
+    if tag is None or _CANONICALISER is None:
+        return None
+    folder = cache_root() / "source-identity" / f"{tag}-{blake3_hex(_CANONICALISER)}"
+    return folder, _CANONICALISER, tag
+
+
+_NAMED = re.compile(r"(?P<stem>[0-9a-f]{64}-[\w.]*)\.(?P<digest>[0-9a-f]{64})\.json")
+"""An entry's file: `<bytes digest>-<package>.<the entry's own BLAKE3>.json`."""
+
+
+def _keep(folder: Path, stem: str, named: dict[str, str], canonical: _Canonical) -> None:
+    """Write an entry whole: a partial file, named after its own BLAKE3 as it is renamed into
+    place. Nothing else in the cache is touched; a failed write leaves the next process to parse."""
+    partial = folder / f".{stem}.{os.getpid()}.{get_ident()}.partial"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        text = {
+            "key": named,
+            "walked": canonical.walked,
+            "template": canonical.template,
+            "references": canonical.references,
+            "imports": canonical.imports,
+        }
+        partial.write_text(json.dumps(text, ensure_ascii=False), encoding="utf-8")
+        own = blake3_hex(FileDigestTrust.fresh_digest(partial))
+        os.replace(partial, folder / f"{stem}.{own}.json")
+    except OSError:
+        with suppress(OSError):
+            partial.unlink(missing_ok=True)
 
 
 def _keyed(path: Path, package: str) -> tuple[tuple[str, str], bytes]:

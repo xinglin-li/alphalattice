@@ -1,6 +1,7 @@
 """Configuration access."""
 
 from .port import (
+    CACHE_ROOT_ENV,
     DATA_ROOT_ENV,
     Change,
     Config,
@@ -8,6 +9,7 @@ from .port import (
     ConfigPort,
     Secret,
     Settings,
+    cache_root,
     consume_secret,
     current,
     data_root,
@@ -19,6 +21,7 @@ from .port import (
 )
 
 __all__ = [
+    "CACHE_ROOT_ENV",
     "DATA_ROOT_ENV",
     "Change",
     "Config",
@@ -26,6 +29,7 @@ __all__ = [
     "ConfigPort",
     "Secret",
     "Settings",
+    "cache_root",
     "consume_secret",
     "current",
     "data_root",

@@ -26,6 +26,7 @@ _PUBLIC_NAMES = frozenset(
         PROCESS_MEMORY_MODE,
         RETENTION_DAYS,
         "ALPHALATTICE_BACKUP_ROOT",
+        "ALPHALATTICE_CACHE_ROOT",
         "ALPHALATTICE_DATA_ROOT",
         "ALPHALATTICE_FILE_TRUST",
         "ALPHALATTICE_MODEL_STORE",
@@ -51,6 +52,7 @@ _PUBLIC_NAMES = frozenset(
         "UV_TOOL_BIN_DIR",
         "VIRTUAL_ENV",
         "XDG_BIN_HOME",
+        "XDG_CACHE_HOME",
         "XDG_DATA_HOME",
     }
 )
@@ -234,6 +236,25 @@ def data_root() -> Path:
         return Path(local) / "AlphaLattice"
     data = values.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(data) / "alphalattice"
+
+
+CACHE_ROOT_ENV = "ALPHALATTICE_CACHE_ROOT"
+"""Names the folder of this user's rebuildable caches; unset, the platform's cache folder."""
+
+
+def cache_root() -> Path:
+    """The user's cache folder, outside every workspace and data root: `ALPHALATTICE_CACHE_ROOT`,
+    else `%LOCALAPPDATA%/AlphaLatticeCache` on Windows and `$XDG_CACHE_HOME/alphalattice` (by
+    default `~/.cache/alphalattice`) elsewhere. What it holds is rebuilt when missing."""
+    values = current()
+    override = values.get(CACHE_ROOT_ENV, "").strip()
+    if override:
+        return Path(override)
+    if os.name == "nt":
+        local = values.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(local) / "AlphaLatticeCache"
+    cache = values.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(cache) / "alphalattice"
 
 
 def _start() -> Config:

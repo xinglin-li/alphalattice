@@ -3,9 +3,11 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+import sys
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -751,6 +753,145 @@ def test_a_rule_closure_carries_the_semantic_binding_of_an_import(
     assert before[0] != different[0]
     assert before[1] != different[1]
     assert before[2] != different[2]
+
+
+_CACHED_TREE = {
+    "investment/__init__.py": "",
+    "investment/desk/__init__.py": "",
+    "investment/desk/model.py": (
+        "from alphalattice.investment.desk.helper import scale\n\n\ndef fit():\n"
+        "    return scale() + 1\n"
+    ),
+    "investment/desk/helper.py": "def scale():\n    return 2\n",
+}
+
+
+def _resealed(entry: Path, old: str, new: str) -> None:
+    """The entry rewritten and named after its new bytes, as a writer that sealed it would."""
+    from alphalattice.kernel.identity import FileDigestTrust, blake3_hex
+
+    text = entry.read_text(encoding="utf-8").replace(old, new, 1)
+    entry.unlink()
+    partial = entry.with_name("rewritten")
+    partial.write_text(text, encoding="utf-8")
+    own = blake3_hex(FileDigestTrust.fresh_digest(partial))
+    partial.replace(entry.with_name(f"{entry.name.rsplit('.', 2)[0]}.{own}.json"))
+
+
+def _altered(entry: Path) -> None:
+    """The entry's template changed in place, its name kept: still a form the walk reads."""
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace('"template": ["', '"template": ["x', 1), encoding="utf-8")
+
+
+_DAMAGED = {  # the file's own digest no longer matches its name
+    "corrupt entry": lambda entry: entry.write_bytes(b"not json"),
+    "partial entry": lambda entry: entry.write_bytes(
+        entry.read_bytes()[: entry.stat().st_size // 2]
+    ),
+    "altered form": _altered,
+    # resealed: its digest matches, its key or its form does not
+    "another key": lambda entry: _resealed(entry, '"package": "', '"package": "other.'),
+    "damaged form, key kept": lambda entry: _resealed(
+        entry, '"imports": [', '"imports": [["bogus"], '
+    ),
+}
+_RESEALED = ("another key", "damaged form, key kept")
+CACHE_CASES = (
+    "miss",
+    "hit",
+    *_DAMAGED,
+    "changed between reads",
+    "changed canonicaliser",
+    "changed bytes",
+)
+
+
+@pytest.mark.proves("domain_contracts.source_identity_cache_keyed_by_what_decides")
+@pytest.mark.parametrize(
+    "case", CACHE_CASES, ids=[case.replace(",", "").replace(" ", "-") for case in CACHE_CASES]
+)
+def test_a_cached_canonical_form_hashes_as_the_parsed_one_and_a_bad_entry_is_parsed_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """requirement (LAWS.md ID1): a cached canonical form gives a cold parse's digests, any entry
+    it cannot prove from the one read it decodes is parsed again, and no older file is removed."""
+    from itertools import count
+
+    from alphalattice.capabilities.domain_contracts import source_identity
+    from alphalattice.capabilities.domain_contracts.source_identity import (
+        NumberDecidingRule,
+        canonical_closure,
+    )
+    from alphalattice.kernel.config import CACHE_ROOT_ENV
+    from alphalattice.kernel.identity import file_facts
+
+    tree = tmp_path / "tree"
+    for relative, text in _CACHED_TREE.items():
+        path = tree / "src" / "alphalattice" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    entry, rule = (
+        ("alphalattice.investment.desk.model",),
+        NumberDecidingRule(frozenset({"desk"}), frozenset()),
+    )
+    fresh = count()  # each call keys its process memo anew, as a new process would
+    monkeypatch.setattr(
+        source_identity, "change_xxh3_128_hex", lambda _: f"{tmp_path.name}-{next(fresh)}"
+    )
+    parses: list[str] = []
+    parse = ast.parse
+    monkeypatch.setattr(
+        ast,
+        "parse",
+        lambda source, *args, **kwargs: parses.append("") or parse(source, *args, **kwargs),
+    )
+
+    def digests(cache: Path) -> tuple[dict[str, str], int]:
+        monkeypatch.setenv(CACHE_ROOT_ENV, str(cache))
+        parses.clear()
+        return canonical_closure(entry, root=tree, rule=rule), len(parses)
+
+    cold, modules = digests(tmp_path / "cold")
+    (folder,) = (tmp_path / "cold" / "source-identity").iterdir()  # <cache tag>-<canonicaliser>
+    assert folder.name.startswith(f"{sys.implementation.cache_tag}-")
+    cache = tmp_path / "cache"
+    folder = cache / "source-identity" / folder.name
+    older = folder.with_name(f"{sys.implementation.cache_tag}-{'0' * 64}")
+    expected, parsed, left = cold, modules, set()
+    if case == "changed canonicaliser":
+        older.mkdir(parents=True)
+        (older / f"{'1' * 64}-alphalattice.{'2' * 64}.json").write_text("{}", encoding="utf-8")
+        (older / "notes.txt").write_text("not the cache's", encoding="utf-8")
+        left = {kept.name for kept in older.iterdir()}
+    elif case != "miss":
+        digests(cache)
+    for kept in folder.glob("*.json") if case in _DAMAGED else ():
+        _DAMAGED[case](kept)
+    hashed = file_facts.whole_digest
+    if case == "changed between reads":
+
+        def changing(handle: Any, kept: list[bytes] | None = None) -> str:
+            digest = hashed(handle, kept)
+            _altered(Path(handle.name))  # after its one read, before any decode
+            return digest
+
+        monkeypatch.setattr(file_facts, "whole_digest", changing)
+    if case in ("hit", "changed between reads"):
+        parsed = 0  # the bytes decoded are the bytes proved, so the form is the one written
+    if case == "changed bytes":
+        helper = tree / "src" / "alphalattice" / "investment" / "desk" / "helper.py"
+        helper.write_text("def scale():\n    return 3\n", encoding="utf-8")
+        expected, parsed = digests(tmp_path / "cold-changed")[0], 1
+        assert expected != cold
+    assert digests(cache) == (expected, parsed)
+    if case == "changed between reads":  # each entry, changed in place, is now a miss
+        monkeypatch.setattr(file_facts, "whole_digest", hashed)
+        assert digests(cache) == (expected, modules)
+    assert digests(cache) == (expected, 0)  # every entry now reads back
+    assert {kept.name for kept in older.iterdir()} == left if older.exists() else not left
+    stale = modules if case in _RESEALED else 0  # a resealed entry stays beside the new one
+    assert len(list(folder.glob("*.json"))) == modules + stale + (case == "changed bytes")
 
 
 def test_a_span_moves_no_identity_and_any_other_form_reads_as_written() -> None:

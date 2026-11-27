@@ -3551,6 +3551,21 @@
         "product_host.composition.web_launcher"
       ]
     },
+    "source-identity-cache": {
+      "summary": "source identity's canonical form of each product module, one file per module's bytes in the user's cache folder",
+      "class": "cache-scratch",
+      "tier": 3,
+      "home": "outside the data layer: the user's cache folder, outside every workspace and data root, one folder per canonicaliser and interpreter",
+      "retire": "rebuildable: a missing, unreadable or mismatched entry is parsed again and written beside it; the product removes nothing there, so an older canonicaliser's folder stays until the person deletes it, which loses nothing",
+      "location": "host-home",
+      "bytes": null,
+      "writers": [
+        "domain_contracts.source_identity:_keep"
+      ],
+      "readers": [
+        "domain_contracts.source_identity"
+      ]
+    },
     "cli-launch-counts": {
       "summary": "the CLI's launch count per agent session, one file per session in the system's temporary directory",
       "class": "cache-scratch",

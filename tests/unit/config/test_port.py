@@ -1,10 +1,21 @@
 """The process config port holds and serves its admitted environment snapshot."""
 
 import logging
+import os
+from pathlib import Path
 
 import pytest
 
-from alphalattice.kernel.config import Change, Config, current, declare, override, using
+from alphalattice.kernel.config import (
+    CACHE_ROOT_ENV,
+    Change,
+    Config,
+    cache_root,
+    current,
+    declare,
+    override,
+    using,
+)
 
 TEST_SOURCE = "src/alphalattice/kernel/config/port.py"
 
@@ -59,3 +70,17 @@ def test_the_environment_is_held_and_read_through_its_config_port(
                 assert changed.event.kind == "operator-policy"
                 assert changed.event.names == ("ALPHALATTICE_NETWORK_DISABLED",)
     assert reads == 1
+
+
+@pytest.mark.proves("config.cache_root_is_set_or_the_platform_cache_folder")
+def test_the_cache_root_is_its_setting_else_the_platforms_cache_folder(monkeypatch, tmp_path):
+    """A set ALPHALATTICE_CACHE_ROOT wins; unset, the root is the platform's cache folder, beside
+    and outside the default data root (Windows: LOCALAPPDATA/AlphaLatticeCache; elsewhere
+    XDG_CACHE_HOME/alphalattice)."""
+    monkeypatch.setenv(CACHE_ROOT_ENV, str(tmp_path / "set"))
+    assert cache_root() == tmp_path / "set"
+    monkeypatch.delenv(CACHE_ROOT_ENV)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    expected = tmp_path / ("local/AlphaLatticeCache" if os.name == "nt" else "xdg/alphalattice")
+    assert cache_root() == Path(expected)

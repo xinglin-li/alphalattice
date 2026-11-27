@@ -62,6 +62,9 @@ except ModuleNotFoundError as missing:  # a test's own small checkout, built wit
 _bootstrap_data = tempfile.TemporaryDirectory(prefix="alphalattice-test-bootstrap-")
 os.environ["ALPHALATTICE_DATA_ROOT"] = _bootstrap_data.name
 os.environ["ALPHALATTICE_BACKUP_ROOT"] = str(Path(_bootstrap_data.name) / "backups")
+# The user's cache (source identity's canonical forms) is this process's own, never the person's;
+# from the session's start it lives under the temporary root every layer's tests may read.
+os.environ["ALPHALATTICE_CACHE_ROOT"] = str(Path(_bootstrap_data.name) / "cache")
 
 # A test's Git acts on the repository it names, under a configuration the suite owns. A Git hook
 # exports the variables that bind Git to the committing repository (git rev-parse
@@ -797,6 +800,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     build. A read-only check decides freshness, including a removed output; no old marker
     or manifest alone can stand in for the actual files.
     """
+    from alphalattice.kernel.config import CACHE_ROOT_ENV, Change, declare
+
+    os.environ[CACHE_ROOT_ENV] = str(session.config._tmp_path_factory.getbasetemp() / "user-cache")
+    declare(Change("test-user-cache", {CACHE_ROOT_ENV: os.environ[CACHE_ROOT_ENV]}))
     if hasattr(session.config, "workerinput") or session.config.option.collectonly:
         return
     if factory := getattr(evaluation, "golden_controller", None):

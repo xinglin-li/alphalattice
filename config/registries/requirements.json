@@ -530,6 +530,12 @@
       "layer": "integration",
       "seconds": 5
     },
+    "config.cache_root_is_set_or_the_platform_cache_folder": {
+      "description": "The user's cache folder is ALPHALATTICE_CACHE_ROOT when set, else the platform's cache folder outside the default data root.",
+      "owner": "alphalattice.kernel.config",
+      "layer": "unit",
+      "seconds": 1
+    },
     "config.environment_access_uses_the_config_port": {
       "description": "The config port serves one environment snapshot, declares settings changes and keeps secrets out of diagnostics.",
       "owner": "alphalattice.kernel.config",
@@ -1496,6 +1502,12 @@
       "layer": "integration",
       "seconds": 5,
       "lower_layer": "It hashes the schemas pydantic builds from real model classes, which a unit test of one function cannot hold without rebuilding pydantic's schema generation."
+    },
+    "domain_contracts.source_identity_cache_keyed_by_what_decides": {
+      "description": "A module's canonical form kept in the user's cache gives the digests a cold parse gives, keyed by its bytes, package, canonicaliser and interpreter; any other entry is parsed again and written back.",
+      "owner": "alphalattice.capabilities.domain_contracts",
+      "layer": "unit",
+      "seconds": 1
     },
     "domain_contracts.source_identity_survives_relocation": {
       "description": "Relocating a module while keeping its body and semantic binding preserves its source closure identities.",
