@@ -3952,7 +3952,7 @@
         "src/alphalattice/foundation/market_data_ops/storage/market_snapshots.py::_READ"
       ],
       "definition_line": 29,
-      "key": "workspace database path, catalog data root; the entry holds the anchor and version-index digest it was read at",
+      "key": "catalog data root and the selection read: its published anchor and version-index digest, whichever workspace file or research input copy holds it",
       "dependency_coverage": "Yes: the published anchor and every version-index row (UUIDv7 versions) the bodies are read by",
       "invalidation_rule": "a moved anchor or version index refills from the catalog; LRU eviction or process restart",
       "size_bound": "4 entries",
@@ -3964,7 +3964,7 @@
         "path_expression": "In-memory _READ in its module, instance, or call namespace"
       },
       "source_commit": "469ee7d0f13fd56f1e7151dc97f0c69e0158fba7",
-      "description": "Keeps each workspace file's published market selection bodies as this process read them from the catalog, so a fresh database instance of the same file and selection fills its in-memory copy without reading the catalog again."
+      "description": "Keeps each published market selection's bodies as this process read them from the catalog, so a fresh database instance of any file holding the same selection fills its in-memory copy without attaching or reading the catalog again."
     }
   }
 }

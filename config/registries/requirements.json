@@ -2229,6 +2229,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "market_data_ops.an_instance_attaches_the_catalog_only_to_read_it": {
+      "description": "If each fresh workspace instance attached the market catalog before its first market read, a Host would load the catalog's extensions again for every instance, even one whose selection it had already read.",
+      "owner": "alphalattice.foundation.market_data_ops",
+      "layer": "unit",
+      "seconds": 1
+    },
     "market_data_ops.bars_are_admitted_in_whole_years_under_a_bound": {
       "description": "A provider's bars are admitted as consecutive whole years while their count fits a bound, a year over it alone.",
       "owner": "alphalattice.foundation.market_data_ops",

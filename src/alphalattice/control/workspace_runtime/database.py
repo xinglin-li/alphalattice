@@ -279,35 +279,52 @@ class WorkspaceConnection:
 
     def attach_market_catalog(self, root: Path) -> None:
         """Attach the installed read-only market catalog once to this workspace instance."""
-        if root == self._instance.catalog_named:  # every open asks: no path resolution once held
+        if root == self._instance.catalog_named and self._instance.catalog_attached:
             return
-        named, root = root, root.resolve()
         with self._instance.catalog_lock:
-            if self._instance.catalog_root == root:
+            self._market_root(root)
+            if self._instance.catalog_attached:
                 return
-            if self._instance.catalog_root is not None:
-                raise ValueError("workspace_database.market_catalog_root_changed")
-            catalog = root / "machine" / "catalog.sqlite"
-            if not catalog.is_file():  # refused by name, whether or not a transaction is open
-                raise ValueError("workspace_database.market_catalog_unavailable")
             if self._pinned or self.in_transaction():
                 raise RuntimeError("workspace_database.market_catalog_attach_in_transaction")
-            catalog_name = catalog.as_posix().replace("'", "''")
-            data_path = (root / "data").as_posix().replace("'", "''")
             if self._guarded:
                 self._end_transaction()
             try:
-                for _, binary in ducklake_extensions():
-                    self._raw.execute(f"LOAD '{binary}'").complete()
-                self._raw.execute(
-                    f"ATTACH 'ducklake:sqlite:{catalog_name}' AS workspace_market"
-                    f" (DATA_PATH '{data_path}/', READ_ONLY)"
-                ).complete()
-                self._instance.catalog_root = root
-                self._instance.catalog_named = named
+                self._attach_catalog()
             finally:
                 if self._guarded:
                     self._arm()
+
+    def _market_root(self, named: Path) -> None:
+        """Hold `named` as the one catalog root this instance reads market rows from, refused by
+        name, whether or not a transaction is open, when the instance reads another root's or
+        the root has no catalog. Called under the instance's catalog lock."""
+        if named == self._instance.catalog_named:  # every open asks: no path resolution once held
+            return
+        root = named.resolve()
+        if self._instance.catalog_root == root:
+            return
+        if self._instance.catalog_root is not None:
+            raise ValueError("workspace_database.market_catalog_root_changed")
+        if not (root / "machine" / "catalog.sqlite").is_file():
+            raise ValueError("workspace_database.market_catalog_unavailable")
+        self._instance.catalog_root = root
+        self._instance.catalog_named = named
+
+    def _attach_catalog(self) -> None:
+        """Load the catalog's extensions into the instance and attach its catalog: about a
+        tenth of a second, since the engine checks each extension's signature at every load.
+        Called under the instance's catalog lock, outside any transaction on this handle."""
+        root = cast(Path, self._instance.catalog_root)
+        catalog_name = (root / "machine" / "catalog.sqlite").as_posix().replace("'", "''")
+        data_path = (root / "data").as_posix().replace("'", "''")
+        for _, binary in ducklake_extensions():
+            self._raw.execute(f"LOAD '{binary}'").complete()
+        self._raw.execute(
+            f"ATTACH 'ducklake:sqlite:{catalog_name}' AS workspace_market"
+            f" (DATA_PATH '{data_path}/', READ_ONLY)"
+        ).complete()
+        self._instance.catalog_attached = True
 
     def bind_on_use(self, binds: Mapping[str, Callable[[], None]]) -> None:
         """Run each relation's bind on this handle before its first statement whose text names
@@ -368,13 +385,19 @@ class WorkspaceConnection:
         self,
         cache: str,
         selection: Callable[[Any], object],
-        build: Callable[[duckdb.DuckDBPyConnection], None],
+        build: Callable[[duckdb.DuckDBPyConnection, bool], bool],
+        root: Path,
     ) -> bool:
-        """Keep the published market selection in the instance's in-memory database `cache`,
-        attached once: `build` refills it, in a transaction of its own, when the `selection` read
-        there differs from the one it holds. A connection in a transaction cannot refill it and
-        answers False unless it holds that selection already; its reads then take the live rows."""
+        """Keep the published market selection of the catalog at `root` in the instance's
+        in-memory database `cache`, attached once: `build` refills it, in a transaction of its
+        own, when the `selection` read there differs from the one it holds. `build` is told
+        whether the instance has attached the catalog, and answers False, having written
+        nothing, when the refill must read it: the catalog is attached then and the refill runs
+        again, so an instance whose selection this process has read already attaches none. A
+        connection in a transaction cannot refill it and answers False unless it holds that
+        selection already; its reads then take the live rows."""
         with self._instance.catalog_lock:
+            self._market_root(root)
             held = self._instance.market_selection
             if self._instance.market_cache_attached and selection(self) == held:
                 return True
@@ -386,19 +409,32 @@ class WorkspaceConnection:
                 if not self._instance.market_cache_attached:
                     self._raw.execute(f"ATTACH ':memory:' AS {cache} (READ_WRITE)").complete()
                     self._instance.market_cache_attached = True
-                self._raw.execute("BEGIN TRANSACTION")
-                try:
-                    held = selection(self._raw)
-                    build(self._raw)
-                    self._raw.execute("COMMIT")
-                except BaseException:
-                    self._raw.execute("ROLLBACK")
-                    raise
+                held, filled = self._refill(selection, build)
+                if not filled:  # with the catalog attached, `build` fills the copy or raises
+                    self._attach_catalog()
+                    held, _ = self._refill(selection, build)
                 self._instance.market_selection = held
             finally:
                 if self._guarded:
                     self._arm()
         return True
+
+    def _refill(
+        self,
+        selection: Callable[[Any], object],
+        build: Callable[[duckdb.DuckDBPyConnection, bool], bool],
+    ) -> tuple[object, bool]:
+        """One refill transaction (`hold_market_selection`): the selection read in it, and whether
+        `build` filled the copy, committed, or answered that it needs the catalog, rolled back."""
+        self._raw.execute("BEGIN TRANSACTION")
+        try:
+            held = selection(self._raw)
+            filled = build(self._raw, self._instance.catalog_attached)
+            self._raw.execute("COMMIT" if filled else "ROLLBACK")
+        except BaseException:
+            self._raw.execute("ROLLBACK")
+            raise
+        return held, filled
 
     def _refuse_unguardable(
         self, query: object
@@ -829,9 +865,13 @@ class _Instance:
     handles: set[WorkspaceConnection] = field(default_factory=set)
     root: duckdb.DuckDBPyConnection | None = None
     catalog_root: Path | None = None
+    """The one catalog root the instance reads market rows from, attached or not."""
     catalog_lock: threading.Lock = field(default_factory=threading.Lock)
     market_facts: set[str] = field(default_factory=set)
-    catalog_named: Path | None = None  # `catalog_root` as its first attach named it
+    catalog_named: Path | None = None  # `catalog_root` as its first reader named it
+    catalog_attached: bool = False
+    """Whether the instance has attached the catalog at `catalog_root`: only once one of its
+    reads must read the catalog itself (`hold_market_selection`)."""
     market_cache_attached: bool = False
     market_selection: object = None
     """The published market selection held by the instance's in-memory copy
