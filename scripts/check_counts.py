@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable
@@ -89,6 +88,8 @@ RATCHETS = (WAITS, TYPE_IGNORES, ROW_CROSSINGS)
 
 
 def _git(*words: str) -> str:
+    import subprocess  # here only: a unit test importing this script imports no process module
+
     done = spawn.run(
         ["git", *words],
         cwd=ROOT,
