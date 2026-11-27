@@ -15,6 +15,7 @@ from alphalattice.capabilities.domain_contracts.project_layout import resolve_pl
 from alphalattice.interface.local_application import thin_cli
 from alphalattice.kernel import storage
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.config import data_root
 
 
 def serve(arguments: list[str]) -> int:
@@ -27,6 +28,7 @@ def serve(arguments: list[str]) -> int:
     selected, _rest = entry.parse_known_args(arguments)
 
     from .web_launcher import (  # lazy: only serve prepares and launches a Host
+        _refusal,
         attached_child,
         detached_refusal,
         prepare_native_threads,
@@ -40,10 +42,35 @@ def serve(arguments: list[str]) -> int:
     ):
         return refusal
     prepare_native_threads(selected.workspace)
-    from alphalattice.control.product_host.composition.research_workspace import (
+    from alphalattice.capabilities.data.errors import DataError  # lazy: Host format refusal
+    from alphalattice.foundation.data_layer.root import require_log_schema  # lazy: Host log
+    from alphalattice.interface.local_application.cli_contract import refusal_words  # lazy: refusal
+
+    from .research_workspace import (  # lazy: Host manifest
         RESEARCH_WORKSPACE_MANIFEST_NAME,
+        ResearchWorkspaceError,
         read_research_workspace_manifest,
     )
+
+    try:
+        manifest = (
+            read_research_workspace_manifest(selected.workspace)
+            if (selected.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
+            else None
+        )
+    except ResearchWorkspaceError as error:
+        code = str(error)
+        if code != "research_workspace.manifest_before_blake3":
+            raise
+        words = refusal_words(code)
+        return _refusal(code, words["detail"], words["next_action"])
+    log = data_root() / "machine" / "log.sqlite"
+    if log.is_file():
+        try:
+            require_log_schema(log)  # immutable preflight, before a workspace or Host can write
+        except DataError as error:
+            return _refusal(error.failure.code, str(error), "START_A_NEW_WORKSPACE")
+
     from alphalattice.interface.local_application.retrieval_environment import (  # lazy: serve
         LOCKED_SETUP_DISCLOSURE,
         LOCKED_SETUP_WORDS,
@@ -59,11 +86,6 @@ def serve(arguments: list[str]) -> int:
         print(json.dumps(road))
         return 2
     arguments = [a for a in arguments if a != "--new-research"]
-    manifest = (
-        read_research_workspace_manifest(selected.workspace)
-        if (selected.workspace / RESEARCH_WORKSPACE_MANIFEST_NAME).is_file()
-        else None
-    )
     interpreter = interpreter_path()
     root = resolve_playpen_root(Path(__file__))
     checkout = (root / "pyproject.toml").is_file()

@@ -705,6 +705,7 @@
     "xxhash": "identity"
   },
   "deferred_imports": {
+    "alphalattice.capabilities.data.errors": "Load typed data startup failures only for Host launch, beyond the thin CLI.",
     "alphalattice.control.observation_runtime.telemetry.process_metrics": "Read the Host's effective processor allowance when preparing native startup.",
     "alphalattice.evidence.alternative_evidence.runtime.execution": "Read the workspace's CPU setting before numerical imports or open Evidence execution on first use.",
     "alphalattice.control.workspace_runtime.content_store": "Load the file writer when native usage settings are written.",
@@ -840,7 +841,7 @@
     "alphalattice.interface.local_application.activity": "Load the activity contract only while its build-time operation checks are requested.",
     "alphalattice.interface.local_application.answers": "Load typed answer models only for schema or readback commands that need them.",
     "alphalattice.interface.local_application.cli": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
-    "alphalattice.interface.local_application.cli_contract": "Read localized CLI refusal words only if its output pipe closes.",
+    "alphalattice.interface.local_application.cli_contract": "Read CLI refusal words at startup refusal or when its output pipe closes.",
     "alphalattice.interface.local_application.client": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.experiment_report": "Defer this numerical or optional implementation until its owner requests it; dependencies: numpy.",
     "alphalattice.interface.local_application.goals": "Load research goal orchestration when the first-use command runs.",
@@ -894,7 +895,7 @@
     "alphalattice.foundation.data_layer.kept_files": "Load a workspace's kept files only when one is read, written, carried or named at admission; it loads the array door.",
     "alphalattice.foundation.data_layer.history": "Load the Host's history only for a step a Host records; it brings the OpenTelemetry SDK.",
     "alphalattice.foundation.data_layer.log": "Record a kept worker in its data root only when its first call names the root; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
-    "alphalattice.foundation.data_layer.root": "Name the data root's variable only when a kept worker's call is handed over or run; the data-layer package it loads brings blake3 and DuckDB, which a worker's start does not need.",
+    "alphalattice.foundation.data_layer.root": "Preflight the Host log or name the data root when a kept worker's call is handed over or run. Loading the data-layer package brings blake3 and DuckDB, which a worker's start does not need.",
     "alphalattice.foundation.data_layer.store": "Open the DuckDB/DuckLake writer only when a Host admits world rows or receives or reads native telemetry; ordinary history and CLI startup need no catalog.",
     "alphalattice.foundation.data_layer.telemetry": "Load decoding only for Host ingest; the data-layer package imports numerical storage dependencies that a spawned launcher must not load before its worker budget.",
     "alphalattice.foundation.data_layer.spans": "Defer this optional implementation until a Host or a traced worker call records a span; dependencies: opentelemetry-sdk.",

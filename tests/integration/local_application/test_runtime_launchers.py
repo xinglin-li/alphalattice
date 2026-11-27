@@ -914,6 +914,46 @@ def test_a_detached_launch_refuses_what_it_cannot_serve(
 
         assert main(launch, serve=entry.serve) == 2
         assert json.loads(capsys.readouterr().out) == refused
+
+        import sqlite3
+
+        from alphalattice.foundation.data_layer import history
+        from tests.portfolio_strategy_lab.cli_support import SCRIPT, cli_environment
+
+        legacy = tmp_path / "earlier"
+        legacy.mkdir()
+        manifest = legacy / "research-workspace.json"
+        manifest.write_text('{"manifest_schema":"research-workspace-manifest"}', encoding="utf-8")
+        data = tmp_path / "earlier-data"
+        log = data / "machine" / "log.sqlite"
+        log.parent.mkdir(parents=True)
+        with contextlib.closing(sqlite3.connect(log)) as database:
+            database.execute("PRAGMA user_version = 16")  # the 0.2.9 archive
+        before = manifest.read_bytes(), log.read_bytes()
+        command = ["--workspace", str(legacy), "serve", "--no-browser"]
+        result = spawn.run(
+            [sys.executable, str(SCRIPT), *command, "--detach"],
+            env={**cli_environment(), "ALPHALATTICE_DATA_ROOT": str(data)},
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        assert result.returncode == 2, result.stderr
+        refused = json.loads(result.stdout)
+        assert refused["failure_code"] == "research_workspace.manifest_before_blake3"
+        assert refused["next_action"] == "START_A_NEW_WORKSPACE"
+        assert "fresh data root" in refused["detail"]
+        assert (manifest.read_bytes(), log.read_bytes()) == before
+        with history.own_root(data):
+            # The machine root refuses before an empty workspace can be initialized.
+            assert main(["--workspace", str(tmp_path / "fresh"), "serve"], serve=entry.serve) == 2
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["failure_code"] == "data_layer.schema_mismatch"
+        assert refused["next_action"] == "START_A_NEW_WORKSPACE"
+        assert "fresh data root" in refused["detail"]
+        assert list(legacy.iterdir()) == [manifest]
+        assert list(data.iterdir()) == [log.parent] and list(log.parent.iterdir()) == [log]
+        assert log.read_bytes() == before[1] and not (tmp_path / "fresh").exists()
     foreign_budget.unlink()
     with monkeypatch.context() as escaping:
         escaping.setattr(
