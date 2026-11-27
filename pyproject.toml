@@ -25,6 +25,8 @@ dependencies = [
     "opentelemetry-api>=1.45.2,<2",
     "opentelemetry-sdk>=1.45.2,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
+    # Already locked with the OTLP exporter; the egress owner gives a loopback export a direct session.
+    "requests>=2.34,<3",
     # The Host's OTLP receiver uses these already-locked protocol packages directly.
     "opentelemetry-proto>=1.45.2,<2",
     "protobuf>=7.35.1,<8",

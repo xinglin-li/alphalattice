@@ -91,6 +91,7 @@ def otlp_receiver(monkeypatch):
     monkeypatch.delenv("ALPHALATTICE_NETWORK_DISABLED", raising=False)
     monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", f"http://127.0.0.1:{server.server_port}")
     try:
         yield received
@@ -284,6 +285,12 @@ def test_a_cli_trace_runs_through_a_host_step_into_its_worker_as_one_tree(
     }
     now = datetime(2026, 11, 16, tzinfo=UTC)
     set_network_access(tmp_path, enabled=True, now=now)
+    # Under the operator's offline switch and an ambient proxy, the workspace's own control still
+    # lets its spans reach the loopback receiver, sent direct: a loopback receiver is no egress.
+    monkeypatch.setenv("ALPHALATTICE_NETWORK_DISABLED", "1")
+    for proxy in ("HTTP_PROXY", "HTTPS_PROXY"):  # a closed port: a proxied send would fail
+        monkeypatch.setenv(proxy, "http://127.0.0.1:9")
+    monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.setenv(history.DATA_ROOT_ENV, str(tmp_path / "data"))  # the Host's data root
     WorkspaceApplicationSession.open_history("w1", tmp_path, lambda: now)
     secret = "sk-" + "A" * 24

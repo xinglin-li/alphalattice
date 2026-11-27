@@ -166,6 +166,7 @@ def test_a_host_records_its_workspace_and_a_second_host_is_refused_by_name(
     folder = tmp_path / "workspace"
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", raising=False)
     with monkeypatch.context() as no_network:
 
         def no_socket(*args, **kwargs):

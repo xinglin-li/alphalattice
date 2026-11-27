@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from .http import EgressRefusal, HttpSource, require_destination
+from .http import EgressRefusal, HttpSource, direct_session, require_destination
 
 _REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECTS = 20
@@ -16,9 +16,8 @@ _YAHOO_TIMEOUT_SECONDS = 30.0
 
 def yahoo_session(factory: Callable[[], Any]) -> Any:
     """Keep the SDK's session and cookie jar, so the transport applies to its own requests."""
-    session = factory()
+    session = direct_session(factory)
     send = session.request
-    session.trust_env = False
 
     def request(method: str, url: str, **arguments: Any) -> Any:
         timeout = arguments.pop("timeout", _YAHOO_TIMEOUT_SECONDS)

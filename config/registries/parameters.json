@@ -13060,8 +13060,13 @@
 },
 "src/alphalattice/foundation/data_layer/spans.py::force_flush::30000": {
 "class": "EXECUTION",
-"count": 3,
-"description": "The milliseconds a span flush may take before it gives up, bounding how long a flush waits."
+"count": 4,
+"description": "The milliseconds a span or metric flush may take before it gives up, bounding how long a flush waits."
+},
+"src/alphalattice/foundation/data_layer/spans.py::on_end::1000000000.0": {
+"class": "METHOD",
+"count": 1,
+"description": "Nanoseconds per second converts a Host request span's start and end times to the seconds its duration histogram records."
 },
 "src/alphalattice/foundation/data_layer/spans.py::occurred_us::1000": {
 "class": "METHOD",

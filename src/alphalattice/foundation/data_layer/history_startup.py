@@ -31,6 +31,7 @@ from alphalattice.foundation.data_layer.history_runtime import (
     _lock,
     _open,
     _remote,
+    _remote_meters,
     close_history,
     define,
     held,
@@ -57,7 +58,7 @@ def open_history(
     folder: Path,
     root: Path | None = None,
     *,
-    can_export: Callable[[], bool] | None = None,
+    can_export: Callable[[bool], bool] | None = None,
     carried_checks: Mapping[str, CarriedCheck] | None = None,
     duckdb_threads: int | None = None,
 ) -> None:
@@ -67,7 +68,8 @@ def open_history(
     `data_layer.history_unavailable` when the views do not; either way the data root is released.
     The first Host sets the shared catalog's pool width for its lifetime. Opening an open history
     again records the workspace only. The results a copy carries are admitted once their owners'
-    `carried_checks` prove them; a refusal releases this opening.
+    `carried_checks` prove them; a refusal releases this opening. `can_export(loopback)` says
+    whether telemetry may be sent now, to a loopback receiver or to any other.
     """
     with _lifecycle:
         log = held(root)
@@ -105,7 +107,7 @@ def open_history(
 
             exporter = LogSpanExporter(log)
             remote = _remote(ExternalSpanProcessor, can_export)
-            tracer = tracer_provider(exporter, remote=remote)
+            tracer = tracer_provider(exporter, remote=remote, meters=_remote_meters(can_export))
             facts = LogFactExporter(exporter)
             logger = logger_provider(facts)
             with _lock:

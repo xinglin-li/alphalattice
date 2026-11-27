@@ -237,6 +237,13 @@ def persons_stop(workspace: Path | None, now: datetime) -> bool:
     return persons and control is False
 
 
+def workspace_permits(workspace: Path, now: datetime) -> bool:
+    """The workspace's own control alone, apart from the run's and the operator's offline holds:
+    on only when set on, so the person's stop and the closed default read False. A receiver on
+    this machine's loopback, which is no egress, asks only this."""
+    return _control(workspace, now)[0] is True
+
+
 def network_access(
     workspace: Path | None = None,
     environment: Mapping[str, str] | None = None,

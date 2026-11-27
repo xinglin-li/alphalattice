@@ -26,6 +26,7 @@ history is open.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
@@ -65,6 +66,7 @@ from alphalattice.foundation.data_layer.root import (
 from alphalattice.kernel.clock import wall_time_ns
 from alphalattice.kernel.config import Change, process_override
 from alphalattice.kernel.config import current as process_config
+from alphalattice.kernel.egress import direct_session
 from alphalattice.kernel.execution import interruptible
 
 if TYPE_CHECKING:
@@ -73,6 +75,11 @@ if TYPE_CHECKING:
 
 OTLP_ENDPOINT_ENV: Final = "OTEL_EXPORTER_OTLP_ENDPOINT"
 OTLP_TRACES_ENDPOINT_ENV: Final = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+OTLP_METRICS_ENDPOINT_ENV: Final = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+_OTLP_SIGNAL_ENDPOINT_ENV: Final = {
+    "traces": OTLP_TRACES_ENDPOINT_ENV,
+    "metrics": OTLP_METRICS_ENDPOINT_ENV,
+}
 OTLP_CONTENT_ENV: Final = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 EVIDENCE_TYPE: Final = "research_evidence"
 """The artifact type of a trial's execution evidence, registered by the Host as its own."""
@@ -439,63 +446,135 @@ def _capture_message_content() -> bool:
     }
 
 
-def _remote(processor: Any, can_export: Callable[[], bool] | None) -> Any:
-    """Scrub and send opted-in OTLP traces while the workspace's network control allows it."""
+def _otlp_endpoint(signal: str) -> str:
+    """The OTLP/HTTP URL the process names for `signal` (traces or metrics): its own variable, else
+    the base endpoint with the signal's path; empty when neither is set."""
     config = process_config()
-    traces = config.secret(OTLP_TRACES_ENDPOINT_ENV)
-    endpoint = traces.reveal().strip() if traces is not None else ""
-    if not endpoint:
-        base = config.secret(OTLP_ENDPOINT_ENV)
-        base_endpoint = base.reveal().strip() if base is not None else ""
-        if not base_endpoint:
-            return None
-        endpoint = f"{base_endpoint.removesuffix('/')}/v1/traces"
+    own = config.secret(_OTLP_SIGNAL_ENDPOINT_ENV[signal])
+    endpoint = own.reveal().strip() if own is not None else ""
+    if endpoint:
+        return endpoint
+    base = config.secret(OTLP_ENDPOINT_ENV)
+    base_endpoint = base.reveal().strip() if base is not None else ""
+    return f"{base_endpoint.removesuffix('/')}/v1/{signal}" if base_endpoint else ""
+
+
+def _loopback(host: str | None) -> bool:
+    """Whether `host` is a literal loopback address (127.0.0.0/8 or ::1), never a resolved name."""
+    try:
+        return ipaddress.ip_address(host or "").is_loopback
+    except ValueError:
+        return False
+
+
+def otlp_refusal(endpoint: str, *, offline: bool) -> str | None:
+    """Why `endpoint` may not receive OTLP, or None when it may: it is an HTTP URL without
+    credentials, query or fragment, and offline only a receiver at a literal loopback address is
+    admitted, since one on this machine is no egress; any other host is refused by name."""
     try:
         address = urlsplit(endpoint)
-        if (
-            address.scheme not in {"http", "https"}
-            or not address.hostname
-            or address.username is not None
-            or address.password is not None
-            or address.query
-            or address.fragment
-            or secrets_in({"endpoint": endpoint})
-        ):
-            raise ValueError("endpoint must be an HTTP URL without credentials or query")
-        if offline():
-            logging.getLogger(__name__).warning("OTLP export is off: the Host is offline")
-            return None
-        from opentelemetry.exporter.otlp.proto.http import (  # lazy: opt-in export
-            trace_exporter,
-        )
-        from opentelemetry.sdk.trace.export import (  # lazy: opt-in export
-            SpanExportResult,
-        )
+        host = address.hostname
+    except ValueError:
+        return "otlp.endpoint_invalid"
+    if (
+        address.scheme not in {"http", "https"}
+        or not host
+        or address.username is not None
+        or address.password is not None
+        or address.query
+        or address.fragment
+        or secrets_in({"endpoint": endpoint})
+    ):
+        return "otlp.endpoint_invalid"
+    if offline and not _loopback(host):
+        return f"otlp.offline_host_refused: {host}"
+    return None
 
-        class NetworkBoundExporter(trace_exporter.OTLPSpanExporter):
-            def export(self, spans):
-                try:
-                    if offline() or can_export is None or not can_export():
-                        logging.getLogger(__name__).warning(
-                            "OTLP export is off: workspace network is not allowed"
-                        )
-                        return SpanExportResult.FAILURE
-                except Exception as error:
-                    logging.getLogger(__name__).warning(
-                        "OTLP export is off: network control unavailable (%s)",
-                        type(error).__name__,
-                    )
-                    return SpanExportResult.FAILURE
-                return super().export(spans)
 
-        return processor(
-            NetworkBoundExporter(endpoint=endpoint), include_content=_capture_message_content()
-        )
+def _otlp_exporter(
+    signal: str, can_export: Callable[[bool], bool] | None
+) -> tuple[Any, bool] | None:
+    """The SDK's OTLP/HTTP exporter for `signal` and whether its receiver is on loopback; it sends a
+    batch while the workspace's network control allows it, and offline only to a loopback receiver.
+    None when no endpoint is named or it is refused."""
+    log = logging.getLogger(__name__)
+    endpoint = _otlp_endpoint(signal)
+    if not endpoint:
+        return None
+    if (refusal := otlp_refusal(endpoint, offline=offline())) is not None:
+        log.warning("OTLP %s export is off: %s", signal, refusal)
+        return None
+    loopback = _loopback(urlsplit(endpoint).hostname)
+
+    def allowed() -> bool:
+        try:
+            if (loopback or not offline()) and can_export is not None and can_export(loopback):
+                return True
+            log.warning("OTLP export is off: workspace network is not allowed")
+        except Exception as error:
+            log.warning(
+                "OTLP export is off: network control unavailable (%s)", type(error).__name__
+            )
+        return False
+
+    try:
+        if signal == "traces":
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # lazy: opt-in
+                OTLPSpanExporter as Exporter,
+            )
+            from opentelemetry.sdk.trace.export import (  # lazy: opt-in export
+                SpanExportResult as Result,
+            )
+        else:
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (  # lazy: opt-in
+                OTLPMetricExporter as Exporter,
+            )
+            from opentelemetry.sdk.metrics.export import (  # lazy: opt-in export
+                MetricExportResult as Result,
+            )
+
+        class NetworkBoundExporter(Exporter):
+            def export(self, batch, *args, **kwargs):
+                return super().export(batch, *args, **kwargs) if allowed() else Result.FAILURE
+
+        # No ambient proxy may carry a loopback send off the machine.
+        session = direct_session() if loopback else None
+        return NetworkBoundExporter(endpoint=endpoint, session=session), loopback
     except (OSError, ValueError) as error:
-        logging.getLogger(__name__).warning(
+        log.warning(
             "OTLP export is off: endpoint or exporter unavailable (%s)", type(error).__name__
         )
         return None
+
+
+def _remote(processor: Any, can_export: Callable[[bool], bool] | None) -> Any:
+    """Scrub and send opted-in OTLP traces on `_otlp_exporter`'s terms."""
+    bound = _otlp_exporter("traces", can_export)
+    if bound is None:
+        return None
+    exporter, loopback = bound
+    return processor(exporter, include_content=_capture_message_content(), loopback=loopback)
+
+
+def _remote_meters(can_export: Callable[[bool], bool] | None) -> Any:
+    """A meter provider sending opted-in OTLP metrics on the traces' terms, each histogram point's
+    exemplar sampled by the SDK's trace-based filter; None when no metrics endpoint is admitted, so
+    a Host with no collector records no metric."""
+    bound = _otlp_exporter("metrics", can_export)
+    if bound is None:
+        return None
+    from opentelemetry.sdk.metrics import (  # lazy: opt-in export
+        MeterProvider,
+        TraceBasedExemplarFilter,
+    )
+    from opentelemetry.sdk.metrics.export import (  # lazy: opt-in export
+        PeriodicExportingMetricReader,
+    )
+
+    reader = PeriodicExportingMetricReader(bound[0])
+    return MeterProvider(
+        [reader], exemplar_filter=TraceBasedExemplarFilter(), shutdown_on_exit=False
+    )
 
 
 @contextmanager

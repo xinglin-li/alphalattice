@@ -160,6 +160,7 @@ dependencies = [
     { name = "pydantic-core" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "tiktoken" },
     { name = "xxhash" },
 ]
@@ -296,6 +297,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1,<2" },
     { name = "pytz", marker = "extra == 'data'", specifier = ">=2026.2,<2027" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
+    { name = "requests", specifier = ">=2.34,<3" },
     { name = "scikit-learn", marker = "extra == 'quant'", specifier = ">=1.9,<2" },
     { name = "scipy", marker = "extra == 'quant'", specifier = ">=1.18,<2" },
     { name = "sentencepiece", marker = "extra == 'semantic'", specifier = "==0.2.1" },

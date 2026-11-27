@@ -8,12 +8,15 @@ from typing import cast
 import pytest
 from opentelemetry import context as current
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
+from opentelemetry.sdk.metrics import MeterProvider, TraceBasedExemplarFilter
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import Event, ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
 from opentelemetry.trace import SpanContext, Status, StatusCode, TraceFlags, TraceState
 
+from alphalattice.capabilities.domain_contracts import telemetry_names as telemetry
 from alphalattice.foundation.data_layer import spans
 from alphalattice.foundation.data_layer.spans import (
     RowsExporter,
@@ -156,3 +159,32 @@ def test_a_span_below_w3c_headers_is_their_child_and_works_for_their_baggage():
     )
     assert json.loads(inside["attrs"]) == {"k": 1, "trial_id": "t7"}  # its baggage stamped
     assert (outside["span_id"], outside["occurred_us"], outside_text) == (None, 5, None)
+
+
+@pytest.mark.proves("data_layer.slow_requests_link_their_traces")
+def test_a_slow_host_request_point_carries_its_own_trace_as_exemplar():
+    """Each Host request's seconds land in the HTTP server duration histogram by method and route,
+    and the slow point's exemplar is that request's own trace and span, sampled by the SDK's
+    trace-based filter; a span that is no Host request records no point."""
+    reader = InMemoryMetricReader()
+    meters = MeterProvider([reader], exemplar_filter=TraceBasedExemplarFilter())
+    provider = tracer_provider(InMemorySpanExporter(), meters=meters)
+    tracer = provider.get_tracer("host")
+    request = {telemetry.OPERATION: "read", telemetry.ROUTE: "POST /api/read"}
+    started = 1_794_700_000_000_000_000
+    for seconds in (0.02, 42):
+        span = tracer.start_span(
+            telemetry.SPAN_HOST_REQUEST, attributes=request, start_time=started
+        )
+        span.end(end_time=started + int(seconds * 1e9))
+    slow = span.get_span_context()
+    tracer.start_span(telemetry.SPAN_WORKER_CALL, attributes={telemetry.CALL: "read"}).end()
+    data = reader.get_metrics_data()
+    assert data is not None
+    (metric,) = [m for r in data.resource_metrics for s in r.scope_metrics for m in s.metrics]
+    (point,) = metric.data.data_points
+    assert (metric.name, metric.unit, point.count) == ("http.server.request.duration", "s", 2)
+    assert dict(point.attributes) == {"http.request.method": "POST", "http.route": "/api/read"}
+    (exemplar,) = [exemplar for exemplar in point.exemplars if exemplar.value == 42]
+    assert (exemplar.trace_id, exemplar.span_id) == (slow.trace_id, slow.span_id)
+    provider.shutdown()

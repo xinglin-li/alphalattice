@@ -6,6 +6,7 @@ from .http import (
     HttpEgress,
     HttpResponse,
     HttpSource,
+    direct_session,
     require_network,
 )
 from .network import OFFLINE_SWITCH, held_offline, offline, running_held_offline
@@ -20,6 +21,7 @@ __all__ = [
     "HttpEgress",
     "HttpResponse",
     "HttpSource",
+    "direct_session",
     "held_offline",
     "offline",
     "require_network",

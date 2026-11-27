@@ -27,7 +27,7 @@ import sqlite3
 import threading
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from opentelemetry import baggage
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
@@ -48,7 +48,15 @@ from opentelemetry.sdk.trace.export import (
     SpanExportResult,
 )
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
-from opentelemetry.trace import Link, SpanContext, Status, StatusCode, TraceFlags
+from opentelemetry.trace import (
+    Link,
+    NonRecordingSpan,
+    SpanContext,
+    Status,
+    StatusCode,
+    TraceFlags,
+    set_span_in_context,
+)
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from alphalattice.capabilities.data.errors import DataError
@@ -56,6 +64,9 @@ from alphalattice.capabilities.domain_contracts import telemetry_names as teleme
 from alphalattice.capabilities.domain_contracts.environment import offline
 from alphalattice.foundation.data_layer.admit import NUMERIC, secrets_in
 from alphalattice.foundation.data_layer.log import HostLog, envelope
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.metrics import MeterProvider
 
 PREFIX: Final = telemetry.ALPHALATTICE_ATTRIBUTE_PREFIX
 _BAGGAGE_ATTRIBUTES: Final = (
@@ -282,10 +293,14 @@ def _without_trace_state(context: SpanContext) -> SpanContext:
 class ExternalSpanProcessor(SpanProcessor):
     """Scan each remote span before the SDK's bounded batch exporter receives it."""
 
-    def __init__(self, exporter: SpanExporter, *, include_content: bool = False) -> None:
-        """Send scrubbed spans to the supplied exporter, omitting content unless selected."""
+    def __init__(
+        self, exporter: SpanExporter, *, include_content: bool = False, loopback: bool = False
+    ) -> None:
+        """Send scrubbed spans to the supplied exporter, omitting content unless selected; a
+        `loopback` receiver is on this machine, no egress, so it receives them offline too."""
         self._batch = BatchSpanProcessor(exporter)
         self._include_content = include_content
+        self._loopback = loopback
 
     def scrub_span(self, span: ReadableSpan, *, for_log: bool = False) -> ReadableSpan:
         """Return an admitted copy without changing the original span."""
@@ -331,7 +346,7 @@ class ExternalSpanProcessor(SpanProcessor):
 
     def on_end(self, span: ReadableSpan) -> None:
         """Scan an ended span before queuing it for external export."""
-        if offline():
+        if offline() and not self._loopback:
             return
         try:
             self._batch.on_end(self.scrub_span(span))
@@ -415,15 +430,69 @@ class RecordedSpanProcessor(SpanProcessor):
         return self._remote.force_flush(timeout_millis)
 
 
+class LatencyHistograms(SpanProcessor):
+    """Each ended Host request's seconds into the semantic conventions' HTTP server duration, with
+    their advised bounds, recorded in the request span's own context, so the meter's trace-based
+    exemplar filter links a slow point to its trace and span."""
+
+    def __init__(self, meters: MeterProvider) -> None:
+        """Record into `meters`, which this processor shuts down with its tracer provider."""
+        from opentelemetry.instrumentation._semconv import (  # lazy: a configured meter's
+            HTTP_DURATION_HISTOGRAM_BUCKETS_NEW,
+        )
+        from opentelemetry.semconv.attributes.http_attributes import (  # lazy: a configured meter's
+            HTTP_REQUEST_METHOD,
+            HTTP_ROUTE,
+        )
+        from opentelemetry.semconv.metrics.http_metrics import (  # lazy: a configured meter's
+            HTTP_SERVER_REQUEST_DURATION,
+        )
+
+        self._meters, self._keys = meters, (HTTP_REQUEST_METHOD, HTTP_ROUTE)
+        self._requests = meters.get_meter(__name__).create_histogram(
+            HTTP_SERVER_REQUEST_DURATION,
+            unit="s",
+            description="Duration of HTTP server requests.",
+            explicit_bucket_boundaries_advisory=HTTP_DURATION_HISTOGRAM_BUCKETS_NEW,
+        )
+
+    def on_end(self, span: ReadableSpan) -> None:
+        """Record a Host request's duration, its exemplar the span itself."""
+        if span.name != telemetry.SPAN_HOST_REQUEST or span.context is None:
+            return
+        if span.start_time is None or span.end_time is None:
+            return
+        method, _, route = str((span.attributes or {}).get(telemetry.ROUTE, "")).partition(" ")
+        self._requests.record(
+            (span.end_time - span.start_time) / 1e9,
+            dict(zip(self._keys, (method, route), strict=True)),
+            context=set_span_in_context(NonRecordingSpan(span.context)),
+        )
+
+    def shutdown(self) -> None:
+        """Send the last points and stop the meters' reader."""
+        self._meters.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Send the recorded points within the supplied bound."""
+        return self._meters.force_flush(timeout_millis)
+
+
 def tracer_provider(
-    exporter: SpanExporter, *, remote: ExternalSpanProcessor | None = None
+    exporter: SpanExporter,
+    *,
+    remote: ExternalSpanProcessor | None = None,
+    meters: MeterProvider | None = None,
 ) -> TracerProvider:
-    """Record locally and, only when supplied, send scrubbed spans to a remote exporter."""
+    """Record locally and, only when supplied, send scrubbed spans to a remote exporter and each
+    Host request's seconds to `meters`."""
     provider = TracerProvider()
     provider.add_span_processor(BaggageSpanProcessor(_STAMPED.__contains__))
     provider.add_span_processor(
         SimpleSpanProcessor(exporter) if remote is None else RecordedSpanProcessor(exporter, remote)
     )
+    if meters is not None:
+        provider.add_span_processor(LatencyHistograms(meters))
     return provider
 
 

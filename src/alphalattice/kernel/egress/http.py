@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from enum import StrEnum
-from typing import Protocol, Self
+from typing import Any, Protocol, Self
 from urllib.parse import urlsplit
 
 from .network import offline
@@ -126,6 +126,18 @@ def require_destination(source: HttpSource, url: str) -> None:
         allowed = False
     if not allowed:
         raise EgressRefusal("egress.host_not_allowed", source.value)
+
+
+def direct_session(factory: Callable[[], Any] | None = None) -> Any:
+    """A Requests session, `factory`'s (an SDK's own) or a new one, that reads no proxy, netrc or
+    certificate setting from the environment: a send it makes goes to its destination direct."""
+    if factory is None:
+        import requests  # lazy: only a sender that needs a direct session
+
+        factory = requests.Session
+    session = factory()
+    session.trust_env = False
+    return session
 
 
 class HttpEgress:

@@ -1166,6 +1166,12 @@
       "layer": "unit",
       "seconds": 1
     },
+    "data_layer.offline_otlp_only_to_loopback": {
+      "description": "Offline, the Host admits an OTLP endpoint only at a literal loopback address (127.0.0.0/8 or ::1) and refuses any other host, a name included, by that host.",
+      "owner": "alphalattice.foundation.data_layer",
+      "layer": "unit",
+      "seconds": 1
+    },
     "data_layer.one_block_of_admissions_is_one_snapshot": {
       "description": "Admissions made in one block share one catalog snapshot, each keeping its own admission and event, and a refusal commits the admissions made before it.",
       "owner": "alphalattice.foundation.data_layer",
@@ -1318,6 +1324,12 @@
       "lower_layer": "The seed registry is package data the unit layer may not read; the log a data root is born with holds it.",
       "owner": "alphalattice.foundation.data_layer",
       "layer": "integration",
+      "seconds": 1
+    },
+    "data_layer.slow_requests_link_their_traces": {
+      "description": "Each Host request's seconds are recorded in the HTTP server duration histogram by method and route, and a point's exemplar is the trace and span of the request that made it.",
+      "owner": "alphalattice.foundation.data_layer",
+      "layer": "unit",
       "seconds": 1
     },
     "data_layer.spans_are_step_events": {

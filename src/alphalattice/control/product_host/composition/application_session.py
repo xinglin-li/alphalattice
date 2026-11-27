@@ -39,7 +39,10 @@ from alphalattice.control.workspace_runtime.database import (
     retain_workspace_database,
 )
 from alphalattice.control.workspace_runtime.mutation_gate import WorkspaceMutationGate
-from alphalattice.control.workspace_runtime.network_access import network_access
+from alphalattice.control.workspace_runtime.network_access import (
+    network_access,
+    workspace_permits,
+)
 from alphalattice.control.workspace_runtime.reader_threads import apply_reader_threads
 from alphalattice.control.workspace_runtime.writer_lease import WorkspaceWriterLease
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
@@ -207,14 +210,19 @@ class WorkspaceApplicationSession:
 
     @staticmethod
     def open_history(workspace_id: str, workspace: Path, clock: Callable[[], datetime]) -> None:
-        """Open Host history with the workspace's network control at the export boundary."""
+        """Open Host history with the workspace's network control at the export boundary: a
+        loopback receiver asks the workspace's control alone, any other its whole network access."""
         budget = CpuBudgetStore(workspace / "runtime").read().cpu_budget
         processors = len(current_allowed_logical_processors()) or 1
         open_history(
             workspace_id,
             workspace.name,
             workspace,
-            can_export=lambda: network_access(workspace, now=clock()).allowed,
+            can_export=lambda loopback: (
+                workspace_permits(workspace, clock())
+                if loopback
+                else network_access(workspace, now=clock()).allowed
+            ),
             carried_checks=carried_result_checks(),
             duckdb_threads=processors if budget == "auto" else min(processors, budget),
         )
