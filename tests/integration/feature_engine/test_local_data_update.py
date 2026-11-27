@@ -866,12 +866,18 @@ def test_a_stale_member_on_the_entrant_recheck_day_is_governed_before_any_featur
 
 
 @pytest.mark.parametrize(
-    ("interrupted", "raw_admits"), [(False, False), (True, False), (True, True)]
+    ("interrupted", "raw_admits", "audit"),
+    [
+        (False, False, False),
+        (True, False, False),
+        (True, True, False),
+        pytest.param(False, True, True, id="admitted-entrant-owes-audit"),
+    ],
 )
 def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
-    qualified, tmp_path, monkeypatch, raw_admits, interrupted
+    qualified, tmp_path, monkeypatch, raw_admits, interrupted, audit
 ):
-    """Due raw and feature rechecks are both planned and executed."""
+    """The Host retains recheck progress through interruption or a confirmed audit."""
 
     from alphalattice.control.data_platform.maintenance.coordinator import (
         WorkspaceMaintenanceCoordinator,
@@ -887,7 +893,7 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     admit_market_fixture(workspace, binding.workspace_id)
     symbols = (*SYMBOLS, "NEWH", "NEWS")
     candidate = _bootstrap(symbols)
-    tomorrow = NOW + timedelta(days=1)
+    tomorrow = NOW + timedelta(days=4 if audit else 1)
     clock_now = NOW
     provider = recording_provider(symbols=symbols, now=tomorrow + timedelta(days=1))
     provider.sectors["NEWH"] = "Sector-0"
@@ -899,6 +905,8 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
     sectorless = acquisition.listing_for_symbol("NEWS")
     assert short is not None and sectorless is not None
     fetch = provider.fetch_daily
+    audited = SYMBOLS[1]
+    restated = (tomorrow.date() - timedelta(days=46)).isoformat()
 
     def short_history(symbols, **kwargs):
         result = fetch(symbols, **kwargs)
@@ -906,6 +914,10 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
             result["NEWH"] = tuple(
                 row for row in result["NEWH"] if row["session_date"] >= SHORT_HISTORY_FROM
             )
+        if audit and clock_now == tomorrow:
+            for row in result.get(audited, ()):
+                if row["session_date"] == restated:
+                    row["volume"] += 1
         return result
 
     monkeypatch.setattr(provider, "fetch_daily", short_history)
@@ -991,6 +1003,35 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
         )
         live.dispatcher.drain_for_tests(timeout=300)
         result = _json(live, "/api/status?task_id=" + rerun["task_id"])
+        if audit:
+            assert result["lifecycle"] == "BLOCKED", result
+            assert result["latest_failure_code"] == "data.full_history_audit_approval_required"
+            moved = market.readiness.load("us-current-index-research")
+            assert moved.status == "FEATURE_BUILDING"
+            assert moved.active_manifest_revision != current.revision_sha256
+            assert (
+                market.load_universe_manifest_revision(
+                    moved.active_manifest_revision
+                ).listing_for_symbol("NEWH")
+                is not None
+            )
+            proposal = _json(live, "/api/data-update/plan", method="POST", payload={})
+            assert proposal["status"] == "CONFIRMATION_REQUIRED", proposal
+            assert proposal["change"]["action"] == "FULL_HISTORY_AUDIT"
+            assert proposal["change"]["full_history_listing_ids"] == [
+                current.listing_for_symbol(audited).listing_id
+            ]
+            request = {"update_plan_hash": proposal["plan_hash"]}
+            refused = _json(live, "/api/data-update/run", method="POST", payload=request)
+            assert refused["failure_code"] == "workspace_data_update.human_confirmation_required"
+            assert refused["detail"]
+            assert refused["next_requests"]["plan"] == {"operation": "DATA_UPDATE_PLAN"}
+            confirmed = _json(live, "/api/data-update/confirm", method="POST", payload=request)
+            assert confirmed["task_id"] == rerun["task_id"], confirmed
+            resumed = _json(live, "/api/data-update/run", method="POST", payload=request)
+            assert resumed["task_id"] == rerun["task_id"], resumed
+            live.dispatcher.drain_for_tests(timeout=300)
+            result = _json(live, "/api/status?task_id=" + rerun["task_id"])
         if interrupted:
             assert result["lifecycle"] == "RECOVERY_REQUIRED", result
             assert result["latest_failure_code"] == "TASK_EXECUTION_INTERRUPTED"
@@ -1027,7 +1068,8 @@ def test_due_raw_and_feature_rechecks_are_both_planned_and_executed(
         {"FEATURE_READY": 1} if raw_admits else {"QUALITY_INELIGIBLE": 1}
     )
     # Nothing before the ten-year window was fetched for anyone.
-    assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
+    if not audit:  # An explicitly confirmed full audit is the exception.
+        assert all(start > HISTORY_START for _, start, _ in provider.calls[prices_before:])
 
 
 def test_a_sectorless_candidates_recheck_fetches_it_alone_and_builds_once(

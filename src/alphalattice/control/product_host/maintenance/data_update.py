@@ -874,14 +874,39 @@ class WorkspaceDataUpdateApplication:
             self._previews.remember(planned)
         return self._plan_answer(planned, now, admitted=False)
 
+    def _recheck_working_revision(
+        self, task: TaskRecord, plan: WorkspaceDataUpdatePlan
+    ) -> str | None:
+        """Read the last working membership only if this Task bound it for its recheck."""
+        if plan.change is not None or (
+            plan.request.candidate_data_recheck is None and plan.request.candidate_recheck is None
+        ):
+            return None
+        latest = max(
+            self._registry().working_binds(self._cycle_id(plan)),
+            key=lambda bind: bind.sequence,
+            default=None,
+        )
+        return (
+            latest.manifest_revision
+            if latest is not None and latest.owner_task == str(task.task_id)
+            else None
+        )
+
     def _partial_transition(
         self, task: TaskRecord, plan: WorkspaceDataUpdatePlan, state: WorkspaceInputStatus
     ) -> bool:
-        """Read the exact approved journal that still owes its prior Panel an update (DUPD)."""
+        """Prove the journal or recheck bind that still owes its prior Panel an update."""
         change = plan.change
+        if change is None:
+            return (
+                task.failure_code == "data.full_history_audit_approval_required"
+                and state.panel_hash == plan.before.panel_hash
+                and state.panel_manifest_revision == plan.before.manifest_revision
+                and self._recheck_working_revision(task, plan) == state.manifest_revision
+            )
         if (
             task.input.input_schema_id != "workspace-data-update-human-confirmed"
-            or change is None
             or change.action != "UNIVERSE"
             or state.panel_manifest_revision is None
         ):
@@ -1910,10 +1935,9 @@ class WorkspaceDataUpdateApplication:
                 continue
             plan = self._plan_of(task, require_current=False)
             if (
-                plan.change is not None
-                and plan.change.action == "UNIVERSE"
-                and audit.content_hash in registry.admitted_audit_plans(self._cycle_id(plan))
-            ):
+                (plan.change is not None and plan.change.action == "UNIVERSE")
+                or self._recheck_working_revision(task, plan) is not None
+            ) and audit.content_hash in registry.admitted_audit_plans(self._cycle_id(plan)):
                 return task, plan
         return None
 

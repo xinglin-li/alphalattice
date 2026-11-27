@@ -1212,6 +1212,12 @@
   "detail": "The current Panel does not match the data binding required for this update. Read the data update's current record and the input state it reports; resolve that condition before planning the update again.",
   "next_action": "DATA_UPDATE_READBACK"
  },
+ "workspace_data_update.human_confirmation_required": {
+  "message_id": "workspace_data_update.human_confirmation_required",
+  "detail": "workspace_data_update.human_confirmation_required",
+  "next_action": "ASK_A_PERSON_TO_CONFIRM_THE_UPDATE_PLAN",
+  "next_requests": {"plan": {"operation": "DATA_UPDATE_PLAN"}}
+ },
  "workspace_data_update.plan_required": {
   "detail": "A data update's plan stays runnable for 60 minutes after its answer, across a Host restart, and a change plan until its person confirms it; this one is past that or was never planned in this workspace, so nothing ran. Plan the update again (`alphalattice data-update plan`), then run the plan hash the new answer names.",
   "next_action": "PLAN_THE_UPDATE_AGAIN"

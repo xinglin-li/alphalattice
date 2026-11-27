@@ -884,6 +884,15 @@
         "zh-CN": "一次已取消的更新在其 Panel 发布前留下了处于生效状态的候选名单；生效成员已恢复为 Panel 自身的成员，这一步只记录一次。"
       }
     },
+    "workspace_data_update.human_confirmation_required": {
+      "owner": "alphalattice.control.data_platform",
+      "kind": "MESSAGE",
+      "arguments": [],
+      "words": {
+        "en": "This update plan needs a person's confirmation. Read the update plan for its confirmation request, then have a person confirm that exact plan before running it.",
+        "zh-CN": "这份数据更新计划需要由本人确认。请先查看计划中的确认请求，待本人确认这份计划后再运行。"
+      }
+    },
     "workspace_maintenance.membership_owner_unproved": {
       "owner": "alphalattice.control.data_platform",
       "kind": "MESSAGE",
