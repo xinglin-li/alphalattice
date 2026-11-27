@@ -131,6 +131,7 @@ REQUIRED_SEED_FIELDS = frozenset(
         "evidence_index_id",
         "evidence_setup",
         "experience_query",
+        "experience_statement",
         "experience_trial",
         "experiment_curation",
         "experiment_document",
