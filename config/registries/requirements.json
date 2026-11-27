@@ -2922,6 +2922,13 @@
       "seconds": 10,
       "lower_layer": "The proof uses a published Portfolio catalog, its Evidence log, backup and a second data root; the unit layer cannot hold them."
     },
+    "product_host.cpu_budget_answers_without_opening_the_review": {
+      "description": "Setting and showing the CPU budget answer this process's preparations running and the machine's load without opening the Evidence review.",
+      "owner": "alphalattice.control.product_host",
+      "layer": "integration",
+      "seconds": 5,
+      "lower_layer": "It composes a workspace session over a real workspace manifest and Task registry, which a pure unit cannot stand in for."
+    },
     "product_host.first_start_asks_a_clean_workspace_once": {
       "description": "A start asks the upgrade families once of a workspace folder holding no old data; its next start asks nothing, and another folder or a changed declaration is asked again.",
       "owner": "alphalattice.control.product_host",

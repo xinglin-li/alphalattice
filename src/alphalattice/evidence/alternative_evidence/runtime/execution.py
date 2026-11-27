@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from threading import Condition, Lock
-from typing import Annotated, Literal, TypeVar, cast
+from typing import Annotated, Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
 import psutil
@@ -44,6 +44,7 @@ from alphalattice.control.observation_runtime.telemetry.process_metrics import (
     busy_logical_processors,
     runtime_machine_capacity,
 )
+from alphalattice.control.task_control.contracts import TaskLifecycle, TaskRecord
 from alphalattice.kernel.execution import EVENTS, EventDeadline
 from alphalattice.kernel.identity import BLAKE3_PATTERN
 from alphalattice.kernel.resources import (
@@ -431,6 +432,26 @@ class RunningPreparations:
             for task_id in [value for value in self._plans if not alive(value)]:
                 del self._plans[task_id]
             return len(self._plans)
+
+    def running_on(self, registry: TaskReader) -> int:
+        """How many run as `registry` reads their Tasks: one it no longer reads as running, or
+        cannot read, has ended."""
+
+        def alive(task_id: UUID) -> bool:
+            try:
+                return registry.task(task_id).lifecycle is TaskLifecycle.RUNNING
+            except (KeyError, ValueError):
+                return False
+
+        return self.running(alive)
+
+
+class TaskReader(Protocol):
+    """The Task registry's one read a running count needs."""
+
+    def task(self, task_id: UUID) -> TaskRecord:
+        """The Task's record."""
+        ...
 
 
 PREPARATIONS = RunningPreparations()

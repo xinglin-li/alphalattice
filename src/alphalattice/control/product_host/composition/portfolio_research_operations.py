@@ -170,6 +170,7 @@ from alphalattice.evidence.alternative_evidence.publication.artifacts import (
 )
 from alphalattice.evidence.alternative_evidence.runtime.execution import (
     MAXIMUM_CPU_BUDGET,
+    PREPARATIONS,
     CpuBudgetStore,
     budget_cores,
     machine_load,
@@ -5199,13 +5200,15 @@ class PortfolioResearchOperations:
         The budget as set, the machine as found (processors, load, memory, book preparations
         running), what the budget gives a book now and the last preparation's receipt: what an
         operator or agent reads to choose a budget. An execution setting (`cpu-budget show` and
-        `set`): how fast, never what (F1).
+        `set`): how fast, never what (F1). The book preparations running are this process's,
+        counted on the workspace's Task registry without opening the Evidence review.
         """
         store = CpuBudgetStore(self.workspace_session.workspace / "runtime")
         budget = store.read()
-        adapter = None if self.review is None else self.review.evidence_task_adapter
         machine = machine_load(
-            preparations_running=0 if adapter is None else adapter.preparations_running()
+            preparations_running=PREPARATIONS.running_on(
+                self.workspace_session.task_control_registry
+            )
         )
         now = plan_execution(
             budget,

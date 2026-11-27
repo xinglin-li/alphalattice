@@ -667,14 +667,7 @@ class AlternativeEvidenceDocumentTaskAdapter:
 
     def preparations_running(self) -> int:
         """Count book preparations currently running in this Host."""
-
-        def alive(task_id: UUID) -> bool:
-            try:
-                return self.registry.task(task_id).lifecycle is TaskLifecycle.RUNNING
-            except (KeyError, ValueError):
-                return False
-
-        return PREPARATIONS.running(alive)
+        return PREPARATIONS.running_on(self.registry)
 
     def execute_stage(
         self,

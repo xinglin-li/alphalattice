@@ -2323,6 +2323,39 @@ def test_the_kept_backups_are_read_without_making_one(tmp_path: Path):
         assert again["generations"] == first["generations"]
 
 
+@pytest.mark.proves("product_host.cpu_budget_answers_without_opening_the_review")
+def test_the_cpu_budget_answers_without_opening_the_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """requirement: setting and showing the CPU budget answer the preparations running and the
+    machine's load without opening the Evidence review."""
+    from alphalattice.control.product_host.composition import local_web_session
+    from alphalattice.evidence.alternative_evidence.runtime import execution
+
+    root = tmp_path / "workspace"
+    publish_research_workspace_manifest(root, _manifest("cpu-budget-set"))
+    monkeypatch.setattr(execution, "busy_logical_processors", lambda **read: 1.0)  # no real wait
+    opened: list[object] = []
+    build = local_web_session.build_evidence_review_application
+    monkeypatch.setattr(
+        local_web_session,
+        "build_evidence_review_application",
+        lambda *args, **kwargs: opened.append("") or build(*args, **kwargs),
+    )
+    with _session(root) as live:  # its own setup sets two cores
+        operations = live.operations
+        assert operations is not None and operations.review_factory is not None
+        cores = operations.set_cpu_budget("2", chosen_by="EXTERNAL_AUTOMATION")
+        machine = cores["machine"]
+        assert (cores["cpu_budget"], machine["busy_processors"]) == (2, 1.0)
+        assert machine["preparations_running"] == 0
+        assert cores["a_task_now"]["cores"] == min(2, machine["processors"])
+        auto = operations.set_cpu_budget("auto", chosen_by="EXTERNAL_AUTOMATION")
+        assert auto["machine"]["busy_processors"] == 1.0
+        assert operations.cpu_budget()["machine"]["busy_processors"] == 1.0
+        assert opened == []  # neither the session's own setup, a set nor show opened it
+
+
 @pytest.mark.proves("research_program.factor_small_input_is_refused_before_a_task")
 def test_small_input_reports_the_production_requirement_before_any_task(
     tmp_path: Path,
