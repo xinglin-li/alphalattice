@@ -325,6 +325,12 @@ def declare_launcher() -> None:
     _declare_environment({"UV_RUN_RECURSION_DEPTH"}, "test-launcher")
 
 
+def declare_outside_agent_session(names: set[str]) -> None:
+    """Keep the product's frozen view free of the agent session and trace the suite popped: a
+    session left there names every in-process request, and the Host binds it."""
+    _declare_environment(names, "test-outside-agent-session")
+
+
 def _declare_environment(names: set[str], kind: str) -> None:
     """Keep pytest's explicit OS overrides visible to the frozen product configuration."""
     from alphalattice.kernel.config import Change, declare

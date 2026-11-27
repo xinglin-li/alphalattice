@@ -257,10 +257,13 @@ def host_local_clock(monkeypatch):
 # variable, or the W3C TRACEPARENT and BAGGAGE of the process that started the run, would
 # otherwise ride into each request the tests send, and into its activity and its call spans
 # (LAWS OP13). A test that needs one sets it itself. Popped at import, so each worker and the
-# commands it starts inherit none.
+# commands it starts inherit none, and cleared from the product's frozen view, which an earlier
+# import may already have taken with the runner's own.
 _MAINTAINER_THREAD = os.environ.get("CODEX_THREAD_ID") or os.environ.get("CLAUDE_CODE_SESSION_ID")
-for _variable in (*(name for _vendor, name in AGENT_SESSION_VARIABLES), *TRACE_VARIABLES):
+_OUTSIDE_SESSION = {*(name for _vendor, name in AGENT_SESSION_VARIABLES), *TRACE_VARIABLES}
+for _variable in _OUTSIDE_SESSION:
     os.environ.pop(_variable, None)
+environment.declare_outside_agent_session(_OUTSIDE_SESSION)
 
 
 @pytest.fixture(scope="session", autouse=True)
