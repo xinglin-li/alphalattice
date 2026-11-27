@@ -1,0 +1,153 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "alpha_research.campaign_decision_policy",
+   "predecessor": "blake3:a91eabd195c767a22b9a61fc3f4dfddf6cc4389775aa4a8876a3d9ab4c5eabc1",
+   "successor": "blake3:a84ab6a8cccfd11e836cb67dded53bf6011cc85880deb4b586302826c1b7aa59",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "alpha_research.model_lifecycle_replay",
+   "predecessor": "blake3:d8ef361daed33f2df49ea9c356c652b29ac855cf55f15e027316c3bf207b978e",
+   "successor": "blake3:285bdf6db0371f669b832bfa7e43d17c7bd1ee228addea125d174aede9d447cc",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "factor_research.review_decision_policy",
+   "predecessor": "blake3:a074bd833a4ef29cfe50283af0cf8a97fa881d1158ebd5508ddc7dfa6105501a",
+   "successor": "blake3:67ac4df742284381d328a4a434a30dba3db52d3a2cc9f3c7c08a18f73ff500cd",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:fde38cd7c52c6c3275e70a2954a6d352ec19df3d44926f4e448932a175962996",
+   "successor": "blake3:08df7fe14b9e8862f37e3d326d9a99b4ef240886d36eb0f8f55c5690c95003db",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:e954cefbad4a1ae0685833de442d16944f6e6dd44cdca079ac91f0b69febc389",
+   "successor": "blake3:d34838e4acd58aa4c1c1a2b00116272bfbd1aa6be7840ae17c9da3bd560e3156",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:ba85a55b4afafe5c4a0308fc4cf5c2310c5fddd605f7e3dfd456aa06407ae3a2",
+   "successor": "blake3:62a19638a4feab1584c3dce94edec982c4eaba978720d9a7c85d4a4e34b78e32",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_component_training_input",
+   "predecessor": "blake3:277898e863979410a3e1eb19d8a1671f7b33f72c4e390a2347c36dda30460165",
+   "successor": "blake3:2fa67b67a57afedd30a6f18ee714e208e48f2e6d1e18b541d859d4b632e30cbe",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_feature_materialization",
+   "predecessor": "blake3:c9c4afc468d8624a8c90a7bfd1324f6701964676484c6fdce1f9f4b65563756e",
+   "successor": "blake3:8ddd848a1ca1e1aadf75ed9f237a30f19a412bbd506fece648e65a1e09861f96",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_feature_materialization.prepared",
+   "predecessor": "blake3:e68915b4c1329cc834ee1b3ec9a608c4e45873000e591e567174fad5889dbe03",
+   "successor": "blake3:9e41f695356d630758c21bd8b3f00b7a743c70ed103eddab7089321b0bebfbfe",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_feature_source_projection",
+   "predecessor": "blake3:70b83e3033ded6999e87db1cc372b928a69f0b3c160ae5d1eec2f61c43667245",
+   "successor": "blake3:41bdcc347bdad9f8db3b7b6f4d668ebe5aad760063b2c404521634f2a4542abf",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_input_materializer",
+   "predecessor": "blake3:e4be43fa8d05740c8b1fcf5e41d527390511aec22bb94c4ee6e7fb91769ddbae",
+   "successor": "blake3:7468ff756e3ca9a791758a9abf309c440c14320ddc4638077c772edbf43c4b0e",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.research_strategy_preparation",
+   "predecessor": "blake3:a8739463ba679273619eddf28f5994f521a8eda1dd6363146e9a58ed5c46d2d5",
+   "successor": "blake3:c1a05603dfce0c86c3693666052349c789350d84e5fe78e48aaaceac205fe172",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.strategy_calibration",
+   "predecessor": "blake3:e7985a2dfa6852e54439dc4a222a04496e11c27697b6da96333e6cbfd1872ed9",
+   "successor": "blake3:c778657e464fce555685224790759ca79e78cb62d415c1019fcddfbef40976e0",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.strategy_scoring",
+   "predecessor": "blake3:ad035e295b918bdf324b717b63d0c99d27e670b679d6632ac3f7315f7b11a2a3",
+   "successor": "blake3:23ed2270caf645baed48736ab26f59ec8cedbefdd27fb9990b89d0693ed28ba6",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "product_host.workspace_preparation",
+   "predecessor": "blake3:8ed44a80967c7b5141daece11e79e11bb51add9f24ed415b74bcc6189d47ed7a",
+   "successor": "blake3:aef04f25e1b40a3b0d7d63a41c395858d3ee28e456447714cdb37044aaa87f73",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.implementation",
+   "predecessor": "blake3:3176b9ef4eb43d3e2de51aad90f2a2bb225fe379b0db4295bbd210d63caed7ec",
+   "successor": "blake3:e4c023a0ac1339aebf66c5ea0521923ee0107d541765c8d2d856cdee2f256203",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.alpha.model-development.lifecycle.implementation",
+   "predecessor": "blake3:3176b9ef4eb43d3e2de51aad90f2a2bb225fe379b0db4295bbd210d63caed7ec",
+   "successor": "blake3:e4c023a0ac1339aebf66c5ea0521923ee0107d541765c8d2d856cdee2f256203",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.alpha.qualification.implementation",
+   "predecessor": "blake3:9e8394867368a40fb57c5e9cd220d5f99692157afd315ba63df349af7763126e",
+   "successor": "blake3:c5a2cef17d76f7699fa9d4c06c746d0eba799604d29ca37b155414e48711bd05",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.factor.screening-development.implementation",
+   "predecessor": "blake3:37aff63db38dbbd2dd703b65eefa3f89594ff4b5337d8a6e0fadfbdd35b26a35",
+   "successor": "blake3:0bacaef098b052986e88d04e8092ed26107c319f8cf8364a0a436182836b9e19",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.portfolio.policy-development.implementation",
+   "predecessor": "blake3:6610d5032e8db41f211b77d31abd1ba68087a74ad12e9bf85fd4945d475e5aa8",
+   "successor": "blake3:55635b5dc522ae581b233ccd513b037b16f61ed80b67ff3efa1f8dcf7ed459b9",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  },
+  {
+   "role": "research_experiment.risk.covariance-development.implementation",
+   "predecessor": "blake3:95154eef6a594ebefa9c210afc81401fb9b8466e3d30bcd00f76774b604297b6",
+   "successor": "blake3:40c672bf49946b0b82f368978b10bb1d0f3781ebacc07b4b7b06285d8682575c",
+   "change": "Fix Windows workspace lookups and repeated Panel verification",
+   "reason": "Five full-run repairs; the shared file-facts and Panel reader sources change, so 21 owners' source fingerprints rotate while the development replay reads ALL EQUAL and no stored identity changes (carried across composition on 15b232b7a0484c08f1d5bc1d57e08bc4dc2ecefe)"
+  }
+ ]
+}

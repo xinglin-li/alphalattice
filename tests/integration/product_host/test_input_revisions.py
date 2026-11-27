@@ -38,6 +38,7 @@ from alphalattice.foundation.market_data_ops.storage.duckdb import MarketDataRep
 from alphalattice.interface.local_application.portfolio_research import (
     PortfolioResearchRequestDocument as PortfolioResearchAgentRequest,
 )
+from tests._support.identity_fixtures import fixture_digest
 from tests.portfolio_strategy_lab.host_requests import _json, _request
 from tests.portfolio_strategy_lab.local_web_support import InstalledAgent
 from tests.pytest_environment import closure_on_log
@@ -538,23 +539,24 @@ def test_unregistered_or_tampered_versions_refuse_before_work(revision_journey, 
     with LocalPortfolioWebSession.from_workspace(root, clock=lambda: NOW) as live:
         registry = live.session.task_control_registry
         before = len(registry.tasks())
+        unregistered = fixture_digest("unregistered research input binding")
         code, _headers, _body = _request(
             live,
             "/api/experiments/controls"
-            f"?research_input_id={anchor.input_id}&input_binding_hash={'f' * 64}",
+            f"?research_input_id={anchor.input_id}&input_binding_hash={unregistered}",
         )
         assert code == 200  # typed refusal body, not a missing route
         bad = _json(
             live,
             "/api/experiments/controls"
-            f"?research_input_id={anchor.input_id}&input_binding_hash={'f' * 64}",
+            f"?research_input_id={anchor.input_id}&input_binding_hash={unregistered}",
         )
         assert bad["status"] == "REFUSED" and "version_not_admitted" in bad["failure_code"]
         bundle = read_factor_bundle(root, publication.binding_hash)
         path = factor_input_paths(root, bundle.binding_hash)[0].parent / "manifest.json"
         original = path.read_bytes()
         try:
-            path.write_bytes(original.replace(bundle.binding_hash.encode(), b"0" * 64))
+            path.write_bytes(original.replace(bundle.binding_hash.encode(), unregistered.encode()))
             with pytest.raises(ValueError):
                 ResearchInputRevisions(live.session).select(anchor.input_id, bundle.binding_hash)
             tampered = _json(

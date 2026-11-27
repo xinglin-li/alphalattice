@@ -51,6 +51,7 @@ from alphalattice.kernel.config import data_root
 from alphalattice.kernel.identity import (
     RACY_SECONDS,
     FileDigestTrust,
+    Stamp,
     TrustEntry,
     bind_sealed,
     change_xxh3_128_hex,
@@ -800,6 +801,11 @@ def verified_file_digest(
                     return integrity_blake3_path(path)
             return whole_digest(handle, kept)
     return _verified(path) if handle is None else _DIGEST_TRUST.verified(path, handle, kept=kept)[0]
+
+
+def file_value_reuse_stamp(handle: BinaryIO) -> Stamp | None:
+    """The held file version for a value proof, available only outside full proof."""
+    return None if full_proof() else _DIGEST_TRUST.reuse_stamp(handle)
 
 
 def verified_bytes(path: Path) -> tuple[bytes, str]:

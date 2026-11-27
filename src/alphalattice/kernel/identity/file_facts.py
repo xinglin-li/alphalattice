@@ -246,6 +246,16 @@ class FileDigestTrust:
     def _settled(self, stamp: Stamp) -> bool:
         return self._time_ns() - max(stamp[-2:]) > RACY_SECONDS * 10**9
 
+    def reuse_stamp(self, handle: BinaryIO) -> Stamp | None:
+        """Name the held file version only when it can support reuse of a proved value."""
+        if not self._trusting():
+            return None
+        try:
+            stamp = handle_stamp(handle)
+        except OSError:
+            return None
+        return stamp if stamp[1] and self._settled(stamp) else None
+
     def held(
         self,
         path: Path,

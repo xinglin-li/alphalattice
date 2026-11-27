@@ -697,15 +697,17 @@ def test_an_interrupted_composition_retried_under_the_same_binding_keeps_its_fil
 
 @pytest.mark.proves("feature_engine.panel_chunks_stay_bound_to_their_writer")
 def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
-    tmp_path: Path, request
+    tmp_path: Path, request, monkeypatch
 ) -> None:
     """Reader validates each chunk under the binding that wrote it."""
 
+    from alphalattice.control.workspace_runtime import verified_facts
     from alphalattice.foundation.feature_engine.panels import reader as owner
     from alphalattice.foundation.feature_engine.panels.reader import (
         FeaturePanelReader,
         FeaturePanelReadRequest,
     )
+    from alphalattice.kernel.identity import RACY_SECONDS, file_stamp
 
     request.addfinalizer(owner.configure_panel_proof_memo)
     owner.configure_panel_proof_memo(capacity=1)
@@ -722,6 +724,11 @@ def test_reader_validates_each_chunk_under_the_binding_that_wrote_it(
             "calendar_year": "2026",
             "schema_hash": schema_hash,
         },
+    )
+    chunk_path = resolver.resolve_feature_panel_chunk(descriptor)
+    settled_ns = round((RACY_SECONDS + 1) * 1e9)
+    monkeypatch.setattr(
+        verified_facts, "wall_time_ns", lambda: max(file_stamp(chunk_path)[-2:]) + settled_ns
     )
     entry = {
         "year": 2026,

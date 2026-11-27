@@ -164,11 +164,11 @@ async function groupedPair(page, place) {
     await groupedPair(page, 'history');
     if (mode === 'badge') {
       await reading(page, 'tasks');
-      const stale = await page.evaluate(async id => {
+      const stale = await page.evaluate(async ({task, hash}) => {
         try { return await window.AlphaLattice.data.post('/api/cancel',
-          {task_id: id, expected_task_hash: '0'.repeat(64)}); }
+          {task_id: task, expected_task_hash: hash}); }
         catch (error) { return error.body; }
-      }, ids.rebuilt);
+      }, {task: ids.rebuilt, hash: ids.peer_hash});
       assert.equal(stale.failure_code, 'local_application.confirmation_stale');
       assert.equal(stale.lifecycle, 'BLOCKED');
       await page.locator('#main [data-action="task-close-unrecoverable"]').click();

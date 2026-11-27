@@ -13,20 +13,20 @@ import pyarrow.parquet as pq
 
 from alphalattice.capabilities.domain_contracts.bounded_memo import BoundedMemo
 from alphalattice.control.workspace_runtime.artifacts import ArtifactResolver
-from alphalattice.control.workspace_runtime.verified_facts import verified_file_digest
+from alphalattice.control.workspace_runtime.verified_facts import file_value_reuse_stamp
 from alphalattice.foundation.feature_engine.contracts import canonical_hash, listing_set_digest
 from alphalattice.foundation.feature_engine.panels.identity import (
     panel_chunk_hash,
     panel_rows_match_their_hashes,
     panel_schema_hash,
 )
+from alphalattice.kernel.identity import Stamp
 
 if TYPE_CHECKING:
     pass
 
-_VALUES_VERIFIED: BoundedMemo[str, bool] = BoundedMemo()
-"""The byte digests of the chunk files whose values this process has checked: a
-chunk is read many times in one study, and its values need checking once per content."""
+_VALUES_VERIFIED: BoundedMemo[tuple[Stamp, str, tuple[str, ...] | None], bool] = BoundedMemo()
+"""Panel value proofs for settled file versions and their expected row identities."""
 
 
 def configure_panel_proof_memo(*, capacity: int | None = None) -> None:
@@ -35,7 +35,7 @@ def configure_panel_proof_memo(*, capacity: int | None = None) -> None:
     _VALUES_VERIFIED = BoundedMemo(capacity=capacity)
 
 
-def _validate_manifest_chunk(path: object, manifest: dict[str, object], item: dict) -> None:
+def _validate_manifest_chunk(path: Path, manifest: dict[str, object], item: dict) -> None:
     """Prove the chunk file `path` against the identity `manifest` records for its entry `item`:
     schema hash, row count, the chunk hash over its row hashes, and its values against those row
     hashes (FeaturePanelReader._validate_chunk_content); raises ValueError on a mismatch."""
@@ -452,7 +452,7 @@ class FeaturePanelReader:
 
     @staticmethod
     def _validate_chunk_content(
-        path: object,
+        path: Path,
         *,
         expected_chunk_hash: str,
         expected_schema_hash: str,
@@ -462,30 +462,34 @@ class FeaturePanelReader:
         expected_row_count: int,
         row_hash_factor_ids: tuple[str, ...] | None,
     ) -> None:
-        parquet = pq.ParquetFile(path)
-        logical_schema_hash = panel_schema_hash(parquet.schema_arrow)
-        if logical_schema_hash != expected_schema_hash:
-            raise ValueError("feature panel chunk schema hash mismatch")
-        identity = parquet.read(columns=["row_hash"])
-        if identity.num_rows != expected_row_count:
-            raise ValueError("feature panel chunk row count mismatch")
-        # The identity the writer sealed, computed by its owner over the
-        # chunk's row hashes and whole schema.
-        actual = panel_chunk_hash(
-            identity,
-            panel_binding_hash=panel_binding_hash,
-            year=year,
-            schema=parquet.schema_arrow,
-            part=part,
-        )
-        if actual != expected_chunk_hash:
-            raise ValueError("feature panel chunk logical content hash mismatch")
-        # The row hashes are bound; the values must be the ones they were hashed from
-        # (LAWS.md EV2), checked once per file content in this process.
-        digest = verified_file_digest(Path(str(path)))
-        if digest not in _VALUES_VERIFIED:
+        with path.open("rb") as handle:
+            before = file_value_reuse_stamp(handle)
+            parquet = pq.ParquetFile(handle)
+            logical_schema_hash = panel_schema_hash(parquet.schema_arrow)
+            if logical_schema_hash != expected_schema_hash:
+                raise ValueError("feature panel chunk schema hash mismatch")
+            identity = parquet.read(columns=["row_hash"])
+            if identity.num_rows != expected_row_count:
+                raise ValueError("feature panel chunk row count mismatch")
+            actual = panel_chunk_hash(
+                identity,
+                panel_binding_hash=panel_binding_hash,
+                year=year,
+                schema=parquet.schema_arrow,
+                part=part,
+            )
+            if actual != expected_chunk_hash:
+                raise ValueError("feature panel chunk logical content hash mismatch")
+            key = (before, expected_chunk_hash, row_hash_factor_ids) if before is not None else None
+            if (
+                key is not None
+                and key in _VALUES_VERIFIED
+                and file_value_reuse_stamp(handle) == before
+            ):
+                return
             if not panel_rows_match_their_hashes(
                 parquet.read(), row_hash_factor_ids=row_hash_factor_ids
             ):
                 raise ValueError("feature panel chunk values do not match their row hashes")
-            _VALUES_VERIFIED[digest] = True
+            if key is not None and file_value_reuse_stamp(handle) == before:
+                _VALUES_VERIFIED[key] = True
