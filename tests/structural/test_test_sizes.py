@@ -740,11 +740,7 @@ def _memory_checks_read_no_host():
             assert '"heavy_place_holders": [{"line": "probe", "path": "h"}]' in logged, logged
 
 
-GUARD_TIME = {
-    "timeout": (6000, None),
-    "guard-runs": (10, 7),
-}  # the guard scale and the test's sleep
-"""`None` is a hang: the child blocks on an event that never sets, so only the guard ends it."""
+GUARD_SCALE = {"timeout": 6000, "guard-runs": 10}
 
 
 @pytest.mark.parametrize(
@@ -1402,11 +1398,11 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         with pytest.raises(ValueError, match=rf"test_size\.{refusal}"):
             validate_policy(policy)
         return
-    if case in GUARD_TIME:  # the live medium guard and budget in scaled time: 600 s hung, 70 s run
+    if case in GUARD_SCALE:  # scale the live medium guard and budget together
         live = json.loads((root / "config/registries/test-sizes.json").read_bytes())
         policy["limits"], policy["admission_limits"] = live["limits"], live["admission_limits"]
-        policy["limits"]["medium"] /= GUARD_TIME[case][0]
-        policy["admission_limits"]["medium"]["seconds"] /= GUARD_TIME[case][0]
+        policy["limits"]["medium"] /= GUARD_SCALE[case]
+        policy["admission_limits"]["medium"]["seconds"] /= GUARD_SCALE[case]
     if lane:  # a mandatory Large file runs in the merge lane; only named files are mandatory
         policy["mandatory"].append("tests/structural/test_mandatory.py*")
     policy_file.write_text(json.dumps(policy), encoding="utf-8")
@@ -1422,9 +1418,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         + 'def test_example():\n    """Exercise the resolved execution limit."""\n'
         + (
             "    import threading; threading.Event().wait()\n"
-            if case in GUARD_TIME and GUARD_TIME[case][1] is None
-            else f"    import time; time.sleep({GUARD_TIME[case][1]})\n"
-            if case in GUARD_TIME
+            if case == "timeout"
             else "    pass\n"
         ),
         encoding="utf-8",
@@ -1446,6 +1440,16 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
     if registered:
         target = str(root / "tests/integration/product_host/test_strategy_activation.py")
         target += "::test_the_daily_update_resumes_its_deferral_then_goes_on_to_the_next_session"
+    guard_runs = case == "guard-runs"
+    call_duration = (
+        " @pytest.hookimpl(tryfirst=True)\n"
+        " def pytest_runtest_makereport(self,call):\n"
+        "  if call.when == 'call': call.duration=7\n"
+        " def pytest_runtest_logreport(self,report):\n"
+        "  if report.when == 'call': print(f'GUARD_CALL={report.duration}')\n"
+        if guard_runs
+        else ""
+    )
     script = (
         "import pytest,json,sys\nfrom pathlib import Path\n"
         "from devtools.testing import sizes as test_sizes\nread=test_sizes.load_policy\n"
@@ -1462,7 +1466,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         " def pytest_timeout_set_timer(self,item,settings):\n"
         f"  Path({str(tmp_path / 'timer.json')!r}).write_text(json.dumps(\n"
         "    dict(nodeid=item.nodeid,seconds=settings.timeout)),encoding='utf-8')\n"
-        "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
+        + call_duration
+        + "raise SystemExit(pytest.main(sys.argv[1:],plugins=[Reader()]))\n"
     )
     if case == "sibling-race":
         sibling = tmp_path.parent / (tmp_path.name + "-sibling")
@@ -1486,7 +1491,19 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             "_pytest.main.Session._collect_path=collect_owned\n"
         ) + script
     command = [sys.executable, "-c", script]
-    if not registered:
+    if guard_runs:
+        command += [
+            "-p",
+            "devtools.testing.collection",
+            "-p",
+            "pytest_timeout",
+            "--noconftest",
+            "-o",
+            "addopts=",
+            "--rootdir",
+            str(tmp_path),
+        ]
+    elif not registered:
         command += [
             "-p",
             "tests.conftest",
@@ -1499,8 +1516,8 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
         ]
     command += ["-c", str(root / "pyproject.toml")]
     command += ["--basetemp", str(tmp_path / "child-temp")]
-    command += ["-vv"] if case in GUARD_TIME else ["--collect-only", "-q"]
-    command += ["--no-cov", str(target)]
+    command += ["-vv"] if case in GUARD_SCALE else ["--collect-only", "-q"]
+    command += [str(target)] if guard_runs else ["--no-cov", str(target)]
     if lane:
         command += ["--keep-duplicates", str(target), str(mandatory)]
     result = spawn.run(
@@ -1511,6 +1528,7 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             # the registered node is nightly_only (the person, 11-19): collected in its own lane
             ALPHALATTICE_TEST_LANE=lane or ("nightly" if registered else ""),
             ALPHALATTICE_PIPELINE_STAGE=post_stage,
+            **({"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_PLUGINS": ""} if guard_runs else {}),
         ),
         capture_output=True,
         text=True,
@@ -1532,10 +1550,15 @@ def test_collection_resolves_owned_size_or_names_the_conflict(tmp_path, monkeypa
             "seconds": pytest.approx(policy["limits"]["medium"]),  # the live guard, scaled
         }, result.stdout + result.stderr
         assert result.returncode != 0 and "test_example PASSED" not in result.stdout
-    elif case == "guard-runs":  # 70 s, over the 30 s budget and under the 300 s guard: it ends
+    elif guard_runs:
+        assert result.returncode == 0 and "test_example PASSED" in result.stdout, (
+            result.stdout + result.stderr
+        )
         row = json.loads(result.stdout.split("SIZE_ITEMS=")[1].splitlines()[0])[0]
+        elapsed = float(result.stdout.split("GUARD_CALL=")[1].splitlines()[0])
+        timer = json.loads((tmp_path / "timer.json").read_text(encoding="utf-8"))
         assert (row["timeout_marker"], row["speed_budget_seconds"]) == (30, 3), result.stdout
-        assert result.returncode == 0 and "test_example PASSED" in result.stdout, result.stdout
+        assert row["speed_budget_seconds"] < elapsed < timer["seconds"] == row["timeout_marker"]
     elif len(set(declared)) > 1:
         assert result.returncode != 0 and "test_size.conflicting" in result.stderr
     else:
