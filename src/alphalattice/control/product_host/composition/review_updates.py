@@ -114,7 +114,8 @@ def read_review_update(
         readback is not None
         and readback.get("task_id") == str(task_id)
         and isinstance(publication, dict)
-        and publication.get("content_hash") == publication_hash
+        and publication_hash
+        in (publication.get("content_hash"), publication.get("publication_hash"))
     ):
         body = dict(readback)
     elif task.lifecycle is TaskLifecycle.SUCCEEDED:
@@ -135,16 +136,17 @@ def read_review_update(
     else:
         body = reader.readback(task_id, publication_hash=publication_hash)
     plan = cast(dict[str, object], task.input.payload["plan"])
-    if publication_hash == plan.get("parent_hash"):
-        value = PortfolioUpdatePublication.model_validate(body["publication"])
+    value = PortfolioUpdatePublication.model_validate(body["publication"])
+    if value.content_hash == plan.get("parent_hash"):
         producers = [operations.updates.publication_task(value)]
         if operations.research_updates is not None:
-            producers.append(operations.research_updates.publication_task(publication_hash))
+            producers.append(operations.research_updates.publication_task(value.content_hash))
         found = [v for v in producers if v is not None]
         if len(found) != 1:
             raise ValueError("product_host.evidence_review_publication_origin_unavailable")
         # A displayed parent keeps its original review identity and exact reuse.
-        return read_review_update(operations, found[0], publication_hash)
-    floor = committee.published_floor(operations.goals.store, str(task_id), publication_hash)
+        return read_review_update(operations, found[0], value.review_name)
+    # Bound above by either name: downstream it is the name its reviews and floor use.
+    floor = committee.published_floor(operations.goals.store, str(task_id), value.review_name)
     committee.contextualize(body, floor, operations.dispatcher.clock())
     return body

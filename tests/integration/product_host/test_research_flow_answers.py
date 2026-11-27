@@ -1620,6 +1620,8 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
                 if k != "content_hash"
             },
             "html_hash": HASH,
+            # another revision: a re-render alone names the same publication to a review
+            "published_at": publication.published_at - timedelta(seconds=1),
         }
     )
     for value in (prior, publication):
@@ -1671,7 +1673,7 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
     assert latest["verification"] == "METADATA_ONLY_SELECTED_READBACK_VERIFIES_DESCENDANTS"
     assert latest["review_selector"] == {
         "update_task_id": str(task.task_id),
-        "update_publication_hash": publication.content_hash,
+        "update_publication_hash": publication.review_name,
         "position_basis": "CONDITIONAL_ESTIMATE",
     }
     assert latest["next_requests"]["readback"] == {
@@ -1681,7 +1683,7 @@ def test_completed_update_metadata_keeps_exact_target_claim_and_sealed_lookup(
     assert "review_standing" not in running
     history = _json(live, "/api/research-history")["entries"]
     revisions = {row["book"]["update_publication_hash"]: row["final_delivery"] for row in history}
-    assert revisions == {prior.content_hash: False, publication.content_hash: True}
+    assert revisions == {prior.review_name: False, publication.review_name: True}
     stored = (
         owner.ledger.content.root
         / "decision-candidates"

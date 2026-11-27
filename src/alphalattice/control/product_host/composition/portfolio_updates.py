@@ -1023,14 +1023,13 @@ class PortfolioUpdateApplication:
         if not completed and plan.parent_hash is None and publication_hash is None:
             return {"status": task.lifecycle.value, "task_id": str(task.task_id)}
         history = self.history(plan.checkpoint_hash)
+        own = self._publication(plan) if completed else None
         value = (
-            self._publication(plan)
-            if completed and (publication_hash is None or publication_hash != plan.parent_hash)
+            own
+            if own is not None and (publication_hash is None or own.names(publication_hash))
             else next((v for v in history if v.content_hash == plan.parent_hash), None)
         )
-        if publication_hash is not None and (
-            value is None or value.content_hash != publication_hash
-        ):
+        if publication_hash is not None and (value is None or not value.names(publication_hash)):
             raise ValueError("portfolio_update.publication_not_bound_to_task")
         if value is None:
             raise ValueError("portfolio_update.publication_missing")

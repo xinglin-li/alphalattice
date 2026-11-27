@@ -91,7 +91,9 @@ def numerical(request):
     )
 
 
-def seed_update(service, n, *, previous=None, observed=False, legacy_settlement=False):
+def seed_update(
+    service, n, *, previous=None, observed=False, legacy_settlement=False, stored_before=False
+):
     """Publish through existing owners, capture exact Task input and stage evidence."""
     owner, registry = service.session.operations.updates, service.registry
     store = owner.store
@@ -150,6 +152,11 @@ def seed_update(service, n, *, previous=None, observed=False, legacy_settlement=
             "html_hash": html_hash,
         }
     )
+    if stored_before:  # published before its rendering-free digest was minted, sealed as then
+        payload = value.model_dump(mode="json", exclude={"content_hash", "publication_hash"})
+        value = PortfolioUpdatePublication.model_validate(
+            {**payload, "content_hash": canonical_hash(payload)}
+        )
     store.publish_decision_update(value)
     envelope, goal, workflow = _task_contract(plan)
     task = registry.admit(
@@ -207,7 +214,7 @@ def seed_update(service, n, *, previous=None, observed=False, legacy_settlement=
 
 
 @pytest.fixture
-def updated(tmp_path, numerical):
+def updated(tmp_path, numerical, request):
     workspace, _ = build_workspace(tmp_path)
     positions = tuple(
         SimpleNamespace(listing_id=v) for v in numerical.checkpoint.ordered_listing_ids
@@ -225,7 +232,9 @@ def updated(tmp_path, numerical):
         path=tmp_path,
     )
     try:
-        context.value, context.selector = seed_update(service, numerical)
+        context.value, context.selector = seed_update(
+            service, numerical, stored_before=getattr(request, "param", False)
+        )
         yield context
     finally:
         context.service.session.stop()
@@ -380,7 +389,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     with monkeypatch.context() as observed:
         observed.setattr(service.review, "resolve_book", counted)
         published = service.get(evidence_url)
-    assert book_reads == [(task, c.value.content_hash)]
+    assert book_reads == [(task, c.value.review_name)]
     assert published["state"] == "REVIEW_PUBLISHED", published
     assert published["review_publication_hash"]
     # regression (FAR-PAST-FIRST-USE B): Evidence read after the positions' formation is named
@@ -418,7 +427,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     with monkeypatch.context() as observed:
         observed.setattr(service.review, "read_update", exact_update)
         exported = service.get("/api/evidence-cro/export?" + urlencode(export_selector))
-    assert export_reads == [(UUID(task), c.value.content_hash)]
+    assert export_reads == [(UUID(task), c.value.review_name)]
     pinned = service.get("/api/evidence-cro?" + urlencode(export_selector))
     assert pinned["book"]["committee_context"] == context
     assert "committee_context" not in exported and "committee_context" not in exported["portfolio"]
@@ -519,7 +528,7 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     tasks = len(c.service.registry.tasks())
     all_history = c.service.get("/api/research-history?history_limit=50")
     assert any(
-        r["book"] and r["book"].get("update_publication_hash") == other_value.content_hash
+        r["book"] and r["book"].get("update_publication_hash") == other_value.review_name
         for r in all_history["entries"]
     )
     history = c.service.get(
@@ -535,17 +544,15 @@ def test_updated_book_uses_exact_source_not_the_default_result(updated, monkeypa
     updates = [r for r in history["entries"] if r["kind"] == "CONTINUOUS_UPDATE"]
     assert all(r["final_delivery"] is True for r in updates)
     assert {r["book"]["update_publication_hash"] for r in updates} == {
-        c.value.content_hash,
-        observed.content_hash,
+        c.value.review_name,
+        observed.review_name,
     }
     # Each publication is dated by its own publication time, not its Task's
     # admission, so a newer result never sorts after an older one.
-    dated = {value.content_hash: value.published_at.isoformat() for value in (c.value, observed)}
+    dated = {value.review_name: value.published_at.isoformat() for value in (c.value, observed)}
     assert {r["book"]["update_publication_hash"]: r["recorded_at"] for r in updates} == dated
     assert {r["book"]["update_publication_hash"]: r["positions_session"] for r in updates} == {
-        value.content_hash: (
-            value.pending_proposal or value.book
-        ).schedule.entry_session.isoformat()
+        value.review_name: (value.pending_proposal or value.book).schedule.entry_session.isoformat()
         for value in (c.value, observed)
     }
     assert all(
@@ -611,10 +618,39 @@ def test_legacy_entry_stays_readable_but_cannot_invent_a_review(updated):
     assert not c.service.review.review_actor.observed_deadlines
 
 
+def _read_a_review_sealed_before_the_digest(c):
+    """A review completed on a publication stored before the digest, read by a later Host as
+    it was sealed: by its stored selector, with no submission and no recovery."""
+    assert c.value.publication_hash is None
+    assert c.selector["update_publication_hash"] == c.value.content_hash
+    c.service.post("/api/cro-review", c.selector)
+    c.service.drain()
+    (sealed,) = c.service.review.artifacts.values(
+        "cro-review-publications", PortfolioReviewPublication
+    )
+    assert sealed.update_subject.update_publication_hash == c.value.content_hash
+    c.service.session.stop()
+    c.service = start_service(c.workspace, c.authority, c.path)
+    assert c.service.session.resumed_task_ids == ()
+    tasks = len(c.service.registry.tasks())
+    read = c.service.get("/api/evidence-cro?" + urlencode(c.selector))
+    assert read["state"] == "REVIEW_PUBLISHED", read
+    assert read["review_publication_hash"] == sealed.publication_hash
+    pinned = {**c.selector, "review_publication_hash": sealed.publication_hash}
+    exported = c.service.get("/api/evidence-cro/export?" + urlencode(pinned))
+    assert exported["review"]["publication"]["publication_hash"] == sealed.publication_hash
+    assert exported["review"]["dossier"]["update_subject"] == sealed.update_subject.model_dump(
+        mode="json"
+    )
+    assert exported["portfolio"]["publication"] == c.value.model_dump(mode="json")
+    assert len(c.service.registry.tasks()) == tasks  # read, never submitted or recovered
+
+
 @pytest.mark.parametrize(
-    "tamper,prepared",
-    [(False, False), (True, False), (False, True)],
-    ids=["resume", "refuse-tampered-source", "prepared"],
+    "tamper,prepared,updated",
+    [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+    ids=["resume", "refuse-tampered-source", "prepared", "stored-before"],
+    indirect=["updated"],
 )
 def test_update_review_recovery_revalidates_its_exact_source(
     updated, monkeypatch, tamper, prepared
@@ -623,6 +659,9 @@ def test_update_review_recovery_revalidates_its_exact_source(
     service = c.service
     service.post("/api/evidence-refresh", c.selector)
     service.drain()
+    if c.value.publication_hash is None:  # stored before the digest: its sealed review is read
+        _read_a_review_sealed_before_the_digest(c)
+        return
     with monkeypatch.context() as patch:
         patch.setattr(PortfolioReviewTaskAdapter, "verify_stage", _raise_interruption)
         if prepared:
@@ -667,7 +706,7 @@ def test_update_review_recovery_revalidates_its_exact_source(
             admitted = service.post("/api/cro-review", c.selector)
         service.drain()
         if prepared:
-            exact = (UUID(c.selector["update_task_id"]), c.value.content_hash)
+            exact = (UUID(c.selector["update_task_id"]), c.value.review_name)
             assert stage_reads == [("admit_portfolio_review", [exact])]
     task_id = UUID(admitted["task_id"])
     task = service.registry.task(task_id)
@@ -696,7 +735,7 @@ def test_update_review_recovery_revalidates_its_exact_source(
         else:
             assert recovered.lifecycle is TaskLifecycle.SUCCEEDED
             assert len(values) == 1
-            assert values[0].update_subject.update_publication_hash == c.value.content_hash
+            assert values[0].update_subject.update_publication_hash == c.value.review_name
             assert len(c.service.review.review_actor.observed_deadlines) == calls + int(
                 not prepared
             )

@@ -13,6 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from alphalattice.capabilities.domain_contracts.identity import canonical_hash
 from alphalattice.capabilities.domain_contracts.sealing import (
     scoped_model_digest,
+    scoped_payload_digest,
+    seal_payload_digest,
     seal_scoped_model,
 )
 from alphalattice.capabilities.portfolio_backtesting.contracts import (
@@ -66,9 +68,13 @@ class _Sealed(BaseModel):  # type: ignore[misc]
     @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def identity(self) -> Self:
         digest = scoped_model_digest(self, "content_hash", digest=canonical_hash)
-        if self.content_hash != digest:
+        if self.content_hash != digest or not self._parts_sealed():
             raise ValueError("portfolio_update.identity_invalid")
         return self
+
+    def _parts_sealed(self) -> bool:
+        """Whether the record's further identities agree with its content; a record has none."""
+        return True
 
 
 class PortfolioEntryBook(_Sealed):
@@ -374,6 +380,12 @@ class PortfolioUpdatePublication(_Sealed):
     Pending proposal, observed entry/events, optional source correction and retained HTML identity
     describe the issued update. Its sealed Risk and CRO statuses remain unevaluated for this
     proposal; these are research positions, not trade advice.
+
+    `content_hash` seals every field, its rendering's `html_hash` included, and stays its identity
+    in the store and its children's `parent_hash`. `publication_hash` is the same sealed content
+    apart from its rendering, minted at its making: a review names the publication by it
+    (`review_name`), so a re-render of the same content names the same publication. One stored
+    before it was minted has none and is named by its `content_hash`; `names` takes either.
     """
 
     kind: Literal["PortfolioUpdatePublication"] = "PortfolioUpdatePublication"
@@ -403,6 +415,46 @@ class PortfolioUpdatePublication(_Sealed):
     continuation_basis: Literal["AS_ISSUED"] = Field(
         default="AS_ISSUED", exclude_if=lambda v: v == "AS_ISSUED"
     )
+    publication_hash: str | None = Field(
+        default=None, pattern=BLAKE3_PATTERN, exclude_if=lambda v: v is None
+    )
+
+    @classmethod
+    def create(cls, **values: object) -> Self:
+        """Seal a publication, minting its rendering-free digest from the content it seals."""
+        values.pop("content_hash", None)  # a record re-sealed from an earlier one's fields
+        values.pop("publication_hash", None)  # minted again from the content it is re-sealed with
+        draft = cls.model_construct(**values, content_hash="0" * 64)
+        values["publication_hash"] = seal_payload_digest(
+            "publication_hash", _rendering_free(draft), digest=canonical_hash
+        )
+        return super().create(**values)
+
+    def _parts_sealed(self) -> bool:
+        """Whether its rendering-free digest, when it has one, is that of its content."""
+        return self.publication_hash is None or self.publication_hash == scoped_payload_digest(
+            _rendering_free(self), "publication_hash", self.publication_hash, digest=canonical_hash
+        )
+
+    @property
+    def review_name(self) -> str:
+        """What a review names this publication by: its rendering-free `publication_hash`, or its
+        `content_hash` when it was stored before that was minted."""
+        return self.publication_hash or self.content_hash
+
+    def names(self, value: str | None) -> bool:
+        """Whether `value` names this publication, as a review or its store names it."""
+        return value is not None and value in (self.content_hash, self.publication_hash)
+
+
+_RENDERING: frozenset[str] = frozenset({"content_hash", "publication_hash", "html_hash"})
+"""The fields a publication's rendering-free identity leaves out: its seals and its rendering."""
+
+
+def _rendering_free(value: PortfolioUpdatePublication) -> dict[str, object]:
+    """A publication's sealed content apart from its rendering, under its own name."""
+    body = value.model_dump(mode="json", exclude=set(_RENDERING))
+    return {"identity": "PortfolioUpdatePublication.publication_hash", "content": body}
 
 
 @dataclass(frozen=True, slots=True)

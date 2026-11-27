@@ -1,0 +1,27 @@
+{
+ "schema": "identity-successors",
+ "version": 1,
+ "moves": [
+  {
+   "role": "portfolio_strategy_lab.public_path",
+   "predecessor": "blake3:187d66fc2fb5fa0a824944d63940c75269bfd4631394bc171dcdf0a815283776",
+   "successor": "blake3:fde38cd7c52c6c3275e70a2954a6d352ec19df3d44926f4e448932a175962996",
+   "change": "A re-rendered research update keeps its review",
+   "reason": "The review-binding repair restores the publication task's exact lookup and adds the committee's task-scoped lookup; the same owner rotates again, and no stored identity changes"
+  },
+  {
+   "role": "product_host.conditional_decision_advancement",
+   "predecessor": "blake3:31ff0798048b223e915c79561edc748a3878777be004933f924ffd2fdec933fc",
+   "successor": "blake3:501805d3165f4a6fb43f6165a03f80317eb2edc02cd740b611fcec84b1964a46",
+   "change": "A re-rendered research update keeps its review",
+   "reason": "The review-binding repair restores the publication task's exact lookup and adds the committee's task-scoped lookup; the same owner rotates again, and no stored identity changes"
+  },
+  {
+   "role": "product_host.portfolio_updates",
+   "predecessor": "blake3:7b812832b171be4491510cd23f88699bc85f284a209813fd77ab8d4acdc41ac6",
+   "successor": "blake3:ba85a55b4afafe5c4a0308fc4cf5c2310c5fddd605f7e3dfd456aa06407ae3a2",
+   "change": "A re-rendered research update keeps its review",
+   "reason": "The review-binding repair restores the publication task's exact lookup and adds the committee's task-scoped lookup; the same owner rotates again, and no stored identity changes"
+  }
+ ]
+}

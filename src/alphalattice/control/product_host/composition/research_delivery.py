@@ -312,16 +312,20 @@ def export_update_delivery(
             case_tokens=cases, audits=audits, held=kept, kept=stood, retained=retained
         )
     publication = readback.get("publication")
-    subject = {
+    if not isinstance(publication, dict) or request.update_publication_hash not in (
+        publication["content_hash"],
+        publication.get("publication_hash"),
+    ):
+        raise AuthoringError("research_delivery.update_subject_mismatch")
+    subject = {  # bound by either name, exported under the one its reviews name it by
         "update_task_id": str(request.update_task_id),
-        "update_publication_hash": request.update_publication_hash,
+        "update_publication_hash": publication.get("publication_hash")
+        or publication["content_hash"],
         "position_basis": request.position_basis,
     }
     context = readback.get("committee_context")
     if (
-        not isinstance(publication, dict)
-        or publication["content_hash"] != request.update_publication_hash
-        or request.position_basis is None
+        request.position_basis is None
         or readback.get("review_selector") != subject
         or (context and context.get("review_selector") != subject)
     ):
@@ -337,7 +341,7 @@ def export_update_delivery(
         review_export = EvidenceReviewDelivery(review).export_review(
             BookSelector(
                 update_task_id=request.update_task_id,
-                update_publication_hash=request.update_publication_hash,
+                update_publication_hash=str(subject["update_publication_hash"]),
                 position_basis=request.position_basis,
             ),
             request.review_publication_hash,

@@ -122,7 +122,7 @@ def readback() -> dict[str, Any]:
         "listing_labels": {listing: f"N{i}" for i, listing in enumerate(listings)},
         "review_selector": {
             "update_task_id": TASK,
-            "update_publication_hash": value.content_hash,
+            "update_publication_hash": value.review_name,
             "position_basis": "CONDITIONAL_ESTIMATE",
         },
         "html": "<html><body><h1>Positions</h1></body></html>",
@@ -1534,7 +1534,9 @@ def test_only_the_leads_superseded_refusal_is_offered_its_published_committee(
     tasks = SimpleNamespace(task=lambda _: SimpleNamespace(task_kind=ADVANCEMENT_TASK_KIND))
     host = SimpleNamespace(
         review=None,
-        research_updates=SimpleNamespace(publication_task={"p" * 64: UUID(TASK)}.get),
+        research_updates=SimpleNamespace(
+            produced=lambda task, name: (task, name) == (UUID(TASK), "p" * 64)
+        ),
         goals=SimpleNamespace(
             store=GoalStore(tmp_path, "workspace"), clock=lambda: NOW, first_use=lambda: None
         ),
@@ -1734,7 +1736,7 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
         "review_selector": {
             **readback["review_selector"],
             "update_task_id": str(later),
-            "update_publication_hash": later_publication.content_hash,
+            "update_publication_hash": later_publication.review_name,
         },
     }
     later_store, _ = _floor(tmp_path / "advanced", later_book)
@@ -1785,7 +1787,7 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
     def current_standing(_, selector, *, read_update):
         exact = selector.update_publication_hash
         origin = read_update(selector.update_task_id, exact)
-        assert origin["publication"]["content_hash"] == exact, label
+        assert PortfolioUpdatePublication.model_validate(origin["publication"]).names(exact), label
         standing_reads.append((selector.update_task_id, status))
         return status
 
@@ -1834,6 +1836,13 @@ def test_a_roles_bundle_carries_its_view_of_a_dates_positions(
             readings[label] = actual["view"]
     assert any(at in line for line in readings["review re-ask"] or ())
     assert readings["new generation"] != readings["review re-ask"]
+    from alphalattice.control.product_host.composition.review_updates import bundle_update
+
+    held = len(verified)  # the bundle's held book answers a review's name and its store's alike
+    with bundle_update(later):
+        for name in (later_publication.review_name, later_publication.content_hash):
+            app._advancement_readback(later, publication_hash=name)
+    assert len(verified) == held
 
 
 def test_the_risk_member_reads_the_dates_predicted_risk(tmp_path: Path, readback: dict) -> None:
@@ -1947,6 +1956,39 @@ def test_a_dates_delivery_carries_the_closed_floor_as_its_commentary(
     page = delivered["html"]  # the person's page names the kept rows and blocks
     assert all(text in page for text in ("Observations kept as stored", snapshot, "2016-01-04"))
     assert delivered["committee_context"] == context
+    # Through the Host's read path, a closed floor: either name exports the same sealed report.
+    host, publication = PortfolioResearchOperations, readback["publication"]
+    registry = SimpleNamespace(
+        task=lambda task_id: SimpleNamespace(
+            task_kind=ADVANCEMENT_TASK_KIND,
+            lifecycle=TaskLifecycle.SUCCEEDED,
+            record_hash=canonical_hash(str(task_id)),
+            input=SimpleNamespace(input_schema_id=SCHEMA, payload={"plan": {}}),
+        ),
+        work_items=lambda _: (),
+    )
+    app = SimpleNamespace(
+        readbacks=VerifiedReadbacks(),
+        review=None,
+        updates=object(),
+        research_updates=SimpleNamespace(readback=lambda *_, **__: {**readback, **facts}),
+        dispatcher=SimpleNamespace(clock=lambda: now[0]),
+        goals=SimpleNamespace(store=store),
+        data_issues=SimpleNamespace(rule_decisions=read),
+        _date_risk=lambda *_: facts["date_risk"],
+        _file_floor=lambda *_: None,
+        workspace_session=SimpleNamespace(workspace=tmp_path, task_control_registry=registry),
+    )
+    for name in ("_read_review_update", "_advancement_readback", "_positions"):
+        setattr(app, name, partial(getattr(host, name), app))
+    names = (publication.get("publication_hash"), publication["content_hash"])
+    assert names[0] == request.update_publication_hash and names[1] != names[0]
+    with patch.object(committee, "daily_asked", lambda _w, _g, _t, answer: answer):
+        exports = [
+            host._delivery_export(app, replace(request, update_publication_hash=name), "HUMAN")
+            for name in names
+        ]
+    assert exports[0] == exports[1] and exports[0]["commentary"] == said
     with pytest.raises(AuthoringError, match=r"^research_delivery\.update_subject_mismatch$"):
         export_update_delivery(
             request=replace(request, position_basis="OBSERVED_RESEARCH_ENTRY"),

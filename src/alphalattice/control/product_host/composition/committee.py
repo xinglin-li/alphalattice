@@ -571,8 +571,9 @@ def lead_way(
         return answered
     try:
         selector = _update_book(book)
-        published_by = host.research_updates.publication_task(selector.update_publication_hash)
-        if published_by != selector.update_task_id:
+        if not host.research_updates.produced(
+            selector.update_task_id, selector.update_publication_hash
+        ):
             return answered
         standing = EvidenceReviewDelivery(host.review).review_standing(selector)
     except Exception:  # another book or an unreadable store: the typed refusal stands

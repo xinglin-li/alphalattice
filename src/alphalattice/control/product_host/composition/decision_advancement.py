@@ -2107,6 +2107,18 @@ class DecisionAdvancementApplication:
             raise ValueError("research_update.publication_task_ambiguous")
         return matches[0] if matches else None
 
+    def produced(self, task_id: UUID, name: str) -> bool:
+        """Whether a succeeded advancement task's own final stage produced the publication a
+        review names, by its content hash or its rendering-free digest."""
+        task = self.session.task_control_registry.task(task_id)
+        if task.input.input_schema_id != SCHEMA or task.lifecycle is not TaskLifecycle.SUCCEEDED:
+            return False
+        products = self._need(self._plan_of(task, current=False), STAGES[5]).products
+        return name in products or any(
+            self._load("decision-candidates", h, PortfolioUpdatePublication).names(name)
+            for h in products
+        )
+
     @verified_lifecycle_admissions()
     def readback(
         self, task_id: UUID | None = None, *, publication_hash: str | None = None
@@ -2161,15 +2173,14 @@ class DecisionAdvancementApplication:
             value = (
                 branch[-1]
                 if publication_hash is None
-                else next((v for v in branch if v.content_hash == publication_hash), None)
+                else next((v for v in branch if v.names(publication_hash)), None)
             )
-            if publication_hash == plan.parent_hash and publication_hash is not None:
-                value = self._parent(plan)
+            if value is None and plan.parent_hash is not None:  # named by its review or store
+                parent = self._parent(plan)
+                value = parent if parent is not None and parent.names(publication_hash) else None
         else:
             value = self._parent(plan)
-        if publication_hash is not None and (
-            value is None or value.content_hash != publication_hash
-        ):
+        if publication_hash is not None and (value is None or not value.names(publication_hash)):
             raise ValueError("research_update.publication_not_bound_to_task")
         if value is None:
             return {

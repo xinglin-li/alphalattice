@@ -151,7 +151,7 @@ def position_rows(
         )
         body["review_selector"] = {
             "update_task_id": body["task_id"],
-            "update_publication_hash": value.content_hash,
+            "update_publication_hash": value.review_name,
             "position_basis": positions.basis,
         }
         body["next_requests"] = {
@@ -166,7 +166,7 @@ def position_rows(
                 standing = review(
                     BookSelector(
                         update_task_id=UUID(str(body["task_id"])),
-                        update_publication_hash=value.content_hash,
+                        update_publication_hash=value.review_name,
                         position_basis=positions.basis,
                     ),
                 )

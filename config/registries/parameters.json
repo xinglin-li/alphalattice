@@ -7852,6 +7852,11 @@
 "class": "LIMIT",
 "count": 1
 },
+"src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::content_hash::64": {
+"class": "METHOD",
+"count": 1,
+"description": "A publication draft holds a placeholder seal of 64 zeros while its rendering-free digest is minted, since the digest excludes the seal."
+},
 "src/alphalattice/investment/portfolio_strategy_lab/application/decision_updates.py::costs::10": {
 "class": "METHOD",
 "count": 1

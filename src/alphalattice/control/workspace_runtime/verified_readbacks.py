@@ -22,7 +22,7 @@ class VerifiedReadbacks:
         """Start with no verifications in flight."""
         self._lock = threading.Lock()
         self._flights: dict[Hashable, Future[dict[str, object]]] = {}
-        self._book: tuple[Hashable, str, dict[str, object]] | None = None
+        self._book: tuple[Hashable, tuple[str, ...], dict[str, object]] | None = None
 
     def book(
         self,
@@ -30,10 +30,11 @@ class VerifiedReadbacks:
         publication_hash: str | None,
         verify: Callable[[], dict[str, object]],
     ) -> dict[str, object]:
-        """Reuse the last verified final publication for the exact completed Task evidence."""
+        """Reuse the last verified final publication for the exact completed Task evidence, named
+        by its content hash or the rendering-free digest its reviews name it by."""
         with self._lock:
             held = self._book
-        if held is not None and held[0] == key and publication_hash in (None, held[1]):
+        if held is not None and held[0] == key and publication_hash in (None, *held[1]):
             return copy.deepcopy(held[2])
         if publication_hash is not None:
             return verify()
@@ -48,8 +49,9 @@ class VerifiedReadbacks:
             if isinstance(publication, dict) and isinstance(
                 exact := publication.get("content_hash"), str
             ):
+                names = (exact, publication.get("publication_hash"))  # its store's and its reviews'
                 with self._lock:
-                    self._book = (key, exact, value)
+                    self._book = (key, tuple(n for n in names if isinstance(n, str)), value)
             return value
 
         return self.read(("bundle-book", key), keep)

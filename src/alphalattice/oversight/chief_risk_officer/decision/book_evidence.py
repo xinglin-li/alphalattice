@@ -426,7 +426,7 @@ def _open_update_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelec
     assert selector.update_publication_hash is not None
     body = inputs.read_update(selector.update_task_id, selector.update_publication_hash)
     value = PortfolioUpdatePublication.model_validate(body.get("publication"))
-    if value.content_hash != selector.update_publication_hash:
+    if not value.names(selector.update_publication_hash):
         raise PortfolioEvidenceReviewError(
             "product_host.evidence_review_update_publication_mismatch"
         )
@@ -442,7 +442,7 @@ def _open_update_book(inputs: PortfolioEvidenceReviewInputs, selector: BookSelec
         raise PortfolioEvidenceReviewError("product_host.evidence_review_update_axis_mismatch")
     subject = PortfolioUpdateReviewSubject(
         update_task_id=UUID(str(body["task_id"])),
-        update_publication_hash=value.content_hash,
+        update_publication_hash=value.review_name,  # a re-render names the same publication
         position_basis=positions.basis,
         position_hash=positions.position_hash,
         checkpoint_hash=value.input_checkpoint_hash or value.checkpoint_hash,

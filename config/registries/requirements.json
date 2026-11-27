@@ -2749,6 +2749,12 @@
       "layer": "integration",
       "seconds": 60
     },
+    "portfolio_strategy_lab.a_review_names_its_publication_apart_from_its_rendering": {
+      "description": "If a re-render changed the name a review binds, every review of that publication would read as another, and a changed sealed field must name a new one.",
+      "owner": "alphalattice.investment.portfolio_strategy_lab",
+      "layer": "unit",
+      "seconds": 1
+    },
     "portfolio_strategy_lab.advancement_refuses_an_index_for_another_program": {
       "description": "An advancement receipt index for one program cannot name another program.",
       "owner": "alphalattice.investment.portfolio_strategy_lab",

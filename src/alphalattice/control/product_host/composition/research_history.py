@@ -650,7 +650,7 @@ class ResearchHistory:
             strategy_package_id=package,
             book=_book(
                 update_task_id=task_id,
-                update_publication_hash=value.content_hash,
+                update_publication_hash=value.review_name,
                 position_basis="CONDITIONAL_ESTIMATE"
                 if value.pending_proposal
                 else "OBSERVED_RESEARCH_ENTRY",
